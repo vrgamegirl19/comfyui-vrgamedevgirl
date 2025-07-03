@@ -1,2 +1,3 @@
-# comfyui-vrgamedevgirl
-Custom ComfyUI nodes for film grain, color matching, and video enhancement.
+# 🎨 VRGameDevGirl’s Video Enhancement Nodes
+
+Custom nodes built for high-quality, frame-by-frame video enhancement in ComfyUI...
