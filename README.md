@@ -1,15 +1,29 @@
-# 🎮 VRGameDevGirl’s Video/image Enhancement Nodes for ComfyUI
+# 🎮 VRGameDevGirl’s Video/image Enhancement Nodes (Quality of life nodes coming soon as well) for ComfyUI
 
-Custom ComfyUI nodes for high-quality, frame-by-frame video enhancement.  
+Custom ComfyUI nodes for high-quality, frame-by-frame video or image enhancement.  
 Includes realtime-ready nodes for film grain, color tone matching, and more to come!
 
 ---
 
 ## 🌟 Features
 
-- 🎞️ **Fast Film Grain**: Add controllable, grayscale or color grain for cinematic texture.
-- 🎨 **Color Match to Reference**: Align image tones to a reference image for consistent color grading.
-- ⚡ Optimized for **video workflows** and **per-frame processing** in ComfyUI.
+- 🎞️ **Fast Film Grain** (`FastFilmGrain`)  
+  Add controllable, grayscale or color grain for cinematic texture.
+
+- 🎨 **Color Match to Reference** (`ColorMatchToReference`)  
+  Align image tones to a reference image using LAB color matching.
+
+- 🎯 **Fast Unsharp Sharpen** (`FastUnsharpSharpen`)  
+  Simple and efficient sharpening using unsharp masking.
+
+- 🌀 **Fast Laplacian Sharpen** (`FastLaplacianSharpen`)  
+  Edge-based sharpening via Laplacian kernel for crisp detail.
+
+- 📏 **Fast Sobel Sharpen** (`FastSobelSharpen`)  
+  Gradient-based edge enhancement using Sobel filters.
+
+- ⚡ Optimized for **image or video workflows** and **per-frame processing** in ComfyUI.
+
 - 💻 Designed to be efficient on modern GPUs.
 
 ---
