@@ -66,11 +66,13 @@ Uses the same reference image across all frames for consistency.
 
 ## 🛠️ Roadmap
 
-- [x] Film grain (grayscale and RGB)
-- [x] Color match (LAB-based)
-- [ ] Sharpness control node
-- [ ] Local contrast / dehaze
-- [ ] LUT loader or approximate match
+- [x] 🎞️ Fast Film Grain (`FastFilmGrain`)
+- [x] 🎨 Color Match To Reference (`ColorMatchToReference`)
+- [x] 📏 Fast Sobel Sharpen (`FastSobelSharpen`)
+- [x] 🌀 Fast Laplacian Sharpen (`FastLaplacianSharpen`)
+- [x] 🎯 Fast Unsharp Sharpen (`FastUnsharpSharpen`)
+- [ ] 🌫️ Local Contrast / Dehaze
+- [ ] 🎛️ LUT Loader or Approximate Match
 
 ---
 
