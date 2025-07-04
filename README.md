@@ -32,17 +32,7 @@ Includes realtime-ready nodes for film grain, color tone matching, and more to c
 
 ## ✨ Requirements
 
-If not using the Manager, install dependencies manually:
-
-```bash
-pip install torch kornia
-```
-
-Or:
-
-```bash
-pip install -r requirements.txt
-```
+No req file is needed at this time. comyui has everyting build in so far.
 
 ---
 
