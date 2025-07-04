@@ -79,10 +79,8 @@ Uses the same reference image across all frames for consistency.
 ```
 comfyui-vrgamedevgirl/
 │
-├── custom_nodes/
-│   └── VRGameDevGirl/
-│       ├── __init__.py
-│       └── nodes.py
+├── init.py
+├── nodes.py
 ├── README.md
 ├── LICENSE
 ├── requirements.txt
