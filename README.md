@@ -52,7 +52,7 @@ No req file is needed at this time. comyui has everyting build in so far.
 
 ## 🧠 Node Details
 
-### ✅ Fast Film Grain Node
+### ✅ Fast Film Grain (`FastFilmGrain`)
 Adds customizable film grain to each frame.  
 Grain can be grayscale or saturated RGB, and sized to match your output resolution.
 
@@ -65,7 +65,7 @@ Grain can be grayscale or saturated RGB, and sized to match your output resoluti
 
 ---
 
-### 🎨 Color Match to Reference
+### 🎨 Color Match to Reference (`ColorMatchToReference`)
 Matches image color distribution to a reference image using LAB space normalization.
 
 **Inputs:**
@@ -73,8 +73,38 @@ Matches image color distribution to a reference image using LAB space normalizat
 - `reference_image`: A single image to match tone and color against.
 - `match_strength`: Blend between original and matched (0.0–1.0).
 
-⚠️ Make sure all images are 4D tensors: `[batch, height, width, channels]`.  
-Uses the same reference image across all frames for consistency.
+---
+
+### 🎯 Fast Unsharp Sharpen (`FastUnsharpSharpen`)
+Applies unsharp masking to enhance edges with a fast, low-cost blur pass.
+
+**Inputs:**
+- `images`: Input image tensor.
+- `strength`: Sharpening amount (0.0 to 2.0)
+
+🚀 Lightweight and ideal for subtle sharpening.
+
+---
+
+### 🌀 Fast Laplacian Sharpen (`FastLaplacianSharpen`)
+Enhances edges by applying a Laplacian kernel to bring out high-frequency detail.
+
+**Inputs:**
+- `images`: Input image tensor.
+- `strength`: Sharpening amount (0.0 to 2.0)
+
+🧪 Gives a more "punchy" sharpen effect great for detail recovery.
+
+---
+
+### 📏 Fast Sobel Sharpen (`FastSobelSharpen`)
+Uses Sobel filters to detect image gradients and amplify edge contrast.
+
+**Inputs:**
+- `images`: Input image tensor.
+- `strength`: Sharpening amount (0.0 to 2.0)
+
+🧠 Sharpens by boosting directional edge response — great for outlines and detail clarity.
 
 ---
 
