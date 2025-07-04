@@ -1,6 +1,9 @@
 import torch
+import torch.nn.functional as F
 import comfy
-import kornia.color  # ComfyUI has kornia by default
+import numpy as np
+from typing import Tuple
+
 
 class FastFilmGrain:
     @classmethod
@@ -99,20 +102,176 @@ class ColorMatchToReference:
         return (output,)
 
 
+class FastUnsharpSharpen:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "strength": (
+                    "FLOAT", {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.01
+                    }
+                )
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "apply_unsharp"
+    CATEGORY = "video/enhancement"
+    DESCRIPTION = "Sharpens image using a fast unsharp masking technique."
+
+    def apply_unsharp(self, images: torch.Tensor, strength: float) -> Tuple[torch.Tensor]:
+        device = comfy.model_management.get_torch_device()
+        images = images.to(device)
+
+        # Convert to NCHW
+        x = images.permute(0, 3, 1, 2)
+
+        # Apply Gaussian blur (3x3 kernel)
+        blur = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1)
+
+        # Unsharp mask
+        sharpened = x + strength * (x - blur)
+
+        # Clamp and convert back
+        sharpened = sharpened.clamp(0.0, 1.0)
+        sharpened = sharpened.permute(0, 2, 3, 1)
+        sharpened = sharpened.to(comfy.model_management.intermediate_device())
+
+        return (sharpened,)
 
 
+class FastLaplacianSharpen:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "strength": (
+                    "FLOAT", {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.01
+                    }
+                )
+            }
+        }
 
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "apply_laplacian"
+    CATEGORY = "video/enhancement"
+    DESCRIPTION = "Sharpens image using a Laplacian edge enhancement method."
+
+    def apply_laplacian(self, images: torch.Tensor, strength: float) -> Tuple[torch.Tensor]:
+        device = comfy.model_management.get_torch_device()
+        images = images.to(device)
+
+        # Convert to NCHW
+        x = images.permute(0, 3, 1, 2)
+
+        # Define Laplacian kernel (3x3)
+        kernel = torch.tensor(
+            [[0, -1, 0],
+             [-1, 4, -1],
+             [0, -1, 0]], dtype=torch.float32, device=device
+        ).expand(3, 1, 3, 3)
+
+        # Apply depthwise convolution
+        edges = torch.nn.functional.conv2d(x, kernel, padding=1, groups=3)
+
+        # Enhance with strength
+        sharpened = x + strength * edges
+        sharpened = sharpened.clamp(0.0, 1.0)
+
+        # Convert back to NHWC
+        sharpened = sharpened.permute(0, 2, 3, 1)
+        sharpened = sharpened.to(comfy.model_management.intermediate_device())
+        return (sharpened,)
+
+
+class FastSobelSharpen:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "strength": (
+                    "FLOAT", {
+                        "default": 0.5,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.01
+                    }
+                )
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "apply_sobel"
+    CATEGORY = "video/enhancement"
+    DESCRIPTION = "Sharpens image using Sobel edge detection to enhance gradients."
+
+    def apply_sobel(self, images: torch.Tensor, strength: float) -> Tuple[torch.Tensor]:
+        device = comfy.model_management.get_torch_device()
+        images = images.to(device)
+
+        # Convert to NCHW
+        x = images.permute(0, 3, 1, 2)
+
+        # Sobel kernels (Gx, Gy)
+        sobel_x = torch.tensor(
+            [[-1, 0, 1],
+             [-2, 0, 2],
+             [-1, 0, 1]], dtype=torch.float32, device=device
+        ).expand(3, 1, 3, 3)
+
+        sobel_y = torch.tensor(
+            [[-1, -2, -1],
+             [ 0,  0,  0],
+             [ 1,  2,  1]], dtype=torch.float32, device=device
+        ).expand(3, 1, 3, 3)
+
+        # Compute gradients
+        grad_x = torch.nn.functional.conv2d(x, sobel_x, padding=1, groups=3)
+        grad_y = torch.nn.functional.conv2d(x, sobel_y, padding=1, groups=3)
+
+        # Combine gradients
+        edges = torch.sqrt(grad_x ** 2 + grad_y ** 2 + 1e-6)
+
+        # Add to original
+        sharpened = x + strength * edges
+        sharpened = sharpened.clamp(0.0, 1.0)
+
+        # Convert back to NHWC
+        sharpened = sharpened.permute(0, 2, 3, 1)
+        sharpened = sharpened.to(comfy.model_management.intermediate_device())
+        return (sharpened,)
 
 
 
 NODE_CLASS_MAPPINGS = {
     "FastFilmGrain": FastFilmGrain,
-     "ColorMatchToReference": ColorMatchToReference
+     "ColorMatchToReference": ColorMatchToReference,
+     "FastUnsharpSharpen": FastUnsharpSharpen,
+     "FastLaplacianSharpen": FastLaplacianSharpen,
+     "FastSobelSharpen": FastSobelSharpen
+    
+
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "FastFilmGrain": "🎞️ Fast Film Grain",
-     "ColorMatchToReference": "🎨 Color Match To Reference"
+     "ColorMatchToReference": "🎨 Color Match To Reference",
+     "FastUnsharpSharpen": "🎯 Fast Unsharp Sharpen",
+     "FastLaplacianSharpen": "🌀 Fast Laplacian Sharpen",
+     "FastSobelSharpen": "📏 Fast Sobel Sharpen"
+ 
+
 }
 
 
