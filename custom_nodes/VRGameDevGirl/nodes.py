@@ -20,7 +20,7 @@ class FastFilmGrain:
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_grain"
     CATEGORY = "video/enhancement"
-    DESCRIPTION = "Adds lightweight film grain like LTXVFilmGrain"
+    DESCRIPTION = "Adds lightweight film grain"
 
     def apply_grain(self, images, grain_intensity, saturation_mix):
         device = comfy.model_management.get_torch_device()
