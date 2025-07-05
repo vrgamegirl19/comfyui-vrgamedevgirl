@@ -46,9 +46,21 @@ Includes realtime-ready nodes for film grain, color tone matching, and more to c
 
 ## ✨ Requirements
 
-No req file is needed at this time. comyui has everyting build in so far.
+A `requirements.txt` file is now needed.
 
----
+To install the required packages, run this from inside the `python_embeded` folder:
+
+```
+python.exe -m pip install -r ..\custom_nodes\comfyui-vrgamedevgirl\requirements.txt
+
+```
+
+`requirements.txt` (in the repo) includes:
+
+```
+kornia
+
+```
 
 ## 🧠 Node Details
 
