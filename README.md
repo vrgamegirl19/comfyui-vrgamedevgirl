@@ -83,6 +83,9 @@ python.exe -m pip install -r ..\custom_nodes\comfyui-vrgamedevgirl\requirements.
 ```
 kornia
 
+librosa
+
+
 ```
 
 ## 🧠 Node Details
