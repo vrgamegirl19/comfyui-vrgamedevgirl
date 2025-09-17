@@ -1,7 +1,30 @@
-# 🎮 VRGameDevGirl’s Video/image Enhancement Nodes (Quality of life nodes coming soon as well) for ComfyUI
+# 🎮 VRGameDevGirl’s Video / Image & HUMO Workflow Nodes for ComfyUI
 
-Custom ComfyUI nodes for high-quality, frame-by-frame video or image enhancement.  
-Includes realtime-ready nodes for film grain, color tone matching, and more to come!
+Custom ComfyUI nodes for **music video workflows** and **high-quality video/image enhancement**.  
+Includes HUMO-based multi-scene workflows, audio splitting, video combining, and realtime-ready enhancement tools.
+
+---
+
+## 🌟 New HUMO Workflow Nodes
+
+- 🎧 **VRGDG_LoadAudioSplit_HUMO**  
+  Splits an audio file (lyrics-only recommended) into per-scene snippets.  
+  - Outputs `meta` (scene durations, timings, total duration).  
+  - Provides per-scene audio chunks for previews. Defaulted at 3 seconds to work with Humo.
+  - Lets you listen to snippets and refine prompts in sync with the music.
+
+- 🎼 **VRGDG_LoadAudioSplitDynamic**  
+  Flexible audio splitting node.  
+  - Supports **custom durations** for each scene.  
+  - Can optionally pad with silence for InfiniteTalk workflows that allow for longer generations. 
+  - Ideal if you want more control over per-scene lengths.
+
+- 🎬 **VRGDG_CombinevideosV2**  
+  Combines multiple scene videos into one continuous video.  
+  - Syncs video lengths to audio `meta` automatically.  
+  - Pads short clips with last frame if needed.  
+  - Requires at least **two video inputs**.  
+  - Designed to keep audio and video aligned without manual duration entry.
 
 ---
 
