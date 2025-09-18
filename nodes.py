@@ -470,13 +470,13 @@ class VRGDG_LoadAudioSplit_HUMO:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "path": ("STRING", {"default": "./audio.mp3"}),
+                "audio": ("AUDIO",),  # <-- changed from path:("STRING") to audio:("AUDIO",)
                 "offset_seconds": ("FLOAT", {"default": 0.0, "min": 0.0}),
                 "scene_count": ("INT", {
                     "default": 1,
                     "min": 1,
                     "max": 50,
-                    "dynamic": True  # ✅ This enables the refresh button
+                    "dynamic": True  # ✅ still allows refresh
                 }),
             }
         }
@@ -499,12 +499,23 @@ class VRGDG_LoadAudioSplit_HUMO:
             count = 1
         return ["meta", "total_duration"] + [f"audio_{i+1}" for i in range(count)]
 
-    def split_audio(self, path, offset_seconds, scene_count=1):
+    def split_audio(self, audio, offset_seconds, scene_count=1):  # <-- input now is audio dict
         # internal processing parameters
         internal_chunk_duration = 8.0
         gain_db = 0.0
         resample_to_hz = 0.0
         make_stereo = True
+
+        # extract waveform + metadata from AUDIO input
+        waveform = audio["waveform"]          # (B, C, T) or (C, T)
+        src_sample_rate = int(audio.get("sample_rate", 44100))
+
+        # normalize shape
+        if waveform.ndim == 2:  # (C, T)
+            waveform = waveform.unsqueeze(0)
+
+        total_samples = waveform.shape[-1]
+        audio_total_duration = float(total_samples) / float(src_sample_rate)
 
         # hardcode duration for each scene
         scene_count = max(1, int(scene_count))
@@ -517,51 +528,25 @@ class VRGDG_LoadAudioSplit_HUMO:
             starts.append(current_time)
             current_time += float(d)
 
-        # get audio metadata
-        src_sample_rate = 44100
-        audio_total_duration = 0.0
-        if torchaudio is not None:
-            try:
-                metadata = torchaudio.info(path)
-                src_sample_rate = int(getattr(metadata, "sample_rate", src_sample_rate))
-                num_frames = int(getattr(metadata, "num_frames", 0))
-                sr_for_duration = max(1, int(getattr(metadata, "sample_rate", src_sample_rate)))
-                audio_total_duration = float(num_frames) / float(sr_for_duration)
-            except Exception as e:
-                print(f"[VRGDG_LoadAudioSplitDynamic] torchaudio.info failed: {e}")
-
         target_length = int(internal_chunk_duration * src_sample_rate)
         segments = []
 
         for idx, start_time in enumerate(starts):
             requested_duration = float(durations[idx])
+            start_samp = max(0, int(start_time * src_sample_rate))
+            end_samp = min(total_samples, int(start_samp + requested_duration * src_sample_rate))
 
-            try:
-                audio = load_audio(
-                    path,
-                    sr=None if resample_to_hz <= 0 else resample_to_hz,
-                    offset=float(start_time),
-                    duration=requested_duration,
-                    make_stereo=make_stereo,
-                )
+            seg = waveform[..., start_samp:end_samp]
 
-                if not audio or "waveform" not in audio:
-                    raise RuntimeError("Audio load failed or waveform missing.")
+            # apply gain
+            if gain_db != 0.0:
+                gain_scalar = db_to_scalar(gain_db)
+                seg *= gain_scalar
 
-                # apply gain
-                if gain_db != 0.0:
-                    gain_scalar = db_to_scalar(gain_db)
-                    audio["waveform"] *= gain_scalar
+            if make_stereo and seg.shape[1] == 1:  # mono -> stereo
+                seg = seg.repeat(1, 2, 1)
 
-                if "sample_rate" not in audio:
-                    audio["sample_rate"] = src_sample_rate
-
-            except Exception as e:
-                print(f"[VRGDG_LoadAudioSplitDynamic] Failed to load segment {idx+1}: {e}")
-                dummy_waveform = torch.zeros((1, 2, target_length))
-                audio = {"waveform": dummy_waveform, "sample_rate": src_sample_rate}
-
-            segments.append(audio)
+            segments.append({"waveform": seg, "sample_rate": src_sample_rate})
 
         meta = {
             "scene_count": scene_count,
