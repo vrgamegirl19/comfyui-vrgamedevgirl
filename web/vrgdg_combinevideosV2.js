@@ -73,13 +73,13 @@ app.registerExtension({
               name,
               0.0,
               (v, ww) => (ww.value = Math.max(0, Number(v) || 0)),
-              { min: 0.0, step: 0.01, precision: 2 } // ✅ updated
+              { min: 0.0, step: 0.01, precision: 2 }
             );
           } else {
             w.options = w.options || {};
             w.options.min = 0.0;
-            w.options.step = 0.01;    // ✅ updated
-            w.options.precision = 2;  // ✅ updated
+            w.options.step = 0.01;
+            w.options.precision = 2;
             w.step = 0.01;
             w.precision = 2;
           }
@@ -103,8 +103,14 @@ app.registerExtension({
       };
 
       const refresh = () => {
-        const sc = Number(getWidget("scene_count")?.value ?? 2);
+        const scW = getWidget("scene_count");
+        if (scW && (scW.value == null || scW.value === "")) {
+          scW.value = 2;
+        }
+
+        const sc = Number(scW?.value ?? 2);
         const count = Math.max(2, Math.min(MAX_SCENES, sc));
+
         stripNonVideoPorts();
         ensureVideoPorts(count);
         rebuildDurationWidgets(count);
