@@ -695,7 +695,126 @@ class VRGDG_CombinevideosV2:
         # Concatenate along frame dimension
         final = torch.cat([t.to(dtype=torch.float32) for t in trimmed], dim=0).cpu()
         return (final,)
+class VRGDG_LoadAudioSplitUpload:
+    """
+    Audio Splitter that takes an AUDIO input and splits it into multiple chunks.
+    total_duration (2nd output) = sum(duration_1..duration_N)
+    """
 
+    RETURN_TYPES = ("DICT", "FLOAT") + tuple(["AUDIO"] * 50)
+    RETURN_NAMES = ("meta", "total_duration") + tuple([f"audio_{i}" for i in range(1, 51)])
+    FUNCTION = "split_audio"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional = {
+            f"duration_{i}": (
+                "FLOAT",
+                {"default": 3.88, "min": 0.0, "step": 0.01, "round": 0.01}
+            )
+            for i in range(1, 51)
+        }
+        return {
+            "required": {
+                "audio": ("AUDIO",),  # <-- plug LoadAudio or any AUDIO here
+                "offset_seconds": ("FLOAT", {"default": 0.0, "min": 0.0, "step": 0.01}),
+                "scene_count": ("INT", {"default": 1, "min": 1, "max": 50}),
+                "using_infinite_talk": (["false", "true"], {"default": "false"}),
+            },
+            "optional": optional,
+        }
+
+    @classmethod
+    def IS_DYNAMIC(cls):
+        return True
+
+    @classmethod
+    def get_output_types(cls, **kwargs):
+        count = int(kwargs.get("scene_count", 1))
+        if count < 1:
+            count = 1
+        return ("DICT", "FLOAT") + tuple(["AUDIO"] * count)
+
+    @classmethod
+    def get_output_names(cls, **kwargs):
+        count = int(kwargs.get("scene_count", 1))
+        if count < 1:
+            count = 1
+        return ["meta", "total_duration"] + [f"audio_{i+1}" for i in range(count)]
+
+    def split_audio(self, audio, offset_seconds=0.0, scene_count=1, using_infinite_talk="false", **kwargs):
+        waveform = audio["waveform"]          # (B, C, T) or (C, T)
+        sample_rate = int(audio["sample_rate"])
+        use_padding = str(using_infinite_talk).lower() == "true"
+        internal_chunk_duration = 8.0
+
+        # normalize shape
+        if waveform.ndim == 2:  # (C, T)
+            waveform = waveform.unsqueeze(0)
+
+        total_samples = waveform.shape[-1]
+        source_audio_duration = float(total_samples) / float(sample_rate)
+
+        # always at least 1 scene
+        scene_count = max(1, int(scene_count))
+
+        # collect durations safely
+        durations = []
+        for i in range(scene_count):
+            v = kwargs.get(f"duration_{i+1}", 3.0)
+            try:
+                durations.append(float(v))
+            except Exception:
+                durations.append(3.0)
+
+        # start times
+        starts = []
+        t = float(offset_seconds)
+        for d in durations:
+            starts.append(t)
+            t += float(d)
+
+        # split segments
+        target_len = int(internal_chunk_duration * sample_rate)
+        segments = []
+
+        for idx, start_time in enumerate(starts):
+            dur = float(durations[idx])
+            start_samp = max(0, int(start_time * sample_rate))
+            end_samp = min(total_samples, int(start_samp + dur * sample_rate))
+
+            seg = waveform[..., start_samp:end_samp]
+
+            if use_padding:
+                cur_len = seg.shape[-1]
+                if cur_len < target_len:
+                    pad = target_len - cur_len
+                    silence = torch.zeros(
+                        (seg.shape[0], seg.shape[1], pad),
+                        dtype=seg.dtype,
+                        device=seg.device
+                    )
+                    seg = torch.cat((seg, silence), dim=-1)
+
+            segments.append({"waveform": seg, "sample_rate": sample_rate})
+
+        # ✅ total_duration = sum of requested durations
+        requested_total = float(sum(durations)) if durations else 0.0
+
+        meta = {
+            "scene_count": scene_count,
+            "durations": durations,
+            "offset_seconds": float(offset_seconds),
+            "starts": starts,
+            "sample_rate": sample_rate,
+            "internal_chunk_duration": internal_chunk_duration,
+            "source_audio_duration": source_audio_duration,  # reference only
+            "outputs_count": len(segments),
+            "used_padding": use_padding,
+        }
+
+        return (meta, requested_total, *tuple(segments))
 
 NODE_CLASS_MAPPINGS = {
     "FastFilmGrain": FastFilmGrain,
@@ -705,7 +824,8 @@ NODE_CLASS_MAPPINGS = {
      "FastSobelSharpen": FastSobelSharpen,
      "VRGDG_CombinevideosV2": VRGDG_CombinevideosV2,
      "VRGDG_LoadAudioSplitDynamic": VRGDG_LoadAudioSplitDynamic,
-     "VRGDG_LoadAudioSplit_HUMO": VRGDG_LoadAudioSplit_HUMO
+     "VRGDG_LoadAudioSplit_HUMO": VRGDG_LoadAudioSplit_HUMO,
+     "VRGDG_LoadAudioSplitUpload":VRGDG_LoadAudioSplitUpload,
     
 
 }
@@ -718,7 +838,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "FastSobelSharpen": "📏 Fast Sobel Sharpen",
      "VRGDG_CombinevideosV2": "🌀 VRGDG_CombinevideosV2",
      "VRGDG_LoadAudioSplitDynamic":"VRGDG_LoadAudioSplitDynamic",
-     "VRGDG_LoadAudioSplit_HUMO":"VRGDG_LoadAudioSplit_HUMO"
+     "VRGDG_LoadAudioSplit_HUMO":"VRGDG_LoadAudioSplit_HUMO",
+     "VRGDG_LoadAudioSplitUpload":"VRGDG_LoadAudioSplitUpload",
  
 
 }
