@@ -595,7 +595,7 @@ class VRGDG_CombinevideosV2:
         }
         return {
             "required": {
-                "fps": ("FLOAT", {"default": 24.0, "min": 1.0}),
+                "fps": ("FLOAT", {"default": 25.0, "min": 1.0}),
                 "scene_count": ("INT", {"default": 2, "min": 2, "max": 50}),
             },
             "optional": {
