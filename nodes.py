@@ -567,8 +567,6 @@ class VRGDG_LoadAudioSplit_HUMO:
 
 
 
-
-
 # VRGDG_CombinevideosV2 (updated)
 # - Optional DICT input: audio_meta (from VRGDG_LoadAudioSplitDynamic)
 #   * If provided and contains durations/scene_count, they override local widgets.
@@ -595,7 +593,7 @@ class VRGDG_CombinevideosV2:
         }
         return {
             "required": {
-                "fps": ("FLOAT", {"default": 25.0, "min": 1.0}),
+                "fps": ("FLOAT", {"default": 24.0, "min": 1.0}),
                 "scene_count": ("INT", {"default": 2, "min": 2, "max": 50}),
             },
             "optional": {
@@ -695,6 +693,11 @@ class VRGDG_CombinevideosV2:
         # Concatenate along frame dimension
         final = torch.cat([t.to(dtype=torch.float32) for t in trimmed], dim=0).cpu()
         return (final,)
+    
+
+
+
+
 class VRGDG_LoadAudioSplitUpload:
     """
     Audio Splitter that takes an AUDIO input and splits it into multiple chunks.
