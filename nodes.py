@@ -1094,10 +1094,11 @@ class VRGDG_TranscribeLyric:
         full_transcription = " ".join(transcriptions).strip()
         return (full_transcription,)
 
-
-
+#########################################
 import random
+import re
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
+
 class VRGDG_LoadAudioSplit_HUMO_Transcribe:
     RETURN_TYPES = ("DICT", "FLOAT", "STRING") + tuple(["AUDIO"] * 50)
     RETURN_NAMES = ("meta", "total_duration", "lyrics_string") + tuple([f"audio_{i}" for i in range(1, 51)])
@@ -1113,12 +1114,7 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
             "required": {
                 "audio": ("AUDIO",),
                 "offset_seconds": ("FLOAT", {"default": 0.0, "min": 0.0}),
-                "scene_count": ("INT", {
-                    "default": 1,
-                    "min": 1,
-                    "max": 50,
-                    "dynamic": True
-                }),
+                "scene_count": ("INT", {"default": 1, "min": 1, "max": 50, "dynamic": True}),
                 "language": (
                     [
                         "auto", "english", "chinese", "german", "spanish", "russian", "korean", "french",
@@ -1138,7 +1134,7 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
                     ],
                     {"default": "english", "tooltip": "Language for Whisper transcription."}
                 ),
-                "enable_lyrics": ("BOOLEAN", {"default": False, "tooltip": "If false, skip transcription and return an empty lyrics_string to save time."}),
+                "enable_lyrics": ("BOOLEAN", {"default": False, "tooltip": "If false, skip transcription."}),
             }
         }
 
@@ -1163,7 +1159,6 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
     def split_audio(self, audio, offset_seconds, scene_count=1, language="english", enable_lyrics=True):
         internal_chunk_duration = 8.0
         gain_db = 0.0
-        resample_to_hz = 0.0
         make_stereo = True
 
         waveform = audio["waveform"]
@@ -1177,14 +1172,12 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
 
         scene_count = max(1, int(scene_count))
         durations = [3.88] * scene_count
-
         starts = []
         current_time = float(offset_seconds)
         for d in durations:
             starts.append(current_time)
             current_time += float(d)
 
-        target_length = int(internal_chunk_duration * src_sample_rate)
         segments = []
         transcriptions = []
 
@@ -1204,12 +1197,28 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
 
             seg = waveform[..., start_samp:end_samp]
 
+            # If empty, insert silence of correct duration
+            if seg.numel() == 0:
+                print(f"⚠️ Scene {idx} is empty, inserting silence + fallback lyric.")
+                seg = torch.zeros((1, 2, int(requested_duration * src_sample_rate)))  # stereo silence
+                segments.append({"waveform": seg, "sample_rate": src_sample_rate})
+                transcriptions.append(random.choice(self.fallback_words))
+                continue
+
             if gain_db != 0.0:
                 gain_scalar = 10 ** (gain_db / 20)
                 seg *= gain_scalar
 
             if make_stereo and seg.shape[1] == 1:
                 seg = seg.repeat(1, 2, 1)
+
+            # Ensure correct length by padding/truncating
+            expected_len = int(requested_duration * src_sample_rate)
+            if seg.shape[-1] < expected_len:
+                pad_len = expected_len - seg.shape[-1]
+                seg = torch.nn.functional.pad(seg, (0, pad_len))
+            elif seg.shape[-1] > expected_len:
+                seg = seg[..., :expected_len]
 
             segments.append({"waveform": seg, "sample_rate": src_sample_rate})
 
@@ -1218,6 +1227,7 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
                 continue
 
             flat_seg = seg.mean(dim=1).squeeze()
+
             if src_sample_rate != 16000:
                 flat_seg = torchaudio.functional.resample(flat_seg, src_sample_rate, 16000)
 
@@ -1250,20 +1260,50 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
 
             transcriptions.append(text)
 
-        # ✅ Updated lyrics logic
-        if not enable_lyrics:
-            lyrics_text = ""
-        else:
-            safe_transcriptions = [t if t else random.choice(self.fallback_words) for t in transcriptions]
+        def count_words(line):
+            return len(re.findall(r'\w+', line))
 
-            per_scene_lyrics = []
-            for i in range(len(safe_transcriptions)):
-                if i == 0:
-                    per_scene_lyrics.append(safe_transcriptions[i])
+        def collapse_repeats(line):
+            tokens = line.split()
+            result = []
+            last_word = None
+            repeat_count = 0
+            for word in tokens:
+                if word.lower() == last_word:
+                    repeat_count += 1
                 else:
-                    per_scene_lyrics.append(f"{safe_transcriptions[i-1]} {safe_transcriptions[i]}")
+                    last_word = word.lower()
+                    repeat_count = 1
+                if repeat_count <= 3:
+                    result.append(word)
+            cleaned = []
+            prev = None
+            for word in result:
+                if word.lower() == prev:
+                    continue
+                cleaned.append(word)
+                prev = word.lower()
+            return " ".join(cleaned)
 
-            lyrics_text = " | ".join(per_scene_lyrics)
+        lyrics_text = ""
+        if enable_lyrics:
+            safe_transcriptions = [t if t else random.choice(self.fallback_words) for t in transcriptions]
+            enriched_transcriptions = []
+            for i, text in enumerate(safe_transcriptions):
+                word_count = count_words(text)
+                if word_count >= 3:
+                    enriched_transcriptions.append(collapse_repeats(text))
+                    continue
+                combined = random.choice(self.fallback_words) + " " + text.strip()
+                j = i + 1
+                while word_count < 3 and j < len(safe_transcriptions):
+                    combined += " " + safe_transcriptions[j].strip()
+                    word_count = count_words(combined)
+                    j += 1
+                if word_count < 3 and i > 0:
+                    combined = safe_transcriptions[i - 1].strip() + " " + combined
+                enriched_transcriptions.append(collapse_repeats(combined.strip()))
+            lyrics_text = " | ".join(enriched_transcriptions)
 
         meta = {
             "scene_count": scene_count,
@@ -1282,6 +1322,289 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
 
 
 
+################################################
+class VRGDG_TimecodeFromIndex:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "index": ("INT", {"default": 0, "min": 0}),
+                "duration_seconds": ("FLOAT", {"default": 62.0, "min": 0.0}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("start_time",)
+
+    FUNCTION = "format_timecode"
+
+    CATEGORY = "utils"
+
+    def format_timecode(self, index, duration_seconds):
+        start_seconds = int(index * duration_seconds)
+        start_time_str = f"{start_seconds // 60}:{start_seconds % 60:02d}"
+        return (start_time_str,)
+    
+
+
+
+##################################################
+import imageio
+import numpy as np
+
+class VRGDG_LoadVideos:
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("video",)
+    FUNCTION = "load_videos"
+    CATEGORY = "Video"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "trigger": ("*", {}),
+                "video_folder": ("STRING", {"default": "./videos", "multiline": False}),
+                "scene_count": ("INT", {"default": 3, "min": 1, "max": 5}),
+            }
+        }
+
+    def load_videos(self, trigger, video_folder, scene_count=3):
+        # collect up to scene_count videos in order
+        videos = sorted(
+            [f for f in os.listdir(video_folder) if f.lower().endswith((".mp4", ".mov", ".avi", ".mkv"))]
+        )
+        if not videos:
+            raise ValueError(f"No video files found in {video_folder}")
+
+        selected = videos[:scene_count]
+
+        all_frames = []
+        for vid in selected:
+            path = os.path.join(video_folder, vid)
+            reader = imageio.get_reader(path, "ffmpeg")
+            frames = []
+            for frame in reader:
+                # imageio already gives RGB, so just normalize
+                frame = frame.astype(np.float32) / 255.0
+                tensor = torch.from_numpy(frame).unsqueeze(0)  # (1,H,W,C)
+                frames.append(tensor)
+            reader.close()
+
+            if not frames:
+                continue
+
+            video_tensor = torch.cat(frames, dim=0)  # (F,H,W,C)
+            all_frames.append(video_tensor)
+
+        if not all_frames:
+            raise ValueError("No frames loaded from any videos.")
+
+        # concatenate all videos along frame dimension
+        final_video = torch.cat(all_frames, dim=0)
+
+        return (final_video,)
+
+
+#############################################
+import imageio
+import numpy as np
+import torch
+class VRGDG_ConditionalLoadVideos:
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("video",)
+    FUNCTION = "load_videos"
+    CATEGORY = "Video"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                # ✅ trigger kept as VHS_FILENAMES type
+                "trigger": ("VHS_FILENAMES", {}),
+                "threshold": ("INT", {"default": 3}),
+                "video_folder": ("STRING", {"default": "./videos", "multiline": False}),
+            }
+        }
+
+    def load_videos(self, trigger, threshold, video_folder):
+        # ✅ Clean up accidental newlines/whitespace
+        video_folder = video_folder.strip()
+
+        # ✅ Ensure folder exists (create if missing)
+        if not os.path.exists(video_folder):
+            os.makedirs(video_folder, exist_ok=True)
+            print(f"[VRGDG_ConditionalLoadVideos] Created folder: {video_folder}")
+            print(f"[VRGDG_ConditionalLoadVideos] No videos yet, skipping.")
+            return (None,)
+
+        # ✅ Collect videos
+        videos = sorted(
+            [f for f in os.listdir(video_folder) if f.lower().endswith((".mp4", ".mov", ".avi", ".mkv"))]
+        )
+        video_count = len(videos)
+
+        print(f"[VRGDG_ConditionalLoadVideos] Found {video_count} videos in {video_folder}")
+
+        # 🚫 Skip if not enough videos yet
+        if video_count < threshold:
+            print(f"[VRGDG_ConditionalLoadVideos] Threshold not met ({video_count}/{threshold}), skipping.")
+            return (None,)
+
+        all_frames = []
+        for vid in videos:
+            path = os.path.join(video_folder, vid)
+            print(f"[VRGDG_ConditionalLoadVideos] Loading {path}")
+            reader = imageio.get_reader(path, "ffmpeg")
+            frames = []
+            for frame in reader:
+                # normalize to float32 RGB tensor
+                frame = frame.astype(np.float32) / 255.0
+                tensor = torch.from_numpy(frame).unsqueeze(0)  # (1,H,W,C)
+                frames.append(tensor)
+            reader.close()
+
+            if not frames:
+                print(f"[VRGDG_ConditionalLoadVideos] Skipped {vid}, no frames read.")
+                continue
+
+            video_tensor = torch.cat(frames, dim=0)  # (F,H,W,C)
+            all_frames.append(video_tensor)
+            print(f"[VRGDG_ConditionalLoadVideos] Loaded {vid} with {len(frames)} frames")
+
+        if not all_frames:
+            print("[VRGDG_ConditionalLoadVideos] No valid videos loaded, returning None.")
+            return (None,)
+
+        final_video = torch.cat(all_frames, dim=0)
+        print(f"[VRGDG_ConditionalLoadVideos] Returning concatenated video tensor with {final_video.shape[0]} frames")
+        return (final_video,)
+
+
+
+################################################
+class VRGDG_CalculateSetsFromAudio:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "INT",)
+    RETURN_NAMES = ("instructions", "end_time", "total_sets",)
+    FUNCTION = "calculate"
+
+    CATEGORY = "utils/audio"
+
+    def calculate(self, audio):
+        set_duration = 62.0
+        group_duration = 3.88
+        groups_per_set = 16
+
+        try:
+            waveform = audio["waveform"]
+            sample_rate = audio["sample_rate"]
+        except Exception:
+            return ("❌ Expected audio to be a dict with 'waveform' and 'sample_rate'.", "0:00", 0)
+
+        try:
+            num_samples = waveform.shape[-1]
+            audio_duration = num_samples / sample_rate
+        except Exception:
+            return ("❌ Failed to compute audio duration from waveform.", "0:00", 0)
+
+        # Convert duration to MM:SS
+        minutes = int(audio_duration // 60)
+        seconds = int(audio_duration % 60)
+        end_time_str = f"{minutes}:{seconds:02d}"
+
+        # Compute sets
+        full_sets = int(audio_duration // set_duration)
+        remainder = audio_duration - (full_sets * set_duration)
+
+        if remainder > 0:
+            total_sets = full_sets + 1
+            groups_in_last_set = int(min(remainder // group_duration, groups_per_set))
+        else:
+            total_sets = full_sets
+            groups_in_last_set = groups_per_set
+
+        # Adjust instructions to account for the fact we've already run once
+        if total_sets > 1:
+            runs_remaining = max(total_sets - 2, 0)  # subtract 1 extra for the "already ran once"
+            if runs_remaining > 0:
+                times_word = "time" if runs_remaining == 1 else "times"
+                instructions = (
+                    f"Click 'RUN' {runs_remaining} more {times_word}. "
+                    f"Then update the Fasts Group Muter so you only have {groups_in_last_set} groups set, "
+                    f"then hit 'RUN' again."
+                )
+            else:
+                instructions = (
+                    f"Update the Fasts Group Muter so you only have {groups_in_last_set} groups set, "
+                    f"then hit 'RUN' again."
+                )
+        else:
+            instructions = (
+                f"Set Fasts Group Muter to {groups_in_last_set} groups and click 'RUN'."
+            )
+
+        return (instructions, end_time_str, total_sets)
+
+
+##########################################
+class VRGDG_GetFilenamePrefix:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder_path": ("STRING", {"multiline": False}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("Filename_Prefix",)
+    FUNCTION = "get_prefix"
+
+    CATEGORY = "utils/files"
+
+    def get_prefix(self, folder_path):
+        # Clean up any accidental whitespace or newline characters
+        folder_path = folder_path.strip()
+
+        # Ensure the folder exists (create it if missing)
+        os.makedirs(folder_path, exist_ok=True)
+
+        # Normalize and extract last folder name
+        base_name = os.path.basename(os.path.normpath(folder_path))
+        result = f"{base_name}\\video"
+        return (result,)
+########################################
+class VRGDG_TriggerIndex:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+            "hidden": {"id": "UNIQUE_ID"}
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("index",)
+    FUNCTION = "generate"
+
+    CATEGORY = "utils/control"
+
+    def generate(self, seed, id=None):
+        # Just return the seed, ComfyUI handles incrementing via control_after_generate
+        return (seed,)
+
+
+
+
+
 NODE_CLASS_MAPPINGS = {
      "FastFilmGrain": FastFilmGrain,
      "ColorMatchToReference": ColorMatchToReference,
@@ -1296,7 +1619,13 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_LoadAudioSplitUpload":VRGDG_LoadAudioSplitUpload,
      "VRGDG_PromptSplitter":VRGDG_PromptSplitter,
      "VRGDG_TranscribeText":VRGDG_TranscribeLyric,
-     "VRGDG_LoadAudioSplit_HUMO_Transcribe":VRGDG_LoadAudioSplit_HUMO_Transcribe
+     "VRGDG_LoadAudioSplit_HUMO_Transcribe":VRGDG_LoadAudioSplit_HUMO_Transcribe,
+     "VRGDG_TimecodeFromIndex":VRGDG_TimecodeFromIndex,
+     "VRGDG_LoadVideos":VRGDG_LoadVideos,
+     "VRGDG_ConditionalLoadVideos":VRGDG_ConditionalLoadVideos,
+     "VRGDG_CalculateSetsFromAudio":VRGDG_CalculateSetsFromAudio,
+     "VRGDG_GetFilenamePrefix":VRGDG_GetFilenamePrefix,
+     "VRGDG_TriggerCounter":VRGDG_TriggerIndex,
     
 
 }
@@ -1315,7 +1644,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "VRGDG_LoadAudioSplitUpload":"VRGDG_LoadAudioSplitUpload",
      "VRGDG_PromptSplitter":"VRGDG_PromptSplitter",
      "VRGDG_TranscribeText":"VRGDG_TranscribeLyric",
-     "VRGDG_LoadAudioSplit_HUMO_Transcribe":"VRGDG_LoadAudioSplit_HUMO_Transcribe"
+     "VRGDG_LoadAudioSplit_HUMO_Transcribe":"VRGDG_LoadAudioSplit_HUMO_Transcribe",
+     "VRGDG_TimecodeFromIndex":"VRGDG_TimecodeFromIndex",
+     "VRGDG_LoadVideos":"VRGDG_LoadVideos",
+     "VRGDG_ConditionalLoadVideos":"VRGDG_ConditionalLoadVideos",
+     "VRGDG_CalculateSetsFromAudio":"VRGDG_CalculateSetsFromAudio",
+     "VRGDG_GetFilenamePrefix":"VRGDG_GetFilenamePrefix",
+     "VRGDG_TriggerCounter":"VRGDG_TriggerIndex",
    
  
 
