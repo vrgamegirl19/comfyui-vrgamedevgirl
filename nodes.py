@@ -639,7 +639,7 @@ class VRGDG_CombinevideosV2:
             },
             "optional": {
                 # when True, repeats the last frame to reach target length
-                "pad_short_videos": ("BOOL", {"default": True}),
+                "pad_short_videos": ("BOOLEAN", {"default": True}),
                 # optional meta from VRGDG_LoadAudioSplitDynamic
                 "audio_meta": ("DICT",),
                 **opt_videos,
