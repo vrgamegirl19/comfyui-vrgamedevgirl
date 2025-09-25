@@ -601,13 +601,6 @@ class VRGDG_LoadAudioSplit_HUMO:
 
         return (meta, float(audio_total_duration), *tuple(segments))
 
-
-
-
-
-
-
-
 # VRGDG_CombinevideosV2 (updated)
 # - Optional DICT input: audio_meta (from VRGDG_LoadAudioSplitDynamic)
 #   * If provided and contains durations/scene_count, they override local widgets.
@@ -639,7 +632,7 @@ class VRGDG_CombinevideosV2:
             },
             "optional": {
                 # when True, repeats the last frame to reach target length
-                "pad_short_videos": ("BOOL", {"default": True}),
+              #  "pad_short_videos": ("BOOL", {"default": True}),
                 # optional meta from VRGDG_LoadAudioSplitDynamic
                 "audio_meta": ("DICT",),
                 **opt_videos,
@@ -681,7 +674,9 @@ class VRGDG_CombinevideosV2:
     # --- main op -------------------------------------------------------------
 
     def blend_videos(self, fps, scene_count=2, **kwargs):
-        pad_short_videos = bool(kwargs.get("pad_short_videos", False))
+        #pad_short_videos = bool(kwargs.get("pad_short_videos", False))
+        pad_short_videos = True
+
         local_scene_count = max(2, int(scene_count))
 
         # Prefer durations/scene_count from audio_meta when available
