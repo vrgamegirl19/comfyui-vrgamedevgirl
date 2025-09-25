@@ -1,4 +1,4 @@
-# 📖 README – Custom Gemini Node (with Lyrics String Input)
+# 📖 Custom Gemini Node (with Lyrics String Input)
 
 ## 🔧 What This Is
 This is a **modified version of the Gemini LLM node** for ComfyUI.  
