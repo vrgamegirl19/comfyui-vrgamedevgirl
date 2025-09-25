@@ -32,6 +32,7 @@ Internally runs Whisper transcription (no separate node).
 Outputs: audio segments, transcription text, metadata.
 
 ### 🤖 Prompt Generation with Gemini LLM
+### Please get the custom version of this node that will work with this workflow in the folder - 'TweakedGeminiNode' Read that readme for detais.
 Native comfy UI API node.
 This node connects to Google’s Gemini LLM.
 It takes as input:
