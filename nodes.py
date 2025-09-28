@@ -55,7 +55,7 @@ class FastFilmGrain:
         # Return to CPU/mid-device for downstream compatibility
         output = output.to(comfy.model_management.intermediate_device())
         return (output,)
-    
+
 
 
 class ColorMatchToReference:
@@ -294,7 +294,7 @@ def load_audio(
     return {
         "sample_rate": round(sr),
         "waveform": mix,
-    }    
+    }
 
 
 
@@ -608,7 +608,7 @@ class VRGDG_LoadAudioSplit_HUMO:
 # - Trims or pads to target per-scene frame counts computed from duration_i * fps.
 # - Requires at least two videos overall.
 
-class VRGDG_CombinevideosV2: 
+class VRGDG_CombinevideosV2:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("blended_video_frames",)
     FUNCTION = "blend_videos"
@@ -752,7 +752,7 @@ class VRGDG_Extract_Frame_Number:
     CATEGORY = "image"
 
     def extract(self, frame_number, images=None, masks=None):
-       
+
 
         # make sure index is valid (convert to zero-based)
         idx = max(0, frame_number - 1)
@@ -1001,7 +1001,7 @@ class VRGDG_PromptSplitter:
         parts = [p.strip() for p in prompt_text.strip().split("|") if p.strip()]
         outputs = [parts[i] if i < len(parts) else "" for i in range(scene_count)]
         return tuple(outputs)
-    
+
 
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
@@ -1339,7 +1339,7 @@ class VRGDG_TimecodeFromIndex:
         start_seconds = int(index * duration_seconds)
         start_time_str = f"{start_seconds // 60}:{start_seconds % 60:02d}"
         return (start_time_str,)
-    
+
 
 
 
@@ -1572,8 +1572,11 @@ class VRGDG_GetFilenamePrefix:
         os.makedirs(folder_path, exist_ok=True)
 
         # Normalize and extract last folder name
+        # This part is already cross-platform
         base_name = os.path.basename(os.path.normpath(folder_path))
-        result = f"{base_name}\\video"
+
+        # Use os.path.join to create a cross-platform filename prefix rather than hardcoding "\\" vs "/"
+        result = os.path.join(base_name, "video")
         return (result,)
 ########################################
 class VRGDG_TriggerIndex:
@@ -1621,7 +1624,7 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_CalculateSetsFromAudio":VRGDG_CalculateSetsFromAudio,
      "VRGDG_GetFilenamePrefix":VRGDG_GetFilenamePrefix,
      "VRGDG_TriggerCounter":VRGDG_TriggerIndex,
-    
+
 
 }
 
@@ -1646,18 +1649,18 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "VRGDG_CalculateSetsFromAudio":"VRGDG_CalculateSetsFromAudio",
      "VRGDG_GetFilenamePrefix":"VRGDG_GetFilenamePrefix",
      "VRGDG_TriggerCounter":"VRGDG_TriggerIndex",
-   
- 
+
+
 
 }
 
 
 print(r"""
-__     ______   ____                      ____              ____ _      _ 
+__     ______   ____                      ____              ____ _      _
 \ \   / /  _ \ / ___| __ _ _ __ ___   ___|  _ \  _____   __/ ___(_)_ __| |
  \ \ / /| |_) | |  _ / _` | '_ ` _ \ / _ \ | | |/ _ \ \ / / |  _| | '__| |
   \ V / |  _ <| |_| | (_| | | | | | |  __/ |_| |  __/\ V /| |_| | | |  | |
    \_/  |_| \_\\____|\__,_|_| |_| |_|\___|____/ \___| \_/  \____|_|_|  |_|
-                                                                          
+
              🎮 VRGameDevGirl custom nodes loaded successfully! 🎞️
 """)
