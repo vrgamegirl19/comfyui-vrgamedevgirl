@@ -800,6 +800,119 @@ class VRGDG_DisplayIndex:
         return (f"Current index: {index}",)
 
 
+class VRGDG_PromptSplitterV2:
+    RETURN_TYPES = tuple(["STRING"] * 16)
+    RETURN_NAMES = tuple([f"text_output_{i}" for i in range(1, 17)])
+    FUNCTION = "split_prompt"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt_text": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    def split_prompt(self, prompt_text, **kwargs):
+        parts = [p.strip() for p in prompt_text.strip().split("|") if p.strip()]
+        outputs = [parts[i] if i < len(parts) else "" for i in range(16)]
+        return tuple(outputs)
+
+class VRGDG_CombinevideosV3: 
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("blended_video_frames",)
+    FUNCTION = "blend_videos"
+    CATEGORY = "Video"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        # fixed 16 videos + durations
+        opt_videos = {f"video_{i}": ("IMAGE",) for i in range(1, 17)}
+        opt_durations = {
+            f"duration_{i}": (
+                "FLOAT",
+                {"default": 0.0, "min": 0.0, "step": 0.01, "round": 0.01}
+            )
+            for i in range(1, 17)
+        }
+        return {
+            "required": {
+                "fps": ("FLOAT", {"default": 24.0, "min": 1.0}),
+                "audio_meta": ("DICT",),  # can pass durations from Meta Builder
+            },
+            "optional": {**opt_videos, **opt_durations},
+        }
+
+    # --- helpers -------------------------------------------------------------
+
+    def _target_frames_for_index(self, durations, idx_zero_based, fps, current_frames):
+        try:
+            dur_sec = float(durations[idx_zero_based])
+        except Exception:
+            dur_sec = 0.0
+        if dur_sec > 0.0:
+            tgt = int(round(dur_sec * float(fps)))
+            return max(1, tgt)
+        return int(current_frames)
+
+    def _trim_or_pad(self, video, target_frames, pad_short=False):
+        if video is None:
+            return None
+        if video.ndim != 4:
+            raise ValueError(f"Expected video tensor with 4 dims (frames,H,W,C), got {tuple(video.shape)}")
+        cur = int(video.shape[0])
+        if cur > target_frames:
+            return video[:target_frames]
+        if cur < target_frames and pad_short:
+            need = target_frames - cur
+            last = video[-1:].clone()
+            pad = last.repeat(need, 1, 1, 1)
+            return torch.cat([video, pad], dim=0)
+        return video
+
+    # --- main op -------------------------------------------------------------
+
+    def blend_videos(self, fps, audio_meta=None, **kwargs):
+        pad_short_videos = True
+        effective_scene_count = 16
+
+        # Use meta durations if provided, otherwise local widget durations
+        if isinstance(audio_meta, dict) and "durations" in audio_meta:
+            durations = list(audio_meta.get("durations", [0.0] * effective_scene_count))
+            if len(durations) < effective_scene_count:
+                durations = durations + [0.0] * (effective_scene_count - len(durations))
+            else:
+                durations = durations[:effective_scene_count]
+        else:
+            durations = []
+            for i in range(effective_scene_count):
+                v = kwargs.get(f"duration_{i+1}", 0.0)
+                try:
+                    durations.append(float(v))
+                except Exception:
+                    durations.append(0.0)
+
+        # Collect up to 16 videos
+        vids = []
+        for i in range(1, effective_scene_count + 1):
+            v = kwargs.get(f"video_{i}")
+            if v is not None:
+                vids.append((i, v))
+
+        if len(vids) < 2:
+            raise ValueError("Provide at least two videos (e.g., video_1 and video_2).")
+
+        trimmed = []
+        for slot_idx, vid in vids:
+            if vid.ndim != 4:
+                raise ValueError(f"video_{slot_idx} must have shape (frames,H,W,C), got {tuple(vid.shape)}")
+            tgt = self._target_frames_for_index(durations, slot_idx - 1, fps, vid.shape[0])
+            trimmed.append(self._trim_or_pad(vid, tgt, pad_short=pad_short_videos))
+
+        # Concatenate along frame dimension
+        final = torch.cat([t.to(dtype=torch.float32) for t in trimmed], dim=0).cpu()
+        return (final,)
 
 NODE_CLASS_MAPPINGS = {
 
@@ -814,7 +927,8 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_StringConcat":VRGDG_StringConcat,
      "VRGDG_AudioCrop":VRGDG_AudioCrop,
      "VRGDG_GetIndexNumber":VRGDG_GetIndexNumber,
-     "VRGDG_DisplayIndex":VRGDG_DisplayIndex
+     "VRGDG_DisplayIndex":VRGDG_DisplayIndex,
+     "VRGDG_PromptSplitterV2":VRGDG_PromptSplitterV2
 
 
 
@@ -832,5 +946,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_StringConcat":"VRGDG_StringConcat",
     "VRGDG_AudioCrop":"VRGDG_AudioCrop",
     "VRGDG_GetIndexNumber":"VRGDG_GetIndexNumber",
-    "VRGDG_DisplayIndex":"VRGDG_DisplayIndex"
+    "VRGDG_DisplayIndex":"VRGDG_DisplayIndex",
+    "VRGDG_PromptSplitterV2":"VRGDG_PromptSplitterV2"
 }
