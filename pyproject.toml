@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-vrgamedevgirl"
+version = "3.0.0"
+description = "Custom nodes for ComfyUI by VRGameDevGirl."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }   # adjust if you use another license
+authors = [
+  { name = "VRGameDevGirl" }
+]
+urls = {
+  Repository = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl"
+}
+
+[tool.comfy]
+PublisherId = "vrgamedevgirl"
+DisplayName = "VRGameDevGirl Custom Nodes"
+Icon = ""   # optional: link to an icon file if you want
