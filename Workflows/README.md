@@ -1,4 +1,5 @@
 # 📘 📘 Documentation: Text-to-Video Music Video Workflow (Wan Humo / ComfyUI + Custom Nodes)
+🎥 **Walkthrough Video:** [Watch on YouTube](https://youtu.be/bagfoMTzlO8)
 
 ## 1. Overview
 - `This workflow takes a reference image and a song and automatically generates a full music video.
