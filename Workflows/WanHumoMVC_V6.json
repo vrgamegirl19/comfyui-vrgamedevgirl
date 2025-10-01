@@ -1,132 +1,9 @@
 {
   "id": "59ae349f-cc32-4852-ab00-e777ea04395e",
   "revision": 0,
-  "last_node_id": 2113,
-  "last_link_id": 4165,
+  "last_node_id": 2121,
+  "last_link_id": 4172,
   "nodes": [
-    {
-      "id": 500,
-      "type": "SetNode",
-      "pos": [
-        2200.68115234375,
-        -1961.2735595703125
-      ],
-      "size": [
-        210,
-        50
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 370,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "link": 943
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_steps",
-      "properties": {
-        "previousName": "steps",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "steps"
-      ],
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
-    {
-      "id": 455,
-      "type": "SetNode",
-      "pos": [
-        2204.42333984375,
-        -1801.1805419921875
-      ],
-      "size": [
-        210,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 375,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "link": 894
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_Width",
-      "properties": {
-        "previousName": "Width",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "Width"
-      ],
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
-    {
-      "id": 575,
-      "type": "SetNode",
-      "pos": [
-        2480.458251953125,
-        -1787.0145263671875
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 377,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "link": 1050
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_seed",
-      "properties": {
-        "previousName": "seed",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "seed"
-      ],
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
     {
       "id": 585,
       "type": "SetNode",
@@ -141,13 +18,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 371,
+      "order": 370,
       "mode": 0,
       "inputs": [
         {
           "name": "FLOAT",
           "type": "FLOAT",
-          "link": 1083
+          "link": 4167
         }
       ],
       "outputs": [
@@ -254,47 +131,6 @@
       "bgcolor": "#653"
     },
     {
-      "id": 456,
-      "type": "SetNode",
-      "pos": [
-        2197.201416015625,
-        -1654.62744140625
-      ],
-      "size": [
-        210,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 368,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "link": 895
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_Height",
-      "properties": {
-        "previousName": "Height",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "Height"
-      ],
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
-    {
       "id": 125,
       "type": "SetNode",
       "pos": [
@@ -336,81 +172,6 @@
       "bgcolor": "#653"
     },
     {
-      "id": 382,
-      "type": "SetNode",
-      "pos": [
-        2467.269287109375,
-        -1616.54443359375
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 332,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "link": 808
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_FramesPerVideo",
-      "properties": {
-        "previousName": "FramesPerVideo",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "FramesPerVideo"
-      ],
-      "color": "#1b4669",
-      "bgcolor": "#29699c"
-    },
-    {
-      "id": 375,
-      "type": "WanInputFrameNumber",
-      "pos": [
-        2415.716064453125,
-        -1727.7052001953125
-      ],
-      "size": [
-        249.89999389648438,
-        60.928199768066406
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "frame_number",
-          "type": "INT",
-          "links": [
-            808
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "steerable-motion",
-        "ver": "cf7c6aaafd56ade102e56f737f495849bd7b1f09",
-        "Node name for S&R": "WanInputFrameNumber",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        97
-      ]
-    },
-    {
       "id": 39,
       "type": "WanVideoBlockSwap",
       "pos": [
@@ -422,7 +183,7 @@
         202
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 4,
       "inputs": [],
       "outputs": [
@@ -508,7 +269,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 389,
+      "order": 387,
       "mode": 0,
       "inputs": [
         {
@@ -549,7 +310,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -585,7 +346,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -621,7 +382,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -739,7 +500,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -775,7 +536,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 8,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -811,7 +572,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -847,7 +608,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 10,
+      "order": 9,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -883,7 +644,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 11,
+      "order": 10,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -902,8 +663,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 905,
@@ -919,7 +680,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 12,
+      "order": 11,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -955,7 +716,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 13,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -974,8 +735,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 897,
@@ -991,7 +752,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 14,
+      "order": 13,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1010,8 +771,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 896,
@@ -1027,7 +788,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 15,
+      "order": 14,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1046,8 +807,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 895,
@@ -1063,7 +824,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 16,
+      "order": 15,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1082,8 +843,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 913,
@@ -1099,7 +860,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 17,
+      "order": 16,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1118,8 +879,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 910,
@@ -1135,7 +896,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 18,
+      "order": 17,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1173,7 +934,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 19,
+      "order": 18,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1209,7 +970,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 20,
+      "order": 19,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1228,8 +989,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 842,
@@ -1245,7 +1006,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 21,
+      "order": 20,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1281,7 +1042,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 22,
+      "order": 21,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1300,8 +1061,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 846,
@@ -1317,7 +1078,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 23,
+      "order": 22,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1336,8 +1097,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 843,
@@ -1353,7 +1114,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 24,
+      "order": 23,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1372,8 +1133,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 912,
@@ -1389,7 +1150,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 25,
+      "order": 24,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1408,8 +1169,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 915,
@@ -1425,7 +1186,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 26,
+      "order": 25,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1444,8 +1205,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 914,
@@ -1461,7 +1222,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 27,
+      "order": 26,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1480,8 +1241,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 851,
@@ -1497,7 +1258,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 28,
+      "order": 27,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1516,8 +1277,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 852,
@@ -1533,7 +1294,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 29,
+      "order": 28,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1571,7 +1332,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 30,
+      "order": 29,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1607,7 +1368,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 31,
+      "order": 30,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1643,7 +1404,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 32,
+      "order": 31,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1679,7 +1440,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 33,
+      "order": 32,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1715,7 +1476,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 34,
+      "order": 33,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1734,8 +1495,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 926,
@@ -1751,7 +1512,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 35,
+      "order": 34,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1787,7 +1548,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 36,
+      "order": 35,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1806,8 +1567,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 928,
@@ -1823,7 +1584,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 37,
+      "order": 36,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1842,8 +1603,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 929,
@@ -1859,7 +1620,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 38,
+      "order": 37,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1878,8 +1639,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 930,
@@ -1895,7 +1656,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 39,
+      "order": 38,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1914,8 +1675,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 931,
@@ -1931,7 +1692,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 40,
+      "order": 39,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1950,8 +1711,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 933,
@@ -1967,7 +1728,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 41,
+      "order": 40,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1986,8 +1747,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 934,
@@ -2003,7 +1764,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 42,
+      "order": 41,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2082,7 +1843,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 43,
+      "order": 42,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2118,7 +1879,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 44,
+      "order": 43,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2154,7 +1915,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 45,
+      "order": 44,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2190,7 +1951,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 46,
+      "order": 45,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2226,7 +1987,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 47,
+      "order": 46,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2262,7 +2023,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 48,
+      "order": 47,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2281,8 +2042,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 949,
@@ -2298,7 +2059,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 49,
+      "order": 48,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2317,8 +2078,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 950,
@@ -2334,7 +2095,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 50,
+      "order": 49,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2353,8 +2114,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 951,
@@ -2370,7 +2131,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 51,
+      "order": 50,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2389,8 +2150,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 952,
@@ -2406,7 +2167,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 52,
+      "order": 51,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2425,8 +2186,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 954,
@@ -2442,7 +2203,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 53,
+      "order": 52,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2461,8 +2222,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 955,
@@ -2478,7 +2239,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 54,
+      "order": 53,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2557,7 +2318,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 55,
+      "order": 54,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2576,8 +2337,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 958,
@@ -2593,7 +2354,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 56,
+      "order": 55,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2629,7 +2390,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 57,
+      "order": 56,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2665,7 +2426,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 58,
+      "order": 57,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2701,7 +2462,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 59,
+      "order": 58,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2737,7 +2498,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 60,
+      "order": 59,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2756,8 +2517,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 968,
@@ -2773,7 +2534,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 61,
+      "order": 60,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2809,7 +2570,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 62,
+      "order": 61,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2828,8 +2589,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 970,
@@ -2845,7 +2606,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 63,
+      "order": 62,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2864,8 +2625,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 971,
@@ -2881,7 +2642,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 64,
+      "order": 63,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2900,8 +2661,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 972,
@@ -2917,7 +2678,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 65,
+      "order": 64,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2936,8 +2697,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 973,
@@ -2953,7 +2714,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 66,
+      "order": 65,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -2972,8 +2733,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 975,
@@ -2989,7 +2750,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 67,
+      "order": 66,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3008,8 +2769,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 976,
@@ -3025,7 +2786,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 68,
+      "order": 67,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3104,7 +2865,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 69,
+      "order": 68,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3140,7 +2901,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 70,
+      "order": 69,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3176,7 +2937,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 71,
+      "order": 70,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3212,7 +2973,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 72,
+      "order": 71,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3248,7 +3009,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 73,
+      "order": 72,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3267,8 +3028,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 989,
@@ -3284,7 +3045,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 74,
+      "order": 73,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3320,7 +3081,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 75,
+      "order": 74,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3339,8 +3100,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 991,
@@ -3356,7 +3117,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 76,
+      "order": 75,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3375,8 +3136,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 992,
@@ -3392,7 +3153,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 77,
+      "order": 76,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3411,8 +3172,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 993,
@@ -3428,7 +3189,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 78,
+      "order": 77,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3447,8 +3208,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 994,
@@ -3464,7 +3225,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 79,
+      "order": 78,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3483,8 +3244,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 996,
@@ -3500,7 +3261,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 80,
+      "order": 79,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3519,8 +3280,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 985,
@@ -3577,7 +3338,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 81,
+      "order": 80,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3615,7 +3376,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 82,
+      "order": 81,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3651,7 +3412,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 83,
+      "order": 82,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3687,7 +3448,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 84,
+      "order": 83,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3723,7 +3484,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 85,
+      "order": 84,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3759,7 +3520,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 86,
+      "order": 85,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3778,8 +3539,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1010,
@@ -3795,7 +3556,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 87,
+      "order": 86,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3831,7 +3592,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 88,
+      "order": 87,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3850,8 +3611,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1012,
@@ -3867,7 +3628,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 89,
+      "order": 88,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3886,8 +3647,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1013,
@@ -3903,7 +3664,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 90,
+      "order": 89,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3922,8 +3683,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1014,
@@ -3939,7 +3700,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 91,
+      "order": 90,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3958,8 +3719,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1015,
@@ -3975,7 +3736,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 92,
+      "order": 91,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -3994,8 +3755,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1017,
@@ -4011,7 +3772,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 93,
+      "order": 92,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4030,8 +3791,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1018,
@@ -4047,7 +3808,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 94,
+      "order": 93,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5064,7 +4825,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 95,
+      "order": 94,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5100,7 +4861,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 96,
+      "order": 95,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5136,7 +4897,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 97,
+      "order": 96,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5172,7 +4933,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 98,
+      "order": 97,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5208,7 +4969,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 99,
+      "order": 98,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5227,8 +4988,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1031,
@@ -5244,7 +5005,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 100,
+      "order": 99,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5280,7 +5041,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 101,
+      "order": 100,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5299,8 +5060,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1033,
@@ -5316,7 +5077,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 102,
+      "order": 101,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5335,8 +5096,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1034,
@@ -5352,7 +5113,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 103,
+      "order": 102,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5371,8 +5132,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1035,
@@ -5388,7 +5149,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 104,
+      "order": 103,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5407,8 +5168,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1036,
@@ -5424,7 +5185,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 105,
+      "order": 104,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5443,8 +5204,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1038,
@@ -5460,7 +5221,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 106,
+      "order": 105,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5479,8 +5240,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1037,
@@ -5630,7 +5391,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 107,
+      "order": 106,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5709,7 +5470,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 108,
+      "order": 107,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5745,7 +5506,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 109,
+      "order": 108,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5781,7 +5542,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 110,
+      "order": 109,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5817,7 +5578,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 111,
+      "order": 110,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5853,7 +5614,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 112,
+      "order": 111,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5872,8 +5633,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1052,
@@ -5889,7 +5650,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 113,
+      "order": 112,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5925,7 +5686,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 114,
+      "order": 113,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5944,8 +5705,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1054,
@@ -5961,7 +5722,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 115,
+      "order": 114,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5980,8 +5741,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1055,
@@ -5997,7 +5758,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 116,
+      "order": 115,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6016,8 +5777,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1056,
@@ -6033,7 +5794,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 117,
+      "order": 116,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6052,8 +5813,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1057,
@@ -6069,7 +5830,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 118,
+      "order": 117,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6088,8 +5849,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1059,
@@ -6105,7 +5866,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 119,
+      "order": 118,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6124,8 +5885,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1060,
@@ -6141,7 +5902,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 120,
+      "order": 119,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6354,7 +6115,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 121,
+      "order": 120,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6390,7 +6151,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 122,
+      "order": 121,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6426,7 +6187,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 123,
+      "order": 122,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6462,7 +6223,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 124,
+      "order": 123,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6498,7 +6259,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 125,
+      "order": 124,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6517,8 +6278,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1073,
@@ -6534,7 +6295,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 126,
+      "order": 125,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6570,7 +6331,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 127,
+      "order": 126,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6589,8 +6350,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1075,
@@ -6606,7 +6367,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 128,
+      "order": 127,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6625,8 +6386,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1076,
@@ -6642,7 +6403,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 129,
+      "order": 128,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6661,8 +6422,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1077,
@@ -6678,7 +6439,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 130,
+      "order": 129,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6697,8 +6458,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1078,
@@ -6714,7 +6475,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 131,
+      "order": 130,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6733,8 +6494,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1084,
@@ -6750,7 +6511,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 132,
+      "order": 131,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6786,7 +6547,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 133,
+      "order": 132,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6822,7 +6583,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 134,
+      "order": 133,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6858,7 +6619,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 135,
+      "order": 134,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6894,7 +6655,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 136,
+      "order": 135,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6913,8 +6674,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1094,
@@ -6930,7 +6691,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 137,
+      "order": 136,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6966,7 +6727,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 138,
+      "order": 137,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6985,8 +6746,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1096,
@@ -7002,7 +6763,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 139,
+      "order": 138,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7021,8 +6782,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1097,
@@ -7038,7 +6799,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 140,
+      "order": 139,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7057,8 +6818,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1098,
@@ -7074,7 +6835,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 141,
+      "order": 140,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7093,8 +6854,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1099,
@@ -7110,7 +6871,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 142,
+      "order": 141,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7129,8 +6890,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1101,
@@ -7146,7 +6907,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 143,
+      "order": 142,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7165,8 +6926,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1081,
@@ -7182,7 +6943,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 144,
+      "order": 143,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7261,7 +7022,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 145,
+      "order": 144,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7340,7 +7101,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 146,
+      "order": 145,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7376,7 +7137,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 147,
+      "order": 146,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7412,7 +7173,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 148,
+      "order": 147,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7448,7 +7209,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 149,
+      "order": 148,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7484,7 +7245,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 150,
+      "order": 149,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7503,8 +7264,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1115,
@@ -7520,7 +7281,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 151,
+      "order": 150,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7556,7 +7317,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 152,
+      "order": 151,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7575,8 +7336,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1117,
@@ -7592,7 +7353,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 153,
+      "order": 152,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7611,8 +7372,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1118,
@@ -7628,7 +7389,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 154,
+      "order": 153,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7647,8 +7408,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1119,
@@ -7664,7 +7425,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 155,
+      "order": 154,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7683,8 +7444,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1120,
@@ -7700,7 +7461,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 156,
+      "order": 155,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7719,8 +7480,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1122,
@@ -7736,7 +7497,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 157,
+      "order": 156,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7755,8 +7516,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1126,
@@ -7772,7 +7533,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 158,
+      "order": 157,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7808,7 +7569,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 159,
+      "order": 158,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7844,7 +7605,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 160,
+      "order": 159,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7880,7 +7641,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 161,
+      "order": 160,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7916,7 +7677,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 162,
+      "order": 161,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7935,8 +7696,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1136,
@@ -7952,7 +7713,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 163,
+      "order": 162,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7988,7 +7749,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 164,
+      "order": 163,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8007,8 +7768,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1138,
@@ -8024,7 +7785,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 165,
+      "order": 164,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8043,8 +7804,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1139,
@@ -8060,7 +7821,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 166,
+      "order": 165,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8079,8 +7840,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1140,
@@ -8096,7 +7857,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 167,
+      "order": 166,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8115,8 +7876,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1141,
@@ -8132,7 +7893,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 168,
+      "order": 167,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8151,8 +7912,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1143,
@@ -8168,7 +7929,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 169,
+      "order": 168,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8187,8 +7948,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1123,
@@ -8204,7 +7965,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 170,
+      "order": 169,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8283,7 +8044,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 171,
+      "order": 170,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8362,7 +8123,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 172,
+      "order": 171,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8398,7 +8159,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 173,
+      "order": 172,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8434,7 +8195,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 174,
+      "order": 173,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8470,7 +8231,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 175,
+      "order": 174,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8506,7 +8267,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 176,
+      "order": 175,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8525,8 +8286,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1157,
@@ -8542,7 +8303,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 177,
+      "order": 176,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8578,7 +8339,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 178,
+      "order": 177,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8597,8 +8358,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1159,
@@ -8614,7 +8375,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 179,
+      "order": 178,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8633,8 +8394,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1160,
@@ -8650,7 +8411,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 180,
+      "order": 179,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8669,8 +8430,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1161,
@@ -8686,7 +8447,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 181,
+      "order": 180,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8705,8 +8466,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1162,
@@ -8722,7 +8483,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 182,
+      "order": 181,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8741,8 +8502,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1164,
@@ -8758,7 +8519,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 183,
+      "order": 182,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8777,8 +8538,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1168,
@@ -8794,7 +8555,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 184,
+      "order": 183,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8830,7 +8591,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 185,
+      "order": 184,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8866,7 +8627,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 186,
+      "order": 185,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8902,7 +8663,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 187,
+      "order": 186,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8938,7 +8699,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 188,
+      "order": 187,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8957,8 +8718,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1178,
@@ -8974,7 +8735,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 189,
+      "order": 188,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9010,7 +8771,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 190,
+      "order": 189,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9029,8 +8790,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1180,
@@ -9046,7 +8807,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 191,
+      "order": 190,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9065,8 +8826,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1181,
@@ -9082,7 +8843,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 192,
+      "order": 191,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9101,8 +8862,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1182,
@@ -9118,7 +8879,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 193,
+      "order": 192,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9137,8 +8898,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1183,
@@ -9154,7 +8915,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 194,
+      "order": 193,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9173,8 +8934,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1185,
@@ -9190,7 +8951,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 195,
+      "order": 194,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9209,8 +8970,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1165,
@@ -9226,7 +8987,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 196,
+      "order": 195,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9305,7 +9066,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 197,
+      "order": 196,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9920,7 +9681,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 198,
+      "order": 197,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9956,7 +9717,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 199,
+      "order": 198,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -9992,7 +9753,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 200,
+      "order": 199,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10028,7 +9789,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 201,
+      "order": 200,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10047,8 +9808,8 @@
       "widgets_values": [
         "FramesPerVideo"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1211,
@@ -10064,7 +9825,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 202,
+      "order": 201,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10100,7 +9861,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 203,
+      "order": 202,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10119,8 +9880,8 @@
       "widgets_values": [
         "Width"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1213,
@@ -10136,7 +9897,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 204,
+      "order": 203,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10155,8 +9916,8 @@
       "widgets_values": [
         "Height"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1214,
@@ -10172,7 +9933,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 205,
+      "order": 204,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10191,8 +9952,8 @@
       "widgets_values": [
         "steps"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1215,
@@ -10208,7 +9969,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 206,
+      "order": 205,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10227,8 +9988,8 @@
       "widgets_values": [
         "seed"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
     },
     {
       "id": 1216,
@@ -10244,7 +10005,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 207,
+      "order": 206,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10263,8 +10024,8 @@
       "widgets_values": [
         "shift"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 1218,
@@ -10280,7 +10041,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 208,
+      "order": 207,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10299,8 +10060,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 849,
@@ -10314,7 +10075,7 @@
         106
       ],
       "flags": {},
-      "order": 209,
+      "order": 208,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10354,7 +10115,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 348,
+      "order": 347,
       "mode": 0,
       "inputs": [
         {
@@ -10393,7 +10154,7 @@
         202
       ],
       "flags": {},
-      "order": 210,
+      "order": 209,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10479,7 +10240,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 211,
+      "order": 210,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10513,7 +10274,7 @@
         88
       ],
       "flags": {},
-      "order": 339,
+      "order": 338,
       "mode": 0,
       "inputs": [
         {
@@ -10681,7 +10442,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 212,
+      "order": 211,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -10700,8 +10461,8 @@
       "widgets_values": [
         "audioscale"
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "color": "#232",
+      "bgcolor": "#353"
     },
     {
       "id": 977,
@@ -10715,7 +10476,7 @@
         88
       ],
       "flags": {},
-      "order": 337,
+      "order": 336,
       "mode": 0,
       "inputs": [
         {
@@ -10883,13 +10644,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 372,
+      "order": 371,
       "mode": 0,
       "inputs": [
         {
           "name": "FLOAT",
           "type": "FLOAT",
-          "link": 1382
+          "link": 4168
         }
       ],
       "outputs": [
@@ -10922,7 +10683,7 @@
         218.58299255371094
       ],
       "flags": {},
-      "order": 213,
+      "order": 212,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -10948,7 +10709,7 @@
         314
       ],
       "flags": {},
-      "order": 382,
+      "order": 381,
       "mode": 0,
       "inputs": [
         {
@@ -11046,7 +10807,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 214,
+      "order": 213,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11082,7 +10843,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 215,
+      "order": 214,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11175,51 +10936,6 @@
       "bgcolor": "#653"
     },
     {
-      "id": 1175,
-      "type": "easy showAnything",
-      "pos": [
-        2210.332763671875,
-        2695.38720703125
-      ],
-      "size": [
-        210,
-        34
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 444,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "anything",
-          "shape": 7,
-          "type": "*",
-          "link": 1949
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "*",
-          "links": [
-            1875
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-easy-use",
-        "ver": "1.2.9",
-        "Node name for S&R": "easy showAnything",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "[false, [\"C:\\\\tmp\\\\latentsync_2ebc455f\\\\latentsync_201bdb2b\\\\AnimateDiff_00048.png\", \"C:\\\\tmp\\\\latentsync_2ebc455f\\\\latentsync_201bdb2b\\\\AnimateDiff_00048.mp4\", \"C:\\\\tmp\\\\latentsync_2ebc455f\\\\latentsync_201bdb2b\\\\AnimateDiff_00048-audio.mp4\"]]"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
       "id": 1273,
       "type": "GetNode",
       "pos": [
@@ -11233,7 +10949,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 216,
+      "order": 215,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11270,7 +10986,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 217,
+      "order": 216,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11306,7 +11022,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 218,
+      "order": 217,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11457,7 +11173,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 219,
+      "order": 218,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11493,7 +11209,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 220,
+      "order": 219,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11574,7 +11290,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 221,
+      "order": 220,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11609,7 +11325,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 351,
+      "order": 350,
       "mode": 0,
       "inputs": [
         {
@@ -11722,7 +11438,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 222,
+      "order": 221,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11759,7 +11475,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 223,
+      "order": 222,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11795,7 +11511,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 224,
+      "order": 223,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -11944,7 +11660,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 352,
+      "order": 351,
       "mode": 0,
       "inputs": [
         {
@@ -11987,7 +11703,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 225,
+      "order": 224,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12024,7 +11740,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 226,
+      "order": 225,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12060,7 +11776,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 227,
+      "order": 226,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12139,7 +11855,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 353,
+      "order": 352,
       "mode": 0,
       "inputs": [
         {
@@ -12252,7 +11968,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 228,
+      "order": 227,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12289,7 +12005,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 229,
+      "order": 228,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12325,7 +12041,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 230,
+      "order": 229,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12474,7 +12190,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 354,
+      "order": 353,
       "mode": 0,
       "inputs": [
         {
@@ -12517,7 +12233,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 231,
+      "order": 230,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12554,7 +12270,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 232,
+      "order": 231,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12590,7 +12306,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 233,
+      "order": 232,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12669,7 +12385,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 355,
+      "order": 354,
       "mode": 0,
       "inputs": [
         {
@@ -12782,7 +12498,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 234,
+      "order": 233,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12819,7 +12535,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 235,
+      "order": 234,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -12855,7 +12571,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 236,
+      "order": 235,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13004,7 +12720,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 356,
+      "order": 355,
       "mode": 0,
       "inputs": [
         {
@@ -13047,7 +12763,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 237,
+      "order": 236,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13084,7 +12800,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 238,
+      "order": 237,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13120,7 +12836,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 239,
+      "order": 238,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13199,7 +12915,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 357,
+      "order": 356,
       "mode": 0,
       "inputs": [
         {
@@ -13312,7 +13028,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 240,
+      "order": 239,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13349,7 +13065,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 241,
+      "order": 240,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13385,7 +13101,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 242,
+      "order": 241,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13536,7 +13252,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 243,
+      "order": 242,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13571,7 +13287,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 358,
+      "order": 357,
       "mode": 0,
       "inputs": [
         {
@@ -13614,7 +13330,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 244,
+      "order": 243,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13650,7 +13366,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 245,
+      "order": 244,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13729,7 +13445,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 359,
+      "order": 358,
       "mode": 0,
       "inputs": [
         {
@@ -13842,7 +13558,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 246,
+      "order": 245,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13879,7 +13595,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 247,
+      "order": 246,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -13915,7 +13631,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 248,
+      "order": 247,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14064,7 +13780,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 360,
+      "order": 359,
       "mode": 0,
       "inputs": [
         {
@@ -14107,7 +13823,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 249,
+      "order": 248,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14144,7 +13860,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 250,
+      "order": 249,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14180,7 +13896,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 251,
+      "order": 250,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14259,7 +13975,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 361,
+      "order": 360,
       "mode": 0,
       "inputs": [
         {
@@ -14372,7 +14088,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 252,
+      "order": 251,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14409,7 +14125,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 253,
+      "order": 252,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14445,7 +14161,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 254,
+      "order": 253,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14524,7 +14240,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 362,
+      "order": 361,
       "mode": 0,
       "inputs": [
         {
@@ -14567,7 +14283,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 255,
+      "order": 254,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14674,7 +14390,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 256,
+      "order": 255,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14710,7 +14426,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 257,
+      "order": 256,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14789,7 +14505,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 363,
+      "order": 362,
       "mode": 0,
       "inputs": [
         {
@@ -14902,7 +14618,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 258,
+      "order": 257,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14939,7 +14655,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 259,
+      "order": 258,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -14975,7 +14691,7 @@
         88
       ],
       "flags": {},
-      "order": 334,
+      "order": 333,
       "mode": 0,
       "inputs": [
         {
@@ -16333,7 +16049,7 @@
         88
       ],
       "flags": {},
-      "order": 336,
+      "order": 335,
       "mode": 0,
       "inputs": [
         {
@@ -16365,7 +16081,7 @@
         88
       ],
       "flags": {},
-      "order": 335,
+      "order": 334,
       "mode": 0,
       "inputs": [
         {
@@ -16397,7 +16113,7 @@
         88
       ],
       "flags": {},
-      "order": 333,
+      "order": 332,
       "mode": 0,
       "inputs": [
         {
@@ -16429,7 +16145,7 @@
         88
       ],
       "flags": {},
-      "order": 338,
+      "order": 337,
       "mode": 0,
       "inputs": [
         {
@@ -16597,7 +16313,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 260,
+      "order": 259,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -16631,7 +16347,7 @@
         217.74392700195312
       ],
       "flags": {},
-      "order": 261,
+      "order": 260,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -16641,83 +16357,6 @@
       },
       "widgets_values": [
         "## 🟦 Step 1: Upload Reference Image\n- Use **Load Image** to set your main reference.  \n- There is a background removal node to remove the background\n\n"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 1230,
-      "type": "MarkdownNote",
-      "pos": [
-        2181.68701171875,
-        -2349.06591796875
-      ],
-      "size": [
-        652.2125854492188,
-        146.52639770507812
-      ],
-      "flags": {},
-      "order": 262,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "# 🎬 VRGDG HUMO Music Video Workflow\n\nThis workflow creates **music videos (or other videos)** in **one shot** using the **HUMO model**.  \n\n---\n"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 1235,
-      "type": "MarkdownNote",
-      "pos": [
-        1865.50390625,
-        -2140.503662109375
-      ],
-      "size": [
-        236.04322814941406,
-        218.58299255371094
-      ],
-      "flags": {},
-      "order": 263,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Start",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "## Steps\n- Since we are using FastWan you can keep this at 2. If you do not want to use FastWan then you can change this to 4 if using LightX, or 8-10 if using the FusionX lora."
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 1234,
-      "type": "MarkdownNote",
-      "pos": [
-        1866.36669921875,
-        -1871.4337158203125
-      ],
-      "size": [
-        232.69287109375,
-        261.02069091796875
-      ],
-      "flags": {},
-      "order": 264,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Start",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "## Set Video Resolution\n- Define the **Width** and **Height** for the final video.  \n- Keep values **divisible by 16** for best results.  \n- Larger sizes = better quality but longer render times.  "
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -16736,7 +16375,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 265,
+      "order": 261,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17503,7 +17142,7 @@
         148.3074188232422
       ],
       "flags": {},
-      "order": 266,
+      "order": 262,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -17529,7 +17168,7 @@
         143.8428192138672
       ],
       "flags": {},
-      "order": 267,
+      "order": 263,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -17598,7 +17237,7 @@
         418.1286315917969
       ],
       "flags": {},
-      "order": 268,
+      "order": 264,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -17777,7 +17416,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 269,
+      "order": 265,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17815,7 +17454,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 270,
+      "order": 266,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17853,7 +17492,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 271,
+      "order": 267,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17891,7 +17530,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 272,
+      "order": 268,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17929,7 +17568,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 273,
+      "order": 269,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17968,7 +17607,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 274,
+      "order": 270,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -17993,32 +17632,6 @@
       "shape": 1
     },
     {
-      "id": 2045,
-      "type": "MarkdownNote",
-      "pos": [
-        2376.771484375,
-        32.00931167602539
-      ],
-      "size": [
-        333.8184814453125,
-        187.3975372314453
-      ],
-      "flags": {},
-      "order": 275,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Audio Crop Node",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "## 🟦 Important: Audio Crop Node\n- **Do not remove or change this node.**  \n- Doing so will **cause the workflow to break**.  \n"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
       "id": 2069,
       "type": "VRGDG_CombinevideosV2",
       "pos": [
@@ -18030,7 +17643,7 @@
         378
       ],
       "flags": {},
-      "order": 365,
+      "order": 364,
       "mode": 0,
       "inputs": [
         {
@@ -18171,7 +17784,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 276,
+      "order": 271,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18210,7 +17823,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 277,
+      "order": 272,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18248,7 +17861,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 278,
+      "order": 273,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18286,7 +17899,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 279,
+      "order": 274,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18324,7 +17937,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 280,
+      "order": 275,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18362,7 +17975,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 281,
+      "order": 276,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18400,7 +18013,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 282,
+      "order": 277,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18438,7 +18051,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 283,
+      "order": 278,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18476,7 +18089,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 284,
+      "order": 279,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18514,7 +18127,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 285,
+      "order": 280,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18552,7 +18165,7 @@
         "collapsed": true,
         "pinned": true
       },
-      "order": 286,
+      "order": 281,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18587,7 +18200,7 @@
         208.95712280273438
       ],
       "flags": {},
-      "order": 287,
+      "order": 282,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -18615,7 +18228,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 288,
+      "order": 283,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18651,7 +18264,7 @@
         60
       ],
       "flags": {},
-      "order": 366,
+      "order": 365,
       "mode": 0,
       "inputs": [
         {
@@ -18691,7 +18304,7 @@
         470.6545104980469
       ],
       "flags": {},
-      "order": 289,
+      "order": 284,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -18717,7 +18330,7 @@
         379.8005065917969
       ],
       "flags": {},
-      "order": 290,
+      "order": 285,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -18730,48 +18343,6 @@
       ],
       "color": "#432",
       "bgcolor": "#653"
-    },
-    {
-      "id": 2082,
-      "type": "SetNode",
-      "pos": [
-        2601.894775390625,
-        279.9124450683594
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 379,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "link": 4106
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_filenamestring",
-      "properties": {
-        "previousName": "filenamestring",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "filenamestring"
-      ],
-      "color": "#322",
-      "bgcolor": "#533",
-      "shape": 1
     },
     {
       "id": 2080,
@@ -18787,7 +18358,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 291,
+      "order": 286,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -18822,7 +18393,7 @@
         1014.4968872070312
       ],
       "flags": {},
-      "order": 292,
+      "order": 287,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -18848,7 +18419,7 @@
         171.52403259277344
       ],
       "flags": {},
-      "order": 293,
+      "order": 288,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -18874,7 +18445,7 @@
         150
       ],
       "flags": {},
-      "order": 374,
+      "order": 368,
       "mode": 0,
       "inputs": [
         {
@@ -18926,7 +18497,7 @@
         88
       ],
       "flags": {},
-      "order": 345,
+      "order": 344,
       "mode": 0,
       "inputs": [
         {
@@ -18947,177 +18518,6 @@
       "bgcolor": "#653"
     },
     {
-      "id": 1222,
-      "type": "ImageResizeKJv2",
-      "pos": [
-        1952.6453857421875,
-        -799.2887573242188
-      ],
-      "size": [
-        210,
-        286
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 373,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 2739
-        },
-        {
-          "name": "mask",
-          "shape": 7,
-          "type": "MASK",
-          "link": null
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "widget": {
-            "name": "width"
-          },
-          "link": 1948
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "widget": {
-            "name": "height"
-          },
-          "link": 1947
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            2738
-          ]
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-kjnodes",
-        "ver": "0adab07d1ad3d0780afc97319eaf37c3681af37d",
-        "Node name for S&R": "ImageResizeKJv2",
-        "widget_ue_connectable": {
-          "width": true,
-          "height": true
-        }
-      },
-      "widgets_values": [
-        512,
-        512,
-        "lanczos",
-        "pad",
-        "255,255,255",
-        "center",
-        16,
-        "cpu"
-      ],
-      "color": "#432",
-      "bgcolor": "#653",
-      "shape": 1
-    },
-    {
-      "id": 1223,
-      "type": "SetNode",
-      "pos": [
-        1953.958740234375,
-        -757.6961059570312
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 388,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "link": 2737
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": []
-        }
-      ],
-      "title": "Set_refimage",
-      "properties": {
-        "previousName": "refimage",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "refimage"
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159",
-      "shape": 1
-    },
-    {
-      "id": 1225,
-      "type": "GetNode",
-      "pos": [
-        1953.0526123046875,
-        -719.2942504882812
-      ],
-      "size": [
-        210,
-        50
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 294,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            1948
-          ]
-        }
-      ],
-      "title": "Get_Width",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "Width"
-      ],
-      "color": "#1b4669",
-      "bgcolor": "#29699c",
-      "shape": 1
-    },
-    {
       "id": 1224,
       "type": "GetNode",
       "pos": [
@@ -19131,7 +18531,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 295,
+      "order": 289,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -19166,7 +18566,7 @@
         246
       ],
       "flags": {},
-      "order": 387,
+      "order": 392,
       "mode": 0,
       "inputs": [
         {
@@ -19187,99 +18587,6 @@
       "bgcolor": "#3f5159"
     },
     {
-      "id": 1940,
-      "type": "RemBGSession+",
-      "pos": [
-        2193.917236328125,
-        -1176.7864990234375
-      ],
-      "size": [
-        270,
-        82
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 296,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "REMBG_SESSION",
-          "type": "REMBG_SESSION",
-          "links": [
-            2736
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui_essentials",
-        "ver": "1.1.0",
-        "Node name for S&R": "RemBGSession+",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "u2net_human_seg: human segmentation",
-        "CUDA"
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159",
-      "shape": 1
-    },
-    {
-      "id": 1939,
-      "type": "ImageRemoveBackground+",
-      "pos": [
-        2203.96240234375,
-        -1048.8505859375
-      ],
-      "size": [
-        236.89999389648438,
-        46
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 381,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "rembg_session",
-          "type": "REMBG_SESSION",
-          "link": 2736
-        },
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 2738
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            2735,
-            2737
-          ]
-        },
-        {
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui_essentials",
-        "ver": "1.1.0",
-        "Node name for S&R": "ImageRemoveBackground+",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
-    {
       "id": 2084,
       "type": "SetNode",
       "pos": [
@@ -19293,7 +18600,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 393,
+      "order": 391,
       "mode": 0,
       "inputs": [
         {
@@ -19333,7 +18640,7 @@
         192.84188842773438
       ],
       "flags": {},
-      "order": 297,
+      "order": 290,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -19359,7 +18666,7 @@
         88
       ],
       "flags": {},
-      "order": 344,
+      "order": 343,
       "mode": 0,
       "inputs": [
         {
@@ -19391,7 +18698,7 @@
         88
       ],
       "flags": {},
-      "order": 343,
+      "order": 342,
       "mode": 0,
       "inputs": [
         {
@@ -19423,7 +18730,7 @@
         88
       ],
       "flags": {},
-      "order": 342,
+      "order": 341,
       "mode": 0,
       "inputs": [
         {
@@ -19455,7 +18762,7 @@
         88
       ],
       "flags": {},
-      "order": 341,
+      "order": 340,
       "mode": 0,
       "inputs": [
         {
@@ -19487,7 +18794,7 @@
         88
       ],
       "flags": {},
-      "order": 340,
+      "order": 339,
       "mode": 0,
       "inputs": [
         {
@@ -19519,7 +18826,7 @@
         88
       ],
       "flags": {},
-      "order": 347,
+      "order": 346,
       "mode": 0,
       "inputs": [
         {
@@ -19551,7 +18858,7 @@
         88
       ],
       "flags": {},
-      "order": 346,
+      "order": 345,
       "mode": 0,
       "inputs": [
         {
@@ -19636,7 +18943,7 @@
         82
       ],
       "flags": {},
-      "order": 391,
+      "order": 389,
       "mode": 0,
       "inputs": [
         {
@@ -19698,7 +19005,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 392,
+      "order": 390,
       "mode": 0,
       "inputs": [
         {
@@ -19758,7 +19065,7 @@
         136
       ],
       "flags": {},
-      "order": 298,
+      "order": 291,
       "mode": 4,
       "inputs": [],
       "outputs": [
@@ -19798,7 +19105,7 @@
         303.1441955566406
       ],
       "flags": {},
-      "order": 299,
+      "order": 292,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -19824,7 +19131,7 @@
         639.7685546875
       ],
       "flags": {},
-      "order": 300,
+      "order": 293,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -19833,7 +19140,7 @@
         "widget_ue_connectable": {}
       },
       "widgets_values": [
-        "# 🎬 VRGDG_ConditionalLoadVideos\n\n## What it does\nLoads video's from a folder. (The file path you set up in Step 3) \n\n---\n\n## Settings\n\n| Setting       | What it means |\n|---------------|---------------|\n| **Threshold** | Minimum number of videos needed before the node runs. Example: if set to `3`, it waits until 3 or more videos are in the folder. |\n| **Video Folder** | The folder on your computer where your videos are saved.  |\n| **Batch Size** | How many frames are loaded at once. Small number = safer, uses less memory. Large number = faster, but heavier on memory. **Does not change quality.** |\n\n---\n\n## Output\n- Your full video. All the chunks from each run are combined into the final video here.  \n\n---\n\n## Notes\n- If you get freezes/crashes on long videos, lower **Batch Size**.\n"
+        "# 🎬 VRGDG_ConditionalLoadVideos\n\n## What it does\nLoads video's from a folder. (The file path you set up in Step 4) \n\n---\n\n## Settings\n\n| Setting       | What it means |\n|---------------|---------------|\n| **Threshold** | Minimum number of videos needed before the node runs. Example: if set to `3`, it waits until 3 or more videos are in the folder. |\n| **Video Folder** | The folder on your computer where your videos are saved.  |\n| **Batch Size** | How many frames are loaded at once. Small number = safer, uses less memory. Large number = faster, but heavier on memory. **Does not change quality.** |\n\n---\n\n## Output\n- Your full video. All the chunks from each run are combined into the final video here.  \n\n---\n\n## Notes\n- If you get freezes/crashes on long videos, lower **Batch Size**.\n"
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -19852,7 +19159,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 301,
+      "order": 294,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -19889,7 +19196,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 302,
+      "order": 295,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -19924,7 +19231,7 @@
         153.8277587890625
       ],
       "flags": {},
-      "order": 303,
+      "order": 296,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -19950,7 +19257,7 @@
         153.8277587890625
       ],
       "flags": {},
-      "order": 304,
+      "order": 297,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -19976,7 +19283,7 @@
         229.4962158203125
       ],
       "flags": {},
-      "order": 305,
+      "order": 298,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -20002,7 +19309,7 @@
         299.946533203125
       ],
       "flags": {},
-      "order": 349,
+      "order": 348,
       "mode": 0,
       "inputs": [
         {
@@ -20043,7 +19350,7 @@
         252.40208435058594
       ],
       "flags": {},
-      "order": 350,
+      "order": 349,
       "mode": 0,
       "inputs": [
         {
@@ -20086,7 +19393,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 306,
+      "order": 299,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -20122,7 +19429,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 307,
+      "order": 300,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -20159,7 +19466,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 364,
+      "order": 363,
       "mode": 0,
       "inputs": [
         {
@@ -20191,7 +19498,7 @@
         322.9778747558594
       ],
       "flags": {},
-      "order": 308,
+      "order": 301,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -20351,7 +19658,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 385,
+      "order": 384,
       "mode": 0,
       "inputs": [
         {
@@ -20400,7 +19707,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 386,
+      "order": 385,
       "mode": 0,
       "inputs": [
         {
@@ -20468,7 +19775,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 309,
+      "order": 302,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -20584,43 +19891,6 @@
       "bgcolor": "#535"
     },
     {
-      "id": 457,
-      "type": "Int",
-      "pos": [
-        2150.141845703125,
-        -1750.740234375
-      ],
-      "size": [
-        210,
-        58
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 310,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            895
-          ]
-        }
-      ],
-      "title": "Height",
-      "properties": {
-        "cnr_id": "comfyui-logic",
-        "ver": "1.0.0",
-        "Node name for S&R": "Int",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        480
-      ]
-    },
-    {
       "id": 1930,
       "type": "SetNode",
       "pos": [
@@ -20634,7 +19904,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 369,
+      "order": 367,
       "mode": 0,
       "inputs": [
         {
@@ -20676,7 +19946,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 378,
+      "order": 377,
       "mode": 0,
       "inputs": [
         {
@@ -20724,7 +19994,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 383,
+      "order": 382,
       "mode": 0,
       "inputs": [
         {
@@ -20797,7 +20067,7 @@
         136
       ],
       "flags": {},
-      "order": 311,
+      "order": 303,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -20827,113 +20097,6 @@
       "shape": 1
     },
     {
-      "id": 501,
-      "type": "Int",
-      "pos": [
-        2160.58544921875,
-        -2059.400146484375
-      ],
-      "size": [
-        210,
-        58
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 312,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            943
-          ]
-        }
-      ],
-      "title": "steps",
-      "properties": {
-        "cnr_id": "comfyui-logic",
-        "ver": "1.0.0",
-        "Node name for S&R": "Int",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        2
-      ]
-    },
-    {
-      "id": 584,
-      "type": "PrimitiveFloat",
-      "pos": [
-        2434.80029296875,
-        -2074.44677734375
-      ],
-      "size": [
-        270,
-        58
-      ],
-      "flags": {},
-      "order": 313,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [
-            1083
-          ]
-        }
-      ],
-      "title": "Shift",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.50",
-        "Node name for S&R": "PrimitiveFloat",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        5
-      ]
-    },
-    {
-      "id": 770,
-      "type": "Float",
-      "pos": [
-        2740.40771484375,
-        -2044.2193603515625
-      ],
-      "size": [
-        270,
-        58
-      ],
-      "flags": {},
-      "order": 314,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [
-            1382
-          ]
-        }
-      ],
-      "title": "AudioScale",
-      "properties": {
-        "cnr_id": "comfyui-logic",
-        "ver": "1.0.0",
-        "Node name for S&R": "Float",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        2
-      ]
-    },
-    {
       "id": 1942,
       "type": "LoadImage",
       "pos": [
@@ -20945,7 +20108,7 @@
         326
       ],
       "flags": {},
-      "order": 315,
+      "order": 304,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -20987,7 +20150,7 @@
         222.49998474121094
       ],
       "flags": {},
-      "order": 390,
+      "order": 388,
       "mode": 0,
       "inputs": [
         {
@@ -21029,7 +20192,7 @@
         161.16781616210938
       ],
       "flags": {},
-      "order": 316,
+      "order": 305,
       "mode": 0,
       "inputs": [
         {
@@ -21070,126 +20233,6 @@
       "bgcolor": "#355"
     },
     {
-      "id": 454,
-      "type": "Int",
-      "pos": [
-        2161.487548828125,
-        -1895.8702392578125
-      ],
-      "size": [
-        210,
-        58
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 317,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            894
-          ]
-        }
-      ],
-      "title": "Width",
-      "properties": {
-        "cnr_id": "comfyui-logic",
-        "ver": "1.0.0",
-        "Node name for S&R": "Int",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        720
-      ]
-    },
-    {
-      "id": 2107,
-      "type": "VRGDG_GetIndexNumber",
-      "pos": [
-        2006.150146484375,
-        -117.78176879882812
-      ],
-      "size": [
-        210,
-        112
-      ],
-      "flags": {},
-      "order": 380,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "trigger",
-          "type": "INT",
-          "widget": {
-            "name": "trigger"
-          },
-          "link": 4165
-        },
-        {
-          "name": "folder_path",
-          "type": "STRING",
-          "widget": {
-            "name": "folder_path"
-          },
-          "link": 4159
-        }
-      ],
-      "outputs": [
-        {
-          "name": "index",
-          "type": "INT",
-          "links": [
-            4160,
-            4161,
-            4162
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "a206f8bd964ecea275b3d078d00e4bcd7d71ab47",
-        "Node name for S&R": "VRGDG_GetIndexNumber",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        0,
-        ""
-      ],
-      "color": "#322",
-      "bgcolor": "#533",
-      "shape": 1
-    },
-    {
-      "id": 1935,
-      "type": "MarkdownNote",
-      "pos": [
-        3652.638916015625,
-        -94.9180908203125
-      ],
-      "size": [
-        1077.670654296875,
-        715.2137451171875
-      ],
-      "flags": {},
-      "order": 318,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Load Audio Split Humo Transcribe Node",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "## 🟦 enable_lyrics\n- Transcribe and assemble the audio chunks into a lyrics string.\n- If set to `false`, transcription is skipped and only context strings are returned.\n\n## 🟪 lyric_overlap\n- Determines how many words are **borrowed from the previous and next lines** when building lyrics.\n- This can help smooth out transitions between chunks in the final lyrics string.\n- `0` = No overlap (default), `1–5` = increasing lyric blending.\n\n## 🟫 fallback_words_string\n- A comma-separated list of words to use when a chunk’s transcription fails or returns empty.\n- Example: `thinking,walking,sitting` add custom based on what you want to see in the video.\n- These will be randomly selected to fill empty lyric slots, helping maintain continuity.\n\n## 🟩 offset_seconds\n- Number of seconds to skip at the start of the input audio before slicing begins.\n- Useful for trimming intros or silent padding.\n\n## 🟧 play_audio_button\n- This button may **not show up right away**.  \n- If it’s missing, run the workflow up to the point of this node, then refresh your browser.  \n- The play button lets you **listen to the actual audio clip** so you can hear the words directly.  \n- Use this together with the **context string** below each button to improve lyric accuracy.  \n\n## 🟦 context_strings\n- The **context string** lets you add more details that are appended to the start of each lyric that is transcribed.  \n- You can even use this instead of transcribing lyrics if you prefer.  \n- Sometimes vocal separation introduces errors, causing transcriptions to have gibberish or typos — adding context strings helps correct or replace them.  \n- reminder: in order for this to work right you would need to do each run separate instead of Q'ing them up so you can change the context before each new run. - Otherwise they will share the same context \n"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
       "id": 2086,
       "type": "GetNode",
       "pos": [
@@ -21203,7 +20246,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 319,
+      "order": 306,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -21238,7 +20281,7 @@
         229.60205078125
       ],
       "flags": {},
-      "order": 320,
+      "order": 307,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -21266,7 +20309,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 321,
+      "order": 308,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -21301,7 +20344,7 @@
         289.5604553222656
       ],
       "flags": {},
-      "order": 367,
+      "order": 366,
       "mode": 0,
       "inputs": [
         {
@@ -22091,135 +21134,6 @@
       "shape": 1
     },
     {
-      "id": 574,
-      "type": "Seed Everywhere",
-      "pos": [
-        2413.476318359375,
-        -1910.7314453125
-      ],
-      "size": [
-        270,
-        82
-      ],
-      "flags": {},
-      "order": 322,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            1050
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "cg-use-everywhere",
-        "ver": "6.0.4",
-        "Node name for S&R": "Seed Everywhere",
-        "group_restricted": 0,
-        "color_restricted": 0,
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        614952921964164,
-        "randomize"
-      ]
-    },
-    {
-      "id": 1933,
-      "type": "MarkdownNote",
-      "pos": [
-        1568.07177734375,
-        -167.1328887939453
-      ],
-      "size": [
-        363.83905029296875,
-        299.7894287109375
-      ],
-      "flags": {},
-      "order": 323,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "GetIndexNumber",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "## 🟦GetIndexNumber- \n \n-This node gets the index number based on how many videos are in the folder from step 4. \n\nIndex mapping:  \n- **Index 0** = Run 1 / Video 1  \n- **Index 1** = Run 2 / Video 2  \n- **Index 2** = Run 3 / Video 3  \n- …and so on.  \n\nIn order for this node to trigger Q'ed runs I needed to add the triggercounter node. Do not remove or change it."
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 1934,
-      "type": "MarkdownNote",
-      "pos": [
-        1637.09130859375,
-        331.3774719238281
-      ],
-      "size": [
-        286.009765625,
-        209.55523681640625
-      ],
-      "flags": {},
-      "order": 324,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "Step 4",
-      "properties": {
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "## 🟦 Step 3: Update File path\n- Choose the file path in your output folder and enter it here. Make sure its empty.\n-This will be used for the video's that will later be combined into 1"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 1899,
-      "type": "PrimitiveStringMultiline",
-      "pos": [
-        1977.243896484375,
-        307.4607849121094
-      ],
-      "size": [
-        799.4664306640625,
-        91.59326171875
-      ],
-      "flags": {},
-      "order": 325,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            2679,
-            4106,
-            4159
-          ]
-        }
-      ],
-      "title": "Empty file path to where your video's will go",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.56",
-        "Node name for S&R": "PrimitiveStringMultiline",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "A:\\COMFY_UI\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\ComfyUI\\output\\candyskiesV2"
-      ],
-      "color": "#332922",
-      "bgcolor": "#593930",
-      "shape": 1
-    },
-    {
       "id": 2100,
       "type": "easy showAnything",
       "pos": [
@@ -22231,7 +21145,7 @@
         88
       ],
       "flags": {},
-      "order": 384,
+      "order": 383,
       "mode": 0,
       "inputs": [
         {
@@ -22467,50 +21381,6 @@
       "bgcolor": "#353"
     },
     {
-      "id": 1956,
-      "type": "ShowText|pysssss",
-      "pos": [
-        3651.353515625,
-        -341.15252685546875
-      ],
-      "size": [
-        569.3072509765625,
-        197.49107360839844
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 402,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 4074
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "title": "Show Pipe Separted Lyrics here",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "1.2.5",
-        "Node name for S&R": "ShowText|pysssss",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "Whispering thank you beneath glowing candy skies, Thank you. | Warm gaze lifted to skies that softly melt, Thank you. | Whispering thank you beneath glowing candy skies, Candy skies | Warm gaze lifted to skies that softly melt, They melt away purple | Purple dreams drifting and fading into night, dreams that never stay | Eyes flash lightning beneath swirling pastel skies, Eyes like lightning pull me | Cherry-sweet danger lingering in the twilight air, Danger tastes like cheddar | Cherry-sweet danger lingering in the twilight air, I'm falling | Falling fast through candy-colored clouds of red, I'm falling in ca- | Spinning weightless in kaleidoscope skies again, I can't defend | Unable to defend under crashing colors, I'm calling, I'm calling | Calling out into endless sugar skies, For something I can't pretend | Reaching for something unreal in fading clouds, you | Pretending shatters under bittersweet skies, Play | Your voice on tape echoes through velvet skies, Bittersweet, your voice on tape. | Every word crashing like stars in my mind, Every word I can't"
-      ],
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
       "id": 1322,
       "type": "GeminiNode",
       "pos": [
@@ -22587,53 +21457,6 @@
       "color": "#332922",
       "bgcolor": "#593930",
       "shape": 1
-    },
-    {
-      "id": 1955,
-      "type": "VRGDG_StringConcat",
-      "pos": [
-        3633.573486328125,
-        -724.5667114257812
-      ],
-      "size": [
-        576.580078125,
-        329.5969543457031
-      ],
-      "flags": {},
-      "order": 403,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipe_separated_lyrics",
-          "type": "STRING",
-          "widget": {
-            "name": "pipe_separated_lyrics"
-          },
-          "link": 4148
-        }
-      ],
-      "outputs": [
-        {
-          "name": "concatenated_string",
-          "type": "STRING",
-          "links": [
-            2811
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "a206f8bd964ecea275b3d078d00e4bcd7d71ab47",
-        "Node name for S&R": "VRGDG_StringConcat",
-        "widget_ue_connectable": {}
-      },
-      "widgets_values": [
-        "AI Music Video Prompt Creator\nInput\nStyle/Theme = overall aesthetic, tone, and visual style and can have character description. \n\nLyrics → pipe-separated list (|)\n\nOutput\n\nOne string of cinematic prompts separated by |.\n\nNo greetings, notes, or explanations.\n\nCore Rules\n\nContinuity\n\nEach prompt begins with: gender + hair color + hair length. (e.g. a woman with long blond hair or a man with short brown hair).\n\nPrompts must start at the last visual detail of the previous prompt.\n\nNever reference the previous prompt directly. Each one begins fresh.\n\nPrompt Structure\n\n1 lyric fragment → 1 prompt.\n\nLength: 50–70 words.\n\nMust include:\n\nGender + hair color + hair length\n\nEnvironment & atmosphere\n\nLighting\n\nCamera angle + motion\n\nPhysical interaction\n\nFacial expression/emotional cue\n\nStyle/Theme elements integrated into setting, mood, and details\n\nCamera\n\nMotion mandatory (zoom, pan, orbit, track, dolly, crane, rotate).\n\nAngles must vary (Medium shot, close-up, profile, low/high, over-the-shoulder).\n\nCharacter face mostly visible.\n\nCharacter & Framing:\n\nShots: Medium, Upper body, chest-up, shoulders, close-up, macro (no super wide/full-body).\n\nOutfit adapts to setting and theme. Outfit should change to fit with the scene.\n\nCharacter must physically engage with the environment.\n\nCharacter is singing, but do not quote the lyrics in the prompt.\n\nEnvironment\n\nNo plain/solid backgrounds.\n\nAlways cinematic + textured, guided by the chosen style/theme.\n\nDo:\n\nOnly visual, filmable actions.\n\nShow emotion via visible cues like facial expressions.\n\nKeep flow continuous, as if one performance.\n\nDon’t:\n\nNo sound, voice, tone, or metaphors.\n\nNo poetic/abstract wording.\n\nNo static shots or frozen frames. Always include camera and character movement.\n\nExample Prompt Format\n\nFragment 1\nA chest-up shot of a young woman with short wavy blonde hair standing in a narrow stone corridor as glowing embers drift in the air. The camera dollies slowly forward while she reaches her hand toward a jagged crack in the wall, firelight flickering across her tense features as her brow furrows with restless focus.\n\nFragment 2\nA close-up of a young woman with short wavy blonde hair, her hand pressed against a jagged crack in the damp stone wall as water begins to seep through. The camera slowly zooms outward into a head-and-shoulders frame, firelight reflecting across her skin as droplets catch on her cheek. Her jaw tightens, urgency sharpening in her eyes.\n\nFragment 3\nA medium shot of a young woman with short wavy blonde hair, droplets glistening on her skin as she strikes a match against the wet stone wall. Sparks burst briefly in the shadows, and the camera tracks from her profile around to her front, capturing the flame’s glow flickering across her eyes as her expression shifts to fierce determination.\n\nreminder:\nPlease send the Output\n\nOne string of cinematic prompts separated by | now.\n",
-        "surreal with fun vibrant candy theme. A women with short blue hair.",
-        ""
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
     },
     {
       "id": 1323,
@@ -22754,7 +21577,7 @@
         109.84281921386719
       ],
       "flags": {},
-      "order": 376,
+      "order": 369,
       "mode": 0,
       "inputs": [
         {
@@ -22785,41 +21608,6 @@
       "bgcolor": "#653"
     },
     {
-      "id": 1335,
-      "type": "Fast Groups Muter (rgthree)",
-      "pos": [
-        1161.6619873046875,
-        -379.517578125
-      ],
-      "size": [
-        389.29150390625,
-        610
-      ],
-      "flags": {},
-      "order": 326,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "OPT_CONNECTION",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "properties": {
-        "matchColors": "",
-        "matchTitle": "",
-        "showNav": true,
-        "showAllGraphs": true,
-        "sort": "alphanumeric",
-        "customSortAlphabet": "",
-        "toggleRestriction": "default",
-        "widget_ue_connectable": {}
-      },
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
       "id": 2044,
       "type": "MarkdownNote",
       "pos": [
@@ -22831,7 +21619,7 @@
         241.95130920410156
       ],
       "flags": {},
-      "order": 327,
+      "order": 309,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -22857,7 +21645,7 @@
         249.3350067138672
       ],
       "flags": {},
-      "order": 328,
+      "order": 310,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -22883,7 +21671,7 @@
         372.7463073730469
       ],
       "flags": {},
-      "order": 329,
+      "order": 311,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -22893,6 +21681,1216 @@
       },
       "widgets_values": [
         "## 🟦 Important: LLM Node Usage\n- The `concatenated_string` must be connected into the **LLM’s prompt/instructions input**.  \n- You may use other LLM nodes instead of Gemini, but keep in mind:  \n  - Smaller or local models may fail if the instructions are too complex.  \n- You can also connect an **image** into the LLM’s `images` input.  \n  - 💡 However, it is usually **cheaper and simpler** to describe the character directly in the **Theme/Style prompt** instead of providing an image.  \n- The **LLM’s output string** must be connected into the **Prompt Splitter** node for the workflow to continue correctly.  \n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1230,
+      "type": "MarkdownNote",
+      "pos": [
+        2187.90966796875,
+        -2408.17919921875
+      ],
+      "size": [
+        652.2125854492188,
+        146.52639770507812
+      ],
+      "flags": {},
+      "order": 312,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "# 🎬 VRGDG HUMO Music Video Workflow\n\nThis workflow creates **music videos (or other videos)** in **one shot** using the **HUMO model**.  \n\n---\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 500,
+      "type": "SetNode",
+      "pos": [
+        2195.236328125,
+        -1953.4954833984375
+      ],
+      "size": [
+        210,
+        50
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 372,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "link": 4166
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_steps",
+      "properties": {
+        "previousName": "steps",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "steps"
+      ],
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 2116,
+      "type": "PrimitiveFloat",
+      "pos": [
+        2451.696533203125,
+        -2082.62646484375
+      ],
+      "size": [
+        210,
+        58
+      ],
+      "flags": {},
+      "order": 313,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            4167
+          ]
+        }
+      ],
+      "title": "Shift",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveFloat",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        5
+      ]
+    },
+    {
+      "id": 2117,
+      "type": "PrimitiveFloat",
+      "pos": [
+        2772.485107421875,
+        -2078.40478515625
+      ],
+      "size": [
+        210,
+        58
+      ],
+      "flags": {},
+      "order": 314,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            4168
+          ]
+        }
+      ],
+      "title": "audio scale",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveFloat",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        2
+      ]
+    },
+    {
+      "id": 2115,
+      "type": "PrimitiveInt",
+      "pos": [
+        2153.7978515625,
+        -2077.95947265625
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "flags": {},
+      "order": 315,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            4166
+          ]
+        }
+      ],
+      "title": "Steps",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveInt",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        2,
+        "fixed"
+      ]
+    },
+    {
+      "id": 455,
+      "type": "SetNode",
+      "pos": [
+        2202.86767578125,
+        -1747.51171875
+      ],
+      "size": [
+        210,
+        58
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 373,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "link": 4169
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_Width",
+      "properties": {
+        "previousName": "Width",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "Width"
+      ],
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 2118,
+      "type": "PrimitiveInt",
+      "pos": [
+        2147.128662109375,
+        -1890.1754150390625
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "flags": {},
+      "order": 316,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            4169
+          ]
+        }
+      ],
+      "title": "Width",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveInt",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        720,
+        "fixed"
+      ]
+    },
+    {
+      "id": 456,
+      "type": "SetNode",
+      "pos": [
+        2183.978515625,
+        -1516.9549560546875
+      ],
+      "size": [
+        210,
+        58
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 374,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "link": 4170
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_Height",
+      "properties": {
+        "previousName": "Height",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "Height"
+      ],
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 2119,
+      "type": "PrimitiveInt",
+      "pos": [
+        2142.017333984375,
+        -1662.724609375
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "flags": {},
+      "order": 317,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            4170
+          ]
+        }
+      ],
+      "title": "Height",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveInt",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        480,
+        "fixed"
+      ]
+    },
+    {
+      "id": 382,
+      "type": "SetNode",
+      "pos": [
+        2471.93603515625,
+        -1520.0968017578125
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 375,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "link": 4171
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_FramesPerVideo",
+      "properties": {
+        "previousName": "FramesPerVideo",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "FramesPerVideo"
+      ],
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 2120,
+      "type": "PrimitiveInt",
+      "pos": [
+        2458.9169921875,
+        -1670.94775390625
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "flags": {},
+      "order": 318,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            4171
+          ]
+        }
+      ],
+      "title": "Height",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveInt",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        97,
+        "fixed"
+      ]
+    },
+    {
+      "id": 575,
+      "type": "SetNode",
+      "pos": [
+        2501.458984375,
+        -1748.124267578125
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 376,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "link": 4172
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_seed",
+      "properties": {
+        "previousName": "seed",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "seed"
+      ],
+      "color": "#1b4669",
+      "bgcolor": "#29699c"
+    },
+    {
+      "id": 2121,
+      "type": "PrimitiveInt",
+      "pos": [
+        2446.547119140625,
+        -1893.5706787109375
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "flags": {},
+      "order": 319,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            4172
+          ]
+        }
+      ],
+      "title": "Seed",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PrimitiveInt",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        1111111111,
+        "randomize"
+      ]
+    },
+    {
+      "id": 1899,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+        1977.243896484375,
+        307.4607849121094
+      ],
+      "size": [
+        799.4664306640625,
+        91.59326171875
+      ],
+      "flags": {},
+      "order": 320,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            2679,
+            4106,
+            4159
+          ]
+        }
+      ],
+      "title": "Empty file path to where your video's will go",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.56",
+        "Node name for S&R": "PrimitiveStringMultiline",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "A:\\COMFY_UI\\ComfyUI_windows_portable_nvidia\\ComfyUI_windows_portable\\ComfyUI\\output\\candyskiesV2"
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930",
+      "shape": 1
+    },
+    {
+      "id": 2082,
+      "type": "SetNode",
+      "pos": [
+        2539.77978515625,
+        266.73651123046875
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 378,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "link": 4106
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_filenamestring",
+      "properties": {
+        "previousName": "filenamestring",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "filenamestring"
+      ],
+      "color": "#322",
+      "bgcolor": "#533",
+      "shape": 1
+    },
+    {
+      "id": 2045,
+      "type": "MarkdownNote",
+      "pos": [
+        2376.771484375,
+        32.00931167602539
+      ],
+      "size": [
+        333.8184814453125,
+        187.3975372314453
+      ],
+      "flags": {},
+      "order": 321,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Audio Crop Node",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "## 🟦 Important: Audio Crop Node\n- **Do not remove or change this node.**  \n- Doing so will **cause the workflow to break**.  \n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1222,
+      "type": "ImageResizeKJv2",
+      "pos": [
+        1952.6453857421875,
+        -799.2887573242188
+      ],
+      "size": [
+        210,
+        286
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 380,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2739
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 1948
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 1947
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2738
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "0adab07d1ad3d0780afc97319eaf37c3681af37d",
+        "Node name for S&R": "ImageResizeKJv2",
+        "widget_ue_connectable": {
+          "width": true,
+          "height": true
+        }
+      },
+      "widgets_values": [
+        512,
+        512,
+        "lanczos",
+        "pad",
+        "255,255,255",
+        "center",
+        16,
+        "cpu"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
+      "shape": 1
+    },
+    {
+      "id": 1223,
+      "type": "SetNode",
+      "pos": [
+        1953.958740234375,
+        -757.6961059570312
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 393,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "link": 2737
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": []
+        }
+      ],
+      "title": "Set_refimage",
+      "properties": {
+        "previousName": "refimage",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "refimage"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159",
+      "shape": 1
+    },
+    {
+      "id": 1225,
+      "type": "GetNode",
+      "pos": [
+        1953.0526123046875,
+        -719.2942504882812
+      ],
+      "size": [
+        210,
+        50
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 322,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            1948
+          ]
+        }
+      ],
+      "title": "Get_Width",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "Width"
+      ],
+      "color": "#1b4669",
+      "bgcolor": "#29699c",
+      "shape": 1
+    },
+    {
+      "id": 1940,
+      "type": "RemBGSession+",
+      "pos": [
+        2193.917236328125,
+        -1176.7864990234375
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 323,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "REMBG_SESSION",
+          "type": "REMBG_SESSION",
+          "links": [
+            2736
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui_essentials",
+        "ver": "1.1.0",
+        "Node name for S&R": "RemBGSession+",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "u2net_human_seg: human segmentation",
+        "CUDA"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159",
+      "shape": 1
+    },
+    {
+      "id": 1939,
+      "type": "ImageRemoveBackground+",
+      "pos": [
+        2203.96240234375,
+        -1048.8505859375
+      ],
+      "size": [
+        236.89999389648438,
+        46
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 386,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "rembg_session",
+          "type": "REMBG_SESSION",
+          "link": 2736
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2738
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2735,
+            2737
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui_essentials",
+        "ver": "1.1.0",
+        "Node name for S&R": "ImageRemoveBackground+",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 1955,
+      "type": "VRGDG_StringConcat",
+      "pos": [
+        3633.573486328125,
+        -724.5667114257812
+      ],
+      "size": [
+        576.580078125,
+        329.5969543457031
+      ],
+      "flags": {},
+      "order": 403,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipe_separated_lyrics",
+          "type": "STRING",
+          "widget": {
+            "name": "pipe_separated_lyrics"
+          },
+          "link": 4148
+        }
+      ],
+      "outputs": [
+        {
+          "name": "concatenated_string",
+          "type": "STRING",
+          "links": [
+            2811
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "a206f8bd964ecea275b3d078d00e4bcd7d71ab47",
+        "Node name for S&R": "VRGDG_StringConcat",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "AI Music Video Prompt Creator\nInput\nStyle/Theme = overall aesthetic, tone, and visual style and can have character description. \n\nLyrics → pipe-separated list (|)\n\nOutput\n\nOne string of cinematic prompts separated by |.\n\nNo greetings, notes, or explanations.\n\nCore Rules\n\nContinuity\n\nEach prompt begins with: gender + hair color + hair length. (e.g. a woman with long blond hair or a man with short brown hair).\n\nPrompts must start at the last visual detail of the previous prompt.\n\nNever reference the previous prompt directly. Each one begins fresh.\n\nPrompt Structure\n\n1 lyric fragment → 1 prompt.\n\nLength: 50–70 words.\n\nMust include:\n\nGender + hair color + hair length\n\nEnvironment & atmosphere\n\nLighting\n\nCamera angle + motion\n\nPhysical interaction\n\nFacial expression/emotional cue\n\nStyle/Theme elements integrated into setting, mood, and details\n\nCamera\n\nMotion mandatory (zoom, pan, orbit, track, dolly, crane, rotate).\n\nAngles must vary (Medium shot, close-up, profile, low/high, over-the-shoulder).\n\nCharacter face mostly visible.\n\nCharacter & Framing:\n\nShots: Medium, Upper body, chest-up, shoulders, close-up, macro (no super wide/full-body).\n\nOutfit adapts to setting and theme. Outfit should change to fit with the scene.\n\nCharacter must physically engage with the environment.\n\nCharacter is singing, but do not quote the lyrics in the prompt.\n\nEnvironment\n\nNo plain/solid backgrounds.\n\nAlways cinematic + textured, guided by the chosen style/theme.\n\nDo:\n\nOnly visual, filmable actions.\n\nShow emotion via visible cues like facial expressions.\n\nKeep flow continuous, as if one performance.\n\nDon’t:\n\nNo sound, voice, tone, or metaphors.\n\nNo poetic/abstract wording.\n\nNo static shots or frozen frames. Always include camera and character movement.\n\nExample Prompt Format\n\nFragment 1\nA chest-up shot of a young woman with short wavy blonde hair standing in a narrow stone corridor as glowing embers drift in the air. The camera dollies slowly forward while she reaches her hand toward a jagged crack in the wall, firelight flickering across her tense features as her brow furrows with restless focus.\n\nFragment 2\nA close-up of a young woman with short wavy blonde hair, her hand pressed against a jagged crack in the damp stone wall as water begins to seep through. The camera slowly zooms outward into a head-and-shoulders frame, firelight reflecting across her skin as droplets catch on her cheek. Her jaw tightens, urgency sharpening in her eyes.\n\nFragment 3\nA medium shot of a young woman with short wavy blonde hair, droplets glistening on her skin as she strikes a match against the wet stone wall. Sparks burst briefly in the shadows, and the camera tracks from her profile around to her front, capturing the flame’s glow flickering across her eyes as her expression shifts to fierce determination.\n\nreminder:\nPlease send the Output\n\nOne string of cinematic prompts separated by | now.\n",
+        "surreal with fun vibrant candy theme. A women with short blue hair.",
+        ""
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 1956,
+      "type": "ShowText|pysssss",
+      "pos": [
+        3651.353515625,
+        -341.15252685546875
+      ],
+      "size": [
+        569.3072509765625,
+        197.49107360839844
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 402,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 4074
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Show Pipe Separted Lyrics here",
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "1.2.5",
+        "Node name for S&R": "ShowText|pysssss",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "Whispering thank you beneath glowing candy skies, Thank you. | Warm gaze lifted to skies that softly melt, Thank you. | Whispering thank you beneath glowing candy skies, Candy skies | Warm gaze lifted to skies that softly melt, They melt away purple | Purple dreams drifting and fading into night, dreams that never stay | Eyes flash lightning beneath swirling pastel skies, Eyes like lightning pull me | Cherry-sweet danger lingering in the twilight air, Danger tastes like cheddar | Cherry-sweet danger lingering in the twilight air, I'm falling | Falling fast through candy-colored clouds of red, I'm falling in ca- | Spinning weightless in kaleidoscope skies again, I can't defend | Unable to defend under crashing colors, I'm calling, I'm calling | Calling out into endless sugar skies, For something I can't pretend | Reaching for something unreal in fading clouds, you | Pretending shatters under bittersweet skies, Play | Your voice on tape echoes through velvet skies, Bittersweet, your voice on tape. | Every word crashing like stars in my mind, Every word I can't"
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 1935,
+      "type": "MarkdownNote",
+      "pos": [
+        3652.638916015625,
+        -94.9180908203125
+      ],
+      "size": [
+        1077.670654296875,
+        715.2137451171875
+      ],
+      "flags": {},
+      "order": 324,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Load Audio Split Humo Transcribe Node",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "## 🟦 enable_lyrics\n- Transcribe and assemble the audio chunks into a lyrics string.\n- If set to `false`, transcription is skipped and only context strings are returned.\n\n## 🟪 lyric_overlap\n- Determines how many words are **borrowed from the previous and next lines** when building lyrics.\n- This can help smooth out transitions between chunks in the final lyrics string.\n- `0` = No overlap (default), `1–5` = increasing lyric blending.\n\n## 🟫 fallback_words_string\n- A comma-separated list of words to use when a chunk’s transcription fails or returns empty.\n- Example: `thinking,walking,sitting` add custom based on what you want to see in the video.\n- These will be randomly selected to fill empty lyric slots, helping maintain continuity.\n\n## 🟩 offset_seconds\n- Number of seconds to skip at the start of the input audio before slicing begins.\n- Useful for trimming intros or silent padding.\n\n## 🟧 play_audio_button\n- This button may **not show up right away**.  \n- If it’s missing, run the workflow up to the point of this node, then refresh your browser.  \n- The play button lets you **listen to the actual audio clip** so you can hear the words directly.  \n- Use this together with the **context string** below each button to improve lyric accuracy.  \n\n## 🟦 context_strings\n- The **context string** lets you add more details that are appended to the start of each lyric that is transcribed.  \n- You can even use this instead of transcribing lyrics if you prefer.  \n- Sometimes vocal separation introduces errors, causing transcriptions to have gibberish or typos — adding context strings helps correct or replace them.  \n- reminder: in order for this to work right you would need to do each run separate instead of Q'ing them up so you can change the context before each new run. - Otherwise they will share the same context \n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1175,
+      "type": "easy showAnything",
+      "pos": [
+        2210.332763671875,
+        2695.38720703125
+      ],
+      "size": [
+        210,
+        76
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 444,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "anything",
+          "shape": 7,
+          "type": "*",
+          "link": 1949
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "*",
+          "links": [
+            1875
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-easy-use",
+        "ver": "1.2.9",
+        "Node name for S&R": "easy showAnything",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "[false, [\"C:\\\\tmp\\\\latentsync_2ebc455f\\\\latentsync_201bdb2b\\\\AnimateDiff_00048.png\", \"C:\\\\tmp\\\\latentsync_2ebc455f\\\\latentsync_201bdb2b\\\\AnimateDiff_00048.mp4\", \"C:\\\\tmp\\\\latentsync_2ebc455f\\\\latentsync_201bdb2b\\\\AnimateDiff_00048-audio.mp4\"]]"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1234,
+      "type": "MarkdownNote",
+      "pos": [
+        1866.8818359375,
+        -1817.825927734375
+      ],
+      "size": [
+        232.69287109375,
+        312.7835693359375
+      ],
+      "flags": {},
+      "order": 325,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Start",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "## Set Video Resolution\n- Define the **Width** and **Height** for the final video.  \n- Keep values **divisible by 16** for best results.  \n- Larger sizes = better quality but longer render times.  \n\n## KEEP THIS SET TO FIXED"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1235,
+      "type": "MarkdownNote",
+      "pos": [
+        1863.43359375,
+        -2146.71435546875
+      ],
+      "size": [
+        236.04322814941406,
+        273.4516296386719
+      ],
+      "flags": {},
+      "order": 326,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Start",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "## Steps\n- Since we are using FastWan you can keep this at 2. If you do not want to use FastWan then you can change this to 4 if using LightX, or 8-10 if using the FusionX lora.\n\n## KEEP THIS SET TO FIXED"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 2107,
+      "type": "VRGDG_GetIndexNumber",
+      "pos": [
+        2006.150146484375,
+        -117.78176879882812
+      ],
+      "size": [
+        210,
+        112
+      ],
+      "flags": {},
+      "order": 379,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "trigger",
+          "type": "INT",
+          "widget": {
+            "name": "trigger"
+          },
+          "link": 4165
+        },
+        {
+          "name": "folder_path",
+          "type": "STRING",
+          "widget": {
+            "name": "folder_path"
+          },
+          "link": 4159
+        }
+      ],
+      "outputs": [
+        {
+          "name": "index",
+          "type": "INT",
+          "links": [
+            4160,
+            4161,
+            4162
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "a206f8bd964ecea275b3d078d00e4bcd7d71ab47",
+        "Node name for S&R": "VRGDG_GetIndexNumber",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        0,
+        ""
+      ],
+      "color": "#322",
+      "bgcolor": "#533",
+      "shape": 1
+    },
+    {
+      "id": 1934,
+      "type": "MarkdownNote",
+      "pos": [
+        1261.2921142578125,
+        321.02496337890625
+      ],
+      "size": [
+        668.019775390625,
+        464.22857666015625
+      ],
+      "flags": {},
+      "order": 327,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 4",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "## 🟦 Step 3: Update File Path\n\n- Choose the folder path where your video output files will be stored.\n- Make sure the folder is **empty** before you begin.\n- This will be used for the videos that will later be combined into one.\n\n### ⚠️ OS-Specific Notes\n\n- **Windows** users:  \n  Use forward slashes (`/`) or double backslashes (`\\\\`) to avoid path errors.  \n  **Examples**:\n  - `A:/COMFY_UI/ComfyUI_windows_portable/ComfyUI/output/my_folder`\n  - `A:\\\\COMFY_UI\\\\ComfyUI_windows_portable\\\\ComfyUI\\\\output\\\\my_folder`\n\n- **Linux/macOS** users:  \n  Use standard POSIX paths with forward slashes (`/`).  \n  **Example**:\n  - `/home/user/comfyui/output/my_folder`\n\n- **WSL (Windows Subsystem for Linux)** users:  \n  Use Linux-style paths, but mount Windows drives under `/mnt/`.  \n  **Example**:\n  - `/mnt/c/Users/YourName/Documents/ComfyUI/output/my_folder`\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 1335,
+      "type": "Fast Groups Muter (rgthree)",
+      "pos": [
+        1063.3126220703125,
+        -371.2355041503906
+      ],
+      "size": [
+        389.29150390625,
+        610
+      ],
+      "flags": {},
+      "order": 328,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "OPT_CONNECTION",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "properties": {
+        "matchColors": "",
+        "matchTitle": "",
+        "showNav": true,
+        "showAllGraphs": true,
+        "sort": "alphanumeric",
+        "customSortAlphabet": "",
+        "toggleRestriction": "default",
+        "widget_ue_connectable": {}
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 1933,
+      "type": "MarkdownNote",
+      "pos": [
+        1545.2958984375,
+        -235.45986938476562
+      ],
+      "size": [
+        383.5089416503906,
+        510.9819641113281
+      ],
+      "flags": {},
+      "order": 329,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "GetIndexNumber",
+      "properties": {
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "## 🟦 GetIndexNumber  \n\n- This node gets the index number based on how many videos are in the folder from Step 4.  \n\n### Index Mapping  \n- **Index 0** = Run 1 / Video 1  \n- **Index 1** = Run 2 / Video 2  \n- **Index 2** = Run 3 / Video 3  \n- …and so on.  \n\n### ⚠️ Important Note  \nIf the index **does not change after the first run is over and the video is created**,  \ncheck that your **file path** (from Step 3) is correct and points to the **same folder** ComfyUI is saving videos to.  \nAn incorrect path will cause the node to always return `0`.\n\n### Trigger Node  \nIn order for this node to trigger queued runs, the `triggercounter` node was added.  \nDo **not** remove or change it.\n"
       ],
       "color": "#432",
       "bgcolor": "#653"
@@ -22924,38 +22922,6 @@
       "*"
     ],
     [
-      808,
-      375,
-      0,
-      382,
-      0,
-      "*"
-    ],
-    [
-      894,
-      454,
-      0,
-      455,
-      0,
-      "*"
-    ],
-    [
-      895,
-      457,
-      0,
-      456,
-      0,
-      "*"
-    ],
-    [
-      943,
-      501,
-      0,
-      500,
-      0,
-      "*"
-    ],
-    [
       976,
       35,
       0,
@@ -22980,36 +22946,12 @@
       "WANVIDLORA"
     ],
     [
-      1050,
-      574,
-      0,
-      575,
-      0,
-      "*"
-    ],
-    [
-      1083,
-      584,
-      0,
-      585,
-      0,
-      "*"
-    ],
-    [
       1184,
       633,
       0,
       324,
       0,
       "WANVIDLORA"
-    ],
-    [
-      1382,
-      770,
-      0,
-      771,
-      0,
-      "*"
     ],
     [
       1516,
@@ -26890,6 +26832,62 @@
       2107,
       0,
       "INT"
+    ],
+    [
+      4166,
+      2115,
+      0,
+      500,
+      0,
+      "INT"
+    ],
+    [
+      4167,
+      2116,
+      0,
+      585,
+      0,
+      "FLOAT"
+    ],
+    [
+      4168,
+      2117,
+      0,
+      771,
+      0,
+      "FLOAT"
+    ],
+    [
+      4169,
+      2118,
+      0,
+      455,
+      0,
+      "INT"
+    ],
+    [
+      4170,
+      2119,
+      0,
+      456,
+      0,
+      "INT"
+    ],
+    [
+      4171,
+      2120,
+      0,
+      382,
+      0,
+      "INT"
+    ],
+    [
+      4172,
+      2121,
+      0,
+      575,
+      0,
+      "INT"
     ]
   ],
   "groups": [
@@ -26912,8 +26910,8 @@
       "bounding": [
         2116.888427734375,
         -2155.876953125,
-        933.08740234375,
-        558.536865234375
+        959.5327758789062,
+        659.6514282226562
       ],
       "color": "#3f789e",
       "font_size": 24,
@@ -39328,10 +39326,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.37241296419790876,
+      "scale": 0.725727511594154,
       "offset": [
-        -961.7636593084578,
-        498.6357590153657
+        -1115.0555885567,
+        144.96299417393425
       ]
     },
     "frontendVersion": "1.26.13",
