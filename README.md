@@ -81,10 +81,12 @@ python.exe -m pip install -r ..\custom_nodes\comfyui-vrgamedevgirl\requirements.
 `requirements.txt` (in the repo) includes:
 
 ```
+
 kornia
 
 librosa
 
+imageio
 
 ```
 
