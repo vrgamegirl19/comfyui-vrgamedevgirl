@@ -22,7 +22,7 @@ class FastFilmGrain:
             "required": {
                 "images": ("IMAGE",),
                 "grain_intensity": (
-                    "FLOAT", {"default": 0.04, "min": 0.01, "max": 1.0, "step": 0.01}
+                    "FLOAT", {"default": 0.04, "min": 0.001, "max": 1.0, "step": 0.001}
                 ),
                 "saturation_mix": (
                     "FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}
@@ -60,6 +60,7 @@ class FastFilmGrain:
         output = torch.cat(outputs, dim=0)
         output = output.to(comfy.model_management.intermediate_device())
         return (output,)
+
 
 
 class ColorMatchToReference:
