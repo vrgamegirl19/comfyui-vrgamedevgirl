@@ -1506,7 +1506,226 @@ class VRGDG_AudioCropTime:
 
 
 
+######################old version added back
+class VRGDG_LoadAudioSplit_HUMO_Transcribe:
+    RETURN_TYPES = ("DICT", "FLOAT", "STRING") + tuple(["AUDIO"] * 50)
+    RETURN_NAMES = ("meta", "total_duration", "lyrics_string") + tuple([f"audio_{i}" for i in range(1, 51)])
 
+    FUNCTION = "split_audio"
+    CATEGORY = "VRGDG"
+
+    fallback_words = ["standing", "sitting", "laying", "resting", "waiting"]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "offset_seconds": ("FLOAT", {"default": 0.0, "min": 0.0}),
+                "scene_count": ("INT", {"default": 1, "min": 1, "max": 50, "dynamic": True}),
+                "language": (
+                    [
+                        "auto", "english", "chinese", "german", "spanish", "russian", "korean", "french",
+                        "japanese", "portuguese", "turkish", "polish", "catalan", "dutch", "arabic", "swedish",
+                        "italian", "indonesian", "hindi", "finnish", "vietnamese", "hebrew", "ukrainian", "greek",
+                        "malay", "czech", "romanian", "danish", "hungarian", "tamil", "norwegian", "thai", "urdu",
+                        "croatian", "bulgarian", "lithuanian", "latin", "maori", "malayalam", "welsh", "slovak",
+                        "telugu", "persian", "latvian", "bengali", "serbian", "azerbaijani", "slovenian", "kannada",
+                        "estonian", "macedonian", "breton", "basque", "icelandic", "armenian", "nepali", "mongolian",
+                        "bosnian", "kazakh", "albanian", "swahili", "galician", "marathi", "punjabi", "sinhala",
+                        "khmer", "shona", "yoruba", "somali", "afrikaans", "occitan", "georgian", "belarusian",
+                        "tajik", "sindhi", "gujarati", "amharic", "yiddish", "lao", "uzbek", "faroese", "haitian creole",
+                        "pashto", "turkmen", "nynorsk", "maltese", "sanskrit", "luxembourgish", "myanmar", "tibetan",
+                        "tagalog", "malagasy", "assamese", "tatar", "hawaiian", "lingala", "hausa", "bashkir",
+                        "javanese", "sundanese", "cantonese", "burmese", "valencian", "flemish", "haitian",
+                        "letzeburgesch", "pushto", "panjabi", "moldavian", "moldovan", "sinhalese", "castilian", "mandarin"
+                    ],
+                    {"default": "english", "tooltip": "Language for Whisper transcription."}
+                ),
+                "enable_lyrics": ("BOOLEAN", {"default": False, "tooltip": "If false, skip transcription."}),
+            }
+        }
+
+    @classmethod
+    def IS_DYNAMIC(cls):
+        return True
+
+    @classmethod
+    def get_output_types(cls, **kwargs):
+        count = int(kwargs.get("scene_count", 1))
+        if count < 1:
+            count = 1
+        return ("DICT", "FLOAT", "STRING") + tuple(["AUDIO"] * count)
+
+    @classmethod
+    def get_output_names(cls, **kwargs):
+        count = int(kwargs.get("scene_count", 1))
+        if count < 1:
+            count = 1
+        return ["meta", "total_duration", "lyrics_string"] + [f"audio_{i+1}" for i in range(count)]
+
+    def split_audio(self, audio, offset_seconds, scene_count=1, language="english", enable_lyrics=True):
+        internal_chunk_duration = 8.0
+        gain_db = 0.0
+        make_stereo = True
+
+        waveform = audio["waveform"]
+        src_sample_rate = int(audio.get("sample_rate", 44100))
+
+        if waveform.ndim == 2:
+            waveform = waveform.unsqueeze(0)
+
+        total_samples = waveform.shape[-1]
+        audio_total_duration = float(total_samples) / float(src_sample_rate)
+
+        scene_count = max(1, int(scene_count))
+        durations = [3.88] * scene_count
+        starts = []
+        current_time = float(offset_seconds)
+        for d in durations:
+            starts.append(current_time)
+            current_time += float(d)
+
+        segments = []
+        transcriptions = []
+
+        if enable_lyrics:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
+            model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3").to(device).eval()
+        else:
+            processor = None
+            model = None
+            device = None
+
+        for idx, start_time in enumerate(starts):
+            requested_duration = float(durations[idx])
+            start_samp = max(0, int(start_time * src_sample_rate))
+            end_samp = min(total_samples, int(start_samp + requested_duration * src_sample_rate))
+
+            seg = waveform[..., start_samp:end_samp]
+
+            # If empty, insert silence of correct duration
+            if seg.numel() == 0:
+                print(f"⚠️ Scene {idx} is empty, inserting silence + fallback lyric.")
+                seg = torch.zeros((1, 2, int(requested_duration * src_sample_rate)))  # stereo silence
+                segments.append({"waveform": seg, "sample_rate": src_sample_rate})
+                transcriptions.append(random.choice(self.fallback_words))
+                continue
+
+            if gain_db != 0.0:
+                gain_scalar = 10 ** (gain_db / 20)
+                seg *= gain_scalar
+
+            if make_stereo and seg.shape[1] == 1:
+                seg = seg.repeat(1, 2, 1)
+
+            # Ensure correct length by padding/truncating
+            expected_len = int(requested_duration * src_sample_rate)
+            if seg.shape[-1] < expected_len:
+                pad_len = expected_len - seg.shape[-1]
+                seg = torch.nn.functional.pad(seg, (0, pad_len))
+            elif seg.shape[-1] > expected_len:
+                seg = seg[..., :expected_len]
+
+            segments.append({"waveform": seg, "sample_rate": src_sample_rate})
+
+            if not enable_lyrics:
+                transcriptions.append("")
+                continue
+
+            flat_seg = seg.mean(dim=1).squeeze()
+
+            if src_sample_rate != 16000:
+                flat_seg = torchaudio.functional.resample(flat_seg, src_sample_rate, 16000)
+
+            if language == "auto" and flat_seg.size(0) < 480000:
+                pad_len = 480000 - flat_seg.size(0)
+                flat_seg = torch.nn.functional.pad(flat_seg, (0, pad_len))
+
+            inputs = processor(
+                flat_seg,
+                sampling_rate=16000,
+                return_tensors="pt",
+                padding="longest",
+                truncation=False
+            )
+
+            input_features = inputs["input_features"].to(device)
+
+            try:
+                if language == "auto":
+                    generated_ids = model.generate(input_features)
+                else:
+                    decoder_ids = processor.get_decoder_prompt_ids(language=language)
+                    generated_ids = model.generate(input_features, forced_decoder_ids=decoder_ids)
+
+                text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+                if not text:
+                    text = random.choice(self.fallback_words)
+            except Exception:
+                text = random.choice(self.fallback_words)
+
+            transcriptions.append(text)
+
+        def count_words(line):
+            return len(re.findall(r'\w+', line))
+
+        def collapse_repeats(line):
+            tokens = line.split()
+            result = []
+            last_word = None
+            repeat_count = 0
+            for word in tokens:
+                if word.lower() == last_word:
+                    repeat_count += 1
+                else:
+                    last_word = word.lower()
+                    repeat_count = 1
+                if repeat_count <= 3:
+                    result.append(word)
+            cleaned = []
+            prev = None
+            for word in result:
+                if word.lower() == prev:
+                    continue
+                cleaned.append(word)
+                prev = word.lower()
+            return " ".join(cleaned)
+
+        lyrics_text = ""
+        if enable_lyrics:
+            safe_transcriptions = [t if t else random.choice(self.fallback_words) for t in transcriptions]
+            enriched_transcriptions = []
+            for i, text in enumerate(safe_transcriptions):
+                word_count = count_words(text)
+                if word_count >= 3:
+                    enriched_transcriptions.append(collapse_repeats(text))
+                    continue
+                combined = random.choice(self.fallback_words) + " " + text.strip()
+                j = i + 1
+                while word_count < 3 and j < len(safe_transcriptions):
+                    combined += " " + safe_transcriptions[j].strip()
+                    word_count = count_words(combined)
+                    j += 1
+                if word_count < 3 and i > 0:
+                    combined = safe_transcriptions[i - 1].strip() + " " + combined
+                enriched_transcriptions.append(collapse_repeats(combined.strip()))
+            lyrics_text = " | ".join(enriched_transcriptions)
+
+        meta = {
+            "scene_count": scene_count,
+            "durations": durations,
+            "offset_seconds": float(offset_seconds),
+            "starts": starts,
+            "sample_rate": int(src_sample_rate),
+            "internal_chunk_duration": float(internal_chunk_duration),
+            "audio_total_duration": float(audio_total_duration),
+            "outputs_count": len(segments),
+            "used_padding": False,
+        }
+
+        return (meta, float(audio_total_duration), lyrics_text, *tuple(segments))
 
 
 NODE_CLASS_MAPPINGS = {
@@ -1528,6 +1747,7 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_PostRunIndexStepper":VRGDG_PostRunIndexStepper,
      "VRGDG_GetRunIndexFromJson":VRGDG_GetRunIndexFromJson,
      "VRGDG_AudioCropTime":VRGDG_AudioCropTime,
+     "VRGDG_LoadAudioSplit_HUMO_Transcribe":VRGDG_LoadAudioSplit_HUMO_Transcribe
 
 
 
@@ -1554,6 +1774,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
      "VRGDG_PostRunIndexStepper":"VRGDG_PostRunIndexStepper",
      "VRGDG_GetRunIndexFromJson":"VRGDG_GetRunIndexFromJson",
      "VRGDG_AudioCropTime":"VRGDG_AudioCropTime",
+     "VRGDG_LoadAudioSplit_HUMO_Transcribe":"VRGDG_LoadAudioSplit_HUMO_Transcribe"
 
   
    
