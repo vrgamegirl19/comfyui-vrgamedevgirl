@@ -285,6 +285,7 @@ class VRGDG_ConditionalLoadVideos:
 
 
 
+
 class VRGDG_CalculateSetsFromAudio:
     @classmethod
     def INPUT_TYPES(cls):
@@ -327,12 +328,15 @@ class VRGDG_CalculateSetsFromAudio:
         full_sets = int(audio_duration // set_duration)
         remainder = audio_duration - (full_sets * set_duration)
 
+        import math
+
         if remainder > 0:
             total_sets = full_sets + 1
-            groups_in_last_set = int(min(remainder // group_duration, groups_per_set))
+            groups_in_last_set = min(math.ceil(remainder / group_duration), groups_per_set)
         else:
             total_sets = full_sets
             groups_in_last_set = groups_per_set
+
 
         # ---------------------
         # Instructions section
@@ -409,6 +413,8 @@ class VRGDG_CalculateSetsFromAudio:
             )
 
         return (instructions, end_time_str, total_sets)
+
+
 
 
 
@@ -949,3 +955,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_DisplayIndex":"VRGDG_DisplayIndex",
     "VRGDG_PromptSplitterV2":"VRGDG_PromptSplitterV2"
 }
+
