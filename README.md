@@ -31,10 +31,12 @@ Includes HUMO-based multi-scene workflows, audio splitting, video combining, and
 ## 🌟 Features
 
 - 🎞️ **Fast Film Grain** (`FastFilmGrain`)  
-  Add controllable, grayscale or color grain for cinematic texture.
+  Add controllable, grayscale or color grain for cinematic texture.  
+  ➕ *Now includes a `batch_size` setting to reduce out-of-memory (OOM) issues on long or high-res videos. If you have a strong GPU, try `batch_size = 8`. If you hit OOM, lower the value (e.g., to 4 or 2).*
 
 - 🎨 **Color Match to Reference** (`ColorMatchToReference`)  
-  Align image tones to a reference image using LAB color matching.
+  Align image tones to a reference image using LAB color matching.  
+  ➕ *Also includes a `batch_size` setting to help manage VRAM usage. Start at 8 if your GPU allows — lower it if you get OOM errors.*
 
 - 🎯 **Fast Unsharp Sharpen** (`FastUnsharpSharpen`)  
   Simple and efficient sharpening using unsharp masking.
