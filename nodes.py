@@ -28,7 +28,7 @@ class FastFilmGrain:
                     "FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}
                 ),
                 "batch_size": (
-                    "INT", {"default": 4, "min": 1, "max": 64, "step": 1}
+                    "INT", {"default": 4, "min": 0, "max": 500, "step": 1}
                 ),
             }
         }
@@ -74,7 +74,7 @@ class ColorMatchToReference:
                     "FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}
                 ),
                 "batch_size": (
-                    "INT", {"default": 4, "min": 1, "max": 64, "step": 1}
+                    "INT", {"default": 4, "min": 0, "max": 500, "step": 1}
                 ),
             }
         }
