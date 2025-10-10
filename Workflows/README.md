@@ -1,4 +1,4 @@
-# 🎬 AI Music Video Workflow (ComfyUI)
+# 🎬 AI Music Video Workflow (ComfyUI) V7
 
 This workflow takes a **reference image** and an **audio file** to automatically generate a stylized **AI-driven music video**.  
 It splits audio into lyric-based snippets, generates visual prompts, and combines everything into a synced final video.
