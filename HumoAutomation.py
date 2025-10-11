@@ -867,6 +867,7 @@ class VRGDG_PromptSplitterV2:
 
 
 
+
 class VRGDG_CombinevideosV3: 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("blended_video_frames",)
@@ -972,16 +973,39 @@ class VRGDG_CombinevideosV3:
 
         print(f"[CombineV3] combining {len(vids)} video(s) for this run (limit={limit_videos})")
 
-
+####################################
+        # trimmed = []
+        # for slot_idx, vid in vids:
+        #     if vid.ndim != 4:
+        #         raise ValueError(f"video_{slot_idx} must have shape (frames,H,W,C), got {tuple(vid.shape)}")
+        #     tgt = self._target_frames_for_index(durations, slot_idx - 1, fps, vid.shape[0])
+        #     print(f"[CombineV3] target={tgt}, actual={vid.shape[0]}")
+        #     trimmed_vid = self._trim_or_pad(vid, tgt, pad_short=pad_short_videos)
+        #     print(f"[CombineV3] video_{slot_idx}: {vid.shape[0]} -> target={tgt}, final={trimmed_vid.shape[0]}")
+        #     trimmed.append(trimmed_vid)
+################################
         trimmed = []
+
         for slot_idx, vid in vids:
             if vid.ndim != 4:
                 raise ValueError(f"video_{slot_idx} must have shape (frames,H,W,C), got {tuple(vid.shape)}")
-            tgt = self._target_frames_for_index(durations, slot_idx - 1, fps, vid.shape[0])
-            print(f"[CombineV3] target={tgt}, actual={vid.shape[0]}")
-            trimmed_vid = self._trim_or_pad(vid, tgt, pad_short=pad_short_videos)
-            print(f"[CombineV3] video_{slot_idx}: {vid.shape[0]} -> target={tgt}, final={trimmed_vid.shape[0]}")
+
+            cur_frames = int(vid.shape[0])
+
+            # --- Default: keep existing length exactly ---
+            target_frames = cur_frames
+
+            # --- Only pad if this is the final run and groups_in_last_set < 16 ---
+            if is_last_run and slot_idx > groups_in_last_set:
+                print(f"[CombineV3] Padding placeholder for missing group {slot_idx}")
+                pad_shape = (97, *vid.shape[1:])  # 97-frame silent block
+                pad = torch.zeros(pad_shape, dtype=vid.dtype)
+                trimmed_vid = pad
+            else:
+                trimmed_vid = vid
+
             trimmed.append(trimmed_vid)
+
 
         # Concatenate along frame dimension
         final = torch.cat([t.to(dtype=torch.float32) for t in trimmed], dim=0).cpu()
@@ -1447,6 +1471,7 @@ class VRGDG_PromptSplitterV3:
         return tuple(outputs)
 
 
+
 class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
     # meta, total_duration, lyrics_string, index, instructions, total_sets, groups_in_last_set,
     # frames_per_scene, audio_meta, and 16 AUDIO outputs
@@ -1626,15 +1651,7 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
                 f"No more action required."
             )
 
-        # # Add progress note during queued runs (middle runs)
-        # if total_sets > 1 and index > 0:
-        #     if index + 1 == total_sets:
-        #         progress_note = f"🏁 Final run ({index + 1} of {total_sets}) in progress..."
-        #     else:
-        #         progress_note = f"⏳ Run {index + 1} of {total_sets} in progress..."
 
-        #     instructions = f"{progress_note}\n\n{instructions}"
-        # Add progress note during queued runs (middle runs)
         if total_sets > 1 and index > 0:
             if index + 1 == total_sets:
                 instructions = f"🏁 Final run ({index + 1} of {total_sets}) in progress..."
@@ -1682,17 +1699,33 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         fallback_words="",
         **kwargs
     ):
+        
+        # --- define fixed parameters immediately ---
+        scene_count = 16
+        fps = 25
+        frames_per_scene = 97
 
         # ---- index from folder (replaces TriggerCounter + GetIndexNumber) ----
         set_index = self._count_index_from_folder(folder_path)
         print(f"[TranscribeV3] Auto-detected set_index={set_index} from folder: {folder_path}")
 
         # ---- prep audio / dimensions ----
+
+
         waveform = audio["waveform"]
-        src_sample_rate = int(audio.get("sample_rate", 44100))
+        src_sample_rate = int(audio["sample_rate"])
+        print(f"[TranscribeV3] Using incoming rate: {src_sample_rate}")
+        # waveform = audio["waveform"]
+        # src_sample_rate = int(audio.get("sample_rate", 44100))
+        # --- Do NOT resample here; assume audio_clean already handled it ---
+        src_sample_rate = int(audio["sample_rate"])
+        print(f"[TranscribeV3] Using incoming rate: {src_sample_rate}")
+
 
         if waveform.ndim == 2:
             waveform = waveform.unsqueeze(0)  # (1, C, T) if needed
+
+
 
         total_samples = waveform.shape[-1]
         total_duration = float(total_samples) / float(src_sample_rate)
@@ -1701,11 +1734,26 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         fps = 25
         frames_per_scene = 97
 
-        # ✅ Use float precision for frame math to prevent drift
-        samples_per_frame = src_sample_rate / fps  # e.g., 1920.0 at 48k
-        samples_per_scene = frames_per_scene * samples_per_frame  # 97 * 1920 = 186240.0
-        offset_samples = int(round(set_index * scene_count * samples_per_scene))
 
+####################
+        # ✅ Use float precision for frame math to prevent drift
+        # samples_per_frame = src_sample_rate / fps  # e.g., 1920.0 at 48k
+        # samples_per_scene = frames_per_scene * samples_per_frame  # 97 * 1920 = 186240.0
+        # offset_samples = int(round(set_index * scene_count * samples_per_scene))
+###################
+
+        samples_per_frame = src_sample_rate / fps
+       # samples_per_scene = int(round(frames_per_scene * samples_per_frame))  # ← integer-safe
+        samples_per_scene = round(frames_per_scene * samples_per_frame, 5)
+
+        #offset_samples = set_index * scene_count * samples_per_scene          # ← integer math, no round()
+        offset_samples = int(round(set_index * scene_count * samples_per_scene))
+        print(f"[SyncCheck] set_index={set_index}, start_sec={offset_samples / src_sample_rate:.5f}")
+
+
+
+
+####################
         print(
             f"[TranscribeV3] set_index={set_index}, "
             f"samples_per_frame={samples_per_frame:.4f}, "
@@ -1718,6 +1766,7 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
 
         # ✅ integer sample starts for each scene (must round)
         starts = [int(round(offset_samples + i * samples_per_scene)) for i in range(scene_count)]
+
 
         # ---- split on exact sample boundaries (pad with silence if needed) ----
         print(
@@ -1818,6 +1867,7 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
 
             transcriptions.append(text)
 
+
         safe_transcriptions = [t if t else random.choice(fb_words) for t in transcriptions]
 
         enriched = []
@@ -1863,7 +1913,6 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         lyrics_text = " | ".join(merged)
 
 
-####################################################################################################################################
 
         meta = {
             "durations": durations_sec,
@@ -1881,9 +1930,12 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         self._maybe_auto_queue(total_sets, groups_in_last_set, set_index, enable_auto_queue)
 
         # ---- calculate start/end times for this set ----
+        
+        
         set_duration_sec = 16 * 97 / 25.0  # 62.08 seconds per set
         start_sec = set_index * set_duration_sec
         end_sec = min(start_sec + set_duration_sec, total_duration)
+
 
         def fmt_time(sec):
             m = int(sec // 60)
@@ -2071,3 +2123,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_CleanAudio":"VRGDG_CleanAudio",
 
 }
+
