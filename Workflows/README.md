@@ -72,7 +72,6 @@ This node structures prompts that guide video generation.
 - **lyric_overlap:** Smooth transitions between lines.  
 - **fallback_words:** Backup words if transcription fails.  
 - **context_strings:** Add clarity/corrections.  
-- Each run = ~62s of video (auto-queues 3 runs).  
 
 ### 📖 ReadMe Node
 - Explains run setup.  
