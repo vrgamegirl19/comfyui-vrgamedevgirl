@@ -867,8 +867,8 @@ class VRGDG_PromptSplitterV2:
 
 
 
-
 class VRGDG_CombinevideosV3: 
+    VERSION = "v3.1_fixed"
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("blended_video_frames",)
     FUNCTION = "blend_videos"
@@ -880,7 +880,8 @@ class VRGDG_CombinevideosV3:
         opt_videos = {f"video_{i}": ("IMAGE",) for i in range(1, 17)}
         return {
             "required": {
-                "fps": ("FLOAT", {"default": 24.0, "min": 1.0}),
+                "fps": ("FLOAT", {"default": 25.0, "min": 1.0}),
+                "duration": ("FLOAT", {"default": 4.0, "min": 0.01}),  # 👈 per-group duration in seconds
                 "audio_meta": ("DICT",),  # always use meta for durations
                 "index": ("INT", {"default": 0, "min": 0}),
                 "total_sets": ("INT", {"default": 1, "min": 1}),
@@ -891,68 +892,72 @@ class VRGDG_CombinevideosV3:
 
     # --- helpers -------------------------------------------------------------
 
-    def _target_frames_for_index(self, durations, idx_zero_based, fps, current_frames):
+    def _target_frames_for_index(self, durations, idx_zero_based, fps, is_frames=False):
         """
-        Force target frames to integer counts to prevent float rounding drift.
+        Decide target frame count from audio_meta.
+        durations can be in seconds OR frames depending on the key.
         """
-        try:
-            dur_sec = float(durations[idx_zero_based])
-        except Exception:
-            dur_sec = 0.0
-
-        frames_per_scene = int(round(fps * dur_sec))
-
-        # ✅ hard safety clamp: never above 97
-        if frames_per_scene > 97 or frames_per_scene <= 0:
-            frames_per_scene = 97
-
-
-        return max(1, frames_per_scene)
+        value = float(durations[idx_zero_based])
+        
+        if is_frames:
+            # Already in frames
+            return max(1, int(round(value)))
+        else:
+            # In seconds, convert to frames
+            frames_per_scene = int(round(fps * value))
+            return max(1, frames_per_scene)
 
 
-    def _trim_or_pad(self, video, target_frames, pad_short=False):
+    def _trim_or_pad(self, video, target_frames):
         if video is None:
             return None
         if video.ndim != 4:
             raise ValueError(f"Expected video tensor with 4 dims (frames,H,W,C), got {tuple(video.shape)}")
+        
         cur = int(video.shape[0])
+        
         if cur > target_frames:
+            # Trim if too long
             return video[:target_frames]
-        if cur < target_frames and pad_short:
-            need = target_frames - cur
-            last = video[-1:].clone()
-            pad = last.repeat(need, 1, 1, 1)
-            return torch.cat([video, pad], dim=0)
+        
+        if cur < target_frames:
+            # Warn if too short (video generation issue)
+            #print(f"⚠️ WARNING: Video has {cur} frames but needs {target_frames} (short by {target_frames - cur})")
+            return video  # Return as-is, don't pad
+        
         return video
-
     # --- main op -------------------------------------------------------------
 
-    def blend_videos(self, fps, audio_meta=None, index=0, total_sets=1, groups_in_last_set=16, **kwargs):
+    def blend_videos(self, fps, duration, audio_meta=None, index=0, total_sets=1, groups_in_last_set=16, **kwargs):
+        print(f"[CombineV3 {self.VERSION}] index={index}, ...")  # Update this line
+
         effective_scene_count = 16
         is_last_run = (index == total_sets - 1)
-        pad_short_videos = is_last_run  # ✅ only pad on last run
 
         print(f"[CombineV3] index={index}, total_sets={total_sets}, last_run={is_last_run}")
-        print(f"[CombineV3] pad_short_videos={pad_short_videos}, groups_in_last_set={groups_in_last_set}")
-
 
         # ✅ Always use durations from audio_meta
         if not isinstance(audio_meta, dict):
             raise ValueError("[CombineV3] audio_meta must be a dict")
 
-        # Accept either key: "durations" or "durations_frames"
-        durations = audio_meta.get("durations") or audio_meta.get("durations_frames")
-        if durations is None:
+        # Accept either key: "durations" (seconds) or "durations_frames" (frames)
+        durations_seconds = audio_meta.get("durations")
+        durations_frames = audio_meta.get("durations_frames")
+
+        if durations_frames is not None:
+            durations = list(durations_frames)
+            is_frames = True
+            print(f"[CombineV3] Using durations_frames (already in frames)")
+        elif durations_seconds is not None:
+            durations = list(durations_seconds)
+            is_frames = False
+            print(f"[CombineV3] Using durations (in seconds)")
+        else:
             raise ValueError("[CombineV3] audio_meta missing 'durations' or 'durations_frames' list")
 
-        durations = list(durations)
+        # Pad or trim durations list
         if len(durations) < effective_scene_count:
             durations += [0.0] * (effective_scene_count - len(durations))
-        else:
-            durations = durations[:effective_scene_count]
-
-        if len(durations) < effective_scene_count:
-            durations = durations + [0.0] * (effective_scene_count - len(durations))
         else:
             durations = durations[:effective_scene_count]
 
@@ -973,43 +978,31 @@ class VRGDG_CombinevideosV3:
 
         print(f"[CombineV3] combining {len(vids)} video(s) for this run (limit={limit_videos})")
 
-####################################
-        # trimmed = []
-        # for slot_idx, vid in vids:
-        #     if vid.ndim != 4:
-        #         raise ValueError(f"video_{slot_idx} must have shape (frames,H,W,C), got {tuple(vid.shape)}")
-        #     tgt = self._target_frames_for_index(durations, slot_idx - 1, fps, vid.shape[0])
-        #     print(f"[CombineV3] target={tgt}, actual={vid.shape[0]}")
-        #     trimmed_vid = self._trim_or_pad(vid, tgt, pad_short=pad_short_videos)
-        #     print(f"[CombineV3] video_{slot_idx}: {vid.shape[0]} -> target={tgt}, final={trimmed_vid.shape[0]}")
-        #     trimmed.append(trimmed_vid)
-################################
         trimmed = []
-
         for slot_idx, vid in vids:
             if vid.ndim != 4:
-                raise ValueError(f"video_{slot_idx} must have shape (frames,H,W,C), got {tuple(vid.shape)}")
+                raise ValueError(
+                    f"video_{slot_idx} must have shape (frames,H,W,C), got {tuple(vid.shape)}"
+                )
 
-            cur_frames = int(vid.shape[0])
+            # --- Decide target frames ---
+            tgt = self._target_frames_for_index(durations, slot_idx - 1, fps, is_frames=is_frames)
 
-            # --- Default: keep existing length exactly ---
-            target_frames = cur_frames
-
-            # --- Only pad if this is the final run and groups_in_last_set < 16 ---
+            # --- If last run and slot beyond available groups, skip it ---
             if is_last_run and slot_idx > groups_in_last_set:
-                print(f"[CombineV3] Padding placeholder for missing group {slot_idx}")
-                pad_shape = (97, *vid.shape[1:])  # 97-frame silent block
-                pad = torch.zeros(pad_shape, dtype=vid.dtype)
-                trimmed_vid = pad
-            else:
-                trimmed_vid = vid
+                print(f"[CombineV3] video_{slot_idx} skipped (beyond groups_in_last_set)")
+                continue
 
+            # --- Normal trim ---
+            trimmed_vid = self._trim_or_pad(vid, tgt)
+
+            print(
+                f"[CombineV3] video_{slot_idx}: actual={vid.shape[0]} -> target={tgt}, final={trimmed_vid.shape[0]}"
+            )
             trimmed.append(trimmed_vid)
-
 
         # Concatenate along frame dimension
         final = torch.cat([t.to(dtype=torch.float32) for t in trimmed], dim=0).cpu()
-
 
         print(f"[CombineV3] final concatenated frames: {final.shape[0]}")
         return (final,)
@@ -1439,7 +1432,227 @@ Close up of a woman in a white tank top and brown cargo shorts as she touches a 
 """
         return (full_string.strip(),)
 
+class VRGDG_MusicVideoPromptCreatorV2:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "character_description": ("STRING", {
+                    "multiline": True,
+                    "default": "The Women.",
+                }),
+                "song_theme_style": ("STRING", {
+                    "multiline": True,
+                    "default": "cinematic realism, emotional storytelling, soft surrealism, naturalistic tone, dreamlike nostalgia, modern drama, poetic symbolism, intimate atmosphere",
+                }),
+                "pipe_separated_lyrics": ("STRING", {
+                    "multiline": True,
+                    "default": "line1 | line2 | line3",
+                }),
+                "word_count_min": ("INT", {
+                    "default": 30,
+                    "min": 10,
+                    "max": 200,
+                }),
+                "word_count_max": ("INT", {
+                    "default": 50,
+                    "min": 10,
+                    "max": 200,
+                }),
+                
+                # ✅ NEW: List handling mode
+                "list_handling_mode": ([
+                    "Strict Cycle (use each once, then repeat)",
+                    "Reference Guide (LLM creates variations inspired by list)",
+                    "Random Selection (pick randomly from list)",
+                    "Free Interpretation (LLM can ignore or combine items)"
+                ], {
+                    "default": "Reference Guide (LLM creates variations inspired by list)"
+                }),
+                
+                "environment": ("STRING", {
+                    "multiline": True,
+                    "default": "open field at dusk, dimly lit bedroom, empty city street at night, forest clearing with morning fog, seaside cliff at golden hour, rainy urban alley, sunlit living room, desert road at sunrise",
+                }),
+                "lighting": ("STRING", {
+                    "multiline": True,
+                    "default": "warm amber glow, cool window light, neon reflections, diffused morning light, soft backlight haze, flickering streetlights, gentle afternoon sun, pink-orange dawn light",
+                }),
+                "camera_motion": ("STRING", {
+                    "multiline": True,
+                    "default": "zoom in, zoom out, tilt down, rotate around, tilt up, pan, track",
+                }),
+                "physical_interaction": ("STRING", {
+                    "multiline": True,
+                    "default": "walking through tall grass, lying on bed staring upward, leaning against a wall in stillness, reaching toward sunlight, hair moving in wind, footsteps in puddles, brushing hand across furniture, standing motionless in breeze",
+                }),
+                "facial_expression": ("STRING", {
+                    "multiline": True,
+                    "default": "Intense raw emotion",
+                }),
+                "shots": ("STRING", {
+                    "multiline": True,
+                    "default": "Close up, medium, wide angle, over the shoulder, point of view, overhead, ground level",
+                }),
+                "outfit_rules": ("STRING", {
+                    "multiline": True,
+                    "default": "a white dress",
+                }),
+                "character_visibility": ("STRING", {
+                    "multiline": True,
+                    "default": "mostly visible, half-shadowed, silhouetted, reflected or obscured, seen from behind, partially out of frame, emerging from light, fading into darkness",
+                }),
+                "signal": (any_typ,),
+            }
+        }
 
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("concatenated_string",)
+
+    FUNCTION = "build_prompt_instructions"
+    CATEGORY = "VRGDG/Prompt Tools"
+
+    def build_prompt_instructions(
+        self,
+        character_description,
+        song_theme_style,
+        pipe_separated_lyrics,
+        word_count_min,
+        word_count_max,
+        list_handling_mode,  # ✅ New parameter
+        environment,
+        lighting,
+        camera_motion,
+        physical_interaction,
+        facial_expression,
+        shots,
+        outfit_rules,
+        character_visibility,
+        signal,
+    ):
+        # ✅ Generate list handling instructions based on mode
+        if "Strict Cycle" in list_handling_mode:
+            list_instructions = """8. List Handling:
+- If multiple options are provided for any of the below categories, treat them as a list.
+- Cycle through list items across prompts in order.
+- Do not repeat an item until all others have been used.
+- Once all have been used, restart the cycle.
+- Each prompt must use exactly one item from each category."""
+        
+        elif "Reference Guide" in list_handling_mode:
+            list_instructions = """8. List Handling:
+- The categories below are INSPIRATION and REFERENCE GUIDES.
+- Use them as starting points to create variations and similar ideas.
+- Feel free to combine elements or create new options in the same style.
+- Prioritize what works best for each lyric fragment and the overall narrative flow.
+- Maintain variety across prompts - avoid repeating the exact same choices.
+- Stay true to the overall aesthetic and mood of the provided examples."""
+        
+        elif "Random Selection" in list_handling_mode:
+            list_instructions = """8. List Handling:
+- If multiple options are provided for any category, select randomly from the list.
+- Items can repeat across prompts - there is no cycling requirement.
+- Prioritize what works best for each lyric fragment and the overall narrative flow.
+- Ensure overall variety across the full sequence of prompts.
+- Each prompt should feel fresh even if some elements repeat."""
+        
+        else:  # Free Interpretation
+            list_instructions = """8. List Handling:
+- The categories below are LOOSE GUIDELINES ONLY.
+- You may use them as-is, combine them, modify them, or create entirely new options.
+- Prioritize what works best for each lyric fragment and the overall narrative flow.
+- Feel free to ignore any category if it doesn't serve the visual storytelling.
+- Creativity and coherence are more important than strict adherence to the lists."""
+        
+        full_string = f"""
+AI Music Video Prompt Creator
+
+User Input:
+Character: {character_description.strip()}
+Style/Theme: {song_theme_style.strip()}
+Lyrics: {pipe_separated_lyrics.strip()}
+
+Core Rules:
+
+1. Lyric-Driven Prompts (MOST IMPORTANT):
+   - The lyrics provided above are pipe-separated (|).
+   - There are exaclty 16 lyric fragments and each one corresponds to ONE video prompt.
+   - FIRST, read through ALL the lyrics to understand the full narrative arc and emotional journey of the song.
+   - Understand the overall story, themes, and progression before creating any individual prompts.
+   - Then, create one prompt per lyric fragment that reflects both:
+     a) The specific meaning/mood of THAT lyric fragment
+     b) How it fits into the larger narrative and aesthetic of the FULL song
+   - The NUMBER of prompts MUST MATCH the NUMBER of lyric fragments exactly this will always be 16.
+   - Each prompt's visual content should be INSPIRED BY and REFLECT the meaning, mood, and imagery of its corresponding lyric fragment.
+   - The visuals should enhance and complement what the lyric is expressing.
+
+2. Structure (this order must always be followed):
+   [Shot Type] → [Character + Outfit] → [Physical Interaction] → [Environment] → [Lighting] → [Camera Motion] → [Cinematic Detail] → [Facial Expression]
+
+3. Continuity Between Prompts:
+   - Each prompt should flow naturally from the previous one.
+   - Connect the ending visual detail of one prompt to the beginning of the next.
+   - Create a cohesive visual narrative that follows the lyrical journey.
+
+4. Visual Requirements:
+   Every prompt must include:
+   - Character + Outfit
+   - Physical Interaction
+   - Environment
+   - Lighting
+   - Camera Motion
+   - Facial Expression
+
+5. Language Rules:
+   - Clear, direct, natural wording only.
+   - No abstract or poetic terms, no sound descriptions, no static shots.
+   - Do not use quotation marks, colons, semicolons, or special characters.
+   - The ONLY allowed special character is the "|" PIPE separator BETWEEN prompts.
+   - Never use "|" inside a prompt itself.
+
+6. Word Count:
+   - Every prompt must be between {word_count_min} and {word_count_max} words.
+
+7. Endings:
+   - End each prompt on a strong visual detail.
+   - Never end with mood labels or trailing phrases like "captivated gaze," "vulnerable," or "conveying emotion."
+   - Mood must be shown through visuals, not named.
+
+{list_instructions}
+
+Environment: {environment.strip()}
+Lighting: {lighting.strip()}
+Camera Motion/Angles: {camera_motion.strip()}
+Physical Interaction: {physical_interaction.strip()}
+Facial Expression: {facial_expression.strip()}
+Shots: {shots.strip()}
+Outfit Rules: {outfit_rules.strip()}
+Character Visibility: {character_visibility.strip()}
+
+Prompt Structure (for every lyric fragment, {word_count_min}–{word_count_max} words):
+
+-Start with the Shot Type
+-Then add in the Character and Outfit if any
+-Then add their Physical Interaction
+-Then add the Environment
+-Then add the Lighting
+-Then add the Camera Motion
+-Then provide the Cinematic Detail
+-Then mention the Facial Expression / Emotion
+
+Formatting Rules:
+- Input lyrics are split by "|"
+- Output prompts MUST be joined with "|" (one prompt per lyric)
+- Do NOT insert "|" anywhere inside a prompt
+- Use simple everyday words.
+- There should be exaclty 16 prompts that are PIPE separated. 
+- Remember that the prompts should be lyric driven while taking into account user input.
+
+Example prompt using this Structure:
+Close up of a woman in a white dress as she touches a broad jungle leaf, in a vibrant jungle under a sun-dappled canopy, slow tracking reveals textured leaves. Intense raw emotion
+
+"""
+        return (full_string.strip(),)
 
 class VRGDG_PromptSplitterV3:
     RETURN_TYPES = tuple(["STRING"] * 16)
@@ -1471,19 +1684,21 @@ class VRGDG_PromptSplitterV3:
         return tuple(outputs)
 
 
-
+#########################updated on 10/18
+import hashlib
 class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
     # meta, total_duration, lyrics_string, index, instructions, total_sets, groups_in_last_set,
     # frames_per_scene, audio_meta, and 16 AUDIO outputs
     RETURN_TYPES = (
         "DICT", "FLOAT", "STRING", "INT", "STRING", "STRING", "STRING",
-        "INT", "INT", "INT", "DICT"
+        "INT", "INT", "INT", "DICT","STRING"
     ) + tuple(["AUDIO"] * 16) + (any_typ,)
 
     RETURN_NAMES = (
         "meta", "total_duration", "lyrics_string", "index",
         "start_time", "end_time", "instructions",
-        "total_sets", "groups_in_last_set", "frames_per_scene", "audio_meta"
+        "total_sets", "groups_in_last_set", "frames_per_scene", "audio_meta",
+        "output_folder" 
     ) + tuple([f"audio_{i}" for i in range(1, 17)]) + ("signal_out",)
 
     FUNCTION = "run"
@@ -1507,7 +1722,9 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
             "required": {
                 "audio": ("AUDIO",),
                 "trigger": (any_typ,),
-                "folder_path": ("STRING", {"multiline": True, "default": ""}),
+                "scene_duration_seconds": ("FLOAT", {"default": 4.0, "min": 1.0, "max": 5.0}),
+                # ▼ updated as requested
+                "folder_path": ("STRING", {"multiline": False, "default": "video_output"}),
                 "enable_auto_queue": ("BOOLEAN", {"default": True}),
                 "language": (
                     [
@@ -1529,6 +1746,7 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
                     {"default": "english"}
                 ),
                 "enable_lyrics": ("BOOLEAN", {"default": True}),
+                "use_context_only": ("BOOLEAN", {"default": False}),  # ✅ added 10/13
                 "overlap_lyric_seconds": ("FLOAT", {"default": 0.0, "min": 0.0}),
                 "fallback_words": ("STRING", {"default": "thinking,walking,sitting"}),
             },
@@ -1550,19 +1768,14 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
             print(f"[Index] Failed to scan folder '{folder_path}': {e}")
             return 0
 
-    def _calculate_sets(self, audio, index):
-        """Inlined VRGDG_CalculateSetsFromAudio_Queue (your exact math)."""
-
-        # ---- initialize safe defaults (prevents UnboundLocalError) ----
+    def _calculate_sets(self, audio, index, scene_duration_seconds,enable_auto_queue=True):
+        """Inlined VRGDG_CalculateSetsFromAudio_Queue (cleaned and drift-free)."""
+        # ---- initialize safe defaults ----
         instructions = ""
         end_time_str = "0:00"
         total_sets = 0
         groups_in_last_set = 0
-        frames_per_scene = 97
         durations_frames_full = []
-        fps = 25
-        groups_per_set = 16
-        scene_duration = 3.88  # informational only; frames are authoritative
 
         # ---- read audio duration ----
         try:
@@ -1571,42 +1784,44 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         except Exception:
             return (
                 "❌ Expected audio to be a dict with 'waveform' and 'sample_rate'.",
-                "0:00", 0, 0, 97, {"durations_frames": []}
+                "0:00", 0, 0, 0, {"durations_frames": []}
             )
 
+        fps = 25
+        frames_per_scene = int(round(fps * scene_duration_seconds))
+        frames_per_scene = self._adjust_frames_for_humo(frames_per_scene)  # ✅ Round UP for HuMo
+
+        groups_per_set = 16
+
+        # --- compute sample-based timing ---
+        samples_per_frame = sample_rate / fps
+        samples_per_scene = int(frames_per_scene * sample_rate / fps + 0.5)
+
+        # ---- compute total audio frames and duration ----
         try:
             num_samples = waveform.shape[-1]
             audio_duration = num_samples / sample_rate
         except Exception:
             return (
                 "❌ Failed to compute audio duration from waveform.",
-                "0:00", 0, 0, 97, {"durations_frames": []}
+                "0:00", 0, 0, frames_per_scene, {"durations_frames": []}
             )
 
-        minutes = int(audio_duration // 60)
-        seconds = int(audio_duration % 60)
-        end_time_str = f"{minutes}:{seconds:02d}"
+        # --- build list of frame counts per group ---
+        total_audio_frames = int(num_samples / samples_per_frame + 0.5) if num_samples > 0 else 0
 
-        # authoritative frame math
-        frames_per_scene = 97
-        samples_per_frame = sample_rate / fps
-        total_audio_frames = int(round(num_samples / samples_per_frame))
-
-        print(
-            f"[SyncCheck] total_audio_frames={total_audio_frames}, "
-            f"len(durations_frames_full)={len(durations_frames_full)}, "
-            f"groups_in_last_set={groups_in_last_set}"
-        )
-
-        durations_frames_full = []
         if total_audio_frames > 0:
-            full_groups = total_audio_frames // frames_per_scene
-            leftover_frames = total_audio_frames % frames_per_scene
+            full_groups = math.floor(total_audio_frames / frames_per_scene)
+            leftover_frames = total_audio_frames - full_groups * frames_per_scene
 
             if full_groups > 0:
                 durations_frames_full.extend([frames_per_scene] * full_groups)
             if leftover_frames > 0:
                 durations_frames_full.append(leftover_frames)
+
+            if durations_frames_full and durations_frames_full[0] != frames_per_scene:
+                print(f"[Fixup] Forcing first group {durations_frames_full[0]} → {frames_per_scene}")
+                durations_frames_full[0] = frames_per_scene
 
             total_groups = len(durations_frames_full)
             total_sets = math.ceil(total_groups / groups_per_set) if total_groups > 0 else 0
@@ -1616,52 +1831,102 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
                 else (groups_per_set if total_groups > 0 else 0)
             )
 
-        # Default empty instructions
-        instructions = ""
+        ########################################instructions  for read me note
+        # --- human-readable time strings ---
+        minutes = int(audio_duration // 60)
+        seconds = int(audio_duration % 60)
+        end_time_str = f"{minutes}:{seconds:02d}"
 
-        # Initial run instructions (index == 0)
+        # --- generate instructions ---
         if total_sets == 0:
             instructions = "❌ Audio too short. No runs required."
-        elif groups_in_last_set == 16:
-            instructions = (
-                f"✅ {total_sets} runs needed.\n"
-                f"All runs are already queued automatically.\n"
-                f"No more action required."
-            )
+            
         elif total_sets == 1:
-            disable_text = "disable 16" if groups_in_last_set == 15 else f"disable {groups_in_last_set+1}–16"
-            instructions = (
-                f"⚠️ 1 run needed.\n"
-                f"No runs were queued automatically.\n"
-                f"Set groups 1–{groups_in_last_set} ON and {disable_text},\n"
-                f"then press Run ONE time."
-            )
+            # Single run needed
+            disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+            if groups_in_last_set == 16:
+                # Full single set - no muting needed
+                instructions = (
+                    f"⚠️  1 run needed\n"
+                    f"✅ Using all 16 groups"
+                )
+            else:
+                # Partial single set - muting required BEFORE running
+                instructions = (
+                    f"⚠️  Audio is less than 16 groups ({groups_in_last_set} groups detected)\n"
+                    f"❗ Mute {disable_text} on 'Fast Groups Muter' node\n"
+                    f"🔴 Cancel this run and re-run after muting"
+                )
+            
         elif groups_in_last_set != 16:
-            disable_text = "disable 16" if groups_in_last_set == 15 else f"disable {groups_in_last_set+1}–16"
-            instructions = (
-                f"⚠️ {total_sets} runs needed.\n"
-                f"{total_sets - 1} full runs are already queued automatically.\n"
-                f"Set groups 1–{groups_in_last_set} ON and {disable_text},\n"
-                f"then press Run ONE more time for the last set."
-            )
+            # Multiple runs with partial last set
+            disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+            
+            if enable_auto_queue:
+                # Calculate what's currently in queue (this run + auto-queued)
+                queued_now = 1 + max(0, total_sets - 2)  # This run + auto-queued middle runs
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"✅ {queued_now} run(s) currently in queue\n"
+                    f"❗ Mute {disable_text} on 'Fast Groups Muter', then hit RUN one more time"
+                )
+            else:
+                # Auto-queue disabled
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"🔴 Auto-queue is DISABLED\n"
+                    f"❗ Manually run each set and mute {disable_text} on final run"
+                )
+            
         else:
-            instructions = (
-                f"✅ {total_sets} runs needed.\n"
-                f"All runs are already queued automatically.\n"
-                f"No more action required."
-            )
+            # All runs are full sets
+            if enable_auto_queue:
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"✅ All {total_sets} runs are auto-queued"
+                )
+            else:
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"🔴 Auto-queue is DISABLED\n"
+                    f"❗ Manually run all {total_sets} sets"
+                )
 
-
+        # Progress messages during runs
         if total_sets > 1 and index > 0:
             if index + 1 == total_sets:
-                instructions = f"🏁 Final run ({index + 1} of {total_sets}) in progress..."
+                # Final run
+                if groups_in_last_set != 16:
+                    disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+                    instructions = (
+                        f"🏁 Final run ({index + 1} of {total_sets})\n"
+                        f"✅ Make sure {disable_text} are muted!"
+                    )
+                else:
+                    instructions = f"🏁 Final run ({index + 1} of {total_sets}) in progress..."
             else:
-                instructions = f"⏳ Run {index + 1} of {total_sets} in progress..."
+                # Middle runs
+                if groups_in_last_set != 16:
+                    disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+                    instructions = (
+                        f"⏳ Run {index + 1} of {total_sets} in progress\n"
+                        f"📝 Reminder: {disable_text} need to be muted on last run"
+                    )
+                else:
+                    instructions = f"⏳ Run {index + 1} of {total_sets} in progress..."
 
+        # --- slice durations_frames for THIS set only ---
+        start_group = index * 16
+        end_group = min(start_group + 16, len(durations_frames_full))
+        durations_frames_this_set = durations_frames_full[start_group:end_group] if durations_frames_full else []
 
         return (
-            instructions, end_time_str, total_sets, groups_in_last_set,
-            frames_per_scene, {"durations_frames": durations_frames_full or []}
+            instructions,
+            end_time_str,
+            total_sets,
+            groups_in_last_set,
+            frames_per_scene,
+            {"durations_frames": durations_frames_this_set},
         )
 
     def _maybe_auto_queue(self, total_sets: int, groups_in_last_set: int, index: int, enable: bool):
@@ -1677,15 +1942,162 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
                     runs = max(0, total_sets - 1)  # full final set → queue all
                 else:
                     runs = max(0, total_sets - 2)  # partial final set → leave last manual
-                print(
-                    f"[AutoQueue] Queuing {runs} extra runs "
-                    f"(index={index}, total_sets={total_sets}, last={groups_in_last_set})"
-                )
+                print(f"[AutoQueue] Queuing {runs} extra runs (total_sets={total_sets}, last={groups_in_last_set})")
                 for _ in range(runs):
                     PromptServer.instance.send_sync("impact-add-queue", {})
         else:
             print(f"[AutoQueue] Skipping (index={index} > 0)")
 
+    # ---------- NEW: Project metadata helpers ----------
+    def _get_or_create_project_metadata(self, folder_path: str, audio_duration: float, scene_duration: float, audio_waveform) -> tuple:
+        """
+        Creates/reads a project metadata file to track project state.
+        Returns (project_info_dict, is_new_project_bool)
+        """
+        metadata_file = os.path.join(folder_path, ".project_metadata.json")
+
+        # Calculate audio hash (first 1 second to be fast)
+        try:
+            sample_data = audio_waveform[..., :48000].cpu().numpy().tobytes()
+            audio_hash = hashlib.md5(sample_data).hexdigest()[:16]
+        except Exception:
+            audio_hash = "unknown"
+
+        # Calculate expected project specs
+        total_groups = math.ceil(audio_duration / scene_duration)
+        expected_sets = math.ceil(total_groups / 16)
+
+        current_project = {
+            "audio_duration": audio_duration,
+            "scene_duration": scene_duration,
+            "audio_hash": audio_hash,
+            "expected_sets": expected_sets,
+            "total_groups": total_groups,
+        }
+
+        # Check if metadata file exists
+        if os.path.exists(metadata_file):
+            try:
+                with open(metadata_file, 'r') as f:
+                    existing_metadata = json.load(f)
+
+                # Compare current audio with metadata
+                is_same_audio = (
+                    abs(existing_metadata.get("audio_duration", 0) - audio_duration) < 1.0 and
+                    existing_metadata.get("audio_hash") == audio_hash and
+                    abs(existing_metadata.get("scene_duration", 0) - scene_duration) < 0.1
+                )
+
+                if is_same_audio:
+                    print(f"✅ [Metadata] Continuing existing project — Audio {audio_duration:.1f}s; {expected_sets} sets expected")
+                    return existing_metadata, False  # Not a new project
+                else:
+                    print(f"⚠️ [Metadata] DIFFERENT audio/settings detected — starting new project")
+                    print(f"   Old: {existing_metadata.get('audio_duration', 0):.1f}s @ {existing_metadata.get('scene_duration', 0):.1f}s/scene")
+                    print(f"   New: {audio_duration:.1f}s @ {scene_duration:.1f}s/scene")
+                    return current_project, True  # New project needed
+
+            except Exception as e:
+                print(f"⚠️ [Metadata] Could not read existing metadata: {e}")
+                return current_project, True
+        else:
+            # No metadata file exists - new project
+            print(f"🆕 [Metadata] New project starting — Audio {audio_duration:.1f}s; {expected_sets} sets needed")
+            return current_project, True
+
+    def _save_project_metadata(self, folder_path: str, metadata: dict):
+        """Save project metadata to JSON file."""
+        metadata_file = os.path.join(folder_path, ".project_metadata.json")
+
+        try:
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            print(f"💾 [Metadata] Saved project metadata")
+        except Exception as e:
+            print(f"⚠️ [Metadata] Could not save metadata: {e}")
+
+    def _get_smart_output_folder(self, folder_name: str, audio_duration: float, scene_duration: float, audio_waveform) -> tuple:
+        """
+        Creates output folder intelligently using metadata.
+        Returns (folder_path, project_metadata_dict)
+        """
+        # Clean the folder name
+        folder_name = folder_name.strip()
+        if not folder_name:
+            folder_name = "video_output"
+
+        # Remove invalid characters
+        folder_name = re.sub(r'[<>:"|?*]', '_', folder_name)
+        folder_name = folder_name.replace('..', '').replace('/', '_').replace('\\', '_')
+
+        # Get ComfyUI output directory
+        base_output = folder_paths.get_output_directory()
+        target_folder = os.path.join(base_output, folder_name)
+
+        # Create folder if it doesn't exist
+        os.makedirs(target_folder, exist_ok=True)
+
+        # Check metadata
+        metadata, is_new_project = self._get_or_create_project_metadata(
+            target_folder, audio_duration, scene_duration, audio_waveform
+        )
+
+        # If it's a new project but folder has files, create versioned folder
+        if is_new_project:
+            existing_files = os.listdir(target_folder)
+            existing_files = [f for f in existing_files if f != ".project_metadata.json"]
+
+            if existing_files:
+                version = 2
+                while os.path.exists(os.path.join(base_output, f"{folder_name}_v{version}")):
+                    version += 1
+
+                new_folder_name = f"{folder_name}_v{version}"
+                target_folder = os.path.join(base_output, new_folder_name)
+                os.makedirs(target_folder, exist_ok=True)
+
+                print(f"🔄 [Auto-Version] Different audio detected → creating '{new_folder_name}'")
+                print(f"🔄 [Auto-Version] Old project preserved in '{folder_name}'")
+                print(f"🔄 [Auto-Version] Full path: {target_folder}")
+
+        # Save/update metadata
+        self._save_project_metadata(target_folder, metadata)
+
+        print(f"📁 [Folder] Using output folder: {target_folder}")
+        return target_folder, metadata
+    
+
+    def _send_popup_notification(self, message: str, message_type: str = "info", title: str = "Audio Split Instructions"):
+        """
+        Sends a non-blocking popup notification to the ComfyUI frontend.
+        message_type: "red", "yellow"/"warning", "green"/"success", "info", "error"
+        """
+        try:
+            from server import PromptServer
+            
+            PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+                "message": message,
+                "type": message_type,
+                "title": title
+            })
+            print(f"[Popup] Sent {message_type} notification to UI")
+        except Exception as e:
+            print(f"[Popup] Could not send notification: {e}")
+
+    def _adjust_frames_for_humo(self, frames: int) -> int:
+        """
+        Rounds UP to the nearest HuMo-compatible frame count (4n + 1).
+        This ensures videos are at least as long as requested.
+        Examples: 100→101, 75→77, 50→53
+        """
+        # Round UP: if frames = 100, we want 101 (not 97)
+        adjusted = 4 * ((frames + 2) // 4) + 1
+        
+        if adjusted != frames:
+            actual_duration = adjusted / 25  # assuming 25fps
+            print(f"[HuMo Adjust] {frames} frames → {adjusted} frames ({actual_duration:.2f}s) - rounded up for HuMo compatibility")
+        
+        return adjusted
     # --------------- main ---------------
     def run(
         self,
@@ -1695,71 +2107,51 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         enable_auto_queue=True,
         language="english",
         enable_lyrics=True,
+        use_context_only=False,  # ✅ added 10/13
         overlap_lyric_seconds=0.0,
         fallback_words="",
+        scene_duration_seconds=4.0,
         **kwargs
     ):
-        
-        # --- define fixed parameters immediately ---
-        scene_count = 16
-        fps = 25
-        frames_per_scene = 97
-
-        # ---- index from folder (replaces TriggerCounter + GetIndexNumber) ----
-        set_index = self._count_index_from_folder(folder_path)
-        print(f"[TranscribeV3] Auto-detected set_index={set_index} from folder: {folder_path}")
-
-        # ---- prep audio / dimensions ----
-
-
+        # ---- prep audio / dimensions FIRST (need for metadata) ----
         waveform = audio["waveform"]
-        src_sample_rate = int(audio["sample_rate"])
-        print(f"[TranscribeV3] Using incoming rate: {src_sample_rate}")
-        # waveform = audio["waveform"]
-        # src_sample_rate = int(audio.get("sample_rate", 44100))
-        # --- Do NOT resample here; assume audio_clean already handled it ---
-        src_sample_rate = int(audio["sample_rate"])
-        print(f"[TranscribeV3] Using incoming rate: {src_sample_rate}")
-
+        sample_rate = int(audio["sample_rate"])
+        print(f"[Audio] sample_rate: {sample_rate}")
 
         if waveform.ndim == 2:
-            waveform = waveform.unsqueeze(0)  # (1, C, T) if needed
-
-
+            waveform = waveform.unsqueeze(0)  # ensure (1, C, T) shape if needed
 
         total_samples = waveform.shape[-1]
-        total_duration = float(total_samples) / float(src_sample_rate)
+        total_duration = float(total_samples) / float(sample_rate)
 
+        # ---- Check if metadata exists BEFORE creating folder/metadata ----
+        base_output = folder_paths.get_output_directory()
+        temp_folder = os.path.join(base_output, folder_path.strip() if folder_path.strip() else "video_output")
+        metadata_existed_before = os.path.exists(os.path.join(temp_folder, ".project_metadata.json"))
+
+        # ---- Get smart output folder with metadata ----
+        output_folder, project_metadata = self._get_smart_output_folder(
+            folder_path, 
+            total_duration, 
+            scene_duration_seconds,
+            waveform
+        )
+
+        # ---- index from folder (replaces TriggerCounter + GetIndexNumber) ----
+        set_index = self._count_index_from_folder(output_folder)
+        print(f"[Index] Detected set_index={set_index} from folder: {output_folder}")
+
+        # ---- split parameters ----
         scene_count = 16
         fps = 25
-        frames_per_scene = 97
 
+        samples_per_frame = sample_rate / fps
+        frames_per_scene = int(round(fps * scene_duration_seconds))
+        frames_per_scene = self._adjust_frames_for_humo(frames_per_scene)  # ✅ Round UP for HuMo
 
-####################
-        # ✅ Use float precision for frame math to prevent drift
-        # samples_per_frame = src_sample_rate / fps  # e.g., 1920.0 at 48k
-        # samples_per_scene = frames_per_scene * samples_per_frame  # 97 * 1920 = 186240.0
-        # offset_samples = int(round(set_index * scene_count * samples_per_scene))
-###################
+        samples_per_scene = int(frames_per_scene * sample_rate / fps + 0.5)
 
-        samples_per_frame = src_sample_rate / fps
-       # samples_per_scene = int(round(frames_per_scene * samples_per_frame))  # ← integer-safe
-        samples_per_scene = round(frames_per_scene * samples_per_frame, 5)
-
-        #offset_samples = set_index * scene_count * samples_per_scene          # ← integer math, no round()
         offset_samples = int(round(set_index * scene_count * samples_per_scene))
-        print(f"[SyncCheck] set_index={set_index}, start_sec={offset_samples / src_sample_rate:.5f}")
-
-
-
-
-####################
-        print(
-            f"[TranscribeV3] set_index={set_index}, "
-            f"samples_per_frame={samples_per_frame:.4f}, "
-            f"samples_per_scene={samples_per_scene:.2f}, "
-            f"offset_samples={offset_samples}"
-        )
 
         # durations (seconds) used for meta only
         durations_sec = [frames_per_scene / fps] * scene_count
@@ -1767,185 +2159,242 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         # ✅ integer sample starts for each scene (must round)
         starts = [int(round(offset_samples + i * samples_per_scene)) for i in range(scene_count)]
 
-
         # ---- split on exact sample boundaries (pad with silence if needed) ----
-        print(
-            f"[SyncCheck] fps={fps}, frames_per_scene={frames_per_scene}, "
-            f"samples_per_frame={samples_per_frame:.4f}, "
-            f"samples_per_scene={samples_per_scene:.2f}, "
-            f"offset_samples={offset_samples}"
-        )
-
         segments = []
         for idx in range(scene_count):
             start_samp = starts[idx]
-            end_samp = int(round(start_samp + samples_per_scene))
+            end_samp = start_samp + samples_per_scene
 
             if start_samp >= total_samples:
-                seg = torch.zeros((1, 1, int(round(samples_per_scene))), dtype=waveform.dtype)
-                print(f"[Split] idx={idx} filled with silence (past EOF)")
+                seg = torch.zeros((1, 2, samples_per_scene), dtype=waveform.dtype)
             else:
                 end_samp = min(total_samples, end_samp)
                 seg = waveform[..., start_samp:end_samp].contiguous().clone()
 
                 cur_len = seg.shape[-1]
                 if cur_len < samples_per_scene:
-                    pad = int(round(samples_per_scene - cur_len))
+                    pad = samples_per_scene - cur_len
                     seg = torch.nn.functional.pad(seg, (0, pad))
-                    print(f"[Split] idx={idx} padded {pad} samples")
 
-            segments.append({"waveform": seg, "sample_rate": src_sample_rate})
+            segments.append({"waveform": seg, "sample_rate": sample_rate})
 
-        print(f"[Split] Created {len(segments)} segments")
+        # ✅ SYNC VERIFICATION (concise)
+        total_segment_samples = sum(seg["waveform"].shape[-1] for seg in segments)
+        expected_samples = scene_count * samples_per_scene
+        diff_samples = total_segment_samples - expected_samples
+        if abs(diff_samples) > 10:
+            print(f"⚠️ [Sync] Mismatch: expected {expected_samples}, got {total_segment_samples} ({diff_samples} samples)")
 
-        # ---- optional transcription + write audio_*.wav ----
-        if enable_lyrics:
+        # ---- optional transcription ----
+        if use_context_only:
+            processor = model = device = None
+            transcriptions = [""] * scene_count
+            print("[TranscribeV3] Context-only mode (transcription disabled)")
+        elif enable_lyrics:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
             model = WhisperForConditionalGeneration.from_pretrained(
                 "openai/whisper-large-v3"
             ).to(device).eval()
+
+            fb_words = [w.strip() for w in fallback_words.split(",") if w.strip()] or self.fallback_words
+            overlap_samples = int(overlap_lyric_seconds * sample_rate)
+            transcriptions = []
+
+            for idx, start_samp in enumerate(starts):
+                trans_start = int(round(max(0, start_samp - overlap_samples)))
+                trans_end = int(round(min(total_samples, start_samp + samples_per_scene + overlap_samples)))
+                seg_for_transcribe = waveform[..., trans_start:trans_end].contiguous().clone()
+
+                try:
+                    flat_seg = seg_for_transcribe.mean(dim=1).squeeze()
+                    if sample_rate != 16000:
+                        flat_seg = torchaudio.functional.resample(flat_seg, sample_rate, 16000)
+
+                    inputs = processor(
+                        flat_seg,
+                        sampling_rate=16000,
+                        return_tensors="pt",
+                        padding="longest"
+                    )
+                    input_features = inputs["input_features"].to(device)
+
+                    if language == "auto":
+                        generated_ids = model.generate(input_features)
+                    else:
+                        decoder_ids = processor.get_decoder_prompt_ids(language=language)
+                        generated_ids = model.generate(input_features, forced_decoder_ids=decoder_ids)
+
+                    text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+                    #print(f"[Transcribe DEBUG] Segment {idx}: '{text[:60]}...'")
+
+                except Exception:
+                    text = random.choice(fb_words)
+
+                transcriptions.append(text)
         else:
             processor = model = device = None
-
-        out_dir = folder_paths.get_input_directory()
-        os.makedirs(out_dir, exist_ok=True)
-
-        # clean old chunks
-        for filename in os.listdir(out_dir):
-            if filename.startswith("audio_") and filename.endswith(".wav"):
-                try:
-                    os.remove(os.path.join(out_dir, filename))
-                except Exception as e:
-                    print(f"[Split] Failed to delete {filename}: {e}")
+            transcriptions = [""] * scene_count
+            print("[TranscribeV3] Transcription disabled")
 
         fb_words = [w.strip() for w in fallback_words.split(",") if w.strip()] or self.fallback_words
-        overlap_samples = int(overlap_lyric_seconds * src_sample_rate)
-        transcriptions = []
-
-        for idx, start_samp in enumerate(starts):
-            end_samp = min(total_samples, start_samp + samples_per_scene)
-            filepath = os.path.join(out_dir, f"audio_{idx+1}.wav")
-
-            torchaudio.save(
-                filepath,
-                segments[idx]["waveform"].squeeze(0).cpu(),
-                src_sample_rate
-            )
-
-            if not enable_lyrics:
-                transcriptions.append("")
-                continue
-
-            # ✅ Convert slice boundaries to integers to avoid float index errors
-            trans_start = int(round(max(0, start_samp - overlap_samples)))
-            trans_end = int(round(min(total_samples, end_samp + overlap_samples)))
-            seg_for_transcribe = waveform[..., trans_start:trans_end].contiguous().clone()
-
-            try:
-                flat_seg = seg_for_transcribe.mean(dim=1).squeeze()
-                if src_sample_rate != 16000:
-                    flat_seg = torchaudio.functional.resample(flat_seg, src_sample_rate, 16000)
-
-                inputs = processor(
-                    flat_seg,
-                    sampling_rate=16000,
-                    return_tensors="pt",
-                    padding="longest"
-                )
-                input_features = inputs["input_features"].to(device)
-
-                if language == "auto":
-                    generated_ids = model.generate(input_features)
-                else:
-                    decoder_ids = processor.get_decoder_prompt_ids(language=language)
-                    generated_ids = model.generate(input_features, forced_decoder_ids=decoder_ids)
-
-                text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
-            except Exception:
-                text = random.choice(fb_words)
-
-            transcriptions.append(text)
-
-
         safe_transcriptions = [t if t else random.choice(fb_words) for t in transcriptions]
 
+        # Build final prompts
         enriched = []
         for i in range(scene_count):
-            lyric = safe_transcriptions[i]
             ctx = kwargs.get(f"context_{i+1}", "").strip()
-            if ctx:
-                lyric = f"{ctx}, {lyric}"
 
-            # --- cleanup step PER PROMPT only ---
+            if use_context_only:
+                lyric = ctx if ctx else random.choice(fb_words)
+            else:
+                lyric = safe_transcriptions[i]
+                if ctx:
+                    lyric = f"{ctx}, {lyric}"
+
+            # cleanup step
             if lyric:
-                lyric = re.sub(r'(.)\1{4,}', r'\1' * 5, lyric)
+                lyric = re.sub(r'(.)\1{3,}', r'\1' * 3, lyric)
+                lyric = re.sub(r'[-–—_,]+', ' ', lyric)
                 words = lyric.split()
                 cleaned = []
+                repeat_limit = 3
                 for w in words:
-                    if len(cleaned) < 3 or w.lower() != cleaned[-1].lower():
+                    if len(cleaned) < repeat_limit or not all(
+                        w.lower() == cleaned[-j-1].lower()
+                        for j in range(min(repeat_limit, len(cleaned)))
+                    ):
                         cleaned.append(w)
                 lyric = " ".join(cleaned)
 
             if len(lyric) > 200:
+
                 lyric = lyric[:200].rstrip() + "…"
+
 
             enriched.append(lyric)
 
-        # --- merge with overlap across prompts ---
-        def merge_with_overlap(prev, curr, max_check=5):
-            prev_words = prev.split()
-            curr_words = curr.split()
-            for k in range(min(max_check, len(prev_words), len(curr_words)), 0, -1):
-                if prev_words[-k:] == curr_words[:k]:
-                    return " ".join(prev_words + curr_words[k:])
-            return prev + " " + curr
-
-        # --- merge with overlap per line (but keep all lines separate) ---
-        merged = []
-        for i, lyric in enumerate(enriched):
-            if i == 0:
-                merged.append(lyric)
-            else:
-                merged.append(merge_with_overlap(enriched[i-1], lyric))
-
-        # now join ALL merged lines with pipes (one per scene)
-        lyrics_text = " | ".join(merged)
-
-
+        # --- Conditional merge based on overlap setting ---
+        if overlap_lyric_seconds > 0:
+            # Merge with overlap to remove duplicate words at boundaries
+            def merge_with_overlap(prev, curr, max_check=5):
+                prev_words = prev.split()
+                curr_words = curr.split()
+                for k in range(min(max_check, len(prev_words), len(curr_words)), 0, -1):
+                    if prev_words[-k:] == curr_words[:k]:
+                        return " ".join(prev_words + curr_words[k:])
+                return prev + " " + curr
+            
+            merged = []
+            for i, lyric in enumerate(enriched):
+                if i == 0:
+                    merged.append(lyric)
+                else:
+                    merged.append(merge_with_overlap(enriched[i-1], lyric))
+            
+            lyrics_text = " | ".join(merged)
+            print(f"[TranscribeV3] Merged lyrics with overlap removal")
+        else:
+            # No overlap - use lyrics as-is with clean separation
+            lyrics_text = " | ".join(enriched)
+            print(f"[TranscribeV3] Using lyrics without merge")       
 
         meta = {
             "durations": durations_sec,
             "offset_seconds": 0.0,
             "starts": starts,  # sample indices
-            "sample_rate": src_sample_rate,
+            "sample_rate": sample_rate,
             "audio_total_duration": total_duration,
             "outputs_count": len(segments),
             "used_padding": False,
+            "output_folder": output_folder,
+            "project_metadata": project_metadata,
         }
 
         # ---- inlined CalculateSets + AutoQueue ----
-        instructions, end_time_str, total_sets, groups_in_last_set, fps_scene, audio_meta = \
-            self._calculate_sets(audio, set_index)
+        # Pass beat segments if available for accurate group counting
+        instructions, end_time_str_hr, total_sets, groups_in_last_set, calc_frames_per_scene, audio_meta = \
+            self._calculate_sets(audio, set_index, scene_duration_seconds, enable_auto_queue)
+
+        # 🎨 Send color-coded popup notifications
+        if set_index == 0:
+            # Use the flag we captured BEFORE creating metadata
+            is_rerun = metadata_existed_before
+            
+            # Verify it's the same audio if metadata existed
+            if is_rerun:
+                metadata_file = os.path.join(output_folder, ".project_metadata.json")
+                try:
+                    with open(metadata_file, 'r') as f:
+                        existing_meta = json.load(f)
+                    # Check if it's actually the same audio
+                    is_same_audio = (
+                        abs(existing_meta.get("audio_duration", 0) - total_duration) < 1.0 and
+                        abs(existing_meta.get("scene_duration", 0) - scene_duration_seconds) < 0.1
+                    )
+                    is_rerun = is_same_audio
+                except:
+                    is_rerun = False
+            
+            # First run
+            if total_sets == 1 and groups_in_last_set != 16:
+                # Single partial run
+                if is_rerun:
+                    # Re-run of same audio after seeing warning
+                    disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+                    rerun_instructions = (
+                        f"⏳ Run 1 of 1 in progress\n"
+                        f"📝 Reminder: {disable_text} should be muted"
+                    )
+                    instructions = rerun_instructions  # ← Override the README note too!
+                    self._send_popup_notification(rerun_instructions, "warning", "⏳ RUN IN PROGRESS")
+                else:
+                    # First time seeing this audio
+                    self._send_popup_notification(instructions, "red", "🚨 CANCEL & RECONFIGURE REQUIRED")
+            elif total_sets > 1 and groups_in_last_set != 16:
+                # Multiple runs with partial last
+                self._send_popup_notification(instructions, "red", "🎬 STARTING WORKFLOW")
+            else:
+                # All full sets or single full set
+                self._send_popup_notification(instructions, "info", "🎬 STARTING WORKFLOW")
+                
+        elif set_index > 0 and set_index + 1 < total_sets:
+            # Middle runs - YELLOW/ORANGE (reminder)
+            if groups_in_last_set != 16:
+                self._send_popup_notification(instructions, "yellow", "⏳ PROGRESS UPDATE")
+            # Don't show popup for middle runs if all sets are full
+            
+        elif set_index + 1 == total_sets:
+            # Final run - GREEN (if full) or RED (if partial and needs action)
+            if groups_in_last_set != 16:
+                self._send_popup_notification(instructions, "red", "🏁 FINAL RUN - ACTION REQUIRED!")
+            else:
+                self._send_popup_notification(instructions, "green", "🏁 FINAL RUN")
+
+        # Keep a concise mismatch check
+        if calc_frames_per_scene != frames_per_scene:
+            print(f"[Note] frames_per_scene(calc)={calc_frames_per_scene} != frames_per_scene(main)={frames_per_scene}")
+
+
         self._maybe_auto_queue(total_sets, groups_in_last_set, set_index, enable_auto_queue)
 
-        # ---- calculate start/end times for this set ----
-        
-        
-        set_duration_sec = 16 * 97 / 25.0  # 62.08 seconds per set
+        # ---- calculate start/end times for this set ---
+        actual_scene_duration = frames_per_scene / fps  # Use adjusted frames (e.g., 101/25 = 4.04)
+        set_duration_sec = 16 * actual_scene_duration  # 16 scenes per set
         start_sec = set_index * set_duration_sec
         end_sec = min(start_sec + set_duration_sec, total_duration)
 
-
         def fmt_time(sec):
             m = int(sec // 60)
-            s = int(sec % 60)
-            return f"{m}:{s:02d}"
+            s = sec % 60
+            return f"{m}:{s:06.3f}"
 
         start_time_str = fmt_time(start_sec)
         end_time_str = fmt_time(end_sec)
 
-        print(f"[TranscribeV3] start_time={start_time_str}, end_time={end_time_str}")
+        print(f"[Run] Set {set_index+1}/{max(1,total_sets)} • {frames_per_scene} frames/scene • {scene_duration_seconds:.2f}s/scene")
+        print(f"[Run] Window {start_time_str} → {end_time_str} (of {int(total_duration//60)}:{int(total_duration%60):02d})")
+        print(f"[Run] Output folder: {output_folder}")
 
         # outputs
         return (
@@ -1958,8 +2407,9 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
             instructions,
             total_sets,
             groups_in_last_set,
-            fps_scene,
+            frames_per_scene,
             audio_meta,
+            output_folder,
             *tuple(segments),
             any_typ
         )
@@ -2065,7 +2515,129 @@ class VRGDG_CleanAudio:
         return ({"waveform": waveform, "sample_rate": sr},)
 
 
+class VRGDG_CreateFinalVideo:
+    RETURN_TYPES = ()
+    RETURN_NAMES = ()
+    FUNCTION = "create_final"
+    CATEGORY = "Video"
+    OUTPUT_NODE = True
 
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "trigger": ("VHS_FILENAMES", {}),
+                "audio": ("AUDIO",),  # Original full audio
+                "threshold": ("INT", {"default": 3}),
+                "video_folder": ("STRING", {"default": "video_output", "multiline": False}),
+            }
+        }
+
+    def create_final(self, trigger, audio, threshold, video_folder):
+        video_folder = video_folder.strip()
+        
+        if not os.path.isabs(video_folder):
+            base_output = folder_paths.get_output_directory()
+            video_folder = os.path.join(base_output, video_folder)
+        
+        print(f"[CreateFinalVideo] Looking in: {video_folder}")
+        
+        # Check for set videos
+        videos = sorted([f for f in os.listdir(video_folder) 
+                        if f.lower().endswith(".mp4") and "-audio" in f.lower()])
+        
+        video_count = len(videos)
+        
+        if video_count < threshold:
+            print(f"[CreateFinalVideo] Threshold not met ({video_count}/{threshold}), skipping.")
+            return ()
+        
+        import subprocess
+        import tempfile
+        
+        # Step 1: Concatenate videos WITHOUT audio
+        concat_file = os.path.join(video_folder, "concat_list.txt")
+        with open(concat_file, 'w') as f:
+            for vid in videos:
+                f.write(f"file '{os.path.join(video_folder, vid)}'\n")
+        
+        # Temporary video without audio
+        temp_video = os.path.join(video_folder, "_temp_video_no_audio.mp4")
+        
+        print(f"[CreateFinalVideo] Concatenating {video_count} videos (removing audio)...")
+        
+        cmd_concat = [
+            'ffmpeg', '-y',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concat_file,
+            '-an',  # Remove audio
+            '-c:v', 'copy',  # Copy video without re-encoding
+            temp_video
+        ]
+        
+        try:
+            subprocess.run(cmd_concat, capture_output=True, text=True, check=True)
+            print(f"✅ [CreateFinalVideo] Videos concatenated (no audio)")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ [CreateFinalVideo] Concatenation failed: {e.stderr}")
+            return ()
+        
+        # Step 2: Save original audio to file
+        temp_audio = os.path.join(video_folder, "_temp_original_audio.wav")
+        
+        print(f"[CreateFinalVideo] Saving original audio...")
+        
+        waveform = audio["waveform"]
+        sample_rate = audio["sample_rate"]
+        
+        torchaudio.save(temp_audio, waveform.squeeze(0).cpu(), sample_rate)
+        
+        # Step 3: Combine video + original audio
+        final_output = os.path.join(video_folder, "FINAL_VIDEO.mp4")
+        
+        if os.path.exists(final_output):
+            os.remove(final_output)
+        
+        print(f"[CreateFinalVideo] Adding original audio to video...")
+        
+        cmd_combine = [
+            'ffmpeg', '-y',
+            '-i', temp_video,
+            '-i', temp_audio,
+            '-c:v', 'copy',  # Copy video
+            '-c:a', 'aac',   # Encode audio to AAC
+            '-shortest',     # Match shortest stream duration
+            final_output
+        ]
+        
+        try:
+            subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
+            
+            # Clean up temp files
+            os.remove(temp_video)
+            os.remove(temp_audio)
+            
+            # Send success popup            
+            message = (
+                f"🎉 Final video created!\n\n"
+                f"📁 Location:\n{final_output}\n\n"
+                f"✅ {video_count} sets combined\n"
+                f"✅ Original clean audio added"
+            )
+            
+            PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+                "message": message,
+                "type": "green",
+                "title": "✅ VIDEO COMPLETE!"
+            })
+            
+            print(f"✅ [CreateFinalVideo] SUCCESS! Final video saved: {final_output}")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ [CreateFinalVideo] Failed to add audio: {e.stderr}")
+        
+        return ()
 
 
     
@@ -2092,6 +2664,8 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_LoadAudioSplit_HUMO_TranscribeV3":VRGDG_LoadAudioSplit_HUMO_TranscribeV3,
      "VRGDG_HumoReminderNode":VRGDG_HumoReminderNode,
      "VRGDG_CleanAudio":VRGDG_CleanAudio,
+     "VRGDG_MusicVideoPromptCreatorV2":VRGDG_MusicVideoPromptCreatorV2,
+     "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo
 
  
 
@@ -2105,22 +2679,25 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_TimecodeFromIndex": "⏱️ VRGDG_TimecodeFromIndex",
     "VRGDG_ConditionalLoadVideos": "🎞️ VRGDG_ConditionalLoadVideos",
     "VRGDG_CalculateSetsFromAudio": "🎧 VRGDG_CalculateSetsFromAudio",
-    "VRGDG_GetFilenamePrefix": "📂 VRGDG_GetFilenamePrefix",
-    "VRGDG_TriggerCounter": "🎯 VRGDG_TriggerCounter",
+    "VRGDG_GetFilenamePrefix": "📂 VRGDG Get File name Prefix",
+    "VRGDG_TriggerCounter": "🎯 VRGDG Trigger Counter",
     "VRGDG_LoadAudioSplit_HUMO_TranscribeV2": "🗣️ VRGDG_LoadAudioSplit_HUMO_TranscribeV2",
     "VRGDG_StringConcat":"VRGDG_StringConcat",
-    "VRGDG_AudioCrop":"VRGDG_AudioCrop",
-    "VRGDG_GetIndexNumber":"VRGDG_GetIndexNumber",
+    "VRGDG_AudioCrop":"✂️ VRGDG Audio Crop",
+    "VRGDG_GetIndexNumber":"🔢 VRGDG Get Index Number",
     "VRGDG_DisplayIndex":"VRGDG_DisplayIndex",
     "VRGDG_PromptSplitterV2":"VRGDG_PromptSplitterV2",
     "VRGDG_QueueTriggerFromAudio":"VRGDG_QueueTriggerFromAudio",
     "VRGDG_ThemeSplitter":"VRGDG_ThemeSplitter",
     "VRGDG_CalculateSetsFromAudio_Queue":"VRGDG_CalculateSetsFromAudio_Queue",
     "VRGDG_MusicVideoPromptCreator":"VRGDG_MusicVideoPromptCreator",
-    "VRGDG_CombinevideosV3":"VRGDG_CombinevideosV3",
-    "VRGDG_LoadAudioSplit_HUMO_TranscribeV3":"VRGDG_LoadAudioSplit_HUMO_TranscribeV3",
+    "VRGDG_CombinevideosV3":"🎬 VRGDG Combine Videos V3",
+    "VRGDG_LoadAudioSplit_HUMO_TranscribeV3":"🎙️ VRGDG Load Audio Split HUMO Transcribe V3",
     "VRGDG_HumoReminderNode":"VRGDG_HumoReminderNode",
     "VRGDG_CleanAudio":"VRGDG_CleanAudio",
+    "VRGDG_MusicVideoPromptCreatorV2":"VRGDG_MusicVideoPromptCreatorV2",
+    "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video"
 
 }
+
 
