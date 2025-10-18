@@ -2046,6 +2046,11 @@ class VRGDG_LoadAudioSplit_HUMO_TranscribeV3:
         if is_new_project:
             existing_files = os.listdir(target_folder)
             existing_files = [f for f in existing_files if f != ".project_metadata.json"]
+            # Force version bump if FINAL_VIDEO.mp4 exists
+            if os.path.exists(os.path.join(target_folder, "FINAL_VIDEO.mp4")):
+                print("🎬 [SmartFolder] FINAL_VIDEO.mp4 detected — forcing new version folder.")
+                is_new_project = True
+
 
             if existing_files:
                 version = 2
@@ -2699,5 +2704,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video"
 
 }
+
 
 
