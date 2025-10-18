@@ -5,26 +5,19 @@ Includes HUMO-based multi-scene workflows, audio splitting, video combining, and
 
 ---
 
-## 🌟 New HUMO Workflow Nodes
+# 🎬 AI Music Video Workflow (ComfyUI)
 
-- 🎧 **VRGDG_LoadAudioSplit_HUMO**  
-  Splits an audio file (lyrics-only recommended) into per-scene snippets.  
-  - Outputs `meta` (scene durations, timings, total duration).  
-  - Provides per-scene audio chunks for previews. Defaulted at 3 seconds to work with Humo.
-  - Lets you listen to snippets and refine prompts in sync with the music.
+Turn a **reference image** and an **audio track** into a fully **AI-generated music video**.  
+The workflow automatically splits lyrics, generates scene prompts, and syncs everything into a cinematic final video.  
 
-- 🎼 **VRGDG_LoadAudioSplitDynamic**  
-  Flexible audio splitting node.  
-  - Supports **custom durations** for each scene.  
-  - Can optionally pad with silence for InfiniteTalk workflows that allow for longer generations. 
-  - Ideal if you want more control over per-scene lengths.
+## 🚀 How it Works
+1. Upload a **reference image** (your main character).  
+2. Import your **audio file** (with lyric syncing).  
+3. Set a **folder name** for outputs.  
+4. Customize the **Prompt Creator** to define style, mood, and scenes.  
 
-- 🎬 **VRGDG_CombinevideosV2**  
-  Combines multiple scene videos into one continuous video.  
-  - Syncs video lengths to audio `meta` automatically.  
-  - Pads short clips with last frame if needed.  
-  - Requires at least **two video inputs**.  
-  - Designed to keep audio and video aligned without manual duration entry.
+✨ Everything else — transcription, scene building, video chunks, and final rendering — runs automatically.  
+The result: a stylized, synced **AI-driven music video**.
 
 ---
 
