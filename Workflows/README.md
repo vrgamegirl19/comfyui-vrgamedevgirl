@@ -1,4 +1,4 @@
-# 🎬 AI Music Video Workflow (ComfyUI) V7
+# 🎬 AI Music Video Workflow (ComfyUI) V8
 
 This workflow takes a **reference image** and an **audio file** to automatically generate a stylized **AI-driven music video**.  
 It splits audio into lyric-based snippets, generates visual prompts, and combines everything into a synced final video.
@@ -29,17 +29,11 @@ Load your track and prepare it for lyric syncing.
 
 ---
 
-## 🟦 Step 3: Update File Path 👉
-Choose the folder where your video output files will be saved.
-
-- Must be inside your **`comfyui/output`** directory.  
-- Folder should be empty before starting.  
-- OS-specific examples:  
-  - **Windows:** `A:/Comfy_UI/output/my_folder`  
-  - **Linux/macOS:** `/home/user/comfyui/output/my_folder`  
-  - **RunPod:** `/workspace/comfyui/output/my_folder`  
-
-⚠️ If the **Current Index** stays at `0`, your path is incorrect.
+## 🟦 Step 3: Update Folder name 👉
+Choose the folder name. Not a path anymore. The folder will automaticly be creaed in the comfyUI/output folder.
+- I recommend using the song name as the folder name.
+- If you forgot to change this on a new run, it "should" create a new folder with the same name and add V2 at the end to prevent failure.
+- Just keep an eye on the idex and if this does not change from 0 on the next run cancel the process and update the folder name.
 
 ---
 
@@ -63,7 +57,8 @@ This node structures prompts that guide video generation.
 - **facial_expression:** Emotions (`intense, calm`).  
 - **shots:** Shot types (`close-up, wide angle`).  
 - **outfit_rules:** Look (`white dress, leather jacket`).  
-- **character_visibility:** How often performer appears.  
+- **character_visibility:** How often performer appears.
+- **New drop down option called "list handling".** This will tell the LLM how to use your comma separted lists. **Strict Cycle** will use each one once then repeat. **Reference Guide** will use everything as a guide/reference along with the lyrics. **Random Selection** will grab from the list at random. **Free Interperation**. The LLM can ignore or combine things from your list. 
 
 ✅ The filled-out fields are expanded by the **LLM Node** into cinematic scene prompts, then split across video chunks by the **Prompt Splitter Node**.
 
@@ -101,10 +96,10 @@ This node structures prompts that guide video generation.
   1. Load full song in **AudioFile2**.  
   2. Switch `get_audioFile` to `AudioFile2`.  
 
-### 📂 Conditional Video Loader
+### 📂 Create Final video Note
 - Collects video chunks from output folder.  
-- **Threshold:** Minimum clips before combining.  
-- **Batch Size:** Controls memory usage (smaller = safer, larger = faster).  
+- The final video will be saved as FINAL_VIDEO.mp4 in the same folder as the chunks.
+- There is a note that has the file path the main video will be found
 
 ---
 
@@ -118,7 +113,7 @@ This node structures prompts that guide video generation.
 # ✅ Summary
 1. Upload your **reference image**.  
 2. Load your **audio file**.  
-3. Set your **file path** correctly.  
+3. Set your **Folder Name** correctly.  
 4. Fill in the **Prompt Creator** for style and scenes.  
 
 Everything else (transcription, prompts, video combining, audio syncing) runs automatically to give you a final  **AI-generated music video**.
@@ -126,4 +121,4 @@ Everything else (transcription, prompts, video combining, audio syncing) runs au
 ---
 
 # ✅ Notes:
-- Keep at 25 Frames per second to keep audio in sync with the mouth. Changing this could cause sync issues.
+- Making changes to any other nodes can cause the workflow to break. Please try with the default settings first before making changes.
