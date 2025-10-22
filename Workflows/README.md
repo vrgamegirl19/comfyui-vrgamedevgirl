@@ -48,6 +48,9 @@ Choose the folder name. Not a path anymore. The folder will automaticly be creae
 
 ## 🟦 Step 4: Prompt Creator 👉
 This node structures prompts that guide video generation.
+Need help coming up with ideas? I created this GPT that provides you will all the details based off the song. Just give it the lyrics, hit enter and get a full list to use, get ideas from or tweak. 
+
+[Prompt Helper GPT](https://chatgpt.com/g/g-68eee927f1988191988c9250fa7bd5e1-music-video-prompt-crafter)
 
 ### How to Use
 - Use **short, comma-separated phrases** (e.g., `rain-slicked street, neon lights`).  
