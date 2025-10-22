@@ -4,6 +4,15 @@ This workflow takes a **reference image** and an **audio file** to automatically
 It splits audio into lyric-based snippets, generates visual prompts, and combines everything into a synced final video.
 
 ---
+Watch example video's I have created using this workflow.
+
+[YouTube Playlist](https://www.youtube.com/playlist?list=PLQ0zxAQhttlZpolPMJTeQQjafa__MaD2v)
+
+Join the community! Get support, share your gens, see latest updates and get tips and tricks!
+
+[discord server here](https://discord.gg/FJ9VvCDXw3)
+
+---
 
 ## 🟦 Step 1: Upload Reference Image 👉
 The reference image is your **main character** throughout the music video.
