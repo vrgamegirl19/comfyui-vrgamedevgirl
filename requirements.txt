@@ -1,3 +1,4 @@
 kornia
 librosa
 imageio
+torchcodec
