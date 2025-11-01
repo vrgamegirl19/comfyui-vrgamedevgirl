@@ -1,5 +1,9 @@
 # 🎬 AI Music Video Workflow (ComfyUI) V8
 
+<video src="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/images/wanhumomvc002.mp4?raw=true" controls autoplay loop muted width="640">
+  Your browser does not support the video tag.
+</video>
+
 This workflow takes a **reference image** and an **audio file** to automatically generate a stylized **AI-driven music video**.  
 It splits audio into lyric-based snippets, generates visual prompts, and combines everything into a synced final video.
 
