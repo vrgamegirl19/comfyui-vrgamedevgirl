@@ -1,0 +1,293 @@
+{
+  "id": "d6d912f5-cb88-4989-bfe1-e28c1721a183",
+  "revision": 0,
+  "last_node_id": 14,
+  "last_link_id": 17,
+  "nodes": [
+    {
+      "id": 5,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -915,
+        -765
+      ],
+      "size": [
+        840,
+        975
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 15
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "1.2.5",
+        "Node name for S&R": "ShowText|pysssss",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "# Lyrics to fix: (52 segments)\n\nlyricSegment1=.\nlyricSegment2=I hear you\nlyricSegment3=I hear me\nlyricSegment4=Places known\nlyricSegment5=Someone else goes on\nlyricSegment6=In a field where the grass hides my feet\nlyricSegment7=I talk like nobody's watching me\nlyricSegment8=The sky don't care what I confess\nlyricSegment9=So I let it have my heaviness I hope\nlyricSegment10=my voice like a secret like maybe\nlyricSegment11=the wind can't keep it\nlyricSegment12=singing to myself again\nlyricSegment13=I only have to fit in the ocean\nlyricSegment14=So I speak and whisper softly\nlyricSegment15=Enough to keep you from falling\nlyricSegment16=No one else just me and me and\nlyricSegment17=how I feel it's safer here inside\nlyricSegment18=I'm singing to my\nlyricSegment19=myself\nlyricSegment20=Oh\nlyricSegment21=you\nlyricSegment22=you\nlyricSegment23=The garden knows my quiet name\nlyricSegment24=And forgives me just the same\nlyricSegment25=I sit and trace the outline of a\nlyricSegment26=I never said out loud\nlyricSegment27=silence isn't empty it's the\nlyricSegment28=The only thing that gets me.\nlyricSegment29=I'm singing to myself again.\nlyricSegment30=I only have to fit in the ocean.\nlyricSegment31=So I speak in whispers.\nlyricSegment32=to keep\nlyricSegment33=I like no one else just me and me\nlyricSegment34=And how I felt It's safer here in\nlyricSegment35=I'm singing.\nlyricSegment36=to myself\nlyricSegment37=Oh oh oh oh.\nlyricSegment38=you\nlyricSegment39=Oh oh oh\nlyricSegment40=And still I feel more\nlyricSegment41=Like I'm the only one I need\nlyricSegment42=And if my voice just fades away\nlyricSegment43=I say\nlyricSegment44=So let the breeze be the applause\nlyricSegment45=Let the petals catch the pull\nlyricSegment46=No stage no lights no sun\nlyricSegment47=Someone else just me\nlyricSegment48=Singing to myself\nlyricSegment49=you\nlyricSegment50=you\nlyricSegment51=Hmm\nlyricSegment52=you"
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930",
+      "shape": 1
+    },
+    {
+      "id": 3,
+      "type": "VHS_LoadAudioUpload",
+      "pos": [
+        -1875,
+        -750
+      ],
+      "size": [
+        245,
+        130
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.6.1",
+        "Node name for S&R": "VHS_LoadAudioUpload",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": {
+        "audio": "Singing to Myself 2 (Vocals).wav",
+        "start_time": 0,
+        "duration": 0,
+        "choose audio to upload": "image"
+      },
+      "color": "#232",
+      "bgcolor": "#353",
+      "shape": 1
+    },
+    {
+      "id": 7,
+      "type": "MelBandRoFormerSampler",
+      "pos": [
+        -1590,
+        -645
+      ],
+      "size": [
+        269.79443359375,
+        49.59956359863281
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MELROFORMERMODEL",
+          "link": 5
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "vocals",
+          "type": "AUDIO",
+          "links": [
+            14
+          ]
+        },
+        {
+          "name": "instruments",
+          "type": "AUDIO",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-melbandroformer",
+        "ver": "1.0.1",
+        "Node name for S&R": "MelBandRoFormerSampler",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [],
+      "color": "#323",
+      "bgcolor": "#535",
+      "shape": 1
+    },
+    {
+      "id": 11,
+      "type": "VRGDG_ManualLyricsExtractor",
+      "pos": [
+        -1275,
+        -750
+      ],
+      "size": [
+        319.8999938964844,
+        82
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "all_lyrics_combined",
+          "type": "STRING",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+        "widget_ue_connectable": {},
+        "Node name for S&R": "VRGDG_ManualLyricsExtractor"
+      },
+      "widgets_values": [
+        4,
+        "english"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159",
+      "shape": 1
+    },
+    {
+      "id": 6,
+      "type": "MelBandRoFormerModelLoader",
+      "pos": [
+        -1605,
+        -765
+      ],
+      "size": [
+        285,
+        58
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MELROFORMERMODEL",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-melbandroformer",
+        "ver": "1.0.1",
+        "Node name for S&R": "MelBandRoFormerModelLoader",
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "MelBandRoformer_fp16.safetensors"
+      ],
+      "color": "#323",
+      "bgcolor": "#535",
+      "shape": 1
+    }
+  ],
+  "links": [
+    [
+      5,
+      6,
+      0,
+      7,
+      0,
+      "MELROFORMERMODEL"
+    ],
+    [
+      7,
+      3,
+      0,
+      7,
+      1,
+      "AUDIO"
+    ],
+    [
+      14,
+      7,
+      0,
+      11,
+      0,
+      "AUDIO"
+    ],
+    [
+      15,
+      11,
+      0,
+      5,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "lyric fixer.",
+      "bounding": [
+        -1890,
+        -855,
+        1845,
+        1095
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "ds": {
+      "scale": 0.6768393620286868,
+      "offset": [
+        2236.527512101642,
+        943.0069579054315
+      ]
+    },
+    "links_added_by_ue": [],
+    "frontendVersion": "1.26.13",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}
