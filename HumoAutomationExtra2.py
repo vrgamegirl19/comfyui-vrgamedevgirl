@@ -394,23 +394,133 @@ class VRGDG_CombinevideosV5:
         return (final,)
 
 
+
+#####Added on 12/17
+class VRGDG_PromptSplitterForFMML:
+    RETURN_TYPES = tuple(["STRING"] * 16)
+    RETURN_NAMES = tuple([f"text_output_{i}" for i in range(1, 17)])
+    FUNCTION = "split_prompt"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "json_string": ("STRING", {"multiline": True, "default": "[]"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
+            }
+        }
+
+    def split_prompt(self, json_string, index, **kwargs):
+        try:
+            data = json.loads(json_string)
+            prompts = []
+            if isinstance(data, dict):
+                sorted_keys = sorted(
+                    data.keys(),
+                    key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0
+                )
+                # Join each prompt list into a single string with newlines
+                prompts = [
+                    "\n".join(data[key]) if isinstance(data[key], list) else str(data[key])
+                    for key in sorted_keys
+                ]
+            elif isinstance(data, list):
+                prompts = [
+                    "\n".join(item) if isinstance(item, list) else str(item)
+                    for item in data
+                ]
+            else:
+                prompts = []
+
+            start_idx = index * 16
+            outputs = [prompts[start_idx + i] if (start_idx + i) < len(prompts) else "" for i in range(16)]
+            return tuple(outputs)
+        except json.JSONDecodeError:
+            return tuple([""] * 16)
+        except Exception:
+            return tuple([""] * 16)
+
+import json
+
+import re
+
+class VRGDG_PromptSplitter4:
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("text_output_1", "text_output_2", "text_output_3", "text_output_4")
+    FUNCTION = "split_prompt"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "json_string": ("STRING", {"multiline": True, "default": "{}"}),
+            }
+        }
+
+    def clean_json(self, text):
+        # Remove markdown wrappers like ```json or ```
+        text = re.sub(r"```json", "", text, flags=re.IGNORECASE)
+        text = text.replace("```", "")
+
+        # Remove stray backticks entirely
+        text = text.replace("`", "")
+
+        # Trim whitespace
+        text = text.strip()
+
+        return text
+
+    def split_prompt(self, json_string):
+        try:
+            # Clean any markdown or formatting garbage
+            cleaned = self.clean_json(json_string)
+
+            # Attempt to parse cleaned JSON
+            data = json.loads(cleaned)
+
+            if not isinstance(data, dict):
+                return ("", "", "", "")
+
+            # Extract numeric keys like Prompt#3 → 3
+            items = []
+            for key, value in data.items():
+                num = "".join(filter(str.isdigit, key))
+                if num.isdigit():
+                    items.append((int(num), value))
+
+            # Sort by numeric portion
+            items.sort(key=lambda x: x[0])
+
+            # Fill outputs (4 total)
+            outputs = [items[i][1] if i < len(items) else "" for i in range(4)]
+
+            return tuple(outputs)
+
+        except Exception:
+            # Any error → return empty outputs
+            return ("", "", "", "")
+
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
      "VRGDG_PromptSplitterForManual":VRGDG_PromptSplitterForManual,
-     "VRGDG_CombinevideosV5":VRGDG_CombinevideosV5
-
-
- 
-
-
-
+     "VRGDG_CombinevideosV5":VRGDG_CombinevideosV5,
+     "VRGDG_PromptSplitterForFMML":VRGDG_PromptSplitterForFMML,   
+     "VRGDG_PromptSplitter4":VRGDG_PromptSplitter4,
+    
+    
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_ManualLyricsExtractor": "🌀 VRGDG_ManualLyricsExtractor",
     "VRGDG_PromptSplitterForManual":"✂️ VRGDG_PromptSplitterForManual",
-    "VRGDG_CombinevideosV5":"VRGDG_CombinevideosV5"
-
-
+    "VRGDG_CombinevideosV5":"VRGDG_CombinevideosV5",
+    "VRGDG_PromptSplitterForFMML":"VRGDG_PromptSplitterForFMML",
+    "VRGDG_PromptSplitter4":"VRGDG_PromptSplitter4",
+    
+    
 }
+
