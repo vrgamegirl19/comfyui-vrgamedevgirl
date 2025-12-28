@@ -8,7 +8,12 @@ import cv2
 import numpy as np
 import os
 from folder_paths import get_output_directory
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
+from transformers import (
+    WhisperProcessor,
+    WhisperForConditionalGeneration,
+    AutoModelForAudioClassification,
+    AutoFeatureExtractor,
+)
 
 
 class VRGDG_ManualLyricsExtractor:
@@ -503,6 +508,244 @@ class VRGDG_PromptSplitter4:
             return ("", "", "", "")
 
 
+
+
+
+class VRGDG_SpeechEmotionExtractor:
+    """
+    Segments audio and extracts dominant emotion per segment
+    using a locally stored Whisper-based emotion classification model.
+    """
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("emotion_timeline",)
+
+    FUNCTION = "extract_emotions"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "scene_duration_seconds": (
+                    "FLOAT",
+                    {"default": 4.0, "min": 1.0, "max": 10.0}
+                ),
+            },
+        }
+
+    def _adjust_frames_for_humo(self, frames: int) -> int:
+        adjusted = 4 * ((frames + 2) // 4) + 1
+        if adjusted != frames:
+            actual_duration = adjusted / 25
+            print(
+                f"[HuMo Adjust] {frames} frames → {adjusted} frames "
+                f"({actual_duration:.2f}s)"
+            )
+        return adjusted
+
+    def _classify_segment(
+        self,
+        waveform,
+        sample_rate,
+        start_sample,
+        end_sample,
+        feature_extractor,
+        model,
+        device,
+        id2label,
+        max_duration=30.0,
+    ):
+        try:
+            # Slice segment
+            segment = waveform[..., start_sample:end_sample].contiguous().clone()
+
+            # Convert to mono
+            segment = segment.mean(dim=1).squeeze()
+
+            # Resample if needed
+            target_sr = feature_extractor.sampling_rate
+            if sample_rate != target_sr:
+                segment = torchaudio.functional.resample(
+                    segment, sample_rate, target_sr
+                )
+
+            segment_np = segment.cpu().numpy()
+
+            # Pad / truncate
+            max_length = int(target_sr * max_duration)
+            if len(segment_np) > max_length:
+                segment_np = segment_np[:max_length]
+            else:
+                segment_np = np.pad(
+                    segment_np, (0, max_length - len(segment_np))
+                )
+
+            inputs = feature_extractor(
+                segment_np,
+                sampling_rate=target_sr,
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+
+            with torch.no_grad():
+                outputs = model(**inputs)
+
+            logits = outputs.logits
+            predicted_id = torch.argmax(logits, dim=-1).item()
+            emotion = id2label[predicted_id]
+
+            return emotion
+
+        except Exception as e:
+            print(f"[Emotion] Error: {e}")
+            return "Error"
+
+    def extract_emotions(
+        self,
+        audio,
+        scene_duration_seconds=4.0,
+        **kwargs
+    ):
+        waveform = audio["waveform"]
+        sample_rate = int(audio["sample_rate"])
+
+        if waveform.ndim == 2:
+            waveform = waveform.unsqueeze(0)
+
+        total_samples = waveform.shape[-1]
+        total_duration = total_samples / sample_rate
+        print(f"[Emotion] Processing audio: {total_duration:.2f}s @ {sample_rate}Hz")
+
+        fps = 25
+        frames_per_scene = int(round(fps * scene_duration_seconds))
+        frames_per_scene = self._adjust_frames_for_humo(frames_per_scene)
+        samples_per_scene = int(frames_per_scene * sample_rate / fps + 0.5)
+
+        total_segments = math.ceil(total_samples / samples_per_scene)
+
+        print("[Emotion] Loading LOCAL emotion model (offline)...")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        model_path = (
+            r"A:\COMFY_UI\ComfyUI_windows_portable_nvidia"
+            r"\ComfyUI_windows_portable"
+            r"\ComfyUI\models\audio_encoders"
+            r"\speech-emotion-whisper"
+        )
+
+        feature_extractor = AutoFeatureExtractor.from_pretrained(
+            model_path,
+            local_files_only=True
+        )
+
+        model = AutoModelForAudioClassification.from_pretrained(
+            model_path,
+            local_files_only=True
+        ).to(device).eval()
+
+        id2label = model.config.id2label
+
+        emotions = []
+
+        for i in range(total_segments):
+            start_sample = i * samples_per_scene
+            end_sample = min(start_sample + samples_per_scene, total_samples)
+
+            emotion = self._classify_segment(
+                waveform,
+                sample_rate,
+                start_sample,
+                end_sample,
+                feature_extractor,
+                model,
+                device,
+                id2label,
+            )
+
+            emotions.append(emotion)
+
+            if (i + 1) % 16 == 0 or i == total_segments - 1:
+                print(f"[Emotion] Processed {i+1}/{total_segments} segments")
+
+        lines = [f"# Emotion timeline ({total_segments} segments)", ""]
+        for i, emo in enumerate(emotions, 1):
+            lines.append(f"emotionSegment{i}={emo}")
+
+        result = "\n".join(lines)
+        print("[Emotion] Extraction complete!")
+
+        return (result,)
+
+import re
+
+
+class VRGDG_LyricsEmotionMerger:
+    """
+    Merges lyric segments and emotion segments into a single aligned output.
+    """
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("lyrics_with_emotions",)
+
+    FUNCTION = "merge"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "lyrics_text": ("STRING",),
+                "emotion_text": ("STRING",),
+            }
+        }
+
+    def merge(self, lyrics_text: str, emotion_text: str):
+        # --- Parse emotion segments ---
+        emotion_map = {}
+
+        for line in emotion_text.splitlines():
+            line = line.strip()
+            if not line or not line.startswith("emotionSegment"):
+                continue
+
+            match = re.match(r"emotionSegment(\d+)\s*=\s*(.+)", line)
+            if match:
+                idx = int(match.group(1))
+                emotion = match.group(2).strip()
+                emotion_map[idx] = emotion
+
+        # --- Parse lyric segments and merge ---
+        merged_lines = []
+
+        for line in lyrics_text.splitlines():
+            line = line.strip()
+            if not line or not line.startswith("lyricSegment"):
+                continue
+
+            match = re.match(r"lyricSegment(\d+)\s*=\s*(.+)", line)
+            if not match:
+                continue
+
+            idx = int(match.group(1))
+            lyric = match.group(2).strip()
+
+            emotion = emotion_map.get(idx, "Unknown")
+
+            merged_lines.append(
+                f'lyricSegment{idx}-emotion={emotion} "{lyric}"'
+            )
+
+        # --- Build output ---
+        header = f"# Lyrics with emotions ({len(merged_lines)} segments)"
+        result = "\n".join([header, ""] + merged_lines)
+
+        return (result,)
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
@@ -510,6 +753,8 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_CombinevideosV5":VRGDG_CombinevideosV5,
      "VRGDG_PromptSplitterForFMML":VRGDG_PromptSplitterForFMML,   
      "VRGDG_PromptSplitter4":VRGDG_PromptSplitter4,
+     "VRGDG_SpeechEmotionExtractor":VRGDG_SpeechEmotionExtractor,
+     "VRGDG_LyricsEmotionMerger":VRGDG_LyricsEmotionMerger    
     
     
 }
@@ -520,7 +765,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_CombinevideosV5":"VRGDG_CombinevideosV5",
     "VRGDG_PromptSplitterForFMML":"VRGDG_PromptSplitterForFMML",
     "VRGDG_PromptSplitter4":"VRGDG_PromptSplitter4",
+    "VRGDG_SpeechEmotionExtractor":"VRGDG_SpeechEmotionExtractor",
+    "VRGDG_LyricsEmotionMerger":"VRGDG_LyricsEmotionMerger"    
     
     
 }
+
 
