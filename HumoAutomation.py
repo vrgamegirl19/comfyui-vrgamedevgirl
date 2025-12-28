@@ -2665,6 +2665,371 @@ class VRGDG_CreateFinalVideo:
         return ()
 
 
+#######################################added on 12/27
+class VRGDG_LoadAudioSplit_Wan22HumoFMML:
+    # UPDATED: lyrics/context/transcription removed, auto-queue + audio split kept
+
+    RETURN_TYPES = (
+        "DICT",     # meta
+        "FLOAT",    # total_duration
+        "INT",      # index
+        "STRING",   # start_time
+        "STRING",   # end_time
+        "STRING",   # instructions
+        "INT",      # total_sets
+        "INT",      # groups_in_last_set
+        "INT",      # frames_per_scene
+        "DICT",     # audio_meta
+        "STRING",   # output_folder
+    ) + tuple(["AUDIO"] * 16) + (any_typ,)
+
+    RETURN_NAMES = (
+        "meta",
+        "total_duration",
+        "index",
+        "start_time",
+        "end_time",
+        "instructions",
+        "total_sets",
+        "groups_in_last_set",
+        "frames_per_scene",
+        "audio_meta",
+        "output_folder",
+    ) + tuple([f"audio_{i}" for i in range(1, 17)]) + ("signal_out",)
+
+    FUNCTION = "run"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        # UPDATED: removed context + play buttons + all lyric/transcription controls
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "trigger": (any_typ,),
+                "scene_duration_seconds": ("FLOAT", {"default": 4.0, "min": 1.0, "max": 5.0}),
+                "folder_path": ("STRING", {"multiline": False, "default": "video_output"}),
+                "enable_auto_queue": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    # ---------- helpers (from your node) ----------
+    def _count_index_from_folder(self, folder_path: str) -> int:
+        """Matches VRGDG_GetIndexNumber: count *-audio.mp4 as sets already done."""
+        try:
+            if not os.path.isdir(folder_path):
+                return 0
+            return len([
+                f for f in os.listdir(folder_path)
+                if f.lower().endswith(".mp4") and "-audio" in f.lower()
+            ])
+        except Exception as e:
+            print(f"[Index] Failed to scan folder '{folder_path}': {e}")
+            return 0
+
+    def _calculate_sets(self, audio, index, scene_duration_seconds, enable_auto_queue=True):
+        """Inlined VRGDG_CalculateSetsFromAudio_Queue (kept for instructions + popup)."""
+        instructions = ""
+        end_time_str = "0:00"
+        total_sets = 0
+        groups_in_last_set = 0
+        durations_frames_full = []
+
+        try:
+            waveform = audio["waveform"]
+            sample_rate = audio["sample_rate"]
+        except Exception:
+            return (
+                "❌ Expected audio to be a dict with 'waveform' and 'sample_rate'.",
+                "0:00", 0, 0, 0, {"durations_frames": []}
+            )
+
+        fps = 25
+        frames_per_scene = int(round(fps * scene_duration_seconds))
+        frames_per_scene = self._adjust_frames_for_humo(frames_per_scene)
+
+        groups_per_set = 16
+
+        samples_per_frame = sample_rate / fps
+        num_samples = waveform.shape[-1]
+        audio_duration = num_samples / sample_rate if sample_rate else 0.0
+
+        total_audio_frames = int(num_samples / samples_per_frame + 0.5) if num_samples > 0 else 0
+
+        if total_audio_frames > 0:
+            full_groups = math.floor(total_audio_frames / frames_per_scene)
+            leftover_frames = total_audio_frames - full_groups * frames_per_scene
+
+            if full_groups > 0:
+                durations_frames_full.extend([frames_per_scene] * full_groups)
+            if leftover_frames > 0:
+                durations_frames_full.append(leftover_frames)
+
+            if durations_frames_full and durations_frames_full[0] != frames_per_scene:
+                print(f"[Fixup] Forcing first group {durations_frames_full[0]} → {frames_per_scene}")
+                durations_frames_full[0] = frames_per_scene
+
+            total_groups = len(durations_frames_full)
+            total_sets = math.ceil(total_groups / groups_per_set) if total_groups > 0 else 0
+            groups_in_last_set = (
+                total_groups % groups_per_set
+                if (total_groups % groups_per_set) != 0
+                else (groups_per_set if total_groups > 0 else 0)
+            )
+
+        minutes = int(audio_duration // 60)
+        seconds = int(audio_duration % 60)
+        end_time_str = f"{minutes}:{seconds:02d}"
+
+        # --- instructions (same structure as your original) ---
+        if total_sets == 0:
+            instructions = "❌ Audio too short. No runs required."
+
+        elif total_sets == 1:
+            disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+            if groups_in_last_set == 16:
+                instructions = (
+                    f"⚠️  1 run needed\n"
+                    f"✅ Using all 16 groups"
+                )
+            else:
+                instructions = (
+                    f"⚠️  Audio is less than 16 groups ({groups_in_last_set} groups detected)\n"
+                    f"❗ Mute {disable_text} on 'Fast Groups Muter' node\n"
+                    f"🔴 Cancel this run and re-run after muting"
+                )
+
+        elif groups_in_last_set != 16:
+            disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+
+            if enable_auto_queue:
+                queued_now = 1 + max(0, total_sets - 2)
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"✅ {queued_now} run(s) currently in queue\n"
+                    f"❗ Mute {disable_text} on 'Fast Groups Muter', then hit RUN one more time"
+                )
+            else:
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"🔴 Auto-queue is DISABLED\n"
+                    f"❗ Manually run each set and mute {disable_text} on final run"
+                )
+
+        else:
+            if enable_auto_queue:
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"✅ All {total_sets} runs are auto-queued"
+                )
+            else:
+                instructions = (
+                    f"⚠️  {total_sets} runs needed\n"
+                    f"🔴 Auto-queue is DISABLED\n"
+                    f"❗ Manually run all {total_sets} sets"
+                )
+
+        # Progress messages during runs
+        if total_sets > 1 and index > 0:
+            if index + 1 == total_sets:
+                if groups_in_last_set != 16:
+                    disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+                    instructions = (
+                        f"🏁 Final run ({index + 1} of {total_sets})\n"
+                        f"✅ Make sure {disable_text} are muted!"
+                    )
+                else:
+                    instructions = f"🏁 Final run ({index + 1} of {total_sets}) in progress..."
+            else:
+                if groups_in_last_set != 16:
+                    disable_text = "group 16" if groups_in_last_set == 15 else f"groups {groups_in_last_set+1}–16"
+                    instructions = (
+                        f"⏳ Run {index + 1} of {total_sets} in progress\n"
+                        f"📝 Reminder: {disable_text} need to be muted on last run"
+                    )
+                else:
+                    instructions = f"⏳ Run {index + 1} of {total_sets} in progress..."
+
+        start_group = index * 16
+        end_group = min(start_group + 16, len(durations_frames_full))
+        durations_frames_this_set = durations_frames_full[start_group:end_group] if durations_frames_full else []
+
+        return (
+            instructions,
+            end_time_str,
+            total_sets,
+            groups_in_last_set,
+            frames_per_scene,
+            {"durations_frames": durations_frames_this_set},
+        )
+
+    def _maybe_auto_queue(self, total_sets: int, groups_in_last_set: int, index: int, enable: bool):
+        """Inlined VRGDG_QueueTriggerFromAudio behavior."""
+        if not enable:
+            print("[AutoQueue] Disabled by user toggle.")
+            return
+
+        runs = 0
+        if index == 0:
+            if total_sets > 0:
+                if groups_in_last_set == 16:
+                    runs = max(0, total_sets - 1)
+                else:
+                    runs = max(0, total_sets - 2)
+                print(f"[AutoQueue] Queuing {runs} extra runs (total_sets={total_sets}, last={groups_in_last_set})")
+                for _ in range(runs):
+                    PromptServer.instance.send_sync("impact-add-queue", {})
+        else:
+            print(f"[AutoQueue] Skipping (index={index} > 0)")
+
+    def _send_popup_notification(self, message: str, message_type: str = "info", title: str = "Audio Split Instructions"):
+        """Same popup mechanism you already had."""
+        try:
+            from server import PromptServer
+            PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+                "message": message,
+                "type": message_type,
+                "title": title
+            })
+            print(f"[Popup] Sent {message_type} notification to UI")
+        except Exception as e:
+            print(f"[Popup] Could not send notification: {e}")
+
+    def _adjust_frames_for_humo(self, frames: int) -> int:
+        """Rounds UP to nearest HuMo-compatible frame count (4n + 1)."""
+        adjusted = 4 * ((frames + 2) // 4) + 1
+        if adjusted != frames:
+            actual_duration = adjusted / 25
+            print(f"[HuMo Adjust] {frames} → {adjusted} frames ({actual_duration:.2f}s)")
+        return adjusted
+
+    # --------------- main ---------------
+    def run(
+        self,
+        audio,
+        trigger,
+        folder_path,
+        enable_auto_queue=True,
+        scene_duration_seconds=4.0,
+        **kwargs
+    ):
+        waveform = audio["waveform"]
+        sample_rate = int(audio["sample_rate"])
+        print(f"[Audio] sample_rate: {sample_rate}")
+
+        if waveform.ndim == 2:
+            waveform = waveform.unsqueeze(0)
+
+        total_samples = waveform.shape[-1]
+        total_duration = float(total_samples) / float(sample_rate)
+
+        # output folder (simple; keep your original folder behavior)
+        base_output = folder_paths.get_output_directory()
+        output_folder = os.path.join(base_output, folder_path.strip() if folder_path.strip() else "video_output")
+        os.makedirs(output_folder, exist_ok=True)
+
+        # index from folder
+        set_index = self._count_index_from_folder(output_folder)
+        print(f"[Index] Detected set_index={set_index} from folder: {output_folder}")
+
+        # split parameters
+        scene_count = 16
+        fps = 25
+
+        frames_per_scene = int(round(fps * scene_duration_seconds))
+        frames_per_scene = self._adjust_frames_for_humo(frames_per_scene)
+        samples_per_scene = int(frames_per_scene * sample_rate / fps + 0.5)
+
+        offset_samples = int(round(set_index * scene_count * samples_per_scene))
+
+        durations_sec = [frames_per_scene / fps] * scene_count
+        starts = [int(round(offset_samples + i * samples_per_scene)) for i in range(scene_count)]
+
+        # split into 16 segments
+        segments = []
+        for idx in range(scene_count):
+            start_samp = starts[idx]
+            end_samp = start_samp + samples_per_scene
+
+            if start_samp >= total_samples:
+                seg = torch.zeros((1, 2, samples_per_scene), dtype=waveform.dtype)
+            else:
+                end_samp = min(total_samples, end_samp)
+                seg = waveform[..., start_samp:end_samp].contiguous().clone()
+
+                cur_len = seg.shape[-1]
+                if cur_len < samples_per_scene:
+                    pad = samples_per_scene - cur_len
+                    seg = torch.nn.functional.pad(seg, (0, pad))
+
+            segments.append({"waveform": seg, "sample_rate": sample_rate})
+
+        # meta (kept)
+        meta = {
+            "durations": durations_sec,
+            "offset_seconds": 0.0,
+            "starts": starts,
+            "sample_rate": sample_rate,
+            "audio_total_duration": total_duration,
+            "outputs_count": len(segments),
+            "output_folder": output_folder,
+        }
+
+        # calculate sets + popup + autoqueue
+        instructions, end_time_str_hr, total_sets, groups_in_last_set, calc_frames_per_scene, audio_meta = \
+            self._calculate_sets(audio, set_index, scene_duration_seconds, enable_auto_queue)
+
+        # popup behavior (kept, simplified — no lyric dependencies)
+        if set_index == 0:
+            if total_sets == 1 and groups_in_last_set != 16:
+                self._send_popup_notification(instructions, "red", "🚨 CANCEL & RECONFIGURE REQUIRED")
+            elif total_sets > 1 and groups_in_last_set != 16:
+                self._send_popup_notification(instructions, "red", "🎬 STARTING WORKFLOW")
+            else:
+                self._send_popup_notification(instructions, "info", "🎬 STARTING WORKFLOW")
+
+        elif set_index > 0 and set_index + 1 < total_sets:
+            if groups_in_last_set != 16:
+                self._send_popup_notification(instructions, "yellow", "⏳ PROGRESS UPDATE")
+
+        elif set_index + 1 == total_sets:
+            if groups_in_last_set != 16:
+                self._send_popup_notification(instructions, "red", "🏁 FINAL RUN - ACTION REQUIRED!")
+            else:
+                self._send_popup_notification(instructions, "green", "🏁 FINAL RUN")
+
+        self._maybe_auto_queue(total_sets, groups_in_last_set, set_index, enable_auto_queue)
+
+        # start/end time strings for this set
+        actual_scene_duration = frames_per_scene / fps
+        set_duration_sec = 16 * actual_scene_duration
+        start_sec = set_index * set_duration_sec
+        end_sec = min(start_sec + set_duration_sec, total_duration)
+
+        def fmt_time(sec):
+            m = int(sec // 60)
+            s = sec % 60
+            return f"{m}:{s:06.3f}"
+
+        start_time_str = fmt_time(start_sec)
+        end_time_str = fmt_time(end_sec)
+
+        # outputs (lyrics removed!)
+        return (
+            meta,
+            total_duration,
+            set_index,
+            start_time_str,
+            end_time_str,
+            instructions,
+            total_sets,
+            groups_in_last_set,
+            frames_per_scene,
+            audio_meta,
+            output_folder,
+            *tuple(segments),
+            any_typ
+        )
     
 NODE_CLASS_MAPPINGS = {
 
@@ -2690,7 +3055,8 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_HumoReminderNode":VRGDG_HumoReminderNode,
      "VRGDG_CleanAudio":VRGDG_CleanAudio,
      "VRGDG_MusicVideoPromptCreatorV2":VRGDG_MusicVideoPromptCreatorV2,
-     "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo
+     "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo,
+     "VRGDG_LoadAudioSplit_Wan22HumoFMML":VRGDG_LoadAudioSplit_Wan22HumoFMML    
 
  
 
@@ -2721,9 +3087,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_HumoReminderNode":"VRGDG_HumoReminderNode",
     "VRGDG_CleanAudio":"VRGDG_CleanAudio",
     "VRGDG_MusicVideoPromptCreatorV2":"VRGDG_MusicVideoPromptCreatorV2",
-    "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video"
+    "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video",
+    "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
