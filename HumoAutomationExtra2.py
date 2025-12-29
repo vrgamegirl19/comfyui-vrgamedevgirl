@@ -746,6 +746,85 @@ class VRGDG_LyricsEmotionMerger:
 
         return (result,)
 
+
+import json
+import re
+
+class VRGDG_PromptSplitter2:
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text_output_1", "text_output_2")
+    FUNCTION = "split_prompt"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "json_string": ("STRING", {"multiline": True, "default": "{}"}),
+            }
+        }
+
+    def clean_json(self, text):
+        # remove markdown formatting
+        text = re.sub(r"```json", "", text, flags=re.IGNORECASE)
+        text = text.replace("```", "").replace("`", "").strip()
+        return text
+
+    def attempt_json_repair(self, text):
+        """Auto-wrap broken JSON like `"Prompt1": "text"` into { "Prompt1": "text" }"""
+
+        # if it already looks like JSON with braces, return as-is
+        if text.startswith("{") and text.endswith("}"):
+            return text
+
+        # If missing braces, try wrapping
+        if ":" in text and not text.startswith("{"):
+            return "{ " + text.rstrip(", ") + " }"
+
+        return text
+
+    def split_prompt(self, json_string):
+        try:
+            cleaned = self.clean_json(json_string)
+            cleaned = self.attempt_json_repair(cleaned)
+
+            data = json.loads(cleaned)
+
+            if not isinstance(data, dict):
+                return ("", "")
+
+            items = []
+            has_numbered_keys = False
+
+            # detect if key names include numbers
+            for key in data.keys():
+                num = "".join(filter(str.isdigit, key))
+                if num.isdigit():
+                    has_numbered_keys = True
+                    break
+
+            # If keys contain numbers → ordered numerically
+            if has_numbered_keys:
+                for key, value in data.items():
+                    num = "".join(filter(str.isdigit, key))
+                    if num.isdigit():
+                        items.append((int(num), value))
+                items.sort(key=lambda x: x[0])
+                ordered_values = [v for _, v in items]
+
+            # otherwise just use natural order
+            else:
+                ordered_values = list(data.values())
+
+            # provide first two outputs
+            text1 = ordered_values[0] if len(ordered_values) > 0 else ""
+            text2 = ordered_values[1] if len(ordered_values) > 1 else ""
+
+            return (text1, text2)
+
+        except Exception:
+            return ("", "")
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
@@ -754,7 +833,9 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_PromptSplitterForFMML":VRGDG_PromptSplitterForFMML,   
      "VRGDG_PromptSplitter4":VRGDG_PromptSplitter4,
      "VRGDG_SpeechEmotionExtractor":VRGDG_SpeechEmotionExtractor,
-     "VRGDG_LyricsEmotionMerger":VRGDG_LyricsEmotionMerger    
+     "VRGDG_LyricsEmotionMerger":VRGDG_LyricsEmotionMerger,
+     "VRGDG_PromptSplitter2":VRGDG_PromptSplitter2
+    
     
     
 }
@@ -766,9 +847,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptSplitterForFMML":"VRGDG_PromptSplitterForFMML",
     "VRGDG_PromptSplitter4":"VRGDG_PromptSplitter4",
     "VRGDG_SpeechEmotionExtractor":"VRGDG_SpeechEmotionExtractor",
-    "VRGDG_LyricsEmotionMerger":"VRGDG_LyricsEmotionMerger"    
+    "VRGDG_LyricsEmotionMerger":"VRGDG_LyricsEmotionMerger",
+    "VRGDG_PromptSplitter2":"VRGDG_PromptSplitter2"    
     
     
 }
+
 
 
