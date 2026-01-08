@@ -825,6 +825,184 @@ class VRGDG_PromptSplitter2:
         except Exception:
             return ("", "")
 
+
+
+
+
+import json
+
+class VRGDG_PromptSplitterForFL:
+    RETURN_TYPES = tuple(["STRING"] * 16)
+    RETURN_NAMES = tuple([f"text_output_{i}" for i in range(1, 17)])
+    FUNCTION = "split"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "json_string": ("STRING", {"multiline": True, "default": "{}"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
+            }
+        }
+
+    def split(self, json_string, index):
+        try:
+            data = json.loads(json_string)
+
+            if not isinstance(data, dict):
+                return tuple([""] * 16)
+
+            # Sort prompt keys numerically (prompt1, Prompt#2, etc.)
+            def sort_key(k):
+                digits = "".join(filter(str.isdigit, k))
+                return int(digits) if digits else 0
+
+            sorted_keys = sorted(data.keys(), key=sort_key)
+
+            prompts = []
+            for key in sorted_keys:
+                entry = data.get(key)
+                if isinstance(entry, dict):
+                    prompts.append(entry)
+
+            start_idx = index * 16
+            outputs = []
+
+            for i in range(16):
+                idx = start_idx + i
+                if idx < len(prompts):
+                    # IMPORTANT: dump prompt object AS-IS
+                    outputs.append(json.dumps(prompts[idx], ensure_ascii=False))
+                else:
+                    outputs.append("")
+
+            return tuple(outputs)
+
+        except Exception:
+            return tuple([""] * 16)
+
+
+
+
+class VRGDG_SplitPrompt_T2I_I2V:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "prompt_json": ("STRING", {"multiline": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("t2i_prompt", "i2v_prompt")
+    FUNCTION = "split"
+    CATEGORY = "VRGDG"
+
+    def split(self, prompt_json):
+        if not prompt_json:
+            return "", ""
+
+        try:
+            text = prompt_json.strip()
+
+            # ONLY remove fenced code blocks if they are actually present
+            if text.startswith("```"):
+                lines = text.splitlines()
+                # Remove first line (``` or ```json)
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                # Remove last line if it's ```
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                text = "\n".join(lines).strip()
+
+            data = json.loads(text)
+
+            if not isinstance(data, dict):
+                return "", ""
+
+            t2i = str(data.get("t2i", "")).strip()
+
+            i2v_data = data.get("i2v", "")
+            if isinstance(i2v_data, list):
+                i2v = "\n".join(str(line).strip() for line in i2v_data if line)
+            else:
+                i2v = str(i2v_data).strip()
+
+            return t2i, i2v
+
+        except Exception:
+            return "", ""
+
+
+
+class VRGDG_PromptTemplateBuilder:
+    @classmethod
+    def INPUT_TYPES(cls):
+        section_types = [
+            "Theme / Style",
+            "Instructions",
+            "Image to Video Prompt",
+            "Text to Video Prompt",
+            "Text to Image Prompt",
+            "Story",
+            "Lyric Segment",
+            "Ideas",
+            "Other Notes",
+        ]
+
+        return {
+            "required": {
+                "section_1_type": (section_types,),
+                "section_1_text": ("STRING", {"multiline": True, "default": ""}),
+
+                "section_2_type": (section_types,),
+                "section_2_text": ("STRING", {"multiline": True, "default": ""}),
+
+                "section_3_type": (section_types,),
+                "section_3_text": ("STRING", {"multiline": True, "default": ""}),
+
+                "section_4_type": (section_types,),
+                "section_4_text": ("STRING", {"multiline": True, "default": ""}),
+
+                "section_5_type": (section_types,),
+                "section_5_text": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("formatted_prompt",)
+    FUNCTION = "build"
+    CATEGORY = "VRGDG"
+
+    def build(
+        self,
+        section_1_type, section_1_text,
+        section_2_type, section_2_text,
+        section_3_type, section_3_text,
+        section_4_type, section_4_text,
+        section_5_type, section_5_text,
+    ):
+        sections = [
+            (section_1_type, section_1_text),
+            (section_2_type, section_2_text),
+            (section_3_type, section_3_text),
+            (section_4_type, section_4_text),
+            (section_5_type, section_5_text),
+        ]
+
+        output_blocks = []
+
+        for section_type, section_text in sections:
+            if section_text and section_text.strip():
+                block = f"### {section_type}\n{section_text.strip()}"
+                output_blocks.append(block)
+
+        final_prompt = "\n\n".join(output_blocks)
+        return (final_prompt,)
+
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
@@ -834,7 +1012,10 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_PromptSplitter4":VRGDG_PromptSplitter4,
      "VRGDG_SpeechEmotionExtractor":VRGDG_SpeechEmotionExtractor,
      "VRGDG_LyricsEmotionMerger":VRGDG_LyricsEmotionMerger,
-     "VRGDG_PromptSplitter2":VRGDG_PromptSplitter2
+     "VRGDG_PromptSplitter2":VRGDG_PromptSplitter2,
+     "VRGDG_PromptSplitterForFL":VRGDG_PromptSplitterForFL,
+     "VRGDG_SplitPrompt_T2I_I2V":VRGDG_SplitPrompt_T2I_I2V,
+     "VRGDG_PromptTemplateBuilder":VRGDG_PromptTemplateBuilder    
     
     
     
@@ -848,10 +1029,14 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptSplitter4":"VRGDG_PromptSplitter4",
     "VRGDG_SpeechEmotionExtractor":"VRGDG_SpeechEmotionExtractor",
     "VRGDG_LyricsEmotionMerger":"VRGDG_LyricsEmotionMerger",
-    "VRGDG_PromptSplitter2":"VRGDG_PromptSplitter2"    
+    "VRGDG_PromptSplitter2":"VRGDG_PromptSplitter2",
+    "VRGDG_PromptSplitterForFL":"VRGDG_PromptSplitterForFL",
+    "VRGDG_SplitPrompt_T2I_I2V":"VRGDG_SplitPrompt_T2I_I2V",
+    "VRGDG_PromptTemplateBuilder":"VRGDG_PromptTemplateBuilder"    
     
     
 }
+
 
 
 
