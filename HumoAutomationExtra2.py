@@ -1003,6 +1003,47 @@ class VRGDG_PromptTemplateBuilder:
         return (final_prompt,)
 
 
+
+class VRGDG_SmartSplitTextTwo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("part_1", "part_2")
+    FUNCTION = "split"
+    CATEGORY = "Text"
+
+    def split(self, text):
+        if not text:
+            return "", ""
+
+        # Normalize all newline variants
+        normalized = text.replace("\\r\\n", "\n").replace("\\n", "\n")
+        normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Case 1: real newline exists → split on first one
+        if "\n" in normalized:
+            first, second = normalized.split("\n", 1)
+            return first.strip(), second.strip()
+
+        # Case 2: no newline → sentence-based split near middle
+        sentences = re.split(r'(?<=[.!?])\s+', normalized)
+
+        if len(sentences) <= 1:
+            mid = len(normalized) // 2
+            return normalized[:mid].strip(), normalized[mid:].strip()
+
+        mid_index = len(sentences) // 2
+        part_1 = " ".join(sentences[:mid_index]).strip()
+        part_2 = " ".join(sentences[mid_index:]).strip()
+
+        return part_1, part_2
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
@@ -1015,7 +1056,9 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_PromptSplitter2":VRGDG_PromptSplitter2,
      "VRGDG_PromptSplitterForFL":VRGDG_PromptSplitterForFL,
      "VRGDG_SplitPrompt_T2I_I2V":VRGDG_SplitPrompt_T2I_I2V,
-     "VRGDG_PromptTemplateBuilder":VRGDG_PromptTemplateBuilder    
+     "VRGDG_PromptTemplateBuilder":VRGDG_PromptTemplateBuilder,
+     "VRGDG_SmartSplitTextTwo":VRGDG_SmartSplitTextTwo,
+    
     
     
     
@@ -1032,10 +1075,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptSplitter2":"VRGDG_PromptSplitter2",
     "VRGDG_PromptSplitterForFL":"VRGDG_PromptSplitterForFL",
     "VRGDG_SplitPrompt_T2I_I2V":"VRGDG_SplitPrompt_T2I_I2V",
-    "VRGDG_PromptTemplateBuilder":"VRGDG_PromptTemplateBuilder"    
+    "VRGDG_PromptTemplateBuilder":"VRGDG_PromptTemplateBuilder",
+    "VRGDG_SmartSplitTextTwo":"VRGDG_SmartSplitTextTwo",    
     
     
 }
+
 
 
 
