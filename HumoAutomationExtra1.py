@@ -921,13 +921,610 @@ class VRGDG_PromptSplitterJson:
 
 
     
+# wildcard trick is taken from pythongossss's
+class AnyType(str):
+    def __ne__(self, __value: object) -> bool:
+        return False
 
+any_typ = AnyType("*")
+
+from server import PromptServer
+import os
+import json
+import math
+import folder_paths
+
+class VRGDG_LLM_PromptBatcher:
+    """
+    Builds a single batched prompt STRING for an LLM.
+    Batching is achieved via repeated ComfyUI runs.
+    """
+
+    RETURN_TYPES = (
+        "STRING",   # prompt
+        "INT",      # batch_index
+        "INT",      # total_batches
+        "BOOLEAN",  # is_final_batch
+        "STRING",   # output_subfolder
+        "STRING",   # file_prefix
+    )
+
+    RETURN_NAMES = (
+        "prompt",
+        "batch_index",
+        "total_batches",
+        "is_final_batch",
+        "output_folder",
+        "file_prefix",
+    )
+
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/LLM"
+    ######
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "style_theme_block": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "forceInput": True
+                    }
+                ),
+                "story_summary": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "forceInput": True
+                    }
+                ),
+                "lyric_segments_json": (
+                    "JSON",
+                    {}
+                ),
+                "story_groups_json": (
+                    "JSON",
+                    {}
+                ),
+                "batch_size": ("INT", {"default": 10, "min": 5, "max": 20}),
+                "output_subfolder": ("STRING",{"default": "llm_prompt_batches","placeholder": "Relative to ComfyUI/output OR full path"}
+                ),
+
+                "file_prefix": ("STRING", {"default": "Scene"}),
+                "manual_index": ("INT", {"default": -1, "min": -1}),
+                "enable_auto_queue": ("BOOLEAN", {"default": True}),
+                "trigger": ("INT", {"forceInput": True}),
+
+            }
+        }
+
+
+
+    # ---------------- helpers ----------------
+
+    def _load_json(self, text, label):
+        try:
+            if not isinstance(text, str):
+                raise TypeError("Input is not a string")
+
+            # Normalize ComfyUI multiline STRING garbage
+            text = text.strip()
+            text = (
+                text.replace("\ufeff", "")   # BOM
+                    .replace("\u200b", "")   # zero-width space
+                    .replace("\xa0", " ")    # non-breaking space
+            )
+
+            return json.loads(text)
+
+        except Exception as e:
+            raise ValueError(
+                f"[{label}] Invalid JSON: {e}\n"
+                f"--- RAW REPR ---\n{repr(text)}"
+            )
+
+
+    def _count_existing_batches(self, folder):
+        if not os.path.isdir(folder):
+            return 0
+        return len([
+            f for f in os.listdir(folder)
+            if os.path.isfile(os.path.join(folder, f))
+        ])
+
+    def _slice(self, items, index, size):
+        start = index * size
+        end = start + size
+        return items[start:end]
+
+
+    def _maybe_auto_queue_prompt_batches(self, total_batches, batch_index, enable):
+        if not enable:
+            print("[AutoQueue] Disabled by user.")
+            return
+
+        # Only queue from first run
+        if batch_index != 0:
+            print(f"[AutoQueue] Skipping (batch_index={batch_index})")
+            return
+
+        runs_to_queue = max(0, total_batches - 1)
+
+        if runs_to_queue > 0:
+            print(f"[AutoQueue] Queuing {runs_to_queue} additional batch runs")
+            for _ in range(runs_to_queue):
+                PromptServer.instance.send_sync("impact-add-queue", {})
+
+    def _send_popup_notification(self, message, message_type="info", title="LLM Batch Instructions"):
+        try:
+            PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+                "message": message,
+                "type": message_type,
+                "title": title
+            })
+        except Exception as e:
+            print(f"[Popup] Failed: {e}")
+
+    # ---------------- main ----------------
+
+    def run(
+        self,
+        style_theme_block,
+        story_summary,
+        lyric_segments_json,
+        story_groups_json,
+        batch_size,
+        output_subfolder,
+        file_prefix,
+        manual_index,
+        enable_auto_queue,
+        trigger,
+    ):
+        
+        print("TRIGGER VALUE:", trigger)
+
+        # Resolve output path (relative to ComfyUI /output)
+        base_output = folder_paths.get_output_directory()
+
+        # Allow absolute OR relative paths
+        if os.path.isabs(output_subfolder):
+            output_path = os.path.normpath(output_subfolder)
+        else:
+            output_path = os.path.normpath(
+                os.path.join(base_output, output_subfolder)
+            )
+
+        os.makedirs(output_path, exist_ok=True)
+        print("========== LLM PROMPT BATCHER START ==========")
+        print("Output path:", output_path)
+        print("File prefix:", file_prefix)
+        print("Batch size:", batch_size)
+        print("Manual index input:", manual_index)
+        print("Auto-queue (input):", enable_auto_queue)
+
+
+
+
+        # Load JSON inputs
+        # Load & normalize JSON inputs
+
+        # Normalize lyric segments (allow dict or list)
+        if isinstance(lyric_segments_json, dict):
+            lyric_segments = [
+                {"id": k, "text": v}
+                for k, v in lyric_segments_json.items()
+            ]
+        else:
+            lyric_segments = lyric_segments_json
+
+        # Normalize story groups (optional but recommended)
+        # Normalize story groups
+        if isinstance(story_groups_json, dict):
+            if "groups" in story_groups_json and isinstance(story_groups_json["groups"], list):
+                story_groups = story_groups_json["groups"]
+            else:
+                raise ValueError(
+                    "[story_groups_json] Expected dict with a 'groups' list"
+                )
+        else:
+            story_groups = story_groups_json
+
+        # ---------------- safety: enforce 1:1 alignment ----------------
+
+        if len(lyric_segments) != len(story_groups):
+            raise ValueError(
+                f"Lyric/story count mismatch: "
+                f"{len(lyric_segments)} lyrics vs {len(story_groups)} story groups"
+            )
+
+
+        total_items = min(len(lyric_segments), len(story_groups))
+        total_batches = math.ceil(total_items / batch_size)
+        print("Total items:", total_items)
+        print("Total batches required:", total_batches)
+
+
+        # Determine batch index
+        if manual_index >= 0:
+            batch_index = manual_index
+            is_manual = True
+            print("MANUAL MODE ENABLED — batch_index forced to:", batch_index)
+
+        else:
+            is_manual = False
+            highest_index = -1
+            prefix = f"{file_prefix}_"
+            suffix = ".txt"
+
+            print("Scanning folder for existing batch files...")
+
+            if os.path.isdir(output_path):
+                for fname in os.listdir(output_path):
+                    print("Found file:", fname)
+
+                    if not fname.startswith(prefix):
+                        print("  Skipped (wrong prefix)")
+                        continue
+                    if not fname.endswith(suffix):
+                        print("  Skipped (wrong suffix)")
+                        continue
+                    if "COMBINED" in fname:
+                        print("  Skipped (combined file)")
+                        continue
+
+                    index_part = fname[len(prefix):-len(suffix)]
+                    print("  Parsed index part:", index_part)
+
+                    if index_part.isdigit():
+                        highest_index = max(highest_index, int(index_part))
+                        print("  Accepted batch index:", index_part)
+
+            batch_index = highest_index + 1
+            print("Highest existing batch index:", highest_index)
+            print("Computed NEXT batch_index:", batch_index)
+
+
+        # Manual runs must never auto-queue
+        if is_manual:
+            enable_auto_queue = False
+
+        # Final batch check (NO CLAMPING)
+        is_final_batch = (batch_index + 1) >= total_batches
+
+
+                # ---------------- instructions for UI ----------------
+
+        if total_batches <= 1:
+            instructions = "✅ 1 prompt batch required. Running now."
+
+        elif batch_index == 0:
+            if enable_auto_queue:
+                instructions = (
+                    f"⚠️ {total_batches} prompt batches required\n"
+                    f"✅ Auto-queuing remaining {total_batches - 1} batch(es)"
+                )
+            else:
+                instructions = (
+                    f"⚠️ {total_batches} prompt batches required\n"
+                    f"🔴 Auto-queue is DISABLED — run each batch manually"
+                )
+
+        elif is_final_batch:
+            instructions = f"🏁 Final prompt batch ({batch_index + 1} of {total_batches})"
+
+        else:
+            instructions = (
+                f"⏳ Prompt batch {batch_index + 1} of {total_batches} in progress"
+            )
+
+
+        # Slice data
+        lyrics_batch = self._slice(lyric_segments, batch_index, batch_size)
+        story_batch = self._slice(story_groups, batch_index, batch_size)
+
+        print("FINAL batch_index used for this run:", batch_index)
+        print("Is manual run:", is_manual)
+        print("Auto-queue (final):", enable_auto_queue)
+        print("Is final batch:", is_final_batch)
+
+
+        # Build prompt (preserve original input format)
+
+        parts = []
+
+        # Instruction line the LLM needs
+        parts.append(
+            f"Here is batch {batch_index + 1} of {total_batches} batches.\n\n"
+        )
+
+        # ---- story block ----
+        parts.append("story\n")
+        parts.append("{\n")
+        parts.append(f'  "story_summary": {json.dumps(story_summary.strip(), ensure_ascii=False)},\n')
+        parts.append('  "groups": [\n')
+
+        for i, g in enumerate(story_batch):
+            comma = "," if i < len(story_batch) - 1 else ""
+            parts.append("    " + json.dumps(g, ensure_ascii=False) + comma + "\n")
+
+        parts.append("  ]\n")
+        parts.append("}\n\n")
+
+        # ---- lyrics block ----
+        parts.append("lyrics\n")
+        parts.append("{\n")
+
+        for i, s in enumerate(lyrics_batch):
+            comma = "," if i < len(lyrics_batch) - 1 else ""
+            parts.append(f'  "{s["id"]}": {json.dumps(s["text"], ensure_ascii=False)}{comma}\n')
+
+        parts.append("}\n\n")
+
+        # Final instruction
+        parts.append(
+            f"Please send all {len(story_batch)} prompts in the json code block now.\n"
+        )
+
+
+        prompt = "".join(parts)
+
+
+                    # ---------------- popup notifications ----------------
+
+        if batch_index == 0:
+            self._send_popup_notification(
+                instructions,
+                "info",
+                "🧠 LLM Prompt Batching Started"
+            )
+
+        elif is_final_batch:
+            self._send_popup_notification(
+                instructions,
+                "green",
+                "🏁 LLM Prompt Batching Complete"
+            )
+
+        else:
+            self._send_popup_notification(
+                instructions,
+                "yellow",
+                "⏳ LLM Prompt Batch Progress"
+            )
+
+        # ---------------- auto-queue behavior ----------------
+     
+        if enable_auto_queue and batch_index == 0:
+            print("AUTO-QUEUE WILL RUN:", max(0, total_batches - 1), "additional runs")
+        else:
+            print("AUTO-QUEUE WILL NOT RUN")
+
+
+        self._maybe_auto_queue_prompt_batches(
+            total_batches,
+            batch_index,
+            enable_auto_queue
+        )
+
+        print("========== LLM PROMPT BATCHER END ==========\n")
+
+        return (
+            prompt,
+            batch_index,
+            total_batches,
+            is_final_batch,
+            output_path,   # FULL PATH
+            file_prefix,
+        )
+
+
+class VRGDG_LLM_OutputSaver:
+    """
+    Saves LLM output per batch and auto-combines on final batch.
+    Uses a FULL folder path (absolute).
+    Also outputs the combined JSON as a STRING for UI viewing.
+
+    IMPORTANT:
+    LLMs often wrap JSON in ```json fences or add extra text.
+    This node extracts the JSON object from the saved batch text before parsing.
+    """
+    OUTPUT_NODE = True
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("combined_text",)
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/LLM"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True, "forceInput": True}),
+                "batch_index": ("INT", {}),
+                "is_final_batch": ("BOOLEAN", {}),
+                "output_folder": ("STRING", {
+                    "multiline": False,
+                    "placeholder": "FULL path, e.g. A:/ComfyUI/output/llm_results"
+                }),
+                "base_filename": ("STRING", {"default": "LLM_Output"}),
+            }
+        }
+
+    # ---------------- helpers ----------------
+
+    def _ensure_folder(self, folder):
+        folder = os.path.normpath(folder)
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    def _list_batch_files(self, folder, base_filename):
+        return sorted(
+            f for f in os.listdir(folder)
+            if f.startswith(base_filename + "_")
+            and f.lower().endswith(".txt")
+            and "COMBINED" not in f
+        )
+
+    def _extract_json_text(self, raw_text, source_label="(unknown)"):
+        """
+        Extract a JSON object/array from LLM output text.
+        Handles:
+        - ```json ... ``` fences
+        - extra text before/after JSON
+        - BOM / zero-width chars
+        """
+        import re
+
+        if raw_text is None:
+            raise ValueError(f"{source_label}: text is None")
+
+        text = str(raw_text)
+
+        # Normalize common garbage
+        text = (
+            text.replace("\ufeff", "")   # BOM
+                .replace("\u200b", "")   # zero-width space
+                .strip()
+        )
+
+        # Debug preview
+        preview = text[:200].replace("\n", "\\n")
+        print(f"[LLM_OutputSaver] {source_label} raw preview (first 200 chars): {preview}")
+
+        # 1) Prefer fenced code blocks: ```json ... ```
+        fence_pattern = re.compile(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", re.DOTALL | re.IGNORECASE)
+        m = fence_pattern.search(text)
+        if m:
+            extracted = m.group(1).strip()
+            print(f"[LLM_OutputSaver] {source_label} extracted JSON from fenced block (len={len(extracted)})")
+            return extracted
+
+        # 2) Fallback: take substring from first '{' or '[' to matching end by last '}' or ']'
+        first_obj = text.find("{")
+        first_arr = text.find("[")
+        if first_obj == -1 and first_arr == -1:
+            raise ValueError(f"{source_label}: No '{{' or '[' found in text; cannot extract JSON.")
+
+        start = first_obj if (first_obj != -1 and (first_arr == -1 or first_obj < first_arr)) else first_arr
+        end_curly = text.rfind("}")
+        end_square = text.rfind("]")
+
+        end = end_curly if (end_curly != -1 and (end_square == -1 or end_curly > end_square)) else end_square
+        if end == -1 or end <= start:
+            raise ValueError(f"{source_label}: Could not find valid JSON end '}}' or ']'.")
+
+        extracted = text[start:end + 1].strip()
+        print(f"[LLM_OutputSaver] {source_label} extracted JSON by braces scan (len={len(extracted)})")
+        return extracted
+
+    def _numeric_prompt_sort_key(self, k):
+        # Sort keys like "prompt1", "prompt2", ... numerically
+        import re
+        m = re.search(r"(\d+)$", str(k))
+        return int(m.group(1)) if m else 10**9
+
+    # ---------------- main ----------------
+
+    def run(
+        self,
+        text,
+        batch_index,
+        is_final_batch,
+        output_folder,
+        base_filename,
+    ):
+        import json
+
+        print("========== LLM OUTPUT SAVER START ==========")
+        print("Batch index:", batch_index)
+        print("Is final batch:", is_final_batch)
+        print("Base filename:", base_filename)
+
+        combined_text = ""
+
+        # Normalize + ensure folder
+        output_folder = self._ensure_folder(output_folder)
+        print("Resolved output folder:", output_folder)
+
+        # ---------------- save batch ----------------
+
+        batch_filename = f"{base_filename}_{batch_index:03d}.txt"
+        batch_path = os.path.join(output_folder, batch_filename)
+
+        try:
+            with open(batch_path, "w", encoding="utf-8") as f:
+                f.write(text)
+            print(f"[LLM_OutputSaver] Saved batch file: {batch_path}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to save batch file: {e}")
+
+        # ---------------- final combine ----------------
+
+        if is_final_batch:
+            print("[LLM_OutputSaver] Final batch detected — starting combine")
+
+            files = self._list_batch_files(output_folder, base_filename)
+            print("[LLM_OutputSaver] Batch files found:", files)
+
+            combined = {}
+            global_prompt_index = 1
+
+            for fname in files:
+                file_path = os.path.join(output_folder, fname)
+                print(f"[LLM_OutputSaver] Reading batch file: {file_path}")
+
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        raw = f.read()
+                except Exception as e:
+                    raise RuntimeError(f"Failed to read {fname}: {e}")
+
+                # Extract JSON from LLM text
+                try:
+                    json_text = self._extract_json_text(raw, source_label=fname)
+                    batch_data = json.loads(json_text)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to parse JSON from {fname}: {e}")
+
+                if not isinstance(batch_data, dict):
+                    raise RuntimeError(f"{fname}: Parsed JSON is not an object/dict; got {type(batch_data)}")
+
+                keys = list(batch_data.keys())
+                keys_sorted = sorted(keys, key=self._numeric_prompt_sort_key)
+
+                print(f"[LLM_OutputSaver] {fname} prompt keys:", keys)
+                print(f"[LLM_OutputSaver] {fname} keys sorted:", keys_sorted)
+
+                for key in keys_sorted:
+                    combined_key = f"prompt{global_prompt_index}"
+                    combined[combined_key] = batch_data[key]
+                    print(f"[LLM_OutputSaver] Added {combined_key} (from {fname}:{key})")
+                    global_prompt_index += 1
+
+            combined_path = os.path.join(output_folder, f"{base_filename}_COMBINED.json")
+
+            try:
+                with open(combined_path, "w", encoding="utf-8") as f:
+                    json.dump(combined, f, ensure_ascii=False, indent=2)
+                print(f"[LLM_OutputSaver] ✅ Wrote combined JSON file: {combined_path}")
+                print(f"[LLM_OutputSaver] Total prompts combined: {global_prompt_index - 1}")
+            except Exception as e:
+                raise RuntimeError(f"Failed to write combined file: {e}")
+
+            # Output for UI viewing
+            combined_text = json.dumps(combined, ensure_ascii=False, indent=2)
+
+        print("========== LLM OUTPUT SAVER END ==========\n")
+        return (combined_text,)
 
 
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_MusicVideoPromptCreatorV3": VRGDG_MusicVideoPromptCreatorJson,
-     "VRGDG_PromptSplitterJson":VRGDG_PromptSplitterJson
+     "VRGDG_PromptSplitterJson":VRGDG_PromptSplitterJson,
+    "VRGDG_LLM_PromptBatcher":VRGDG_LLM_PromptBatcher,
+    "VRGDG_LLM_OutputSaver":VRGDG_LLM_OutputSaver    
 
 
  
@@ -938,6 +1535,9 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MusicVideoPromptCreatorV3": "🌀 VRGDG_MusicVideoPromptCreatorJson",
-    "VRGDG_PromptSplitterJson":"VRGDG_PromptSplitterJson"
+    "VRGDG_PromptSplitterJson":"VRGDG_PromptSplitterJson",
+    "VRGDG_LLM_PromptBatcher":"VRGDG_LLM_PromptBatcher",
+    "VRGDG_LLM_OutputSaver":"VRGDG_LLM_OutputSaver"    
 
 }
+
