@@ -206,46 +206,77 @@ class FastLaplacianSharpen:
             "required": {
                 "images": ("IMAGE",),
                 "strength": (
-                    "FLOAT", {
-                        "default": 0.5,
-                        "min": 0.0,
-                        "max": 2.0,
-                        "step": 0.01
-                    }
-                )
+                    "FLOAT",
+                    {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.01},
+                ),
+                "use_gpu": (
+                    "BOOLEAN",
+                    {"default": False},
+                ),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_laplacian"
     CATEGORY = "video/enhancement"
-    DESCRIPTION = "Sharpens image using a Laplacian edge enhancement method."
+    DESCRIPTION = "Laplacian sharpen (CPU default, optional GPU)."
 
-    def apply_laplacian(self, images: torch.Tensor, strength: float) -> Tuple[torch.Tensor]:
-        device = comfy.model_management.get_torch_device()
-        images = images.to(device)
+    def apply_laplacian(
+        self,
+        images: torch.Tensor,
+        strength: float,
+        use_gpu: bool,
+    ) -> Tuple[torch.Tensor]:
 
-        # Convert to NCHW
-        x = images.permute(0, 3, 1, 2)
+        # =========================
+        # GPU PATH (explicit opt-in)
+        # =========================
+        if use_gpu:
+            device = comfy.model_management.get_torch_device()
 
-        # Define Laplacian kernel (3x3)
-        kernel = torch.tensor(
-            [[0, -1, 0],
-             [-1, 4, -1],
-             [0, -1, 0]], dtype=torch.float32, device=device
-        ).expand(3, 1, 3, 3)
+            x = images.to(device).permute(0, 3, 1, 2)
 
-        # Apply depthwise convolution
-        edges = torch.nn.functional.conv2d(x, kernel, padding=1, groups=3)
+            kernel = torch.tensor(
+                [[0, -1, 0],
+                 [-1, 4, -1],
+                 [0, -1, 0]],
+                dtype=torch.float32,
+                device=device,
+            ).expand(3, 1, 3, 3)
 
-        # Enhance with strength
-        sharpened = x + strength * edges
-        sharpened = sharpened.clamp(0.0, 1.0)
+            edges = F.conv2d(x, kernel, padding=1, groups=3)
+            out = (x + strength * edges).clamp(0.0, 1.0)
 
-        # Convert back to NHWC
-        sharpened = sharpened.permute(0, 2, 3, 1)
-        sharpened = sharpened.to(comfy.model_management.intermediate_device())
-        return (sharpened,)
+            out = out.permute(0, 2, 3, 1)
+            return (out.to(comfy.model_management.intermediate_device()),)
+
+        # =========================
+        # CPU PATH (default, safe)
+        # =========================
+        if images.is_cuda:
+            images = images.cpu()
+        images = images.contiguous()
+
+        img = images.numpy()  # NHWC
+
+        p = np.pad(
+            img,
+            ((0, 0), (1, 1), (1, 1), (0, 0)),
+            mode="edge",
+        )
+
+        lap = (
+            p[:, 1:-1, 0:-2] +
+            p[:, 0:-2, 1:-1] +
+            p[:, 2:  , 1:-1] +
+            p[:, 1:-1, 2:  ] -
+            4.0 * img
+        )
+
+        out = img + strength * lap
+        np.clip(out, 0.0, 1.0, out=out)
+
+        return (torch.from_numpy(out),)
 
 
 class FastSobelSharpen:
@@ -255,56 +286,92 @@ class FastSobelSharpen:
             "required": {
                 "images": ("IMAGE",),
                 "strength": (
-                    "FLOAT", {
-                        "default": 0.5,
-                        "min": 0.0,
-                        "max": 2.0,
-                        "step": 0.01
-                    }
-                )
+                    "FLOAT",
+                    {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.01},
+                ),
+                "use_gpu": (
+                    "BOOLEAN",
+                    {"default": False},
+                ),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_sobel"
     CATEGORY = "video/enhancement"
-    DESCRIPTION = "Sharpens image using Sobel edge detection to enhance gradients."
+    DESCRIPTION = "Sobel sharpen (CPU default, optional GPU)."
 
-    def apply_sobel(self, images: torch.Tensor, strength: float) -> Tuple[torch.Tensor]:
-        device = comfy.model_management.get_torch_device()
-        images = images.to(device)
+    def apply_sobel(
+        self,
+        images: torch.Tensor,
+        strength: float,
+        use_gpu: bool,
+    ) -> Tuple[torch.Tensor]:
 
-        # Convert to NCHW
-        x = images.permute(0, 3, 1, 2)
+        # =========================
+        # GPU PATH (explicit opt-in)
+        # =========================
+        if use_gpu:
+            device = comfy.model_management.get_torch_device()
 
-        # Sobel kernels (Gx, Gy)
-        sobel_x = torch.tensor(
-            [[-1, 0, 1],
-             [-2, 0, 2],
-             [-1, 0, 1]], dtype=torch.float32, device=device
-        ).expand(3, 1, 3, 3)
+            x = images.to(device).permute(0, 3, 1, 2)
 
-        sobel_y = torch.tensor(
-            [[-1, -2, -1],
-             [ 0,  0,  0],
-             [ 1,  2,  1]], dtype=torch.float32, device=device
-        ).expand(3, 1, 3, 3)
+            sobel_x = torch.tensor(
+                [[-1, 0, 1],
+                 [-2, 0, 2],
+                 [-1, 0, 1]],
+                dtype=torch.float32,
+                device=device,
+            ).expand(3, 1, 3, 3)
 
-        # Compute gradients
-        grad_x = torch.nn.functional.conv2d(x, sobel_x, padding=1, groups=3)
-        grad_y = torch.nn.functional.conv2d(x, sobel_y, padding=1, groups=3)
+            sobel_y = torch.tensor(
+                [[-1, -2, -1],
+                 [ 0,  0,  0],
+                 [ 1,  2,  1]],
+                dtype=torch.float32,
+                device=device,
+            ).expand(3, 1, 3, 3)
 
-        # Combine gradients
-        edges = torch.sqrt(grad_x ** 2 + grad_y ** 2 + 1e-6)
+            gx = F.conv2d(x, sobel_x, padding=1, groups=3)
+            gy = F.conv2d(x, sobel_y, padding=1, groups=3)
 
-        # Add to original
-        sharpened = x + strength * edges
-        sharpened = sharpened.clamp(0.0, 1.0)
+            edges = torch.sqrt(gx * gx + gy * gy + 1e-6)
+            out = (x + strength * edges).clamp(0.0, 1.0)
 
-        # Convert back to NHWC
-        sharpened = sharpened.permute(0, 2, 3, 1)
-        sharpened = sharpened.to(comfy.model_management.intermediate_device())
-        return (sharpened,)
+            out = out.permute(0, 2, 3, 1)
+            return (out.to(comfy.model_management.intermediate_device()),)
+
+        # =========================
+        # CPU PATH (default, safe)
+        # =========================
+        if images.is_cuda:
+            images = images.cpu()
+        images = images.contiguous()
+
+        img = images.numpy()  # NHWC
+
+        p = np.pad(
+            img,
+            ((0, 0), (1, 1), (1, 1), (0, 0)),
+            mode="edge",
+        )
+
+        gx = (
+            -p[:, 0:-2, 0:-2] - 2*p[:, 1:-1, 0:-2] - p[:, 2:  , 0:-2] +
+             p[:, 0:-2, 2:  ] + 2*p[:, 1:-1, 2:  ] + p[:, 2:  , 2:  ]
+        )
+
+        gy = (
+            -p[:, 0:-2, 0:-2] - 2*p[:, 0:-2, 1:-1] - p[:, 0:-2, 2:  ] +
+             p[:, 2:  , 0:-2] + 2*p[:, 2:  , 1:-1] + p[:, 2:  , 2:  ]
+        )
+
+        edges = np.sqrt(gx * gx + gy * gy)
+
+        out = img + strength * edges
+        np.clip(out, 0.0, 1.0, out=out)
+
+        return (torch.from_numpy(out),)
 
 #################### Added on 9/16/2025
 
