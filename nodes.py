@@ -123,40 +123,80 @@ class FastUnsharpSharpen:
             "required": {
                 "images": ("IMAGE",),
                 "strength": (
-                    "FLOAT", {
+                    "FLOAT",
+                    {
                         "default": 0.5,
                         "min": 0.0,
                         "max": 2.0,
-                        "step": 0.01
-                    }
-                )
+                        "step": 0.01,
+                    },
+                ),
+                "use_gpu": (
+                    "BOOLEAN",
+                    {"default": False},
+                ),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_unsharp"
     CATEGORY = "video/enhancement"
-    DESCRIPTION = "Sharpens image using a fast unsharp masking technique."
+    DESCRIPTION = "Unsharp mask (CPU default, optional GPU path)."
 
-    def apply_unsharp(self, images: torch.Tensor, strength: float) -> Tuple[torch.Tensor]:
-        device = comfy.model_management.get_torch_device()
-        images = images.to(device)
+    def apply_unsharp(
+        self,
+        images: torch.Tensor,
+        strength: float,
+        use_gpu: bool,
+    ) -> Tuple[torch.Tensor]:
 
-        # Convert to NCHW
-        x = images.permute(0, 3, 1, 2)
+        # =========================
+        # GPU PATH (explicit opt-in)
+        # =========================
+        if use_gpu:
+            device = comfy.model_management.get_torch_device()
 
-        # Apply Gaussian blur (3x3 kernel)
-        blur = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1)
+            x = images.to(device).permute(0, 3, 1, 2)
 
-        # Unsharp mask
-        sharpened = x + strength * (x - blur)
+            blur = F.avg_pool2d(x, kernel_size=3, stride=1, padding=1)
 
-        # Clamp and convert back
-        sharpened = sharpened.clamp(0.0, 1.0)
-        sharpened = sharpened.permute(0, 2, 3, 1)
-        sharpened = sharpened.to(comfy.model_management.intermediate_device())
+            out = x + strength * (x - blur)
+            out = out.clamp(0.0, 1.0)
 
-        return (sharpened,)
+            out = out.permute(0, 2, 3, 1)
+            return (out.to(comfy.model_management.intermediate_device()),)
+
+        # =========================
+        # CPU PATH (default, safe)
+        # =========================
+        if images.is_cuda:
+            images = images.cpu()
+        images = images.contiguous()
+
+        img = images.numpy()  # NHWC
+
+        p = np.pad(
+            img,
+            ((0, 0), (1, 1), (1, 1), (0, 0)),
+            mode="edge",
+        )
+
+        blur = (
+            p[:, 0:-2, 0:-2] +
+            p[:, 0:-2, 1:-1] +
+            p[:, 0:-2, 2:  ] +
+            p[:, 1:-1, 0:-2] +
+            p[:, 1:-1, 1:-1] +
+            p[:, 1:-1, 2:  ] +
+            p[:, 2:  , 0:-2] +
+            p[:, 2:  , 1:-1] +
+            p[:, 2:  , 2:  ]
+        ) / 9.0
+
+        out = img + strength * (img - blur)
+        np.clip(out, 0.0, 1.0, out=out)
+
+        return (torch.from_numpy(out),)
 
 
 class FastLaplacianSharpen:
