@@ -74,7 +74,7 @@ class ColorMatchToReference:
                     "FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}
                 ),
                 "batch_size": (
-                    "INT", {"default": 4, "min": 0, "max": 500, "step": 1}
+                    "INT", {"default": 1, "min": 1, "max": 500, "step": 1}
                 ),
             }
         }
@@ -86,33 +86,39 @@ class ColorMatchToReference:
 
     def match_color(self, images, reference_image, match_strength, batch_size):
         device = comfy.model_management.get_torch_device()
-        images = images.to(device)
-        reference_image = reference_image.to(device)
 
-        images = images.permute(0, 3, 1, 2)
-        reference_image = reference_image.permute(0, 3, 1, 2)
+        images = images.permute(0, 3, 1, 2)  # stays on CPU
+        reference_image = reference_image.permute(0, 3, 1, 2).to(device)
 
-        ref_lab = kornia.color.rgb_to_lab(reference_image)
-        ref_mean = ref_lab.mean(dim=[2, 3], keepdim=True)
-        ref_std = ref_lab.std(dim=[2, 3], keepdim=True) + 1e-5
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            ref_lab = kornia.color.rgb_to_lab(reference_image)
+            ref_mean = ref_lab.mean(dim=[2, 3], keepdim=True)
+            ref_std = ref_lab.std(dim=[2, 3], keepdim=True) + 1e-5
 
         outputs = []
-        for i in range(0, images.shape[0], batch_size):
-            batch = images[i:i + batch_size]
-            img_lab = kornia.color.rgb_to_lab(batch)
-            img_mean = img_lab.mean(dim=[2, 3], keepdim=True)
-            img_std = img_lab.std(dim=[2, 3], keepdim=True) + 1e-5
 
-            matched_lab = (img_lab - img_mean) / img_std * ref_std + ref_mean
-            blended_lab = match_strength * matched_lab + (1.0 - match_strength) * img_lab
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            for i in range(0, images.shape[0], batch_size):
+                batch = images[i:i + batch_size].to(device)
 
-            output = kornia.color.lab_to_rgb(blended_lab)
-            outputs.append(output)
+                img_lab = kornia.color.rgb_to_lab(batch)
+                img_mean = img_lab.mean(dim=[2, 3], keepdim=True)
+                img_std = img_lab.std(dim=[2, 3], keepdim=True) + 1e-5
+
+                matched_lab = (img_lab - img_mean) / img_std * ref_std + ref_mean
+                blended_lab = match_strength * matched_lab + (1.0 - match_strength) * img_lab
+
+                output = kornia.color.lab_to_rgb(blended_lab)
+
+                outputs.append(output.cpu())
+                del batch, img_lab, output
+                torch.cuda.empty_cache()
 
         output = torch.cat(outputs, dim=0).clamp(0.0, 1.0)
         output = output.permute(0, 2, 3, 1)
         output = output.to(comfy.model_management.intermediate_device())
         return (output,)
+
 
 
 
