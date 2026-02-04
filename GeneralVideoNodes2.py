@@ -428,26 +428,38 @@ class VRGDG_LoadAudioSplit_SRTOnly:
             # normal mode should never overwrite existing chunks
             overwrite_mode = "overwrite"
 
-            instructions = (
-                f"🎬 SRT MODE\n"
-                f"Rendering chunk {chunk_index + 1} / {total_sets}\n"
-                f"Output folder: {os.path.basename(output_folder)}"
-            )
+            if fixed_duration and fixed_duration > 0:
+                instructions = (
+                    f"⏱️ Fixed duration mode\n"
+                    f"{fixed_duration} seconds per group\n"
+                    f"Rendering chunk {chunk_index + 1} / {total_sets}\n"
+                    f"Output folder: {os.path.basename(output_folder)}"
+                )
+            else:
+                instructions = (
+                    f"🎬 SRT MODE\n"
+                    f"Rendering chunk {chunk_index + 1} / {total_sets}\n"
+                    f"Output folder: {os.path.basename(output_folder)}"
+                )
             remake_remaining_to_queue = 0
 
         # --------------------------------------------------
         # popup UI (RESTORED)
         # --------------------------------------------------
+        is_fixed_mode = bool(fixed_duration and fixed_duration > 0)
         if remake_mode:
             self._send_popup_notification(instructions, "pink", "🛠️ SRT REMAKE")
         elif redo_mode:
             self._send_popup_notification(instructions, "pink", "🔁 SRT REDO")
         elif chunk_index == 0:
-            self._send_popup_notification(instructions, "info", "🎬 STARTING SRT RENDER")
+            title = "⏱️ STARTING FIXED RENDER" if is_fixed_mode else "🎬 STARTING SRT RENDER"
+            self._send_popup_notification(instructions, "info", title)
         elif chunk_index + 1 < total_sets:
-            self._send_popup_notification(instructions, "pink", "⏳ SRT CHUNK IN PROGRESS")
+            title = "⏳ FIXED CHUNK IN PROGRESS" if is_fixed_mode else "⏳ SRT CHUNK IN PROGRESS"
+            self._send_popup_notification(instructions, "pink", title)
         else:
-            self._send_popup_notification(instructions, "green", "🏁 FINAL SRT CHUNK")
+            title = "🏁 FINAL FIXED CHUNK" if is_fixed_mode else "🏁 FINAL SRT CHUNK"
+            self._send_popup_notification(instructions, "green", title)
 
         # --------------------------------------------------
         # TIMING (FRAME-LOCKED + PRE + TAIL FRAMES)
