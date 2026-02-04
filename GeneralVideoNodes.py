@@ -1921,251 +1921,6 @@ class VRGDG_PadVideoWithLastFrame:
 
         return (output,)
 
-# -------------------------
-# AUDIO HELPER (FIXED)
-# -------------------------
-
-def extract_mono(audio):
-    """
-    ComfyUI-safe AUDIO extraction.
-    Handles (batch, channels, samples), (channels, samples), torch or numpy.
-    Returns (mono_numpy_array, sample_rate)
-    """
-
-    if audio is None:
-        return None, None
-
-    if not isinstance(audio, dict):
-        return None, None
-
-    y = audio.get("waveform")
-    sr = audio.get("sample_rate")
-
-    if y is None or sr is None:
-        return None, None
-
-    # torch -> numpy
-    if isinstance(y, torch.Tensor):
-        y = y.detach().cpu().numpy()
-
-    # --- FIX: handle 3D audio ---
-    # (batch, channels, samples) -> (channels, samples)
-    if y.ndim == 3:
-        y = y[0]
-
-    # (channels, samples) -> mono
-    if y.ndim == 2:
-        y = y.mean(axis=0)
-
-    # Final sanity check
-    if y.ndim != 1:
-        raise ValueError(f"Audio must be mono after processing, got shape {y.shape}")
-
-    return y.astype(np.float32), int(sr)
-
-
-
-# =========================
-# NODE A
-# =========================
-
-class BeatImpactAnalysisNode:
-    """
-    Node A: Beat & Impact Analysis
-    AUDIO inputs (not file paths)
-
-    Required: final mix
-    Optional: drums, bass, vocals
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "final_mix": ("AUDIO",),
-            },
-            "optional": {
-                "drums": ("AUDIO",),
-                "bass": ("AUDIO",),
-                "vocals": ("AUDIO",),
-            }
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("beat_data",)
-    FUNCTION = "analyze"
-    CATEGORY = "audio/rhythm"
-
-    def analyze(self, final_mix, drums=None, bass=None, vocals=None):
-
-        # --- Extract audio safely ---
-        y_mix, sr = extract_mono(final_mix)
-        if y_mix is None:
-            raise ValueError("Final mix AUDIO input is invalid")
-
-        y_drums, _ = extract_mono(drums)
-        y_bass, _ = extract_mono(bass)
-        y_vocals, _ = extract_mono(vocals)
-
-        # --- Beat source selection ---
-        beat_source = y_drums if y_drums is not None else y_mix
-
-        tempo, beat_frames = librosa.beat.beat_track(
-            y=beat_source,
-            sr=sr
-        )
-        beat_times = librosa.frames_to_time(beat_frames, sr=sr)
-
-        # --- Onset strength (impact signals) ---
-        def onset_strength(y):
-            if y is None:
-                return None
-            o = librosa.onset.onset_strength(y=y, sr=sr)
-            return o / (np.max(o) + 1e-6)
-
-        onset_mix = onset_strength(y_mix)
-        onset_drums = onset_strength(y_drums)
-        onset_bass = onset_strength(y_bass)
-        onset_vocals = onset_strength(y_vocals)
-
-        onset_times = librosa.frames_to_time(
-            np.arange(len(onset_mix)), sr=sr
-        )
-
-        beats = []
-
-        for i, t in enumerate(beat_times):
-            idx = np.argmin(np.abs(onset_times - t))
-
-            impact = 0.0
-            weight_sum = 0.0
-
-            if onset_drums is not None:
-                impact += onset_drums[idx] * 0.5
-                weight_sum += 0.5
-
-            if onset_bass is not None:
-                impact += onset_bass[idx] * 0.3
-                weight_sum += 0.3
-
-            if onset_vocals is not None:
-                impact += onset_vocals[idx] * 0.2
-                weight_sum += 0.2
-
-            if weight_sum == 0.0:
-                impact = onset_mix[idx]
-            else:
-                impact /= weight_sum
-
-            beats.append({
-                "time": round(float(t), 4),
-                "beat_index": i,
-                "downbeat": (i % 4 == 0),
-                "impact": round(float(impact), 4)
-            })
-
-        output = {
-            "bpm": round(float(tempo), 2),
-            "source_used_for_beats": "drums" if y_drums is not None else "final_mix",
-            "beats": beats
-        }
-
-        return (json.dumps(output),)
-
-
-# =========================
-# NODE B
-# =========================
-
-class BeatSceneDurationNode:
-    """
-    Node B: Beat-Aligned Scene Duration Generator
-    Outputs a comma-separated duration string
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "beat_data": ("STRING",),
-                "min_duration": ("FLOAT", {
-                    "default": 2.0,
-                    "min": 0.1,
-                    "step": 0.1
-                }),
-                "max_duration": ("FLOAT", {
-                    "default": 10.0,
-                    "min": 0.2,
-                    "step": 0.1
-                }),
-                "bias": ("FLOAT", {
-                    "default": 0.7,
-                    "min": 0.0,
-                    "max": 1.0,
-                    "step": 0.05
-                }),
-                "seed": ("INT", {
-                    "default": 0
-                }),
-            }
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("durations",)
-    FUNCTION = "generate"
-    CATEGORY = "audio/rhythm"
-
-    def generate(self, beat_data, min_duration, max_duration, bias, seed):
-
-        data = json.loads(beat_data)
-        beats = data["beats"]
-
-        rng = random.Random(seed)
-
-        durations = []
-        scene_start_time = beats[0]["time"]
-        current_index = 0
-
-        while current_index < len(beats) - 1:
-            start_time = beats[current_index]["time"]
-            min_time = start_time + min_duration
-            max_time = start_time + max_duration
-
-            candidates = []
-
-            for i in range(current_index + 1, len(beats)):
-                t = beats[i]["time"]
-
-                if t < min_time:
-                    continue
-                if t > max_time:
-                    break
-
-                impact = beats[i]["impact"]
-                downbeat = beats[i]["downbeat"]
-
-                weight = impact * (1.2 if downbeat else 1.0)
-                candidates.append((i, t, weight))
-
-            if not candidates:
-                break
-
-            weights = [(w ** bias) + 1e-6 for _, _, w in candidates]
-            chosen_index, chosen_time, _ = rng.choices(candidates, weights=weights, k=1)[0]
-
-            durations.append(chosen_time - start_time)
-            current_index = chosen_index
-
-        # Merge remainder
-        final_time = beats[-1]["time"]
-        if durations:
-            remainder = final_time - (sum(durations) + scene_start_time)
-            if remainder > 0:
-                durations[-1] += remainder
-
-        duration_str = ",".join(f"{d:.1f}" for d in durations if d > 0)
-        return (duration_str,)
-
 
 import tempfile
 class VRGDG_DurationIndexFloat:
@@ -2289,6 +2044,439 @@ class VRGDG_TrimImageBatch:
 
 
 
+# -------------------------
+# AUDIO HELPER (FIXED)
+# -------------------------
+
+def extract_mono(audio):
+    """
+    ComfyUI-safe AUDIO extraction.
+    Handles (batch, channels, samples), (channels, samples), torch or numpy.
+    Returns (mono_numpy_array, sample_rate)
+    """
+
+    if audio is None:
+        return None, None
+
+    if not isinstance(audio, dict):
+        return None, None
+
+    y = audio.get("waveform")
+    sr = audio.get("sample_rate")
+
+    if y is None or sr is None:
+        return None, None
+
+    # torch -> numpy
+    if isinstance(y, torch.Tensor):
+        y = y.detach().cpu().numpy()
+
+    # --- FIX: handle 3D audio ---
+    # (batch, channels, samples) -> (channels, samples)
+    if y.ndim == 3:
+        y = y[0]
+
+    # (channels, samples) -> mono
+    if y.ndim == 2:
+        y = y.mean(axis=0)
+
+    # Final sanity check
+    if y.ndim != 1:
+        raise ValueError(f"Audio must be mono after processing, got shape {y.shape}")
+
+    return y.astype(np.float32), int(sr)
+
+
+
+# =========================
+# NODE A
+# =========================
+
+class BeatImpactAnalysisNode:
+    """
+    Node A: Beat & Impact Analysis
+    AUDIO inputs (not file paths)
+
+    Required: final mix
+    Optional: drums, bass, vocals
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "final_mix": ("AUDIO",),
+            },
+            "optional": {
+                "drums": ("AUDIO",),
+                "bass": ("AUDIO",),
+                "vocals": ("AUDIO",),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("beat_data",)
+    FUNCTION = "analyze"
+    CATEGORY = "audio/rhythm"
+
+    def analyze(self, final_mix, drums=None, bass=None, vocals=None):
+
+        # --- Extract audio safely ---
+        y_mix, sr = extract_mono(final_mix)
+        if y_mix is None:
+            raise ValueError("Final mix AUDIO input is invalid")
+
+        y_drums, _ = extract_mono(drums)
+        y_bass, _ = extract_mono(bass)
+        y_vocals, _ = extract_mono(vocals)
+
+        # --- Beat source selection ---
+        # Prefer drums only if they cover the full mix duration and are not silent in the tail.
+        def stem_usable(y_stem, y_ref, sr):
+            if y_stem is None or y_ref is None:
+                return False
+            # If the stem is meaningfully shorter than the mix, don't use it for beat tracking.
+            if (len(y_ref) - len(y_stem)) / sr > 1.0:
+                return False
+            # Check tail energy vs overall energy to avoid silence-trimmed stems.
+            hop = 512
+            frame = 2048
+            rms = librosa.feature.rms(y=y_stem, frame_length=frame, hop_length=hop)[0]
+            if rms.size == 0:
+                return False
+            overall = float(np.median(rms))
+            tail_frames = max(1, int(10.0 * sr / hop))  # last ~10 seconds
+            tail = float(np.median(rms[-tail_frames:]))
+            if overall <= 1e-8:
+                return False
+            return tail >= overall * 0.1
+
+        beat_source = y_drums if stem_usable(y_drums, y_mix, sr) else y_mix
+
+        tempo, beat_frames = librosa.beat.beat_track(
+            y=beat_source,
+            sr=sr,
+            trim=False
+        )
+        beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+
+        # --- Onset strength (impact signals) ---
+        def onset_strength(y):
+            if y is None:
+                return None
+            o = librosa.onset.onset_strength(y=y, sr=sr)
+            return o / (np.max(o) + 1e-6)
+
+        onset_mix = onset_strength(y_mix)
+        onset_drums = onset_strength(y_drums)
+        onset_bass = onset_strength(y_bass)
+        onset_vocals = onset_strength(y_vocals)
+
+        onset_times = librosa.frames_to_time(
+            np.arange(len(onset_mix)), sr=sr
+        )
+
+        beats = []
+
+        for i, t in enumerate(beat_times):
+            idx = np.argmin(np.abs(onset_times - t))
+
+            impact = 0.0
+            weight_sum = 0.0
+
+            if onset_drums is not None:
+                impact += onset_drums[idx] * 0.5
+                weight_sum += 0.5
+
+            if onset_bass is not None:
+                impact += onset_bass[idx] * 0.3
+                weight_sum += 0.3
+
+            if onset_vocals is not None:
+                impact += onset_vocals[idx] * 0.2
+                weight_sum += 0.2
+
+            if weight_sum == 0.0:
+                impact = onset_mix[idx]
+            else:
+                impact /= weight_sum
+
+            beats.append({
+                "time": round(float(t), 4),
+                "beat_index": i,
+                "downbeat": (i % 4 == 0),
+                "impact": round(float(impact), 4)
+            })
+
+        output = {
+            "bpm": round(float(tempo), 2),
+            "source_used_for_beats": "drums" if y_drums is not None else "final_mix",
+            "duration": float(len(y_mix) / sr),
+            "beats": beats
+        }
+
+
+        return (json.dumps(output),)
+
+
+# =========================
+# NODE B
+# =========================
+
+class BeatSceneDurationNode:
+    """
+    Node B: Beat-Aligned Scene Duration Generator
+    Outputs a valid .srt subtitle file AND returns the text.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "beat_data": ("STRING",),
+                "min_duration": ("FLOAT", {
+                    "default": 2.0,
+                    "min": 0.1,
+                    "step": 0.1
+                }),
+                "max_duration": ("FLOAT", {
+                    "default": 10.0,
+                    "min": 0.2,
+                    "step": 0.1
+                }),
+                "bias": ("FLOAT", {
+                    "default": 0.7,
+                    "min": 0.0,
+                    "max": 1.0,
+                    "step": 0.05
+                }),
+                "seed": ("INT", {
+                    "default": 0
+                }),
+                "output_filename": ("STRING", {
+                    "default": "beats_output"
+                }),
+        
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING",)
+    RETURN_NAMES = ("srt_text", "srt_path",)
+    FUNCTION = "generate"
+    CATEGORY = "audio/rhythm"
+
+    def generate(
+        self,
+        beat_data,
+        min_duration,
+        max_duration,
+        bias,
+        seed,
+        output_filename
+    ):
+        data = json.loads(beat_data)
+        beats = data["beats"]
+        song_end = data.get("duration", beats[-1]["time"])
+
+
+        rng = random.Random(seed)
+
+        def format_time(seconds):
+            h = int(seconds // 3600)
+            m = int((seconds % 3600) // 60)
+            s = int(seconds % 60)
+            ms = int((seconds - int(seconds)) * 1000)
+            return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
+        srt_lines = []
+        current_time = 0.0
+        scene_index = 1
+        current_index = 0
+
+        while current_index < len(beats) - 1:
+            start_time = beats[current_index]["time"]
+            min_time = start_time + min_duration
+            max_time = start_time + max_duration
+
+            candidates = []
+
+            for i in range(current_index + 1, len(beats)):
+                t = beats[i]["time"]
+
+                if t < min_time:
+                    continue
+                if t > max_time:
+                    break
+
+                impact = beats[i]["impact"]
+                downbeat = beats[i]["downbeat"]
+
+                weight = impact * (1.2 if downbeat else 1.0)
+                candidates.append((i, t, weight))
+
+            if not candidates:
+                break
+
+            weights = [(w ** bias) + 1e-6 for _, _, w in candidates]
+            chosen_index, chosen_time, _ = rng.choices(
+                candidates, weights=weights, k=1
+            )[0]
+
+            duration = chosen_time - start_time
+
+            srt_lines.append(str(scene_index))
+            srt_lines.append(
+                f"{format_time(current_time)} --> {format_time(current_time + duration)}"
+            )
+            srt_lines.append(f"SCENE {scene_index}")
+
+            srt_lines.append("")  # blank line required between blocks
+
+
+            current_time += duration
+            scene_index += 1
+            current_index = chosen_index
+
+        # --- Force final subtitle to reach song end ---
+        if current_time < song_end:
+            srt_lines.append(str(scene_index))
+            srt_lines.append(
+                f"{format_time(current_time)} --> {format_time(song_end)}"
+            )
+            srt_lines.append(f"SCENE {scene_index}")
+
+            srt_lines.append("")
+
+
+
+
+
+        ###############
+        # Save next to THIS custom node file, inside /SRT_Files
+        node_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Create folder if missing
+        srt_dir = os.path.join(node_dir, "SRT_Files")
+        os.makedirs(srt_dir, exist_ok=True)
+
+        # Ensure .srt extension
+        filename = output_filename.strip()
+        if not filename.lower().endswith(".srt"):
+            filename += ".srt"
+
+        # Final path
+        out_path = os.path.join(srt_dir, filename)
+
+        # Write clean SRT format ONLY
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(srt_lines))
+
+        print(f"[BeatSceneDurationNode] Saved SRT to: {out_path}")
+
+
+
+        return (
+            "\n".join(srt_lines),
+            out_path
+        )
+
+
+
+
+from PIL import Image
+class IndexedImageFromFolder:
+    """
+    Loads a single image from a folder based on an index.
+    Images are sorted numerically by the numbers found in filenames.
+    Loops safely, with optional random mode after the end.
+    Random mode prevents reuse until 2 other images are shown.
+    """
+
+    # Persistent random history (class-level)
+    random_history = []
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder_path": ("STRING", {
+                    "default": "",
+                    "multiline": False
+                }),
+                "index": ("INT", {
+                    "default": 0,
+                    "min": 0
+                }),
+                "random_after_end": ("BOOLEAN", {
+                    "default": False
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "load_image"
+    CATEGORY = "image"
+
+    def load_image(self, folder_path, index, random_after_end):
+
+        # Validate folder
+        if not os.path.isdir(folder_path):
+            raise Exception(f"Folder does not exist: {folder_path}")
+
+        # Supported image extensions
+        valid_exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
+
+        # Collect image files
+        files = [
+            f for f in os.listdir(folder_path)
+            if f.lower().endswith(valid_exts)
+        ]
+
+        if not files:
+            raise Exception(f"No images found in folder: {folder_path}")
+
+        # Extract first number found in filename (used for sorting)
+        def extract_number(filename):
+            match = re.search(r"\d+", filename)
+            return int(match.group()) if match else float("inf")
+
+        # Sort files numerically
+        files.sort(key=extract_number)
+
+        # Random mode after reaching the end
+        if random_after_end and index >= len(files):
+            import random
+
+            choices = list(range(len(files)))
+
+            # Remove last 2 used images
+            for prev in self.__class__.random_history:
+                if prev in choices and len(choices) > 2:
+                    choices.remove(prev)
+
+            index = random.choice(choices)
+
+            # Store index in history
+            self.__class__.random_history.append(index)
+
+            # Keep only last 2 picks
+            if len(self.__class__.random_history) > 2:
+                self.__class__.random_history.pop(0)
+
+        else:
+            # Normal looping
+            index = index % len(files)
+
+        # Load selected image
+        image_path = os.path.join(folder_path, files[index])
+        image = Image.open(image_path).convert("RGB")
+
+        # Convert to ComfyUI IMAGE format
+        image_np = np.array(image).astype(np.float32) / 255.0
+        image_tensor = torch.from_numpy(image_np)[None, ...]
+
+        return (image_tensor,)
 
 
 NODE_CLASS_MAPPINGS = {
@@ -2300,7 +2488,9 @@ NODE_CLASS_MAPPINGS = {
     "BeatImpactAnalysisNode":BeatImpactAnalysisNode,
     "VRGDG_DurationIndexFloat":VRGDG_DurationIndexFloat,
     "VRGDG_TrimImageBatch":VRGDG_TrimImageBatch,
-    "BeatSceneDurationNode": BeatSceneDurationNode
+    "BeatSceneDurationNode": BeatSceneDurationNode,
+    "IndexedImageFromFolder": IndexedImageFromFolder,
+    
 
 
 }
@@ -2314,7 +2504,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "BeatImpactAnalysisNode":"BeatImpactAnalysisNode",
     "VRGDG_DurationIndexFloat":"VRGDG_DurationIndexFloat",
     "VRGDG_TrimImageBatch":"VRGDG_TrimImageBatch",
-    "BeatSceneDurationNode": "Beat-Aligned Scene Durations"
+    "BeatSceneDurationNode": "Beat-Aligned Scene Durations",
+    "IndexedImageFromFolder": "Image From Folder (Index)",
+
 
 
 
