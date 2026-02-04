@@ -1044,6 +1044,250 @@ class VRGDG_SmartSplitTextTwo:
 
         return part_1, part_2
 
+
+class VRGDG_ManualLyricsExtractor_SRT:
+    """
+    Transcribes entire audio file and outputs all lyrics as a formatted string.
+
+    ✅ Normal mode:
+      - HuMo frame adjustment ON
+      - 200-char truncation ON
+
+    ✅ LTX-2 mode:
+      - HuMo adjustment OFF
+      - No truncation
+      - Hard clamp to 30.0s per segment (Whisper limit)
+    """
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("all_lyrics_combined",)
+
+    FUNCTION = "extract_lyrics"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "srt_path": ("STRING", {"default": ""}),
+                "fps": ("INT", {"default": 25, "min": 1, "max": 60}),
+
+                "audio": ("AUDIO",),
+                "scene_duration_seconds": ("FLOAT", {"default": 4.0, "min": 1.0, "max": 60.0}),
+                "use_ltx2": ("BOOLEAN", {"default": False}),
+                "language": (
+                    [
+                        "auto", "english", "chinese", "german", "spanish", "russian", "korean", "french",
+                        "japanese", "portuguese", "turkish", "polish", "catalan", "dutch", "arabic", "swedish",
+                        "italian", "indonesian", "hindi", "finnish", "vietnamese", "hebrew", "ukrainian", "greek",
+                        "malay", "czech", "romanian", "danish", "hungarian", "tamil", "norwegian", "thai", "urdu",
+                        "croatian", "bulgarian", "lithuanian", "latin", "maori", "malayalam", "welsh", "slovak",
+                        "telugu", "persian", "latvian", "bengali", "serbian", "azerbaijani", "slovenian", "kannada",
+                        "estonian", "macedonian", "breton", "basque", "icelandic", "armenian", "nepali", "mongolian",
+                        "bosnian", "kazakh", "albanian", "swahili", "galician", "marathi", "punjabi", "sinhala",
+                        "khmer", "shona", "yoruba", "somali", "afrikaans", "occitan", "georgian", "belarusian",
+                        "tajik", "sindhi", "gujarati", "amharic", "yiddish", "lao", "uzbek", "faroese",
+                        "haitian creole", "pashto", "turkmen", "nynorsk", "maltese", "sanskrit",
+                        "luxembourgish", "myanmar", "tibetan", "tagalog", "malagasy", "assamese",
+                        "tatar", "hawaiian", "lingala", "hausa", "bashkir", "javanese", "sundanese",
+                        "cantonese", "burmese", "valencian", "flemish", "haitian", "letzeburgesch",
+                        "pushto", "panjabi", "moldavian", "moldovan", "sinhalese", "castilian",
+                        "mandarin"
+                    ],
+                    {"default": "english"}
+                ),
+            }
+        }
+
+    # Only used for HuMo mode
+    def _adjust_frames_for_humo(self, frames: int) -> int:
+        adjusted = 4 * ((frames + 2) // 4) + 1
+        if adjusted != frames:
+            actual_duration = adjusted / 25
+            print(f"[HuMo Adjust] {frames} frames → {adjusted} frames ({actual_duration:.2f}s)")
+        return adjusted
+
+    def _transcribe_segment(
+        self,
+        waveform,
+        sample_rate,
+        start_sample,
+        end_sample,
+        processor,
+        model,
+        device,
+        language,
+    ):
+        try:
+            seg = waveform[..., start_sample:end_sample].contiguous()
+            flat = seg.mean(dim=1).squeeze()
+
+            if sample_rate != 16000:
+                flat = torchaudio.functional.resample(flat, sample_rate, 16000)
+
+            inputs = processor(
+                flat,
+                sampling_rate=16000,
+                return_tensors="pt",
+                padding="longest",
+                truncation=False
+            )
+
+            input_features = inputs["input_features"].to(device)
+
+            with torch.no_grad():
+                if language == "auto":
+                    generated_ids = model.generate(input_features)
+                else:
+                    decoder_ids = processor.get_decoder_prompt_ids(language=language)
+                    generated_ids = model.generate(
+                        input_features,
+                        forced_decoder_ids=decoder_ids
+                    )
+
+            return processor.batch_decode(
+                generated_ids,
+                skip_special_tokens=True
+            )[0].strip()
+
+        except Exception:
+            import traceback
+            print("\n====== WHISPER TRANSCRIBE FAILED ======")
+            traceback.print_exc()
+            print("======================================\n")
+            return "[Error]"
+
+    def _clean_lyric(self, lyric: str, use_ltx2: bool) -> str:
+        lyric = re.sub(r"(.)\1{3,}", r"\1" * 3, lyric)
+        lyric = re.sub(r"[-—–_,]+", " ", lyric)
+
+        lyric = lyric.strip()
+
+        # ✅ LTX-2: no truncation
+        if use_ltx2:
+            return lyric
+
+        # Normal mode: keep old cap
+        return lyric[:200].rstrip() + "…" if len(lyric) > 200 else lyric
+    def _parse_srt_segments(self, srt_path):
+        segments = []
+        with open(srt_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        blocks = content.strip().split("\n\n")
+
+        for block in blocks:
+            lines = block.splitlines()
+            if len(lines) < 2:
+                continue
+
+            times = lines[1]
+            start_str, end_str = times.split(" --> ")
+
+            def to_seconds(t):
+                h, m, rest = t.split(":")
+                s, ms = rest.split(",")
+                return int(h)*3600 + int(m)*60 + float(s) + float(ms)/1000
+
+            start = to_seconds(start_str)
+            end = to_seconds(end_str)
+
+            segments.append((start, end))
+
+        return segments
+
+    def extract_lyrics(
+        self,
+        audio,
+        scene_duration_seconds=4.0,
+        fps=25,
+        srt_path="",
+        use_ltx2=False,
+        language="english",
+        **kwargs
+    ):
+        waveform = audio["waveform"]
+        sample_rate = int(audio["sample_rate"])
+
+        if waveform.ndim == 2:
+            waveform = waveform.unsqueeze(0)
+
+        total_samples = waveform.shape[-1]
+        total_duration = total_samples / sample_rate
+        print(f"[ManualLyrics] Processing audio: {total_duration:.2f}s @ {sample_rate}Hz")
+
+        # ✅ FPS now user-controlled
+        fps = int(fps)
+
+        # ✅ LTX-2 mode: NO HuMo adjustment (only used if no SRT)
+        frames_per_scene = int(round(fps * scene_duration_seconds))
+        if not use_ltx2:
+            frames_per_scene = self._adjust_frames_for_humo(frames_per_scene)
+
+        samples_per_scene = int(frames_per_scene * sample_rate / fps + 0.5)
+
+        # ✅ Whisper hard limit: never exceed 30.0s per chunk
+        max_whisper_samples = int(sample_rate * 30.0)
+        samples_per_scene = min(samples_per_scene, max_whisper_samples)
+
+        # ✅ If SRT provided, override segmentation completely
+        if srt_path:
+            time_segments = self._parse_srt_segments(srt_path)
+            total_segments = len(time_segments)
+        else:
+            time_segments = None
+            total_segments = math.ceil(total_samples / samples_per_scene)
+
+        all_transcriptions = []
+
+        print("[ManualLyrics] Loading Whisper Large V3...")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
+        model = WhisperForConditionalGeneration.from_pretrained(
+            "openai/whisper-large-v3"
+        ).to(device).eval()
+
+        print("[ManualLyrics] Starting transcription...")
+
+        for i in range(total_segments):
+
+            # ✅ SRT-driven segment timing
+            if time_segments:
+                start_time, end_time = time_segments[i]
+
+                start = int(start_time * sample_rate)
+                end = int(end_time * sample_rate)
+
+            # ✅ Fixed-duration fallback
+            else:
+                start = i * samples_per_scene
+                end = min(start + samples_per_scene, total_samples)
+
+            text = self._transcribe_segment(
+                waveform,
+                sample_rate,
+                start,
+                end,
+                processor,
+                model,
+                device,
+                language
+            )
+
+            text = self._clean_lyric(text, use_ltx2)
+            all_transcriptions.append(text)
+
+            print(f"[ManualLyrics] Segment {i+1}/{total_segments} complete")
+
+        combined_lines = [f"# Lyrics to fix: ({total_segments} segments)", ""]
+        for i, lyric in enumerate(all_transcriptions, 1):
+            combined_lines.append(f"lyricSegment{i}={lyric}")
+
+        print("[ManualLyrics] Extraction complete!")
+        return ("\n".join(combined_lines),)
+
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
@@ -1058,6 +1302,8 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_SplitPrompt_T2I_I2V":VRGDG_SplitPrompt_T2I_I2V,
      "VRGDG_PromptTemplateBuilder":VRGDG_PromptTemplateBuilder,
      "VRGDG_SmartSplitTextTwo":VRGDG_SmartSplitTextTwo,
+     "VRGDG_ManualLyricsExtractor_SRT": VRGDG_ManualLyricsExtractor_SRT
+    
     
     
     
@@ -1076,10 +1322,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptSplitterForFL":"VRGDG_PromptSplitterForFL",
     "VRGDG_SplitPrompt_T2I_I2V":"VRGDG_SplitPrompt_T2I_I2V",
     "VRGDG_PromptTemplateBuilder":"VRGDG_PromptTemplateBuilder",
-    "VRGDG_SmartSplitTextTwo":"VRGDG_SmartSplitTextTwo",    
+    "VRGDG_SmartSplitTextTwo":"VRGDG_SmartSplitTextTwo",
+    "VRGDG_ManualLyricsExtractor_SRT": "Manual Lyrics Extractor (SRT Segments)"
+    
     
     
 }
+
 
 
 
