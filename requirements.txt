@@ -2,3 +2,4 @@ kornia
 librosa
 imageio
 torchcodec
+google-generativeai
