@@ -1259,6 +1259,18 @@ class VRGDG_ManualLyricsExtractor_SRT:
                 start = int(start_time * sample_rate)
                 end = int(end_time * sample_rate)
 
+                # ✅ Whisper hard limit: truncate overly long SRT segments instead of failing
+                seg_len_samples = end - start
+                if seg_len_samples > max_whisper_samples:
+                    truncated_end = min(start + max_whisper_samples, total_samples)
+                    truncated_len = truncated_end - start
+                    print(
+                        f"[ManualLyrics] Truncating segment {i+1}/{total_segments}: "
+                        f"{seg_len_samples / sample_rate:.2f}s exceeds 30.0s Whisper limit. "
+                        f"Using {truncated_len / sample_rate:.2f}s."
+                    )
+                    end = truncated_end
+
             # ✅ Fixed-duration fallback
             else:
                 start = i * samples_per_scene
@@ -1328,6 +1340,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     
     
 }
+
 
 
 
