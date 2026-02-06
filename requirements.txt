@@ -3,3 +3,4 @@ librosa
 imageio
 torchcodec
 google-generativeai
+av
