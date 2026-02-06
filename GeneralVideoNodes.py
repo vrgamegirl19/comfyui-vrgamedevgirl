@@ -1665,6 +1665,71 @@ class VRGDG_LoadAudioSplit_General:
         )
     
         
+class VRGDG_BuildVideoOutputPath_General_SRT:
+    """
+    Computes the output file path for Video Combine.
+    Handles overwrite vs backup behavior.
+    Does NOT save files.
+    """
+
+    RETURN_TYPES = (
+        "STRING",  # output_path
+    )
+
+    RETURN_NAMES = (
+        "output_path",
+    )
+
+    FUNCTION = "run"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "output_folder": ("STRING", {}),
+                "chunk_index": ("INT", {}),
+                "base_name": ("STRING", {
+                    "default": "video"
+                }),
+                "overwrite_mode": ("STRING", {}),
+            }
+        }
+
+
+    def run(self, output_folder, chunk_index, base_name, overwrite_mode):
+        # Ensure output folder exists
+        os.makedirs(output_folder, exist_ok=True)
+
+        # Avoid double-indexing if base_name already has trailing numeric groups.
+        base_name = re.sub(r"(?:_\d+)+$", "", base_name)
+
+        # Build canonical filename
+        human_index = chunk_index + 1
+        filename = f"{base_name}_{human_index:04d}_{chunk_index:04d}"
+        output_path = os.path.join(output_folder, filename)
+
+
+        # Handle backup mode (keep normal mp4 name)
+        if overwrite_mode == "backup":
+            backup_dir = os.path.join(output_folder, "backup")
+            os.makedirs(backup_dir, exist_ok=True)
+
+            prefix = f"{base_name}_{human_index:04d}_{chunk_index:04d}"
+            for f in os.listdir(output_folder):
+                if f.startswith(prefix) and f.endswith(".mp4"):
+                    src = os.path.join(output_folder, f)
+
+                    # ✅ backup keeps same filename, overwrites previous backup
+                    dst = os.path.join(backup_dir, f)
+
+                    os.replace(src, dst)
+
+
+
+        # In overwrite mode, Video Combine will overwrite naturally
+        return (output_path,)
+            
 class VRGDG_BuildVideoOutputPath_General:
     """
     Computes the output file path for Video Combine.
@@ -2567,6 +2632,7 @@ class VRGDG_PromptSplitterWithIndex:
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LoadAudioSplit_General": VRGDG_LoadAudioSplit_General,
     "VRGDG_BuildVideoOutputPath_General": VRGDG_BuildVideoOutputPath_General,
+    "VRGDG_BuildVideoOutputPath_General_SRT": VRGDG_BuildVideoOutputPath_General_SRT,    
     "VRGDG_TrimFinalClip":VRGDG_TrimFinalClip,
     "VRGDG_PromptSplitter_General":VRGDG_PromptSplitter_General,
     "VRGDG_PadVideoWithLastFrame":VRGDG_PadVideoWithLastFrame,
@@ -2585,6 +2651,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_General": "VRGDG Load Audio Split (General)",
     "VRGDG_BuildVideoOutputPath_General": "VRGDG Build Video Output Path (General)",
+    "VRGDG_BuildVideoOutputPath_General_SRT": "VRGDG Build Video Output Path (General_SRT)",    
     "VRGDG_TrimFinalClip":"VRGDG_TrimFinalClip",
     "VRGDG_PromptSplitter_General":"VRGDG_PromptSplitter_General",
     "VRGDG_PadVideoWithLastFrame":"VRGDG_PadVideoWithLastFrame",
@@ -2600,5 +2667,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 
 }
+
 
 
