@@ -7698,7 +7698,13 @@
       "mode": 0,
       "inputs": [],
       "outputs": [],
-      "properties": {},
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
       "widgets_values": [
         "# Full Workflow Walkthrough Video\n\nThis video walks through the complete Nano Banana process  \nfrom start to finish using a real video project.\n\n### 🎬 Walkthrough Video\n🔗 [Watch the Video](https://youtu.be/UDK_wOuid1Q)\n\nShows full setup, prompt workflow, reference image usage,\nand the exact process used to produce the final result."
       ],
@@ -14397,8 +14403,8 @@
     "ds": {
       "scale": 1.0152559799478191,
       "offset": [
-        453.8809642163273,
-        -5715.120012936057
+        -2175.0126869564324,
+        -5427.507818802509
       ]
     }
   },
