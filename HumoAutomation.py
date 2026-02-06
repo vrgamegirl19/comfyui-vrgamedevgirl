@@ -2667,6 +2667,7 @@ class VRGDG_CreateFinalVideo:
 
 
 
+
 import tempfile
 
 class VRGDG_CreateFinalVideo_SRT:
@@ -2801,7 +2802,69 @@ class VRGDG_CreateFinalVideo_SRT:
 
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
-        torchaudio.save(temp_audio, waveform.squeeze(0).cpu(), sample_rate)
+        def _is_libtorchcodec_error(err_text):
+            return "libtorchcodec" in str(err_text).lower()
+
+        def _write_wav_pyav(path, wav_tensor, sr):
+            import av
+            import numpy as np
+
+            arr = wav_tensor.squeeze(0).detach().cpu().numpy()
+            if arr.ndim == 1:
+                arr = arr[None, :]
+            channels, samples = arr.shape
+            layout = "mono" if channels == 1 else "stereo"
+
+            arr = np.clip(arr, -1.0, 1.0)
+            pcm = (arr.T * 32767.0).astype(np.int16)
+
+            with av.open(path, "w", format="wav") as out_container:
+                stream = out_container.add_stream("pcm_s16le", rate=sr)
+                frame = av.AudioFrame.from_ndarray(pcm, format="s16", layout=layout)
+                frame.sample_rate = sr
+                for packet in stream.encode(frame):
+                    out_container.mux(packet)
+                for packet in stream.encode():
+                    out_container.mux(packet)
+
+        def _mux_with_pyav(video_path, audio_path, output_path):
+            import av
+
+            with av.open(video_path) as v_in, av.open(audio_path) as a_in, av.open(output_path, "w") as out:
+                v_stream_in = v_in.streams.video[0]
+                a_stream_in = a_in.streams.audio[0]
+
+                v_stream_out = out.add_stream(template=v_stream_in)
+                a_stream_out = out.add_stream(template=a_stream_in)
+
+                for packet in v_in.demux(v_stream_in):
+                    if packet.dts is None:
+                        continue
+                    packet.stream = v_stream_out
+                    out.mux(packet)
+
+                for packet in a_in.demux(a_stream_in):
+                    if packet.dts is None:
+                        continue
+                    packet.stream = a_stream_out
+                    out.mux(packet)
+
+        use_pyav_fallback = False
+
+        try:
+            torchaudio.save(temp_audio, waveform.squeeze(0).cpu(), sample_rate)
+        except Exception as e:
+            if _is_libtorchcodec_error(e):
+                print("[CreateFinalVideo] torchaudio.save failed (libtorchcodec). Falling back to PyAV.")
+                try:
+                    _write_wav_pyav(temp_audio, waveform, sample_rate)
+                    use_pyav_fallback = True
+                except Exception as pyav_err:
+                    print(f"❌ [CreateFinalVideo] PyAV WAV write failed: {pyav_err}")
+                    return ()
+            else:
+                print(f"❌ [CreateFinalVideo] Failed to save audio: {e}")
+                return ()
 
         # -------------------------------------------------
         # Combine video + audio
@@ -2819,28 +2882,43 @@ class VRGDG_CreateFinalVideo_SRT:
         ]
 
         try:
-            subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
-
-            os.remove(temp_video)
-            os.remove(temp_audio)
-
-            from server import PromptServer
-            message = (
-                f"🎉 Final video created!\n\n"
-                f"📁 Location:\n{final_output}\n\n"
-                f"✅ {video_count} sets combined\n"
-                f"✅ Original clean audio added"
-            )
-            PromptServer.instance.send_sync("vrgdg_instructions_popup", {
-                "message": message,
-                "type": "green",
-                "title": "✅ VIDEO COMPLETE!"
-            })
-
-            print(f"✅ [CreateFinalVideo] SUCCESS! Final video saved: {final_output}")
+            if not use_pyav_fallback:
+                subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
+            else:
+                _mux_with_pyav(temp_video, temp_audio, final_output)
 
         except subprocess.CalledProcessError as e:
-            print(f"❌ [CreateFinalVideo] Failed to add audio: {e.stderr}")
+            if _is_libtorchcodec_error(e.stderr):
+                print("[CreateFinalVideo] FFmpeg mux failed (libtorchcodec). Falling back to PyAV.")
+                try:
+                    _mux_with_pyav(temp_video, temp_audio, final_output)
+                except Exception as pyav_err:
+                    print(f"❌ [CreateFinalVideo] PyAV mux failed: {pyav_err}")
+                    return ()
+            else:
+                print(f"❌ [CreateFinalVideo] Failed to add audio: {e.stderr}")
+                return ()
+        except Exception as e:
+            print(f"❌ [CreateFinalVideo] Failed to add audio: {e}")
+            return ()
+
+        os.remove(temp_video)
+        os.remove(temp_audio)
+
+        from server import PromptServer
+        message = (
+            f"🎉 Final video created!\n\n"
+            f"📁 Location:\n{final_output}\n\n"
+            f"✅ {video_count} sets combined\n"
+            f"✅ Original clean audio added"
+        )
+        PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+            "message": message,
+            "type": "green",
+            "title": "✅ VIDEO COMPLETE!"
+        })
+
+        print(f"✅ [CreateFinalVideo] SUCCESS! Final video saved: {final_output}")
 
         return ()
 
@@ -3273,6 +3351,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
