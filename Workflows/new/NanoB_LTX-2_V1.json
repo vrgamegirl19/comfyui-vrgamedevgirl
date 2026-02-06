@@ -1,8 +1,8 @@
 {
   "id": "4cc91779-3bfd-4673-afc0-fc1dac1ef6f9",
   "revision": 0,
-  "last_node_id": 633,
-  "last_link_id": 952,
+  "last_node_id": 634,
+  "last_link_id": 956,
   "nodes": [
     {
       "id": 343,
@@ -3432,7 +3432,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            665
+            954
           ]
         }
       ],
@@ -4244,7 +4244,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            692
+            953
           ]
         }
       ],
@@ -4283,7 +4283,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            695
+            955
           ]
         }
       ],
@@ -4406,50 +4406,6 @@
       ],
       "color": "#233",
       "bgcolor": "#355",
-      "shape": 1
-    },
-    {
-      "id": 406,
-      "type": "SetNode",
-      "pos": [
-        2012.8382063989359,
-        5319.27256060592
-      ],
-      "size": [
-        212.16694118867736,
-        61.083470594338905
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 131,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "link": 696
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_OutputPath",
-      "properties": {
-        "previousName": "OutputPath",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.5.2",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "OutputPath"
-      ],
       "shape": 1
     },
     {
@@ -4935,75 +4891,6 @@
       ],
       "color": "#432",
       "bgcolor": "#653",
-      "shape": 1
-    },
-    {
-      "id": 299,
-      "type": "VRGDG_BuildVideoOutputPath_General",
-      "pos": [
-        1915.1692579994208,
-        5313.006097631222
-      ],
-      "size": [
-        370.9,
-        130
-      ],
-      "flags": {},
-      "order": 101,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "output_folder",
-          "type": "STRING",
-          "widget": {
-            "name": "output_folder"
-          },
-          "link": 692
-        },
-        {
-          "name": "chunk_index",
-          "type": "INT",
-          "widget": {
-            "name": "chunk_index"
-          },
-          "link": 665
-        },
-        {
-          "name": "overwrite_mode",
-          "type": "STRING",
-          "widget": {
-            "name": "overwrite_mode"
-          },
-          "link": 695
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output_path",
-          "type": "STRING",
-          "links": [
-            696
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
-        "Node name for S&R": "VRGDG_BuildVideoOutputPath_General",
-        "ue_properties": {
-          "version": "7.5.2",
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "",
-        0,
-        "video",
-        ""
-      ],
-      "color": "#233",
-      "bgcolor": "#355",
       "shape": 1
     },
     {
@@ -7710,6 +7597,118 @@
       ],
       "color": "#232",
       "bgcolor": "#353"
+    },
+    {
+      "id": 406,
+      "type": "SetNode",
+      "pos": [
+        2037.462538088452,
+        5366.551277449792
+      ],
+      "size": [
+        212.16694118867736,
+        61.083470594338905
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 131,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "link": 956
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_OutputPath",
+      "properties": {
+        "previousName": "OutputPath",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "OutputPath"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 634,
+      "type": "VRGDG_BuildVideoOutputPath_General_SRT",
+      "pos": [
+        1916.9496908503008,
+        5310.295999960414
+      ],
+      "size": [
+        407.9,
+        130
+      ],
+      "flags": {},
+      "order": 101,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "output_folder",
+          "type": "STRING",
+          "widget": {
+            "name": "output_folder"
+          },
+          "link": 953
+        },
+        {
+          "name": "chunk_index",
+          "type": "INT",
+          "widget": {
+            "name": "chunk_index"
+          },
+          "link": 954
+        },
+        {
+          "name": "overwrite_mode",
+          "type": "STRING",
+          "widget": {
+            "name": "overwrite_mode"
+          },
+          "link": 955
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output_path",
+          "type": "STRING",
+          "links": [
+            956
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "VRGDG_BuildVideoOutputPath_General_SRT"
+      },
+      "widgets_values": [
+        "",
+        0,
+        "video",
+        ""
+      ],
+      "color": "#223",
+      "bgcolor": "#335",
+      "shape": 1
     }
   ],
   "links": [
@@ -7882,14 +7881,6 @@
       "INT"
     ],
     [
-      665,
-      382,
-      0,
-      299,
-      1,
-      "INT"
-    ],
-    [
       666,
       218,
       3,
@@ -8050,34 +8041,10 @@
       "CONDITIONING"
     ],
     [
-      692,
-      404,
-      0,
-      299,
-      0,
-      "STRING"
-    ],
-    [
       693,
       218,
       9,
       376,
-      0,
-      "STRING"
-    ],
-    [
-      695,
-      405,
-      0,
-      299,
-      2,
-      "STRING"
-    ],
-    [
-      696,
-      299,
-      0,
-      406,
       0,
       "STRING"
     ],
@@ -8672,6 +8639,38 @@
       632,
       0,
       "IMAGE"
+    ],
+    [
+      953,
+      404,
+      0,
+      634,
+      0,
+      "STRING"
+    ],
+    [
+      954,
+      382,
+      0,
+      634,
+      1,
+      "INT"
+    ],
+    [
+      955,
+      405,
+      0,
+      634,
+      2,
+      "STRING"
+    ],
+    [
+      956,
+      634,
+      0,
+      406,
+      0,
+      "STRING"
     ]
   ],
   "groups": [
@@ -14403,8 +14402,8 @@
     "ds": {
       "scale": 1.0152559799478191,
       "offset": [
-        -2175.0126869564324,
-        -5427.507818802509
+        -1375.2143936809437,
+        -4597.175354232016
       ]
     }
   },
