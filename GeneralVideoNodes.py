@@ -2479,6 +2479,75 @@ class IndexedImageFromFolder:
         return (image_tensor,)
 
 
+class VRGDG_PromptSplitterWithIndex:
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text_output", "image_index")
+    FUNCTION = "split_prompt"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "json_string": ("STRING", {"multiline": True, "default": "[]"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1}),
+            }
+        }
+
+    def _normalize_image_index(self, value):
+        if value is None:
+            return "0"
+        if isinstance(value, list):
+            parts = []
+            for v in value:
+                try:
+                    parts.append(str(int(v)))
+                except Exception:
+                    continue
+            return ",".join(parts) if parts else "0"
+        try:
+            return str(int(value))
+        except Exception:
+            s = str(value).strip()
+            return s if s else "0"
+
+    def split_prompt(self, json_string, index, **kwargs):
+        try:
+            data = json.loads(json_string)
+
+            prompts = []
+            if isinstance(data, dict):
+                sorted_keys = sorted(
+                    data.keys(),
+                    key=lambda x: int(''.join(filter(str.isdigit, x)))
+                    if any(c.isdigit() for c in x) else 0
+                )
+                prompts = [data[key] for key in sorted_keys]
+            elif isinstance(data, list):
+                prompts = data
+
+            if not prompts:
+                return ("", "0")
+
+            selected_prompt = prompts[index % len(prompts)]
+
+            # New format: {"text": "...", "imageIndex": [1,2]}
+            if isinstance(selected_prompt, dict):
+                text = selected_prompt.get("text", "")
+                image_index = self._normalize_image_index(selected_prompt.get("imageIndex"))
+                return (text, image_index)
+
+            # Old format: plain string or other scalar
+            return (str(selected_prompt), "0")
+
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON - {str(e)}")
+            return ("", "0")
+        except Exception as e:
+            print(f"Error loading prompts: {str(e)}")
+            return ("", "0")
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LoadAudioSplit_General": VRGDG_LoadAudioSplit_General,
     "VRGDG_BuildVideoOutputPath_General": VRGDG_BuildVideoOutputPath_General,
@@ -2490,6 +2559,8 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_TrimImageBatch":VRGDG_TrimImageBatch,
     "BeatSceneDurationNode": BeatSceneDurationNode,
     "IndexedImageFromFolder": IndexedImageFromFolder,
+    "VRGDG_PromptSpitterWithIndex":VRGDG_PromptSplitterWithIndex,
+    
     
 
 
@@ -2506,8 +2577,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_TrimImageBatch":"VRGDG_TrimImageBatch",
     "BeatSceneDurationNode": "Beat-Aligned Scene Durations",
     "IndexedImageFromFolder": "Image From Folder (Index)",
+    "VRGDG_PromptSplitterWithIndex":"VRGDG_PromptSplitterWithIndex",
+    
 
 
 
 
 }
+
