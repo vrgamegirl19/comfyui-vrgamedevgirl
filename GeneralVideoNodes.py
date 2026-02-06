@@ -2337,15 +2337,31 @@ class BeatSceneDurationNode:
             scene_index += 1
             current_index = chosen_index
 
-        # --- Force final subtitle to reach song end ---
+        # --- Clamp tail to max_duration and always reach song end ---
         if current_time < song_end:
-            srt_lines.append(str(scene_index))
-            srt_lines.append(
-                f"{format_time(current_time)} --> {format_time(song_end)}"
-            )
-            srt_lines.append(f"SCENE {scene_index}")
+            remaining = song_end - current_time
 
-            srt_lines.append("")
+            # If tail is longer than max_duration, split into fixed chunks
+            while remaining > max_duration:
+                srt_lines.append(str(scene_index))
+                srt_lines.append(
+                    f"{format_time(current_time)} --> {format_time(current_time + max_duration)}"
+                )
+                srt_lines.append(f"SCENE {scene_index}")
+                srt_lines.append("")
+
+                current_time += max_duration
+                scene_index += 1
+                remaining = song_end - current_time
+
+            # Final tail (<= max_duration)
+            if current_time < song_end:
+                srt_lines.append(str(scene_index))
+                srt_lines.append(
+                    f"{format_time(current_time)} --> {format_time(song_end)}"
+                )
+                srt_lines.append(f"SCENE {scene_index}")
+                srt_lines.append("")
 
 
 
@@ -2584,4 +2600,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 
 }
+
 
