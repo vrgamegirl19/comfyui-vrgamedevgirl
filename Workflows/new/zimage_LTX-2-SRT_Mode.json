@@ -1,7 +1,7 @@
 {
   "id": "4cc91779-3bfd-4673-afc0-fc1dac1ef6f9",
   "revision": 0,
-  "last_node_id": 612,
+  "last_node_id": 613,
   "last_link_id": 920,
   "nodes": [
     {
@@ -7258,6 +7258,14 @@
           ],
           [
             "-1",
+            "fixed_duration"
+          ],
+          [
+            "-1",
+            "use_remake_folder"
+          ],
+          [
+            "-1",
             "width"
           ],
           [
@@ -7271,14 +7279,6 @@
           [
             "-1",
             "model_name"
-          ],
-          [
-            "-1",
-            "fixed_duration"
-          ],
-          [
-            "-1",
-            "use_remake_folder"
           ]
         ],
         "cnr_id": "comfy-core",
@@ -7302,12 +7302,12 @@
         "backup",
         25,
         50,
+        24,
+        false,
         736,
         416,
         24,
-        "MelBandRoformer_fp16.safetensors",
-        24,
-        false
+        "MelBandRoformer_fp16.safetensors"
       ],
       "color": "#232",
       "bgcolor": "#353",
@@ -15069,10 +15069,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.7627768444385867,
+      "scale": 0.5209868481924641,
       "offset": [
-        -381.72870312786023,
-        -4481.2781816513925
+        -353.20085520374255,
+        -4860.259450513056
       ]
     }
   },
