@@ -2237,32 +2237,60 @@ class BeatImpactAnalysisNode:
         onset_bass = onset_strength(y_bass)
         onset_vocals = onset_strength(y_vocals)
 
-        onset_times = librosa.frames_to_time(
-            np.arange(len(onset_mix)), sr=sr
-        )
+        # If mix onset is empty, fall back to beat-only impact=0.0
+        if onset_mix is None or len(onset_mix) == 0:
+            print("[BeatImpactAnalysisNode] onset_mix is empty; falling back to beat-only impact=0.0")
+            onset_times = np.array([], dtype=np.float32)
+        else:
+            onset_times = librosa.frames_to_time(
+                np.arange(len(onset_mix)), sr=sr
+            )
 
         beats = []
 
+        def safe_onset_value(onset_arr, idx, label):
+            if onset_arr is None or len(onset_arr) == 0:
+                return None
+            if idx < 0 or idx >= len(onset_arr):
+                print(f"[BeatImpactAnalysisNode] {label} onset index out of range (idx={idx}, len={len(onset_arr)}); falling back to mix onset.")
+                return None
+            return onset_arr[idx]
+
         for i, t in enumerate(beat_times):
-            idx = np.argmin(np.abs(onset_times - t))
+            # If we have no onset_times, we can't index into onset arrays; default to 0 impact.
+            if onset_times.size == 0:
+                idx = None
+            else:
+                idx = int(np.argmin(np.abs(onset_times - t)))
 
             impact = 0.0
             weight_sum = 0.0
 
-            if onset_drums is not None:
-                impact += onset_drums[idx] * 0.5
-                weight_sum += 0.5
+            if idx is not None:
+                val = safe_onset_value(onset_drums, idx, "drums")
+                if val is not None:
+                    impact += val * 0.5
+                    weight_sum += 0.5
 
-            if onset_bass is not None:
-                impact += onset_bass[idx] * 0.3
-                weight_sum += 0.3
+            if idx is not None:
+                val = safe_onset_value(onset_bass, idx, "bass")
+                if val is not None:
+                    impact += val * 0.3
+                    weight_sum += 0.3
 
-            if onset_vocals is not None:
-                impact += onset_vocals[idx] * 0.2
-                weight_sum += 0.2
+            if idx is not None:
+                val = safe_onset_value(onset_vocals, idx, "vocals")
+                if val is not None:
+                    impact += val * 0.2
+                    weight_sum += 0.2
 
             if weight_sum == 0.0:
-                impact = onset_mix[idx]
+                # Fall back to mix onset if available; otherwise keep impact at 0.
+                if idx is not None and onset_mix is not None and len(onset_mix) > 0:
+                    if idx < len(onset_mix):
+                        impact = onset_mix[idx]
+                    else:
+                        print(f"[BeatImpactAnalysisNode] mix onset index out of range (idx={idx}, len={len(onset_mix)}); using impact=0.0")
             else:
                 impact /= weight_sum
 
@@ -2667,6 +2695,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 
 }
+
 
 
 
