@@ -2545,7 +2545,7 @@ class VRGDG_CleanAudio:
 
 
 import tempfile
-class VRGDG_Video:
+class VRGDG_CreateFinalVideo:
     RETURN_TYPES = ()
     RETURN_NAMES = ()
     FUNCTION = "create_final"
@@ -3364,6 +3364,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
