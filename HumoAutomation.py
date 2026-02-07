@@ -3327,7 +3327,7 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_CleanAudio":VRGDG_CleanAudio,
      "VRGDG_MusicVideoPromptCreatorV2":VRGDG_MusicVideoPromptCreatorV2,
      "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo,
-     "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo_SRT,         
+     "VRGDG_CreateFinalVideo_SRT":VRGDG_CreateFinalVideo_SRT,         
      "VRGDG_LoadAudioSplit_Wan22HumoFMML":VRGDG_LoadAudioSplit_Wan22HumoFMML    
 
  
@@ -3360,10 +3360,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_CleanAudio":"VRGDG_CleanAudio",
     "VRGDG_MusicVideoPromptCreatorV2":"VRGDG_MusicVideoPromptCreatorV2",
     "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video",
-    "VRGDG_CreateFinalVideo":"VRGDG_CreateFinalVideo_SRT",     
+    "VRGDG_CreateFinalVideo_SRT":"VRGDG_CreateFinalVideo_SRT",     
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
