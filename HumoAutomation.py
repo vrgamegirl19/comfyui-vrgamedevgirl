@@ -2812,11 +2812,14 @@ class VRGDG_CreateFinalVideo_SRT:
             arr = wav_tensor.squeeze(0).detach().cpu().numpy()
             if arr.ndim == 1:
                 arr = arr[None, :]
+            # If channels appear to be last, transpose to (channels, samples)
+            if arr.shape[0] not in (1, 2) and arr.shape[1] in (1, 2):
+                arr = arr.T
             channels, samples = arr.shape
             layout = "mono" if channels == 1 else "stereo"
 
             arr = np.clip(arr, -1.0, 1.0)
-            pcm = (arr.T * 32767.0).astype(np.int16)
+            pcm = (arr * 32767.0).astype(np.int16)
 
             with av.open(path, "w", format="wav") as out_container:
                 stream = out_container.add_stream("pcm_s16le", rate=sr)
@@ -2826,7 +2829,6 @@ class VRGDG_CreateFinalVideo_SRT:
                     out_container.mux(packet)
                 for packet in stream.encode():
                     out_container.mux(packet)
-
         def _mux_with_pyav(video_path, audio_path, output_path):
             import av
 
@@ -2921,6 +2923,7 @@ class VRGDG_CreateFinalVideo_SRT:
         print(f"✅ [CreateFinalVideo] SUCCESS! Final video saved: {final_output}")
 
         return ()
+
 
 
 #######################################added on 12/27
@@ -3351,6 +3354,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
