@@ -2545,7 +2545,7 @@ class VRGDG_CleanAudio:
 
 
 import tempfile
-class VRGDG_CreateFinalVideo:
+class VRGDG_Video:
     RETURN_TYPES = ()
     RETURN_NAMES = ()
     FUNCTION = "create_final"
@@ -2570,7 +2570,7 @@ class VRGDG_CreateFinalVideo:
             base_output = folder_paths.get_output_directory()
             video_folder = os.path.join(base_output, video_folder)
 
-        print(f"[CreateFinalVideo] Looking in: {video_folder}")
+        print(f"[Video] Looking in: {video_folder}")
 
         # --- Collect video files ---
         videos = sorted([
@@ -2581,7 +2581,7 @@ class VRGDG_CreateFinalVideo:
         video_count = len(videos)
 
         if video_count < threshold:
-            print(f"[CreateFinalVideo] Threshold not met ({video_count}/{threshold}), skipping.")
+            print(f"[Video] Threshold not met ({video_count}/{threshold}), skipping.")
             return ()
 
         concat_file = os.path.join(video_folder, "concat_list.txt")
@@ -2591,11 +2591,11 @@ class VRGDG_CreateFinalVideo:
 
         temp_video = os.path.join(video_folder, "_temp_video_no_audio.mp4")
 
-        print(f"[CreateFinalVideo] Concatenating {video_count} videos (removing audio)...")
+        print(f"[Video] Concatenating {video_count} videos (removing audio)...")
 
         ffmpeg_path = find_ffmpeg_path()
         if not ffmpeg_path:
-            print("❌ [CreateFinalVideo] FFmpeg not available. Cannot continue.")
+            print("❌ [Video] FFmpeg not available. Cannot continue.")
             return ()
 
         cmd_concat = [
@@ -2610,14 +2610,14 @@ class VRGDG_CreateFinalVideo:
 
         try:
             subprocess.run(cmd_concat, capture_output=True, text=True, check=True)
-            print(f"✅ [CreateFinalVideo] Videos concatenated (no audio)")
+            print(f"✅ [Video] Videos concatenated (no audio)")
         except subprocess.CalledProcessError as e:
-            print(f"❌ [CreateFinalVideo] Concatenation failed: {e.stderr}")
+            print(f"❌ [Video] Concatenation failed: {e.stderr}")
             return ()
 
         # --- Save original audio ---
         temp_audio = os.path.join(video_folder, "_temp_original_audio.wav")
-        print(f"[CreateFinalVideo] Saving original audio...")
+        print(f"[Video] Saving original audio...")
 
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
@@ -2628,7 +2628,7 @@ class VRGDG_CreateFinalVideo:
         if os.path.exists(final_output):
             os.remove(final_output)
 
-        print(f"[CreateFinalVideo] Adding original audio to video...")
+        print(f"[Video] Adding original audio to video...")
 
         cmd_combine = [
             ffmpeg_path, "-y",
@@ -2658,10 +2658,10 @@ class VRGDG_CreateFinalVideo:
                 "title": "✅ VIDEO COMPLETE!"
             })
 
-            print(f"✅ [CreateFinalVideo] SUCCESS! Final video saved: {final_output}")
+            print(f"✅ [Video] SUCCESS! Final video saved: {final_output}")
 
         except subprocess.CalledProcessError as e:
-            print(f"❌ [CreateFinalVideo] Failed to add audio: {e.stderr}")
+            print(f"❌ [Video] Failed to add audio: {e.stderr}")
 
         return ()
 
@@ -2809,21 +2809,31 @@ class VRGDG_CreateFinalVideo_SRT:
             import av
             import numpy as np
 
-            arr = wav_tensor.squeeze(0).detach().cpu().numpy()
-            if arr.ndim == 1:
+            arr = wav_tensor.detach().cpu().numpy()
+            if arr.ndim == 3:
+                arr = arr[0]
+            if arr.ndim == 2:
+                # normalize to (channels, samples)
+                if arr.shape[0] not in (1, 2) and arr.shape[1] in (1, 2):
+                    arr = arr.T
+            elif arr.ndim == 1:
                 arr = arr[None, :]
-            # If channels appear to be last, transpose to (channels, samples)
-            if arr.shape[0] not in (1, 2) and arr.shape[1] in (1, 2):
-                arr = arr.T
+
             channels, samples = arr.shape
             layout = "mono" if channels == 1 else "stereo"
 
             arr = np.clip(arr, -1.0, 1.0)
             pcm = (arr * 32767.0).astype(np.int16)
 
+            # PyAV expects packed shape (samples, channels) for format "s16"
+            if channels == 1:
+                pcm_packed = pcm[0]
+            else:
+                pcm_packed = pcm.T
+
             with av.open(path, "w", format="wav") as out_container:
                 stream = out_container.add_stream("pcm_s16le", rate=sr)
-                frame = av.AudioFrame.from_ndarray(pcm, format="s16", layout=layout)
+                frame = av.AudioFrame.from_ndarray(pcm_packed, format="s16", layout=layout)
                 frame.sample_rate = sr
                 for packet in stream.encode(frame):
                     out_container.mux(packet)
@@ -3354,6 +3364,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
