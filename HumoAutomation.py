@@ -2805,75 +2805,32 @@ class VRGDG_CreateFinalVideo_SRT:
         def _is_libtorchcodec_error(err_text):
             return "libtorchcodec" in str(err_text).lower()
 
-        def _write_wav_pyav(path, wav_tensor, sr):
-            import av
-            import numpy as np
-
-            arr = wav_tensor.detach().cpu().numpy()
-            if arr.ndim == 3:
-                arr = arr[0]
-            if arr.ndim == 2:
-                # normalize to (channels, samples)
-                if arr.shape[0] not in (1, 2) and arr.shape[1] in (1, 2):
-                    arr = arr.T
-            elif arr.ndim == 1:
-                arr = arr[None, :]
-
-            channels, samples = arr.shape
-            layout = "mono" if channels == 1 else "stereo"
-
-            arr = np.clip(arr, -1.0, 1.0)
-            pcm = (arr * 32767.0).astype(np.int16)
-
-            # PyAV expects packed shape (samples, channels) for format "s16"
-            if channels == 1:
-                pcm_packed = pcm[0]
-            else:
-                pcm_packed = pcm.T
-
-            with av.open(path, "w", format="wav") as out_container:
-                stream = out_container.add_stream("pcm_s16le", rate=sr)
-                frame = av.AudioFrame.from_ndarray(pcm_packed, format="s16", layout=layout)
-                frame.sample_rate = sr
-                for packet in stream.encode(frame):
-                    out_container.mux(packet)
-                for packet in stream.encode():
-                    out_container.mux(packet)
-        def _mux_with_pyav(video_path, audio_path, output_path):
-            import av
-
-            with av.open(video_path) as v_in, av.open(audio_path) as a_in, av.open(output_path, "w") as out:
-                v_stream_in = v_in.streams.video[0]
-                a_stream_in = a_in.streams.audio[0]
-
-                v_stream_out = out.add_stream(template=v_stream_in)
-                a_stream_out = out.add_stream(template=a_stream_in)
-
-                for packet in v_in.demux(v_stream_in):
-                    if packet.dts is None:
-                        continue
-                    packet.stream = v_stream_out
-                    out.mux(packet)
-
-                for packet in a_in.demux(a_stream_in):
-                    if packet.dts is None:
-                        continue
-                    packet.stream = a_stream_out
-                    out.mux(packet)
-
-        use_pyav_fallback = False
-
         try:
             torchaudio.save(temp_audio, waveform.squeeze(0).cpu(), sample_rate)
         except Exception as e:
             if _is_libtorchcodec_error(e):
-                print("[CreateFinalVideo] torchaudio.save failed (libtorchcodec). Falling back to PyAV.")
+                print("[CreateFinalVideo] torchaudio.save failed (libtorchcodec).")
+                message = (
+                    "❌ Final video creation failed due to missing FFmpeg shared libraries.\n\n"
+                    "Fix:\n"
+                    "1) Install the full shared build of FFmpeg into your portable directory:\n"
+                    "   https://www.gyan.dev/ffmpeg/builds/\n"
+                    "2) Copy the DLLs into the root folder.\n"
+                    "3) Ensure your .bat includes:\n"
+                    "   set \"PATH=%~dp0ffmpeg\\bin;%PATH%\"\n\n"
+                    "Then run again."
+                )
                 try:
-                    _write_wav_pyav(temp_audio, waveform, sample_rate)
-                    use_pyav_fallback = True
-                except Exception as pyav_err:
-                    print(f"❌ [CreateFinalVideo] PyAV WAV write failed: {pyav_err}")
-                    return ()
+                    from server import PromptServer
+                    PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+                        "message": message,
+                        "type": "red",
+                        "title": "FFmpeg Setup Required"
+                    })
+                except Exception:
+                    pass
+                print(message)
+                return ()
             else:
                 print(f"❌ [CreateFinalVideo] Failed to save audio: {e}")
                 return ()
@@ -2894,19 +2851,31 @@ class VRGDG_CreateFinalVideo_SRT:
         ]
 
         try:
-            if not use_pyav_fallback:
-                subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
-            else:
-                _mux_with_pyav(temp_video, temp_audio, final_output)
-
+            subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
         except subprocess.CalledProcessError as e:
             if _is_libtorchcodec_error(e.stderr):
-                print("[CreateFinalVideo] FFmpeg mux failed (libtorchcodec). Falling back to PyAV.")
+                print("[CreateFinalVideo] FFmpeg mux failed (libtorchcodec).")
+                message = (
+                    "❌ Final video creation failed due to missing FFmpeg shared libraries.\n\n"
+                    "Fix:\n"
+                    "1) Install the full shared build of FFmpeg into your portable directory:\n"
+                    "   https://www.gyan.dev/ffmpeg/builds/\n"
+                    "2) Copy the DLLs into the root folder.\n"
+                    "3) Ensure your .bat includes:\n"
+                    "   set \"PATH=%~dp0ffmpeg\\bin;%PATH%\"\n\n"
+                    "Then run again."
+                )
                 try:
-                    _mux_with_pyav(temp_video, temp_audio, final_output)
-                except Exception as pyav_err:
-                    print(f"❌ [CreateFinalVideo] PyAV mux failed: {pyav_err}")
-                    return ()
+                    from server import PromptServer
+                    PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+                        "message": message,
+                        "type": "red",
+                        "title": "FFmpeg Setup Required"
+                    })
+                except Exception:
+                    pass
+                print(message)
+                return ()
             else:
                 print(f"❌ [CreateFinalVideo] Failed to add audio: {e.stderr}")
                 return ()
@@ -3364,6 +3333,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
