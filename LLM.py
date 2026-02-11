@@ -4,7 +4,7 @@ from PIL import Image
 from io import BytesIO
 from typing import Optional, Tuple
 
-import google.generativeai as genai
+from google import genai
 
 
 class VRGDG_NanoBananaPro:
@@ -104,3 +104,4 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_NanoBananaPro": "VRGDG NanoBanana Pro"
 }
+
