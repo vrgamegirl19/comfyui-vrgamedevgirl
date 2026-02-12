@@ -10,7 +10,7 @@ import uuid
 import urllib.request
 import urllib.error
 
-import google.generativeai as genai
+from google import genai
 
 
 class VRGDG_NanoBananaPro:
@@ -1068,3 +1068,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LLM_Multi": "🤖 VRGDG LLM Multi 🤖",
     "VRGDG_LocalLLM": "💻 VRGDG Local LLM 💻",
 }
+
