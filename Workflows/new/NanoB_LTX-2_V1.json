@@ -1,8 +1,8 @@
 {
   "id": "4cc91779-3bfd-4673-afc0-fc1dac1ef6f9",
   "revision": 0,
-  "last_node_id": 634,
-  "last_link_id": 956,
+  "last_node_id": 635,
+  "last_link_id": 960,
   "nodes": [
     {
       "id": 343,
@@ -1828,7 +1828,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            752
+            959
           ]
         }
       ],
@@ -2861,7 +2861,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 124,
+      "order": 123,
       "mode": 0,
       "inputs": [
         {
@@ -3473,7 +3473,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            753
+            960
           ]
         }
       ],
@@ -4558,45 +4558,6 @@
       "shape": 1
     },
     {
-      "id": 389,
-      "type": "GetNode",
-      "pos": [
-        2850.8711693467326,
-        5883.996885749895
-      ],
-      "size": [
-        210,
-        60
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 53,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "VHS_FILENAMES",
-          "type": "VHS_FILENAMES",
-          "links": [
-            750
-          ]
-        }
-      ],
-      "title": "Get_filenamestrigger",
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.5.2",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "filenamestrigger"
-      ],
-      "shape": 1
-    },
-    {
       "id": 423,
       "type": "GetNode",
       "pos": [
@@ -4610,7 +4571,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 54,
+      "order": 53,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4697,7 +4658,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 55,
+      "order": 54,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4722,68 +4683,6 @@
       ],
       "color": "#1b4669",
       "bgcolor": "#29699c",
-      "shape": 1
-    },
-    {
-      "id": 490,
-      "type": "VRGDG_CreateFinalVideo",
-      "pos": [
-        2804.2288623986315,
-        5851.861610419345
-      ],
-      "size": [
-        288.9,
-        126
-      ],
-      "flags": {},
-      "order": 122,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "trigger",
-          "type": "VHS_FILENAMES",
-          "link": 750
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": 751
-        },
-        {
-          "name": "threshold",
-          "type": "INT",
-          "widget": {
-            "name": "threshold"
-          },
-          "link": 752
-        },
-        {
-          "name": "video_folder",
-          "type": "STRING",
-          "widget": {
-            "name": "video_folder"
-          },
-          "link": 753
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
-        "Node name for S&R": "VRGDG_CreateFinalVideo",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        3,
-        "-1",
-        "video_output"
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159",
       "shape": 1
     },
     {
@@ -4845,7 +4744,7 @@
         88
       ],
       "flags": {},
-      "order": 56,
+      "order": 55,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -4875,7 +4774,7 @@
         88
       ],
       "flags": {},
-      "order": 57,
+      "order": 56,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -4953,7 +4852,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 58,
+      "order": 57,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4994,7 +4893,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 59,
+      "order": 58,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5163,7 +5062,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 60,
+      "order": 59,
       "mode": 0,
       "inputs": [
         {
@@ -5246,7 +5145,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 61,
+      "order": 60,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5287,7 +5186,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 62,
+      "order": 61,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5371,7 +5270,7 @@
         160.59999576643077
       ],
       "flags": {},
-      "order": 63,
+      "order": 62,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -5402,7 +5301,7 @@
         111.7354719617515
       ],
       "flags": {},
-      "order": 64,
+      "order": 63,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -5433,7 +5332,7 @@
         82
       ],
       "flags": {},
-      "order": 65,
+      "order": 64,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5478,7 +5377,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 66,
+      "order": 65,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5521,7 +5420,7 @@
         624.6761139600549
       ],
       "flags": {},
-      "order": 67,
+      "order": 66,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -5552,7 +5451,7 @@
         82
       ],
       "flags": {},
-      "order": 68,
+      "order": 67,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5597,7 +5496,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 69,
+      "order": 68,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5693,7 +5592,7 @@
         112.58147512751657
       ],
       "flags": {},
-      "order": 70,
+      "order": 69,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -5724,7 +5623,7 @@
         112.58147512751657
       ],
       "flags": {},
-      "order": 71,
+      "order": 70,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -5757,7 +5656,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 72,
+      "order": 71,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5795,7 +5694,7 @@
         136
       ],
       "flags": {},
-      "order": 73,
+      "order": 72,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5838,7 +5737,7 @@
         136
       ],
       "flags": {},
-      "order": 74,
+      "order": 73,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5959,7 +5858,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 75,
+      "order": 74,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5998,7 +5897,7 @@
         291.3688772383912
       ],
       "flags": {},
-      "order": 76,
+      "order": 75,
       "mode": 0,
       "inputs": [
         {
@@ -6153,7 +6052,7 @@
         136.6272217742553
       ],
       "flags": {},
-      "order": 77,
+      "order": 76,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -6326,7 +6225,7 @@
         58
       ],
       "flags": {},
-      "order": 78,
+      "order": 77,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6410,7 +6309,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 123,
+      "order": 122,
       "mode": 0,
       "inputs": [
         {
@@ -6879,7 +6778,7 @@
         314.00000000000006
       ],
       "flags": {},
-      "order": 79,
+      "order": 78,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7013,7 +6912,7 @@
         314.00000000000006
       ],
       "flags": {},
-      "order": 80,
+      "order": 79,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7389,7 +7288,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 81,
+      "order": 80,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7428,7 +7327,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 82,
+      "order": 81,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7436,7 +7335,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            751
+            958
           ]
         }
       ],
@@ -7465,7 +7364,7 @@
         233.95994092484216
       ],
       "flags": {},
-      "order": 83,
+      "order": 82,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -7496,7 +7395,7 @@
         58
       ],
       "flags": {},
-      "order": 84,
+      "order": 83,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7538,7 +7437,7 @@
         82
       ],
       "flags": {},
-      "order": 85,
+      "order": 84,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7581,7 +7480,7 @@
         263.924316132292
       ],
       "flags": {},
-      "order": 86,
+      "order": 85,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -7694,11 +7593,12 @@
       "properties": {
         "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
         "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+        "Node name for S&R": "VRGDG_BuildVideoOutputPath_General_SRT",
         "ue_properties": {
           "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
-        "Node name for S&R": "VRGDG_BuildVideoOutputPath_General_SRT"
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
       "widgets_values": [
         "",
@@ -7708,6 +7608,106 @@
       ],
       "color": "#223",
       "bgcolor": "#335",
+      "shape": 1
+    },
+    {
+      "id": 389,
+      "type": "GetNode",
+      "pos": [
+        2842.991383206087,
+        5841.64303524393
+      ],
+      "size": [
+        210,
+        60
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 86,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VHS_FILENAMES",
+          "type": "VHS_FILENAMES",
+          "links": [
+            957
+          ]
+        }
+      ],
+      "title": "Get_filenamestrigger",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "filenamestrigger"
+      ],
+      "shape": 1
+    },
+    {
+      "id": 635,
+      "type": "VRGDG_CreateFinalVideo_SRT",
+      "pos": [
+        2802.440658405306,
+        5848.091404059441
+      ],
+      "size": [
+        298.9,
+        126
+      ],
+      "flags": {},
+      "order": 124,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "trigger",
+          "type": "VHS_FILENAMES",
+          "link": 957
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 958
+        },
+        {
+          "name": "threshold",
+          "type": "INT",
+          "widget": {
+            "name": "threshold"
+          },
+          "link": 959
+        },
+        {
+          "name": "video_folder",
+          "type": "STRING",
+          "widget": {
+            "name": "video_folder"
+          },
+          "link": 960
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "VRGDG_CreateFinalVideo_SRT"
+      },
+      "widgets_values": [
+        3,
+        "-1",
+        "video_output"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159",
       "shape": 1
     }
   ],
@@ -8297,38 +8297,6 @@
       "INT"
     ],
     [
-      750,
-      389,
-      0,
-      490,
-      0,
-      "VHS_FILENAMES"
-    ],
-    [
-      751,
-      463,
-      0,
-      490,
-      1,
-      "AUDIO"
-    ],
-    [
-      752,
-      386,
-      0,
-      490,
-      2,
-      "INT"
-    ],
-    [
-      753,
-      387,
-      0,
-      490,
-      3,
-      "STRING"
-    ],
-    [
       763,
       218,
       3,
@@ -8670,6 +8638,38 @@
       0,
       406,
       0,
+      "STRING"
+    ],
+    [
+      957,
+      389,
+      0,
+      635,
+      0,
+      "VHS_FILENAMES"
+    ],
+    [
+      958,
+      463,
+      0,
+      635,
+      1,
+      "AUDIO"
+    ],
+    [
+      959,
+      386,
+      0,
+      635,
+      2,
+      "INT"
+    ],
+    [
+      960,
+      387,
+      0,
+      635,
+      3,
       "STRING"
     ]
   ],
@@ -14402,8 +14402,8 @@
     "ds": {
       "scale": 1.0152559799478191,
       "offset": [
-        -1375.2143936809437,
-        -4597.175354232016
+        -1930.739316596432,
+        -5396.973647507504
       ]
     }
   },
