@@ -2544,126 +2544,126 @@ class VRGDG_CleanAudio:
 
 
 
-import tempfile
-class VRGDG_CreateFinalVideo:
-    RETURN_TYPES = ()
-    RETURN_NAMES = ()
-    FUNCTION = "create_final"
-    CATEGORY = "Video"
-    OUTPUT_NODE = True
+# import tempfile
+# class VRGDG_CreateFinalVideo:
+#     RETURN_TYPES = ()
+#     RETURN_NAMES = ()
+#     FUNCTION = "create_final"
+#     CATEGORY = "Video"
+#     OUTPUT_NODE = True
 
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "trigger": ("VHS_FILENAMES", {}),
-                "audio": ("AUDIO",),
-                "threshold": ("INT", {"default": 3}),
-                "video_folder": ("STRING", {"default": "video_output", "multiline": False}),
-            }
-        }
+#     @classmethod
+#     def INPUT_TYPES(cls):
+#         return {
+#             "required": {
+#                 "trigger": ("VHS_FILENAMES", {}),
+#                 "audio": ("AUDIO",),
+#                 "threshold": ("INT", {"default": 3}),
+#                 "video_folder": ("STRING", {"default": "video_output", "multiline": False}),
+#             }
+#         }
 
-    def create_final(self, trigger, audio, threshold, video_folder):
-        video_folder = video_folder.strip()
+#     def create_final(self, trigger, audio, threshold, video_folder):
+#         video_folder = video_folder.strip()
 
-        if not os.path.isabs(video_folder):
-            base_output = folder_paths.get_output_directory()
-            video_folder = os.path.join(base_output, video_folder)
+#         if not os.path.isabs(video_folder):
+#             base_output = folder_paths.get_output_directory()
+#             video_folder = os.path.join(base_output, video_folder)
 
-        print(f"[Video] Looking in: {video_folder}")
+#         print(f"[Video] Looking in: {video_folder}")
 
-        # --- Collect video files ---
-        videos = sorted([
-            f for f in os.listdir(video_folder)
-            if f.lower().endswith(".mp4") and "-audio" in f.lower()
-        ])
+#         # --- Collect video files ---
+#         videos = sorted([
+#             f for f in os.listdir(video_folder)
+#             if f.lower().endswith(".mp4") and "-audio" in f.lower()
+#         ])
 
-        video_count = len(videos)
+#         video_count = len(videos)
 
-        if video_count < threshold:
-            print(f"[Video] Threshold not met ({video_count}/{threshold}), skipping.")
-            return ()
+#         if video_count < threshold:
+#             print(f"[Video] Threshold not met ({video_count}/{threshold}), skipping.")
+#             return ()
 
-        concat_file = os.path.join(video_folder, "concat_list.txt")
-        with open(concat_file, 'w') as f:
-            for vid in videos:
-                f.write(f"file '{os.path.join(video_folder, vid)}'\n")
+#         concat_file = os.path.join(video_folder, "concat_list.txt")
+#         with open(concat_file, 'w') as f:
+#             for vid in videos:
+#                 f.write(f"file '{os.path.join(video_folder, vid)}'\n")
 
-        temp_video = os.path.join(video_folder, "_temp_video_no_audio.mp4")
+#         temp_video = os.path.join(video_folder, "_temp_video_no_audio.mp4")
 
-        print(f"[Video] Concatenating {video_count} videos (removing audio)...")
+#         print(f"[Video] Concatenating {video_count} videos (removing audio)...")
 
-        ffmpeg_path = find_ffmpeg_path()
-        if not ffmpeg_path:
-            print("❌ [Video] FFmpeg not available. Cannot continue.")
-            return ()
+#         ffmpeg_path = find_ffmpeg_path()
+#         if not ffmpeg_path:
+#             print("❌ [Video] FFmpeg not available. Cannot continue.")
+#             return ()
 
-        cmd_concat = [
-            ffmpeg_path, "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", concat_file,
-            "-an",
-            "-c:v", "copy",
-            temp_video
-        ]
+#         cmd_concat = [
+#             ffmpeg_path, "-y",
+#             "-f", "concat",
+#             "-safe", "0",
+#             "-i", concat_file,
+#             "-an",
+#             "-c:v", "copy",
+#             temp_video
+#         ]
 
-        try:
-            subprocess.run(cmd_concat, capture_output=True, text=True, check=True)
-            print(f"✅ [Video] Videos concatenated (no audio)")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ [Video] Concatenation failed: {e.stderr}")
-            return ()
+#         try:
+#             subprocess.run(cmd_concat, capture_output=True, text=True, check=True)
+#             print(f"✅ [Video] Videos concatenated (no audio)")
+#         except subprocess.CalledProcessError as e:
+#             print(f"❌ [Video] Concatenation failed: {e.stderr}")
+#             return ()
 
-        # --- Save original audio ---
-        temp_audio = os.path.join(video_folder, "_temp_original_audio.wav")
-        print(f"[Video] Saving original audio...")
+#         # --- Save original audio ---
+#         temp_audio = os.path.join(video_folder, "_temp_original_audio.wav")
+#         print(f"[Video] Saving original audio...")
 
-        waveform = audio["waveform"]
-        sample_rate = audio["sample_rate"]
-        torchaudio.save(temp_audio, waveform.squeeze(0).cpu(), sample_rate)
+#         waveform = audio["waveform"]
+#         sample_rate = audio["sample_rate"]
+#         torchaudio.save(temp_audio, waveform.squeeze(0).cpu(), sample_rate)
 
-        # --- Combine video + audio ---
-        final_output = os.path.join(video_folder, "FINAL_VIDEO.mp4")
-        if os.path.exists(final_output):
-            os.remove(final_output)
+#         # --- Combine video + audio ---
+#         final_output = os.path.join(video_folder, "FINAL_VIDEO.mp4")
+#         if os.path.exists(final_output):
+#             os.remove(final_output)
 
-        print(f"[Video] Adding original audio to video...")
+#         print(f"[Video] Adding original audio to video...")
 
-        cmd_combine = [
-            ffmpeg_path, "-y",
-            "-i", temp_video,
-            "-i", temp_audio,
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-shortest",
-            final_output
-        ]
+#         cmd_combine = [
+#             ffmpeg_path, "-y",
+#             "-i", temp_video,
+#             "-i", temp_audio,
+#             "-c:v", "copy",
+#             "-c:a", "aac",
+#             "-shortest",
+#             final_output
+#         ]
 
-        try:
-            subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
-            os.remove(temp_video)
-            os.remove(temp_audio)
+#         try:
+#             subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
+#             os.remove(temp_video)
+#             os.remove(temp_audio)
 
-            from server import PromptServer
-            message = (
-                f"🎉 Final video created!\n\n"
-                f"📁 Location:\n{final_output}\n\n"
-                f"✅ {video_count} sets combined\n"
-                f"✅ Original clean audio added"
-            )
-            PromptServer.instance.send_sync("vrgdg_instructions_popup", {
-                "message": message,
-                "type": "green",
-                "title": "✅ VIDEO COMPLETE!"
-            })
+#             from server import PromptServer
+#             message = (
+#                 f"🎉 Final video created!\n\n"
+#                 f"📁 Location:\n{final_output}\n\n"
+#                 f"✅ {video_count} sets combined\n"
+#                 f"✅ Original clean audio added"
+#             )
+#             PromptServer.instance.send_sync("vrgdg_instructions_popup", {
+#                 "message": message,
+#                 "type": "green",
+#                 "title": "✅ VIDEO COMPLETE!"
+#             })
 
-            print(f"✅ [Video] SUCCESS! Final video saved: {final_output}")
+#             print(f"✅ [Video] SUCCESS! Final video saved: {final_output}")
 
-        except subprocess.CalledProcessError as e:
-            print(f"❌ [Video] Failed to add audio: {e.stderr}")
+#         except subprocess.CalledProcessError as e:
+#             print(f"❌ [Video] Failed to add audio: {e.stderr}")
 
-        return ()
+#         return ()
 
 
 
@@ -3295,7 +3295,7 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_HumoReminderNode":VRGDG_HumoReminderNode,
      "VRGDG_CleanAudio":VRGDG_CleanAudio,
      "VRGDG_MusicVideoPromptCreatorV2":VRGDG_MusicVideoPromptCreatorV2,
-     "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo,
+    #  "VRGDG_CreateFinalVideo":VRGDG_CreateFinalVideo,
      "VRGDG_CreateFinalVideo_SRT":VRGDG_CreateFinalVideo_SRT,         
      "VRGDG_LoadAudioSplit_Wan22HumoFMML":VRGDG_LoadAudioSplit_Wan22HumoFMML    
 
@@ -3328,11 +3328,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_HumoReminderNode":"VRGDG_HumoReminderNode",
     "VRGDG_CleanAudio":"VRGDG_CleanAudio",
     "VRGDG_MusicVideoPromptCreatorV2":"VRGDG_MusicVideoPromptCreatorV2",
-    "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video",
+    # "VRGDG_CreateFinalVideo":"🎞️ VRGDG Create Final Video",
     "VRGDG_CreateFinalVideo_SRT":"VRGDG_CreateFinalVideo_SRT",     
     "VRGDG_LoadAudioSplit_Wan22HumoFMML":"VRGDG_LoadAudioSplit_Wan22HumoFMML"    
 
 }
+
 
 
 
