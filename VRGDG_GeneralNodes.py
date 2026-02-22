@@ -371,6 +371,7 @@ def _ensure_combined_files_route_registered():
 
         remake_mode = _normalize_bool(payload.get("remake_mode", False))
         batch_type = _normalize_batch_type(payload.get("batch_type", BATCH_TYPE_TEXT2IMAGE))
+        use_plain_text = _normalize_bool(payload.get("use_plain_text", False))
         combined_json_file = payload.get("combined_json_file", "")
         updates = _coerce_prompt_updates(payload.get("updates", []))
 
@@ -409,8 +410,9 @@ def _ensure_combined_files_route_registered():
                 status=400,
             )
 
+        apply_batch_type = BATCH_TYPE_IMAGE2VIDEO if use_plain_text else batch_type
         changed_count, updated_keys = _apply_prompt_updates_to_data(
-            data, updates, batch_type=batch_type
+            data, updates, batch_type=apply_batch_type
         )
 
         try:
@@ -1987,8 +1989,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
-
-
-
-
-
