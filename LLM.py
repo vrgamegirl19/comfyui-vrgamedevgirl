@@ -10,15 +10,22 @@ import uuid
 import urllib.request
 import urllib.error
 
-try:
-    import google.generativeai as genai_legacy
-except Exception:
-    genai_legacy = None
+# try:
+#     import google.generativeai as genai_legacy
+# except Exception:
+#     genai_legacy = None
 
+# try:
+#     from google import genai as genai_new
+# except Exception:
+#     genai_new = None
+
+genai_legacy = None
 try:
     from google import genai as genai_new
 except Exception:
     genai_new = None
+
 
 
 def _google_generate_content(api_key: str, model: str, contents):
@@ -53,6 +60,7 @@ def _extract_google_inline_image(response) -> Optional[Image.Image]:
             except Exception:
                 pass
     return None
+
 
 class VRGDG_NanoBananaPro:
     """
@@ -525,15 +533,13 @@ class VRGDG_LLM_Multi:
         return out, None
 
     def _call_google(self, api_key: str, model: str, prompt: str, pil_images: list[Image.Image]) -> Tuple[str, Optional[Image.Image]]:
-        genai.configure(api_key=api_key)
-        gm = genai.GenerativeModel(model)
         if pil_images:
             contents = []
             contents.extend(pil_images)
             contents.append(prompt)
-            response = gm.generate_content(contents)
+            response = _google_generate_content(api_key=api_key, model=model, contents=contents)
         else:
-            response = gm.generate_content(prompt)
+            response = _google_generate_content(api_key=api_key, model=model, contents=prompt)
         image_out = None
         txt = getattr(response, "text", None)
         if txt and txt.strip():
@@ -553,11 +559,14 @@ class VRGDG_LLM_Multi:
                         data_bytes = getattr(inline_data, "data", None)
                         if mime_type.startswith("image/") and data_bytes:
                             try:
+                                if isinstance(data_bytes, str):
+                                    data_bytes = base64.b64decode(data_bytes)
                                 image_out = image_out or Image.open(BytesIO(data_bytes)).convert("RGB")
                             except Exception:
                                 pass
                 if parts:
                     return "".join(parts).strip(), image_out
+        image_out = image_out or _extract_google_inline_image(response)
         if image_out is not None:
             return "Image generated.", image_out
         raise Exception("Empty Google response")
@@ -702,6 +711,7 @@ class VRGDG_LocalLLM:
                 "temperature": ("FLOAT", {"default": 0.4, "min": 0.0, "max": 2.0, "step": 0.05}),
                 "top_p": ("FLOAT", {"default": 0.95, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "max_tokens": ("INT", {"default": 4096, "min": -1, "max": 262144, "step": 64}),
+                "request_timeout_sec": ("INT", {"default": 300, "min": 30, "max": 3600, "step": 10}),
             },
             "optional": {
                 "image1": ("IMAGE", {}),
@@ -716,7 +726,7 @@ class VRGDG_LocalLLM:
     FUNCTION = "run_local"
     CATEGORY = "VRGDG/NanoBananaPro"
 
-    def _post_json(self, url: str, headers: dict, payload: dict) -> dict:
+    def _post_json(self, url: str, headers: dict, payload: dict, timeout_sec: int = 180) -> dict:
         if "Accept" not in headers:
             headers["Accept"] = "application/json"
         if "User-Agent" not in headers:
@@ -724,7 +734,7 @@ class VRGDG_LocalLLM:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=180) as resp:
+            with urllib.request.urlopen(req, timeout=max(1, int(timeout_sec))) as resp:
                 body = resp.read().decode("utf-8", errors="replace")
                 return json.loads(body)
         except urllib.error.HTTPError as e:
@@ -850,6 +860,7 @@ class VRGDG_LocalLLM:
         top_p: float,
         max_tokens: int,
         pil_images: list[Image.Image],
+        request_timeout_sec: int,
     ) -> Tuple[str, Optional[Image.Image]]:
         payload = {
             "model": model,
@@ -866,7 +877,12 @@ class VRGDG_LocalLLM:
         if pil_images:
             payload["images"] = [self._pil_to_png_base64(img) for img in pil_images]
 
-        data = self._post_json(f"{base_url}/api/generate", {"Content-Type": "application/json"}, payload)
+        data = self._post_json(
+            f"{base_url}/api/generate",
+            {"Content-Type": "application/json"},
+            payload,
+            timeout_sec=request_timeout_sec,
+        )
         text = str(data.get("response", "")).strip()
         if not text:
             raise Exception(f"Empty Ollama response: {data}")
@@ -917,6 +933,7 @@ class VRGDG_LocalLLM:
         top_p: float,
         max_tokens: int,
         pil_images: list[Image.Image],
+        request_timeout_sec: int,
     ) -> Tuple[str, Optional[Image.Image]]:
         headers = {"Content-Type": "application/json"}
         if api_key.strip():
@@ -944,7 +961,12 @@ class VRGDG_LocalLLM:
         }
         if int(max_tokens) > 0:
             payload["max_tokens"] = int(max_tokens)
-        data = self._post_json(f"{base_url}/chat/completions", headers, payload)
+        data = self._post_json(
+            f"{base_url}/chat/completions",
+            headers,
+            payload,
+            timeout_sec=request_timeout_sec,
+        )
 
         choices = data.get("choices", [])
         if not choices:
@@ -970,6 +992,11 @@ class VRGDG_LocalLLM:
     def _normalize_error(self, backend: str, err: Exception) -> str:
         msg = str(err)
         low = msg.lower()
+        if "timed out" in low or "timeout" in low:
+            return (
+                "error: request timed out. Increase request_timeout_sec in the node "
+                "(for large/slow models try 300-900)."
+            )
         if backend == "ollama" and "http 404" in low and "model" in low and "not found" in low:
             return (
                 "error: Ollama model not found. Pick an installed model in the node, "
@@ -998,6 +1025,7 @@ class VRGDG_LocalLLM:
         temperature: float,
         top_p: float,
         max_tokens: int,
+        request_timeout_sec: int,
         image1: Optional[torch.Tensor] = None,
         image2: Optional[torch.Tensor] = None,
         image3: Optional[torch.Tensor] = None,
@@ -1012,6 +1040,7 @@ class VRGDG_LocalLLM:
         url = self._normalize_url(base_url)
         chosen_model = self._resolve_model(model, custom_model)
         pil_images = self._collect_pil_images([image1, image2, image3, image4])
+        request_timeout_sec = max(30, int(request_timeout_sec))
 
         if backend == "ollama":
             installed = self._list_ollama_models(url)
@@ -1030,6 +1059,7 @@ class VRGDG_LocalLLM:
                         top_p,
                         max_tokens,
                         pil_images,
+                        request_timeout_sec,
                     )
                 except Exception as e:
                     if self._is_model_not_found_error(e):
@@ -1045,6 +1075,7 @@ class VRGDG_LocalLLM:
                                 top_p,
                                 max_tokens,
                                 pil_images,
+                                request_timeout_sec,
                             )
                         else:
                             raise
@@ -1062,6 +1093,7 @@ class VRGDG_LocalLLM:
                         top_p,
                         max_tokens,
                         pil_images,
+                        request_timeout_sec,
                     )
                 except Exception as e:
                     if self._is_model_not_found_error(e):
@@ -1078,6 +1110,7 @@ class VRGDG_LocalLLM:
                                 top_p,
                                 max_tokens,
                                 pil_images,
+                                request_timeout_sec,
                             )
                         else:
                             raise
@@ -1104,6 +1137,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LLM_Multi": "🤖 VRGDG LLM Multi 🤖",
     "VRGDG_LocalLLM": "💻 VRGDG Local LLM 💻",
 }
-
-
-
