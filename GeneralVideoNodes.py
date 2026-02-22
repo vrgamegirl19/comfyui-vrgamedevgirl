@@ -2216,14 +2216,48 @@ class BeatImpactAnalysisNode:
                 return False
             return tail >= overall * 0.1
 
-        beat_source = y_drums if stem_usable(y_drums, y_mix, sr) else y_mix
+        mix_duration = float(len(y_mix) / sr)
+        use_drums_for_beats = stem_usable(y_drums, y_mix, sr)
 
-        tempo, beat_frames = librosa.beat.beat_track(
-            y=beat_source,
-            sr=sr,
-            trim=False
-        )
-        beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+        def track_beats(y_src):
+            t, frames = librosa.beat.beat_track(y=y_src, sr=sr, trim=False)
+            times = librosa.frames_to_time(frames, sr=sr)
+            return t, times
+
+        tempo_mix, beat_times_mix = track_beats(y_mix)
+        tempo = tempo_mix
+        beat_times = beat_times_mix
+        source_used = "final_mix"
+
+        if use_drums_for_beats:
+            tempo_drums, beat_times_drums = track_beats(y_drums)
+            drums_last = float(beat_times_drums[-1]) if len(beat_times_drums) else 0.0
+            mix_last = float(beat_times_mix[-1]) if len(beat_times_mix) else 0.0
+            drums_cov = drums_last / max(mix_duration, 1e-6)
+            mix_cov = mix_last / max(mix_duration, 1e-6)
+
+            # Prefer whichever track reaches closer to song end; tie-break by beat count.
+            if (drums_last > mix_last + 1.0) or (
+                abs(drums_last - mix_last) <= 1.0 and len(beat_times_drums) >= len(beat_times_mix)
+            ):
+                tempo = tempo_drums
+                beat_times = beat_times_drums
+                source_used = "drums"
+
+            print(
+                "[BeatImpactAnalysisNode] Beat coverage: "
+                f"mix_last={mix_last:.3f}s ({mix_cov:.1%}), mix_beats={len(beat_times_mix)}; "
+                f"drums_last={drums_last:.3f}s ({drums_cov:.1%}), drums_beats={len(beat_times_drums)}; "
+                f"selected={source_used}"
+            )
+        else:
+            mix_last = float(beat_times_mix[-1]) if len(beat_times_mix) else 0.0
+            mix_cov = mix_last / max(mix_duration, 1e-6)
+            print(
+                "[BeatImpactAnalysisNode] Beat coverage: "
+                f"mix_last={mix_last:.3f}s ({mix_cov:.1%}), mix_beats={len(beat_times_mix)}; "
+                "drums unusable, selected=final_mix"
+            )
 
         # --- Onset strength (impact signals) ---
         def onset_strength(y):
@@ -2303,7 +2337,7 @@ class BeatImpactAnalysisNode:
 
         output = {
             "bpm": round(float(tempo), 2),
-            "source_used_for_beats": "drums" if y_drums is not None else "final_mix",
+            "source_used_for_beats": source_used,
             "duration": float(len(y_mix) / sr),
             "beats": beats
         }
@@ -2343,6 +2377,13 @@ class BeatSceneDurationNode:
                     "max": 1.0,
                     "step": 0.05
                 }),
+                "duration_preset": ([
+                    "impact_weighted",
+                    "varied_no_repeat",
+                    "clustered_no_repeat"
+                ], {
+                    "default": "impact_weighted"
+                }),
                 "seed": ("INT", {
                     "default": 0
                 }),
@@ -2364,6 +2405,7 @@ class BeatSceneDurationNode:
         min_duration,
         max_duration,
         bias,
+        duration_preset,
         seed,
         output_filename
     ):
@@ -2385,6 +2427,42 @@ class BeatSceneDurationNode:
         current_time = 0.0
         scene_index = 1
         current_index = 0
+        no_candidate_windows = 0
+        forced_windows = 0
+        beat_aligned_windows = 0
+        intro_scene_added = False
+        prev_duration = None
+
+        if len(beats) == 0:
+            raise ValueError("BeatSceneDurationNode received empty beat_data['beats']")
+
+        first_beat = float(beats[0]["time"])
+        last_beat = float(beats[-1]["time"])
+        coverage = last_beat / max(float(song_end), 1e-6)
+        print(
+            "[BeatSceneDurationNode] Start: "
+            f"beats={len(beats)}, first={first_beat:.3f}s, last={last_beat:.3f}s, "
+            f"song_end={float(song_end):.3f}s, beat_coverage={coverage:.1%}, "
+            f"min_dur={min_duration:.3f}, max_dur={max_duration:.3f}, bias={bias:.3f}, "
+            f"preset={duration_preset}, seed={seed}"
+        )
+
+        # Keep SRT clock aligned with absolute beat times. If first beat starts later
+        # than 0, add a small intro scene so current_time matches beat start.
+        if first_beat > 1e-6:
+            srt_lines.append(str(scene_index))
+            srt_lines.append(
+                f"{format_time(0.0)} --> {format_time(first_beat)}"
+            )
+            srt_lines.append(f"SCENE {scene_index}")
+            srt_lines.append("")
+            print(
+                "[BeatSceneDurationNode] Intro scene added: "
+                f"scene={scene_index}, start=0.000, end={first_beat:.3f}, duration={first_beat:.3f}"
+            )
+            scene_index += 1
+            current_time = first_beat
+            intro_scene_added = True
 
         while current_index < len(beats) - 1:
             start_time = beats[current_index]["time"]
@@ -2404,18 +2482,106 @@ class BeatSceneDurationNode:
                 impact = beats[i]["impact"]
                 downbeat = beats[i]["downbeat"]
 
-                weight = impact * (1.2 if downbeat else 1.0)
-                candidates.append((i, t, weight))
+                base_weight = impact * (1.2 if downbeat else 1.0)
+                duration = t - start_time
+                candidates.append((i, t, base_weight, duration))
 
             if not candidates:
-                break
+                no_candidate_windows += 1
+                # No beat landed in the allowed window; force a cut at max_time,
+                # then continue from the nearest beat at/after that point.
+                forced_end = min(max_time, song_end)
+                if forced_end <= start_time:
+                    print(
+                        "[BeatSceneDurationNode] BREAK no-candidate invalid forced_end: "
+                        f"scene={scene_index}, start_time={start_time:.3f}, forced_end={forced_end:.3f}"
+                    )
+                    break
 
-            weights = [(w ** bias) + 1e-6 for _, _, w in candidates]
-            chosen_index, chosen_time, _ = rng.choices(
-                candidates, weights=weights, k=1
+                duration = forced_end - start_time
+                forced_windows += 1
+                print(
+                    "[BeatSceneDurationNode] No candidates, forcing window: "
+                    f"scene={scene_index}, beat_idx={current_index}, "
+                    f"start_time={start_time:.3f}, min_time={min_time:.3f}, max_time={max_time:.3f}, "
+                    f"forced_end={forced_end:.3f}, duration={duration:.3f}"
+                )
+
+                srt_lines.append(str(scene_index))
+                srt_lines.append(
+                    f"{format_time(current_time)} --> {format_time(current_time + duration)}"
+                )
+                srt_lines.append(f"SCENE {scene_index}")
+                srt_lines.append("")
+
+                current_time += duration
+                scene_index += 1
+                prev_duration = duration
+
+                next_index = current_index + 1
+                while next_index < len(beats) and beats[next_index]["time"] <= forced_end:
+                    next_index += 1
+                if next_index >= len(beats):
+                    print(
+                        "[BeatSceneDurationNode] BREAK no remaining beats after forced window: "
+                        f"scene={scene_index - 1}, forced_end={forced_end:.3f}, last_beat={last_beat:.3f}"
+                    )
+                    break
+                current_index = next_index
+                continue
+
+            filtered_candidates = candidates
+            if prev_duration is not None:
+                # Never pick nearly identical duration back-to-back.
+                repeat_epsilon = 0.20
+                non_repeat = [
+                    c for c in candidates
+                    if abs(c[3] - prev_duration) >= repeat_epsilon
+                ]
+                if non_repeat:
+                    filtered_candidates = non_repeat
+                else:
+                    print(
+                        "[BeatSceneDurationNode] Non-repeat constraint relaxed (all candidates too similar): "
+                        f"scene={scene_index}, prev_duration={prev_duration:.3f}, candidates={len(candidates)}"
+                    )
+
+            weights = []
+            for _, _, base_weight, candidate_duration in filtered_candidates:
+                w = (base_weight ** bias) + 1e-6
+
+                if prev_duration is not None:
+                    delta = abs(candidate_duration - prev_duration)
+
+                    if duration_preset == "varied_no_repeat":
+                        # Strongly favor bigger jumps from previous duration.
+                        w *= 0.6 + min(2.0, delta / 0.8)
+                        mid = (min_duration + max_duration) * 0.5
+                        switched_band = (
+                            (prev_duration >= mid and candidate_duration < mid) or
+                            (prev_duration < mid and candidate_duration >= mid)
+                        )
+                        w *= 1.20 if switched_band else 0.85
+
+                    elif duration_preset == "clustered_no_repeat":
+                        # Keep durations in a tighter cluster, but still non-repeating.
+                        w *= 1.30 if delta <= 1.5 else 0.75
+
+                weights.append(max(w, 1e-9))
+
+            chosen_index, chosen_time, _, _ = rng.choices(
+                filtered_candidates, weights=weights, k=1
             )[0]
+            beat_aligned_windows += 1
 
             duration = chosen_time - start_time
+            if scene_index <= 5 or scene_index % 10 == 0 or chosen_time > (song_end - 25.0):
+                print(
+                    "[BeatSceneDurationNode] Beat-aligned cut: "
+                    f"scene={scene_index}, beat_idx={current_index}->{chosen_index}, "
+                    f"start_time={start_time:.3f}, chosen_time={chosen_time:.3f}, "
+                    f"duration={duration:.3f}, candidates={len(candidates)}"
+                )
 
             srt_lines.append(str(scene_index))
             srt_lines.append(
@@ -2429,6 +2595,7 @@ class BeatSceneDurationNode:
             current_time += duration
             scene_index += 1
             current_index = chosen_index
+            prev_duration = duration
 
         # --- Clamp tail to max_duration and always reach song end ---
         if current_time < song_end:
@@ -2436,6 +2603,11 @@ class BeatSceneDurationNode:
 
             # If tail is longer than max_duration, split into fixed chunks
             while remaining > max_duration:
+                print(
+                    "[BeatSceneDurationNode] Tail chunk fallback: "
+                    f"scene={scene_index}, current_time={current_time:.3f}, "
+                    f"remaining={remaining:.3f}, chunk={max_duration:.3f}"
+                )
                 srt_lines.append(str(scene_index))
                 srt_lines.append(
                     f"{format_time(current_time)} --> {format_time(current_time + max_duration)}"
@@ -2449,6 +2621,10 @@ class BeatSceneDurationNode:
 
             # Final tail (<= max_duration)
             if current_time < song_end:
+                print(
+                    "[BeatSceneDurationNode] Final tail chunk: "
+                    f"scene={scene_index}, current_time={current_time:.3f}, song_end={float(song_end):.3f}"
+                )
                 srt_lines.append(str(scene_index))
                 srt_lines.append(
                     f"{format_time(current_time)} --> {format_time(song_end)}"
@@ -2480,6 +2656,11 @@ class BeatSceneDurationNode:
         with open(out_path, "w", encoding="utf-8") as f:
             f.write("\n".join(srt_lines))
 
+        print(
+            "[BeatSceneDurationNode] Summary: "
+            f"beat_aligned={beat_aligned_windows}, forced={forced_windows}, "
+            f"no_candidate_windows={no_candidate_windows}, intro_scene={intro_scene_added}, total_scenes={scene_index}"
+        )
         print(f"[BeatSceneDurationNode] Saved SRT to: {out_path}")
 
 
@@ -2657,6 +2838,126 @@ class VRGDG_PromptSplitterWithIndex:
             return ("", "0")
 
 
+class IndexedImageFromFolder_ForRemakeMode:
+    """
+    Loads a single image from a folder by matching the filename number to (index + 1).
+    Example: index 0 -> image number 1 -> files like images_00001_.png
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder_path": ("STRING", {
+                    "default": "",
+                    "multiline": False
+                }),
+                "index": ("INT", {
+                    "default": 0,
+                    "min": 0
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "load_image"
+    CATEGORY = "image"
+
+    def load_image(self, folder_path, index):
+        if not os.path.isdir(folder_path):
+            raise Exception(f"Folder does not exist: {folder_path}")
+
+        valid_exts = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
+        files = [
+            f for f in os.listdir(folder_path)
+            if f.lower().endswith(valid_exts)
+        ]
+
+        if not files:
+            raise Exception(f"No images found in folder: {folder_path}")
+
+        target_number = index + 1
+        target_file = None
+
+        for filename in files:
+            match = re.search(r"\d+", filename)
+            if not match:
+                continue
+            if int(match.group()) == target_number:
+                target_file = filename
+                break
+
+        if target_file is None:
+            raise Exception(
+                f"No image found for index {index} (expected number {target_number}) in folder: {folder_path}"
+            )
+
+        image_path = os.path.join(folder_path, target_file)
+        image = Image.open(image_path).convert("RGB")
+        image_np = np.array(image).astype(np.float32) / 255.0
+        image_tensor = torch.from_numpy(image_np)[None, ...]
+        return (image_tensor,)
+
+
+class VRGDG_LatestSRTAutoLoader:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "trigger": ("INT", {
+                    "default": 0,
+                    "min": -2147483648,
+                    "max": 2147483647,
+                    "step": 1
+                }),
+                "refresh": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 2147483647,
+                    "step": 1
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("srt_full_path", "srt_file_name")
+    FUNCTION = "load_latest_srt"
+    CATEGORY = "VRGDG"
+
+    @staticmethod
+    def _get_srt_dir():
+        node_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(node_dir, "srt_files")
+
+    @classmethod
+    def _get_latest_srt_info(cls):
+        srt_dir = cls._get_srt_dir()
+        if not os.path.isdir(srt_dir):
+            raise Exception(f"SRT folder does not exist: {srt_dir}")
+
+        srt_files = []
+        for entry in os.scandir(srt_dir):
+            if entry.is_file() and entry.name.lower().endswith(".srt"):
+                srt_files.append((entry.path, entry.name, entry.stat().st_mtime))
+
+        if not srt_files:
+            raise Exception(f"No .srt files found in: {srt_dir}")
+
+        # Most recent by modified timestamp.
+        srt_files.sort(key=lambda x: x[2], reverse=True)
+        return srt_files[0]
+
+    @classmethod
+    def IS_CHANGED(cls, trigger, refresh):
+        latest_path, _, latest_mtime = cls._get_latest_srt_info()
+        return f"{trigger}|{refresh}|{latest_path}|{latest_mtime}"
+
+    def load_latest_srt(self, trigger, refresh):
+        latest_path, latest_name, _ = self._get_latest_srt_info()
+        return (latest_path, latest_name)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LoadAudioSplit_General": VRGDG_LoadAudioSplit_General,
     "VRGDG_BuildVideoOutputPath_General": VRGDG_BuildVideoOutputPath_General,
@@ -2669,7 +2970,9 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_TrimImageBatch":VRGDG_TrimImageBatch,
     "BeatSceneDurationNode": BeatSceneDurationNode,
     "IndexedImageFromFolder": IndexedImageFromFolder,
+    "IndexedImageFromFolder_ForRemakeMode": IndexedImageFromFolder_ForRemakeMode,
     "VRGDG_PromptSpitterWithIndex":VRGDG_PromptSplitterWithIndex,
+    "VRGDG_LatestSRTAutoLoader": VRGDG_LatestSRTAutoLoader,
     
     
 
@@ -2688,7 +2991,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_TrimImageBatch":"VRGDG_TrimImageBatch",
     "BeatSceneDurationNode": "Beat-Aligned Scene Durations",
     "IndexedImageFromFolder": "Image From Folder (Index)",
+    "IndexedImageFromFolder_ForRemakeMode": "Image From Folder (Index For Remake Mode)",
     "VRGDG_PromptSplitterWithIndex":"VRGDG_PromptSplitterWithIndex",
+    "VRGDG_LatestSRTAutoLoader": "VRGDG Latest SRT Auto Loader",
     
 
 
