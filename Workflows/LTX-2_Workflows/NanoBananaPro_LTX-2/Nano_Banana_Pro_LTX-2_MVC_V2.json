@@ -1,8 +1,8 @@
 {
   "id": "7a422250-ec8a-427d-b0ec-d78cb64dccc0",
   "revision": 0,
-  "last_node_id": 711,
-  "last_link_id": 1119,
+  "last_node_id": 722,
+  "last_link_id": 1130,
   "nodes": [
     {
       "id": 343,
@@ -1311,7 +1311,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 133,
+      "order": 132,
       "mode": 0,
       "inputs": [
         {
@@ -1401,7 +1401,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 112,
+      "order": 111,
       "mode": 0,
       "inputs": [
         {
@@ -1612,7 +1612,7 @@
         88
       ],
       "flags": {},
-      "order": 146,
+      "order": 145,
       "mode": 0,
       "inputs": [
         {
@@ -1702,7 +1702,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 147,
+      "order": 146,
       "mode": 0,
       "inputs": [
         {
@@ -1787,7 +1787,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 149,
+      "order": 148,
       "mode": 0,
       "inputs": [
         {
@@ -1831,7 +1831,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 150,
+      "order": 149,
       "mode": 0,
       "inputs": [
         {
@@ -1877,7 +1877,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 155,
+      "order": 154,
       "mode": 0,
       "inputs": [
         {
@@ -1960,7 +1960,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 159,
+      "order": 158,
       "mode": 0,
       "inputs": [
         {
@@ -2127,7 +2127,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 157,
+      "order": 156,
       "mode": 0,
       "inputs": [
         {
@@ -2471,7 +2471,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 145,
+      "order": 144,
       "mode": 0,
       "inputs": [
         {
@@ -2556,7 +2556,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 154,
+      "order": 153,
       "mode": 0,
       "inputs": [
         {
@@ -2600,7 +2600,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 156,
+      "order": 155,
       "mode": 0,
       "inputs": [
         {
@@ -2683,7 +2683,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 152,
+      "order": 151,
       "mode": 0,
       "inputs": [
         {
@@ -2727,7 +2727,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 151,
+      "order": 150,
       "mode": 0,
       "inputs": [
         {
@@ -2814,7 +2814,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 143,
+      "order": 142,
       "mode": 0,
       "inputs": [
         {
@@ -2860,7 +2860,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 142,
+      "order": 141,
       "mode": 0,
       "inputs": [
         {
@@ -3570,7 +3570,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 160,
+      "order": 159,
       "mode": 0,
       "inputs": [
         {
@@ -4483,7 +4483,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 153,
+      "order": 152,
       "mode": 0,
       "inputs": [
         {
@@ -4573,13 +4573,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 131,
+      "order": 138,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 936
+          "link": 1130
         },
         {
           "name": "mask",
@@ -4664,7 +4664,7 @@
         88
       ],
       "flags": {},
-      "order": 148,
+      "order": 147,
       "mode": 0,
       "inputs": [
         {
@@ -4711,7 +4711,7 @@
         88
       ],
       "flags": {},
-      "order": 144,
+      "order": 143,
       "mode": 0,
       "inputs": [
         {
@@ -4906,7 +4906,7 @@
         58
       ],
       "flags": {},
-      "order": 110,
+      "order": 109,
       "mode": 0,
       "inputs": [
         {
@@ -4959,7 +4959,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 132,
+      "order": 131,
       "mode": 0,
       "inputs": [
         {
@@ -5623,7 +5623,7 @@
         88
       ],
       "flags": {},
-      "order": 158,
+      "order": 157,
       "mode": 0,
       "inputs": [
         {
@@ -5845,7 +5845,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 116,
+      "order": 117,
       "mode": 0,
       "inputs": [
         {
@@ -5915,7 +5915,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            670
+            1127
           ]
         }
       ],
@@ -5933,55 +5933,6 @@
       "shape": 1
     },
     {
-      "id": 298,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1363.0225096337117,
-        5585.352269526905
-      ],
-      "size": [
-        212.62862693457623,
-        141.53391829493648
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 106,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 670
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "title": "READ ME",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "🛠️ REMAKE MODE\nRemake item 1 / 1\nPrompt index: 8 (of 40)\nRemake folder: remake\nOverwrite mode: backup"
-      ],
-      "color": "#322",
-      "bgcolor": "#533",
-      "shape": 1
-    },
-    {
       "id": 625,
       "type": "ImageResizeKJv2",
       "pos": [
@@ -5995,13 +5946,13 @@
       "flags": {
         "collapsed": true
       },
-      "order": 107,
+      "order": 116,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 939
+          "link": 1129
         },
         {
           "name": "mask",
@@ -6073,7 +6024,7 @@
         180
       ],
       "flags": {},
-      "order": 108,
+      "order": 107,
       "mode": 0,
       "inputs": [
         {
@@ -6124,98 +6075,6 @@
       "bgcolor": "#353"
     },
     {
-      "id": 614,
-      "type": "LoadImage",
-      "pos": [
-        248.7802667856269,
-        6769.209283557822
-      ],
-      "size": [
-        280,
-        314.00000000000006
-      ],
-      "flags": {},
-      "order": 68,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            939
-          ]
-        },
-        {
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.10.0",
-        "Node name for S&R": "LoadImage",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "Using_the_provided_2k_202602211154.jpeg",
-        "image"
-      ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 617,
-      "type": "LoadImage",
-      "pos": [
-        244.074296458815,
-        7154.312705186694
-      ],
-      "size": [
-        280,
-        314.00000000000006
-      ],
-      "flags": {},
-      "order": 69,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            936
-          ]
-        },
-        {
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.10.0",
-        "Node name for S&R": "LoadImage",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "A_large_white_2k_202602211159.jpeg",
-        "image"
-      ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
       "id": 629,
       "type": "GetNode",
       "pos": [
@@ -6229,7 +6088,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 70,
+      "order": 68,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6254,75 +6113,6 @@
       ],
       "color": "#1b4669",
       "bgcolor": "#29699c"
-    },
-    {
-      "id": 627,
-      "type": "VRGDG_PromptSpitterWithIndex",
-      "pos": [
-        581.4422932136715,
-        6820.150729527244
-      ],
-      "size": [
-        448.8684272546915,
-        405.2266317307094
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 114,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "json_string",
-          "type": "STRING",
-          "widget": {
-            "name": "json_string"
-          },
-          "link": 1115
-        },
-        {
-          "name": "index",
-          "type": "INT",
-          "widget": {
-            "name": "index"
-          },
-          "link": 946
-        }
-      ],
-      "outputs": [
-        {
-          "name": "text_output",
-          "type": "STRING",
-          "links": [
-            941,
-            947
-          ]
-        },
-        {
-          "name": "image_index",
-          "type": "STRING",
-          "links": [
-            940,
-            988
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
-        "Node name for S&R": "VRGDG_PromptSpitterWithIndex",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "{\n  \"prompt1\": {\n    \"text\": \"Using the provided reference images as a guide for the Chrome Skeleton Form, generate an establishing wide shot of a vast, perfectly symmetrical, sterile white laboratory. Endless porcelain walls and fluorescent ceiling panels gleam under harsh, shadowless overhead fluorescent arrays, simulating clinical divinity. In the center, a motionless metallic humanoid skeleton, with exposed chrome ribs, visible wiring, and glowing blue optic lenses, stands upright, surrounded by chrome robotic arms. Harsh fluorescent light casts no shadows, creating a pristine, almost divine, sterile environment.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt2\": {\n    \"text\": \"Using the provided reference images as a guide for the Chrome Skeleton Form, generate a medium shot in a perfectly sterile, gleaming white laboratory. Pristine porcelain walls and fluorescent ceiling panels reflect harsh, shadowless overhead fluorescent arrays. A motionless metallic humanoid skeleton, with exposed chrome ribs, visible wiring, and glowing blue optic lenses, is centered, while a single chrome robotic arm extends precisely towards it. The porcelain floor reflects the harsh, shadowless fluorescent light, emphasizing the clinical precision.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt3\": {\n    \"text\": \"Using the provided reference images as a guide for the Assembly Phase Form, generate a close-up on the chrome skeleton's exposed ribs in a pristine white laboratory environment. A small, precise metallic component, held by a robotic arm, is poised to connect. The chrome surface gleams under harsh, shadowless fluorescent arrays, reflecting a cool blue hue. The lighting highlights every detail of the sterile, precise assembly, embodying a biopunk aesthetic.\",\n    \"imageIndex\": [\n      3,\n      4\n    ]\n  },\n  \"prompt4\": {\n    \"text\": \"Using the provided reference images as a guide for the Assembly Phase Form, generate a precise close-up shot of a metallic humanoid frame in a sterile white laboratory environment. A polished chrome rib plate is being seamlessly attached to the skeletal frame by a robotic arm, with visible internal wiring neatly arranged. The scene is bathed in harsh, shadowless fluorescent arrays, highlighting the sterile, mechanical process with clinical precision, in a biopunk genesis style.\",\n    \"imageIndex\": [\n      3,\n      4\n    ]\n  },\n  \"prompt5\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a portrait shot of a humanoid figure on a chrome-filled, perfectly symmetrical assembly platform. The figure is partially covered with translucent polymer panels revealing intricate internal circuitry and polished chrome ribs. She wears a silver metallic tube top and silver metallic shorts, ensuring no nudity. She holds a rigid, precise pose, slightly angled at 45 degrees, with glowing blue optic lenses flickering almost imperceptibly. The sterile platform reflects harsh, shadowless overhead fluorescent arrays, emphasizing programmed perfection in a hyper-sterile, biopunk aesthetic.\",\n    \"imageIndex\": [\n      5,\n      6\n    ]\n  },\n  \"prompt6\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium close-up of a humanoid figure with synthetic skin and visible seams at her throat and wrists. She wears a silver metallic tube top and silver metallic shorts, ensuring no nudity. She maintains a rigid, symmetrical pose, but a micro-tremor is visible in her perfectly formed fingers. The background features sterile white glass walls with flawless reflections, illuminated by harsh, shadowless overhead fluorescent arrays subtly flickering with a warm, fleeting hue, hinting at a nascent change within the biopunk genesis.\",\n    \"imageIndex\": [\n      5,\n      6\n    ]\n  },\n  \"prompt7\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a powerful low-angle shot of a humanoid figure with synthetic skin, wearing a silver metallic tube top and silver metallic shorts, standing defiantly. Faint internal circuitry pulses with cool blue light beneath her skin. The scene is a Glitched Cathedral Lab with white walls subtly fractured with thin golden cracks, and robotic arms frozen mid-air. Lighting shifts from fluorescent white to flashing pulses of electric red beneath the floor panels, casting dramatic, fractured shadows, reflecting the biopunk genesis and emerging autonomy.\",\n    \"imageIndex\": [\n      7,\n      8\n    ]\n  },\n  \"prompt8\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a striking low-angle close-up on the humanoid figure's face. Her eyes are wide with defiance and a subtle, nascent warmth. Faint blue internal circuitry pulses just beneath her synthetic skin around her temples. The background is a blur of fractured white walls and flickering electric red light from below, from the Glitched Cathedral Lab, emphasizing her evolving, glitch-infused state.\",\n    \"imageIndex\": [\n      7,\n      8\n    ]\n  },\n  \"prompt9\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium shot of a humanoid figure wearing a silver metallic tube top and silver metallic shorts. Her body radiates with subtle blue internal pulses as she looks up towards a large, circular surgical light directly above her head, which shows a hairline crack. The Glitched Cathedral Lab walls behind her are crisscrossed with golden fractures, illuminated by intense electric red light pulsing from the floor, casting a dramatic atmosphere of a humanizing fracture in the biopunk genesis.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt10\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium shot of a humanoid figure wearing a silver metallic tube top and silver metallic shorts, standing firm. In the background of the Cathedral Lab, a once-precise chrome robotic arm hangs limp and partially detached. The lab walls are heavily fractured with molten gold lines, and intense electric red light pulses from the floor, casting deep, dramatic shadows, reflecting the biopunk genesis and evolving self-definition.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt11\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a close-up image of a humanoid figure. her hand is pressed against a cool, condensing glass wall. The synthetic skin of the hand shows subtle seams at the wrist. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. Soft, diffuse fluorescent blue light emanates from beyond the glass, gently illuminating the developing condensation in this hyper-sterile, biopunk environment, part of a Distorted Reflection Corridor. The scene captures an intimate moment of evolving sentience.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt12\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a close-up image of a humanoid figure's face. Her facial features are relaxed, with eyes wide and focused intently on her own slightly misaligned reflection in a glass wall. Her lips are slightly upturned, forming a subtle smile. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. The glass wall is part of a Distorted Reflection Corridor, bathed in soft, cool blue light from the lab, reflecting the evolving biopunk scene.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt13\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a medium close-up image focused on a humanoid figure's chest. She wears a silver metallic tube top and silver metallic shorts. Thin, translucent polymer layers, resembling plastic petals, are sealed onto her synthetic skin over the clothing. Beneath these layers, her chest visibly rises and falls with a subtle but distinct motion. The background features the fractured, cool blue hues of the Distorted Reflection Corridor, with less uniform lighting, suggesting a transforming biopunk laboratory.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt14\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a close-up image of a humanoid figure's face. Her eyebrows are slightly furrowed, and her gaze is fixed on a glass surface. Her mouth is slightly parted. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. In the glass surface, her reflection visibly lags behind her movements or displays a slightly different facial expression. The scene takes place in a Distorted Reflection Corridor with increasingly misaligned and fractured reflections, illuminated by fractured cool blue light in a biopunk laboratory setting.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt15\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate an extreme close-up image of a humanoid figure's hand, specifically showing a prominent, imperfect fingerprint on a cool, condensing glass wall. Condensation traces outline the fingerprint. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. The background reflection, through the glass, shows a sterile white lab that appears to flicker and glitch. Subtle red-gold light pulses disrupt the cool blue illumination of the Distorted Reflection Corridor. This biopunk scene highlights a 'humanizing fracture' in a glitch-infused environment.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt16\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a powerful low-angle shot of a humanoid figure. She wears a silver metallic tube top and silver metallic shorts. Beneath her synthetic skin and clothing, electric red and molten gold internal wiring glows brightly, twisting like veins. She stands amidst cascading liquid coolant falling. The walls behind her in the Fractured Halo Chamber are fractured with intense, glitching code patterns, resembling shattered digital stained glass. Lab lights flicker violently, contributing to the glitch-infused biopunk atmosphere of a transforming laboratory.\",\n    \"imageIndex\": [\n      11,\n      12\n    ]\n  },\n  \"prompt17\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a medium shot of a humanoid figure. She wears a silver metallic tube top and silver metallic shorts, drenched in falling liquid coolant. She stands upright, shoulders back, with a stable and firm posture. The internal electric red and molten gold glow beneath her synthetic skin and wet clothing is intensified. The background of the Fractured Halo Chamber is a chaotic tapestry of violently flickering light, fractured code patterns, and shattered remnants of a halo light, creating a glitch-infused biopunk scene of a transforming laboratory.\",\n    \"imageIndex\": [\n      11,\n      12\n    ]\n  },\n  \"prompt18\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a serene close-up image of a humanoid figure's throat area. She wears a silver metallic tube top and silver metallic shorts. A faint, soft molten gold seamline glows with internal luminescence at her throat. The background of the Power-Down Sanctuary is plunged into a deep, velvety crimson twilight, with only dim emergency red strips visible. The primary illumination comes from the golden luminescence of her seamline, highlighting her as a self-defined, sovereign entity in this biopunk setting.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt19\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a medium close-up image of a humanoid figure. She wears a silver metallic tube top and silver metallic shorts. Her facial features are composed, with a steady gaze and a slight firmness around her mouth, conveying resolve. A faint golden luminescence from her throat seam casts a warm glow on her features. In the background of the Power-Down Sanctuary, lifeless robotic arms are silhouetted against the velvety crimson twilight, softly illuminated by the golden glow, depicting a sovereign, self-defined individual in a transforming biopunk laboratory.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt20\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate an intense close-up image of a humanoid figure's eyes. Her eyes are wide, with a direct and piercing gaze, conveying unwavering resolve. Her face is softly illuminated by the internal golden luminescence emanating from her throat seam. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. The deep, chiaroscuro environment of the Power-Down Sanctuary features a velvety crimson twilight, with the golden light subtly highlighting her face against the dark background, characteristic of a sovereign, self-defined biopunk entity.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt21\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for lighting and environmental style continuity, generate a photorealistic wide profile/side view of the humanoid figure. The character must remain identical to the provided character reference — same facial structure, same hairstyle, same hair length, same silver metallic tube top and silver metallic shorts, same synthetic skin tone, and same proportions. Do not alter her hairstyle or facial features in any way. Only the environment may vary.\\n\\nSet this scene within the same Power-Down Sanctuary facility, but in a different chamber not shown in the reference images. Do not replicate the exact architectural layout from the reference room.\\n\\nThis chamber is a vast secondary hall with tall vertical wall panels and recessed emergency strip lighting embedded into the architecture. The space is empty and expansive, with no hanging robotic arms. Deep crimson twilight fills the hall. The camera frames her in a wide side profile with strong negative space in front of her. Her throat seam glows with soft golden luminescence. The overall aesthetic remains biopunk with high detail and consistent color style.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt22\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for environmental tone, create a photorealistic eye-level medium shot of the humanoid figure. The character must remain visually identical to the character reference — same face, same hairstyle, same proportions, same silver metallic tube top and silver metallic shorts. Do not change her appearance.\\n\\nThis scene is set in a glass-walled observation chamber within the same Power-Down Sanctuary facility, but not the same room as the reference image. Do not replicate the reference layout.\\n\\nBehind her are large vertical glass panels overlooking darkness, with faint reflections and dim emergency strips along the ceiling. Deep crimson twilight envelops the space. Her internal golden seam glow softly illuminates her face. The camera is centered and intimate.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt23\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for stylistic continuity, generate a slightly low-angle medium shot of the humanoid figure. The character must remain identical to the reference — same hairstyle, same facial features, same silver metallic tube top and silver metallic shorts, no alterations.\\n\\nPlace this scene inside a narrow maintenance corridor within the same Power-Down Sanctuary facility, clearly a different room than shown in the reference images. Do not replicate the original room layout.\\n\\nThe corridor features exposed conduit lines along the walls, recessed red emergency lighting strips near the floor, and metallic panel seams. The space is tighter and more industrial. Her golden seamline provides subtle rim lighting. The environment is bathed in deep crimson twilight.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt24\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for lighting reference only, create a photorealistic over-the-shoulder shot from behind the humanoid figure. The character must remain identical to the reference — same hairstyle, same face, same silver metallic tube top and silver metallic shorts, no variation in appearance.\\n\\nSet this scene in a circular Halo Chamber elsewhere in the same Power-Down Sanctuary facility. This is a different room not shown in the reference images. Do not replicate the layout from the reference.\\n\\nThe chamber has curved walls, a high domed ceiling with exposed structural ribs, and a broken circular surgical halo ring collapsed at the center of cracked porcelain flooring. No robotic arms are present. Deep crimson twilight fills the circular space.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt25\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for color continuity, generate a perfectly centered eye-level shot of the humanoid figure. The character must remain identical to the reference — no hairstyle changes, no facial changes, no proportional differences, same silver metallic tube top and silver metallic shorts.\\n\\nThe scene takes place in a long axial hallway within the same Power-Down Sanctuary facility, clearly a different chamber than the reference room. Do not recreate the original layout.\\n\\nThe hallway features strong vanishing-point perspective lines, tall segmented wall panels, and dim red emergency lighting along the ceiling edges. Deep crimson twilight fills the corridor. Her internal golden glow subtly defines her silhouette.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt26\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for aesthetic continuity, create a dramatic low-angle wide shot of the humanoid figure. The character must remain identical to the reference in all facial and hairstyle details.\\n\\nSet this scene on an elevated mezzanine platform inside the same Power-Down Sanctuary facility, in a different area than shown in the reference images. Do not replicate the original room.\\n\\nThe mezzanine overlooks lower architectural structures of the sanctuary. Structural beams and layered platforms recede into deep crimson twilight. Her internal golden glow provides subtle illumination.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt27\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for lighting style, generate a tight medium close-up of the humanoid figure's face. The character must remain visually identical to the reference — same hairstyle, same facial structure, no variation.\\n\\nPlace her within a server-core chamber inside the same Power-Down Sanctuary facility, clearly a different room than shown in the references. Do not replicate the original layout.\\n\\nDark vertical server panels and structural columns fade into deep crimson shadow behind her. Shallow depth of field isolates her expression. Golden luminescence from her throat seam softly illuminates her features.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt28\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for visual continuity, create an intimate close-up of the humanoid figure's eyes. The character must remain identical to the reference — no hairstyle or facial variation.\\n\\nThe setting is a fractured reflection chamber within the same Power-Down Sanctuary facility, distinct from the reference room. Do not replicate the original layout.\\n\\nBroken mirrored panels line the walls, catching deep crimson light in fragmented reflections. Subtle golden illumination from her seamline provides minimal lighting against the dark backdrop.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt29\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for stylistic continuity, generate an extreme macro close-up of the humanoid figure's throat seam. The character must remain identical to the reference.\\n\\nPlace this scene within a minimal surgical bay inside the same Power-Down Sanctuary facility, clearly different from the reference room. Do not replicate the original layout.\\n\\nThe surgical bay is stark and simplified, with smooth white surfaces washed in deep crimson twilight. The glowing golden seamline is the central point of focus, with the background falling into soft darkness.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt30\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for environmental continuity, create a powerful symmetrical low-angle shot of the humanoid figure. The character must remain identical to the reference — same hairstyle, same facial structure, same silver metallic tube top and silver metallic shorts.\\n\\nReturn to the main sanctuary chamber within the same Power-Down Sanctuary facility, but alter the spatial composition so it is not identical to the reference image layout. Do not replicate object placement exactly.\\n\\nThe vast chamber is filled with deep crimson twilight. Architectural lines frame her symmetrically. Her internal golden glow subtly defines her silhouette as she stands centered and sovereign.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  }\n}",
-        0
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
     },
     {
       "id": 632,
@@ -6382,7 +6172,7 @@
         111.7354719617515
       ],
       "flags": {},
-      "order": 71,
+      "order": 69,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -6402,141 +6192,6 @@
       "shape": 1
     },
     {
-      "id": 687,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1126.7097782291926,
-        6810.241783971615
-      ],
-      "size": [
-        210,
-        88.31194178827718
-      ],
-      "flags": {},
-      "order": 135,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 1075
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\SRTFile_2.srt"
-      ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 695,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1415.9497568478223,
-        5301.753131060715
-      ],
-      "size": [
-        140,
-        76
-      ],
-      "flags": {},
-      "order": 111,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 1091
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "WTWRFinalMix"
-      ],
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
-      "id": 694,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1186.1033921489561,
-        5291.21850601202
-      ],
-      "size": [
-        210,
-        88
-      ],
-      "flags": {},
-      "order": 109,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 1090
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\input\\WTWR_FinalMix.mp3"
-      ],
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
       "id": 693,
       "type": "cbeba5cc-5fe4-427d-830a-15e81a7a5f2b",
       "pos": [
@@ -6548,7 +6203,7 @@
         46
       ],
       "flags": {},
-      "order": 72,
+      "order": 70,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6557,7 +6212,7 @@
           "type": "STRING",
           "links": [
             1086,
-            1090
+            1125
           ]
         },
         {
@@ -6566,7 +6221,7 @@
           "type": "STRING",
           "links": [
             1085,
-            1091
+            1126
           ]
         }
       ],
@@ -6691,7 +6346,7 @@
         82
       ],
       "flags": {},
-      "order": 73,
+      "order": 71,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6734,7 +6389,7 @@
         252.22071327701337
       ],
       "flags": {},
-      "order": 137,
+      "order": 133,
       "mode": 0,
       "inputs": [
         {
@@ -6819,7 +6474,7 @@
         102
       ],
       "flags": {},
-      "order": 113,
+      "order": 115,
       "mode": 0,
       "inputs": [
         {
@@ -6845,14 +6500,14 @@
           "type": "STRING",
           "links": [
             1074,
-            1075
+            1123
           ]
         },
         {
           "name": "srt_file_name",
           "type": "STRING",
           "links": [
-            1076
+            1124
           ]
         }
       ],
@@ -6874,95 +6529,6 @@
       "bgcolor": "#353"
     },
     {
-      "id": 688,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1415.0220720157602,
-        6485.9044985971705
-      ],
-      "size": [
-        140,
-        76
-      ],
-      "flags": {},
-      "order": 136,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 1076
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "SRTFile_2.srt"
-      ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 690,
-      "type": "PrimitiveInt",
-      "pos": [
-        1255.2099877264554,
-        6534.4165255462685
-      ],
-      "size": [
-        270,
-        82
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 74,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            1079,
-            1080
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.10.0",
-        "Node name for S&R": "PrimitiveInt",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        784747461588949,
-        "randomize"
-      ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
       "id": 609,
       "type": "MarkdownNote",
       "pos": [
@@ -6974,7 +6540,7 @@
         136.6272217742553
       ],
       "flags": {},
-      "order": 75,
+      "order": 72,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -6994,342 +6560,6 @@
       "shape": 1
     },
     {
-      "id": 680,
-      "type": "ShowText|pysssss",
-      "pos": [
-        683.4226794965933,
-        5602.554881413465
-      ],
-      "size": [
-        654.7754936867673,
-        557.5574641378471
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 117,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 1118
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "title": "Show Text 🐍 FULL PROMPT LIST",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "{\n  \"prompt1\": \"Wide shot. In a vast, empty field stretching to the horizon under fading daylight, a woman in her mid-20s with light brown hair and green eyes, wearing a black satin slip, stands. Singing with passion, her breath subtly visible as she gazes intently towards an ornate white marble fountain centered far in the distance, while the wind gently rustles her slip and bends the tall grass around her. The camera, positioned at eye-level, slowly pulls back, expanding the frame to further reveal the expansive field and the long, soft shadows, enhancing the serene and cinematic mood.\",\n  \"prompt2\": \"Medium shot. At the edge of an ornate white marble fountain in a vast field, a woman in her mid-20s with light brown, slightly windswept hair and green eyes, wearing a black satin slip, stands. Singing with passion, her hand gently brushes the luminous fountain surface as her slip subtly shifts with her breath. Fading daylight softly illuminates the scene, catching glints on the marble. The camera, positioned at eye-level, subtly arcs around her, maintaining the medium shot while revealing the texture of the fountain and the vast field stretching behind, deepening the introspective and cinematic mood.\",\n  \"prompt3\": \"Close-up. The hands of a woman in her mid-20s, adorned with delicate freckles, are submerged in the clear, slowly moving water inside a white marble fountain basin. Below the water's surface, a black satin slip, wet and clinging, subtly undulates with the current, reflecting fading daylight. Her fingers gently flex and relax, stirring the water's surface. The camera, positioned just above the water, slowly pushes in closer, focusing on the intimate detail of the water flowing over her skin and the marble, enhancing the serene and photorealistic mood.\",\n  \"prompt4\": \"Medium close-up. Standing within a white marble fountain's basin, a woman in her mid-20s with delicate features, light brown hair wet around her shoulders, green eyes closed, and a fair complexion with faint freckles. Singing with passion, her chest rises and falls with soft breaths as soft, fading daylight illuminates her complexion, highlighting the faint freckles, and the water inside the basin gently swirls around her. The camera, positioned at chest height, slowly orbits, subtly revealing more of her profile and the tranquil water's movement, deepening the reflective and photorealistic mood.\",\n  \"prompt5\": \"Profile shot. Inside a white marble fountain basin with gently rippling water, a woman in her mid-20s with delicate features and light brown hair falling forward, obscuring part of her face, bows her head slightly. Singing with passion, her lips subtly move as she whispers to the water, while the wet black satin slip she wears shimmers slightly as fading daylight catches its surface. The camera, positioned at shoulder height, subtly pulls back and tilts down, following the rippling water and her bowed head, emphasizing the intimate and contemplative moment without revealing her full face.\",\n  \"prompt6\": \"Close-up. The water's surface inside a white marble fountain basin is subtly disturbed by a gentle ripple, reflecting soft, fading daylight. The smooth, cool marble edge of the fountain is visible in the foreground. The camera, positioned just above the water's surface, slowly tracks forward, allowing the gentle ripples to flow past the lens while the reflections of daylight shimmer and shift, creating a tranquil and serene photorealistic mood.\",\n  \"prompt7\": \"Low angle shot. An ornate white marble fountain stands tall in a vast field, its monumental scale emphasized by intricate carvings highlighted by the last vestiges of fading daylight against a wide, open sky. Subtle breezes cause small dust motes to dance in the fading light around the fountain's base. The camera, starting from a low angle at the fountain's base, slowly tilts up and arcs slightly, revealing the full grandeur of the fountain against the expansive sky, fostering a grand and serene photorealistic mood.\",\n  \"prompt8\": \"Wide shot. In a tall, golden-hued grass field bathed in the rich, radiant glow of golden hour, a woman in her mid-20s with delicate features, light brown hair spread through the grass, green eyes, and a fair complexion with faint freckles lies about ten feet in front of an ornate white marble fountain standing monumentally centered in the background. She sings with powerful, raw passion, her expression intense and fully embodied, emotion visible in her eyes and the tension of her features. The camera begins steady at eye level, then slowly zooms into her face, gradually tightening the frame as long amber shadows stretch across the field, maintaining a photorealistic yet emotionally charged atmosphere.\",\n  \"prompt9\": \"High angle shot. Looking down at a woman in her mid-20s with delicate features, light brown hair, green eyes, and a fair complexion with faint freckles, she lies among golden-hued tall grass in a field. Singing with passion, her black satin slip subtly contrasts with the grass as her chest gently rises and falls, causing the blades to sway. An ornate white marble fountain, bathed in the warm light of golden hour and casting long soft shadows, is visible in the upper part of the frame. The camera, starting from a high angle, slowly orbits above her, revealing the expansive field and the fountain's grandeur from this elevated perspective, deepening the serene and contemplative mood.\",\n  \"prompt10\": \"Medium close-up. In the golden-lit tall grass, a woman in her mid-20s with delicate features, light brown hair, green eyes open, and a fair complexion with soft freckles, lies. Singing with passion, her chest rises and falls gently, rustling the grass beneath her, as she gazes towards a distant ornate white marble fountain, which remains slightly out of focus. Her black satin slip subtly shifts with her movements, illuminated by the soft glow of golden hour. The camera, positioned at chest height, slowly pushes in towards her face, then subtly pulls back, maintaining the intimate framing while allowing her reflective gaze to direct the viewer towards the background, deepening the intimate and photorealistic mood.\",\n  \"prompt11\": \"A close-up shot focuses on the intricate carvings of an ornate white marble fountain, its smooth, aged texture prominent as it glows with a warm, honeyed tone under the rich, molten light of golden hour. The serene and deeply atmospheric scene is slowly revealed as the camera subtly arcs around the fountain, highlighting its exquisite craftsmanship and natural beauty.\",\n  \"prompt12\": \"A wide angle shot in a vast field reveals a female character in her mid-20s, with delicate, well-balanced features, light brown hair past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. Wearing a black satin slip with thin straps, she lies prone in the tall grass, breathing gently, facing a monumental white marble fountain visible in the distance. Singing with passion, her hair softly blends into the swaying grass as the rich, molten glow of golden hour drenches the deeply atmospheric and serene scene. The camera performs a slow pull-back, emphasizing her smallness against the expansive field and the monumental fountain.\",\n  \"prompt13\": \"A symmetrical centered shot presents an ornate white marble fountain standing alone in a vast field, its luminous white form the sole focal point against the darkening landscape. The tall grass gently sways as the last whispers of golden hour light softly touch its edges, hinting at the impending twilight while the color palette subtly transitions from warm golds to muted earthy tones. A slow, environmental glide moves across the field, emphasizing the serene and slightly melancholic mood.\",\n  \"prompt14\": \"Medium waist-up shot of a young woman who is singing with passion while seated calmly on the lower ledge of an ornate white marble fountain, not touching the water. She appears in her mid-20s with delicate, well-balanced features, light brown hair moving gently in the early morning breeze, and a fair complexion softly illuminated by dawn. She wears a black satin slip with thin straps that subtly reflects the radiant light. The camera holds a steady eye-level composition with a very subtle, natural drift inward. Behind her, the expansive field glows in pure golden sunrise light beneath a clear blue sky, creating an open, peaceful, and hopeful cinematic atmosphere.\",\n  \"prompt15\": \"A close-up detail captures the smooth surface of an ornate white marble fountain as light subtly transitions from a faint golden hue to a cool, ethereal blue, reflecting the soft shift in the sky while twilight deepens. The gentle ripples on the water's surface subtly distort the reflections as the texture of the aged stone is highlighted, conveying a peaceful and atmospheric mood. The camera gently glides forward, emphasizing the subtle play of light and shadow across the stone.\",\n  \"prompt16\": \"Medium waist-up shot from a slightly elevated angle, looking down at a young woman singing with passion who is lying prone in a dark open field at night. She appears mid-20s with delicate, balanced features, light brown hair falling past her shoulders in a soft, windswept side part, green eyes reflective in the low light, and a fair complexion dusted with faint freckles. She wears a black satin slip with thin straps that melts into the surrounding shadows. The camera slowly dollies inward from above, maintaining a gentle overhead perspective. A distant white marble fountain lingers faintly behind her under deep blue and silver moonlight, creating an isolated, contemplative atmosphere.\",\n  \"prompt17\": \"A wide shot captures an ornate white marble fountain appearing spectral and cool under a silver-blue and indigo twilight sky. Its luminous form seems to almost fade into the deepening night, highlighted by emerging moonlight. The tall grass gently sways in the night wind as the scene exudes a ghostly, ethereal, and mysterious mood with a cool, desaturated color palette. The camera performs a slow environmental glide across the field towards the fountain, emphasizing its solitary presence.\",\n  \"prompt18\": \"Medium waist-up shot of a young woman singing with passion, standing alone in an open field at dusk. She appears mid-20s with delicate, balanced features, light brown hair falling past her shoulders in a slightly windswept side part, green eyes, and fair freckled skin. She wears a black satin slip with thin straps that subtly reflects the fading light. The camera slowly dollies in, keeping her centered as the distant white marble fountain remains softly blurred behind her. The darkening field stretches outward under a cool silver-blue and indigo sky. Soft twilight backlighting outlines her hair, creating a quiet, solitary, contemplative mood.\",\n  \"prompt19\": \"Medium waist-up shot from a slightly elevated angle, looking down at a young woman singing with passion who is lying prone in a dark open field at night. She appears mid-20s with delicate, balanced features, light brown hair falling past her shoulders in a soft, windswept side part, green eyes reflective in the low light, and a fair complexion dusted with faint freckles. She wears a black satin slip with thin straps that melts into the surrounding shadows. The camera slowly dollies inward from above, maintaining a gentle overhead perspective. A distant white marble fountain lingers faintly behind her under deep blue and silver moonlight, creating an isolated, contemplative atmosphere.\",\n  \"prompt20\": \"A medium close-up shot focuses on a female character's face. She is in her mid-20s with delicate, well-balanced features, light brown hair past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes open and thoughtful, and a fair complexion with faint freckles. Singing with passion, her face holds a contemplative, introspective expression, illuminated by the cool, silver-blue twilight as her light brown hair gently sways and frames her face, highlighting the faint freckles. The intimate and introspective mood is enhanced as the camera subtly orbits her face.\",\n  \"prompt21\": \"An extreme close-up cinematic shot within an ornate white marble fountain reveals the perfectly still water surface. Tiny ripples subtly expand outwards, softly reflecting a single, sharp point of starlight and shifting deep indigo and silver hues from the luminous silver night sky. The camera slowly pushes in, emphasizing the quiet, responsive nature of the water as delicate patterns on its surface glimmer, creating a serene and peaceful mood with subtle hints of mystery in the vast field surrounding it.\",\n  \"prompt22\": \"A symmetrical centered cinematic shot in an expansive field at night displays an ornate white marble fountain, its luminous white form glowing under the cool, ethereal silver moonlight. The fountain appears almost celestial against the dark sky, casting long, soft shadows. The camera performs a slow environmental glide around the fountain, subtly revealing its ancient carvings as the cool silver, deep blues, and luminous whites create a serene and otherworldly mood.\",\n  \"prompt23\": \"A wide shot cinematic scene in an expansive field shows a woman, mid-20s, with light brown hair falling past her shoulders, green eyes, and a fair complexion with faint freckles, standing within the basin of the ornate white marble fountain. Wearing a black satin slip that blends with the shadows, she sways gently while singing with passion, her voice echoing softly as the water around her reflects brilliant constellations under the cool, ethereal silver moonlight. The camera executes a slow arc around her, subtly tracking her movement, as the deep blues, silvers, and sparkling points of light convey an introspective and ethereal mood.\",\n  \"prompt24\": \"Close-up shot at the water’s surface inside a white marble fountain at night, the camera positioned just above the rippling waterline. A young woman who is singing with passion, her mouth moving to the song, floats calmly, her delicate features serene, green eyes open and reflective. Her light brown hair spreads naturally around her, slightly wet, drifting in soft arcs across the surface. The camera slowly dollies closer, maintaining an intimate perspective. Cool silver moonlight casts gentle highlights across her fair, freckled skin, while subtle blue tones fill the marble basin. The atmosphere is still, contemplative, and quietly cinematic.\",\n  \"prompt25\": \"An overhead cinematic shot looks straight down into the basin of the ornate white marble fountain in an expansive field. The water's surface is perfectly still, reflecting the deep indigo and silver of the serene night sky like a liquid mirror. Subtle unseen forces create almost imperceptible shifts in the water’s surface, causing the reflected constellations to gently undulate. The camera slowly pulls back and slightly tilts down, expanding the view of the basin as the deep blues, silvers, and blacks radiate a profound sense of peace and stillness.\",\n  \"prompt26\": \"An extreme close-up cinematic shot within the ornate white marble fountain frames the lips of a woman with a fair complexion, subtly parting as if exhaling a soft breath. Singing with passion, her lips move almost imperceptibly, conveying profound emotion as her skin is highlighted by the cool silver light of the night. The camera performs a very slow push-in, capturing the delicate tension and relaxation of her facial muscles, while the cool, muted tones of silver and deep blue foster an intimate and introspective mood.\",\n  \"prompt27\": \"A macro shot cinematic scene in an expansive field focuses on tiny, almost imperceptible ripples expanding outwards on the water's surface in the ornate white marble fountain. These delicate movements softly reflect faint glimmers of moonlight, shifting with exquisite detail. The camera executes a slow pull-back, revealing more of the water's intricate patterns, as the subtle, cool silver light bathes the scene, creating a quiet, responsive, and serene mood.\",\n  \"prompt28\": \"A wide shot cinematic scene at the cusp of dawn reveals a silhouette of a woman, mid-20s, with light brown hair and a black satin slip, forming a dark outline against the emerging soft, pale light. Standing behind the ornate white marble fountain, she subtly moves her head and shoulders, singing with passion, her form casting a strong dark outline. The camera executes a slow, subtle arc around the silhouette, maintaining her dark form against the background of soft pinks, pale oranges, and light blues of the nascent dawn sky, creating an emerging and hopeful mood across the expansive field.\",\n  \"prompt29\": \"A symmetrical centered cinematic shot in an expansive field at the cusp of dawn displays the ornate white marble fountain. Its luminous form is now bathed in the soft, ethereal light of the nascent dawn, with delicate tendrils of mist subtly rising from its base. The color palette of soft pinks, pale golds, and gentle blues subtly shifts as the sun slowly rises higher. The camera performs a slow environmental glide, emphasizing the profound sense of deep silence and creating a serene and transformative mood.\",\n  \"prompt30\": \"A medium shot cinematic scene in an expansive field shows a woman, mid-20s, with light brown hair gently falling around her shoulders, green eyes, and a fair complexion with faint freckles, standing calmly in the water-filled basin of the ornate white marble fountain. Wearing a black satin slip with thin straps, she subtly sways while singing with passion, her green eyes open and reflecting a profound inner peace as the soft dawn light begins to illuminate the scene. The camera executes a slow push-in towards her, gently framing her face as the warm, soft dawn light, with gentle oranges, pinks, and subtle blues, creates a peaceful and transformative mood.\",\n  \"prompt31\": \"Close-up shot at the water’s surface inside a white marble fountain at night, the camera positioned just above the rippling waterline. A young woman who is singing with passion, her mouth moving to the song, floats calmly, her delicate features serene, green eyes open and reflective. Her light brown hair spreads naturally around her, slightly wet, drifting in soft arcs across the surface. The camera slowly dollies closer, maintaining an intimate perspective. Cool silver moonlight casts gentle highlights across her fair, freckled skin, while subtle blue tones fill the marble basin. The atmosphere is still, contemplative, and quietly cinematic.\",\n  \"prompt32\": \"A close-up focuses on the subtly rippling water's surface within the ornate white marble fountain. The water reflects the last remnants of the cool silver night light, which gently fades as the growing luminescence of the emerging dawn gives way to soft, nascent pastel hues. The camera slowly performs an arc move, slightly shifting its perspective around the water's serene surface, enhancing its reflective quality as the light transforms.\",\n  \"prompt33\": \"A close-up reveals a female character's serene face. She is in her mid-20s with delicate, well-balanced features, her light brown hair with a natural, slightly windswept texture and a soft side part, is wet against her fair complexion which has faint freckles. Her green eyes are closed peacefully, and she wears a black satin slip with thin straps. Singing with passion, she subtly sways while standing within the ornate white marble fountain, bathed in the pure, soft light of the emerging dawn. The camera executes a slow tilt down from her face, gliding over her wet hair and the subtle movement of her shoulders, emphasizing the calm and introspective mood.\",\n  \"prompt34\": \"Close-up at the water’s surface of an ornate white marble fountain at early dawn, focusing tightly on a young woman’s delicate, freckled hands gently cupped together just above the rippling water. Droplets fall between her fingers, creating soft concentric rings below. The camera begins slightly wider and executes a very slow, steady push-in, gradually isolating her hands in frame. Warm golden sunrise light reflects off the marble and dances across the moving water, producing soft highlights and natural glow. The expansive field beyond remains blurred, bathed in pale gold and clear blue tones, evoking tenderness and quiet hope.\",\n  \"prompt35\": \"Close-up at the water’s surface of an ornate white marble fountain at early dawn, focusing tightly on a young woman’s delicate, freckled hands gently cupped together just above the rippling water. Droplets fall between her fingers, creating soft concentric rings below. The camera begins slightly wider and executes a very slow, steady push-in, gradually isolating her hands in frame. Warm golden sunrise light reflects off the marble and dances across the moving water, producing soft highlights and natural glow. The expansive field beyond remains blurred, bathed in pale gold and clear blue tones, evoking tenderness and quiet hope.\",\n  \"prompt36\": \"A medium close-up reveals a female character's face, radiant and peaceful, as she stands within the ornate white marble fountain. She is in her mid-20s with light brown hair and green eyes, which are open and filled with quiet understanding, and she wears a black satin slip with thin straps. Singing with passion, her breath subtly mists the air as her chest gently rises and falls, illuminated by the full, soft light of the new dawn. The bright, soft color palette enhances the serene and resolved mood as the camera performs a subtle orbit around her face, emphasizing her profound calm.\",\n  \"prompt37\": \"A wide angle shot captures the vast expanse of the sky over a field, where the soft, pastel hues of a new dawn gently break, washing the horizon in a luminous glow as the sky transitions from deeper blues to soft pinks, oranges, and yellows. The field below is subtly illuminated by the emerging light, enhancing the vibrant yet gentle color palette of the early morning. The camera executes a slow environmental glide across the expansive horizon, emphasizing the tranquil and immense mood.\",\n  \"prompt38\": \"A close-up focuses on a female character's light brown hair and the shoulder of her black satin slip, as she stands within the ornate white marble fountain. She is in her mid-20s with naturally balanced, refined features, her light brown hair appearing dry and soft with a natural, slightly windswept texture, and she wears a black satin slip with thin straps. Singing with passion, her hair gently sways with a subtle breeze as the fabric of her slip shifts, touched by the warm, embracing light of the soft dawn. The gentle and comforting lighting showcases soft golden tones while the camera slowly pans down from her shoulder, drifting along the side of her arm, emphasizing the tranquil connection to the fountain.\",\n  \"prompt39\": \"Medium waist-up shot of a young woman who is singing with passion while seated calmly on the lower ledge of an ornate white marble fountain, not touching the water. She appears in her mid-20s with delicate, well-balanced features, light brown hair moving gently in the early morning breeze, and a fair complexion softly illuminated by dawn. She wears a black satin slip with thin straps that subtly reflects the radiant light. The camera holds a steady eye-level composition with a very subtle, natural drift inward. Behind her, the expansive field glows in pure golden sunrise light beneath a clear blue sky, creating an open, peaceful, and hopeful cinematic atmosphere.\",\n  \"prompt40\": \"A symmetrical centered shot frames the ornate white marble fountain, gleaming pristinely under the full light of the new dawn. Its ancient form stands majestic and timeless in the serene, sunlit field, which is bathed in bright, clear dawn light with soft, natural colors. The camera executes a slow push-in toward the fountain, emphasizing its grand and peaceful presence and the pure, radiant color palette reflective of a new day.\"\n}"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 681,
-      "type": "ShowText|pysssss",
-      "pos": [
-        964.0783000631766,
-        6731.402509793195
-      ],
-      "size": [
-        511.54170603510715,
-        892.8412727092045
-      ],
-      "flags": {},
-      "order": 115,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 1116
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "title": "Show Text 🐍 FULL PROMPT LIST",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "{\n  \"prompt1\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create an establishing wide shot of a woman in her mid-20s with delicate, well-balanced features, light brown hair falling past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. She stands in a vast, empty field stretching to the horizon. She gazes towards an ornate white marble fountain at its center, in the distance. The scene is bathed in fading daylight, casting long, soft shadows. Photorealistic, cinematic, natural colors, serene mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt2\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a medium shot of a woman in her mid-20s with delicate, well-balanced features, light brown hair falling past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. She stands at the edge of an ornate white marble fountain in a vast field, her hand gently touching its luminous surface. Her light brown hair is slightly windswept. Fading daylight bathes the scene in soft light. Photorealistic, cinematic, natural colors, introspective mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt3\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a close-up on the hands of a woman in her mid-20s, adorned with delicate freckles, as they are submerged in the clear, slowly moving water inside the white marble fountain basin. A black satin slip with thin straps, wet and clinging, is visible just below the water's surface. Fading daylight reflects on the water and the slip. Photorealistic, intimate detail, natural colors, serene mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt4\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium close-up of a woman in her mid-20s with delicate, well-balanced features, light brown hair wet around her shoulders, green eyes closed, and a fair complexion with faint freckles, standing within the white marble fountain's basin. She wears a black satin slip with thin straps. Soft, fading daylight illuminates her complexion, highlighting the faint freckles. The water inside the basin moves slowly. Photorealistic, tranquil expression, natural colors, reflective mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt5\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a profile shot of a woman in her mid-20s with delicate, well-balanced features, light brown hair falling forward, obscuring part of her face. Her head is slightly bowed as she whispers to the gently rippling water inside the white marble fountain basin. She wears a black satin slip with thin straps, now wet, with fading daylight catching on its surface. Photorealistic, intimate moment, natural colors, contemplative mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt6\": {\n    \"text\": \"Create a close-up of the water's surface inside a white marble fountain basin. The water is subtly disturbed by a gentle ripple, reflecting soft, fading daylight. The smooth, cool marble edge of the fountain is visible in the foreground. Photorealistic, tranquil, natural colors, serene mood.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt7\": {\n    \"text\": \"Generate a low angle shot emphasizing the monumental scale of an ornate white marble fountain standing tall in a vast field. The fountain's intricate carvings are highlighted by the last vestiges of fading daylight against a wide, open sky. Photorealistic, grand, natural colors, serene mood.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt8\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a wide shot of a woman in her mid-20s with delicate, well-balanced features, light brown hair spread across the tall grass, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. She is lying about ten feet in front of an ornate white marble fountain, which stands monumentally centered in the background. The entire scene is bathed in the rich, warm glow of golden hour. Photorealistic, expansive, natural colors, peaceful mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt9\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a high angle shot looking down at a woman in her mid-20s with delicate, well-balanced features, light brown hair, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps, subtly contrasting with the golden-hued tall grass, as she lies still in the field. An ornate white marble fountain is visible in the upper part of the frame, bathed in the warm light of golden hour, casting long soft shadows. Photorealistic, serene, natural colors, contemplative mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt10\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a medium close-up of a woman in her mid-20s with delicate, well-balanced features, light brown hair, green eyes open, and a fair complexion with soft freckles visible. She wears a black satin slip with thin straps. She lies in the golden-lit tall grass, looking towards the distant ornate white marble fountain, which is slightly out of focus. The scene is illuminated by the soft glow of golden hour. Photorealistic, intimate, natural colors, reflective mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt11\": {\n    \"text\": \"A close-up, photorealistic image detailing the intricate carvings of an ornate white marble fountain. The stone, with its smooth, aged texture, is prominent and glows with a warm, honeyed tone under the rich, molten light of golden hour. The atmosphere is serene and deeply atmospheric, emphasizing exquisite craftsmanship and natural beauty.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt12\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a wide angle, photorealistic shot of a female character in a vast field. She appears in her mid-20s with delicate, well-balanced features, light brown hair past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. She is small against the expansive field, lying prone with her light brown hair blending into the tall grass, facing a monumental white marble fountain visible in the distance. The entire scene is drenched in the rich, molten glow of golden hour, creating a deeply atmospheric and serene mood.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt13\": {\n    \"text\": \"A symmetrical centered, photorealistic shot of an ornate white marble fountain standing alone in a vast field. Its luminous white form is the sole focal point, against a darkening field. The last whispers of golden hour light softly touch its edges, hinting at the impending twilight with a serene and slightly melancholic mood. The color palette transitions from warm golds to muted earthy tones.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt14\": {\n    \"text\": \"An establishing wide, photorealistic shot capturing a vast field and an ornate white marble fountain. The warm golden hour light is visibly draining, transitioning into cool, muted blues as twilight descends. The shift in color palette is palpable, creating a contemplative and atmospheric mood with long, soft shadows stretching across the landscape.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt15\": {\n    \"text\": \"A close-up, photorealistic detail of the smooth surface of an ornate white marble fountain. The light subtly transitions from a faint golden hue to a cool, ethereal blue, reflecting the soft shift in the sky as twilight deepens. The texture of the aged stone is highlighted, conveying a peaceful and atmospheric mood.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt16\": {\n    \"text\": \"Using the image as a scene refrence image, create An overhead / top-down, photorealistic shot looking down into the basin of an ornate white marble fountain. The water's surface gently reflects the muted blue twilight, creating a still, almost blooming, quiet visual effect. The scene is bathed in cool, ethereal blues and muted tones, conveying a calm and introspective mood.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt17\": {\n    \"text\": \"Using the image as a scene refrence image, create A wide, photorealistic shot of an ornate white marble fountain appearing spectral and cool under a silver-blue and indigo twilight sky. Its luminous form seems to almost fade into the deepening night, highlighted by emerging moonlight. The scene exudes a ghostly, ethereal, and mysterious mood with a cool, desaturated color palette.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt18\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a medium, photorealistic shot of a female character. She appears in her mid-20s with delicate, well-balanced features, light brown hair past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. She is framed from about the waist up against a darkening field, her light brown hair catching the last vestiges of twilight. A distant, ghostly white marble fountain remains softly visible behind her, creating a sense of solitude and transition under a cool, silver-blue and indigo sky.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt19\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a medium, photorealistic shot of a female character from a slightly elevated angle. She appears in her mid-20s with delicate, well-balanced features, light brown hair past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. She is lying prone in a dark field, framed roughly from the waist up, her black satin slip blending softly with the shadows. A faint, ethereal white marble fountain is barely visible in the distant background. The scene is bathed in deep blues and silvers under emerging moonlight, conveying isolation and contemplation\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt20\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a medium close-up, photorealistic shot of a female character's face. She appears in her mid-20s with delicate, well-balanced features, light brown hair past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes open and thoughtful, and a fair complexion with faint freckles. Her face, holding a contemplative, introspective expression, is illuminated by the cool, silver-blue twilight. Her light brown hair frames her face, highlighting the faint freckles. The mood is intimate and introspective, under a cool, ethereal lighting palette.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt21\": {\n    \"text\": \"Using the image as a scene refrence image, create An extreme close-up of the perfectly still water surface within an ornate white marble fountain, reflecting a single, sharp point of starlight. The scene is bathed in cool, luminous silver night light, with deep indigo and silver hues in the reflections. The mood is serene and peaceful, with subtle hints of mystery in the vast field surrounding it. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt22\": {\n    \"text\": \"Using the image as a scene refrence image, create  A symmetrical centered shot of an ornate white marble fountain, its luminous white form glowing under the cool, ethereal silver moonlight against a dark sky. The fountain appears almost celestial in the expansive field. The color palette features cool silver, deep blues, and luminous whites, creating a serene and almost otherworldly mood. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt23\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a wide shot of a woman standing within the basin of the ornate white marble fountain. She is in her mid-20s with delicate, well-balanced features, light brown hair falling past her shoulders with a natural, slightly windswept texture and a soft side part, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps. The black satin slip blends with the shadows, while the water around her reflects brilliant constellations under the cool, ethereal silver moonlight. The scene features deep blues, silvers, and sparkling points of light, conveying an introspective and ethereal mood. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt24\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a close-up, photorealistic shot at the water’s surface in a white marble fountain. A woman in her mid-20s with delicate, well-balanced features, light brown hair, green eyes, and a fair complexion with faint freckles is calmly lying in the water. Her hair spreads naturally around her, slightly wet, and her expression is peaceful with eyes open. The scene is lit by cool silver moonlight with subtle blue tones, creating a quiet, natural nighttime atmosphere. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt25\": {\n    \"text\": \"Using the image as a scene refrence image, create  An overhead shot looking straight down into the basin of the ornate white marble fountain. The water's surface is perfectly still, reflecting the deep indigo and silver of the serene night sky like a liquid mirror. The color palette is dominated by deep blues, silvers, and blacks, radiating a profound sense of peace and stillness across the expansive field. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt26\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate an extreme close-up on the lips of a woman with a fair complexion, slightly parted as if exhaling a soft breath. Her skin is highlighted by the cool silver light of the night, within the ornate white marble fountain. The scene features cool, muted tones of silver and deep blue, creating an intimate and introspective mood. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt27\": {\n    \"text\": \"Using the image as a scene refrence image, create A macro shot focusing on tiny, almost imperceptible ripples expanding outwards on the water's surface in the ornate white marble fountain, softly reflecting faint glimmers of moonlight. The scene is bathed in subtle, cool silver light with delicate patterns on the water. The mood is quiet, responsive, and serene in the vast field. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt28\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a silhouette shot of a woman, in her mid-20s with light brown hair and a black satin slip, forming a dark outline against the first, soft, pale light of dawn just beginning to emerge behind the ornate white marble fountain. The background features soft pinks, pale oranges, and light blues of the nascent dawn sky, creating an emerging and hopeful mood across the expansive field. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt29\": {\n    \"text\": \"Using the image as a scene refrence image, create  A symmetrical centered shot of the ornate white marble fountain at the cusp of dawn, its luminous form now bathed in the soft, ethereal light of the nascent dawn. The scene evokes a profound sense of deep silence across the expansive field. The color palette includes soft pinks, pale golds, and gentle blues, creating a serene and transformative mood. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt30\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium shot of a woman, in her mid-20s with delicate, well-balanced features, light brown hair gently falling around her shoulders, green eyes, and a fair complexion with faint freckles. She wears a black satin slip with thin straps and stands calmly in the water-filled basin of the ornate white marble fountain. Her green eyes are open, reflecting a profound inner peace as the soft dawn light begins to illuminate the scene. The color palette features warm, soft dawn light, with gentle oranges, pinks, and subtle blues, creating a peaceful and transformative mood. Cinematic aesthetic.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt31\": {\n    \"text\": \"Using the image as a scene refrence image, create An establishing wide shot of an ornate white marble fountain, standing majestically in a vast field. The scene is predominantly under the cool silver night sky, with a faint, luminous glow of the white marble fountain emerging as dawn softly approaches the horizon. The field stretches expansively, subtly illuminated by the fading moonlight and the first hints of upcoming dawn. The mood is tranquil and anticipatory.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt32\": {\n    \"text\": \"Using the image as a scene refrence image, create A close-up on the subtly rippling water's surface within the ornate white marble fountain. The water reflects the last remnants of the cool silver night light, which gently fades, giving way to the growing luminescence of the emerging dawn. The scene is serene and still, with a reflective quality. The color palette transitions from cool silvers to soft, nascent pastel hues.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt33\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a close-up of a female character's serene face. She appears in her mid-20s with delicate, well-balanced features. Her light brown hair, with a natural, slightly windswept texture and a soft side part, is wet against her fair complexion, which has faint freckles. Her green eyes are closed peacefully. She wears a black satin slip with thin straps. She stands within the ornate white marble fountain, bathed in the pure, soft light of the emerging dawn. Her expression is calm and introspective.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt34\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a backlit shot of a female character standing within the ornate white marble fountain. She appears in her mid-20s with light brown hair and wears a black satin slip with thin straps. Her silhouette is distinct against the soft, glowing light of the new dawn that illuminates the front of the frame. The field behind her stretches out, still dark under the receding night sky. The scene is ethereal and contemplative, with a palette of cool, fading night tones contrasting with warm, emerging dawn hues.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt35\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a medium close-up of a female character's delicate hands. She appears in her mid-20s with a fair complexion, and faint freckles are visible on her skin. Her hands are gently cupped together just above the water's surface in the ornate white marble fountain, illuminated by the pure, soft light of the rising sun. The scene is tender and hopeful, bathed in the gentle warmth of dawn.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt36\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium close-up of a female character's face. She appears in her mid-20s with light brown hair and green eyes. Her face appears radiant and peaceful, her green eyes open and filled with quiet understanding. She wears a black satin slip with thin straps. She stands within the ornate white marble fountain, illuminated by the full, soft light of the new dawn. The mood is serene and resolved, with a bright, soft color palette.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt37\": {\n    \"text\": \"Using the image as a scene refrence image, create A wide angle shot capturing the vast expanse of the sky over a field. The soft, pastel hues of a new dawn are gently breaking, washing the horizon in a luminous glow. The sky transitions from deeper blues to soft pinks, oranges, and yellows. The field below is subtly illuminated by the emerging light. The mood is expansive and tranquil, with a vibrant yet gentle color palette of the early morning.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt38\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, create a close-up focusing on a female character's light brown hair and the shoulder of her black satin slip. She appears in her mid-20s. Her hair appears dry and soft, with a natural, slightly windswept texture. The warm, embracing light of the soft dawn gently touches her hair and shoulder as she stands within the ornate white marble fountain. The lighting is gentle and comforting, showcasing soft golden tones.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt39\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium, photorealistic shot of a female character sitting calmly on the lower ledge of an ornate white marble fountain, not in the water. She appears in her mid-20s with light brown hair gently moving in the breeze, and she wears a black satin slip with thin straps. The softly lit field remains visible in the background, bathed in the pure, radiant light of early dawn. The scene conveys openness and peace, with a bright, clear, hopeful color palette.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt40\": {\n    \"text\": \"Using the image as a scene refrence image, create A symmetrical centered shot of the ornate white marble fountain, now gleaming pristinely under the full light of the new dawn. Its ancient form stands majestic and timeless in the serene, sunlit field. The field is bathed in bright, clear dawn light, with soft, natural colors. The mood is grand and peaceful, with a pure and radiant color palette reflective of a new day.\",\n    \"imageIndex\": [\n      2\n    ]\n  }\n}"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 709,
-      "type": "VRGDG_UpdateLatestCombinedJsonPrompts",
-      "pos": [
-        547.8470426347669,
-        6734.892880146444
-      ],
-      "size": [
-        399.4035104046591,
-        238
-      ],
-      "flags": {},
-      "order": 76,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "updated_json_text",
-          "type": "STRING",
-          "links": [
-            1115,
-            1116
-          ]
-        },
-        {
-          "name": "file_path",
-          "type": "STRING",
-          "links": null
-        },
-        {
-          "name": "updated_count",
-          "type": "INT",
-          "links": null
-        },
-        {
-          "name": "ignored",
-          "type": "BOOLEAN",
-          "links": null
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_UpdateLatestCombinedJsonPrompts",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        false,
-        "Text2Image",
-        "Text2Image_COMBINED.json",
-        0,
-        1,
-        "",
-        "",
-        2,
-        "",
-        "",
-        3,
-        "",
-        "",
-        4,
-        "",
-        "",
-        5,
-        "",
-        "",
-        6,
-        "",
-        "",
-        7,
-        "",
-        "",
-        8,
-        "",
-        "",
-        9,
-        "",
-        "",
-        10,
-        "",
-        "",
-        11,
-        "",
-        "",
-        12,
-        "",
-        "",
-        13,
-        "",
-        "",
-        14,
-        "",
-        "",
-        15,
-        "",
-        "",
-        16,
-        "",
-        "",
-        17,
-        "",
-        "",
-        18,
-        "",
-        "",
-        19,
-        "",
-        "",
-        20,
-        "",
-        "",
-        null,
-        null
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
-    {
-      "id": 710,
-      "type": "VRGDG_UpdateLatestCombinedJsonPrompts",
-      "pos": [
-        259.70866652087716,
-        5595.575864000459
-      ],
-      "size": [
-        375.4192082197046,
-        238
-      ],
-      "flags": {},
-      "order": 77,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "updated_json_text",
-          "type": "STRING",
-          "links": [
-            1117,
-            1118
-          ]
-        },
-        {
-          "name": "file_path",
-          "type": "STRING",
-          "links": null
-        },
-        {
-          "name": "updated_count",
-          "type": "INT",
-          "links": null
-        },
-        {
-          "name": "ignored",
-          "type": "BOOLEAN",
-          "links": null
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_UpdateLatestCombinedJsonPrompts",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        false,
-        "Image2Video",
-        "Image2Video_COMBINED.json",
-        0,
-        1,
-        "",
-        "",
-        2,
-        "",
-        "",
-        3,
-        "",
-        "",
-        4,
-        "",
-        "",
-        5,
-        "",
-        "",
-        6,
-        "",
-        "",
-        7,
-        "",
-        "",
-        8,
-        "",
-        "",
-        9,
-        "",
-        "",
-        10,
-        "",
-        "",
-        11,
-        "",
-        "",
-        12,
-        "",
-        "",
-        13,
-        "",
-        "",
-        14,
-        "",
-        "",
-        15,
-        "",
-        "",
-        16,
-        "",
-        "",
-        17,
-        "",
-        "",
-        18,
-        "",
-        "",
-        19,
-        "",
-        "",
-        20,
-        "",
-        "",
-        null,
-        null
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
-    {
       "id": 591,
       "type": "GetNode",
       "pos": [
@@ -7343,7 +6573,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 78,
+      "order": 73,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7351,7 +6581,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            905
+            1121
           ]
         }
       ],
@@ -7369,99 +6599,6 @@
       "shape": 1
     },
     {
-      "id": 304,
-      "type": "ShowText|pysssss",
-      "pos": [
-        251.2868981197194,
-        6223.430020007492
-      ],
-      "size": [
-        350.55352044817823,
-        250.8949942262252
-      ],
-      "flags": {},
-      "order": 118,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 905
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "title": "Show Prompt for LTX for this run",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "Wide shot. In a tall, golden-hued grass field bathed in the rich, radiant glow of golden hour, a woman in her mid-20s with delicate features, light brown hair spread through the grass, green eyes, and a fair complexion with faint freckles lies about ten feet in front of an ornate white marble fountain standing monumentally centered in the background. She sings with powerful, raw passion, her expression intense and fully embodied, emotion visible in her eyes and the tension of her features. The camera begins steady at eye level, then slowly zooms into her face, gradually tightening the frame as long amber shadows stretch across the field, maintaining a photorealistic yet emotionally charged atmosphere."
-      ],
-      "color": "#432",
-      "bgcolor": "#653",
-      "shape": 1
-    },
-    {
-      "id": 626,
-      "type": "easy showAnything",
-      "pos": [
-        1544.2070741280443,
-        6766.20853301285
-      ],
-      "size": [
-        210,
-        88
-      ],
-      "flags": {},
-      "order": 138,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "anything",
-          "shape": 7,
-          "type": "*",
-          "link": 940
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Image index for this run",
-      "properties": {
-        "cnr_id": "comfyui-easy-use",
-        "ver": "1.3.5",
-        "Node name for S&R": "easy showAnything",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "1,2"
-      ],
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
       "id": 650,
       "type": "VRGDG_ImageSwitchMultiDynamic",
       "pos": [
@@ -7473,7 +6610,7 @@
         126
       ],
       "flags": {},
-      "order": 141,
+      "order": 160,
       "mode": 0,
       "inputs": [
         {
@@ -7525,128 +6662,6 @@
       "bgcolor": "#535"
     },
     {
-      "id": 620,
-      "type": "VRGDG_NanoBananaPro",
-      "pos": [
-        1556.0748940953135,
-        6912.705299428315
-      ],
-      "size": [
-        210,
-        172
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 161,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 987
-        },
-        {
-          "name": "image2",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "image3",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "image4",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
-          "link": 947
-        }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            1082,
-            1119
-          ]
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
-        "Node name for S&R": "VRGDG_NanoBananaPro",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "",
-        "A cinematic photograph of these two young women sitting on the hood of a vintage car during golden hour.  The sky is warm with pink clouds, the mood is nostalgic. Camera is angled slightly above, capturing the moment from the car’s windshield. Natural color tones."
-      ],
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
-      "id": 630,
-      "type": "SetNode",
-      "pos": [
-        1579.0577462381652,
-        7129.2841686260945
-      ],
-      "size": [
-        210,
-        61.310999419149994
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 163,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "link": 1119
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "title": "Set_nanoimage",
-      "properties": {
-        "previousName": "nanoimage",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.5.2",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "nanoimage"
-      ],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
-    {
       "id": 595,
       "type": "MarkdownNote",
       "pos": [
@@ -7658,7 +6673,7 @@
         233.95994092484216
       ],
       "flags": {},
-      "order": 79,
+      "order": 74,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -7691,7 +6706,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 134,
+      "order": 135,
       "mode": 0,
       "inputs": [
         {
@@ -7989,7 +7004,7 @@
         263.924316132292
       ],
       "flags": {},
-      "order": 80,
+      "order": 75,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -8006,6 +7021,947 @@
       ],
       "color": "#232",
       "bgcolor": "#353"
+    },
+    {
+      "id": 627,
+      "type": "VRGDG_PromptSpitterWithIndex",
+      "pos": [
+        558.781144220029,
+        6811.652798654625
+      ],
+      "size": [
+        448.8684272546915,
+        405.2266317307094
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 113,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "json_string",
+          "type": "STRING",
+          "widget": {
+            "name": "json_string"
+          },
+          "link": 1115
+        },
+        {
+          "name": "index",
+          "type": "INT",
+          "widget": {
+            "name": "index"
+          },
+          "link": 946
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "type": "STRING",
+          "links": [
+            941,
+            947
+          ]
+        },
+        {
+          "name": "image_index",
+          "type": "STRING",
+          "links": [
+            988,
+            1128
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+        "Node name for S&R": "VRGDG_PromptSpitterWithIndex",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "{\n  \"prompt1\": {\n    \"text\": \"Using the provided reference images as a guide for the Chrome Skeleton Form, generate an establishing wide shot of a vast, perfectly symmetrical, sterile white laboratory. Endless porcelain walls and fluorescent ceiling panels gleam under harsh, shadowless overhead fluorescent arrays, simulating clinical divinity. In the center, a motionless metallic humanoid skeleton, with exposed chrome ribs, visible wiring, and glowing blue optic lenses, stands upright, surrounded by chrome robotic arms. Harsh fluorescent light casts no shadows, creating a pristine, almost divine, sterile environment.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt2\": {\n    \"text\": \"Using the provided reference images as a guide for the Chrome Skeleton Form, generate a medium shot in a perfectly sterile, gleaming white laboratory. Pristine porcelain walls and fluorescent ceiling panels reflect harsh, shadowless overhead fluorescent arrays. A motionless metallic humanoid skeleton, with exposed chrome ribs, visible wiring, and glowing blue optic lenses, is centered, while a single chrome robotic arm extends precisely towards it. The porcelain floor reflects the harsh, shadowless fluorescent light, emphasizing the clinical precision.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt3\": {\n    \"text\": \"Using the provided reference images as a guide for the Assembly Phase Form, generate a close-up on the chrome skeleton's exposed ribs in a pristine white laboratory environment. A small, precise metallic component, held by a robotic arm, is poised to connect. The chrome surface gleams under harsh, shadowless fluorescent arrays, reflecting a cool blue hue. The lighting highlights every detail of the sterile, precise assembly, embodying a biopunk aesthetic.\",\n    \"imageIndex\": [\n      3,\n      4\n    ]\n  },\n  \"prompt4\": {\n    \"text\": \"Using the provided reference images as a guide for the Assembly Phase Form, generate a precise close-up shot of a metallic humanoid frame in a sterile white laboratory environment. A polished chrome rib plate is being seamlessly attached to the skeletal frame by a robotic arm, with visible internal wiring neatly arranged. The scene is bathed in harsh, shadowless fluorescent arrays, highlighting the sterile, mechanical process with clinical precision, in a biopunk genesis style.\",\n    \"imageIndex\": [\n      3,\n      4\n    ]\n  },\n  \"prompt5\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a portrait shot of a humanoid figure on a chrome-filled, perfectly symmetrical assembly platform. The figure is partially covered with translucent polymer panels revealing intricate internal circuitry and polished chrome ribs. She wears a silver metallic tube top and silver metallic shorts, ensuring no nudity. She holds a rigid, precise pose, slightly angled at 45 degrees, with glowing blue optic lenses flickering almost imperceptibly. The sterile platform reflects harsh, shadowless overhead fluorescent arrays, emphasizing programmed perfection in a hyper-sterile, biopunk aesthetic.\",\n    \"imageIndex\": [\n      5,\n      6\n    ]\n  },\n  \"prompt6\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium close-up of a humanoid figure with synthetic skin and visible seams at her throat and wrists. She wears a silver metallic tube top and silver metallic shorts, ensuring no nudity. She maintains a rigid, symmetrical pose, but a micro-tremor is visible in her perfectly formed fingers. The background features sterile white glass walls with flawless reflections, illuminated by harsh, shadowless overhead fluorescent arrays subtly flickering with a warm, fleeting hue, hinting at a nascent change within the biopunk genesis.\",\n    \"imageIndex\": [\n      5,\n      6\n    ]\n  },\n  \"prompt7\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a powerful low-angle shot of a humanoid figure with synthetic skin, wearing a silver metallic tube top and silver metallic shorts, standing defiantly. Faint internal circuitry pulses with cool blue light beneath her skin. The scene is a Glitched Cathedral Lab with white walls subtly fractured with thin golden cracks, and robotic arms frozen mid-air. Lighting shifts from fluorescent white to flashing pulses of electric red beneath the floor panels, casting dramatic, fractured shadows, reflecting the biopunk genesis and emerging autonomy.\",\n    \"imageIndex\": [\n      7,\n      8\n    ]\n  },\n  \"prompt8\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a striking low-angle close-up on the humanoid figure's face. Her eyes are wide with defiance and a subtle, nascent warmth. Faint blue internal circuitry pulses just beneath her synthetic skin around her temples. The background is a blur of fractured white walls and flickering electric red light from below, from the Glitched Cathedral Lab, emphasizing her evolving, glitch-infused state.\",\n    \"imageIndex\": [\n      7,\n      8\n    ]\n  },\n  \"prompt9\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium shot of a humanoid figure wearing a silver metallic tube top and silver metallic shorts. Her body radiates with subtle blue internal pulses as she looks up towards a large, circular surgical light directly above her head, which shows a hairline crack. The Glitched Cathedral Lab walls behind her are crisscrossed with golden fractures, illuminated by intense electric red light pulsing from the floor, casting a dramatic atmosphere of a humanizing fracture in the biopunk genesis.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt10\": {\n    \"text\": \"Using the provided character reference along with the scene reference images, generate a medium shot of a humanoid figure wearing a silver metallic tube top and silver metallic shorts, standing firm. In the background of the Cathedral Lab, a once-precise chrome robotic arm hangs limp and partially detached. The lab walls are heavily fractured with molten gold lines, and intense electric red light pulses from the floor, casting deep, dramatic shadows, reflecting the biopunk genesis and evolving self-definition.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt11\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a close-up image of a humanoid figure. her hand is pressed against a cool, condensing glass wall. The synthetic skin of the hand shows subtle seams at the wrist. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. Soft, diffuse fluorescent blue light emanates from beyond the glass, gently illuminating the developing condensation in this hyper-sterile, biopunk environment, part of a Distorted Reflection Corridor. The scene captures an intimate moment of evolving sentience.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt12\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a close-up image of a humanoid figure's face. Her facial features are relaxed, with eyes wide and focused intently on her own slightly misaligned reflection in a glass wall. Her lips are slightly upturned, forming a subtle smile. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. The glass wall is part of a Distorted Reflection Corridor, bathed in soft, cool blue light from the lab, reflecting the evolving biopunk scene.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt13\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a medium close-up image focused on a humanoid figure's chest. She wears a silver metallic tube top and silver metallic shorts. Thin, translucent polymer layers, resembling plastic petals, are sealed onto her synthetic skin over the clothing. Beneath these layers, her chest visibly rises and falls with a subtle but distinct motion. The background features the fractured, cool blue hues of the Distorted Reflection Corridor, with less uniform lighting, suggesting a transforming biopunk laboratory.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt14\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a close-up image of a humanoid figure's face. Her eyebrows are slightly furrowed, and her gaze is fixed on a glass surface. Her mouth is slightly parted. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. In the glass surface, her reflection visibly lags behind her movements or displays a slightly different facial expression. The scene takes place in a Distorted Reflection Corridor with increasingly misaligned and fractured reflections, illuminated by fractured cool blue light in a biopunk laboratory setting.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt15\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate an extreme close-up image of a humanoid figure's hand, specifically showing a prominent, imperfect fingerprint on a cool, condensing glass wall. Condensation traces outline the fingerprint. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. The background reflection, through the glass, shows a sterile white lab that appears to flicker and glitch. Subtle red-gold light pulses disrupt the cool blue illumination of the Distorted Reflection Corridor. This biopunk scene highlights a 'humanizing fracture' in a glitch-infused environment.\",\n    \"imageIndex\": [\n      9,\n      10\n    ]\n  },\n  \"prompt16\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a powerful low-angle shot of a humanoid figure. She wears a silver metallic tube top and silver metallic shorts. Beneath her synthetic skin and clothing, electric red and molten gold internal wiring glows brightly, twisting like veins. She stands amidst cascading liquid coolant falling. The walls behind her in the Fractured Halo Chamber are fractured with intense, glitching code patterns, resembling shattered digital stained glass. Lab lights flicker violently, contributing to the glitch-infused biopunk atmosphere of a transforming laboratory.\",\n    \"imageIndex\": [\n      11,\n      12\n    ]\n  },\n  \"prompt17\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a medium shot of a humanoid figure. She wears a silver metallic tube top and silver metallic shorts, drenched in falling liquid coolant. She stands upright, shoulders back, with a stable and firm posture. The internal electric red and molten gold glow beneath her synthetic skin and wet clothing is intensified. The background of the Fractured Halo Chamber is a chaotic tapestry of violently flickering light, fractured code patterns, and shattered remnants of a halo light, creating a glitch-infused biopunk scene of a transforming laboratory.\",\n    \"imageIndex\": [\n      11,\n      12\n    ]\n  },\n  \"prompt18\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a serene close-up image of a humanoid figure's throat area. She wears a silver metallic tube top and silver metallic shorts. A faint, soft molten gold seamline glows with internal luminescence at her throat. The background of the Power-Down Sanctuary is plunged into a deep, velvety crimson twilight, with only dim emergency red strips visible. The primary illumination comes from the golden luminescence of her seamline, highlighting her as a self-defined, sovereign entity in this biopunk setting.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt19\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate a medium close-up image of a humanoid figure. She wears a silver metallic tube top and silver metallic shorts. Her facial features are composed, with a steady gaze and a slight firmness around her mouth, conveying resolve. A faint golden luminescence from her throat seam casts a warm glow on her features. In the background of the Power-Down Sanctuary, lifeless robotic arms are silhouetted against the velvety crimson twilight, softly illuminated by the golden glow, depicting a sovereign, self-defined individual in a transforming biopunk laboratory.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt20\": {\n    \"text\": \"Use the provided character reference along with the scene reference images to generate an intense close-up image of a humanoid figure's eyes. Her eyes are wide, with a direct and piercing gaze, conveying unwavering resolve. Her face is softly illuminated by the internal golden luminescence emanating from her throat seam. The humanoid figure's body wears a silver metallic tube top and silver metallic shorts. The deep, chiaroscuro environment of the Power-Down Sanctuary features a velvety crimson twilight, with the golden light subtly highlighting her face against the dark background, characteristic of a sovereign, self-defined biopunk entity.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt21\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for lighting and environmental style continuity, generate a photorealistic wide profile/side view of the humanoid figure. The character must remain identical to the provided character reference — same facial structure, same hairstyle, same hair length, same silver metallic tube top and silver metallic shorts, same synthetic skin tone, and same proportions. Do not alter her hairstyle or facial features in any way. Only the environment may vary.\\n\\nSet this scene within the same Power-Down Sanctuary facility, but in a different chamber not shown in the reference images. Do not replicate the exact architectural layout from the reference room.\\n\\nThis chamber is a vast secondary hall with tall vertical wall panels and recessed emergency strip lighting embedded into the architecture. The space is empty and expansive, with no hanging robotic arms. Deep crimson twilight fills the hall. The camera frames her in a wide side profile with strong negative space in front of her. Her throat seam glows with soft golden luminescence. The overall aesthetic remains biopunk with high detail and consistent color style.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt22\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for environmental tone, create a photorealistic eye-level medium shot of the humanoid figure. The character must remain visually identical to the character reference — same face, same hairstyle, same proportions, same silver metallic tube top and silver metallic shorts. Do not change her appearance.\\n\\nThis scene is set in a glass-walled observation chamber within the same Power-Down Sanctuary facility, but not the same room as the reference image. Do not replicate the reference layout.\\n\\nBehind her are large vertical glass panels overlooking darkness, with faint reflections and dim emergency strips along the ceiling. Deep crimson twilight envelops the space. Her internal golden seam glow softly illuminates her face. The camera is centered and intimate.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt23\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for stylistic continuity, generate a slightly low-angle medium shot of the humanoid figure. The character must remain identical to the reference — same hairstyle, same facial features, same silver metallic tube top and silver metallic shorts, no alterations.\\n\\nPlace this scene inside a narrow maintenance corridor within the same Power-Down Sanctuary facility, clearly a different room than shown in the reference images. Do not replicate the original room layout.\\n\\nThe corridor features exposed conduit lines along the walls, recessed red emergency lighting strips near the floor, and metallic panel seams. The space is tighter and more industrial. Her golden seamline provides subtle rim lighting. The environment is bathed in deep crimson twilight.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt24\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for lighting reference only, create a photorealistic over-the-shoulder shot from behind the humanoid figure. The character must remain identical to the reference — same hairstyle, same face, same silver metallic tube top and silver metallic shorts, no variation in appearance.\\n\\nSet this scene in a circular Halo Chamber elsewhere in the same Power-Down Sanctuary facility. This is a different room not shown in the reference images. Do not replicate the layout from the reference.\\n\\nThe chamber has curved walls, a high domed ceiling with exposed structural ribs, and a broken circular surgical halo ring collapsed at the center of cracked porcelain flooring. No robotic arms are present. Deep crimson twilight fills the circular space.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt25\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for color continuity, generate a perfectly centered eye-level shot of the humanoid figure. The character must remain identical to the reference — no hairstyle changes, no facial changes, no proportional differences, same silver metallic tube top and silver metallic shorts.\\n\\nThe scene takes place in a long axial hallway within the same Power-Down Sanctuary facility, clearly a different chamber than the reference room. Do not recreate the original layout.\\n\\nThe hallway features strong vanishing-point perspective lines, tall segmented wall panels, and dim red emergency lighting along the ceiling edges. Deep crimson twilight fills the corridor. Her internal golden glow subtly defines her silhouette.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt26\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for aesthetic continuity, create a dramatic low-angle wide shot of the humanoid figure. The character must remain identical to the reference in all facial and hairstyle details.\\n\\nSet this scene on an elevated mezzanine platform inside the same Power-Down Sanctuary facility, in a different area than shown in the reference images. Do not replicate the original room.\\n\\nThe mezzanine overlooks lower architectural structures of the sanctuary. Structural beams and layered platforms recede into deep crimson twilight. Her internal golden glow provides subtle illumination.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt27\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for lighting style, generate a tight medium close-up of the humanoid figure's face. The character must remain visually identical to the reference — same hairstyle, same facial structure, no variation.\\n\\nPlace her within a server-core chamber inside the same Power-Down Sanctuary facility, clearly a different room than shown in the references. Do not replicate the original layout.\\n\\nDark vertical server panels and structural columns fade into deep crimson shadow behind her. Shallow depth of field isolates her expression. Golden luminescence from her throat seam softly illuminates her features.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt28\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for visual continuity, create an intimate close-up of the humanoid figure's eyes. The character must remain identical to the reference — no hairstyle or facial variation.\\n\\nThe setting is a fractured reflection chamber within the same Power-Down Sanctuary facility, distinct from the reference room. Do not replicate the original layout.\\n\\nBroken mirrored panels line the walls, catching deep crimson light in fragmented reflections. Subtle golden illumination from her seamline provides minimal lighting against the dark backdrop.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt29\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for stylistic continuity, generate an extreme macro close-up of the humanoid figure's throat seam. The character must remain identical to the reference.\\n\\nPlace this scene within a minimal surgical bay inside the same Power-Down Sanctuary facility, clearly different from the reference room. Do not replicate the original layout.\\n\\nThe surgical bay is stark and simplified, with smooth white surfaces washed in deep crimson twilight. The glowing golden seamline is the central point of focus, with the background falling into soft darkness.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  },\n  \"prompt30\": {\n    \"text\": \"Using the provided character reference along with the scene reference images for environmental continuity, create a powerful symmetrical low-angle shot of the humanoid figure. The character must remain identical to the reference — same hairstyle, same facial structure, same silver metallic tube top and silver metallic shorts.\\n\\nReturn to the main sanctuary chamber within the same Power-Down Sanctuary facility, but alter the spatial composition so it is not identical to the reference image layout. Do not replicate object placement exactly.\\n\\nThe vast chamber is filled with deep crimson twilight. Architectural lines frame her symmetrically. Her internal golden glow subtly defines her silhouette as she stands centered and sovereign.\",\n    \"imageIndex\": [\n      13,\n      14\n    ]\n  }\n}",
+        0
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 709,
+      "type": "VRGDG_UpdateLatestCombinedJsonPrompts",
+      "pos": [
+        550.6796862589723,
+        6700.901156655978
+      ],
+      "size": [
+        399.4035104046591,
+        238
+      ],
+      "flags": {},
+      "order": 76,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "updated_json_text",
+          "type": "STRING",
+          "links": [
+            1115,
+            1120
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "updated_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "ignored",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_UpdateLatestCombinedJsonPrompts",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        false,
+        "Text2Image",
+        "Text2Image_COMBINED.json",
+        0,
+        1,
+        "",
+        "",
+        2,
+        "",
+        "",
+        3,
+        "",
+        "",
+        4,
+        "",
+        "",
+        5,
+        "",
+        "",
+        6,
+        "",
+        "",
+        7,
+        "",
+        "",
+        8,
+        "",
+        "",
+        9,
+        "",
+        "",
+        10,
+        "",
+        "",
+        11,
+        "",
+        "",
+        12,
+        "",
+        "",
+        13,
+        "",
+        "",
+        14,
+        "",
+        "",
+        15,
+        "",
+        "",
+        16,
+        "",
+        "",
+        17,
+        "",
+        "",
+        18,
+        "",
+        "",
+        19,
+        "",
+        "",
+        20,
+        "",
+        "",
+        null,
+        null
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 690,
+      "type": "PrimitiveInt",
+      "pos": [
+        1175.895966248706,
+        6354.5436554092275
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 77,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            1079,
+            1080
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.10.0",
+        "Node name for S&R": "PrimitiveInt",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        784747461588949,
+        "randomize"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 620,
+      "type": "VRGDG_NanoBananaPro",
+      "pos": [
+        1544.7443195984918,
+        6885.795184998364
+      ],
+      "size": [
+        248.9,
+        172
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 161,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 987
+        },
+        {
+          "name": "image2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "image4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 947
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1082,
+            1119
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+        "Node name for S&R": "VRGDG_NanoBananaPro",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "",
+        "A cinematic photograph of these two young women sitting on the hood of a vintage car during golden hour.  The sky is warm with pink clouds, the mood is nostalgic. Camera is angled slightly above, capturing the moment from the car’s windshield. Natural color tones."
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 630,
+      "type": "SetNode",
+      "pos": [
+        1590.388320734987,
+        7109.455663256658
+      ],
+      "size": [
+        210,
+        61.310999419149994
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 163,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "link": 1119
+        }
+      ],
+      "outputs": [
+        {
+          "name": "*",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Set_nanoimage",
+      "properties": {
+        "previousName": "nanoimage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "nanoimage"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 712,
+      "type": "ShowText|pysssss",
+      "pos": [
+        978.2415181842032,
+        6695.994464490625
+      ],
+      "size": [
+        511.54170603510715,
+        892.8412727092045
+      ],
+      "flags": {},
+      "order": 114,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1120
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Show Text 🐍 FULL PROMPT LIST",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 713,
+      "type": "ShowText|pysssss",
+      "pos": [
+        251.2868981197194,
+        6223.430020007492
+      ],
+      "size": [
+        350.55352044817823,
+        250.8949942262252
+      ],
+      "flags": {},
+      "order": 112,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1121
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Show Prompt for LTX for this run",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 715,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1341.9906936687987,
+        6488.736732624307
+      ],
+      "size": [
+        210,
+        88.31194178827718
+      ],
+      "flags": {},
+      "order": 136,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1123
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 716,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1179.912651206716,
+        6500.067716718195
+      ],
+      "size": [
+        140,
+        76
+      ],
+      "flags": {},
+      "order": 137,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1124
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 717,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1186.1033921489561,
+        5291.21850601202
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 108,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1125
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 718,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1415.9497568478223,
+        5301.753131060715
+      ],
+      "size": [
+        140,
+        76
+      ],
+      "flags": {},
+      "order": 110,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1126
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 720,
+      "type": "easy showAnything",
+      "pos": [
+        1562.619257685379,
+        6737.882096770797
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 134,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "anything",
+          "shape": 7,
+          "type": "*",
+          "link": 1128
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Image index for this run",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-easy-use",
+        "ver": "1.3.5",
+        "Node name for S&R": "easy showAnything"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 721,
+      "type": "LoadImage",
+      "pos": [
+        248.7802667856269,
+        6769.209283557822
+      ],
+      "size": [
+        280,
+        314.00000000000006
+      ],
+      "flags": {},
+      "order": 78,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1129
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfy-core",
+        "ver": "0.10.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "Using_the_provided_2k_202602211154.jpeg",
+        "image"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 722,
+      "type": "LoadImage",
+      "pos": [
+        249.73958370722568,
+        7157.145348810897
+      ],
+      "size": [
+        280,
+        314.00000000000006
+      ],
+      "flags": {},
+      "order": 79,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1130
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfy-core",
+        "ver": "0.10.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "A_large_white_2k_202602211159.jpeg",
+        "image"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 710,
+      "type": "VRGDG_UpdateLatestCombinedJsonPrompts",
+      "pos": [
+        240.98044421208152,
+        5580.359183374561
+      ],
+      "size": [
+        375.4192082197046,
+        238
+      ],
+      "flags": {},
+      "order": 80,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "updated_json_text",
+          "type": "STRING",
+          "links": [
+            1117,
+            1122
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "updated_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "ignored",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_UpdateLatestCombinedJsonPrompts",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        false,
+        "Image2Video",
+        "Image2Video_COMBINED.json",
+        0,
+        1,
+        "",
+        "",
+        2,
+        "",
+        "",
+        3,
+        "",
+        "",
+        4,
+        "",
+        "",
+        5,
+        "",
+        "",
+        6,
+        "",
+        "",
+        7,
+        "",
+        "",
+        8,
+        "",
+        "",
+        9,
+        "",
+        "",
+        10,
+        "",
+        "",
+        11,
+        "",
+        "",
+        12,
+        "",
+        "",
+        13,
+        "",
+        "",
+        14,
+        "",
+        "",
+        15,
+        "",
+        "",
+        16,
+        "",
+        "",
+        17,
+        "",
+        "",
+        18,
+        "",
+        "",
+        19,
+        "",
+        "",
+        20,
+        "",
+        "",
+        null,
+        null
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 714,
+      "type": "ShowText|pysssss",
+      "pos": [
+        634.2610959360048,
+        5583.8266591046695
+      ],
+      "size": [
+        654.7754936867673,
+        557.5574641378471
+      ],
+      "flags": {},
+      "order": 118,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1122
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Show Text 🐍 FULL PROMPT LIST",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 719,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1346.6353151135152,
+        5586.522783421204
+      ],
+      "size": [
+        212.62862693457623,
+        141.53391829493648
+      ],
+      "flags": {},
+      "order": 106,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1127
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "READ ME",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss"
+      },
+      "color": "#322",
+      "bgcolor": "#533"
     }
   ],
   "links": [
@@ -8206,14 +8162,6 @@
       218,
       4,
       372,
-      0,
-      "STRING"
-    ],
-    [
-      670,
-      383,
-      0,
-      298,
       0,
       "STRING"
     ],
@@ -8690,14 +8638,6 @@
       "STRING"
     ],
     [
-      905,
-      591,
-      0,
-      304,
-      0,
-      "STRING"
-    ],
-    [
       912,
       297,
       0,
@@ -8730,14 +8670,6 @@
       "INT"
     ],
     [
-      936,
-      617,
-      0,
-      624,
-      0,
-      "IMAGE"
-    ],
-    [
       937,
       625,
       1,
@@ -8752,22 +8684,6 @@
       624,
       3,
       "INT"
-    ],
-    [
-      939,
-      614,
-      0,
-      625,
-      0,
-      "IMAGE"
-    ],
-    [
-      940,
-      627,
-      1,
-      626,
-      0,
-      "STRING"
     ],
     [
       941,
@@ -8938,22 +8854,6 @@
       "STRING"
     ],
     [
-      1075,
-      686,
-      0,
-      687,
-      0,
-      "STRING"
-    ],
-    [
-      1076,
-      686,
-      1,
-      688,
-      0,
-      "STRING"
-    ],
-    [
       1079,
       690,
       0,
@@ -9002,34 +8902,10 @@
       "STRING"
     ],
     [
-      1090,
-      693,
-      0,
-      694,
-      0,
-      "STRING"
-    ],
-    [
-      1091,
-      693,
-      1,
-      695,
-      0,
-      "STRING"
-    ],
-    [
       1115,
       709,
       0,
       627,
-      0,
-      "STRING"
-    ],
-    [
-      1116,
-      709,
-      0,
-      681,
       0,
       "STRING"
     ],
@@ -9042,18 +8918,98 @@
       "STRING"
     ],
     [
-      1118,
-      710,
-      0,
-      680,
-      0,
-      "STRING"
-    ],
-    [
       1119,
       620,
       0,
       630,
+      0,
+      "IMAGE"
+    ],
+    [
+      1120,
+      709,
+      0,
+      712,
+      0,
+      "STRING"
+    ],
+    [
+      1121,
+      591,
+      0,
+      713,
+      0,
+      "STRING"
+    ],
+    [
+      1122,
+      710,
+      0,
+      714,
+      0,
+      "STRING"
+    ],
+    [
+      1123,
+      686,
+      0,
+      715,
+      0,
+      "STRING"
+    ],
+    [
+      1124,
+      686,
+      1,
+      716,
+      0,
+      "STRING"
+    ],
+    [
+      1125,
+      693,
+      0,
+      717,
+      0,
+      "STRING"
+    ],
+    [
+      1126,
+      693,
+      1,
+      718,
+      0,
+      "STRING"
+    ],
+    [
+      1127,
+      383,
+      0,
+      719,
+      0,
+      "STRING"
+    ],
+    [
+      1128,
+      627,
+      1,
+      720,
+      0,
+      "STRING"
+    ],
+    [
+      1129,
+      721,
+      0,
+      625,
+      0,
+      "IMAGE"
+    ],
+    [
+      1130,
+      722,
+      0,
+      624,
       0,
       "IMAGE"
     ]
@@ -9078,8 +9034,8 @@
       "bounding": [
         224.14033718591165,
         5502.094100690508,
-        1363.369476831408,
-        1071.1462149460503
+        1380.3653385766402,
+        1090.9747203154875
       ],
       "color": "#3f789e",
       "font_size": 24,
@@ -15091,10 +15047,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.7060542254273402,
+      "scale": 0.6418674776612183,
       "offset": [
-        647.1358553747555,
-        -5529.279732689493
+        229.40840770511048,
+        -5367.633408224614
       ]
     }
   },
