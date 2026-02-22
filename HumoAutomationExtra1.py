@@ -934,6 +934,8 @@ import json
 import math
 import folder_paths
 
+BATCH_FOLDER_PREFIX = "Text2Image_Batch_"
+
 class VRGDG_LLM_PromptBatcher:
     """
     Builds a single batched prompt STRING for an LLM.
@@ -979,16 +981,12 @@ class VRGDG_LLM_PromptBatcher:
                         "forceInput": True
                     }
                 ),
-                "lyric_segments_json": (
-                    "JSON",
-                    {}
-                ),
                 "story_groups_json": (
                     "JSON",
                     {}
                 ),
                 "batch_size": ("INT", {"default": 10, "min": 5, "max": 20}),
-                "output_subfolder": ("STRING",{"default": "llm_prompt_batches","placeholder": "Relative to ComfyUI/output OR full path"}
+                "output_subfolder": ("STRING",{"default": "llm_batches","placeholder": "Ignored: always uses ComfyUI/output/llm_batches"}
                 ),
 
                 "file_prefix": ("STRING", {"default": "Scene"}),
@@ -996,6 +994,12 @@ class VRGDG_LLM_PromptBatcher:
                 "enable_auto_queue": ("BOOLEAN", {"default": True}),
                 "trigger": ("INT", {"forceInput": True}),
 
+            },
+            "optional": {
+                "lyric_segments_json": (
+                    "JSON",
+                    {}
+                ),
             }
         }
 
@@ -1038,6 +1042,68 @@ class VRGDG_LLM_PromptBatcher:
         end = start + size
         return items[start:end]
 
+    def _folder_has_files(self, folder):
+        if not os.path.isdir(folder):
+            return False
+        for name in os.listdir(folder):
+            if os.path.isfile(os.path.join(folder, name)):
+                return True
+        return False
+
+    def _find_latest_batch_folder(self, root_folder):
+        if not os.path.isdir(root_folder):
+            return None
+
+        highest_num = -1
+        highest_path = None
+
+        for name in os.listdir(root_folder):
+            full = os.path.join(root_folder, name)
+            if not os.path.isdir(full):
+                continue
+            if not name.startswith(BATCH_FOLDER_PREFIX):
+                continue
+            suffix = name[len(BATCH_FOLDER_PREFIX):]
+            if not suffix.isdigit():
+                continue
+
+            n = int(suffix)
+            if n > highest_num:
+                highest_num = n
+                highest_path = full
+
+        return highest_path
+
+    def _is_unfinished_batch_folder(self, folder, file_prefix):
+        if not os.path.isdir(folder):
+            return False
+
+        combined_name = f"{file_prefix}_COMBINED.json"
+        has_combined = os.path.isfile(os.path.join(folder, combined_name))
+        if has_combined:
+            return False
+
+        prefix = f"{file_prefix}_"
+        for fname in os.listdir(folder):
+            if (
+                fname.startswith(prefix)
+                and fname.lower().endswith(".txt")
+                and "COMBINED" not in fname
+            ):
+                return True
+        return False
+
+    def _create_next_batch_folder(self, root_folder):
+        os.makedirs(root_folder, exist_ok=True)
+        next_num = 1
+
+        while True:
+            candidate = os.path.join(root_folder, f"{BATCH_FOLDER_PREFIX}{next_num:03d}")
+            if not os.path.exists(candidate):
+                os.makedirs(candidate, exist_ok=True)
+                return candidate
+            next_num += 1
+
 
     def _maybe_auto_queue_prompt_batches(self, total_batches, batch_index, enable):
         if not enable:
@@ -1072,7 +1138,6 @@ class VRGDG_LLM_PromptBatcher:
         self,
         style_theme_block,
         story_summary,
-        lyric_segments_json,
         story_groups_json,
         batch_size,
         output_subfolder,
@@ -1080,20 +1145,23 @@ class VRGDG_LLM_PromptBatcher:
         manual_index,
         enable_auto_queue,
         trigger,
+        lyric_segments_json=None,
     ):
         
         print("TRIGGER VALUE:", trigger)
 
-        # Resolve output path (relative to ComfyUI /output)
+        # Always resolve output path under ComfyUI/output/llm_batches
         base_output = folder_paths.get_output_directory()
+        llm_batches_root = os.path.normpath(os.path.join(base_output, "llm_batches"))
+        os.makedirs(llm_batches_root, exist_ok=True)
 
-        # Allow absolute OR relative paths
-        if os.path.isabs(output_subfolder):
-            output_path = os.path.normpath(output_subfolder)
+        latest_batch_folder = self._find_latest_batch_folder(llm_batches_root)
+        if latest_batch_folder and self._is_unfinished_batch_folder(latest_batch_folder, file_prefix):
+            output_path = latest_batch_folder
+            print("Reusing unfinished batch folder:", output_path)
         else:
-            output_path = os.path.normpath(
-                os.path.join(base_output, output_subfolder)
-            )
+            output_path = self._create_next_batch_folder(llm_batches_root)
+            print("Created new batch folder:", output_path)
 
         os.makedirs(output_path, exist_ok=True)
         print("========== LLM PROMPT BATCHER START ==========")
@@ -1109,15 +1177,6 @@ class VRGDG_LLM_PromptBatcher:
         # Load JSON inputs
         # Load & normalize JSON inputs
 
-        # Normalize lyric segments (allow dict or list)
-        if isinstance(lyric_segments_json, dict):
-            lyric_segments = [
-                {"id": k, "text": v}
-                for k, v in lyric_segments_json.items()
-            ]
-        else:
-            lyric_segments = lyric_segments_json
-
         # Normalize story groups (optional but recommended)
         # Normalize story groups
         if isinstance(story_groups_json, dict):
@@ -1130,16 +1189,27 @@ class VRGDG_LLM_PromptBatcher:
         else:
             story_groups = story_groups_json
 
+        # Normalize lyric segments (optional; allow dict or list)
+        if lyric_segments_json is None:
+            lyric_segments = []
+        elif isinstance(lyric_segments_json, dict):
+            lyric_segments = [
+                {"id": k, "text": v}
+                for k, v in lyric_segments_json.items()
+            ]
+        else:
+            lyric_segments = lyric_segments_json
+
         # ---------------- safety: enforce 1:1 alignment ----------------
 
-        if len(lyric_segments) != len(story_groups):
+        if lyric_segments and len(lyric_segments) != len(story_groups):
             raise ValueError(
                 f"Lyric/story count mismatch: "
                 f"{len(lyric_segments)} lyrics vs {len(story_groups)} story groups"
             )
 
 
-        total_items = min(len(lyric_segments), len(story_groups))
+        total_items = len(story_groups)
         total_batches = math.ceil(total_items / batch_size)
         print("Total items:", total_items)
         print("Total batches required:", total_batches)
@@ -1220,7 +1290,7 @@ class VRGDG_LLM_PromptBatcher:
 
 
         # Slice data
-        lyrics_batch = self._slice(lyric_segments, batch_index, batch_size)
+        lyrics_batch = self._slice(lyric_segments, batch_index, batch_size) if lyric_segments else []
         story_batch = self._slice(story_groups, batch_index, batch_size)
 
         print("FINAL batch_index used for this run:", batch_index)
@@ -1283,7 +1353,7 @@ class VRGDG_LLM_PromptBatcher:
             self._send_popup_notification(
                 instructions,
                 "green",
-                "🏁 LLM Prompt Batching Complete"
+                "🏁 LLM Prompt Batching Final batch, then it will be Complete"
             )
 
         else:
