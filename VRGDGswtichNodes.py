@@ -124,6 +124,49 @@ class VRGDG_ImageSwitch4:
             return (None,)
         return (output,)
 
+class VRGDG_ImageSwitchMultiDynamic:
+    @classmethod
+    def INPUT_TYPES(cls):
+        max_inputs = 50
+        optional = {f"image{i}": ("IMAGE", {}) for i in range(1, max_inputs + 1)}
+        return {
+            "required": {
+                "index": ("STRING", {"default": "1", "multiline": False}),
+                "image_count": ("INT", {"default": 4, "min": 1, "max": max_inputs, "step": 1}),
+            },
+            "optional": optional,
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "select"
+    CATEGORY = "VRGDG/Switch"
+    DESCRIPTION = "Dynamic image switch. Set image_count, click Refresh Inputs, then select image indices (e.g. 1,2,5 or all)."
+
+    def select(self, index: str, image_count: int, **kwargs):
+        count = max(1, min(50, int(image_count)))
+
+        index_text = (index or "").strip().lower()
+        if index_text in ("", "none", "0"):
+            return (None,)
+
+        if index_text == "all":
+            indices = list(range(1, count + 1))
+        else:
+            indices = _parse_spec(index)
+
+        selected: List[torch.Tensor] = []
+        for idx in indices:
+            if idx < 1 or idx > count:
+                continue
+            img = kwargs.get(f"image{idx}")
+            if img is not None:
+                selected.append(img)
+
+        output = _combine_images(selected)
+        if output is None:
+            return (None,)
+        return (output,)
 
 class VRGDG_ImageIndexMap:
     @classmethod
@@ -184,10 +227,12 @@ class VRGDG_ImageIndexMap:
 
 NODE_CLASS_MAPPINGS = {
     "VRGDG_ImageSwitch4": VRGDG_ImageSwitch4,
+    "VRGDG_ImageSwitchMultiDynamic": VRGDG_ImageSwitchMultiDynamic,
     "VRGDG_ImageIndexMap": VRGDG_ImageIndexMap,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_ImageSwitch4": "VRGDG Image Switch (1-4)",
+    "VRGDG_ImageSwitchMultiDynamic": "VRGDG Image Switch (Multi Dynamic)",
     "VRGDG_ImageIndexMap": "VRGDG Image Switch (Index Map)",
 }
