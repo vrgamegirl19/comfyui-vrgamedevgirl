@@ -1004,7 +1004,9 @@ class VRGDG_PythonCodeRunner:
         }
 
         try:
-            exec(python_code, {"__builtins__": __builtins__}, local_scope)
+            #exec(python_code, {"__builtins__": __builtins__}, local_scope)
+            exec(python_code, local_scope, local_scope)
+            
             result_value = local_scope.get("result", "")
 
             if isinstance(result_value, str):
@@ -1989,3 +1991,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
