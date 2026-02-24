@@ -968,6 +968,147 @@ class VRGDG_PythonCodeRunner:
     RETURN_NAMES = ("result_text", "result_json", "has_error")
     FUNCTION = "run"
     CATEGORY = "VRGDG/General"
+    MAX_CODE_LENGTH = 8000
+    MAX_AST_NODES = 1200
+    MAX_EXEC_STEPS = 20000
+    MAX_EXEC_SECONDS = 1.5
+    ALLOWED_IMPORTS = {"re", "json", "math"}
+    BLOCKED_NAMES = {
+        "__import__",
+        "eval",
+        "exec",
+        "open",
+        "input",
+        "compile",
+        "globals",
+        "locals",
+        "vars",
+        "dir",
+        "getattr",
+        "setattr",
+        "delattr",
+        "help",
+        "breakpoint",
+        "os",
+        "sys",
+        "subprocess",
+        "pathlib",
+        "shutil",
+        "ctypes",
+        "socket",
+        "requests",
+        "urllib",
+        "importlib",
+        "builtins",
+    }
+    SAFE_BUILTINS = {
+        "abs": abs,
+        "all": all,
+        "any": any,
+        "bool": bool,
+        "dict": dict,
+        "enumerate": enumerate,
+        "float": float,
+        "int": int,
+        "len": len,
+        "list": list,
+        "max": max,
+        "min": min,
+        "range": range,
+        "reversed": reversed,
+        "round": round,
+        "set": set,
+        "sorted": sorted,
+        "str": str,
+        "sum": sum,
+        "tuple": tuple,
+        "zip": zip,
+        "Exception": Exception,
+        "ValueError": ValueError,
+        "TypeError": TypeError,
+    }
+    BLOCKED_NODE_TYPES = (
+        ast.Global,
+        ast.Nonlocal,
+        ast.With,
+        ast.AsyncWith,
+        ast.AsyncFor,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.Lambda,
+        ast.While,
+        ast.Yield,
+        ast.YieldFrom,
+        ast.Await,
+    )
+
+    @classmethod
+    def _safe_import(cls, name, globals=None, locals=None, fromlist=(), level=0):
+        if level and int(level) > 0:
+            raise ImportError("Relative imports are not allowed.")
+        root = str(name or "").split(".")[0]
+        if root not in cls.ALLOWED_IMPORTS:
+            raise ImportError(f"Import blocked: {name}")
+        return __import__(name, globals, locals, fromlist, level)
+
+    @classmethod
+    def _validate_code(cls, python_code):
+        code = str(python_code or "")
+        if len(code) > cls.MAX_CODE_LENGTH:
+            raise ValueError(
+                f"Code is too long ({len(code)} chars). Max allowed is {cls.MAX_CODE_LENGTH}."
+            )
+
+        try:
+            tree = ast.parse(code, mode="exec")
+        except SyntaxError as e:
+            raise ValueError(f"Syntax error: {e}") from e
+
+        node_count = 0
+        for node in ast.walk(tree):
+            node_count += 1
+            if node_count > cls.MAX_AST_NODES:
+                raise ValueError(
+                    f"Code is too complex ({node_count} AST nodes). Max allowed is {cls.MAX_AST_NODES}."
+                )
+
+            if isinstance(node, cls.BLOCKED_NODE_TYPES):
+                raise ValueError(f"Disallowed syntax: {type(node).__name__}.")
+
+            if isinstance(node, ast.FunctionDef):
+                if node.decorator_list:
+                    raise ValueError("Function decorators are not allowed.")
+
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name not in cls.ALLOWED_IMPORTS:
+                        raise ValueError(f"Disallowed import: {alias.name}.")
+                    if alias.asname:
+                        raise ValueError("Import aliases are not allowed.")
+
+            if isinstance(node, ast.ImportFrom):
+                if node.level and node.level > 0:
+                    raise ValueError("Relative imports are not allowed.")
+                mod = node.module or ""
+                if mod not in cls.ALLOWED_IMPORTS:
+                    raise ValueError(f"Disallowed import: {mod}.")
+                for alias in node.names:
+                    if alias.asname:
+                        raise ValueError("Import aliases are not allowed.")
+
+            if isinstance(node, ast.Name):
+                if node.id in cls.BLOCKED_NAMES:
+                    raise ValueError(f"Disallowed name: {node.id}.")
+                if node.id.startswith("__"):
+                    raise ValueError("Dunder names are not allowed.")
+
+            if isinstance(node, ast.Attribute):
+                if node.attr.startswith("__"):
+                    raise ValueError("Dunder attribute access is not allowed.")
+
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id in cls.BLOCKED_NAMES:
+                    raise ValueError(f"Disallowed function call: {node.func.id}.")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -978,7 +1119,8 @@ class VRGDG_PythonCodeRunner:
                     {
                         "multiline": True,
                         "default": (
-                            "# Available vars: input_text, input_json, json, math, re, os\n"
+                            "# Available vars: input_text, input_json, json, math, re\n"
+                            "# Safety mode: imports, filesystem/process/network APIs are blocked.\n"
                             "# Set `result` to any value.\n"
                             "data = json.loads(input_json) if input_json.strip() else {}\n"
                             "result = json.dumps(data, indent=2)"
@@ -993,20 +1135,44 @@ class VRGDG_PythonCodeRunner:
         }
 
     def run(self, python_code, input_text="", input_json=""):
+        self._validate_code(python_code)
+
         local_scope = {
             "input_text": input_text or "",
             "input_json": input_json or "",
             "json": json,
             "math": math,
             "re": re,
-            "os": os,
             "result": "",
         }
+        safe_builtins = dict(self.SAFE_BUILTINS)
+        safe_builtins["__import__"] = self._safe_import
+        global_scope = {"__builtins__": safe_builtins}
 
         try:
-            #exec(python_code, {"__builtins__": __builtins__}, local_scope)
-            exec(python_code, local_scope, local_scope)
-            
+            steps = 0
+            start = time.monotonic()
+            previous_trace = sys.gettrace()
+
+            def _trace(frame, event, arg):
+                nonlocal steps
+                if event == "line":
+                    steps += 1
+                    if steps > self.MAX_EXEC_STEPS:
+                        raise TimeoutError(
+                            f"Execution step limit exceeded ({self.MAX_EXEC_STEPS})."
+                        )
+                    if (time.monotonic() - start) > self.MAX_EXEC_SECONDS:
+                        raise TimeoutError(
+                            f"Execution time limit exceeded ({self.MAX_EXEC_SECONDS}s)."
+                        )
+                return _trace
+
+            sys.settrace(_trace)
+            try:
+                exec(python_code, global_scope, local_scope)
+            finally:
+                sys.settrace(previous_trace)
             result_value = local_scope.get("result", "")
 
             if isinstance(result_value, str):
@@ -1991,4 +2157,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
 
