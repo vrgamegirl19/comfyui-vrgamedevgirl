@@ -10,22 +10,72 @@ import uuid
 import urllib.request
 import urllib.error
 
-# try:
-#     import google.generativeai as genai_legacy
-# except Exception:
-#     genai_legacy = None
 
-# try:
-#     from google import genai as genai_new
-# except Exception:
-#     genai_new = None
-
-genai_legacy = None
+try:
+    import google.generativeai as genai_legacy
+except Exception:
+    genai_legacy = None
 try:
     from google import genai as genai_new
 except Exception:
     genai_new = None
 
+def _google_rest_parts_from_contents(contents) -> list[dict]:
+    if not isinstance(contents, list):
+        contents = [contents]
+
+    parts = []
+    for item in contents:
+        if isinstance(item, str):
+            if item.strip():
+                parts.append({"text": item})
+            continue
+        if isinstance(item, Image.Image):
+            buf = BytesIO()
+            item.convert("RGB").save(buf, format="PNG")
+            parts.append(
+                {
+                    "inlineData": {
+                        "mimeType": "image/png",
+                        "data": base64.b64encode(buf.getvalue()).decode("ascii"),
+                    }
+                }
+            )
+            continue
+        parts.append({"text": str(item)})
+    return parts
+
+
+def _google_generate_content_rest(api_key: str, model: str, contents) -> dict:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": _google_rest_parts_from_contents(contents),
+            }
+        ]
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "VRGDG-LLM-Multi/1.0 (+ComfyUI)",
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return json.loads(body)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        raise Exception(f"Google REST HTTP {e.code}: {err_body}")
+    except urllib.error.URLError as e:
+        raise Exception(f"Google REST network error: {e}")
 
 
 def _google_generate_content(api_key: str, model: str, contents):
@@ -36,21 +86,32 @@ def _google_generate_content(api_key: str, model: str, contents):
     if genai_new is not None and hasattr(genai_new, "Client"):
         client = genai_new.Client(api_key=api_key)
         return client.models.generate_content(model=model, contents=contents)
-    raise Exception(
-        "Google SDK not available. Install `google-generativeai` or `google-genai` in this ComfyUI Python env."
-    )
+    return _google_generate_content_rest(api_key=api_key, model=model, contents=contents)
 
 
 def _extract_google_inline_image(response) -> Optional[Image.Image]:
-    candidates = getattr(response, "candidates", []) or []
+    if isinstance(response, dict):
+        candidates = response.get("candidates", []) or []
+    else:
+        candidates = getattr(response, "candidates", []) or []
     for cand in candidates:
-        content = getattr(cand, "content", None)
-        parts = getattr(content, "parts", []) if content is not None else []
+        if isinstance(cand, dict):
+            content = cand.get("content", {}) or {}
+            parts = content.get("parts", []) if isinstance(content, dict) else []
+        else:
+            content = getattr(cand, "content", None)
+            parts = getattr(content, "parts", []) if content is not None else []
         for part in parts:
-            inline_data = getattr(part, "inline_data", None)
+            if isinstance(part, dict):
+                inline_data = part.get("inlineData", None) or part.get("inline_data", None)
+            else:
+                inline_data = getattr(part, "inline_data", None)
             if inline_data is None:
                 continue
-            data_bytes = getattr(inline_data, "data", None)
+            if isinstance(inline_data, dict):
+                data_bytes = inline_data.get("data", None)
+            else:
+                data_bytes = getattr(inline_data, "data", None)
             if not data_bytes:
                 continue
             try:
@@ -1137,3 +1198,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LLM_Multi": "🤖 VRGDG LLM Multi 🤖",
     "VRGDG_LocalLLM": "💻 VRGDG Local LLM 💻",
 }
+
