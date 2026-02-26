@@ -2084,7 +2084,7 @@ class VRGDG_ArchiveLlmBatchFolders:
 NODE_CLASS_MAPPINGS = {
     "VRGDG_GeneralPromptBatcher": VRGDG_GeneralPromptBatcher,
     "VRGDG_PythonCodeRunner": VRGDG_PythonCodeRunner,
-    "VRGDG_LoadLatestCombinedJsonText": VRGDG_LoadLatestCombinedJsonText,
+   # "VRGDG_LoadLatestCombinedJsonText": VRGDG_LoadLatestCombinedJsonText,
     "VRGDG_UpdateLatestCombinedJsonPrompts": VRGDG_UpdateLatestCombinedJsonPrompts,
     "VRGDG_UpdateLatestCombinedJsonPrompts_zimage": VRGDG_UpdateLatestCombinedJsonPrompts_zimage,
     "VRGDG_SaveText": VRGDG_SaveText,
@@ -2100,7 +2100,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_GeneralPromptBatcher": "VRGDG_GeneralPromptBatcher",
     "VRGDG_PythonCodeRunner": "VRGDG_PythonCodeRunner",
-    "VRGDG_LoadLatestCombinedJsonText": "VRGDG_LoadLatestCombinedJsonText",
+    #"VRGDG_LoadLatestCombinedJsonText": "VRGDG_LoadLatestCombinedJsonText",
     "VRGDG_UpdateLatestCombinedJsonPrompts": "VRGDG_UpdateLatestCombinedJsonPrompts",
     "VRGDG_UpdateLatestCombinedJsonPrompts_zimage": "VRGDG_UpdateLatestCombinedJsonPrompts_zimage",
     "VRGDG_SaveText": "VRGDG_SaveText",
@@ -2112,6 +2112,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
 
 
 
