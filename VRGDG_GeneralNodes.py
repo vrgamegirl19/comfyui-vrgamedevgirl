@@ -966,7 +966,6 @@ class VRGDG_GeneralPromptBatcher:
         )
 
 
-
 class VRGDG_PythonCodeRunner:
     RETURN_TYPES = ("STRING", "STRING", "BOOLEAN")
     RETURN_NAMES = ("result_text", "result_json", "has_error")
@@ -1204,59 +1203,6 @@ class VRGDG_PythonCodeRunner:
         except Exception as e:
             return (f"{type(e).__name__}: {e}", "", True)
 
-class VRGDG_LoadLatestCombinedJsonText:
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
-    FUNCTION = "run"
-    CATEGORY = "VRGDG/General"
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        _ensure_combined_files_route_registered()
-
-        all_files = set()
-        for batch_type in (BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO):
-            files, _ = _list_latest_combined_json_files(batch_type)
-            all_files.update(files)
-
-        choices = sorted(all_files, key=str.lower) if all_files else [EMPTY_COMBINED_JSON_OPTION]
-        return {
-            "required": {
-                "batch_type": ([BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO],),
-                "combined_json_file": (choices,),
-            }
-        }
-
-    def run(self, batch_type, combined_json_file):
-        selected = str(combined_json_file or "").strip()
-        if not selected or selected == EMPTY_COMBINED_JSON_OPTION:
-            return ("",)
-
-        batch_type = _normalize_batch_type(batch_type)
-        files, latest_folder = _list_latest_combined_json_files(batch_type)
-        if not latest_folder or selected not in files:
-            return ("",)
-
-        file_path = os.path.join(latest_folder, selected)
-        if not os.path.isfile(file_path):
-            return ("",)
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                raw = f.read()
-        except UnicodeDecodeError:
-            with open(file_path, "r", encoding="utf-8-sig") as f:
-                raw = f.read()
-
-        raw = raw or ""
-
-        try:
-            parsed = json.loads(raw)
-            text_out = json.dumps(parsed, ensure_ascii=False, indent=2)
-        except Exception:
-            text_out = raw
-
-        return (text_out,)
 
 
 class VRGDG_UpdateLatestCombinedJsonPrompts:
@@ -2166,6 +2112,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
 
 
 
