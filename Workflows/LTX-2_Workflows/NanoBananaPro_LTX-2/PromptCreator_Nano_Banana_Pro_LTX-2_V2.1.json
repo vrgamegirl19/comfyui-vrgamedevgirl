@@ -1,7 +1,7 @@
 {
   "id": "5b16547e-e621-4a5c-ad73-0712842d482e",
   "revision": 0,
-  "last_node_id": 195,
+  "last_node_id": 198,
   "last_link_id": 228,
   "nodes": [
     {
@@ -270,7 +270,7 @@
         130
       ],
       "flags": {},
-      "order": 86,
+      "order": 89,
       "mode": 2,
       "inputs": [
         {
@@ -523,7 +523,7 @@
         150
       ],
       "flags": {},
-      "order": 88,
+      "order": 91,
       "mode": 0,
       "inputs": [
         {
@@ -585,7 +585,7 @@
         150
       ],
       "flags": {},
-      "order": 90,
+      "order": 93,
       "mode": 0,
       "inputs": [
         {
@@ -647,7 +647,7 @@
         150
       ],
       "flags": {},
-      "order": 84,
+      "order": 87,
       "mode": 0,
       "inputs": [
         {
@@ -711,7 +711,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 49,
+      "order": 52,
       "mode": 2,
       "inputs": [
         {
@@ -763,7 +763,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 71,
+      "order": 74,
       "mode": 0,
       "inputs": [
         {
@@ -810,7 +810,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 94,
+      "order": 97,
       "mode": 0,
       "inputs": [
         {
@@ -857,7 +857,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 95,
+      "order": 98,
       "mode": 0,
       "inputs": [
         {
@@ -904,7 +904,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 89,
+      "order": 92,
       "mode": 0,
       "inputs": [
         {
@@ -951,7 +951,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 72,
+      "order": 75,
       "mode": 0,
       "inputs": [
         {
@@ -1041,7 +1041,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 87,
+      "order": 90,
       "mode": 2,
       "inputs": [
         {
@@ -1094,7 +1094,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 93,
+      "order": 96,
       "mode": 2,
       "inputs": [
         {
@@ -1171,7 +1171,7 @@
         130
       ],
       "flags": {},
-      "order": 98,
+      "order": 101,
       "mode": 2,
       "inputs": [
         {
@@ -1252,7 +1252,7 @@
         254
       ],
       "flags": {},
-      "order": 81,
+      "order": 84,
       "mode": 2,
       "inputs": [
         {
@@ -1401,7 +1401,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 63,
+      "order": 66,
       "mode": 2,
       "inputs": [
         {
@@ -1515,7 +1515,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 51,
+      "order": 54,
       "mode": 2,
       "inputs": [
         {
@@ -1565,7 +1565,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 75,
+      "order": 78,
       "mode": 2,
       "inputs": [
         {
@@ -1717,7 +1717,7 @@
         150
       ],
       "flags": {},
-      "order": 57,
+      "order": 60,
       "mode": 0,
       "inputs": [
         {
@@ -1867,7 +1867,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 79,
+      "order": 82,
       "mode": 0,
       "inputs": [
         {
@@ -1914,7 +1914,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 73,
+      "order": 76,
       "mode": 0,
       "inputs": [
         {
@@ -1959,7 +1959,7 @@
         150
       ],
       "flags": {},
-      "order": 58,
+      "order": 61,
       "mode": 0,
       "inputs": [
         {
@@ -2021,7 +2021,7 @@
         150
       ],
       "flags": {},
-      "order": 67,
+      "order": 70,
       "mode": 0,
       "inputs": [
         {
@@ -2083,7 +2083,7 @@
         150
       ],
       "flags": {},
-      "order": 59,
+      "order": 62,
       "mode": 0,
       "inputs": [
         {
@@ -2243,7 +2243,7 @@
         250
       ],
       "flags": {},
-      "order": 68,
+      "order": 71,
       "mode": 2,
       "inputs": [
         {
@@ -2362,7 +2362,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 54,
+      "order": 57,
       "mode": 2,
       "inputs": [
         {
@@ -2436,7 +2436,7 @@
         26
       ],
       "flags": {},
-      "order": 60,
+      "order": 63,
       "mode": 2,
       "inputs": [
         {
@@ -2657,7 +2657,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 48,
+      "order": 51,
       "mode": 4,
       "inputs": [
         {
@@ -2712,7 +2712,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 78,
+      "order": 81,
       "mode": 0,
       "inputs": [
         {
@@ -2778,7 +2778,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 47,
+      "order": 50,
       "mode": 0,
       "inputs": [
         {
@@ -3061,7 +3061,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 76,
+      "order": 79,
       "mode": 0,
       "inputs": [
         {
@@ -3125,7 +3125,7 @@
         440.3259654166559
       ],
       "flags": {},
-      "order": 50,
+      "order": 53,
       "mode": 2,
       "inputs": [
         {
@@ -3172,7 +3172,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 62,
+      "order": 65,
       "mode": 2,
       "inputs": [
         {
@@ -3224,7 +3224,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 74,
+      "order": 77,
       "mode": 2,
       "inputs": [
         {
@@ -3274,7 +3274,7 @@
         102
       ],
       "flags": {},
-      "order": 56,
+      "order": 59,
       "mode": 0,
       "inputs": [
         {
@@ -3671,6 +3671,1043 @@
       "bgcolor": "#653"
     },
     {
+      "id": 47,
+      "type": "GeminiNode",
+      "pos": [
+        2650.2600520119177,
+        2093.153484001698
+      ],
+      "size": [
+        210,
+        503.00000000000125
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 83,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "images",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "video",
+          "shape": 7,
+          "type": "VIDEO",
+          "link": null
+        },
+        {
+          "name": "files",
+          "shape": 7,
+          "type": "GEMINI_INPUT_FILES",
+          "link": null
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 85
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            64
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.76",
+        "Node name for S&R": "GeminiNode",
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "",
+        "gemini-2.5-flash",
+        69,
+        "fixed",
+        ""
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 163,
+      "type": "Note",
+      "pos": [
+        -3966.8375697500574,
+        3055.1345450119206
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 40,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "SRT filename",
+      "properties": {
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "For display only, the SRT file name shows up here"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 178,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -1983.1486141710648,
+        1894.946608910806
+      ],
+      "size": [
+        605.8406899374199,
+        1311.8603585601304
+      ],
+      "flags": {},
+      "order": 86,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 208
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": [
+            209
+          ]
+        }
+      ],
+      "title": "Show Text 🐍 - corrected lyrics",
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 179,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -1306.8168735387032,
+        1935.7285213300172
+      ],
+      "size": [
+        405.02991690000044,
+        403.22620272186896
+      ],
+      "flags": {},
+      "order": 80,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 210
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": [
+            211
+          ]
+        }
+      ],
+      "title": "Style/Theme block",
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 182,
+      "type": "ShowText|pysssss",
+      "pos": [
+        649.0953687642901,
+        2552.056984002928
+      ],
+      "size": [
+        460.7061961419414,
+        812.3445979125577
+      ],
+      "flags": {},
+      "order": 67,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 215
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 183,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1146.1683926977464,
+        2545.534678320853
+      ],
+      "size": [
+        649.9682100787891,
+        808.951193120964
+      ],
+      "flags": {},
+      "order": 85,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 216
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 91,
+      "type": "VRGDG_LoadTextAdvanced",
+      "pos": [
+        186.1339864107276,
+        2361.195513908914
+      ],
+      "size": [
+        284.9,
+        150
+      ],
+      "flags": {},
+      "order": 41,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            115,
+            214
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_LoadTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "themestyle",
+        true,
+        "themestyle.txt",
+        null
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 92,
+      "type": "VRGDG_LoadTextAdvanced",
+      "pos": [
+        490.26337423237015,
+        2351.336389256626
+      ],
+      "size": [
+        284.9,
+        150
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            144,
+            171,
+            215
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_LoadTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "storygroups",
+        true,
+        "storygroups.txt",
+        null
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 185,
+      "type": "ShowText|pysssss",
+      "pos": [
+        959.055971605907,
+        1881.2956252092342
+      ],
+      "size": [
+        840.0236767933941,
+        620.4055743143182
+      ],
+      "flags": {},
+      "order": 102,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 218
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 61,
+      "type": "MarkdownNote",
+      "pos": [
+        -2958.7183053537956,
+        1894.947531946073
+      ],
+      "size": [
+        262.8459735736701,
+        263.924316132292
+      ],
+      "flags": {},
+      "order": 43,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WALK THROUGH VIDOE",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Full Workflow Walkthrough Video\n\nThis video walks through the complete Nano Banana process  \nfrom start to finish using a real video project.\n\n### 🎬 Walkthrough Video\n🔗 [Watch the Video](https://youtu.be/06bPil9vrPk)\n\nShows full setup, prompt workflow, reference image usage,\nand the exact process used to produce the final result."
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 160,
+      "type": "291075eb-799e-4bb7-be99-eb924ab0cea0",
+      "pos": [
+        -3713.369500567801,
+        3013.339423724471
+      ],
+      "size": [
+        218.35671523824976,
+        124.67141918890775
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 44,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "label": "Filename",
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            189,
+            219
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [],
+        "cnr_id": "comfy-core",
+        "ver": "0.10.0",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 186,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -3715.623304474987,
+        3052.7809921002136
+      ],
+      "size": [
+        257.1978031736289,
+        100.37552893711063
+      ],
+      "flags": {},
+      "order": 69,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 219
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "SRT file name",
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 187,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -3437.554192838236,
+        3204.410949384855
+      ],
+      "size": [
+        140,
+        76
+      ],
+      "flags": {},
+      "order": 72,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 220
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 188,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -3724.294541047634,
+        3350.8577366677673
+      ],
+      "size": [
+        140,
+        76
+      ],
+      "flags": {},
+      "order": 73,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 221
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 189,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2189.597889321551,
+        2761.7293527889874
+      ],
+      "size": [
+        536.7910537585922,
+        171.53363541426734
+      ],
+      "flags": {},
+      "order": 58,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 222
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 190,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2192.8338547611634,
+        3040.710078329892
+      ],
+      "size": [
+        532.700399667051,
+        206.98597087429016
+      ],
+      "flags": {},
+      "order": 56,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 223
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 191,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2179.805111344834,
+        3353.368348248709
+      ],
+      "size": [
+        455.9284626420672,
+        311.3353695301312
+      ],
+      "flags": {},
+      "order": 55,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 224
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 192,
+      "type": "ShowText|pysssss",
+      "pos": [
+        2889.5006323971747,
+        1898.6651514285236
+      ],
+      "size": [
+        926.6744642186691,
+        1780.201335801953
+      ],
+      "flags": {},
+      "order": 95,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 225
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 194,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -600.7673735218098,
+        3654.393974495619
+      ],
+      "size": [
+        140,
+        26
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 100,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 226
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 195,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -445.7948311325753,
+        3653.9686575724118
+      ],
+      "size": [
+        140,
+        26
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 99,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 227
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 193,
+      "type": "VRGDG_ArchiveLlmBatchFolders",
+      "pos": [
+        -619.8036814648763,
+        3523.4836827627933
+      ],
+      "size": [
+        316.5984080279037,
+        85.39681605580745
+      ],
+      "flags": {},
+      "order": 94,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "trigger",
+          "type": "STRING",
+          "widget": {
+            "name": "trigger"
+          },
+          "link": 228
+        }
+      ],
+      "outputs": [
+        {
+          "name": "trigger",
+          "type": "STRING",
+          "links": [
+            227
+          ]
+        },
+        {
+          "name": "details",
+          "type": "STRING",
+          "links": [
+            226
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ArchiveLlmBatchFolders",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        ""
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 180,
+      "type": "ShowText|pysssss",
+      "pos": [
+        -863.4378692370681,
+        1878.0703992240371
+      ],
+      "size": [
+        888.1202835079391,
+        1469.057966280012
+      ],
+      "flags": {},
+      "order": 88,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 212
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": [
+            213,
+            228
+          ]
+        }
+      ],
+      "title": "story",
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 144,
+      "type": "Text Multiline",
+      "pos": [
+        -2367.1415723934488,
+        3224.406304248875
+      ],
+      "size": [
+        345.45794544611886,
+        198.6364486361531
+      ],
+      "flags": {},
+      "order": 45,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            174
+          ]
+        }
+      ],
+      "title": "Text to image notes",
+      "properties": {
+        "cnr_id": "was-node-suite-comfyui",
+        "ver": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
+        "Node name for S&R": "Text Multiline",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "Other notes and reminders: \nWhen the character/subject is mentioned we need to describe them just like the prompt specifies in the \"Subject\" \nIf it does not specify use the below: \n\nThe women = image index 1\nShe appears in her mid-20s with delicate, well-balanced features. Her light brown hair falls past her shoulders with a natural, slightly windswept texture and a soft side part. She has green eyes and a fair complexion with faint freckles.\n\nShe wears a black satin slip with thin straps, giving a simple, understated look.\n\nThe women will always be in the scene. The scene is image index 2 So it should always be image index 1,2 for every prompt where the character is visible. \n\nIf the character is not visible then image index = 2\n\nwhen making an edit that uses image indexs,  we should say \"use the provide character reference along with the scene reference images\"\n\nAll image edits MUST say \"use the provided reference image\"\n\nThe background and scene must always be fully described from the Scene/Lighting.\n\nAlawys use the same image color style and asthetic in every prompt. Never say fade to black or fade.\n\nReminder: Each prompt is fully standalone. Never reference previous prompts. No phrases like “the same woman”, or “from earlier.” The current image has no memory of the the others and must be fully standalone.  \n"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
       "id": 28,
       "type": "b628ba4c-455d-4afa-ab26-31aecee2a895",
       "pos": [
@@ -3684,7 +4721,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 65,
+      "order": 68,
       "mode": 0,
       "inputs": [
         {
@@ -3863,219 +4900,18 @@
       "bgcolor": "#3f5159"
     },
     {
-      "id": 47,
-      "type": "GeminiNode",
-      "pos": [
-        2650.2600520119177,
-        2093.153484001698
-      ],
-      "size": [
-        210,
-        503.00000000000125
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 80,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "images",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "audio",
-          "shape": 7,
-          "type": "AUDIO",
-          "link": null
-        },
-        {
-          "name": "video",
-          "shape": 7,
-          "type": "VIDEO",
-          "link": null
-        },
-        {
-          "name": "files",
-          "shape": 7,
-          "type": "GEMINI_INPUT_FILES",
-          "link": null
-        },
-        {
-          "name": "prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "prompt"
-          },
-          "link": 85
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            64
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.76",
-        "Node name for S&R": "GeminiNode",
-        "ue_properties": {
-          "version": "7.5.2",
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "",
-        "gemini-2.5-flash",
-        69,
-        "fixed",
-        ""
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 163,
-      "type": "Note",
-      "pos": [
-        -3966.8375697500574,
-        3055.1345450119206
-      ],
-      "size": [
-        210,
-        88
-      ],
-      "flags": {},
-      "order": 40,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "SRT filename",
-      "properties": {
-        "ue_properties": {
-          "version": "7.5.2",
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "For display only, the SRT file name shows up here"
-      ],
-      "color": "#432",
-      "bgcolor": "#653"
-    },
-    {
-      "id": 178,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -1983.1486141710648,
-        1894.946608910806
-      ],
-      "size": [
-        605.8406899374199,
-        1311.8603585601304
-      ],
-      "flags": {},
-      "order": 83,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 208
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": [
-            209
-          ]
-        }
-      ],
-      "title": "Show Text 🐍 - corrected lyrics",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 179,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -1306.8168735387032,
-        1935.7285213300172
-      ],
-      "size": [
-        405.02991690000044,
-        403.22620272186896
-      ],
-      "flags": {},
-      "order": 77,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 210
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": [
-            211
-          ]
-        }
-      ],
-      "title": "Style/Theme block",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
       "id": 181,
       "type": "ShowText|pysssss",
       "pos": [
-        173.50986787077917,
-        2555.76158305903
+        189.75438545174057,
+        2563.8838418495097
       ],
       "size": [
         438.6423358383921,
         844.2601901066396
       ],
       "flags": {},
-      "order": 61,
+      "order": 64,
       "mode": 2,
       "inputs": [
         {
@@ -4107,606 +4943,73 @@
       "bgcolor": "#355"
     },
     {
-      "id": 182,
-      "type": "ShowText|pysssss",
+      "id": 197,
+      "type": "Note",
       "pos": [
-        649.0953687642901,
-        2552.056984002928
+        1901.532457612165,
+        3571.1492449226357
       ],
       "size": [
-        460.7061961419414,
-        812.3445979125577
+        216.31515611622103,
+        168.45550012147714
       ],
       "flags": {},
-      "order": 64,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 215
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
-      "id": 183,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1146.1683926977464,
-        2545.534678320853
-      ],
-      "size": [
-        649.9682100787891,
-        808.951193120964
-      ],
-      "flags": {},
-      "order": 82,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 216
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
-      "id": 91,
-      "type": "VRGDG_LoadTextAdvanced",
-      "pos": [
-        186.1339864107276,
-        2361.195513908914
-      ],
-      "size": [
-        284.9,
-        150
-      ],
-      "flags": {},
-      "order": 41,
+      "order": 46,
       "mode": 2,
       "inputs": [],
-      "outputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "links": [
-            115,
-            214
-          ]
-        },
-        {
-          "name": "file_path",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_LoadTextAdvanced",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
+      "outputs": [],
+      "properties": {},
       "widgets_values": [
-        "themestyle",
-        true,
-        "themestyle.txt",
-        null
+        "if the load text advanced boxes do not look like they do in my walkthrough videos please set them so they do!!\n\nthese should be\nstoryconcept\nand\ni2vNotes\nand\nthemestyle"
       ],
-      "color": "#233",
-      "bgcolor": "#355"
+      "color": "#432",
+      "bgcolor": "#653"
     },
     {
-      "id": 92,
-      "type": "VRGDG_LoadTextAdvanced",
+      "id": 196,
+      "type": "Note",
       "pos": [
-        490.26337423237015,
-        2351.336389256626
+        716.9383398038873,
+        2116.622203952153
       ],
       "size": [
-        284.9,
-        150
+        216.31515611622103,
+        168.45550012147714
       ],
       "flags": {},
-      "order": 42,
+      "order": 47,
       "mode": 2,
       "inputs": [],
-      "outputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "links": [
-            144,
-            171,
-            215
-          ]
-        },
-        {
-          "name": "file_path",
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_LoadTextAdvanced",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
+      "outputs": [],
+      "properties": {},
       "widgets_values": [
-        "storygroups",
-        true,
-        "storygroups.txt",
-        null
+        "if the load text advanced boxes do not look like they do in my walkthrough videos please set them so they do!!\n\nthese should be\nThemestyle\nand\nstorygroups\n\nthe button one should be t2inotes"
       ],
-      "color": "#233",
-      "bgcolor": "#355"
+      "color": "#432",
+      "bgcolor": "#653"
     },
     {
-      "id": 185,
-      "type": "ShowText|pysssss",
+      "id": 198,
+      "type": "Note",
       "pos": [
-        959.055971605907,
-        1881.2956252092342
+        1876.0638373110637,
+        1708.905383561102
       ],
       "size": [
-        840.0236767933941,
-        620.4055743143182
+        252.99358283923334,
+        88
       ],
       "flags": {},
-      "order": 99,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 218
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#233",
-      "bgcolor": "#355"
-    },
-    {
-      "id": 61,
-      "type": "MarkdownNote",
-      "pos": [
-        -2958.7183053537956,
-        1894.947531946073
-      ],
-      "size": [
-        262.8459735736701,
-        263.924316132292
-      ],
-      "flags": {},
-      "order": 43,
+      "order": 48,
       "mode": 0,
       "inputs": [],
       "outputs": [],
-      "title": "WALK THROUGH VIDOE",
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.5.2",
-          "input_ue_unconnectable": {}
-        }
-      },
+      "properties": {},
       "widgets_values": [
-        "# Full Workflow Walkthrough Video\n\nThis video walks through the complete Nano Banana process  \nfrom start to finish using a real video project.\n\n### 🎬 Walkthrough Video\n🔗 [Watch the Video](https://youtu.be/06bPil9vrPk)\n\nShows full setup, prompt workflow, reference image usage,\nand the exact process used to produce the final result."
+        "if the combined_json_file drop down says no files found you need to press the refresh files button!!!!!"
       ],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 160,
-      "type": "291075eb-799e-4bb7-be99-eb924ab0cea0",
-      "pos": [
-        -3713.369500567801,
-        3013.339423724471
-      ],
-      "size": [
-        218.35671523824976,
-        124.67141918890775
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 44,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "label": "Filename",
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            189,
-            219
-          ]
-        }
-      ],
-      "properties": {
-        "proxyWidgets": [],
-        "cnr_id": "comfy-core",
-        "ver": "0.10.0",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 186,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -3715.623304474987,
-        3052.7809921002136
-      ],
-      "size": [
-        257.1978031736289,
-        100.37552893711063
-      ],
-      "flags": {},
-      "order": 66,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 219
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "title": "SRT file name",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 187,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -3437.554192838236,
-        3204.410949384855
-      ],
-      "size": [
-        140,
-        76
-      ],
-      "flags": {},
-      "order": 69,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 220
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
-    {
-      "id": 188,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -3724.294541047634,
-        3350.8577366677673
-      ],
-      "size": [
-        140,
-        76
-      ],
-      "flags": {},
-      "order": 70,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 221
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#2a363b",
-      "bgcolor": "#3f5159"
-    },
-    {
-      "id": 189,
-      "type": "ShowText|pysssss",
-      "pos": [
-        2189.597889321551,
-        2761.7293527889874
-      ],
-      "size": [
-        536.7910537585922,
-        171.53363541426734
-      ],
-      "flags": {},
-      "order": 55,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 222
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 190,
-      "type": "ShowText|pysssss",
-      "pos": [
-        2192.8338547611634,
-        3040.710078329892
-      ],
-      "size": [
-        532.700399667051,
-        206.98597087429016
-      ],
-      "flags": {},
-      "order": 53,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 223
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 191,
-      "type": "ShowText|pysssss",
-      "pos": [
-        2179.805111344834,
-        3353.368348248709
-      ],
-      "size": [
-        455.9284626420672,
-        311.3353695301312
-      ],
-      "flags": {},
-      "order": 52,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 224
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 192,
-      "type": "ShowText|pysssss",
-      "pos": [
-        2889.5006323971747,
-        1898.6651514285236
-      ],
-      "size": [
-        926.6744642186691,
-        1780.201335801953
-      ],
-      "flags": {},
-      "order": 92,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 225
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#223",
-      "bgcolor": "#335"
+      "color": "#432",
+      "bgcolor": "#653"
     },
     {
       "id": 45,
@@ -4720,7 +5023,7 @@
         154
       ],
       "flags": {},
-      "order": 45,
+      "order": 49,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4746,238 +5049,6 @@
       },
       "color": "#232",
       "bgcolor": "#353"
-    },
-    {
-      "id": 194,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -600.7673735218098,
-        3654.393974495619
-      ],
-      "size": [
-        140,
-        26
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 97,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 226
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        },
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss"
-      },
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
-      "id": 195,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -445.7948311325753,
-        3653.9686575724118
-      ],
-      "size": [
-        140,
-        26
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 96,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 227
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        },
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss"
-      },
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
-      "id": 193,
-      "type": "VRGDG_ArchiveLlmBatchFolders",
-      "pos": [
-        -619.8036814648763,
-        3523.4836827627933
-      ],
-      "size": [
-        316.5984080279037,
-        85.39681605580745
-      ],
-      "flags": {},
-      "order": 91,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "trigger",
-          "type": "STRING",
-          "widget": {
-            "name": "trigger"
-          },
-          "link": 228
-        }
-      ],
-      "outputs": [
-        {
-          "name": "trigger",
-          "type": "STRING",
-          "links": [
-            227
-          ]
-        },
-        {
-          "name": "details",
-          "type": "STRING",
-          "links": [
-            226
-          ]
-        }
-      ],
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        },
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_ArchiveLlmBatchFolders"
-      },
-      "widgets_values": [
-        ""
-      ],
-      "color": "#222",
-      "bgcolor": "#000"
-    },
-    {
-      "id": 180,
-      "type": "ShowText|pysssss",
-      "pos": [
-        -863.4378692370681,
-        1878.0703992240371
-      ],
-      "size": [
-        888.1202835079391,
-        1469.057966280012
-      ],
-      "flags": {},
-      "order": 85,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 212
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": [
-            213,
-            228
-          ]
-        }
-      ],
-      "title": "story",
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 144,
-      "type": "Text Multiline",
-      "pos": [
-        -2367.1415723934488,
-        3224.406304248875
-      ],
-      "size": [
-        345.45794544611886,
-        198.6364486361531
-      ],
-      "flags": {},
-      "order": 46,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            174
-          ]
-        }
-      ],
-      "title": "Text to image notes",
-      "properties": {
-        "cnr_id": "was-node-suite-comfyui",
-        "ver": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
-        "Node name for S&R": "Text Multiline",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "Other notes and reminders: \nWhen the character/subject is mentioned we need to describe them just like the prompt specifies in the \"Subject\" \nIf it does not specify use the below: \n\nThe women = image index 1\nShe appears in her mid-20s with delicate, well-balanced features. Her light brown hair falls past her shoulders with a natural, slightly windswept texture and a soft side part. She has green eyes and a fair complexion with faint freckles.\n\nShe wears a black satin slip with thin straps, giving a simple, understated look.\n\nThe women will always be in the scene. The scene is image index 2 So it should always be image index 1,2 for every prompt where the character is visible. \n\nIf the character is not visible then image index = 2\n\nwhen making an edit that uses image indexs,  we should say \"use the provide character reference along with the scene reference images\"\n\nAll image edits MUST say \"use the provided reference image\"\n\nThe background and scene must always be fully described from the Scene/Lighting.\n\nAlawys use the same image color style and asthetic in every prompt. Never say fade to black or fade.\n\nReminder: Each prompt is fully standalone. Never reference previous prompts. No phrases like “the same woman”, or “from earlier.” The current image has no memory of the the others and must be fully standalone.  \n"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
     }
   ],
   "links": [
@@ -6753,77 +6824,6 @@
             ]
           },
           {
-            "id": 111,
-            "type": "VRGDG_PythonCodeRunner",
-            "pos": [
-              -9348.313653354058,
-              -1273.042294364934
-            ],
-            "size": [
-              294.48687853149784,
-              235.48740076000968
-            ],
-            "flags": {
-              "collapsed": false
-            },
-            "order": 17,
-            "mode": 0,
-            "inputs": [
-              {
-                "localized_name": "input_text",
-                "name": "input_text",
-                "shape": 7,
-                "type": "STRING",
-                "link": 200
-              },
-              {
-                "localized_name": "input_json",
-                "name": "input_json",
-                "shape": 7,
-                "type": "STRING",
-                "link": null
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "result_text",
-                "name": "result_text",
-                "type": "STRING",
-                "links": [
-                  209
-                ]
-              },
-              {
-                "localized_name": "result_json",
-                "name": "result_json",
-                "type": "STRING",
-                "links": [
-                  206
-                ]
-              },
-              {
-                "localized_name": "has_error",
-                "name": "has_error",
-                "type": "BOOLEAN",
-                "links": []
-              }
-            ],
-            "title": "json format fixer",
-            "properties": {
-              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-              "Node name for S&R": "VRGDG_PythonCodeRunner",
-              "ue_properties": {
-                "widget_ue_connectable": {},
-                "input_ue_unconnectable": {},
-                "version": "7.5.2"
-              }
-            },
-            "widgets_values": [
-              "import re\n\ntext = input_text.strip()\n\n# remove markdown fences\ntext = text.replace(\"```json\", \"\").replace(\"```\", \"\")\n\n# remove everything before first segment (segment OR lyricSegment)\nm = re.search(r'\"(?:lyric)?segment\\d+\"', text, re.I)\nif m:\n    text = text[m.start():]\n\n# remove trailing notes/explanations\ntext = re.sub(r\"\\nNote:.*$\", \"\", text, flags=re.I | re.S)\n\nlines = text.splitlines()\nfixed = []\n\nfor line in lines:\n    line = line.strip()\n    if not line:\n        continue\n\n    m = re.match(r'\"((?:lyric)?segment\\d+)\"\\s*:\\s*(.*)', line, re.I)\n    if not m:\n        continue\n\n    key, val = m.groups()\n\n    # normalize lyricSegment -> Segment\n    key = re.sub(r'^lyric(segment\\d+)$', r'\\1', key, flags=re.I)\n\n    # remove trailing commas\n    val = val.rstrip(\",\")\n\n    # unwrap quotes if present\n    if val.startswith('\"') and val.endswith('\"'):\n        val = val[1:-1]\n\n    # escape JSON chars\n    val = val.replace(\"\\\\\", \"\\\\\\\\\")\n    val = val.replace('\"', '\\\\\"')\n\n    fixed.append(f'\"{key}\": \"{val}\"')\n\n# rebuild valid JSON\nresult = \"{\\n\" + \",\\n\".join(fixed) + \"\\n}\""
-            ]
-          },
-          {
             "id": 113,
             "type": "ShowText|pysssss",
             "pos": [
@@ -6911,77 +6911,6 @@
             },
             "widgets_values": [
               "# Lyrics to fix: (40 segments)\n\nlyricSegment1=you\nlyricSegment2=Thank you.\nlyricSegment3=Water moving slow around me Black silk\nlyricSegment4=in the fading light\nlyricSegment5=No one hears the words\nlyricSegment6=I'm slaying just the\nlyricSegment7=Told in an open sky\nlyricSegment8=Where it stands again\nlyricSegment9=Keeps it all  every whisper  every fall I can...\nlyricSegment10=in the field\nlyricSegment11=I'm still\nlyricSegment12=Till it knows the things I feel.\nlyricSegment13=Mmm\nlyricSegment14=Golden hour\nlyricSegment15=turns\nlyricSegment16=to bloom\nlyricSegment17=Fading into\nlyricSegment18=From a distance\nlyricSegment19=I look small but I'm still inside\nlyricSegment20=it all where it\nlyricSegment21=I'm sorry  Jiro!\nlyricSegment22=my heart\nlyricSegment23=Every end and every start on your st\nlyricSegment24=I let it be water remembering me\nlyricSegment25=you\nlyricSegment26=Eeeehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehehe hhe h h h h h h h h h h h h h h h h h h h h h h h h h h h h h h h h h h…\nlyricSegment27=Eeeeioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioio…\nlyricSegment28=you\nlyricSegment29=you\nlyricSegment30=you\nlyricSegment31=I'm Marble Silver\nlyricSegment32=No!\nlyricSegment33=you\nlyricSegment34=I'm holding\nlyricSegment35=Dorkenhold\nlyricSegment36=you\nlyricSegment37=day\nlyricSegment38=you\nlyricSegment39=you\nlyricSegment40=Thank you."
-            ]
-          },
-          {
-            "id": 110,
-            "type": "VRGDG_PythonCodeRunner",
-            "pos": [
-              -8962.278746393875,
-              -1279.8827247183076
-            ],
-            "size": [
-              347.2505188812869,
-              243.65236001506878
-            ],
-            "flags": {
-              "collapsed": false
-            },
-            "order": 16,
-            "mode": 0,
-            "inputs": [
-              {
-                "localized_name": "input_text",
-                "name": "input_text",
-                "shape": 7,
-                "type": "STRING",
-                "link": 197
-              },
-              {
-                "localized_name": "input_json",
-                "name": "input_json",
-                "shape": 7,
-                "type": "STRING",
-                "link": 206
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "result_text",
-                "name": "result_text",
-                "type": "STRING",
-                "links": [
-                  199,
-                  203,
-                  204
-                ]
-              },
-              {
-                "localized_name": "result_json",
-                "name": "result_json",
-                "type": "STRING",
-                "links": null
-              },
-              {
-                "localized_name": "has_error",
-                "name": "has_error",
-                "type": "BOOLEAN",
-                "links": []
-              }
-            ],
-            "title": "lyric and srt duration merger",
-            "properties": {
-              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-              "Node name for S&R": "VRGDG_PythonCodeRunner",
-              "ue_properties": {
-                "widget_ue_connectable": {},
-                "input_ue_unconnectable": {},
-                "version": "7.5.2"
-              }
-            },
-            "widgets_values": [
-              "import re\nimport json\n\n# ---------- EXTRACT SEGMENTS ----------\ndata = json.loads(input_json)\n\nsegments = [\n    (k, v.replace('\\\\\"', '\"'))\n    for k, v in data.items()\n    if re.match(r\"segment\\d+\", k, re.I)\n]\n\n\n# ---------- PARSE SRT ----------\ndef to_seconds(ts):\n    h, m, s_ms = ts.split(\":\")\n    s, ms = s_ms.split(\",\")\n    return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0\n\n\ntimes = re.findall(\n    r\"(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2},\\d{3})\",\n    input_text\n)\n\ndurations = [round(to_seconds(e)-to_seconds(s), 3) for s, e in times]\n\n\n# ---------- BUILD OUTPUT ----------\nlines = [\"{\"]\n\nfor i, (seg, txt) in enumerate(segments):\n    dur = durations[i] if i < len(durations) else 0.0\n    comma = \",\" if i < len(segments) - 1 else \"\"\n    lines.append(f'  \"{seg}_Duration_{dur:.3f}\": \"{txt}\"{comma}')\n\nlines.append(\"}\")\n\nresult = \"\\n\".join(lines)"
             ]
           },
           {
@@ -7239,6 +7168,148 @@
               1,
               "fixed",
               "undermyskin2"
+            ]
+          },
+          {
+            "id": 110,
+            "type": "VRGDG_PythonCodeRunner",
+            "pos": [
+              -8962.278746393875,
+              -1279.8827247183076
+            ],
+            "size": [
+              347.2505188812869,
+              243.65236001506878
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 16,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "input_text",
+                "name": "input_text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 197
+              },
+              {
+                "localized_name": "input_json",
+                "name": "input_json",
+                "shape": 7,
+                "type": "STRING",
+                "link": 206
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "result_text",
+                "name": "result_text",
+                "type": "STRING",
+                "links": [
+                  199,
+                  203,
+                  204
+                ]
+              },
+              {
+                "localized_name": "result_json",
+                "name": "result_json",
+                "type": "STRING",
+                "links": null
+              },
+              {
+                "localized_name": "has_error",
+                "name": "has_error",
+                "type": "BOOLEAN",
+                "links": []
+              }
+            ],
+            "title": "lyric and srt duration merger",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PythonCodeRunner",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "\n\n# ---------- EXTRACT SEGMENTS ----------\ndata = json.loads(input_json)\n\nsegments = [\n    (k, v.replace('\\\\\"', '\"'))\n    for k, v in data.items()\n    if re.match(r\"segment\\d+\", k, re.I)\n]\n\n\n# ---------- PARSE SRT ----------\ndef to_seconds(ts):\n    h, m, s_ms = ts.split(\":\")\n    s, ms = s_ms.split(\",\")\n    return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0\n\n\ntimes = re.findall(\n    r\"(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2},\\d{3})\",\n    input_text\n)\n\ndurations = [round(to_seconds(e)-to_seconds(s), 3) for s, e in times]\n\n\n# ---------- BUILD OUTPUT ----------\nlines = [\"{\"]\n\nfor i, (seg, txt) in enumerate(segments):\n    dur = durations[i] if i < len(durations) else 0.0\n    comma = \",\" if i < len(segments) - 1 else \"\"\n    lines.append(f'  \"{seg}_Duration_{dur:.3f}\": \"{txt}\"{comma}')\n\nlines.append(\"}\")\n\nresult = \"\\n\".join(lines)"
+            ]
+          },
+          {
+            "id": 111,
+            "type": "VRGDG_PythonCodeRunner",
+            "pos": [
+              -9348.313653354058,
+              -1273.042294364934
+            ],
+            "size": [
+              294.48687853149784,
+              235.48740076000968
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 17,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "input_text",
+                "name": "input_text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 200
+              },
+              {
+                "localized_name": "input_json",
+                "name": "input_json",
+                "shape": 7,
+                "type": "STRING",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "result_text",
+                "name": "result_text",
+                "type": "STRING",
+                "links": [
+                  209
+                ]
+              },
+              {
+                "localized_name": "result_json",
+                "name": "result_json",
+                "type": "STRING",
+                "links": [
+                  206
+                ]
+              },
+              {
+                "localized_name": "has_error",
+                "name": "has_error",
+                "type": "BOOLEAN",
+                "links": []
+              }
+            ],
+            "title": "json format fixer",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PythonCodeRunner",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "\n\ntext = input_text.strip()\n\n# remove markdown fences\ntext = text.replace(\"```json\", \"\").replace(\"```\", \"\")\n\n# remove everything before first segment (segment OR lyricSegment)\nm = re.search(r'\"(?:lyric)?segment\\d+\"', text, re.I)\nif m:\n    text = text[m.start():]\n\n# remove trailing notes/explanations\ntext = re.sub(r\"\\nNote:.*$\", \"\", text, flags=re.I | re.S)\n\nlines = text.splitlines()\nfixed = []\n\nfor line in lines:\n    line = line.strip()\n    if not line:\n        continue\n\n    m = re.match(r'\"((?:lyric)?segment\\d+)\"\\s*:\\s*(.*)', line, re.I)\n    if not m:\n        continue\n\n    key, val = m.groups()\n\n    # normalize lyricSegment -> Segment\n    key = re.sub(r'^lyric(segment\\d+)$', r'\\1', key, flags=re.I)\n\n    # remove trailing commas\n    val = val.rstrip(\",\")\n\n    # unwrap quotes if present\n    if val.startswith('\"') and val.endswith('\"'):\n        val = val[1:-1]\n\n    # escape JSON chars\n    val = val.replace(\"\\\\\", \"\\\\\\\\\")\n    val = val.replace('\"', '\\\\\"')\n\n    fixed.append(f'\"{key}\": \"{val}\"')\n\n# rebuild valid JSON\nresult = \"{\\n\" + \",\\n\".join(fixed) + \"\\n}\""
             ]
           }
         ],
@@ -7799,10 +7870,10 @@
     "VHS_KeepIntermediate": false,
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.5045493917275022,
+      "scale": 0.6105047639902789,
       "offset": [
-        4468.788888431482,
-        -1521.4377592981948
+        4283.162119934287,
+        -1335.6923055694263
       ]
     }
   },
