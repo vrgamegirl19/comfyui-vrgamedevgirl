@@ -676,7 +676,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 134,
+      "order": 132,
       "mode": 0,
       "inputs": [
         {
@@ -1265,7 +1265,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 114,
+      "order": 110,
       "mode": 0,
       "inputs": [
         {
@@ -1311,7 +1311,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 133,
+      "order": 140,
       "mode": 0,
       "inputs": [
         {
@@ -1401,7 +1401,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 110,
+      "order": 106,
       "mode": 0,
       "inputs": [
         {
@@ -4678,7 +4678,7 @@
         58
       ],
       "flags": {},
-      "order": 108,
+      "order": 119,
       "mode": 0,
       "inputs": [
         {
@@ -4731,7 +4731,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 132,
+      "order": 139,
       "mode": 0,
       "inputs": [
         {
@@ -5573,7 +5573,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 138,
+      "order": 136,
       "mode": 0,
       "inputs": [
         {
@@ -5617,7 +5617,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 117,
+      "order": 113,
       "mode": 0,
       "inputs": [
         {
@@ -5716,7 +5716,7 @@
         180
       ],
       "flags": {},
-      "order": 106,
+      "order": 117,
       "mode": 0,
       "inputs": [
         {
@@ -5767,54 +5767,6 @@
       "bgcolor": "#353"
     },
     {
-      "id": 693,
-      "type": "cbeba5cc-5fe4-427d-830a-15e81a7a5f2b",
-      "pos": [
-        1198.8726346322264,
-        5165.97351932194
-      ],
-      "size": [
-        316.64118768523963,
-        46
-      ],
-      "flags": {},
-      "order": 66,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "audio_file_path",
-          "type": "STRING",
-          "links": [
-            1086,
-            1144
-          ]
-        },
-        {
-          "label": "for folder name",
-          "name": "result_text",
-          "type": "STRING",
-          "links": [
-            1085,
-            1145
-          ]
-        }
-      ],
-      "properties": {
-        "proxyWidgets": [],
-        "cnr_id": "comfy-core",
-        "ver": "0.10.0",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#323",
-      "bgcolor": "#535"
-    },
-    {
       "id": 449,
       "type": "PrimitiveInt",
       "pos": [
@@ -5826,7 +5778,7 @@
         82
       ],
       "flags": {},
-      "order": 67,
+      "order": 66,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -5909,7 +5861,7 @@
         102
       ],
       "flags": {},
-      "order": 113,
+      "order": 109,
       "mode": 0,
       "inputs": [
         {
@@ -5975,7 +5927,7 @@
         136.6272217742553
       ],
       "flags": {},
-      "order": 68,
+      "order": 67,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -6008,7 +5960,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 69,
+      "order": 68,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6047,7 +5999,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 135,
+      "order": 133,
       "mode": 0,
       "inputs": [
         {
@@ -6347,7 +6299,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 70,
+      "order": 69,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6388,7 +6340,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 112,
+      "order": 108,
       "mode": 0,
       "inputs": [
         {
@@ -6481,7 +6433,7 @@
         111.7354719617515
       ],
       "flags": {},
-      "order": 71,
+      "order": 70,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -6514,7 +6466,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 72,
+      "order": 71,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6554,7 +6506,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 73,
+      "order": 72,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6647,7 +6599,7 @@
         82
       ],
       "flags": {},
-      "order": 74,
+      "order": 73,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6692,7 +6644,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 115,
+      "order": 111,
       "mode": 0,
       "inputs": [
         {
@@ -6735,7 +6687,7 @@
         82
       ],
       "flags": {},
-      "order": 75,
+      "order": 74,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6780,7 +6732,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 116,
+      "order": 112,
       "mode": 0,
       "inputs": [
         {
@@ -6823,7 +6775,7 @@
         82
       ],
       "flags": {},
-      "order": 76,
+      "order": 75,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6868,7 +6820,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 77,
+      "order": 76,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -6953,7 +6905,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 119,
+      "order": 115,
       "mode": 0,
       "inputs": [
         {
@@ -7021,7 +6973,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 78,
+      "order": 77,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7059,7 +7011,7 @@
         88.31194178827718
       ],
       "flags": {},
-      "order": 136,
+      "order": 134,
       "mode": 0,
       "inputs": [
         {
@@ -7102,7 +7054,7 @@
         76
       ],
       "flags": {},
-      "order": 137,
+      "order": 135,
       "mode": 0,
       "inputs": [
         {
@@ -7145,7 +7097,7 @@
         88
       ],
       "flags": {},
-      "order": 107,
+      "order": 118,
       "mode": 0,
       "inputs": [
         {
@@ -7188,7 +7140,7 @@
         76
       ],
       "flags": {},
-      "order": 109,
+      "order": 120,
       "mode": 0,
       "inputs": [
         {
@@ -7231,7 +7183,7 @@
         557.5574641378471
       ],
       "flags": {},
-      "order": 118,
+      "order": 114,
       "mode": 0,
       "inputs": [
         {
@@ -7275,7 +7227,7 @@
         204
       ],
       "flags": {},
-      "order": 139,
+      "order": 137,
       "mode": 0,
       "inputs": [
         {
@@ -7380,7 +7332,7 @@
         238
       ],
       "flags": {},
-      "order": 79,
+      "order": 78,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7421,7 +7373,7 @@
       "widgets_values": [
         false,
         "Image2Video",
-        "Image2Video_COMBINED.json",
+        "<no files found>",
         0,
         1,
         "",
@@ -7501,7 +7453,7 @@
         266.9755027553124
       ],
       "flags": {},
-      "order": 80,
+      "order": 79,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -7531,7 +7483,7 @@
         250.8949942262252
       ],
       "flags": {},
-      "order": 111,
+      "order": 107,
       "mode": 0,
       "inputs": [
         {
@@ -7550,14 +7502,16 @@
       ],
       "title": "Show Prompt for LTX for this run",
       "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
         "cnr_id": "comfyui-custom-scripts",
         "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss"
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
+      "widgets_values": [],
       "color": "#432",
       "bgcolor": "#653"
     },
@@ -7573,7 +7527,7 @@
         252.22071327701337
       ],
       "flags": {},
-      "order": 140,
+      "order": 138,
       "mode": 0,
       "inputs": [
         {
@@ -7592,14 +7546,16 @@
       ],
       "title": "Nano Prompt for this run",
       "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
         "cnr_id": "comfyui-easy-use",
         "ver": "1.3.5",
-        "Node name for S&R": "easy showAnything"
+        "Node name for S&R": "easy showAnything",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
+      "widgets_values": [],
       "color": "#432",
       "bgcolor": "#653"
     },
@@ -7634,14 +7590,16 @@
       ],
       "title": "READ ME",
       "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
         "cnr_id": "comfyui-custom-scripts",
         "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss"
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
+      "widgets_values": [],
       "color": "#322",
       "bgcolor": "#533"
     },
@@ -7703,7 +7661,7 @@
         892.8412727092045
       ],
       "flags": {},
-      "order": 120,
+      "order": 116,
       "mode": 0,
       "inputs": [
         {
@@ -7747,7 +7705,7 @@
         214
       ],
       "flags": {},
-      "order": 81,
+      "order": 80,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7787,7 +7745,7 @@
       },
       "widgets_values": [
         false,
-        "Text2Image_COMBINED.json",
+        "<no files found>",
         0,
         1,
         "",
@@ -7834,6 +7792,54 @@
       ],
       "color": "#2a363b",
       "bgcolor": "#3f5159"
+    },
+    {
+      "id": 693,
+      "type": "cbeba5cc-5fe4-427d-830a-15e81a7a5f2b",
+      "pos": [
+        1198.8726346322264,
+        5165.97351932194
+      ],
+      "size": [
+        316.64118768523963,
+        46
+      ],
+      "flags": {},
+      "order": 81,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio_file_path",
+          "type": "STRING",
+          "links": [
+            1086,
+            1144
+          ]
+        },
+        {
+          "label": "for folder name",
+          "name": "result_text",
+          "type": "STRING",
+          "links": [
+            1085,
+            1145
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [],
+        "cnr_id": "comfy-core",
+        "ver": "0.10.0",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#323",
+      "bgcolor": "#535"
     }
   ],
   "links": [
@@ -14434,7 +14440,7 @@
               }
             },
             "widgets_values": [
-              "name = os.path.splitext(input_text.strip())[0]\nname = re.sub(r'[^A-Za-z0-9]', '', name)\nresult = name"
+              "name = input_text.strip()\nname = re.sub(r\"\\.[^.]*$\", \"\", name)   # like os.path.splitext(...)[0]\nname = re.sub(r\"[^A-Za-z0-9]\", \"\", name)\nresult = name"
             ]
           }
         ],
@@ -15753,10 +15759,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.6418674776612259,
+      "scale": 0.7766596479700836,
       "offset": [
-        231.7150044842122,
-        -5277.029679171992
+        157.09389243977245,
+        -4802.387039905931
       ]
     }
   },
