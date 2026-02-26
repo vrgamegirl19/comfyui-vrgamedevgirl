@@ -1,9 +1,9 @@
+import ast
 import json
 import math
 import os
 import re
 import shutil
-import ast
 import sys
 import time
 
@@ -1203,6 +1203,59 @@ class VRGDG_PythonCodeRunner:
         except Exception as e:
             return (f"{type(e).__name__}: {e}", "", True)
 
+class VRGDG_LoadLatestCombinedJsonText:
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/General"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        _ensure_combined_files_route_registered()
+
+        all_files = set()
+        for batch_type in (BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO):
+            files, _ = _list_latest_combined_json_files(batch_type)
+            all_files.update(files)
+
+        choices = sorted(all_files, key=str.lower) if all_files else [EMPTY_COMBINED_JSON_OPTION]
+        return {
+            "required": {
+                "batch_type": ([BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO],),
+                "combined_json_file": (choices,),
+            }
+        }
+
+    def run(self, batch_type, combined_json_file):
+        selected = str(combined_json_file or "").strip()
+        if not selected or selected == EMPTY_COMBINED_JSON_OPTION:
+            return ("",)
+
+        batch_type = _normalize_batch_type(batch_type)
+        files, latest_folder = _list_latest_combined_json_files(batch_type)
+        if not latest_folder or selected not in files:
+            return ("",)
+
+        file_path = os.path.join(latest_folder, selected)
+        if not os.path.isfile(file_path):
+            return ("",)
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                raw = f.read()
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding="utf-8-sig") as f:
+                raw = f.read()
+
+        raw = raw or ""
+
+        try:
+            parsed = json.loads(raw)
+            text_out = json.dumps(parsed, ensure_ascii=False, indent=2)
+        except Exception:
+            text_out = raw
+
+        return (text_out,)
 
 
 class VRGDG_UpdateLatestCombinedJsonPrompts:
@@ -1396,9 +1449,7 @@ def _normalize_bool(value):
 
 def _sanitize_text_segment(value, fallback):
     s = str(value or "").strip()
-    # Keep this regex simple and explicit to avoid accidental escape/quote issues
-    # when this file is copied between editors/platforms.
-    s = re.sub(r"[^0-9A-Za-z_ -]+", "_", s)
+    s = re.sub(r"[^A-Za-z0-9_\- ]+", "_", s)
     s = s.strip(" .")
     return s or fallback
 
@@ -1642,6 +1693,38 @@ class VRGDG_LoadTextAdvanced:
                 "text_file": (file_choices,),
             }
         }
+
+    @classmethod
+    def IS_CHANGED(cls, folder_name, use_most_recent, text_file):
+        selected_folder = str(folder_name or "").strip()
+        if not selected_folder or selected_folder == EMPTY_TEXT_FOLDER_OPTION:
+            return "empty-folder"
+
+        files, folder_path, _ = _list_text_files_for_folder(
+            selected_folder,
+            bool(use_most_recent),
+        )
+        if not files:
+            return f"{selected_folder}|no-files"
+
+        if bool(use_most_recent):
+            chosen_name = files[0]
+        else:
+            selected_name = os.path.basename(str(text_file or "").strip())
+            if selected_name in files:
+                chosen_name = selected_name
+            else:
+                return f"{selected_folder}|missing-selection|{selected_name}"
+
+        file_path = os.path.normpath(os.path.join(folder_path, chosen_name))
+        try:
+            stats = os.stat(file_path)
+            return (
+                f"{file_path}|{int(bool(use_most_recent))}|"
+                f"{stats.st_mtime_ns}|{stats.st_size}"
+            )
+        except OSError:
+            return f"{file_path}|missing"
 
     def run(self, folder_name, use_most_recent, text_file):
         selected_folder = str(folder_name or "").strip()
@@ -2084,7 +2167,7 @@ class VRGDG_ArchiveLlmBatchFolders:
 NODE_CLASS_MAPPINGS = {
     "VRGDG_GeneralPromptBatcher": VRGDG_GeneralPromptBatcher,
     "VRGDG_PythonCodeRunner": VRGDG_PythonCodeRunner,
-   # "VRGDG_LoadLatestCombinedJsonText": VRGDG_LoadLatestCombinedJsonText,
+    "VRGDG_LoadLatestCombinedJsonText": VRGDG_LoadLatestCombinedJsonText,
     "VRGDG_UpdateLatestCombinedJsonPrompts": VRGDG_UpdateLatestCombinedJsonPrompts,
     "VRGDG_UpdateLatestCombinedJsonPrompts_zimage": VRGDG_UpdateLatestCombinedJsonPrompts_zimage,
     "VRGDG_SaveText": VRGDG_SaveText,
@@ -2100,7 +2183,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_GeneralPromptBatcher": "VRGDG_GeneralPromptBatcher",
     "VRGDG_PythonCodeRunner": "VRGDG_PythonCodeRunner",
-    #"VRGDG_LoadLatestCombinedJsonText": "VRGDG_LoadLatestCombinedJsonText",
+    "VRGDG_LoadLatestCombinedJsonText": "VRGDG_LoadLatestCombinedJsonText",
     "VRGDG_UpdateLatestCombinedJsonPrompts": "VRGDG_UpdateLatestCombinedJsonPrompts",
     "VRGDG_UpdateLatestCombinedJsonPrompts_zimage": "VRGDG_UpdateLatestCombinedJsonPrompts_zimage",
     "VRGDG_SaveText": "VRGDG_SaveText",
@@ -2112,8 +2195,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
-
-
 
 
 
