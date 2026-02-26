@@ -2335,8 +2335,16 @@ class BeatImpactAnalysisNode:
                 "impact": round(float(impact), 4)
             })
 
+        # librosa may return tempo as a scalar or a 1-element ndarray depending on version.
+        # Keep old behavior for scalar tempos and safely fall back for ndarray tempos.
+        try:
+            tempo_value = float(tempo)
+        except (TypeError, ValueError):
+            tempo_arr = np.asarray(tempo).reshape(-1)
+            tempo_value = float(tempo_arr[0]) if tempo_arr.size else 0.0
+
         output = {
-            "bpm": round(float(tempo), 2),
+            "bpm": round(tempo_value, 2),
             "source_used_for_beats": source_used,
             "duration": float(len(y_mix) / sr),
             "beats": beats
@@ -3000,6 +3008,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 
 }
+
 
 
 
