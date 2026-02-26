@@ -1,7 +1,7 @@
 {
   "id": "5b16547e-e621-4a5c-ad73-0712842d482e",
   "revision": 0,
-  "last_node_id": 214,
+  "last_node_id": 217,
   "last_link_id": 251,
   "nodes": [
     {
@@ -270,7 +270,7 @@
         130
       ],
       "flags": {},
-      "order": 87,
+      "order": 90,
       "mode": 2,
       "inputs": [
         {
@@ -523,7 +523,7 @@
         150
       ],
       "flags": {},
-      "order": 88,
+      "order": 91,
       "mode": 0,
       "inputs": [
         {
@@ -585,7 +585,7 @@
         150
       ],
       "flags": {},
-      "order": 90,
+      "order": 93,
       "mode": 0,
       "inputs": [
         {
@@ -647,7 +647,7 @@
         150
       ],
       "flags": {},
-      "order": 84,
+      "order": 87,
       "mode": 0,
       "inputs": [
         {
@@ -711,7 +711,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 58,
+      "order": 61,
       "mode": 2,
       "inputs": [
         {
@@ -763,7 +763,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 70,
+      "order": 73,
       "mode": 0,
       "inputs": [
         {
@@ -810,7 +810,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 95,
+      "order": 98,
       "mode": 0,
       "inputs": [
         {
@@ -857,7 +857,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 89,
+      "order": 92,
       "mode": 0,
       "inputs": [
         {
@@ -904,7 +904,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 77,
+      "order": 80,
       "mode": 0,
       "inputs": [
         {
@@ -951,7 +951,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 92,
+      "order": 95,
       "mode": 2,
       "inputs": [
         {
@@ -1028,7 +1028,7 @@
         130
       ],
       "flags": {},
-      "order": 98,
+      "order": 101,
       "mode": 2,
       "inputs": [
         {
@@ -1154,7 +1154,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 55,
+      "order": 58,
       "mode": 2,
       "inputs": [
         {
@@ -1268,7 +1268,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 49,
+      "order": 52,
       "mode": 2,
       "inputs": [
         {
@@ -1318,7 +1318,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 72,
+      "order": 75,
       "mode": 2,
       "inputs": [
         {
@@ -1421,7 +1421,7 @@
         150
       ],
       "flags": {},
-      "order": 51,
+      "order": 54,
       "mode": 0,
       "inputs": [
         {
@@ -1571,7 +1571,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 78,
+      "order": 81,
       "mode": 0,
       "inputs": [
         {
@@ -1618,7 +1618,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 79,
+      "order": 82,
       "mode": 0,
       "inputs": [
         {
@@ -1663,7 +1663,7 @@
         150
       ],
       "flags": {},
-      "order": 65,
+      "order": 68,
       "mode": 0,
       "inputs": [
         {
@@ -1725,7 +1725,7 @@
         150
       ],
       "flags": {},
-      "order": 66,
+      "order": 69,
       "mode": 0,
       "inputs": [
         {
@@ -1787,7 +1787,7 @@
         150
       ],
       "flags": {},
-      "order": 67,
+      "order": 70,
       "mode": 0,
       "inputs": [
         {
@@ -1849,7 +1849,7 @@
         250
       ],
       "flags": {},
-      "order": 73,
+      "order": 76,
       "mode": 2,
       "inputs": [
         {
@@ -1966,7 +1966,7 @@
         26
       ],
       "flags": {},
-      "order": 52,
+      "order": 55,
       "mode": 2,
       "inputs": [
         {
@@ -2157,7 +2157,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 48,
+      "order": 51,
       "mode": 4,
       "inputs": [
         {
@@ -2212,7 +2212,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 76,
+      "order": 79,
       "mode": 0,
       "inputs": [
         {
@@ -2278,7 +2278,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 47,
+      "order": 50,
       "mode": 0,
       "inputs": [
         {
@@ -2561,7 +2561,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 74,
+      "order": 77,
       "mode": 0,
       "inputs": [
         {
@@ -2627,7 +2627,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 54,
+      "order": 57,
       "mode": 2,
       "inputs": [
         {
@@ -2679,7 +2679,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 71,
+      "order": 74,
       "mode": 2,
       "inputs": [
         {
@@ -2729,7 +2729,7 @@
         102
       ],
       "flags": {},
-      "order": 50,
+      "order": 53,
       "mode": 0,
       "inputs": [
         {
@@ -3056,7 +3056,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 82,
+      "order": 85,
       "mode": 2,
       "inputs": [
         {
@@ -3306,7 +3306,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 86,
+      "order": 89,
       "mode": 2,
       "inputs": [
         {
@@ -3359,7 +3359,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 62,
+      "order": 65,
       "mode": 2,
       "inputs": [
         {
@@ -3433,7 +3433,7 @@
         254
       ],
       "flags": {},
-      "order": 80,
+      "order": 83,
       "mode": 2,
       "inputs": [
         {
@@ -3537,7 +3537,7 @@
         85.39681605580745
       ],
       "flags": {},
-      "order": 91,
+      "order": 94,
       "mode": 0,
       "inputs": [
         {
@@ -3595,7 +3595,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 97,
+      "order": 100,
       "mode": 0,
       "inputs": [
         {
@@ -3640,7 +3640,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 96,
+      "order": 99,
       "mode": 0,
       "inputs": [
         {
@@ -3708,7 +3708,7 @@
       },
       "widgets_values": [
         "Text2Image",
-        "Text2Image_COMBINED.json",
+        "<no files found>",
         null
       ],
       "color": "#223",
@@ -3873,7 +3873,7 @@
         76
       ],
       "flags": {},
-      "order": 68,
+      "order": 71,
       "mode": 0,
       "inputs": [
         {
@@ -3916,7 +3916,7 @@
         76
       ],
       "flags": {},
-      "order": 69,
+      "order": 72,
       "mode": 0,
       "inputs": [
         {
@@ -3959,7 +3959,7 @@
         1311.8603585601304
       ],
       "flags": {},
-      "order": 83,
+      "order": 86,
       "mode": 0,
       "inputs": [
         {
@@ -4005,7 +4005,7 @@
         403.22620272186896
       ],
       "flags": {},
-      "order": 75,
+      "order": 78,
       "mode": 0,
       "inputs": [
         {
@@ -4051,7 +4051,7 @@
         1469.057966280012
       ],
       "flags": {},
-      "order": 85,
+      "order": 88,
       "mode": 0,
       "inputs": [
         {
@@ -4100,7 +4100,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 94,
+      "order": 97,
       "mode": 0,
       "inputs": [
         {
@@ -4145,7 +4145,7 @@
         844.2601901066396
       ],
       "flags": {},
-      "order": 53,
+      "order": 56,
       "mode": 2,
       "inputs": [
         {
@@ -4188,7 +4188,7 @@
         812.3445979125577
       ],
       "flags": {},
-      "order": 56,
+      "order": 59,
       "mode": 2,
       "inputs": [
         {
@@ -4231,7 +4231,7 @@
         808.951193120964
       ],
       "flags": {},
-      "order": 81,
+      "order": 84,
       "mode": 2,
       "inputs": [
         {
@@ -4274,7 +4274,7 @@
         620.4055743143182
       ],
       "flags": {},
-      "order": 99,
+      "order": 102,
       "mode": 2,
       "inputs": [
         {
@@ -4306,49 +4306,6 @@
       "bgcolor": "#355"
     },
     {
-      "id": 209,
-      "type": "ShowText|pysssss",
-      "pos": [
-        1866.672661414661,
-        2117.9057992212774
-      ],
-      "size": [
-        441.53102604446667,
-        440.3259654166559
-      ],
-      "flags": {},
-      "order": 59,
-      "mode": 2,
-      "inputs": [
-        {
-          "name": "text",
-          "type": "STRING",
-          "link": 246
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "shape": 6,
-          "type": "STRING",
-          "links": null
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfyui-custom-scripts",
-        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
-        "Node name for S&R": "ShowText|pysssss",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
       "id": 210,
       "type": "ShowText|pysssss",
       "pos": [
@@ -4360,7 +4317,7 @@
         171.53363541426734
       ],
       "flags": {},
-      "order": 60,
+      "order": 63,
       "mode": 2,
       "inputs": [
         {
@@ -4403,7 +4360,7 @@
         206.98597087429016
       ],
       "flags": {},
-      "order": 61,
+      "order": 64,
       "mode": 2,
       "inputs": [
         {
@@ -4446,7 +4403,7 @@
         311.3353695301312
       ],
       "flags": {},
-      "order": 63,
+      "order": 66,
       "mode": 2,
       "inputs": [
         {
@@ -4489,7 +4446,7 @@
         1780.201335801953
       ],
       "flags": {},
-      "order": 93,
+      "order": 96,
       "mode": 2,
       "inputs": [
         {
@@ -4532,7 +4489,7 @@
         100.37552893711063
       ],
       "flags": {},
-      "order": 57,
+      "order": 60,
       "mode": 0,
       "inputs": [
         {
@@ -4565,6 +4522,190 @@
       "bgcolor": "#353"
     },
     {
+      "id": 70,
+      "type": "Note",
+      "pos": [
+        -2601.9151362407856,
+        2832.6299951917026
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 41,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Subjects",
+      "properties": {
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Put your subjects here and scenes if using scenes as ref images:"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 69,
+      "type": "Text Multiline",
+      "pos": [
+        -2366.8268863227836,
+        2826.7071345134327
+      ],
+      "size": [
+        364.69033812079283,
+        345.1117214642841
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            68,
+            127
+          ]
+        }
+      ],
+      "title": "Subjects and scenes",
+      "properties": {
+        "cnr_id": "was-node-suite-comfyui",
+        "ver": "1.0.2",
+        "Node name for S&R": "Text Multiline",
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Subjects: \n\n\nFemale Character\nLight brown hair, Green eyes and a fair complexion with faint freckles.\n\nShe wears a black satin slip with thin straps.\n\nScenes/Locations\n1. Inside the White Marble Fountain\n\nEmotional State: Immersion / Confession / Memory\n\nThis is the emotional core.\nShe stands in the basin wearing the black silk dress, water moving slowly around her. The white marble feels monumental and timeless, glowing differently as the day shifts from sunlight to gold to blue to silver night.\n\nThe fountain represents what “keeps it all.”\nIt absorbs her words.\nIt reflects the sky.\nIt becomes warmer at golden hour, ghostlike at twilight, and celestial under stars.\n\nBy night, the water reflects constellations — turning the basin into a pool of sky. This is where the transformation and final surrender happen.\n\n2. The Field in Front of the Fountain\n\nEmotional State: Distance / Smallness / Attempted Escape\n\nShe lies in the grass about ten feet away.\nThe fountain remains centered behind her — always present, always watching. The horizon is wide and open, making her appear small against the landscape.\n\nAs the light changes, the field shifts from warm and expansive to cool and isolating. Even outside the fountain, she is still emotionally “inside it.” The separation is physical, not spiritual.\n"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 144,
+      "type": "Text Multiline",
+      "pos": [
+        -2367.1415723934488,
+        3224.406304248875
+      ],
+      "size": [
+        345.45794544611886,
+        198.6364486361531
+      ],
+      "flags": {},
+      "order": 43,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            174
+          ]
+        }
+      ],
+      "title": "Text to image notes",
+      "properties": {
+        "cnr_id": "was-node-suite-comfyui",
+        "ver": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
+        "Node name for S&R": "Text Multiline",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "Other notes and reminders: \nWhen the character/subject is mentioned we need to describe them just like the prompt specifies in the \"Subject\" \nIf it does not specify use the below: \n\nLight brown hair, Green eyes and a fair complexion with faint freckles.\n\nShe wears a black satin slip with thin straps.\n\nAlawys use the same image color style and asthetic in every prompt. Never say fade to black or fade.\n\nReminder: Each prompt is fully standalone. Never reference previous prompts. No phrases like “the same woman”, or “from earlier.” The current image has no memory of the the others and must be fully standalone.  \n"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 152,
+      "type": "Text Multiline",
+      "pos": [
+        -2354.1829051979707,
+        3474.394200294612
+      ],
+      "size": [
+        825.1801070904819,
+        277.97034616907104
+      ],
+      "flags": {},
+      "order": 44,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            184
+          ]
+        }
+      ],
+      "title": "Image to video notes",
+      "properties": {
+        "cnr_id": "was-node-suite-comfyui",
+        "ver": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
+        "Node name for S&R": "Text Multiline",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "Other notes and reminders: \nWhen a character is mentioned we need to describe them just like the prompt specifies in the text to image prompt. \nIf it does not specify use the below: \n\nThe women: \nLight brown hair, Green eyes and a fair complexion with faint freckles.\n\nThe background and scene must always be fully described from the text to image prompt.\n\nAlawys use the same image color style and asthetic in every prompt. Never say fade to black or fade.\n\nReminder: Each prompt is fully standalone. Never reference previous prompts. No phrases like “the same woman”, or “from earlier.” The current image has no memory of the the others and must be fully standalone.  \n\nPropmt requirement: \nIn every scene where the female character is mentioned, the image-to-video prompt must include wording such as “As she sings with passion,” “While she sings with passion,” or similar phrasing. (NOT JUST MOUTH MOVEMENT) she is physically singing! This verbigae must come right after we descrbie the character, early in the prompt. Not later. Example prompt structure to show where the singing should be placed.\nA [shot type] cinematic shot in/on/at [location] during [time of day] reveals a [age] [gender] with [hair description], [eye/color detail if needed], wearing [clothing description]. Singing with passion, [facial micro-expression details] as [secondary subtle action or movement], while [lighting style/source] casts [shadow/contrast description] across their face. The camera [camera behavior], [additional movement if needed], enhancing the [tone / atmosphere].\n\nEven if the prompt does not mention her face, this must be followed.  If the character is NOT mentioned then we do NOT need to follow this rule. "
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 61,
+      "type": "MarkdownNote",
+      "pos": [
+        -2982.110736130286,
+        1890.8792831153792
+      ],
+      "size": [
+        334.04032811081606,
+        266.9755027553124
+      ],
+      "flags": {},
+      "order": 45,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WALK THROUGH VIDOE",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Full Workflow Walkthrough Video\n\nThis video walks through the complete Nano Banana process  \nfrom start to finish using a real video project.\n\n\n\n### 🎬 Walkthrough Videos\n\n-Very fast overview - watch this first\n🔗 [Watch the Video](https://youtu.be/59td11uqlkY)\n\n-Nano banana one that is pretty much the same, tiny small differences, watch this one for more details.\n🔗 [Watch the Video](https://youtu.be/06bPil9vrPk)\n\nShows full setup, prompt workflow, reference image usage,\nand the exact process used to produce the final result.\n\n\n"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
       "id": 28,
       "type": "b628ba4c-455d-4afa-ab26-31aecee2a895",
       "pos": [
@@ -4578,7 +4719,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 64,
+      "order": 67,
       "mode": 0,
       "inputs": [
         {
@@ -4757,158 +4898,116 @@
       "bgcolor": "#3f5159"
     },
     {
-      "id": 70,
+      "id": 215,
       "type": "Note",
       "pos": [
-        -2601.9151362407856,
-        2832.6299951917026
+        724.810004145871,
+        2066.9731374239873
       ],
       "size": [
-        210,
-        88
+        211.01706220767346,
+        238.3557271456557
       ],
       "flags": {},
-      "order": 41,
-      "mode": 0,
+      "order": 46,
+      "mode": 2,
       "inputs": [],
       "outputs": [],
-      "title": "Subjects",
-      "properties": {
-        "ue_properties": {
-          "version": "7.5.2",
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        }
-      },
+      "properties": {},
       "widgets_values": [
-        "Put your subjects here and scenes if using scenes as ref images:"
+        "Make sure the Load Text Advanced nodes look like this\n\nfirst one should be\nthemestyle\n\n2nd one should be \nstorygroups\n\nthe one at the very bottom should be \nt2iNotes\n\nif they are not, then use the drop down in the folder name and choose the right one please. "
       ],
       "color": "#432",
       "bgcolor": "#653"
     },
     {
-      "id": 69,
-      "type": "Text Multiline",
+      "id": 209,
+      "type": "ShowText|pysssss",
       "pos": [
-        -2366.8268863227836,
-        2826.7071345134327
+        1872.628984527678,
+        2132.796607003826
       ],
       "size": [
-        364.69033812079283,
-        345.1117214642841
+        441.53102604446667,
+        440.3259654166559
       ],
       "flags": {},
-      "order": 42,
-      "mode": 0,
-      "inputs": [],
+      "order": 62,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 246
+        }
+      ],
       "outputs": [
         {
           "name": "STRING",
+          "shape": 6,
           "type": "STRING",
-          "links": [
-            68,
-            127
-          ]
+          "links": null
         }
       ],
-      "title": "Subjects and scenes",
       "properties": {
-        "cnr_id": "was-node-suite-comfyui",
-        "ver": "1.0.2",
-        "Node name for S&R": "Text Multiline",
-        "ue_properties": {
-          "version": "7.5.2",
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "Subjects: \n\n\nFemale Character\nLight brown hair, Green eyes and a fair complexion with faint freckles.\n\nShe wears a black satin slip with thin straps.\n\nScenes/Locations\n1. Inside the White Marble Fountain\n\nEmotional State: Immersion / Confession / Memory\n\nThis is the emotional core.\nShe stands in the basin wearing the black silk dress, water moving slowly around her. The white marble feels monumental and timeless, glowing differently as the day shifts from sunlight to gold to blue to silver night.\n\nThe fountain represents what “keeps it all.”\nIt absorbs her words.\nIt reflects the sky.\nIt becomes warmer at golden hour, ghostlike at twilight, and celestial under stars.\n\nBy night, the water reflects constellations — turning the basin into a pool of sky. This is where the transformation and final surrender happen.\n\n2. The Field in Front of the Fountain\n\nEmotional State: Distance / Smallness / Attempted Escape\n\nShe lies in the grass about ten feet away.\nThe fountain remains centered behind her — always present, always watching. The horizon is wide and open, making her appear small against the landscape.\n\nAs the light changes, the field shifts from warm and expansive to cool and isolating. Even outside the fountain, she is still emotionally “inside it.” The separation is physical, not spiritual.\n"
-      ],
-      "color": "#223",
-      "bgcolor": "#335"
-    },
-    {
-      "id": 144,
-      "type": "Text Multiline",
-      "pos": [
-        -2367.1415723934488,
-        3224.406304248875
-      ],
-      "size": [
-        345.45794544611886,
-        198.6364486361531
-      ],
-      "flags": {},
-      "order": 43,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            174
-          ]
-        }
-      ],
-      "title": "Text to image notes",
-      "properties": {
-        "cnr_id": "was-node-suite-comfyui",
-        "ver": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
-        "Node name for S&R": "Text Multiline",
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "Other notes and reminders: \nWhen the character/subject is mentioned we need to describe them just like the prompt specifies in the \"Subject\" \nIf it does not specify use the below: \n\nLight brown hair, Green eyes and a fair complexion with faint freckles.\n\nShe wears a black satin slip with thin straps.\n\nAlawys use the same image color style and asthetic in every prompt. Never say fade to black or fade.\n\nReminder: Each prompt is fully standalone. Never reference previous prompts. No phrases like “the same woman”, or “from earlier.” The current image has no memory of the the others and must be fully standalone.  \n"
-      ],
+      "widgets_values": [],
       "color": "#223",
       "bgcolor": "#335"
     },
     {
-      "id": 152,
-      "type": "Text Multiline",
+      "id": 216,
+      "type": "Note",
       "pos": [
-        -2354.1829051979707,
-        3474.394200294612
+        1898.924335757037,
+        3551.089503749641
       ],
       "size": [
-        825.1801070904819,
-        277.97034616907104
+        211.01706220767346,
+        238.3557271456557
       ],
       "flags": {},
-      "order": 44,
+      "order": 47,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Make sure the Load Text Advanced nodes look like this\n\nfirst one should be\nstoryconcept\n\n2nd one should be \ni2vnotes\n\nthe one at the very bottom should be \nthemestyle\n\nif they are not, then use the drop down in the folder name and choose the right one please. "
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 217,
+      "type": "Note",
+      "pos": [
+        1872.0424001941788,
+        1714.8754366875055
+      ],
+      "size": [
+        303.07556452005065,
+        88
+      ],
+      "flags": {},
+      "order": 48,
       "mode": 0,
       "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            184
-          ]
-        }
-      ],
-      "title": "Image to video notes",
-      "properties": {
-        "cnr_id": "was-node-suite-comfyui",
-        "ver": "ea935d1044ae5a26efa54ebeb18fe9020af49a45",
-        "Node name for S&R": "Text Multiline",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
+      "outputs": [],
+      "properties": {},
       "widgets_values": [
-        "Other notes and reminders: \nWhen a character is mentioned we need to describe them just like the prompt specifies in the text to image prompt. \nIf it does not specify use the below: \n\nThe women: \nLight brown hair, Green eyes and a fair complexion with faint freckles.\n\nThe background and scene must always be fully described from the text to image prompt.\n\nAlawys use the same image color style and asthetic in every prompt. Never say fade to black or fade.\n\nReminder: Each prompt is fully standalone. Never reference previous prompts. No phrases like “the same woman”, or “from earlier.” The current image has no memory of the the others and must be fully standalone.  \n\nPropmt requirement: \nIn every scene where the female character is mentioned, the image-to-video prompt must include wording such as “As she sings with passion,” “While she sings with passion,” or similar phrasing. (NOT JUST MOUTH MOVEMENT) she is physically singing! This verbigae must come right after we descrbie the character, early in the prompt. Not later. Example prompt structure to show where the singing should be placed.\nA [shot type] cinematic shot in/on/at [location] during [time of day] reveals a [age] [gender] with [hair description], [eye/color detail if needed], wearing [clothing description]. Singing with passion, [facial micro-expression details] as [secondary subtle action or movement], while [lighting style/source] casts [shadow/contrast description] across their face. The camera [camera behavior], [additional movement if needed], enhancing the [tone / atmosphere].\n\nEven if the prompt does not mention her face, this must be followed.  If the character is NOT mentioned then we do NOT need to follow this rule. "
+        "if the combined json file says no files found you must press the refresh files button"
       ],
-      "color": "#223",
-      "bgcolor": "#335"
+      "color": "#432",
+      "bgcolor": "#653"
     },
     {
       "id": 45,
@@ -4922,7 +5021,7 @@
         154
       ],
       "flags": {},
-      "order": 45,
+      "order": 49,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -4946,36 +5045,6 @@
           "version": "7.5.2"
         }
       },
-      "color": "#232",
-      "bgcolor": "#353"
-    },
-    {
-      "id": 61,
-      "type": "MarkdownNote",
-      "pos": [
-        -2982.110736130286,
-        1890.8792831153792
-      ],
-      "size": [
-        334.04032811081606,
-        266.9755027553124
-      ],
-      "flags": {},
-      "order": 46,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "WALK THROUGH VIDOE",
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.5.2",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "# Full Workflow Walkthrough Video\n\nThis video walks through the complete Nano Banana process  \nfrom start to finish using a real video project.\n\n\n\n### 🎬 Walkthrough Videos\n\n-Very fast overview - watch this first\n🔗 [Watch the Video](https://youtu.be/59td11uqlkY)\n\n-Nano banana one that is pretty much the same, tiny small differences, watch this one for more details.\n🔗 [Watch the Video](https://youtu.be/06bPil9vrPk)\n\nShows full setup, prompt workflow, reference image usage,\nand the exact process used to produce the final result.\n\n\n"
-      ],
       "color": "#232",
       "bgcolor": "#353"
     }
@@ -6753,77 +6822,6 @@
             ]
           },
           {
-            "id": 111,
-            "type": "VRGDG_PythonCodeRunner",
-            "pos": [
-              -9348.313653354058,
-              -1273.042294364934
-            ],
-            "size": [
-              294.48687853149784,
-              235.48740076000968
-            ],
-            "flags": {
-              "collapsed": false
-            },
-            "order": 17,
-            "mode": 0,
-            "inputs": [
-              {
-                "localized_name": "input_text",
-                "name": "input_text",
-                "shape": 7,
-                "type": "STRING",
-                "link": 200
-              },
-              {
-                "localized_name": "input_json",
-                "name": "input_json",
-                "shape": 7,
-                "type": "STRING",
-                "link": null
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "result_text",
-                "name": "result_text",
-                "type": "STRING",
-                "links": [
-                  209
-                ]
-              },
-              {
-                "localized_name": "result_json",
-                "name": "result_json",
-                "type": "STRING",
-                "links": [
-                  206
-                ]
-              },
-              {
-                "localized_name": "has_error",
-                "name": "has_error",
-                "type": "BOOLEAN",
-                "links": []
-              }
-            ],
-            "title": "json format fixer",
-            "properties": {
-              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-              "Node name for S&R": "VRGDG_PythonCodeRunner",
-              "ue_properties": {
-                "widget_ue_connectable": {},
-                "input_ue_unconnectable": {},
-                "version": "7.5.2"
-              }
-            },
-            "widgets_values": [
-              "import re\n\ntext = input_text.strip()\n\n# remove markdown fences\ntext = text.replace(\"```json\", \"\").replace(\"```\", \"\")\n\n# remove everything before first segment (segment OR lyricSegment)\nm = re.search(r'\"(?:lyric)?segment\\d+\"', text, re.I)\nif m:\n    text = text[m.start():]\n\n# remove trailing notes/explanations\ntext = re.sub(r\"\\nNote:.*$\", \"\", text, flags=re.I | re.S)\n\nlines = text.splitlines()\nfixed = []\n\nfor line in lines:\n    line = line.strip()\n    if not line:\n        continue\n\n    m = re.match(r'\"((?:lyric)?segment\\d+)\"\\s*:\\s*(.*)', line, re.I)\n    if not m:\n        continue\n\n    key, val = m.groups()\n\n    # normalize lyricSegment -> Segment\n    key = re.sub(r'^lyric(segment\\d+)$', r'\\1', key, flags=re.I)\n\n    # remove trailing commas\n    val = val.rstrip(\",\")\n\n    # unwrap quotes if present\n    if val.startswith('\"') and val.endswith('\"'):\n        val = val[1:-1]\n\n    # escape JSON chars\n    val = val.replace(\"\\\\\", \"\\\\\\\\\")\n    val = val.replace('\"', '\\\\\"')\n\n    fixed.append(f'\"{key}\": \"{val}\"')\n\n# rebuild valid JSON\nresult = \"{\\n\" + \",\\n\".join(fixed) + \"\\n}\""
-            ]
-          },
-          {
             "id": 113,
             "type": "ShowText|pysssss",
             "pos": [
@@ -6911,77 +6909,6 @@
             },
             "widgets_values": [
               "# Lyrics to fix: (35 segments)\n\nlyricSegment1=you\nlyricSegment2=Water moving slow around\nlyricSegment3=me black silk in the fading light\nlyricSegment4=you\nlyricSegment5=No one here\nlyricSegment6=Here's the words I'm slaying Just the stolen\nlyricSegment7=Open sky\nlyricSegment8=Where it stands  it keeps it on\nlyricSegment9=Every whisper  every fo\nlyricSegment10=I can lie out in the field Still it knows the things I\nlyricSegment11=I feel\nlyricSegment12=Mmm\nlyricSegment13=you\nlyricSegment14=Golden hour turns to blue.\nlyricSegment15=oooioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioioio\nlyricSegment16=Fading into\nlyricSegment17=From a distance I look small\nlyricSegment18=But I'm still inside it all\nlyricSegment19=Where it stands at home\nlyricSegment20=my heart every end and every start\nlyricSegment21=I let it be.\nlyricSegment22=Remembering\nlyricSegment23=me.\nlyricSegment24=you\nlyricSegment25=Bye.\nlyricSegment26=Eeeeiooolooloolooloolololololololololololololololololololololo\nlyricSegment27=Hi.\nlyricSegment28=Marble  silver  and I'm...\nlyricSegment29=I'm holding\nlyricSegment30=organ\nlyricSegment31=Oh.\nlyricSegment32=day\nlyricSegment33=you\nlyricSegment34=you\nlyricSegment35=Thank you."
-            ]
-          },
-          {
-            "id": 110,
-            "type": "VRGDG_PythonCodeRunner",
-            "pos": [
-              -8962.278746393875,
-              -1279.8827247183076
-            ],
-            "size": [
-              347.2505188812869,
-              243.65236001506878
-            ],
-            "flags": {
-              "collapsed": false
-            },
-            "order": 16,
-            "mode": 0,
-            "inputs": [
-              {
-                "localized_name": "input_text",
-                "name": "input_text",
-                "shape": 7,
-                "type": "STRING",
-                "link": 197
-              },
-              {
-                "localized_name": "input_json",
-                "name": "input_json",
-                "shape": 7,
-                "type": "STRING",
-                "link": 206
-              }
-            ],
-            "outputs": [
-              {
-                "localized_name": "result_text",
-                "name": "result_text",
-                "type": "STRING",
-                "links": [
-                  199,
-                  203,
-                  204
-                ]
-              },
-              {
-                "localized_name": "result_json",
-                "name": "result_json",
-                "type": "STRING",
-                "links": null
-              },
-              {
-                "localized_name": "has_error",
-                "name": "has_error",
-                "type": "BOOLEAN",
-                "links": []
-              }
-            ],
-            "title": "lyric and srt duration merger",
-            "properties": {
-              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-              "Node name for S&R": "VRGDG_PythonCodeRunner",
-              "ue_properties": {
-                "widget_ue_connectable": {},
-                "input_ue_unconnectable": {},
-                "version": "7.5.2"
-              }
-            },
-            "widgets_values": [
-              "import re\nimport json\n\n# ---------- EXTRACT SEGMENTS ----------\ndata = json.loads(input_json)\n\nsegments = [\n    (k, v.replace('\\\\\"', '\"'))\n    for k, v in data.items()\n    if re.match(r\"segment\\d+\", k, re.I)\n]\n\n\n# ---------- PARSE SRT ----------\ndef to_seconds(ts):\n    h, m, s_ms = ts.split(\":\")\n    s, ms = s_ms.split(\",\")\n    return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0\n\n\ntimes = re.findall(\n    r\"(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2},\\d{3})\",\n    input_text\n)\n\ndurations = [round(to_seconds(e)-to_seconds(s), 3) for s, e in times]\n\n\n# ---------- BUILD OUTPUT ----------\nlines = [\"{\"]\n\nfor i, (seg, txt) in enumerate(segments):\n    dur = durations[i] if i < len(durations) else 0.0\n    comma = \",\" if i < len(segments) - 1 else \"\"\n    lines.append(f'  \"{seg}_Duration_{dur:.3f}\": \"{txt}\"{comma}')\n\nlines.append(\"}\")\n\nresult = \"\\n\".join(lines)"
             ]
           },
           {
@@ -7239,6 +7166,148 @@
               2,
               "fixed",
               "undermyskin2"
+            ]
+          },
+          {
+            "id": 110,
+            "type": "VRGDG_PythonCodeRunner",
+            "pos": [
+              -8962.278746393875,
+              -1279.8827247183076
+            ],
+            "size": [
+              347.2505188812869,
+              243.65236001506878
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 16,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "input_text",
+                "name": "input_text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 197
+              },
+              {
+                "localized_name": "input_json",
+                "name": "input_json",
+                "shape": 7,
+                "type": "STRING",
+                "link": 206
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "result_text",
+                "name": "result_text",
+                "type": "STRING",
+                "links": [
+                  199,
+                  203,
+                  204
+                ]
+              },
+              {
+                "localized_name": "result_json",
+                "name": "result_json",
+                "type": "STRING",
+                "links": null
+              },
+              {
+                "localized_name": "has_error",
+                "name": "has_error",
+                "type": "BOOLEAN",
+                "links": []
+              }
+            ],
+            "title": "lyric and srt duration merger",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PythonCodeRunner",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "\n\n# ---------- EXTRACT SEGMENTS ----------\ndata = json.loads(input_json)\n\nsegments = [\n    (k, v.replace('\\\\\"', '\"'))\n    for k, v in data.items()\n    if re.match(r\"segment\\d+\", k, re.I)\n]\n\n\n# ---------- PARSE SRT ----------\ndef to_seconds(ts):\n    h, m, s_ms = ts.split(\":\")\n    s, ms = s_ms.split(\",\")\n    return int(h)*3600 + int(m)*60 + int(s) + int(ms)/1000.0\n\n\ntimes = re.findall(\n    r\"(\\d{2}:\\d{2}:\\d{2},\\d{3})\\s*-->\\s*(\\d{2}:\\d{2}:\\d{2},\\d{3})\",\n    input_text\n)\n\ndurations = [round(to_seconds(e)-to_seconds(s), 3) for s, e in times]\n\n\n# ---------- BUILD OUTPUT ----------\nlines = [\"{\"]\n\nfor i, (seg, txt) in enumerate(segments):\n    dur = durations[i] if i < len(durations) else 0.0\n    comma = \",\" if i < len(segments) - 1 else \"\"\n    lines.append(f'  \"{seg}_Duration_{dur:.3f}\": \"{txt}\"{comma}')\n\nlines.append(\"}\")\n\nresult = \"\\n\".join(lines)"
+            ]
+          },
+          {
+            "id": 111,
+            "type": "VRGDG_PythonCodeRunner",
+            "pos": [
+              -9348.313653354058,
+              -1273.042294364934
+            ],
+            "size": [
+              294.48687853149784,
+              235.48740076000968
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 17,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "input_text",
+                "name": "input_text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 200
+              },
+              {
+                "localized_name": "input_json",
+                "name": "input_json",
+                "shape": 7,
+                "type": "STRING",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "result_text",
+                "name": "result_text",
+                "type": "STRING",
+                "links": [
+                  209
+                ]
+              },
+              {
+                "localized_name": "result_json",
+                "name": "result_json",
+                "type": "STRING",
+                "links": [
+                  206
+                ]
+              },
+              {
+                "localized_name": "has_error",
+                "name": "has_error",
+                "type": "BOOLEAN",
+                "links": []
+              }
+            ],
+            "title": "json format fixer",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PythonCodeRunner",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "\n\ntext = input_text.strip()\n\n# remove markdown fences\ntext = text.replace(\"```json\", \"\").replace(\"```\", \"\")\n\n# remove everything before first segment (segment OR lyricSegment)\nm = re.search(r'\"(?:lyric)?segment\\d+\"', text, re.I)\nif m:\n    text = text[m.start():]\n\n# remove trailing notes/explanations\ntext = re.sub(r\"\\nNote:.*$\", \"\", text, flags=re.I | re.S)\n\nlines = text.splitlines()\nfixed = []\n\nfor line in lines:\n    line = line.strip()\n    if not line:\n        continue\n\n    m = re.match(r'\"((?:lyric)?segment\\d+)\"\\s*:\\s*(.*)', line, re.I)\n    if not m:\n        continue\n\n    key, val = m.groups()\n\n    # normalize lyricSegment -> Segment\n    key = re.sub(r'^lyric(segment\\d+)$', r'\\1', key, flags=re.I)\n\n    # remove trailing commas\n    val = val.rstrip(\",\")\n\n    # unwrap quotes if present\n    if val.startswith('\"') and val.endswith('\"'):\n        val = val[1:-1]\n\n    # escape JSON chars\n    val = val.replace(\"\\\\\", \"\\\\\\\\\")\n    val = val.replace('\"', '\\\\\"')\n\n    fixed.append(f'\"{key}\": \"{val}\"')\n\n# rebuild valid JSON\nresult = \"{\\n\" + \",\\n\".join(fixed) + \"\\n}\""
             ]
           }
         ],
@@ -7799,10 +7868,10 @@
     "VHS_KeepIntermediate": false,
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.6105047639902831,
+      "scale": 0.6105047639902841,
       "offset": [
-        4228.205393456999,
-        -1317.6260919618826
+        2380.6337690717937,
+        -1448.055764439064
       ]
     }
   },
