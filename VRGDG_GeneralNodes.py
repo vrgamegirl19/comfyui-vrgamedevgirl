@@ -966,6 +966,7 @@ class VRGDG_GeneralPromptBatcher:
         )
 
 
+
 class VRGDG_PythonCodeRunner:
     RETURN_TYPES = ("STRING", "STRING", "BOOLEAN")
     RETURN_NAMES = ("result_text", "result_json", "has_error")
@@ -1140,17 +1141,20 @@ class VRGDG_PythonCodeRunner:
     def run(self, python_code, input_text="", input_json=""):
         self._validate_code(python_code)
 
-        local_scope = {
+        shared_values = {
             "input_text": input_text or "",
             "input_json": input_json or "",
             "json": json,
             "math": math,
             "re": re,
+        }
+        local_scope = {
+            **shared_values,
             "result": "",
         }
         safe_builtins = dict(self.SAFE_BUILTINS)
         safe_builtins["__import__"] = self._safe_import
-        global_scope = {"__builtins__": safe_builtins}
+        global_scope = {"__builtins__": safe_builtins, **shared_values}
 
         try:
             steps = 0
@@ -2162,6 +2166,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
 
 
 
