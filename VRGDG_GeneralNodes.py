@@ -1446,7 +1446,9 @@ def _normalize_bool(value):
 
 def _sanitize_text_segment(value, fallback):
     s = str(value or "").strip()
-    s = re.sub(r"[^A-Za-z0-9_\- ]+", "_", s)
+    # Keep this regex simple and explicit to avoid accidental escape/quote issues
+    # when this file is copied between editors/platforms.
+    s = re.sub(r"[^0-9A-Za-z_ -]+", "_", s)
     s = s.strip(" .")
     return s or fallback
 
@@ -2160,6 +2162,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
 
 
 
