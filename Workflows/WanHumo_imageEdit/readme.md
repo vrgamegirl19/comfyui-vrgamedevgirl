@@ -134,8 +134,7 @@ Close up of a woman looking in the mirror from over the shoulder
 The GPT generates a full prompt suitable for the workflow.
 
 Use it here:
-[Custom GPT]
-(https://chatgpt.com/g/g-69a36026b41c8191a1f41b4c2ac85cca-wan-humo-image-edit-prompt-enhancer)
+[Custom GPT](https://chatgpt.com/g/g-69a36026b41c8191a1f41b4c2ac85cca-wan-humo-image-edit-prompt-enhancer)
 
 This is **optional** but helps produce better results.
 
