@@ -1138,6 +1138,7 @@ class VRGDG_GeneralPromptBatcher:
         )
 
 
+
 class VRGDG_PythonCodeRunner:
     RETURN_TYPES = ("STRING", "STRING", "BOOLEAN")
     RETURN_NAMES = ("result_text", "result_json", "has_error")
@@ -1319,13 +1320,13 @@ class VRGDG_PythonCodeRunner:
             "math": math,
             "re": re,
         }
-        local_scope = {
+        safe_builtins = dict(self.SAFE_BUILTINS)
+        safe_builtins["__import__"] = self._safe_import
+        exec_scope = {
+            "__builtins__": safe_builtins,
             **shared_values,
             "result": "",
         }
-        safe_builtins = dict(self.SAFE_BUILTINS)
-        safe_builtins["__import__"] = self._safe_import
-        global_scope = {"__builtins__": safe_builtins, **shared_values}
 
         try:
             steps = 0
@@ -1348,10 +1349,12 @@ class VRGDG_PythonCodeRunner:
 
             sys.settrace(_trace)
             try:
-                exec(python_code, global_scope, local_scope)
+                # Run in a single namespace so user-defined helpers are visible
+                # to comprehensions and other nested evaluation contexts.
+                exec(python_code, exec_scope, exec_scope)
             finally:
                 sys.settrace(previous_trace)
-            result_value = local_scope.get("result", "")
+            result_value = exec_scope.get("result", "")
 
             if isinstance(result_value, str):
                 result_text = result_value
@@ -2385,6 +2388,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
 }
+
 
 
 
