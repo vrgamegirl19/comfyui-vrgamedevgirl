@@ -20,6 +20,20 @@ def _combine_images(images: List[torch.Tensor]) -> Optional[torch.Tensor]:
     return torch.cat(images, dim=0)
 
 
+def _empty_image(width: int = 1024, height: int = 576, color: int = 0) -> torch.Tensor:
+    r = torch.full([1, height, width, 1], ((color >> 16) & 0xFF) / 0xFF)
+    g = torch.full([1, height, width, 1], ((color >> 8) & 0xFF) / 0xFF)
+    b = torch.full([1, height, width, 1], ((color) & 0xFF) / 0xFF)
+    return torch.cat((r, g, b), dim=-1)
+
+
+def _empty_image_from_inputs(images: List[Optional[torch.Tensor]]) -> torch.Tensor:
+    for img in images:
+        if img is not None and len(img.shape) >= 4:
+            return _empty_image(width=int(img.shape[2]), height=int(img.shape[1]))
+    return _empty_image()
+
+
 def _parse_spec(spec: str) -> List[int]:
     spec = (spec or "").strip().lower()
     if spec in ("", "none"):
@@ -168,6 +182,55 @@ class VRGDG_ImageSwitchMultiDynamic:
             return (None,)
         return (output,)
 
+
+class VRGDG_ImageSwitchMultiDynamic002:
+    @classmethod
+    def INPUT_TYPES(cls):
+        max_inputs = 50
+        optional = {f"image{i}": ("IMAGE", {}) for i in range(1, max_inputs + 1)}
+        return {
+            "required": {
+                "index": ("STRING", {"default": "1", "multiline": False}),
+                "image_count": ("INT", {"default": 4, "min": 1, "max": max_inputs, "step": 1}),
+            },
+            "optional": optional,
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "select"
+    CATEGORY = "VRGDG/Switch"
+    DESCRIPTION = "Dynamic image switch with blank index 0. Returns a 1024x576 empty image for 0, or a batch for multi-index input like 1,2."
+
+    def select(self, index: str, image_count: int, **kwargs):
+        count = max(1, min(50, int(image_count)))
+        index_text = (index or "").strip().lower()
+
+        if index_text in ("", "none"):
+            return (None,)
+
+        if index_text == "all":
+            indices = list(range(1, count + 1))
+        else:
+            indices = _parse_spec(index)
+
+        available_images = [kwargs.get(f"image{i}") for i in range(1, count + 1)]
+        if 0 in indices:
+            return (_empty_image_from_inputs(available_images),)
+
+        selected: List[torch.Tensor] = []
+        for idx in indices:
+            if idx < 1 or idx > count:
+                continue
+            img = kwargs.get(f"image{idx}")
+            if img is not None:
+                selected.append(img)
+
+        output = _combine_images(selected)
+        if output is None:
+            return (None,)
+        return (output,)
+
 class VRGDG_ImageIndexMap:
     @classmethod
     def INPUT_TYPES(cls):
@@ -228,11 +291,13 @@ class VRGDG_ImageIndexMap:
 NODE_CLASS_MAPPINGS = {
     "VRGDG_ImageSwitch4": VRGDG_ImageSwitch4,
     "VRGDG_ImageSwitchMultiDynamic": VRGDG_ImageSwitchMultiDynamic,
+    "VRGDG_ImageSwitchMultiDynamic002": VRGDG_ImageSwitchMultiDynamic002,
     "VRGDG_ImageIndexMap": VRGDG_ImageIndexMap,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_ImageSwitch4": "VRGDG Image Switch (1-4)",
     "VRGDG_ImageSwitchMultiDynamic": "VRGDG Image Switch (Multi Dynamic)",
+    "VRGDG_ImageSwitchMultiDynamic002": "VRGDG Image Switch (Multi Dynamic 002)",
     "VRGDG_ImageIndexMap": "VRGDG Image Switch (Index Map)",
 }

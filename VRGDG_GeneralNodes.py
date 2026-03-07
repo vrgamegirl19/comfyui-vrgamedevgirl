@@ -11,6 +11,15 @@ import folder_paths
 from aiohttp import web
 from server import PromptServer
 
+
+class AnyType(str):
+    def __ne__(self, __value: object) -> bool:
+        return False
+
+
+any_typ = AnyType("*")
+
+
 IMAGE2VIDEO_BATCH_FOLDER_PREFIX = "Image2Video_Batch_"
 TEXT2IMAGE_BATCH_FOLDER_PREFIX = "Text2Image_Batch_"
 LLM_BATCHES_FOLDER_NAME = "llm_batches"
@@ -18,7 +27,7 @@ COMBINED_JSON_SUFFIX = "_COMBINED.json"
 EMPTY_COMBINED_JSON_OPTION = "<no files found>"
 BATCH_TYPE_TEXT2IMAGE = "Text2Image"
 BATCH_TYPE_IMAGE2VIDEO = "Image2Video"
-MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS = 20
+MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS = 120
 
 
 def _get_llm_batches_root():
@@ -32,6 +41,8 @@ def _find_latest_batch_folder(prefix=None):
     if not os.path.isdir(root):
         return None
 
+    highest_num = -1
+    highest_path = None
     latest_path = None
     latest_mtime = -1.0
 
@@ -41,6 +52,14 @@ def _find_latest_batch_folder(prefix=None):
             continue
         if prefix and not name.startswith(prefix):
             continue
+
+        if prefix:
+            suffix = name[len(prefix) :]
+            if suffix.isdigit():
+                batch_num = int(suffix)
+                if batch_num > highest_num:
+                    highest_num = batch_num
+                    highest_path = full
 
         try:
             mtime = os.path.getmtime(full)
@@ -86,9 +105,53 @@ def _list_latest_combined_json_files(batch_type=BATCH_TYPE_TEXT2IMAGE):
     return files, latest_folder
 
 
-def _resolve_latest_combined_json_file_path(batch_type, combined_json_file):
+def _combined_json_choices(batch_types=None):
+    batch_types = batch_types or (BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO)
+    all_files = []
+    seen = set()
+
+    for batch_type in batch_types:
+        files, _ = _list_latest_combined_json_files(batch_type)
+        for name in files:
+            if name in seen:
+                continue
+            seen.add(name)
+            all_files.append(name)
+
+    all_files.sort(key=str.lower)
+    return [EMPTY_COMBINED_JSON_OPTION, *all_files]
+
+
+def _find_latest_combined_json_file_path(batch_type):
+    batch_type = _normalize_batch_type(batch_type)
+    files, latest_folder = _list_latest_combined_json_files(batch_type)
+    if not latest_folder or not files:
+        return None
+
+    latest_path = None
+    latest_mtime = -1.0
+    for name in files:
+        full = os.path.normpath(os.path.join(latest_folder, name))
+        if not os.path.isfile(full):
+            continue
+        try:
+            mtime = max(os.path.getctime(full), os.path.getmtime(full))
+        except OSError:
+            continue
+        if mtime > latest_mtime:
+            latest_mtime = mtime
+            latest_path = full
+
+    return latest_path
+
+
+def _resolve_latest_combined_json_file_path(batch_type, combined_json_file, allow_auto_latest=False):
     selected = os.path.basename(str(combined_json_file or "").strip())
     if not selected or selected == EMPTY_COMBINED_JSON_OPTION:
+        if allow_auto_latest:
+            latest_path = _find_latest_combined_json_file_path(batch_type)
+            if latest_path:
+                return latest_path, ""
         return None, "No combined JSON file selected."
 
     batch_type = _normalize_batch_type(batch_type)
@@ -96,6 +159,10 @@ def _resolve_latest_combined_json_file_path(batch_type, combined_json_file):
     if not latest_folder:
         return None, f"No latest {batch_type} batch folder found."
     if selected not in files:
+        if allow_auto_latest:
+            latest_path = _find_latest_combined_json_file_path(batch_type)
+            if latest_path:
+                return latest_path, ""
         return None, f"Selected file not found in latest {batch_type} batch folder."
 
     file_path = os.path.normpath(os.path.join(latest_folder, selected))
@@ -183,7 +250,64 @@ def _parse_image_index_input(raw):
     return True, out
 
 
-def _extract_prompt_rows_for_ui(data, max_items=MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS):
+def _clean_user_folder_path(folder_path):
+    raw = str(folder_path or "").strip()
+    if not raw:
+        return ""
+
+    # Accept common pasted path formats like quoted strings or file URLs.
+    if raw.startswith("file:///"):
+        raw = raw[8:]
+    raw = raw.strip().strip("\"'`")
+    return raw.strip()
+
+
+def _resolve_remake_folder_path(folder_path):
+    raw = _clean_user_folder_path(folder_path)
+    if not raw:
+        return None, "Folder path is empty."
+
+    normalized = os.path.normpath(raw)
+    if os.path.basename(normalized).lower() == "remake":
+        remake_folder = normalized
+    else:
+        remake_folder = os.path.normpath(os.path.join(normalized, "remake"))
+
+    if not os.path.isdir(remake_folder):
+        return None, f"Remake folder not found: {remake_folder}"
+    return remake_folder, ""
+
+
+def _extract_prompt_indexes_from_remake_folder(folder_path, max_items=MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS):
+    remake_folder, error = _resolve_remake_folder_path(folder_path)
+    if not remake_folder:
+        return None, error
+
+    indexes = set()
+    for name in os.listdir(remake_folder):
+        full_path = os.path.join(remake_folder, name)
+        if not os.path.isfile(full_path):
+            continue
+
+        match = re.match(r"^video_(\d+)_", name, flags=re.IGNORECASE)
+        if not match:
+            continue
+
+        try:
+            prompt_number = int(match.group(1))
+        except Exception:
+            continue
+
+        if prompt_number > 0:
+            indexes.add(prompt_number)
+
+    sorted_indexes = sorted(indexes)
+    if not sorted_indexes:
+        return [], ""
+    return sorted_indexes[:max_items], ""
+
+
+def _extract_prompt_rows_for_ui(data, max_items=None):
     rows = []
     if not isinstance(data, dict):
         return rows
@@ -220,7 +344,9 @@ def _extract_prompt_rows_for_ui(data, max_items=MAX_COMBINED_JSON_PROMPT_EDIT_SL
         )
 
     rows.sort(key=lambda r: r["prompt_number"])
-    return rows[:max_items]
+    if isinstance(max_items, int) and max_items > 0:
+        return rows[:max_items]
+    return rows
 
 
 def _coerce_prompt_updates(raw_updates, max_items=MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS):
@@ -320,12 +446,17 @@ def _ensure_combined_files_route_registered():
     async def vrgdg_list_combined_files(request):
         batch_type = request.query.get("batch_type", BATCH_TYPE_TEXT2IMAGE)
         batch_type = _normalize_batch_type(batch_type)
+        combined_json_file = request.query.get("combined_json_file", "")
         files, latest_folder = _list_latest_combined_json_files(batch_type)
+        resolved_file_path, _ = _resolve_latest_combined_json_file_path(
+            batch_type, combined_json_file, allow_auto_latest=True
+        )
         return web.json_response(
             {
                 "batch_type": batch_type,
                 "files": files,
                 "latest_folder": latest_folder or "",
+                "resolved_file": os.path.basename(resolved_file_path) if resolved_file_path else "",
             }
         )
 
@@ -436,6 +567,35 @@ def _ensure_combined_files_route_registered():
             }
         )
 
+    @server_instance.routes.post("/vrgdg/llm_batches/remake_prompt_indexes")
+    async def vrgdg_get_remake_prompt_indexes(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response(
+                {"ok": False, "error": "Invalid JSON body."},
+                status=400,
+            )
+
+        indexes, error = _extract_prompt_indexes_from_remake_folder(payload.get("folder_path", ""))
+        if indexes is None:
+            return web.json_response(
+                {"ok": False, "error": error or "Unable to inspect remake folder."},
+                status=400,
+            )
+
+        remake_folder, _ = _resolve_remake_folder_path(payload.get("folder_path", ""))
+        return web.json_response(
+            {
+                "ok": True,
+                "folder_path": str(payload.get("folder_path", "") or ""),
+                "remake_folder": remake_folder or "",
+                "prompt_count": len(indexes),
+                "prompt_numbers": indexes,
+                "empty": len(indexes) == 0,
+            }
+        )
+
     _VRGDG_COMBINED_ROUTE_REGISTERED = True
 
 
@@ -468,7 +628,7 @@ class VRGDG_GeneralPromptBatcher:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "trigger": ("INT", {"forceInput": True}),
+                "trigger": (any_typ, {"forceInput": True}),
                 "batch_size": ("INT", {"default": 10, "min": 1, "max": 9999}),
                 "file_path": (
                     "STRING",
@@ -853,11 +1013,23 @@ class VRGDG_GeneralPromptBatcher:
             parts = [f"### Group {idx}"]
             for input_name in ("input_1", "input_2", "input_3", "input_4"):
                 value = grouped_inputs[input_name].get(idx)
-                if value:
+                if self._has_meaningful_group_value(value):
                     parts.append(f"{input_name}:\n{value}")
             sections.append("\n\n".join(parts))
 
         return "\n\n".join(sections).strip()
+
+    def _has_meaningful_group_value(self, value):
+        if value is None:
+            return False
+
+        text = str(value).strip()
+        if not text:
+            return False
+        if text in ("{}", "[]", '""', "null", "None"):
+            return False
+
+        return True
 
     def run(
         self,
@@ -1212,32 +1384,35 @@ class VRGDG_LoadLatestCombinedJsonText:
     @classmethod
     def INPUT_TYPES(cls):
         _ensure_combined_files_route_registered()
-
-        all_files = set()
-        for batch_type in (BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO):
-            files, _ = _list_latest_combined_json_files(batch_type)
-            all_files.update(files)
-
-        choices = sorted(all_files, key=str.lower) if all_files else [EMPTY_COMBINED_JSON_OPTION]
         return {
             "required": {
                 "batch_type": ([BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO],),
-                "combined_json_file": (choices,),
+                "combined_json_file": (_combined_json_choices(),),
+                "refresh": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
             }
         }
 
-    def run(self, batch_type, combined_json_file):
-        selected = str(combined_json_file or "").strip()
-        if not selected or selected == EMPTY_COMBINED_JSON_OPTION:
-            return ("",)
-
+    @classmethod
+    def IS_CHANGED(cls, batch_type, combined_json_file, refresh):
         batch_type = _normalize_batch_type(batch_type)
-        files, latest_folder = _list_latest_combined_json_files(batch_type)
-        if not latest_folder or selected not in files:
-            return ("",)
+        selected_path, _ = _resolve_latest_combined_json_file_path(
+            batch_type, combined_json_file, allow_auto_latest=True
+        )
+        selected_mtime = 0.0
+        if selected_path:
+            try:
+                selected_mtime = os.path.getmtime(selected_path)
+            except OSError:
+                selected_mtime = 0.0
 
-        file_path = os.path.join(latest_folder, selected)
-        if not os.path.isfile(file_path):
+        return f"{refresh}|{batch_type}|{selected_path or ''}|{selected_mtime}"
+
+    def run(self, batch_type, combined_json_file, refresh):
+        batch_type = _normalize_batch_type(batch_type)
+        file_path, _ = _resolve_latest_combined_json_file_path(
+            batch_type, combined_json_file, allow_auto_latest=True
+        )
+        if not file_path:
             return ("",)
 
         try:
@@ -1267,13 +1442,6 @@ class VRGDG_UpdateLatestCombinedJsonPrompts:
     @classmethod
     def INPUT_TYPES(cls):
         _ensure_combined_files_route_registered()
-
-        all_files = set()
-        for batch_type in (BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO):
-            files, _ = _list_latest_combined_json_files(batch_type)
-            all_files.update(files)
-
-        choices = sorted(all_files, key=str.lower) if all_files else [EMPTY_COMBINED_JSON_OPTION]
         optional = {}
         for i in range(1, MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS + 1):
             optional[f"prompt_number_{i}"] = (
@@ -1293,17 +1461,23 @@ class VRGDG_UpdateLatestCombinedJsonPrompts:
             "required": {
                 "remake_mode": ("BOOLEAN", {"default": False}),
                 "batch_type": ([BATCH_TYPE_TEXT2IMAGE, BATCH_TYPE_IMAGE2VIDEO],),
-                "combined_json_file": (choices,),
+                "combined_json_file": (_combined_json_choices(),),
                 "prompt_count": (
                     "INT",
                     {"default": 0, "min": 0, "max": MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS},
                 ),
             },
-            "optional": optional,
+            "optional": {
+                "folder_path": (
+                    "STRING",
+                    {"default": "", "forceInput": True, "multiline": False},
+                ),
+                **optional,
+            },
         }
 
     @classmethod
-    def IS_CHANGED(cls, remake_mode, batch_type, combined_json_file, prompt_count, **kwargs):
+    def IS_CHANGED(cls, remake_mode, batch_type, combined_json_file, prompt_count, folder_path="", **kwargs):
         file_path, _ = _resolve_latest_combined_json_file_path(batch_type, combined_json_file)
         if not file_path:
             return f"{batch_type}|{combined_json_file}|missing"
@@ -1345,7 +1519,7 @@ class VRGDG_UpdateLatestCombinedJsonPrompts:
 
         return updates
 
-    def run(self, remake_mode, batch_type, combined_json_file, prompt_count, **kwargs):
+    def run(self, remake_mode, batch_type, combined_json_file, prompt_count, folder_path="", **kwargs):
         file_path, resolve_error = _resolve_latest_combined_json_file_path(
             batch_type, combined_json_file
         )
@@ -1368,9 +1542,6 @@ class VRGDG_UpdateLatestCombinedJsonPrompts_zimage:
     @classmethod
     def INPUT_TYPES(cls):
         _ensure_combined_files_route_registered()
-
-        files, _ = _list_latest_combined_json_files(BATCH_TYPE_TEXT2IMAGE)
-        choices = sorted(files, key=str.lower) if files else [EMPTY_COMBINED_JSON_OPTION]
         optional = {}
         for i in range(1, MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS + 1):
             optional[f"prompt_number_{i}"] = (
@@ -1385,17 +1556,23 @@ class VRGDG_UpdateLatestCombinedJsonPrompts_zimage:
         return {
             "required": {
                 "remake_mode": ("BOOLEAN", {"default": False}),
-                "combined_json_file": (choices,),
+                "combined_json_file": (_combined_json_choices((BATCH_TYPE_TEXT2IMAGE,)),),
                 "prompt_count": (
                     "INT",
                     {"default": 0, "min": 0, "max": MAX_COMBINED_JSON_PROMPT_EDIT_SLOTS},
                 ),
             },
-            "optional": optional,
+            "optional": {
+                "folder_path": (
+                    "STRING",
+                    {"default": "", "forceInput": True, "multiline": False},
+                ),
+                **optional,
+            },
         }
 
     @classmethod
-    def IS_CHANGED(cls, remake_mode, combined_json_file, prompt_count, **kwargs):
+    def IS_CHANGED(cls, remake_mode, combined_json_file, prompt_count, folder_path="", **kwargs):
         file_path, _ = _resolve_latest_combined_json_file_path(
             BATCH_TYPE_TEXT2IMAGE, combined_json_file
         )
@@ -1407,7 +1584,7 @@ class VRGDG_UpdateLatestCombinedJsonPrompts_zimage:
             mtime = -1.0
         return f"{BATCH_TYPE_TEXT2IMAGE}|{os.path.basename(file_path)}|{mtime}"
 
-    def run(self, remake_mode, combined_json_file, prompt_count, **kwargs):
+    def run(self, remake_mode, combined_json_file, prompt_count, folder_path="", **kwargs):
         file_path, resolve_error = _resolve_latest_combined_json_file_path(
             BATCH_TYPE_TEXT2IMAGE, combined_json_file
         )
@@ -1691,12 +1868,20 @@ class VRGDG_LoadTextAdvanced:
                 "folder_name": (folder_choices,),
                 "use_most_recent": ("BOOLEAN", {"default": True}),
                 "text_file": (file_choices,),
+                "folder_name_override": ("STRING", {"default": "", "multiline": False}),
             }
         }
 
     @classmethod
-    def IS_CHANGED(cls, folder_name, use_most_recent, text_file):
-        selected_folder = str(folder_name or "").strip()
+    def _resolve_folder_name(cls, folder_name, folder_name_override):
+        override_folder = str(folder_name_override or "").strip()
+        if override_folder:
+            return override_folder
+        return str(folder_name or "").strip()
+
+    @classmethod
+    def IS_CHANGED(cls, folder_name, use_most_recent, text_file, folder_name_override=""):
+        selected_folder = cls._resolve_folder_name(folder_name, folder_name_override)
         if not selected_folder or selected_folder == EMPTY_TEXT_FOLDER_OPTION:
             return "empty-folder"
 
@@ -1726,8 +1911,8 @@ class VRGDG_LoadTextAdvanced:
         except OSError:
             return f"{file_path}|missing"
 
-    def run(self, folder_name, use_most_recent, text_file):
-        selected_folder = str(folder_name or "").strip()
+    def run(self, folder_name, use_most_recent, text_file, folder_name_override=""):
+        selected_folder = self._resolve_folder_name(folder_name, folder_name_override)
         if not selected_folder or selected_folder == EMPTY_TEXT_FOLDER_OPTION:
             return ("", "")
 
@@ -2033,31 +2218,34 @@ class VRGDG_LoadAudioFilePath:
         }
 
     @staticmethod
-    def _paths_folder():
+    def _audio_folder():
         return os.path.normpath(
             os.path.join(
                 folder_paths.get_output_directory(),
-                "VRGDG_TEMP",
-                "FilePaths",
+                "VRGDG_AudioFiles",
             )
         )
 
     @classmethod
-    def _latest_txt(cls):
-        folder = cls._paths_folder()
+    def _latest_audio(cls):
+        folder = cls._audio_folder()
         if not os.path.isdir(folder):
             return ("", 0.0)
 
+        files = [name for name in os.listdir(folder) if os.path.isfile(os.path.join(folder, name))]
+        try:
+            files = folder_paths.filter_files_content_types(files, ["audio"])
+        except Exception:
+            # Fallback extensions if content-type filtering is unavailable.
+            exts = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma", ".aiff", ".aif"}
+            files = [name for name in files if os.path.splitext(name)[1].lower() in exts]
+
         latest_path = ""
         latest_mtime = 0.0
-        for name in os.listdir(folder):
-            if not name.lower().endswith(".txt"):
-                continue
+        for name in files:
             full = os.path.join(folder, name)
-            if not os.path.isfile(full):
-                continue
             try:
-                mtime = os.path.getmtime(full)
+                mtime = max(os.path.getctime(full), os.path.getmtime(full))
             except OSError:
                 continue
             if mtime > latest_mtime:
@@ -2068,22 +2256,24 @@ class VRGDG_LoadAudioFilePath:
 
     @classmethod
     def IS_CHANGED(cls, refresh):
-        latest_path, latest_mtime = cls._latest_txt()
+        latest_path, latest_mtime = cls._latest_audio()
         return f"{refresh}|{latest_path}|{latest_mtime}"
 
+    @staticmethod
+    def _clean_audio_name(file_path):
+        name = os.path.basename(str(file_path or "")).strip()
+        name = os.path.splitext(name)[0]
+        name = re.sub(r"\s*\(\d+\)\s*$", "", name)
+        name = re.sub(r"[^A-Za-z_]+$", "", name)
+        return name
+
     def run(self, refresh):
-        latest_txt, _ = self._latest_txt()
-        if not latest_txt:
+        latest_audio, _ = self._latest_audio()
+        if not latest_audio:
             return ("", "")
 
-        try:
-            with open(latest_txt, "r", encoding="utf-8") as f:
-                audio_file_path = str(f.read() or "").strip()
-        except UnicodeDecodeError:
-            with open(latest_txt, "r", encoding="utf-8-sig") as f:
-                audio_file_path = str(f.read() or "").strip()
-
-        audio_file_name = os.path.basename(audio_file_path) if audio_file_path else ""
+        audio_file_path = os.path.normpath(latest_audio)
+        audio_file_name = self._clean_audio_name(audio_file_path)
         return (audio_file_path, audio_file_name)
 
 

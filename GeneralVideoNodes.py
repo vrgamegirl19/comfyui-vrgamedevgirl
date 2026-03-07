@@ -2163,7 +2163,7 @@ class BeatImpactAnalysisNode:
     AUDIO inputs (not file paths)
 
     Required: final mix
-    Optional: drums, bass, vocals
+    Optional: drums, bass, vocals, other
     """
 
     @classmethod
@@ -2176,6 +2176,7 @@ class BeatImpactAnalysisNode:
                 "drums": ("AUDIO",),
                 "bass": ("AUDIO",),
                 "vocals": ("AUDIO",),
+                "other": ("AUDIO",),
             }
         }
 
@@ -2184,7 +2185,7 @@ class BeatImpactAnalysisNode:
     FUNCTION = "analyze"
     CATEGORY = "audio/rhythm"
 
-    def analyze(self, final_mix, drums=None, bass=None, vocals=None):
+    def analyze(self, final_mix, drums=None, bass=None, vocals=None, other=None):
 
         # --- Extract audio safely ---
         y_mix, sr = extract_mono(final_mix)
@@ -2194,6 +2195,7 @@ class BeatImpactAnalysisNode:
         y_drums, _ = extract_mono(drums)
         y_bass, _ = extract_mono(bass)
         y_vocals, _ = extract_mono(vocals)
+        y_other, _ = extract_mono(other)
 
         # --- Beat source selection ---
         # Prefer drums only if they cover the full mix duration and are not silent in the tail.
@@ -2218,6 +2220,7 @@ class BeatImpactAnalysisNode:
 
         mix_duration = float(len(y_mix) / sr)
         use_drums_for_beats = stem_usable(y_drums, y_mix, sr)
+        use_other_for_beats = stem_usable(y_other, y_mix, sr)
 
         def track_beats(y_src):
             t, frames = librosa.beat.beat_track(y=y_src, sr=sr, trim=False)
@@ -2229,35 +2232,39 @@ class BeatImpactAnalysisNode:
         beat_times = beat_times_mix
         source_used = "final_mix"
 
+        mix_last = float(beat_times_mix[-1]) if len(beat_times_mix) else 0.0
+        mix_cov = mix_last / max(mix_duration, 1e-6)
+        drums_last = 0.0
+        drums_cov = 0.0
+        drums_beats = 0
+        other_last = 0.0
+        other_cov = 0.0
+        other_beats = 0
+
         if use_drums_for_beats:
             tempo_drums, beat_times_drums = track_beats(y_drums)
             drums_last = float(beat_times_drums[-1]) if len(beat_times_drums) else 0.0
-            mix_last = float(beat_times_mix[-1]) if len(beat_times_mix) else 0.0
             drums_cov = drums_last / max(mix_duration, 1e-6)
-            mix_cov = mix_last / max(mix_duration, 1e-6)
+            drums_beats = len(beat_times_drums)
+            tempo = tempo_drums
+            beat_times = beat_times_drums
+            source_used = "drums"
+        elif use_other_for_beats:
+            tempo_other, beat_times_other = track_beats(y_other)
+            other_last = float(beat_times_other[-1]) if len(beat_times_other) else 0.0
+            other_cov = other_last / max(mix_duration, 1e-6)
+            other_beats = len(beat_times_other)
+            tempo = tempo_other
+            beat_times = beat_times_other
+            source_used = "other"
 
-            # Prefer whichever track reaches closer to song end; tie-break by beat count.
-            if (drums_last > mix_last + 1.0) or (
-                abs(drums_last - mix_last) <= 1.0 and len(beat_times_drums) >= len(beat_times_mix)
-            ):
-                tempo = tempo_drums
-                beat_times = beat_times_drums
-                source_used = "drums"
-
-            print(
-                "[BeatImpactAnalysisNode] Beat coverage: "
-                f"mix_last={mix_last:.3f}s ({mix_cov:.1%}), mix_beats={len(beat_times_mix)}; "
-                f"drums_last={drums_last:.3f}s ({drums_cov:.1%}), drums_beats={len(beat_times_drums)}; "
-                f"selected={source_used}"
-            )
-        else:
-            mix_last = float(beat_times_mix[-1]) if len(beat_times_mix) else 0.0
-            mix_cov = mix_last / max(mix_duration, 1e-6)
-            print(
-                "[BeatImpactAnalysisNode] Beat coverage: "
-                f"mix_last={mix_last:.3f}s ({mix_cov:.1%}), mix_beats={len(beat_times_mix)}; "
-                "drums unusable, selected=final_mix"
-            )
+        print(
+            "[BeatImpactAnalysisNode] Beat coverage: "
+            f"mix_last={mix_last:.3f}s ({mix_cov:.1%}), mix_beats={len(beat_times_mix)}; "
+            f"drums_usable={use_drums_for_beats}, drums_last={drums_last:.3f}s ({drums_cov:.1%}), drums_beats={drums_beats}; "
+            f"other_usable={use_other_for_beats}, other_last={other_last:.3f}s ({other_cov:.1%}), other_beats={other_beats}; "
+            f"selected={source_used}"
+        )
 
         # --- Onset strength (impact signals) ---
         def onset_strength(y):
@@ -2270,6 +2277,7 @@ class BeatImpactAnalysisNode:
         onset_drums = onset_strength(y_drums)
         onset_bass = onset_strength(y_bass)
         onset_vocals = onset_strength(y_vocals)
+        onset_other = onset_strength(y_other)
 
         # If mix onset is empty, fall back to beat-only impact=0.0
         if onset_mix is None or len(onset_mix) == 0:
@@ -2303,20 +2311,26 @@ class BeatImpactAnalysisNode:
             if idx is not None:
                 val = safe_onset_value(onset_drums, idx, "drums")
                 if val is not None:
-                    impact += val * 0.5
-                    weight_sum += 0.5
+                    impact += val * 0.45
+                    weight_sum += 0.45
 
             if idx is not None:
                 val = safe_onset_value(onset_bass, idx, "bass")
                 if val is not None:
-                    impact += val * 0.3
-                    weight_sum += 0.3
+                    impact += val * 0.25
+                    weight_sum += 0.25
 
             if idx is not None:
                 val = safe_onset_value(onset_vocals, idx, "vocals")
                 if val is not None:
-                    impact += val * 0.2
-                    weight_sum += 0.2
+                    impact += val * 0.15
+                    weight_sum += 0.15
+
+            if idx is not None:
+                val = safe_onset_value(onset_other, idx, "other")
+                if val is not None:
+                    impact += val * 0.15
+                    weight_sum += 0.15
 
             if weight_sum == 0.0:
                 # Fall back to mix onset if available; otherwise keep impact at 0.
@@ -3008,7 +3022,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 
 }
-
 
 
 
