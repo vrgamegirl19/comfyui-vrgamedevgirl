@@ -71,7 +71,8 @@ class VRGDG_ManualLyricsExtractor:
                 flat_seg = torchaudio.functional.resample(flat_seg, sample_rate, 16000)
 
             inputs = processor(flat_seg, sampling_rate=16000, return_tensors="pt", padding="longest")
-            input_features = inputs["input_features"].to(device)
+            model_dtype = next(model.parameters()).dtype
+            input_features = inputs["input_features"].to(device=device, dtype=model_dtype)
 
             if language == "auto":
                 generated_ids = model.generate(input_features)
@@ -1340,6 +1341,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     
     
 }
+
 
 
 
