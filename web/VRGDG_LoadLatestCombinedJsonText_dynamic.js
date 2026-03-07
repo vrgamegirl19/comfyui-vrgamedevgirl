@@ -14,26 +14,45 @@ async function refreshFiles(node, keepSelection = true) {
   if (!typeWidget || !fileWidget) return;
 
   const batchType = encodeURIComponent(String(typeWidget.value || "Text2Image"));
+  const current = String(fileWidget.value || "");
+  const selected = encodeURIComponent(current);
   let options = [EMPTY_OPTION];
+  let resolvedFile = "";
   try {
-    const res = await api.fetchApi(`/vrgdg/llm_batches/combined_files?batch_type=${batchType}`, { cache: "no-store" });
+    const res = await api.fetchApi(
+      `/vrgdg/llm_batches/combined_files?batch_type=${batchType}&combined_json_file=${selected}`,
+      { cache: "no-store" }
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (Array.isArray(data.files) && data.files.length) {
       options = data.files.map((v) => String(v));
     }
+    resolvedFile = String(data.resolved_file || "");
   } catch (e) {
     options = [EMPTY_OPTION];
   }
 
-  const current = String(fileWidget.value || "");
   fileWidget.options = fileWidget.options || {};
   fileWidget.options.values = [...options];
 
-  if (keepSelection && options.includes(current)) {
-    fileWidget.value = current;
+  if (resolvedFile && options.includes(resolvedFile)) {
+    fileWidget.value = resolvedFile;
+  } else if (resolvedFile && resolvedFile !== EMPTY_OPTION) {
+    fileWidget.options.values = [resolvedFile, ...options.filter((v) => v !== resolvedFile)];
+    fileWidget.value = resolvedFile;
   } else {
-    fileWidget.value = options[0];
+    const canKeepCurrent =
+      keepSelection &&
+      current &&
+      current !== EMPTY_OPTION &&
+      options.includes(current);
+
+    if (canKeepCurrent) {
+      fileWidget.value = current;
+    } else {
+      fileWidget.value = options[0];
+    }
   }
 
   node.setSize([node.size[0], node.computeSize()[1]]);
@@ -55,6 +74,25 @@ function bindTypeRefresh(node) {
   node.__vrgdgBatchTypeBound = true;
 }
 
+function bindRefreshInputAutoPick(node) {
+  if (node.__vrgdgRefreshAutoPickBound) return;
+
+  const origOnConnectionsChange = node.onConnectionsChange;
+  node.onConnectionsChange = function () {
+    const r = origOnConnectionsChange?.apply(this, arguments);
+    setTimeout(() => refreshFiles(this, true), 0);
+    return r;
+  };
+
+  const origOnExecute = node.onExecute;
+  node.onExecute = function () {
+    setTimeout(() => refreshFiles(this, true), 0);
+    return origOnExecute?.apply(this, arguments);
+  };
+
+  node.__vrgdgRefreshAutoPickBound = true;
+}
+
 app.registerExtension({
   name: "vrgdg." + NODE_NAME + ".dynamic",
 
@@ -67,6 +105,7 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = origOnNodeCreated?.apply(this, arguments);
       bindTypeRefresh(this);
+      bindRefreshInputAutoPick(this);
       if (!(this.widgets || []).some((w) => w.type === "button" && w.name === "Refresh Files")) {
         this.addWidget("button", "Refresh Files", null, () => refreshFiles(this, true));
       }
@@ -77,6 +116,7 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const r = origOnConfigure?.apply(this, arguments);
       bindTypeRefresh(this);
+      bindRefreshInputAutoPick(this);
       refreshFiles(this, true);
       return r;
     };
