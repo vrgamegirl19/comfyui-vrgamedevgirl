@@ -992,7 +992,7 @@ class VRGDG_LLM_PromptBatcher:
                 "file_prefix": ("STRING", {"default": "Scene"}),
                 "manual_index": ("INT", {"default": -1, "min": -1}),
                 "enable_auto_queue": ("BOOLEAN", {"default": True}),
-                "trigger": ("INT", {"forceInput": True}),
+                "trigger": (any_typ, {"forceInput": True}),
 
             },
             "optional": {
@@ -1528,6 +1528,12 @@ class VRGDG_LLM_OutputSaver:
             print(f"[LLM_OutputSaver] Saved batch file: {batch_path}")
         except Exception as e:
             raise RuntimeError(f"Failed to save batch file: {e}")
+
+        # Block downstream execution until final batch is ready.
+        if not is_final_batch:
+            from comfy_execution.graph import ExecutionBlocker
+            print("[LLM_OutputSaver] Waiting for final batch - blocking downstream output")
+            return (ExecutionBlocker(None),)
 
         # ---------------- final combine ----------------
 
