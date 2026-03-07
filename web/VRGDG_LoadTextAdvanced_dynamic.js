@@ -9,8 +9,19 @@ function getWidget(node, name) {
   return (node.widgets || []).find((w) => w.name === name);
 }
 
+function getResolvedFolderName(node) {
+  const folderWidget = getWidget(node, "folder_name");
+  const overrideWidget = getWidget(node, "folder_name_override");
+  const overrideValue = String(overrideWidget?.value || "").trim();
+  if (overrideValue) {
+    return overrideValue;
+  }
+  return String(folderWidget?.value || "");
+}
+
 async function refreshFolders(node, keepSelection = true) {
   const folderWidget = getWidget(node, "folder_name");
+  const overrideWidget = getWidget(node, "folder_name_override");
   if (!folderWidget) return;
 
   let options = [EMPTY_FOLDER_OPTION];
@@ -26,10 +37,13 @@ async function refreshFolders(node, keepSelection = true) {
   }
 
   const current = String(folderWidget.value || "");
+  const overrideValue = String(overrideWidget?.value || "").trim();
   folderWidget.options = folderWidget.options || {};
   folderWidget.options.values = [...options];
 
-  if (keepSelection && options.includes(current)) {
+  if (overrideValue && options.includes(overrideValue)) {
+    folderWidget.value = overrideValue;
+  } else if (keepSelection && options.includes(current)) {
     folderWidget.value = current;
   } else {
     folderWidget.value = options[0];
@@ -37,12 +51,11 @@ async function refreshFolders(node, keepSelection = true) {
 }
 
 async function refreshFiles(node, keepSelection = true) {
-  const folderWidget = getWidget(node, "folder_name");
   const mostRecentWidget = getWidget(node, "use_most_recent");
   const fileWidget = getWidget(node, "text_file");
-  if (!folderWidget || !mostRecentWidget || !fileWidget) return;
+  if (!mostRecentWidget || !fileWidget) return;
 
-  const folder = encodeURIComponent(String(folderWidget.value || ""));
+  const folder = encodeURIComponent(getResolvedFolderName(node));
   const useMostRecent = Boolean(mostRecentWidget.value);
 
   let options = [EMPTY_FILE_OPTION];
@@ -77,6 +90,7 @@ function bindRefreshCallbacks(node) {
 
   const folderWidget = getWidget(node, "folder_name");
   const mostRecentWidget = getWidget(node, "use_most_recent");
+  const overrideWidget = getWidget(node, "folder_name_override");
 
   if (folderWidget) {
     const oldFolder = folderWidget.callback;
@@ -90,6 +104,15 @@ function bindRefreshCallbacks(node) {
     const oldMostRecent = mostRecentWidget.callback;
     mostRecentWidget.callback = function () {
       if (oldMostRecent) oldMostRecent.apply(this, arguments);
+      refreshFiles(node, false);
+    };
+  }
+
+  if (overrideWidget) {
+    const oldOverride = overrideWidget.callback;
+    overrideWidget.callback = function () {
+      if (oldOverride) oldOverride.apply(this, arguments);
+      refreshFolders(node, true);
       refreshFiles(node, false);
     };
   }
