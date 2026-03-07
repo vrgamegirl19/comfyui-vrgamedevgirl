@@ -3,10 +3,31 @@ import { api } from "../../../scripts/api.js";
 
 const NODE_NAME = "VRGDG_UpdateLatestCombinedJsonPrompts";
 const EMPTY_OPTION = "<no files found>";
-const MAX_SLOTS = 20;
+const MAX_SLOTS = 120;
 
 function getWidget(node, name) {
   return (node.widgets || []).find((w) => w.name === name);
+}
+
+function getConnectedStringValue(node, inputName) {
+  const input = (node.inputs || []).find((entry) => entry?.name === inputName);
+  const linkId = input?.link;
+  if (!linkId || !app.graph?.links) return "";
+
+  const linkInfo = app.graph.links[linkId];
+  if (!linkInfo?.origin_id) return "";
+
+  const sourceNode = app.graph.getNodeById?.(linkInfo.origin_id);
+  if (!sourceNode) return "";
+
+  const widgetValues = Array.isArray(sourceNode.widgets_values) ? sourceNode.widgets_values : [];
+  const storedString = widgetValues.find((value) => typeof value === "string" && value.trim());
+  if (storedString) return storedString;
+
+  const liveWidget = (sourceNode.widgets || []).find(
+    (widget) => typeof widget?.value === "string" && String(widget.value).trim()
+  );
+  return liveWidget ? String(liveWidget.value) : "";
 }
 
 function setWidgetVisible(widget, visible) {
@@ -76,6 +97,37 @@ function clearPromptInputs(node) {
   }
 }
 
+function applyPromptNumbers(node, promptNumbers) {
+  const numbers = Array.isArray(promptNumbers)
+    ? promptNumbers
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .map((value) => Math.trunc(value))
+    : [];
+
+  const countWidget = getWidget(node, "prompt_count");
+  if (countWidget) {
+    countWidget.value = Math.max(0, Math.min(MAX_SLOTS, numbers.length));
+  }
+
+  for (let i = 1; i <= MAX_SLOTS; i++) {
+    const numWidget = getWidget(node, `prompt_number_${i}`);
+    const textWidget = getWidget(node, `prompt_text_${i}`);
+    const imageIndexWidget = getWidget(node, `prompt_image_index_${i}`);
+    if (numWidget) {
+      numWidget.value = i <= numbers.length ? numbers[i - 1] : i;
+    }
+    if (textWidget) {
+      textWidget.value = "";
+    }
+    if (imageIndexWidget) {
+      imageIndexWidget.value = "";
+    }
+  }
+
+  refreshInputVisibility(node);
+}
+
 function formatImageIndex(value) {
   if (!Array.isArray(value)) return "";
   return value
@@ -137,13 +189,18 @@ async function refreshPromptValues(node) {
   refreshInputVisibility(node);
 }
 
-async function refreshFiles(node, keepSelection = true, loadPromptValues = true) {
+async function refreshFiles(node, config = {}) {
   const typeWidget = getWidget(node, "batch_type");
   const fileWidget = getWidget(node, "combined_json_file");
   if (!typeWidget || !fileWidget) return;
+  const {
+    keepSelection = true,
+    loadPromptValues = true,
+    clearInputsOnSelectionChange = false,
+  } = config;
 
   const batchType = encodeURIComponent(String(typeWidget.value || "Text2Image"));
-  let options = [EMPTY_OPTION];
+  let fileOptions = [EMPTY_OPTION];
   try {
     const res = await api.fetchApi(`/vrgdg/llm_batches/combined_files?batch_type=${batchType}`, {
       cache: "no-store",
@@ -151,30 +208,33 @@ async function refreshFiles(node, keepSelection = true, loadPromptValues = true)
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (Array.isArray(data.files) && data.files.length) {
-      options = data.files.map((v) => String(v));
+      fileOptions = data.files.map((v) => String(v));
     }
   } catch (e) {
-    options = [EMPTY_OPTION];
+    fileOptions = [EMPTY_OPTION];
   }
 
   const current = String(fileWidget.value || "");
   fileWidget.options = fileWidget.options || {};
-  fileWidget.options.values = [...options];
+  fileWidget.options.values = [...fileOptions];
+  const selectionPreserved = keepSelection && fileOptions.includes(current);
 
-  if (keepSelection && options.includes(current)) {
+  if (selectionPreserved) {
     node.__vrgdgSkipNextFileRefresh = true;
     fileWidget.value = current;
   } else {
     node.__vrgdgSkipNextFileRefresh = true;
-    fileWidget.value = options[0];
+    fileWidget.value = fileOptions[0];
   }
 
   node.setSize([node.size[0], node.computeSize()[1]]);
   app.graph.setDirtyCanvas(true, true);
   if (loadPromptValues) {
     await refreshPromptValues(node);
-  } else {
+  } else if (clearInputsOnSelectionChange && !selectionPreserved) {
     clearPromptInputs(node);
+    refreshInputVisibility(node);
+  } else {
     refreshInputVisibility(node);
   }
 }
@@ -259,6 +319,45 @@ async function updateText(node) {
   }
 }
 
+async function pullIndexesFromRemakeFolder(node) {
+  const folderPathWidget = getWidget(node, "folder_path");
+  const folderPath = String(
+    getConnectedStringValue(node, "folder_path") || folderPathWidget?.value || ""
+  ).trim();
+  if (!folderPath) {
+    alert("[VRGDG] Connect or enter a folder path first.");
+    return;
+  }
+
+  try {
+    const res = await api.fetchApi("/vrgdg/llm_batches/remake_prompt_indexes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder_path: folderPath }),
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) {
+      throw new Error(String(data?.error || `HTTP ${res.status}`));
+    }
+
+    const promptNumbers = Array.isArray(data.prompt_numbers) ? data.prompt_numbers : [];
+    if (!promptNumbers.length) {
+      alert(`[VRGDG] The remake folder is empty.\n${String(data.remake_folder || "")}`);
+      return;
+    }
+
+    applyPromptNumbers(node, promptNumbers);
+    alert(
+      `[VRGDG] Loaded ${promptNumbers.length} prompt index(es) from remake.\n${String(
+        data.remake_folder || ""
+      )}`
+    );
+  } catch (e) {
+    alert(`[VRGDG] Failed to pull indexes from remake folder: ${String(e)}`);
+  }
+}
+
 function bindCallbacks(node) {
   if (node.__vrgdgCombinedPromptEditorBound) return;
 
@@ -276,7 +375,7 @@ function bindCallbacks(node) {
     const oldType = typeWidget.callback;
     typeWidget.callback = function () {
       if (oldType) oldType.apply(this, arguments);
-      refreshFiles(node, false, false);
+      refreshFiles(node, { keepSelection: false, loadPromptValues: false, clearInputsOnSelectionChange: true });
     };
   }
 
@@ -314,12 +413,17 @@ app.registerExtension({
           refreshPromptValues(this);
         });
       }
+      if (!(this.widgets || []).some((w) => w.type === "button" && w.name === "Pull Index From Remake Folder")) {
+        this.addWidget("button", "Pull Index From Remake Folder", null, () => {
+          pullIndexesFromRemakeFolder(this);
+        });
+      }
       if (!(this.widgets || []).some((w) => w.type === "button" && w.name === "Update Text")) {
         this.addWidget("button", "Update Text", null, () => updateText(this));
       }
 
       setTimeout(() => {
-        refreshFiles(this, true, false);
+        refreshFiles(this, { keepSelection: true, loadPromptValues: false, clearInputsOnSelectionChange: false });
       }, 0);
       return r;
     };
@@ -327,7 +431,7 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const r = origOnConfigure?.apply(this, arguments);
       bindCallbacks(this);
-      refreshFiles(this, true, false);
+      refreshFiles(this, { keepSelection: true, loadPromptValues: false, clearInputsOnSelectionChange: false });
       return r;
     };
   },
