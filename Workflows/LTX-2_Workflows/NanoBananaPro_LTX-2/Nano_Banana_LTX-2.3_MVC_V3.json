@@ -1,7 +1,7 @@
 {
   "id": "18c9496c-e9c0-4022-b7ca-e0fd86b566d2",
   "revision": 0,
-  "last_node_id": 795,
+  "last_node_id": 796,
   "last_link_id": 1240,
   "nodes": [
     {
@@ -2883,9 +2883,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Too Loud for You.wav"
-      ],
+      "widgets_values": [],
       "color": "#2a363b",
       "bgcolor": "#3f5159",
       "shape": 1
@@ -3941,9 +3939,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "A close-up reveals a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit, staring directly forward with an unnervingly perfect, static smile. The blurred pristine elements of a department store living room display form the background. Soft, uniform diffused light illuminates its features, creating minimal shadows and emphasizing its flawless, artificial surface. The scene, bathed in soft pastels, muted golds, and subtle grays, holds an eerie stillness as the camera very subtly rotates around the mannequin's face."
-      ],
+      "widgets_values": [],
       "color": "#432",
       "bgcolor": "#653",
       "shape": 1
@@ -4096,9 +4092,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "Too Loud for You_172.srt"
-      ],
+      "widgets_values": [],
       "color": "#232",
       "bgcolor": "#353",
       "shape": 1
@@ -4526,9 +4520,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "2"
-      ],
+      "widgets_values": [],
       "color": "#233",
       "bgcolor": "#355",
       "shape": 1
@@ -5509,9 +5501,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "Using the provided character reference image, generate a hyperrealistic, cinematic close-up of a genderless mannequin's face. The mannequin has smooth white molded hair and blank gray eyes, staring directly forward with an unnervingly perfect, static smile. It wears a pastel showroom outfit. The background is the blurred pristine elements of a department store living room display. Soft, uniform diffused light illuminates its features, creating minimal shadows and emphasizing its flawless, artificial surface. The color palette features soft pastels, muted golds, and subtle grays, maintaining sharp focus on the mannequin's intricate details."
-      ],
+      "widgets_values": [],
       "color": "#432",
       "bgcolor": "#653",
       "shape": 1
@@ -5556,9 +5546,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\Too Loud for You_172.srt"
-      ],
+      "widgets_values": [],
       "color": "#232",
       "bgcolor": "#353",
       "shape": 1
@@ -6507,42 +6495,9 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "{\n  \"prompt1\": \"An establishing wide shot opens on a pristine department store living room display, meticulously arranged with intricate textures, featuring a tea table. A female with dark brown hair and hazel eyes, wearing a soft pastel dress, sits centered at the tea table among several genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits. As she sings with passion and moves gently to the beat of the music, the soft, uniform, diffused lighting casts minimal shadows, evoking an eerie tranquility in the scene's soft pastels, muted golds, and subtle grays, as the camera subtly glides forward.\",\n  \"prompt2\": \"A medium close-up focuses on a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, a subtle furrow creases her brow and uncertainty hints in her hazel eyes, her lips pressed gently. The blurred pristine elements of a department store living room display with a tea table serve as the background. Soft, uniform diffused light illuminates her face, casting delicate highlights and minimal shadows, emphasizing an eerie tranquility in the soft pastels, muted golds, and subtle grays, as the camera very slowly pushes in.\",\n  \"prompt3\": \"A close-up reveals a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit, staring directly forward with an unnervingly perfect, static smile. The blurred pristine elements of a department store living room display form the background. Soft, uniform diffused light illuminates its features, creating minimal shadows and emphasizing its flawless, artificial surface. The scene, bathed in soft pastels, muted golds, and subtle grays, holds an eerie stillness as the camera very subtly rotates around the mannequin's face.\",\n  \"prompt4\": \"A medium shot features a female with dark brown hair and hazel eyes, wearing a soft pastel dress, seated stiffly at a tea table within a pristine department store living room display with intricate textures. Her posture is rigid, shoulders slightly hunched, surrounded by silent, static genderless mannequins wearing pastel showroom outfits. As she sings with passion and moves gently to the beat of the music, soft, uniform diffused light bathes the scene, creating an atmosphere of deceptive calm and subtle unease in the soft pastels, muted golds, and subtle grays, as the camera very slowly pulls back.\",\n  \"prompt5\": \"A low angle shot focuses on the rigidly positioned feet and the bottom of the soft pastel dress worn by a female with dark brown hair and hazel eyes, on the pristine floor of a department store living room display. Tea table legs and lower portions of genderless mannequins are visible in the background, all rendered with intricate textures. Soft, uniform diffused light illuminates the scene from above, creating minimal shadows and emphasizing the flawless, artificial environment, hinting at her constrained position within the soft pastels, muted golds, and subtle grays, as the camera subtly glides forward.\",\n  \"prompt6\": \"A macro shot frames a delicate teacup holding a pale, almost colorless, diluted pastel-colored liquid, placed on a pristine tea table within a department store living room display. The intricate texture of the teacup and the polished surface of the table are in sharp focus. Soft, uniform diffused light highlights the liquid's subtle sheen and creates gentle reflections on the porcelain, contributing to an eerie tranquility and pristine artificiality. The scene, awash in soft pastels, muted golds, and subtle grays, maintains its still perfection as the camera subtly tracks sideways.\",\n  \"prompt7\": \"A close-up focuses on the lips of a female with dark brown hair and hazel eyes, wearing a soft pastel dress, visible at the edge of the frame. Her lips are tightly pressed together, and her jawline appears firm, indicating a resolute expression. As she sings with passion and moves gently to the beat of the music, soft, uniform diffused light illuminates her face, highlighting the intricate texture of her skin and the firmness of her mouth, conveying a mood of emerging tension within the deceptive calm of the subtly blurred department store living room display, in soft pastels, muted golds, and subtle grays, as the camera very slowly pushes in.\",\n  \"prompt8\": \"A close-up reveals a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. A faint, barely perceptible hairline crack subtly disturbs its otherwise perfect facade, visible across its cheek. The blurred department store living room display with a tea table serves as the background. The lighting transitions from soft, uniform diffused light to slightly harsher illumination, emphasizing the hairline crack with subtle shadows and highlights. The scene, maintaining soft pastels, muted golds, and subtle grays, now includes hints of stark white and tension, as the camera subtly pushes in on the crack.\",\n  \"prompt9\": \"A close-up focuses on a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. A prominent, jagged crack now spreads across its face, extending from its temple down to its jaw. The blurred department store living room display forms the background. Harsh, high-contrast light illuminates the scene, creating stark, fractured shadows that emphasize the damage and the breaking of its facade. The color palette shifts to incorporate more stark whites and deep, shadowed browns, reflecting increasing tension and shattered order, as the camera slowly zooms out, revealing the extent of the damage.\",\n  \"prompt10\": \"A macro shot frames a delicate glass vase placed on a tea table within a department store living room display. The vase's surface visibly shimmers, with subtle distortions and refractions implying vibration. Harsh, high-contrast light strikes the vase, creating sharp glints and fractured shadows on its surface and the table around it, emphasizing the fragile order. The color palette includes soft pastels and muted golds, now contrasted with stark whites and deep shadows, contributing to a mood of palpable tension and impending breakage, as the camera subtly glides around the vibrating vase.\",\n  \"prompt11\": \"A medium close-up shows a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, her expression exudes newfound power and defiance, her bright eyes resolute. She is within a department store living room display, subtly fractured and disrupted in the background. Harsh, high-contrast light illuminates the scene, casting dramatic shadows and highlights, emphasizing the muted pastel color palette, which now feels broken and tense.\",\n  \"prompt12\": \"A wide shot captures a department store living room display, now visibly asymmetrical and disrupted. A genderless mannequin's arm, wearing a pastel showroom outfit, lies on the floor in the foreground, shattering the perfect symmetry of the staged setting. Harsh, high-contrast light illuminates the scene, casting sharp shadows that emphasize the chaotic disarray, as the muted pastel color palette creates a tense, disturbed mood, reflecting the fragile order's unraveling.\",\n  \"prompt13\": \"A close-up reveals sharp, angular pieces of shattered white porcelain scattered across the floor of a department store display, reflecting a stark, cold light that creates a chilling atmosphere. The color palette, dominated by cold whites, grays, and deep shadows, emphasizes the pervasive destruction, as the fragmented scene unfolds with intense detail.\",\n  \"prompt14\": \"A medium shot presents a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, she stands firm and confidently, her defiant posture commanding attention amidst the broken order of the disrupted department store living room display. Harsh, high-contrast light illuminates the scene, with emerging hints of electric blue appearing in the shadows, creating a powerful, resolute mood and a stark, contrasting color palette.\",\n  \"prompt15\": \"An extreme close-up focuses on the mouth of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, her mouth is slightly open, revealing visible vocal mechanics. Harsh, high-contrast light bathes the scene, starkly highlighting the contours of her lips and face with deep shadows defining the mood. The blurred background of the department store living room display draws all focus to her powerful expression.\",\n  \"prompt16\": \"A close-up captures a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. Its face is entirely shattered into large, sharp fragments, revealing deep fractured blackness where its features once were. Harsh, unforgiving light illuminates the scene, emphasizing the destruction and the deep, dark voids, as the chilling, stark mood intensifies with a fragmented and dramatic color palette focusing sharply on the shattered face.\",\n  \"prompt17\": \"A three-quarter view shows a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, she walks purposefully down a long showroom hallway, passing perfectly pristine staged room displays. Her face displays quiet determination, illuminated by uniform diffused soft light, creating an atmosphere of serene, yet purposeful movement within the soft pastel color palette, imbued with an underlying sense of emerging resolve.\",\n  \"prompt18\": \"A medium shot captures a pristine staged dining room dinner party display. Genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, are posed politely around a dining table. A new, subtle crack is visible on the neck of one mannequin, disrupting the otherwise perfect scene. Uniform diffused soft light illuminates the display, creating an initially serene yet subtly unsettling atmosphere, with a soft, controlled color palette hinting at underlying tension.\",\n  \"prompt19\": \"A wide shot reveals a staged dining room dinner party display, now in noticeable disarray. A genderless mannequin's arm, wearing a pastel showroom outfit, lies detached on the dining table, a prominent sign of disruption. Harsh, high-contrast light illuminates the scene, revealing the broken order and casting sharp shadows, as the muted pastel color palette conveys a tense and chaotic mood, focusing sharply on the pervasive disarray.\",\n  \"prompt20\": \"A wide shot captures a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, she stands as a singular, living presence amidst a large, perfectly arranged dinner party display, filled with motionless genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits. Uniform diffused soft light illuminates the serene scene, creating a striking contrast between the living and the artificial within the soft, controlled color palette, highlighting her distinct presence.\",\n  \"prompt21\": \"A photorealistic close-up of a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit, positioned within a large, pristine dinner party display. The mannequin looks directly at the camera, its blank gray eyes staring forward with an unnervingly calm expression. Uniform, diffused, soft lighting emphasizes the controlled sterility as muted pastels dominate the color palette, conveying a sense of artificial order. The camera slowly zooms in on the mannequin's unnervingly calm face, capturing detailed textures.\",\n  \"prompt22\": \"A photorealistic medium close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress, within a large dinner party display. As she sings with passion and moves gently to the beat of the music, her face appears sharper, defined by emerging harsh shadows conveying unwavering determination. Harsh, high-contrast light begins piercing the scene, shifting the color palette from muted pastels to dramatic contrasts, reflecting a mood of emerging tension. The camera slowly rotates around her, revealing the intensifying shadows.\",\n  \"prompt23\": \"A photorealistic macro shot of a perfectly set, pristine white porcelain dinner plate resting on a table within a large dinner party display. A small, distinct, almost imperceptible crack becomes visible across its surface. Uniform, diffused, soft lighting, with a subtle hint of disruption, illuminates the plate as muted pastels maintain a sense of underlying fragility and controlled tension. The camera slowly zooms in on the imperceptible crack, emphasizing its fine details and textures.\",\n  \"prompt24\": \"A photorealistic extreme close-up captures a match head vividly igniting, casting an intense, fiery red light onto its immediate, shrouded surroundings. This sudden burst of red light dominates the scene. The color palette is stark, with deep blacks intensely contrasted by the brilliant, red glow, conveying a mood of sudden emergence and dramatic change. The camera slightly pans to follow the ephemeral red light as it bursts into existence, showing realistic fire texture.\",\n  \"prompt25\": \"A photorealistic close-up frames a female with dark brown hair and hazel eyes, wearing a soft pastel dress, against a partially obscured large dinner party display. As she sings with passion and moves gently to the beat of the music, her mouth is open in mid-speech, conveying conviction. Her facial features are sharply defined by dramatic chiaroscuro lighting, emphasizing her expressions. The color palette features strong contrasts between light and shadow with underlying muted pastels, creating an intense, dramatic mood. The camera slowly zooms, highlighting her conviction as the lighting shifts.\",\n  \"prompt26\": \"A photorealistic close-up of a genderless mannequin's face with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit, set within a large, disrupted dinner party display. The face is crisscrossed with multiple large, visible fractures, severely breaking its once perfect form. Harsh, fractured shadows emphasize these breaks, creating a mood of destruction and broken order. The color palette incorporates muted pastels alongside stark, fracturing light and shadow. The camera slowly pulls back, revealing the extent of the fractures.\",\n  \"prompt27\": \"A photorealistic medium close-up of a genderless mannequin's head, completely detached, with smooth white molded hair and blank gray eyes, lying on a once pristine dinner table amidst scattered tableware. The large dinner party display is now in disarray. Harsh, high-contrast light illuminates the scene, casting sharp shadows. The color palette features broken pastels and stark contrasts, reflecting a mood of chaos and destruction. The camera slowly pans across the disarray, emphasizing the unsettling nature of the severed head and scattered items.\",\n  \"prompt28\": \"A photorealistic medium close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress, within a large dinner party display now infused with dramatic colors. As she sings with passion and moves gently to the beat of the music, her face holds an expression of fierce defiance. Stark, defiant reds and electric blues dominate the lighting, framing her features. The vivid, contrasting color palette, with strong reds and blues against remaining pastels, conveys a powerful, rebellious mood. The camera slowly pushes in on her fiercely defiant expression, highlighting the dramatic lighting.\",\n  \"prompt29\": \"A photorealistic overhead shot, from a top-down perspective, reveals a chaotic spread of shattered porcelain mannequin pieces mixed with tableware across a large dinner table. The large dinner party display is now a complete mess of broken parts. Intense red and electric blue lighting dramatically illuminates the debris. The vibrant and chaotic color palette, dominated by strong reds and blues, conveys a mood of utter destruction and dramatic upheaval. The camera slowly rotates over the table, emphasizing the patterns of chaos and brokenness from above.\",\n  \"prompt30\": \"A photorealistic wide shot frames a female with dark brown hair and hazel eyes, wearing a soft pastel dress, standing at the edge of a collapsing dinner party set. As she sings with passion and moves gently to the beat of the music, the walls around her visibly crack and crumble. Harsh red and electric blue light illuminates the scene, casting dramatic shadows on the breaking environment. The vivid, stark color palette, with strong reds and blues against the disintegrating structure, conveys a mood of defiant liberation amidst destruction. The camera slowly pulls back and rotates, emphasizing the scale of the crumbling environment and her presence within it.\",\n  \"prompt31\": \"An establishing wide shot captures a massive, dark warehouse-like showroom, its set walls collapsed, revealing endless rows of silent, unmoving genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, stretching into deep shadows. Stark, theatrical lighting creates high contrast across the muted industrial grays and cool blues, emphasizing the dramatic scale of the expressionistic, hyperrealistic scene as the camera slowly pushes forward through the foreboding space.\",\n  \"prompt32\": \"A three-quarter view captures a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, she stands defiant and focused, her gaze directed towards the vast, shadowed rows of genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, in the massive warehouse-like showroom. A dramatic spotlight illuminates her face and upper body, creating strong contrast against the deep shadows, conveying an intense, defiant mood under theatrical lighting as the camera slowly zooms in.\",\n  \"prompt33\": \"A wide angle shot captures endless rows of genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, in a vast, dark warehouse-like showroom. Their blank faces subtly reflect a tremor as hints of electric blue light pierce through the darkness, highlighting the escalating tension. The cinematic, expressionistic, hyperrealistic scene, rendered in deep shadows, muted industrial grays, and cool, subtle blues, evokes a foreboding mood as the camera slowly pulls back.\",\n  \"prompt34\": \"A close-up focuses on the chest of a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit, standing at the front of rows in a massive warehouse-like showroom. A fresh, large, radial crack visibly spreads outward across its chest, intensely highlighted by harsh lighting against the dark background. This cinematic, expressionistic, hyperrealistic moment, presented in a high-contrast palette of deep shadows and stark whites, dramatically emphasizes the impactful damage as the camera slowly pushes in.\",\n  \"prompt35\": \"A close-up captures the face of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, her radiant, powerful expression is completely bathed in a brilliant, pure white light. This striking illumination contrasts sharply with the dark background of the massive warehouse-like showroom, creating a cinematic, expressionistic, hyperrealistic image reflecting her transforming and powerful mood, as the camera subtly rotates around her.\",\n  \"prompt36\": \"An establishing wide shot shows a female with dark brown hair and hazel eyes, wearing a soft pastel dress, standing alone in the center of a completely shattered showroom floor. As she sings with passion and moves gently to the beat of the music, the scene is littered with countless broken mannequin pieces and ruined set elements from the utterly destroyed pristine sets. Dramatic, fractured, high-contrast lighting bathes the expressionistic, hyperrealistic scene in reds, blues, and deep blacks, conveying a liberated and impactful mood amidst the destruction, as the camera slowly rises for an aerial view.\"\n}"
-      ],
+      "widgets_values": [],
       "color": "#223",
       "bgcolor": "#335",
-      "shape": 1
-    },
-    {
-      "id": 477,
-      "type": "MarkdownNote",
-      "pos": [
-        1003.4907318679568,
-        4491.023763869017
-      ],
-      "size": [
-        612.0800601540543,
-        763.8606020190255
-      ],
-      "flags": {},
-      "order": 72,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [],
-      "title": "LTX models used in  this workflow",
-      "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "version": "7.5.2",
-          "input_ue_unconnectable": {}
-        }
-      },
-      "widgets_values": [
-        "## 📦 Required Models & Assets\n\n### 🧠 Diffusion Model\n- **ltx-2.3-distilled-Q6_k.gguf**  \n  🔗 [Download](https://huggingface.co/Kijai/LTXV2_comfy/tree/main/diffusion_models)\n\n---\n\n### 🎥 Video & 🔊 Audio VAE\n- **LTX2.3_video_vae_bf16.safetensors**  \n- **LTX2.3_audio_vae_bf16.safetensors**  \n  🔗 [Download](https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae)\n\n---\n\n### 📝Clip Text / Instruction Model\n- **gemma-3-12b-it-qat-q4_0-gguf**  \n  🔗 [Download](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-gguf/tree/main)\n\n---\n\n### 🔤 Clip Text Encoder / Embeddings\n- **ltx-2.3_text_projection_bf16.safetensors**  \n  🔗 [Download](https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/text_encoders)\n\n---\n\n### 🔍 Spatial Upscaler\n- **ltx-2.3-spatial-upscaler-x2-1.0.safetensors**  \n  🔗 [Download](https://huggingface.co/Lightricks/LTX-2.3/blob/main/ltx-2.3-spatial-upscaler-x2-1.0.safetensors)\n\n---\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │      └── ltx-2.3-distilled-Q6_k.gguf\n│   ├── 📂 text_encoders/\n│   │      ├── ltx-2.3-text_projection_bf16.safetensors\n│   │      └── gemma-3-12b-it-q4_0.gguf\n│   ├── 📂 vae/\n│   │      ├── LTX2.3_video_vae_bf16.safetensors\n│   │      └── LTX2.3_audio_vae_bf16.safetensors\n│   └── 📂 latent_upscale_models/\n│          └── ltx-2.3-spatial-upscaler-x2-1.0.safetensors\n\n```\n"
-      ],
-      "color": "#432",
-      "bgcolor": "#653",
       "shape": 1
     },
     {
@@ -6586,9 +6541,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "Too Loud for You"
-      ],
+      "widgets_values": [],
       "color": "#2a363b",
       "bgcolor": "#3f5159",
       "shape": 1
@@ -6679,9 +6632,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "{\n  \"prompt1\": {\n    \"text\": \"Using the provided character reference images, generate a hyperrealistic, cinematic establishing wide shot of a female figure with dark brown hair and hazel eyes, wearing a soft pastel dress, seated at a tea table. She is centered among several genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits. The scene is a pristine department store living room display, meticulously arranged with intricate textures. The lighting is soft, uniform, and diffused, casting minimal shadows, evoking an eerie tranquility. The overall palette features soft pastels, muted golds, and subtle grays, with sharp focus on all elements.\",\n    \"imageIndex\": [\n      1,\n      2\n    ]\n  },\n  \"prompt2\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic medium close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. Her face shows a subtle furrow in her brow and a hint of uncertainty in her hazel eyes, her lips pressed gently. The background is the blurred pristine elements of a department store living room display with a tea table. Soft, uniform diffused light illuminates her face, casting delicate highlights and minimal shadows, emphasizing a mood of eerie tranquility. The color palette is dominated by soft pastels, muted golds, and subtle grays, with sharp focus on her features and selective depth of field.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt3\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic close-up of a genderless mannequin's face. The mannequin has smooth white molded hair and blank gray eyes, staring directly forward with an unnervingly perfect, static smile. It wears a pastel showroom outfit. The background is the blurred pristine elements of a department store living room display. Soft, uniform diffused light illuminates its features, creating minimal shadows and emphasizing its flawless, artificial surface. The color palette features soft pastels, muted golds, and subtle grays, maintaining sharp focus on the mannequin's intricate details.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt4\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic medium shot of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. She is seated stiffly at a tea table within a department store living room display. Her posture is rigid, shoulders slightly hunched, surrounded by silent, static genderless mannequins wearing pastel showroom outfits. The environment is pristine, with intricate textures. Soft, uniform diffused light bathes the scene, creating an atmosphere of deceptive calm and subtle unease. The color palette includes soft pastels, muted golds, and subtle grays, with sharp focus on the subject and surrounding elements.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt5\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic low angle shot focusing on the feet and the bottom of the soft pastel dress worn by a female with dark brown hair and hazel eyes. Her feet are positioned rigidly on the pristine floor of a department store living room display, hinting at her constrained position. The tea table legs and lower portions of mannequins are visible in the background, all rendered with intricate textures. Soft, uniform diffused light illuminates the scene from above, creating minimal shadows and emphasizing the flawless, artificial environment. The color palette features soft pastels, muted golds, and subtle grays, with sharp focus on the foreground details.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt6\": {\n    \"text\": \"Generate a hyperrealistic, cinematic macro shot of a delicate teacup placed on a pristine tea table within a department store living room display. The teacup holds a pale, almost colorless, diluted pastel-colored liquid. The intricate texture of the teacup and the polished surface of the table are in sharp focus. Soft, uniform diffused light highlights the liquid's subtle sheen and creates gentle reflections on the porcelain. The color palette consists of soft pastels, muted golds, and subtle grays, contributing to a mood of eerie tranquility and pristine artificiality.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt7\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic close-up of the female's lips. Her lips are tightly pressed together, and her jawline appears firm, indicating a resolute expression. The soft pastel dress is visible at the edge of the frame. The background is a subtly blurred department store living room display with a tea table. Soft, uniform diffused light illuminates her face, highlighting the intricate texture of her skin and the firmness of her mouth, conveying a mood of emerging tension within the deceptive calm. The color palette features soft pastels, muted golds, and subtle grays.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt8\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic close-up of a genderless mannequin's face. The mannequin has smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. A faint, barely perceptible hairline crack subtly disturbs its otherwise perfect facade, visible across its cheek. The background is the blurred department store living room display with a tea table. The lighting is transitioning from soft, uniform diffused light to slightly harsher illumination, emphasizing the hairline crack with subtle shadows and highlights. The color palette maintains soft pastels, muted golds, and subtle grays, now with hints of stark white and tension in the mood.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt9\": {\n    \"text\": \"Using the provided character reference image, generate a hyperrealistic, cinematic close-up of a genderless mannequin's face. The mannequin has smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. A prominent, jagged crack now spreads across its face, extending from its temple down to its jaw, clearly visible. The background is the blurred department store living room display. Harsh, high-contrast light illuminates the scene, creating stark, fractured shadows that emphasize the damage and the breaking of its facade. The color palette shifts to incorporate more stark whites and deep, shadowed browns, reflecting the increasing tension and shattered order.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt10\": {\n    \"text\": \"Generate a hyperrealistic, cinematic macro shot of a delicate glass vase placed on a tea table within a department store living room display. The vase's surface is visibly shimmering, with subtle distortions and refractions implying vibration. Harsh, high-contrast light strikes the vase, creating sharp glints and fractured shadows on its surface and the table around it, emphasizing the fragile order. The color palette includes soft pastels and muted golds, now contrasted with stark whites and deep shadows, contributing to a mood of palpable tension and impending breakage.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt11\": {\n    \"text\": \"Using the provided character reference image, generate a medium close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. Her expression is one of newfound power and defiance, her eyes bright and resolute. She is positioned within a department store living room display, which appears subtly fractured and disrupted in the background. The scene is illuminated by harsh, high-contrast light, creating dramatic shadows and highlights, with a muted pastel color palette that feels broken and tense. Cinematic, photorealistic, sharp focus.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt12\": {\n    \"text\": \"Generate a wide shot of a department store living room display, visibly asymmetrical and disrupted. A mannequin's arm lies on the floor in the foreground, breaking the perfect symmetry of the staged setting. The scene is lit by harsh, high-contrast light, casting sharp shadows and emphasizing the disarray. The color palette maintains muted pastels, but the mood is now tense and disturbed, reflecting the fragility of order. No people present. Cinematic, photorealistic, high detail.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt13\": {\n    \"text\": \"Generate a close-up image of sharp, angular pieces of shattered white porcelain scattered across the floor of a department store display. The fragments reflect a stark, cold light, creating a chilling atmosphere. The color palette is dominated by cold whites, grays, and deep shadows, emphasizing the destruction. No people or intact mannequins are visible. Cinematic, photorealistic, high detail, sharp focus on the fragments.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt14\": {\n    \"text\": \"Using the provided character reference image, generate a medium shot of a female with dark brown hair and hazel eyes, wearing a soft pastel dress, standing firm and confidently. Her posture is defiant, commanding attention amidst the broken order of the disrupted department store living room display. The scene is illuminated by harsh, high-contrast light, with emerging hints of electric blue appearing in the shadows, suggesting a shift in energy. The mood is powerful and resolute, with a stark, contrasting color palette. Cinematic, photorealistic.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt15\": {\n    \"text\": \"Using the provided character reference image, generate an extreme close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress, focusing on her mouth. Her mouth is slightly open, as if she is about to speak or has just spoken. The scene is bathed in harsh, high-contrast light, starkly highlighting the contours of her lips and face, with deep shadows defining the scene's mood. The background of the department store living room display is blurred, drawing all focus to her expression. Cinematic, photorealistic.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt16\": {\n    \"text\": \"Using the provided character reference image, generate a close-up of a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. Its face is entirely shattered into large, sharp fragments, revealing deep fractured blackness where its features once were. The scene is lit by harsh, unforgiving light, emphasizing the destruction and the deep, dark voids. The mood is chilling and stark, with a fragmented and dramatic color palette. Cinematic, photorealistic, sharp focus on the shattered face.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt17\": {\n    \"text\": \"Using the provided character reference image, generate a three-quarter view of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. She walks purposefully down a long showroom hallway, passing perfectly pristine staged room displays. Her face shows quiet determination. The hallway is illuminated by uniform diffused soft light, creating an atmosphere of serene, yet purposeful, movement. The color palette is soft pastels, with an underlying sense of emerging resolve. Cinematic, photorealistic.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt18\": {\n    \"text\": \"Generate a medium shot of a pristine staged dining room dinner party display. Genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, are posed politely around a dining table. However, a new, subtle crack is visible on the neck of one of the mannequins. The display is illuminated by uniform diffused soft light, creating an initially serene yet subtly unsettling atmosphere. The color palette is soft and controlled, hinting at underlying tension. Cinematic, photorealistic, high detail.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt19\": {\n    \"text\": \"Generate a wide shot of a staged dining room dinner party display, now in noticeable disarray. A genderless mannequin's arm lies detached on the dining table, a prominent sign of disruption. The scene is illuminated by harsh, high-contrast light, revealing the broken order. The color palette features muted pastels but the mood is tense and chaotic. No people are present. Cinematic, photorealistic, sharp focus on the disarray.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt20\": {\n    \"text\": \"Using the provided character reference image, generate a wide shot of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. She stands as a singular, living presence amidst a large, perfectly arranged dinner party display. The display is filled with motionless genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits. The scene is illuminated by uniform diffused soft light, creating a serene but striking contrast between the living and the artificial. The color palette is soft and controlled, highlighting her distinct presence. Cinematic, photorealistic.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt21\": {\n    \"text\": \"Using the provided character reference image, create a photorealistic close-up of a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. The mannequin looks directly at the camera, its blank gray eyes staring forward with an unnervingly calm expression. It is situated within a large, pristine dinner party display. The lighting is uniform, diffused, and soft, emphasizing the controlled sterility of the scene. Muted pastels dominate the color palette, conveying a sense of artificial order. Cinematic framing, detailed textures, professional photography style.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt22\": {\n    \"text\": \"Using the provided character reference image, create a photorealistic medium close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. Her face appears sharper, defined by emerging harsh shadows that convey unwavering determination. She has a sharp, determined look. The setting is a large dinner party display. Harsh, high-contrast light is starting to pierce the scene. The color palette shifts from muted pastels to incorporate more dramatic contrasts, reflecting a mood of emerging tension. Cinematic framing, realistic textures, professional photography style.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt23\": {\n    \"text\": \"Create a photorealistic macro shot of a perfectly set, pristine white porcelain dinner plate. A small, yet distinct and almost imperceptible crack is visible across its surface. The plate rests on a table within a large dinner party display. The lighting is uniform, diffused, and soft, with a subtle hint of disruption. The color palette maintains muted pastels but with a sense of underlying fragility. Cinematic framing, emphasizing the fine details and textures of the porcelain and the crack. Mood of controlled tension, professional photography style.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt24\": {\n    \"text\": \"Create a photorealistic extreme close-up of a match head, vividly igniting. It casts an intense, fiery red light onto its immediate surroundings, which are shrouded in darkness. This sudden burst of red light dominates the scene. The color palette is stark, with deep blacks contrasted by the brilliant, intense red glow. The mood is one of sudden emergence and dramatic change. Cinematic framing, emphasizing the ephemeral nature of the light. High detail, realistic fire texture, professional photography style.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt25\": {\n    \"text\": \"Using the provided character reference image, create a photorealistic close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. Her mouth is open in mid-speech, conveying conviction. Her facial features are sharply defined by dramatic chiaroscuro lighting, emphasizing her expressions. The background is a large dinner party display, partially obscured by the dramatic lighting. The color palette features strong contrasts between light and shadow, with underlying muted pastels. The mood is intense and dramatic. Cinematic framing, professional photography style.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt26\": {\n    \"text\": \"Using the provided character reference image, create a photorealistic close-up of a genderless mannequin's face. It has smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. The face is crisscrossed with multiple large, visible fractures, severely breaking its once perfect form. Harsh, fractured shadows emphasize these breaks. The scene is a large dinner party display, now disrupted. The color palette incorporates muted pastels alongside stark, fracturing light and shadow. The mood is one of destruction and broken order. Cinematic framing, high detail on the fractured surfaces, professional photography style.\",\n    \"imageIndex\": [\n      2\n    ]\n  },\n  \"prompt27\": {\n    \"text\": \"Create a photorealistic medium close-up of a genderless mannequin's head, completely detached, with smooth white molded hair and blank gray eyes. It lies on a once pristine dinner table, amidst scattered tableware. The setting is a large dinner party display, now in disarray. Harsh, high-contrast light illuminates the scene, casting sharp shadows. The color palette features broken pastels and stark contrasts, reflecting a mood of chaos and destruction. Cinematic framing, emphasizing the unsettling nature of the severed head and scattered items, professional photography style.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt28\": {\n    \"text\": \"Using the provided character reference image, create a photorealistic medium close-up of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. Her face holds an expression of fierce defiance. Stark, defiant reds and electric blues now dominate the lighting, framing her features. The background is a large dinner party display, now infused with these dramatic colors. The color palette is vivid and contrasting, with strong reds and blues against remaining pastels. The mood is powerful and rebellious. Cinematic framing, emphasizing the dramatic lighting and her determined expression, professional photography style.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt29\": {\n    \"text\": \"Create a photorealistic overhead shot, top-down perspective, revealing a chaotic spread of shattered porcelain mannequin pieces mixed with tableware across a large dinner table. The scene is a large dinner party display, now a complete mess of broken parts. Intense red and electric blue lighting dramatically illuminates the debris. The color palette is vibrant and chaotic, dominated by these strong reds and blues. The mood is one of utter destruction and dramatic upheaval. Cinematic framing, emphasizing the patterns of chaos and brokenness from above, professional photography style.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt30\": {\n    \"text\": \"Using the provided character reference image, create a photorealistic wide shot of a female with dark brown hair and hazel eyes, wearing a soft pastel dress. She stands at the edge of a collapsing dinner party set. The walls around her are visibly cracking and crumbling. Harsh red and electric blue light illuminates the scene, casting dramatic shadows on the breaking environment. The color palette is vivid and stark, with strong reds and blues against the disintegrating structure. The mood is one of defiant liberation amidst destruction. Cinematic framing, emphasizing the scale of the crumbling environment and her presence within it, professional photography style.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt31\": {\n    \"text\": \"An establishing wide shot captures a massive, dark warehouse-like showroom. The walls of a previously staged set lie collapsed, revealing endless rows of silent, unmoving genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, stretching into the deep shadows. The scene is illuminated by stark, theatrical lighting, creating high contrast. Cinematic, expressionistic, hyperrealistic, with muted industrial grays and cool blues, emphasizing dramatic scale.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt32\": {\n    \"text\": \"Using the provided character reference image, generate a three-quarter view of a female character with dark brown hair and hazel eyes, wearing a soft pastel dress. She stands defiant and focused, her gaze directed towards the vast, shadowed rows of genderless mannequins. A dramatic spotlight illuminates her face and upper body, creating a strong contrast against the deep shadow of the massive warehouse-like showroom. Cinematic, expressionistic, hyperrealistic, with muted industrial grays and cool blues, under theatrical spotlighting, conveying an intense and defiant mood.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt33\": {\n    \"text\": \"A wide angle shot captures endless rows of genderless mannequins with smooth white molded hair and blank gray eyes, wearing pastel showroom outfits, in a vast, dark warehouse-like showroom. Their blank faces subtly reflect a tremor, highlighted by hints of electric blue light that pierce through the darkness. The mood is tense and foreboding. Cinematic, expressionistic, hyperrealistic, with a color palette of deep shadows, muted industrial grays, and cool, subtle blues.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt34\": {\n    \"text\": \"A close-up on the chest of a genderless mannequin with smooth white molded hair and blank gray eyes, wearing a pastel showroom outfit. A fresh, large, radial crack spreads outward across its chest. The mannequin stands at the front of rows in a massive warehouse-like showroom. The background is dark, with harsh light focusing intensely on the cracked mannequin, emphasizing the damage. Cinematic, expressionistic, hyperrealistic, with a high-contrast palette of deep shadows and stark whites, conveying a dramatic and impactful moment.\",\n    \"imageIndex\": [\n      0\n    ]\n  },\n  \"prompt35\": {\n    \"text\": \"Using the provided character reference image, generate a close-up of a female character with dark brown hair and hazel eyes, wearing a soft pastel dress. Her face is completely bathed in a brilliant, pure white light, contrasting sharply with the dark background of the massive warehouse-like showroom. Her expression is radiant and powerful. Cinematic, expressionistic, hyperrealistic, with a striking contrast between pure white light and deep shadows, reflecting a transforming and powerful mood.\",\n    \"imageIndex\": [\n      1\n    ]\n  },\n  \"prompt36\": {\n    \"text\": \"Using the provided character reference image, generate an establishing wide shot showing a female character with dark brown hair and hazel eyes, wearing a soft pastel dress, standing alone in the center of a completely shattered showroom floor. The scene is littered with countless broken mannequin pieces and ruined set elements. The previous pristine sets are utterly destroyed. Dramatic, fractured, high-contrast lighting bathes the scene in reds, blues, and deep blacks. Cinematic, expressionistic, hyperrealistic, conveying a liberated and impactful mood amidst destruction.\",\n    \"imageIndex\": [\n      1\n    ]\n  }\n}"
-      ],
+      "widgets_values": [],
       "color": "#223",
       "bgcolor": "#335",
       "shape": 1
@@ -7527,7 +7478,7 @@
         58
       ],
       "flags": {},
-      "order": 73,
+      "order": 72,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -7617,7 +7568,7 @@
       "widgets_values": [
         false,
         "Image2Video",
-        "Image2Video_COMBINED.json",
+        "<no files found>",
         0,
         11,
         "A medium close-up shows a female with dark brown hair and hazel eyes, wearing a soft pastel dress. As she sings with passion and moves gently to the beat of the music, her expression exudes newfound power and defiance, her bright eyes resolute. She is within a department store living room display, subtly fractured and disrupted in the background. Harsh, high-contrast light illuminates the scene, casting dramatic shadows and highlights, emphasizing the muted pastel color palette, which now feels broken and tense.",
@@ -7999,7 +7950,7 @@
         58
       ],
       "flags": {},
-      "order": 74,
+      "order": 73,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8041,7 +7992,7 @@
         58
       ],
       "flags": {},
-      "order": 75,
+      "order": 74,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8083,7 +8034,7 @@
         98.00434779083571
       ],
       "flags": {},
-      "order": 76,
+      "order": 75,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -8114,7 +8065,7 @@
         92.88378518207173
       ],
       "flags": {},
-      "order": 77,
+      "order": 76,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -8142,7 +8093,7 @@
       ],
       "size": [
         248.9,
-        196
+        244
       ],
       "flags": {
         "collapsed": false
@@ -8205,7 +8156,9 @@
       "widgets_values": [
         "",
         "A cinematic photograph of these two young women sitting on the hood of a vintage car during golden hour.  The sky is warm with pink clouds, the mood is nostalgic. Camera is angled slightly above, capturing the moment from the car’s windshield. Natural color tones.",
-        "gemini-3.1-flash-image-preview"
+        "gemini-3.1-flash-image-preview",
+        "HD",
+        "16:9"
       ],
       "color": "#323",
       "bgcolor": "#535",
@@ -8223,7 +8176,7 @@
         107.01649842983898
       ],
       "flags": {},
-      "order": 78,
+      "order": 77,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -8372,9 +8325,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "167"
-      ],
+      "widgets_values": [],
       "color": "#432",
       "bgcolor": "#653",
       "shape": 1
@@ -8420,9 +8371,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "2"
-      ],
+      "widgets_values": [],
       "color": "#432",
       "bgcolor": "#653",
       "shape": 1
@@ -8468,9 +8417,7 @@
           "version": "7.5.2"
         }
       },
-      "widgets_values": [
-        "🎬 SRT MODE\nRendering chunk 3 / 36\nOutput folder: Too Loud for You_2026-03-06_20-56-02"
-      ],
+      "widgets_values": [],
       "color": "#322",
       "bgcolor": "#533",
       "shape": 1
@@ -8679,13 +8626,14 @@
         }
       ],
       "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
         "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
         "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_IntToFloat"
+        "Node name for S&R": "VRGDG_IntToFloat",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
       "widgets_values": [
         0
@@ -8750,7 +8698,7 @@
         323.8377143558346
       ],
       "flags": {},
-      "order": 79,
+      "order": 78,
       "mode": 0,
       "inputs": [
         {
@@ -8929,7 +8877,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 80,
+      "order": 79,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -8992,13 +8940,14 @@
         }
       ],
       "properties": {
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
         "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
         "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_IntToFloat"
+        "Node name for S&R": "VRGDG_IntToFloat",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
       "widgets_values": [
         0
@@ -9108,6 +9057,37 @@
       },
       "color": "#323",
       "bgcolor": "#535",
+      "shape": 1
+    },
+    {
+      "id": 796,
+      "type": "MarkdownNote",
+      "pos": [
+        1006.415452712399,
+        4496.46427912615
+      ],
+      "size": [
+        612.0800601540543,
+        763.8606020190255
+      ],
+      "flags": {},
+      "order": 80,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "LTX models used in  this workflow",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "## 📦 Required Models & Assets\n\n### 🧠 Diffusion Model\n- **ltx-2.3-distilled-Q6_k.gguf**  \n  🔗 [Download](https://huggingface.co/QuantStack/LTX-2.3-GGUF/tree/main/LTX-2.3-distilled)\n\n---\n\n### 🎥 Video & 🔊 Audio VAE\n- **LTX2.3_video_vae_bf16.safetensors**  \n- **LTX2.3_audio_vae_bf16.safetensors**  \n  🔗 [Download](https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae)\n\n---\n\n### 📝Clip Text / Instruction Model\n- **gemma-3-12b-it-qat-q4_0-gguf**  \n  🔗 [Download](https://huggingface.co/google/gemma-3-12b-it-qat-q4_0-gguf/tree/main)\n\n---\n\n### 🔤 Clip Text Encoder / Embeddings\n- **ltx-2.3_text_projection_bf16.safetensors**  \n  🔗 [Download](https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/text_encoders)\n\n---\n\n### 🔍 Spatial Upscaler\n- **ltx-2.3-spatial-upscaler-x2-1.0.safetensors**  \n  🔗 [Download](https://huggingface.co/Lightricks/LTX-2.3/blob/main/ltx-2.3-spatial-upscaler-x2-1.0.safetensors)\n\n---\n\n```\n📂 ComfyUI/\n├── 📂 models/\n│   ├── 📂 diffusion_models/\n│   │      └── ltx-2.3-distilled-Q6_k.gguf\n│   ├── 📂 text_encoders/\n│   │      ├── ltx-2.3-text_projection_bf16.safetensors\n│   │      └── gemma-3-12b-it-q4_0.gguf\n│   ├── 📂 vae/\n│   │      ├── LTX2.3_video_vae_bf16.safetensors\n│   │      └── LTX2.3_audio_vae_bf16.safetensors\n│   └── 📂 latent_upscale_models/\n│          └── ltx-2.3-spatial-upscaler-x2-1.0.safetensors\n\n```\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653",
       "shape": 1
     }
   ],
@@ -10409,7 +10389,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -12795,7 +12775,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -13750,7 +13730,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -14148,7 +14128,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -14319,7 +14299,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -14490,7 +14470,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -15086,7 +15066,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -15257,7 +15237,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -15448,7 +15428,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -15784,7 +15764,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -16090,7 +16070,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -16396,7 +16376,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -17141,7 +17121,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -17422,7 +17402,7 @@
         "version": 1,
         "state": {
           "lastGroupId": 23,
-          "lastNodeId": 795,
+          "lastNodeId": 796,
           "lastLinkId": 1240,
           "lastRerouteId": 0
         },
@@ -18173,10 +18153,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.5475865466525762,
+      "scale": 0.6625797214496181,
       "offset": [
-        404.9129570845351,
-        -5135.3096523520035
+        403.56065036682554,
+        -5407.6455951852295
       ]
     }
   },
