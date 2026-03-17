@@ -1107,6 +1107,218 @@ class VRGDG_LTXLoraTrainChunk:
         )
 
 
+class VRGDG_SpeedCharacterLoraTraining(VRGDG_LTXLoraTrainChunk):
+    DESCRIPTION = (
+        "Runs the LTX trainer with a fast character-LoRA preset using dynamic IMAGE and caption inputs."
+    )
+    MAX_IMAGE_SLOTS = 20
+    PRESET_TRAINING_STEPS = 400
+    PRESET_LEARNING_RATE = 0.0002
+    PRESET_LORA_RANK = 16
+    PRESET_LORA_ALPHA = 16
+    PRESET_NUM_REPEATS = 1
+    PRESET_COPY_LATEST = False
+    PRESET_KEEP_ONLY_COMFY = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional_inputs = {
+            f"image{i}": ("IMAGE", {
+                "forceInput": True,
+            })
+            for i in range(1, cls.MAX_IMAGE_SLOTS + 1)
+        }
+        optional_inputs.update({
+            f"caption_{i}": ("STRING", {
+                "default": "",
+                "multiline": False,
+            })
+            for i in range(1, cls.MAX_IMAGE_SLOTS + 1)
+        })
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "workspace_dir": ("STRING", {
+                    "default": "A:/MUSUBI/Training/SpeedCharacterLoraTraining",
+                    "multiline": False,
+                    "tooltip": "Workspace folder for cache, output, logs, config, and the managed dynamic dataset."
+                }),
+                "run_name": ("STRING", {
+                    "default": "SpeedCharacterLoraTrainingRun",
+                    "multiline": False,
+                    "tooltip": "Run name used for logs."
+                }),
+                "output_name": ("STRING", {
+                    "default": "SpeedCharacterLoraTraining",
+                    "multiline": False,
+                    "tooltip": "LoRA output name used for checkpoints and downstream preview naming."
+                }),
+                "image_count": ("INT", {
+                    "default": 4, "min": 1, "max": cls.MAX_IMAGE_SLOTS, "step": 1,
+                    "tooltip": "How many dynamic image inputs and caption fields to show."
+                }),
+                "resolution_width": ("INT", {
+                    "default": 1256, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Training bucket width. Pick the resolution preset you want to train at."
+                }),
+                "resolution_height": ("INT", {
+                    "default": 1256, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Training bucket height. Pick the resolution preset you want to train at."
+                }),
+                "blocks_to_swap": ("INT", {
+                    "default": 0, "min": 0, "max": 64, "step": 1,
+                    "tooltip": "How many transformer blocks to swap to CPU. 0 is fastest if VRAM allows it."
+                }),
+                "clear_memory_before_gemma": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Clears Comfy and CUDA memory before the Gemma cache stage."
+                }),
+                "cache_strategy": ([
+                    "auto",
+                    "force",
+                    "skip",
+                ], {
+                    "default": "auto",
+                    "tooltip": "Cache behavior. auto reuses cache when present, force rebuilds, skip bypasses cache creation."
+                }),
+                "strength_model": ("FLOAT", {
+                    "default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01,
+                    "tooltip": "Strength used when applying the newest trained LoRA back onto the returned MODEL."
+                }),
+                "musubi_root": ("STRING", {
+                    "default": "A:/MUSUBI/musubi-tuner",
+                    "multiline": False,
+                    "tooltip": "Root folder of your musubi install."
+                }),
+                "ltx2_checkpoint": ("STRING", {
+                    "default": "A:/MUSUBI/models/ltx2/ltx-2.3-22b-dev.safetensors",
+                    "multiline": False,
+                    "tooltip": "Path to the LTX-2.3 DiT checkpoint."
+                }),
+                "gemma_root": ("STRING", {
+                    "default": "A:/MUSUBI/models/gemma3",
+                    "multiline": False,
+                    "tooltip": "Path to the Gemma model root used by this preset."
+                }),
+            },
+            "optional": optional_inputs,
+        }
+
+    def _extract_single_image_tensor(self, value):
+        if value is None:
+            return None
+        if isinstance(value, torch.Tensor):
+            tensor = value
+            if tensor.ndim == 4:
+                if int(tensor.shape[0]) <= 0:
+                    return None
+                return tensor[0]
+            if tensor.ndim == 3:
+                return tensor
+            return None
+        if isinstance(value, dict):
+            for nested_value in value.values():
+                tensor = self._extract_single_image_tensor(nested_value)
+                if tensor is not None:
+                    return tensor
+            return None
+        if isinstance(value, (list, tuple, set)):
+            for nested_value in value:
+                tensor = self._extract_single_image_tensor(nested_value)
+                if tensor is not None:
+                    return tensor
+            return None
+        return None
+
+    def _save_dynamic_dataset_inputs(self, workspace_dir, image_count, kwargs):
+        dataset_root = self._ensure_dir(os.path.join(workspace_dir, "dynamic_dataset"))
+        images_dir = self._ensure_dir(os.path.join(dataset_root, "images"))
+
+        for entry in os.scandir(images_dir):
+            if not entry.is_file():
+                continue
+            ext = os.path.splitext(entry.name)[1].lower()
+            if ext in self.IMAGE_EXTENSIONS or ext == ".txt":
+                os.remove(entry.path)
+
+        saved_count = 0
+        for index in range(1, int(image_count) + 1):
+            image_tensor = self._extract_single_image_tensor(kwargs.get(f"image{index}"))
+            if image_tensor is None:
+                continue
+
+            image_array = image_tensor.detach().cpu().numpy()
+            image_array = np.clip(image_array * 255.0, 0, 255).astype(np.uint8)
+            image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+            stem = f"image{index:03d}"
+            image_path = os.path.join(images_dir, f"{stem}.png")
+            caption_path = os.path.join(images_dir, f"{stem}.txt")
+            cv2.imwrite(image_path, image_bgr)
+
+            caption_text = str(kwargs.get(f"caption_{index}", "") or "").strip()
+            with open(caption_path, "w", encoding="utf-8") as handle:
+                handle.write(caption_text)
+
+            saved_count += 1
+
+        if saved_count <= 0:
+            raise ValueError("No connected images were found. Connect at least one image input.")
+
+        print(f"[VRGDG] Prepared dynamic dataset with {saved_count} image-caption pair(s): {images_dir}")
+        return os.path.normpath(images_dir)
+
+    def run(
+        self,
+        model,
+        workspace_dir,
+        run_name,
+        output_name,
+        image_count,
+        resolution_width,
+        resolution_height,
+        blocks_to_swap,
+        clear_memory_before_gemma,
+        cache_strategy,
+        strength_model,
+        musubi_root,
+        ltx2_checkpoint,
+        gemma_root,
+        **kwargs,
+    ):
+        workspace_dir = self._norm(workspace_dir)
+        managed_dataset_dir = self._save_dynamic_dataset_inputs(workspace_dir, image_count, kwargs)
+
+        return super().run(
+            model=model,
+            dataset_images_dir=managed_dataset_dir,
+            workspace_dir=workspace_dir,
+            run_name=run_name,
+            output_name=output_name,
+            resolution_width=resolution_width,
+            resolution_height=resolution_height,
+            steps_per_run=self.PRESET_TRAINING_STEPS,
+            total_target_steps=self.PRESET_TRAINING_STEPS,
+            network_dim=self.PRESET_LORA_RANK,
+            network_alpha=self.PRESET_LORA_ALPHA,
+            blocks_to_swap=blocks_to_swap,
+            clear_memory_before_gemma=clear_memory_before_gemma,
+            learning_rate_preset="Custom",
+            learning_rate=self.PRESET_LEARNING_RATE,
+            num_repeats=self.PRESET_NUM_REPEATS,
+            cache_strategy=cache_strategy,
+            copy_latest_to_comfy_loras=self.PRESET_COPY_LATEST,
+            keep_only_comfy_lora=self.PRESET_KEEP_ONLY_COMFY,
+            strength_model=strength_model,
+            create_captions=False,
+            caption_text="",
+            add_trigger_word=False,
+            trigger_text="",
+            musubi_root=musubi_root,
+            ltx2_checkpoint=ltx2_checkpoint,
+            gemma_root=gemma_root,
+        )
+
+
 class VRGDG_LTXPreviewXYZPlot:
     RETURN_TYPES = ("STRING", "BOOLEAN", "STRING")
     RETURN_NAMES = ("xyz_video_path", "created", "status")
@@ -1872,12 +2084,14 @@ class VRGDG_VideoFolderGridPlot(VRGDG_LTXPreviewXYZPlot):
 
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXLoraTrainChunk": VRGDG_LTXLoraTrainChunk,
+    "VRGDG_SpeedCharacterLoraTraining": VRGDG_SpeedCharacterLoraTraining,    
     "VRGDG_LTXPreviewXYZPlot": VRGDG_LTXPreviewXYZPlot,
     "VRGDG_VideoFolderGridPlot": VRGDG_VideoFolderGridPlot,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LTXLoraTrainChunk": "VRGDG LTX LoRA Train Chunk",
+    "VRGDG_SpeedCharacterLoraTraining": "VRGDG Speed Character Lora Training",    
     "VRGDG_LTXPreviewXYZPlot": "VRGDG LTX Preview XYZ Plot",
     "VRGDG_VideoFolderGridPlot": "VRGDG Video Folder Grid Plot",
 }
