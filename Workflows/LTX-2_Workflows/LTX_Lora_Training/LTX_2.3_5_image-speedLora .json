@@ -1102,8 +1102,8 @@
         7437.252454197877
       ],
       "size": [
-        353.9,
-        610
+        357.0991511996177,
+        634
       ],
       "flags": {},
       "order": 15,
@@ -1140,6 +1140,7 @@
         },
         {
           "name": "image5",
+          "shape": 7,
           "type": "IMAGE",
           "link": 14089
         }
@@ -1189,11 +1190,12 @@
       "properties": {
         "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
         "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_SpeedCharacterLoraTraining",
         "ue_properties": {
           "widget_ue_connectable": {},
-          "input_ue_unconnectable": {}
-        },
-        "Node name for S&R": "VRGDG_SpeedCharacterLoraTraining"
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
       },
       "widgets_values": [
         "A:/MUSUBI/Training/SpeedCharacterLoraTraining",
@@ -1210,6 +1212,7 @@
         "A:/MUSUBI/models/ltx2/ltx-2.3-22b-dev.safetensors",
         "A:/MUSUBI/models/gemma3",
         "a front facing photo of xxxx",
+        "a front facing photo of xxxxx",
         "a right profile photo of xxxxx",
         "a left profile photo of xxxx",
         "a right angle photo of xxxx",
@@ -1228,7 +1231,7 @@
         "",
         "",
         "",
-        "",
+        null,
         null
       ],
       "color": "#232",
@@ -3952,10 +3955,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.529334715521961,
+      "scale": 0.5822681870741574,
       "offset": [
-        3453.087038243847,
-        -6684.370428848836
+        3197.550854297529,
+        -6813.186281229684
       ]
     },
     "frontendVersion": "1.39.19",
