@@ -1,8 +1,8 @@
 {
   "id": "ba333065-a04f-4898-8fd2-59aac7378a47",
   "revision": 0,
-  "last_node_id": 5302,
-  "last_link_id": 14083,
+  "last_node_id": 5303,
+  "last_link_id": 14092,
   "nodes": [
     {
       "id": 5251,
@@ -117,13 +117,13 @@
           "label": "model stage 1",
           "name": "model",
           "type": "MODEL",
-          "link": 14066
+          "link": 14090
         },
         {
           "label": "model stage 2",
           "name": "model_1",
           "type": "MODEL",
-          "link": 14067
+          "link": 14091
         },
         {
           "label": "upscale model",
@@ -416,7 +416,7 @@
           "widget": {
             "name": "filename_prefix"
           },
-          "link": 14068
+          "link": 14092
         }
       ],
       "outputs": [
@@ -587,7 +587,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14074
+            14085
           ]
         },
         {
@@ -633,7 +633,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14075
+            14086
           ]
         },
         {
@@ -679,7 +679,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14076
+            14087
           ]
         },
         {
@@ -725,7 +725,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14077
+            14088
           ]
         },
         {
@@ -897,7 +897,7 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            14065
+            14084
           ]
         }
       ],
@@ -968,7 +968,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14082
+            14089
           ]
         },
         {
@@ -1036,147 +1036,6 @@
       "bgcolor": "#353"
     },
     {
-      "id": 5295,
-      "type": "VRGDG_LTXLoraTrainChunkZImagePreset",
-      "pos": [
-        -2082.416856617585,
-        7432.4755960255125
-      ],
-      "size": [
-        336.9,
-        610
-      ],
-      "flags": {},
-      "order": 15,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 14065
-        },
-        {
-          "name": "image1",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 14074
-        },
-        {
-          "name": "image2",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 14075
-        },
-        {
-          "name": "image3",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 14076
-        },
-        {
-          "name": "image4",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 14077
-        },
-        {
-          "name": "image5",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 14082
-        }
-      ],
-      "outputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "links": [
-            14066,
-            14067
-          ]
-        },
-        {
-          "name": "latest_state_path",
-          "type": "STRING",
-          "links": null
-        },
-        {
-          "name": "log_path",
-          "type": "STRING",
-          "links": null
-        },
-        {
-          "name": "video_filename_prefix",
-          "type": "STRING",
-          "links": [
-            14068
-          ]
-        },
-        {
-          "name": "output_name",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "name": "completed_steps",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "total_target_steps",
-          "type": "INT",
-          "links": []
-        }
-      ],
-      "properties": {
-        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
-        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
-        "Node name for S&R": "VRGDG_LTXLoraTrainChunkZImagePreset",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.5.2"
-        }
-      },
-      "widgets_values": [
-        "A:\\MUSUBI\\musubi-tuner-ltx2\\local\\DataSet\\realtimetest001",
-        "ZImageStyleRun2",
-        "ZImageStyle2",
-        5,
-        1920,
-        1080,
-        0,
-        true,
-        "auto",
-        1,
-        "A:\\MUSUBI\\musubi-tuner-ltx2",
-        "A:\\MUSUBI\\models\\ltx2\\ltx-2.3-22b-dev.safetensors",
-        "A:\\MUSUBI\\models\\gemma3",
-        "a front facing photo of D050T89 with a neutral expression",
-        "a ride side profile of D050T89 with a neutral expression",
-        "a left side profile of D050T89 with a neutral expression",
-        "a right angle profile of D050T89 with a neutral expression",
-        "a left angle profile of D050T89 with a neutral expression",
-        "a front facing photo of D050T89 smiling happy expression",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        null
-      ],
-      "bgcolor": "#353"
-    },
-    {
       "id": 5292,
       "type": "MarkdownNote",
       "pos": [
@@ -1234,6 +1093,146 @@
       ],
       "color": "#432",
       "bgcolor": "#653"
+    },
+    {
+      "id": 5303,
+      "type": "VRGDG_SpeedCharacterLoraTraining",
+      "pos": [
+        -2082.3317642482853,
+        7437.252454197877
+      ],
+      "size": [
+        353.9,
+        610
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 14084
+        },
+        {
+          "name": "image1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 14085
+        },
+        {
+          "name": "image2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 14086
+        },
+        {
+          "name": "image3",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 14087
+        },
+        {
+          "name": "image4",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 14088
+        },
+        {
+          "name": "image5",
+          "type": "IMAGE",
+          "link": 14089
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            14090,
+            14091
+          ]
+        },
+        {
+          "name": "latest_state_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "log_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "video_filename_prefix",
+          "type": "STRING",
+          "links": [
+            14092
+          ]
+        },
+        {
+          "name": "output_name",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "completed_steps",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "total_target_steps",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "VRGDG_SpeedCharacterLoraTraining"
+      },
+      "widgets_values": [
+        "A:/MUSUBI/Training/SpeedCharacterLoraTraining",
+        "SpeedCharacterLoraTrainingRun",
+        "SpeedCharacterLoraTraining",
+        5,
+        1920,
+        1080,
+        1,
+        true,
+        "auto",
+        1,
+        "A:/MUSUBI/musubi-tuner",
+        "A:/MUSUBI/models/ltx2/ltx-2.3-22b-dev.safetensors",
+        "A:/MUSUBI/models/gemma3",
+        "a front facing photo of xxxx",
+        "a right profile photo of xxxxx",
+        "a left profile photo of xxxx",
+        "a right angle photo of xxxx",
+        "a left angle photo of xxxx",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        null
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
     }
   ],
   "links": [
@@ -1366,76 +1365,76 @@
       "STRING"
     ],
     [
-      14065,
+      14084,
       5256,
       4,
-      5295,
+      5303,
       0,
       "MODEL"
     ],
     [
-      14066,
-      5295,
-      0,
-      5257,
-      0,
-      "MODEL"
-    ],
-    [
-      14067,
-      5295,
-      0,
-      5257,
-      1,
-      "MODEL"
-    ],
-    [
-      14068,
-      5295,
-      3,
-      5258,
-      4,
-      "STRING"
-    ],
-    [
-      14074,
+      14085,
       5296,
       0,
-      5295,
+      5303,
       1,
       "IMAGE"
     ],
     [
-      14075,
+      14086,
       5297,
       0,
-      5295,
+      5303,
       2,
       "IMAGE"
     ],
     [
-      14076,
+      14087,
       5298,
       0,
-      5295,
+      5303,
       3,
       "IMAGE"
     ],
     [
-      14077,
+      14088,
       5299,
       0,
-      5295,
+      5303,
       4,
       "IMAGE"
     ],
     [
-      14082,
+      14089,
       5300,
       0,
-      5295,
+      5303,
       5,
       "IMAGE"
+    ],
+    [
+      14090,
+      5303,
+      0,
+      5257,
+      0,
+      "MODEL"
+    ],
+    [
+      14091,
+      5303,
+      0,
+      5257,
+      1,
+      "MODEL"
+    ],
+    [
+      14092,
+      5303,
+      3,
+      5258,
+      4,
+      "STRING"
     ]
   ],
   "groups": [
@@ -1512,8 +1511,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 36,
-          "lastNodeId": 5302,
-          "lastLinkId": 14083,
+          "lastNodeId": 5303,
+          "lastLinkId": 14092,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -2222,8 +2221,8 @@
         "version": 1,
         "state": {
           "lastGroupId": 36,
-          "lastNodeId": 5302,
-          "lastLinkId": 14083,
+          "lastNodeId": 5303,
+          "lastLinkId": 14092,
           "lastRerouteId": 0
         },
         "revision": 0,
@@ -3953,10 +3952,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.7045445063597296,
+      "scale": 0.529334715521961,
       "offset": [
-        3110.0533206234163,
-        -6891.145053316227
+        3453.087038243847,
+        -6684.370428848836
       ]
     },
     "frontendVersion": "1.39.19",
