@@ -16,7 +16,7 @@
         58
       ],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -110,7 +110,7 @@
         290
       ],
       "flags": {},
-      "order": 13,
+      "order": 19,
       "mode": 0,
       "inputs": [
         {
@@ -253,7 +253,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -314,7 +314,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 12,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
@@ -384,7 +384,7 @@
         555.7139283929966
       ],
       "flags": {},
-      "order": 14,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
@@ -564,7 +564,7 @@
         58
       ],
       "flags": {},
-      "order": 15,
+      "order": 21,
       "mode": 0,
       "inputs": [
         {
@@ -608,7 +608,7 @@
         290
       ],
       "flags": {},
-      "order": 16,
+      "order": 22,
       "mode": 0,
       "inputs": [
         {
@@ -708,7 +708,7 @@
         93.29995010465336
       ],
       "flags": {},
-      "order": 19,
+      "order": 25,
       "mode": 0,
       "inputs": [
         {
@@ -752,7 +752,7 @@
         88
       ],
       "flags": {},
-      "order": 18,
+      "order": 24,
       "mode": 0,
       "inputs": [
         {
@@ -796,7 +796,7 @@
         87.69162092926672
       ],
       "flags": {},
-      "order": 17,
+      "order": 23,
       "mode": 0,
       "inputs": [
         {
@@ -1155,7 +1155,7 @@
         880
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -1255,6 +1255,298 @@
       ],
       "color": "#009933",
       "bgcolor": "#353"
+    },
+    {
+      "id": 5307,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1270.165457698753,
+        8514.816328449167
+      ],
+      "size": [
+        202.16425363870613,
+        191.0451157328407
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 14094
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 5308,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1048.2358603298321,
+        8513.21394868477
+      ],
+      "size": [
+        202.16425363870613,
+        191.0451157328407
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 14095
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 5309,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -829.5110224897074,
+        8508.406809391581
+      ],
+      "size": [
+        202.16425363870613,
+        191.0451157328407
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 14096
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 5310,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -605.6805563994492,
+        8510.961363293429
+      ],
+      "size": [
+        202.16425363870613,
+        191.0451157328407
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 14097
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 5311,
+      "type": "VRGDG_MusubiTunerInstaller",
+      "pos": [
+        -1504.6367801511035,
+        8258.290727466328
+      ],
+      "size": [
+        295.4964303534056,
+        186
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "install_root",
+          "type": "STRING",
+          "links": [
+            14093
+          ]
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": [
+            14094
+          ]
+        },
+        {
+          "name": "checkpoint_path",
+          "type": "STRING",
+          "links": [
+            14095
+          ]
+        },
+        {
+          "name": "gemma_root",
+          "type": "STRING",
+          "links": [
+            14096
+          ]
+        },
+        {
+          "name": "report_path",
+          "type": "STRING",
+          "links": [
+            14097
+          ]
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_MusubiTunerInstaller"
+      },
+      "widgets_values": [
+        "E:\\Musubi_trainer_test",
+        false,
+        null
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 5306,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1493.6974348320668,
+        8526.83417668214
+      ],
+      "size": [
+        201.36306375650784,
+        186.237976439651
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 14093
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
     }
   ],
   "links": [
@@ -1489,6 +1781,46 @@
       5282,
       4,
       "INT"
+    ],
+    [
+      14093,
+      5311,
+      0,
+      5306,
+      0,
+      "STRING"
+    ],
+    [
+      14094,
+      5311,
+      1,
+      5307,
+      0,
+      "STRING"
+    ],
+    [
+      14095,
+      5311,
+      2,
+      5308,
+      0,
+      "STRING"
+    ],
+    [
+      14096,
+      5311,
+      3,
+      5309,
+      0,
+      "STRING"
+    ],
+    [
+      14097,
+      5311,
+      4,
+      5310,
+      0,
+      "STRING"
     ]
   ],
   "groups": [
@@ -1552,6 +1884,19 @@
         7059.273496009293,
         713.1049066706178,
         350.96775454272085
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 37,
+      "title": "Group",
+      "bounding": [
+        -1522.4001567766088,
+        8181.281023032247,
+        1164.813414933123,
+        570.175175330689
       ],
       "color": "#3f789e",
       "font_size": 24,
@@ -4006,10 +4351,10 @@
     "ue_links": [],
     "links_added_by_ue": [],
     "ds": {
-      "scale": 0.4374667070429424,
+      "scale": 0.5822681870741564,
       "offset": [
-        3021.9162144879,
-        -6859.718479628393
+        2684.0615894765133,
+        -7344.144739316998
       ]
     },
     "frontendVersion": "1.39.19",
