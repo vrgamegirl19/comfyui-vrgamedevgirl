@@ -27,6 +27,8 @@ any_typ = AnyType("*")
 
 _VRGDG_TENSORBOARD_ROUTE_REGISTERED = False
 _VRGDG_TENSORBOARD_RUNS = {}
+_VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED = False
+_VRGDG_MUSUBI_INSTALL_LOCK = threading.Lock()
 
 
 def _ensure_tensorboard_route_registered():
@@ -106,6 +108,504 @@ def _ensure_tensorboard_route_registered():
     _VRGDG_TENSORBOARD_ROUTE_REGISTERED = True
 
 
+def _ensure_musubi_install_route_registered():
+    global _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED
+    if _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED:
+        return
+
+    server_instance = getattr(PromptServer, "instance", None)
+    if server_instance is None:
+        return
+
+    def _emit(log_lines, message):
+        message = str(message)
+        print(message)
+        log_lines.append(message)
+
+    def _resolve_supported_python():
+        launcher = shutil.which("py")
+        if launcher:
+            for minor in (12, 11, 10):
+                candidate = [launcher, f"-3.{minor}"]
+                try:
+                    result = subprocess.run(
+                        candidate + ["--version"],
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        check=True,
+                    )
+                except Exception:
+                    continue
+                version_text = (result.stdout or result.stderr or "").strip()
+                if re.search(r"Python 3\.(10|11|12)\.\d+", version_text):
+                    return candidate, version_text
+
+        current_version = sys.version_info
+        if current_version.major == 3 and 10 <= current_version.minor <= 12:
+            return [sys.executable], f"Python {current_version.major}.{current_version.minor}.{current_version.micro}"
+
+        raise RuntimeError(
+            "Musubi-Tuner requires Python 3.10, 3.11, or 3.12. "
+            "Install one of those versions or make sure the `py` launcher can resolve one of them."
+        )
+
+    def _resolve_unique_install_path(parent_root):
+        base_name = "Musubi-tuner"
+        primary = os.path.join(parent_root, base_name)
+        if not os.path.exists(primary):
+            return primary
+
+        prefixed = os.path.join(parent_root, f"VRGDG_{base_name}")
+        if not os.path.exists(prefixed):
+            return prefixed
+
+        index = 2
+        while True:
+            candidate = os.path.join(parent_root, f"VRGDG_{base_name}_{index}")
+            if not os.path.exists(candidate):
+                return candidate
+            index += 1
+
+    def _download_file(url, destination, log_lines):
+        _emit(log_lines, f"[VRGDG] Downloading archive: {url}")
+        with urllib.request.urlopen(url) as response, open(destination, "wb") as output_handle:
+            total_size = int(response.headers.get("Content-Length") or 0)
+            downloaded = 0
+            last_reported = 0
+            report_step = max(1, total_size // 10) if total_size else 5 * 1024 * 1024
+
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                output_handle.write(chunk)
+                downloaded += len(chunk)
+                if downloaded - last_reported >= report_step or (total_size and downloaded >= total_size):
+                    if total_size:
+                        percent = (downloaded / total_size) * 100
+                        _emit(
+                            log_lines,
+                            f"[VRGDG] Download progress: {downloaded}/{total_size} bytes ({percent:.1f}%)",
+                        )
+                    else:
+                        _emit(log_lines, f"[VRGDG] Downloaded {downloaded} bytes")
+                    last_reported = downloaded
+
+        _emit(log_lines, f"[VRGDG] Download complete: {destination}")
+
+    def _run_command(command, cwd, log_lines):
+        command_line = "$ " + " ".join(command)
+        _emit(log_lines, command_line)
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            line = line.rstrip("\n")
+            _emit(log_lines, line)
+        process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"Command failed with exit code {process.returncode}: {' '.join(command)}")
+
+    def _run_python_check(venv_python, code, cwd, log_lines, label, required=True):
+        _emit(log_lines, f"[VRGDG] Check: {label}")
+        try:
+            _run_command([venv_python, "-c", code], cwd, log_lines)
+            return {"label": label, "required": required, "ok": True, "message": "PASS"}
+        except Exception as exc:
+            level = "ERROR" if required else "WARN"
+            message = str(exc)
+            _emit(log_lines, f"[VRGDG] {level}: {label}: {message}")
+            return {"label": label, "required": required, "ok": False, "message": message}
+
+    def _run_install_verification(install_path, venv_python, version_text, log_lines):
+        checks = []
+        checks.append(
+            _run_python_check(
+                venv_python,
+                "import sys; print(sys.executable); print(sys.version)",
+                install_path,
+                log_lines,
+                "Python interpreter and version",
+            )
+        )
+        checks.append(
+            _run_python_check(
+                venv_python,
+                "import torch; print('torch', torch.__version__); print('cuda', torch.cuda.is_available())",
+                install_path,
+                log_lines,
+                "torch import and CUDA availability",
+            )
+        )
+        checks.append(
+            _run_python_check(
+                venv_python,
+                "import accelerate, diffusers, transformers, safetensors, av, cv2, PIL, huggingface_hub, sentencepiece; print('core imports ok')",
+                install_path,
+                log_lines,
+                "Core musubi dependencies",
+            )
+        )
+        checks.append(
+            _run_python_check(
+                venv_python,
+                "import musubi_tuner; print(musubi_tuner.__file__)",
+                install_path,
+                log_lines,
+                "musubi_tuner import",
+            )
+        )
+        checks.append(
+            _run_python_check(
+                venv_python,
+                "import bitsandbytes; print(bitsandbytes.__file__)",
+                install_path,
+                log_lines,
+                "bitsandbytes import",
+                required=False,
+            )
+        )
+        checks.append(
+            _run_python_check(
+                venv_python,
+                "import pathlib; p = pathlib.Path('ltx2_train_network.py'); print(p.resolve()); print(p.exists())",
+                install_path,
+                log_lines,
+                "musubi training script exists",
+            )
+        )
+
+        pass_count = sum(1 for item in checks if item.get("ok"))
+        warn_count = sum(1 for item in checks if not item.get("ok") and not item.get("required"))
+        fail_count = sum(1 for item in checks if not item.get("ok") and item.get("required"))
+
+        summary_line = (
+            f"[VRGDG] Verification summary: pass={pass_count} warn={warn_count} fail={fail_count} "
+            f"python={version_text}"
+        )
+        _emit(log_lines, summary_line)
+
+        report_lines = [
+            "VRGDG Musubi-Tuner Installation Report",
+            f"Install path: {install_path}",
+            f"Python: {version_text}",
+            "",
+            "Checks:",
+        ]
+        for item in checks:
+            state = "PASS" if item.get("ok") else ("WARN" if not item.get("required") else "FAIL")
+            report_lines.append(f"- [{state}] {item['label']}: {item['message']}")
+        report_lines.append("")
+        report_lines.append(summary_line)
+
+        report_path = os.path.join(install_path, "vrgdg_musubi_install_report.txt")
+        with open(report_path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(report_lines) + "\n")
+
+        _emit(log_lines, f"[VRGDG] Wrote verification report: {report_path}")
+        return checks, report_path
+
+    def _install_musubi_tuner(target_root, branch, torch_index_url):
+        log_lines = []
+        target_root = os.path.normpath(str(target_root or "").strip())
+        branch = str(branch or "ltx-2-dev").strip() or "ltx-2-dev"
+        torch_index_url = str(torch_index_url or "").strip() or "https://download.pytorch.org/whl/cu124"
+
+        if not target_root:
+            raise ValueError("target_root is required.")
+
+        parent_root = os.path.abspath(target_root)
+        os.makedirs(parent_root, exist_ok=True)
+
+        install_path = _resolve_unique_install_path(parent_root)
+        temp_root = tempfile.mkdtemp(prefix="vrgdg_musubi_")
+        zip_path = os.path.join(temp_root, f"musubi-tuner-{branch}.zip")
+        extract_root = os.path.join(temp_root, f"musubi-tuner-{branch}")
+        repo_url = f"https://github.com/AkaneTendo25/musubi-tuner/archive/refs/heads/{branch}.zip"
+
+        try:
+            _emit(log_lines, f"[VRGDG] Target parent folder: {parent_root}")
+            _emit(log_lines, f"[VRGDG] Install folder resolved to: {install_path}")
+            _emit(log_lines, f"[VRGDG] Branch: {branch}")
+
+            _download_file(repo_url, zip_path, log_lines)
+
+            _emit(log_lines, f"[VRGDG] Extracting archive to: {extract_root}")
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(extract_root)
+
+            extracted_dirs = [
+                entry.path
+                for entry in os.scandir(extract_root)
+                if entry.is_dir()
+            ]
+            if not extracted_dirs:
+                raise RuntimeError("The downloaded archive did not contain a top-level folder.")
+
+            source_dir = extracted_dirs[0]
+            _emit(log_lines, f"[VRGDG] Moving source folder into place: {source_dir}")
+            shutil.move(source_dir, install_path)
+
+            python_command, version_text = _resolve_supported_python()
+            _emit(log_lines, f"[VRGDG] Using Python interpreter: {version_text}")
+
+            _run_command(python_command + ["-m", "venv", "venv"], install_path, log_lines)
+
+            venv_python = os.path.join(install_path, "venv", "Scripts", "python.exe")
+            if not os.path.isfile(venv_python):
+                raise RuntimeError(f"Could not find venv python: {venv_python}")
+
+            _run_command(
+                [venv_python, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
+                install_path,
+                log_lines,
+            )
+            _run_command(
+                [venv_python, "-m", "pip", "install", "torch", "torchvision", "--index-url", torch_index_url],
+                install_path,
+                log_lines,
+            )
+            _run_command(
+                [venv_python, "-m", "pip", "install", "-e", "."],
+                install_path,
+                log_lines,
+            )
+
+            checks, report_path = _run_install_verification(install_path, venv_python, version_text, log_lines)
+            if any((not item.get("ok")) and item.get("required") for item in checks):
+                raise RuntimeError(
+                    "Musubi-Tuner installed, but required verification checks failed. "
+                    f"See report: {report_path}"
+                )
+
+            _emit(log_lines, "[VRGDG] Musubi-Tuner installation completed successfully.")
+            _emit(log_lines, f"[VRGDG] Final install path: {install_path}")
+
+            return {
+                "ok": True,
+                "install_path": os.path.normpath(install_path),
+                "python_version": version_text,
+                "report_path": os.path.normpath(report_path),
+                "checks": checks,
+                "messages": log_lines,
+            }
+        finally:
+            if os.path.isdir(temp_root):
+                shutil.rmtree(temp_root, ignore_errors=True)
+
+    def _download_model_artifacts(install_path, model_root_name, checkpoint_repo, checkpoint_filename, gemma_repo, gemma_root_name):
+        model_root = os.path.join(install_path, "models")
+        checkpoints_dir = os.path.join(model_root, "checkpoints")
+        gemma_dir = os.path.join(model_root, gemma_root_name)
+        os.makedirs(checkpoints_dir, exist_ok=True)
+        os.makedirs(gemma_dir, exist_ok=True)
+
+        download_script = f"""
+import os
+from huggingface_hub import hf_hub_download, snapshot_download
+
+install_path = {install_path!r}
+checkpoints_dir = {checkpoints_dir!r}
+gemma_dir = {gemma_dir!r}
+checkpoint_repo = {checkpoint_repo!r}
+checkpoint_filename = {checkpoint_filename!r}
+gemma_repo = {gemma_repo!r}
+
+def _download_checkpoint():
+    print(f"[VRGDG] Downloading checkpoint {{checkpoint_filename}} from {{checkpoint_repo}}")
+    path = hf_hub_download(
+        repo_id=checkpoint_repo,
+        filename=checkpoint_filename,
+        local_dir=checkpoints_dir,
+        local_dir_use_symlinks=False,
+    )
+    print(f"[VRGDG] Checkpoint ready: {{path}}")
+
+def _download_gemma():
+    print(f"[VRGDG] Downloading Gemma snapshot from {{gemma_repo}}")
+    path = snapshot_download(
+        repo_id=gemma_repo,
+        local_dir=gemma_dir,
+        local_dir_use_symlinks=False,
+    )
+    print(f"[VRGDG] Gemma snapshot ready: {{path}}")
+
+_download_checkpoint()
+_download_gemma()
+print(f"[VRGDG] Model download root: {{os.path.join(install_path, 'models')}}")
+"""
+        return download_script, checkpoints_dir, gemma_dir
+
+    def _run_model_downloads(install_path, venv_python, log_lines, download_models):
+        if not download_models:
+            return {
+                "downloaded": False,
+                "checkpoint_path": "",
+                "gemma_root": "",
+            }
+
+        checkpoint_repo = "Lightricks/LTX-2.3"
+        checkpoint_filename = "ltx-2.3-22b-dev.safetensors"
+        gemma_repo = "google/gemma-3-12b-it"
+        gemma_root_name = "gemma-3-12b-it"
+        script, checkpoint_dir, gemma_dir = _download_model_artifacts(
+            install_path,
+            "models",
+            checkpoint_repo,
+            checkpoint_filename,
+            gemma_repo,
+            gemma_root_name,
+        )
+        _emit(log_lines, "[VRGDG] Auto-download enabled: fetching required model files.")
+        _run_command([venv_python, "-c", script], install_path, log_lines)
+        return {
+            "downloaded": True,
+            "checkpoint_path": os.path.normpath(os.path.join(checkpoint_dir, checkpoint_filename)),
+            "gemma_root": os.path.normpath(gemma_dir),
+        }
+
+    def _get_huggingface_token():
+        candidates = [
+            os.environ.get("HF_TOKEN", ""),
+            os.environ.get("HUGGINGFACE_HUB_TOKEN", ""),
+            os.environ.get("HF_HUB_TOKEN", ""),
+        ]
+        token_paths = [
+            os.path.join(os.path.expanduser("~"), ".huggingface", "token"),
+            os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "token"),
+        ]
+        for token_path in token_paths:
+            if os.path.isfile(token_path):
+                try:
+                    with open(token_path, "r", encoding="utf-8") as handle:
+                        candidates.append(handle.read().strip())
+                except Exception:
+                    pass
+        for candidate in candidates:
+            token = str(candidate or "").strip()
+            if token:
+                return token
+        return ""
+
+    def _probe_huggingface_endpoint(url, token, log_lines, label):
+        headers = {"User-Agent": "VRGDG-Musubi-Installer/1.0"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                status = getattr(response, "status", 200)
+                _emit(log_lines, f"[VRGDG] HF preflight passed: {label} (HTTP {status})")
+                return
+        except urllib.error.HTTPError as exc:
+            if exc.code in (401, 403):
+                raise RuntimeError(
+                    f"Please log into Hugging Face and accept the required license before downloading {label}."
+                ) from exc
+            raise RuntimeError(
+                f"Hugging Face preflight failed for {label} with HTTP {exc.code}: {exc.reason}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Hugging Face preflight failed for {label}: {exc.reason}") from exc
+
+    def _preflight_huggingface_downloads(log_lines):
+        token = _get_huggingface_token()
+        if not token:
+            raise RuntimeError(
+                "Please log into Hugging Face first. "
+                "Model download is enabled, but no Hugging Face token was found in HF_TOKEN, "
+                "HUGGINGFACE_HUB_TOKEN, or the default token file."
+            )
+
+        _emit(log_lines, "[VRGDG] Running Hugging Face access preflight before any install/download work.")
+        _probe_huggingface_endpoint(
+            "https://huggingface.co/api/models/Lightricks/LTX-2.3",
+            token,
+            log_lines,
+            "LTX-2.3 checkpoint",
+        )
+        _probe_huggingface_endpoint(
+            "https://huggingface.co/api/models/google/gemma-3-12b-it",
+            token,
+            log_lines,
+            "Gemma 3 12B IT",
+        )
+
+    @server_instance.routes.post("/vrgdg/musubi/install")
+    async def vrgdg_install_musubi(request):
+        acquired = _VRGDG_MUSUBI_INSTALL_LOCK.acquire(blocking=False)
+        if not acquired:
+            return web.json_response(
+                {"ok": False, "error": "An installation is already running."},
+                status=409,
+            )
+
+        try:
+            try:
+                payload = await request.json()
+            except Exception:
+                return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+
+            target_root = str(payload.get("target_root", "") or "").strip()
+            branch = str(payload.get("branch", "ltx-2-dev") or "ltx-2-dev").strip() or "ltx-2-dev"
+            torch_index_url = str(
+                payload.get("torch_index_url", "https://download.pytorch.org/whl/cu124")
+                or "https://download.pytorch.org/whl/cu124"
+            ).strip()
+            download_models = bool(payload.get("download_models", False))
+
+            try:
+                if download_models:
+                    await asyncio.to_thread(_preflight_huggingface_downloads, [])
+                result = await asyncio.to_thread(_install_musubi_tuner, target_root, branch, torch_index_url)
+                model_result = await asyncio.to_thread(
+                    _run_model_downloads,
+                    result["install_path"],
+                    os.path.join(result["install_path"], "venv", "Scripts", "python.exe"),
+                    result["messages"],
+                    download_models,
+                )
+                result.update(model_result)
+                if model_result.get("downloaded"):
+                    model_section = [
+                        "",
+                        "Model Downloads:",
+                        f"- Checkpoint path: {model_result.get('checkpoint_path', '')}",
+                        f"- Gemma root: {model_result.get('gemma_root', '')}",
+                    ]
+                    result["messages"].extend(model_section)
+                    if result.get("report_path"):
+                        with open(result["report_path"], "a", encoding="utf-8") as handle:
+                            handle.write("\n".join(model_section) + "\n")
+                result["status"] = (
+                    "Musubi-Tuner installed and model downloads completed successfully."
+                    if model_result.get("downloaded")
+                    else "Musubi-Tuner installed successfully."
+                )
+            except Exception as exc:
+                return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+            return web.json_response(result)
+        finally:
+            if acquired:
+                _VRGDG_MUSUBI_INSTALL_LOCK.release()
+
+    _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED = True
+
+
 class VRGDG_LTXLoraTrainChunk:
     IMAGE_EXTENSIONS = {
         ".png",
@@ -116,6 +616,14 @@ class VRGDG_LTXLoraTrainChunk:
         ".gif",
         ".tif",
         ".tiff",
+    }
+    VIDEO_EXTENSIONS = {
+        ".mp4",
+        ".mov",
+        ".mkv",
+        ".webm",
+        ".avi",
+        ".m4v",
     }
 
     RETURN_TYPES = ("MODEL", "STRING", "STRING", "STRING", "STRING", "INT", "INT")
@@ -261,6 +769,10 @@ class VRGDG_LTXLoraTrainChunk:
                     "default": "A:/MUSUBI/models/gemma3", "multiline": False,
                     "tooltip": "Folder containing the Gemma model files used for text encoder caching."
                 }),
+                "gemma_load_in_8bit": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Loads Gemma in 8-bit mode for faster and lower-VRAM caching. Turn this off if the cache stage crashes on your machine; the node will also retry once without it when possible."
+                }),
             }
         }
 
@@ -323,6 +835,101 @@ class VRGDG_LTXLoraTrainChunk:
         print(completion_line)
         log_handle.write(completion_line + "\n")
         log_handle.flush()
+
+    @staticmethod
+    def _extract_command_exit_code(error):
+        match = re.search(r"exit code (\d+)", str(error))
+        return int(match.group(1)) if match else None
+
+    def _build_text_encoder_cache_command(
+        self,
+        python_exe,
+        dataset_config,
+        ltx2_checkpoint,
+        gemma_root,
+        ltx_mode,
+        gemma_load_in_8bit,
+    ):
+        command = [
+            python_exe,
+            "ltx2_cache_text_encoder_outputs.py",
+            "--dataset_config",
+            dataset_config,
+            "--ltx2_checkpoint",
+            ltx2_checkpoint,
+            "--gemma_root",
+            gemma_root,
+        ]
+        if gemma_load_in_8bit:
+            command.append("--gemma_load_in_8bit")
+        command.extend(
+            [
+                "--device",
+                "cuda",
+                "--mixed_precision",
+                "bf16",
+                "--ltx2_mode",
+                ltx_mode,
+                "--batch_size",
+                "1",
+            ]
+        )
+        return command
+
+    def _run_text_encoder_cache_stage(
+        self,
+        stage_number,
+        total_stages,
+        title,
+        python_exe,
+        dataset_config,
+        ltx2_checkpoint,
+        gemma_root,
+        ltx_mode,
+        gemma_load_in_8bit,
+        cwd,
+        log_handle,
+        detail_lines=None,
+    ):
+        command = self._build_text_encoder_cache_command(
+            python_exe,
+            dataset_config,
+            ltx2_checkpoint,
+            gemma_root,
+            ltx_mode,
+            gemma_load_in_8bit,
+        )
+        try:
+            self._run_stage_command(stage_number, total_stages, title, command, cwd, log_handle, detail_lines)
+        except RuntimeError as exc:
+            exit_code = self._extract_command_exit_code(exc)
+            if not gemma_load_in_8bit or exit_code != 3221225477:
+                raise
+
+            retry_message = (
+                f"[VRGDG] {title} failed with native exit code {exit_code} while using 8-bit Gemma loading. "
+                "Retrying once without --gemma_load_in_8bit."
+            )
+            print(retry_message)
+            log_handle.write(retry_message + "\n")
+            log_handle.flush()
+            fallback_command = self._build_text_encoder_cache_command(
+                python_exe,
+                dataset_config,
+                ltx2_checkpoint,
+                gemma_root,
+                ltx_mode,
+                False,
+            )
+            self._run_stage_command(
+                stage_number,
+                total_stages,
+                title,
+                fallback_command,
+                cwd,
+                log_handle,
+                detail_lines,
+            )
 
     def _count_dataset_files(self, images_dir):
         image_count = 0
@@ -810,6 +1417,7 @@ class VRGDG_LTXLoraTrainChunk:
         network_alpha,
         blocks_to_swap,
         clear_memory_before_gemma,
+        gemma_load_in_8bit,
         learning_rate_preset,
         learning_rate,
         num_repeats,
@@ -925,6 +1533,7 @@ class VRGDG_LTXLoraTrainChunk:
             print(f"[VRGDG] musubi_python={python_exe}")
             print(f"[VRGDG] musubi_accelerate={accelerate_exe}")
             print(f"[VRGDG] clear_memory_before_gemma={clear_memory_before_gemma}")
+            print(f"[VRGDG] gemma_load_in_8bit={gemma_load_in_8bit}")
             print(f"[VRGDG] keep_only_comfy_lora={keep_only_comfy_lora}")
             print(
                 f"[VRGDG] learning_rate={effective_learning_rate} "
@@ -970,29 +1579,16 @@ class VRGDG_LTXLoraTrainChunk:
                 )
                 if clear_memory_before_gemma:
                     self._clear_memory_before_gemma(log_handle)
-                self._run_stage_command(
+                self._run_text_encoder_cache_stage(
                     2,
                     total_stages,
                     "Cache text encoder outputs",
-                    [
-                        python_exe,
-                        "ltx2_cache_text_encoder_outputs.py",
-                        "--dataset_config",
-                        dataset_config,
-                        "--ltx2_checkpoint",
-                        ltx2_checkpoint,
-                        "--gemma_root",
-                        gemma_root,
-                        "--gemma_load_in_8bit",
-                        "--device",
-                        "cuda",
-                        "--mixed_precision",
-                        "bf16",
-                        "--ltx2_mode",
-                        "video",
-                        "--batch_size",
-                        "1",
-                    ],
+                    python_exe,
+                    dataset_config,
+                    ltx2_checkpoint,
+                    gemma_root,
+                    "video",
+                    gemma_load_in_8bit,
                     musubi_root,
                     log_handle,
                     [
