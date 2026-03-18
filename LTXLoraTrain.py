@@ -1238,6 +1238,38 @@ class VRGDG_LTXLoraTrainChunk:
             "Supported layouts include .venv, venv, env, or the current/PATH environment."
         )
 
+    def _resolve_musubi_script_root(self, musubi_root, required_scripts):
+        musubi_root = self._norm(musubi_root)
+        required_scripts = [str(script or "").strip() for script in required_scripts if str(script or "").strip()]
+        if not required_scripts:
+            return musubi_root
+
+        def _has_required_scripts(root):
+            if not os.path.isdir(root):
+                return False
+            return all(os.path.isfile(os.path.join(root, script)) for script in required_scripts)
+
+        if _has_required_scripts(musubi_root):
+            return musubi_root
+
+        parent_root = os.path.dirname(musubi_root)
+        if os.path.isdir(parent_root):
+            for entry in os.scandir(parent_root):
+                if not entry.is_dir():
+                    continue
+                if _has_required_scripts(entry.path):
+                    print(
+                        f"[VRGDG] Resolved Musubi script root from {musubi_root} to {entry.path} "
+                        f"because the configured root did not contain all required LTX-2 scripts."
+                    )
+                    return os.path.normpath(entry.path)
+
+        missing_text = ", ".join(required_scripts)
+        raise ValueError(
+            f"musubi_root does not contain the required scripts: {missing_text}. "
+            f"Checked: {musubi_root}"
+        )
+
     def _run_command(self, command, cwd, log_handle):
         command_line = f"$ {' '.join(command)}"
         log_handle.write(command_line + "\n")
@@ -1502,12 +1534,19 @@ class VRGDG_LTXLoraTrainChunk:
             trigger_text,
         )
         workspace_dir = self._ensure_dir(workspace_dir)
-        if not os.path.isdir(musubi_root):
-            raise ValueError(f"musubi_root does not exist: {musubi_root}")
         if not os.path.isfile(ltx2_checkpoint):
             raise ValueError(f"ltx2_checkpoint does not exist: {ltx2_checkpoint}")
         if not os.path.isdir(gemma_root):
             raise ValueError(f"gemma_root does not exist: {gemma_root}")
+
+        musubi_root = self._resolve_musubi_script_root(
+            musubi_root,
+            [
+                "ltx2_cache_latents.py",
+                "ltx2_cache_text_encoder_outputs.py",
+                "ltx2_train_network.py",
+            ],
+        )
 
         gemma_load_in_8bit = True
 
@@ -2230,7 +2269,7 @@ class VRGDG_SpeedCharacterLoraTraining(VRGDG_LTXLoraTrainChunk):
                     "tooltip": "Strength used when applying the newest trained LoRA back onto the returned MODEL."
                 }),
                 "musubi_root": ("STRING", {
-                    "default": "A:/MUSUBI/musubi-tuner",
+                    "default": "A:/MUSUBI/musubi-tuner-ltx2",
                     "multiline": False,
                     "tooltip": "Root folder of your musubi install."
                 }),
@@ -3529,7 +3568,16 @@ class VRGDG_MusubiTunerInstaller:
         text = str(path or "").strip()
         return os.path.normpath(text) if text else ""
 
-    def run(self, target_root, download_models, install_root, checkpoint_path, gemma_root_out, report_path, status_text):
+    def run(
+        self,
+        target_root,
+        download_models,
+        install_root="",
+        checkpoint_path="",
+        gemma_root_out="",
+        report_path="",
+        status_text="",
+    ):
         target_root = self._norm(target_root)
         status = "Click the Install Musubi-Tuner button to run the installer."
         if download_models:
