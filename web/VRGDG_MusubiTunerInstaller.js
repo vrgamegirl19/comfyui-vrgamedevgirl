@@ -35,31 +35,39 @@ function setWidgetValue(node, name, value) {
   widget.value = value ?? "";
 }
 
-function ensureInstallerButton(node) {
+function ensureInstallerButtons(node) {
   const widgets = node.widgets || [];
-  const exists = widgets.some((w) => w?.type === "button" && w?.name === "Install Musubi-Tuner");
-  if (exists) return;
+  const buttonDefs = [
+    { name: "Install Musubi-Tuner", action: "install_tuner" },
+    { name: "Install Selected Models", action: "download_models" },
+    { name: "Install Both", action: "install_and_download" },
+  ];
 
-  const buttonWidget = node.addWidget("button", "Install Musubi-Tuner", null, () => installMusubi(node));
-  const buttonIndex = (node.widgets || []).indexOf(buttonWidget);
-  if (buttonIndex >= 0) {
-    node.widgets.splice(buttonIndex, 1);
-    node.widgets.splice(Math.min(2, node.widgets.length), 0, buttonWidget);
+  for (const def of buttonDefs) {
+    const exists = widgets.some((w) => w?.type === "button" && w?.name === def.name);
+    if (exists) continue;
+
+    const buttonWidget = node.addWidget("button", def.name, null, () => installMusubi(node, def.action));
+    const buttonIndex = (node.widgets || []).indexOf(buttonWidget);
+    if (buttonIndex >= 0) {
+      node.widgets.splice(buttonIndex, 1);
+      node.widgets.splice(Math.min(2, node.widgets.length), 0, buttonWidget);
+    }
   }
 }
 
-async function installMusubi(node) {
+async function installMusubi(node, action = "install_tuner") {
   const targetWidget = getWidget(node, "target_root");
-  const downloadWidget = getWidget(node, "download_models");
+  const modelFamilyWidget = getWidget(node, "model_family");
   const targetRoot = String(targetWidget?.value || "").trim();
-  const downloadModels = Boolean(downloadWidget?.value);
+  const modelFamily = String(modelFamilyWidget?.value || "LTX 2.3").trim() || "LTX 2.3";
 
   if (!targetRoot) {
     window.alert("target_root is empty.");
     return;
   }
 
-  console.log("[VRGDG] Musubi installer started:", targetRoot);
+  console.log("[VRGDG] Musubi installer started:", targetRoot, action, modelFamily);
 
   try {
     const response = await api.fetchApi("/vrgdg/musubi/install", {
@@ -67,7 +75,8 @@ async function installMusubi(node) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         target_root: targetRoot,
-        download_models: downloadModels,
+        model_family: modelFamily,
+        action,
       }),
     });
 
@@ -90,12 +99,18 @@ async function installMusubi(node) {
 
     setWidgetValue(node, "install_root", data.install_path || "");
     setWidgetValue(node, "checkpoint_path", data.checkpoint_path || "");
-    setWidgetValue(node, "gemma_root_out", data.gemma_root || "");
+    setWidgetValue(node, "assets_root_out", data.assets_root || data.gemma_root || "");
     setWidgetValue(node, "report_path", data.report_path || "");
     setWidgetValue(node, "status_text", data.status || "Musubi-Tuner installed successfully.");
 
     console.log("[VRGDG] Musubi installer completed:", data.install_path);
-    window.alert(`Musubi-Tuner installed successfully at:\n${data.install_path}`);
+    if (action === "download_models") {
+      window.alert(`Selected model assets downloaded successfully at:\n${data.install_path}`);
+    } else if (action === "install_and_download") {
+      window.alert(`Musubi-Tuner and selected model assets installed successfully at:\n${data.install_path}`);
+    } else {
+      window.alert(`Musubi-Tuner installed successfully at:\n${data.install_path}`);
+    }
   } catch (error) {
     console.error("[VRGDG] Musubi installer failed:", error);
     window.alert(`Musubi-Tuner install failed: ${error.message || error}`);
@@ -112,7 +127,7 @@ app.registerExtension({
     const origOnConfigure = nodeType.prototype.onConfigure;
 
     function hideBackingWidgets(node) {
-      for (const name of ["install_root", "checkpoint_path", "gemma_root_out", "report_path", "status_text"]) {
+      for (const name of ["install_root", "checkpoint_path", "assets_root_out", "report_path", "status_text"]) {
         setWidgetVisible(getWidget(node, name), false);
       }
       node?.setSize?.(node.size);
@@ -122,7 +137,7 @@ app.registerExtension({
       const result = origOnNodeCreated?.apply(this, arguments);
       hideBackingWidgets(this);
       setTimeout(() => hideBackingWidgets(this), 0);
-      ensureInstallerButton(this);
+      ensureInstallerButtons(this);
 
       return result;
     };
@@ -130,7 +145,7 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const result = origOnConfigure?.apply(this, arguments);
       hideBackingWidgets(this);
-      ensureInstallerButton(this);
+      ensureInstallerButtons(this);
       return result;
     };
   },

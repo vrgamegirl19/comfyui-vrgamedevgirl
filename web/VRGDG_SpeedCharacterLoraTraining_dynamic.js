@@ -2,7 +2,7 @@ import { app } from "../../../scripts/app.js";
 
 const NODE_NAMES = new Set([
   "VRGDG_SpeedCharacterLoraTraining",
-  "VRGDG_LTXLoraTrainChunkZImagePreset",
+  "VRGDG_ZImageSpeedCharacterLoraTraining",
 ]);
 
 const MAX_IMAGE_SLOTS = 20;
