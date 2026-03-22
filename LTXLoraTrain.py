@@ -1,5 +1,6 @@
 import os
 import asyncio
+import json
 import re
 import shutil
 import subprocess
@@ -23,6 +24,11 @@ import folder_paths
 from aiohttp import web
 from server import PromptServer
 
+try:
+    import torchaudio
+except Exception:
+    torchaudio = None
+
 
 class AnyType(str):
     def __ne__(self, __value: object) -> bool:
@@ -35,6 +41,18 @@ _VRGDG_TENSORBOARD_ROUTE_REGISTERED = False
 _VRGDG_TENSORBOARD_RUNS = {}
 _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED = False
 _VRGDG_MUSUBI_INSTALL_LOCK = threading.Lock()
+_VRGDG_MUSUBI_INSTALL_JOB = None
+
+AUDIO_EXTENSIONS = {
+    ".wav",
+    ".flac",
+    ".mp3",
+    ".ogg",
+    ".m4a",
+    ".aac",
+    ".opus",
+    ".wma",
+}
 
 
 def _ensure_tensorboard_route_registered():
@@ -116,6 +134,7 @@ def _ensure_tensorboard_route_registered():
 
 def _ensure_musubi_install_route_registered():
     global _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED
+    global _VRGDG_MUSUBI_INSTALL_JOB
     if _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED:
         return
 
@@ -173,6 +192,36 @@ def _ensure_musubi_install_route_registered():
             if not os.path.exists(candidate):
                 return candidate
             index += 1
+
+    def _resolve_existing_install_path(target_root):
+        target_root = os.path.normpath(str(target_root or "").strip())
+        if not target_root:
+            return ""
+
+        if os.path.isdir(target_root):
+            venv_python = os.path.join(target_root, "venv", "Scripts", "python.exe")
+            if os.path.isfile(venv_python):
+                return target_root
+
+        candidates = [
+            os.path.join(target_root, "Musubi-tuner"),
+            os.path.join(target_root, "VRGDG_Musubi-tuner"),
+        ]
+        for candidate in candidates:
+            venv_python = os.path.join(candidate, "venv", "Scripts", "python.exe")
+            if os.path.isfile(venv_python):
+                return os.path.normpath(candidate)
+
+        if os.path.isdir(target_root):
+            with os.scandir(target_root) as entries:
+                for entry in sorted(entries, key=lambda item: item.name.lower()):
+                    if not entry.is_dir():
+                        continue
+                    venv_python = os.path.join(entry.path, "venv", "Scripts", "python.exe")
+                    if os.path.isfile(venv_python):
+                        return os.path.normpath(entry.path)
+
+        return ""
 
     def _download_file(url, destination, log_lines):
         _emit(log_lines, f"[VRGDG] Downloading archive: {url}")
@@ -412,7 +461,7 @@ def _ensure_musubi_install_route_registered():
             if os.path.isdir(temp_root):
                 shutil.rmtree(temp_root, ignore_errors=True)
 
-    def _download_model_artifacts(install_path, model_root_name, checkpoint_repo, checkpoint_filename, gemma_repo, gemma_root_name):
+    def _download_model_artifacts(install_path, model_family, checkpoint_repo, checkpoint_filename, gemma_repo, gemma_root_name):
         model_root = os.path.join(install_path, "models")
         checkpoints_dir = os.path.join(model_root, "checkpoints")
         gemma_dir = os.path.join(model_root, gemma_root_name)
@@ -426,6 +475,7 @@ from huggingface_hub import hf_hub_download, snapshot_download
 install_path = {install_path!r}
 checkpoints_dir = {checkpoints_dir!r}
 gemma_dir = {gemma_dir!r}
+model_family = {model_family!r}
 checkpoint_repo = {checkpoint_repo!r}
 checkpoint_filename = {checkpoint_filename!r}
 gemma_repo = {gemma_repo!r}
@@ -449,27 +499,71 @@ def _download_gemma():
     )
     print(f"[VRGDG] Gemma snapshot ready: {{path}}")
 
-_download_checkpoint()
-_download_gemma()
+if str(model_family).lower().startswith("z"):
+    print("[VRGDG] Downloading Z-Image Turbo snapshot bundle from Tongyi-MAI/Z-Image-Turbo")
+    path = snapshot_download(
+        repo_id="Tongyi-MAI/Z-Image-Turbo",
+        local_dir=gemma_dir,
+        local_dir_use_symlinks=False,
+    )
+    print(f"[VRGDG] Z-Image Turbo snapshot ready: {{path}}")
+else:
+    _download_checkpoint()
+    _download_gemma()
 print(f"[VRGDG] Model download root: {{os.path.join(install_path, 'models')}}")
 """
         return download_script, checkpoints_dir, gemma_dir
 
-    def _run_model_downloads(install_path, venv_python, log_lines, download_models):
+    def _find_first_matching_safetensor(root_dir, include_any=None, exclude_any=None):
+        include_any = [str(item).lower() for item in (include_any or []) if str(item or "").strip()]
+        exclude_any = [str(item).lower() for item in (exclude_any or []) if str(item or "").strip()]
+        if not os.path.isdir(root_dir):
+            return ""
+
+        candidates = []
+        for current_root, _dirs, files in os.walk(root_dir):
+            for name in files:
+                if not name.lower().endswith(".safetensors"):
+                    continue
+                lowered = name.lower()
+                if include_any and not any(token in lowered for token in include_any):
+                    continue
+                if exclude_any and any(token in lowered for token in exclude_any):
+                    continue
+                candidates.append(os.path.join(current_root, name))
+
+        if not candidates:
+            return ""
+
+        def _sort_key(path):
+            name = os.path.basename(path).lower()
+            split_rank = 0 if re.search(r"00001-of-\d+", name) else 1
+            return (split_rank, len(path), path.lower())
+
+        candidates.sort(key=_sort_key)
+        return os.path.normpath(candidates[0])
+
+    def _run_model_downloads(install_path, venv_python, log_lines, download_models, model_family):
         if not download_models:
             return {
                 "downloaded": False,
                 "checkpoint_path": "",
-                "gemma_root": "",
+                "assets_root": "",
             }
 
+        model_family_key = str(model_family or "LTX 2.3").strip().lower()
         checkpoint_repo = "Lightricks/LTX-2.3"
         checkpoint_filename = "ltx-2.3-22b-dev.safetensors"
         gemma_repo = "google/gemma-3-12b-it"
         gemma_root_name = "gemma-3-12b-it"
+        if model_family_key.startswith("z"):
+            checkpoint_repo = "Tongyi-MAI/Z-Image-Turbo"
+            checkpoint_filename = "model.safetensors"
+            gemma_repo = "Tongyi-MAI/Z-Image-Turbo"
+            gemma_root_name = "zimage_turbo"
         script, checkpoint_dir, gemma_dir = _download_model_artifacts(
             install_path,
-            "models",
+            model_family,
             checkpoint_repo,
             checkpoint_filename,
             gemma_repo,
@@ -477,10 +571,39 @@ print(f"[VRGDG] Model download root: {{os.path.join(install_path, 'models')}}")
         )
         _emit(log_lines, "[VRGDG] Auto-download enabled: fetching required model files.")
         _run_command([venv_python, "-c", script], install_path, log_lines)
+        if model_family_key.startswith("z"):
+            checkpoint_path = _find_first_matching_safetensor(
+                gemma_dir,
+                include_any=["00001-of-", "dit", "transformer", "model"],
+                exclude_any=["vae", "text", "qwen", "tokenizer"],
+            )
+            if not checkpoint_path:
+                checkpoint_path = gemma_dir
+            vae_path = _find_first_matching_safetensor(
+                gemma_dir,
+                include_any=["vae"],
+                exclude_any=["qwen", "text", "tokenizer"],
+            )
+            if not vae_path:
+                vae_path = gemma_dir
+            text_encoder_path = _find_first_matching_safetensor(
+                gemma_dir,
+                include_any=["qwen", "text", "llm"],
+                exclude_any=["vae"],
+            )
+            if not text_encoder_path:
+                text_encoder_path = gemma_dir
+            return {
+                "downloaded": True,
+                "checkpoint_path": os.path.normpath(checkpoint_path),
+                "assets_root": os.path.normpath(gemma_dir),
+                "vae_path": os.path.normpath(vae_path),
+                "text_encoder_path": os.path.normpath(text_encoder_path),
+            }
         return {
             "downloaded": True,
             "checkpoint_path": os.path.normpath(os.path.join(checkpoint_dir, checkpoint_filename)),
-            "gemma_root": os.path.normpath(gemma_dir),
+            "assets_root": os.path.normpath(gemma_dir),
         }
 
     def _get_huggingface_token():
@@ -527,87 +650,159 @@ print(f"[VRGDG] Model download root: {{os.path.join(install_path, 'models')}}")
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Hugging Face preflight failed for {label}: {exc.reason}") from exc
 
-    def _preflight_huggingface_downloads(log_lines):
+    def _preflight_huggingface_downloads(log_lines, model_family):
         token = _get_huggingface_token()
-        if not token:
-            raise RuntimeError(
-                "Please log into Hugging Face first. "
-                "Model download is enabled, but no Hugging Face token was found in HF_TOKEN, "
-                "HUGGINGFACE_HUB_TOKEN, or the default token file."
-            )
+        model_family_key = str(model_family or "LTX 2.3").strip().lower()
+        _emit(log_lines, "[VRGDG] Running non-blocking Hugging Face preflight before model download.")
+        try:
+            if model_family_key.startswith("z"):
+                _probe_huggingface_endpoint(
+                    "https://huggingface.co/api/models/Tongyi-MAI/Z-Image-Turbo",
+                    token,
+                    log_lines,
+                    "Z-Image Turbo checkpoint bundle",
+                )
+            else:
+                _probe_huggingface_endpoint(
+                    "https://huggingface.co/api/models/Lightricks/LTX-2.3",
+                    token,
+                    log_lines,
+                    "LTX-2.3 checkpoint",
+                )
+                _probe_huggingface_endpoint(
+                    "https://huggingface.co/api/models/google/gemma-3-12b-it",
+                    token,
+                    log_lines,
+                    "Gemma 3 12B IT",
+                )
+        except Exception as exc:
+            _emit(log_lines, f"[VRGDG] Hugging Face preflight warning: {exc}")
 
-        _emit(log_lines, "[VRGDG] Running Hugging Face access preflight before any install/download work.")
-        _probe_huggingface_endpoint(
-            "https://huggingface.co/api/models/Lightricks/LTX-2.3",
-            token,
-            log_lines,
-            "LTX-2.3 checkpoint",
-        )
-        _probe_huggingface_endpoint(
-            "https://huggingface.co/api/models/google/gemma-3-12b-it",
-            token,
-            log_lines,
-            "Gemma 3 12B IT",
-        )
-
-    @server_instance.routes.post("/vrgdg/musubi/install")
-    async def vrgdg_install_musubi(request):
+    async def _run_musubi_install_job(payload):
         acquired = _VRGDG_MUSUBI_INSTALL_LOCK.acquire(blocking=False)
         if not acquired:
-            return web.json_response(
-                {"ok": False, "error": "An installation is already running."},
-                status=409,
-            )
+            return {"ok": False, "error": "An installation is already running."}
 
         try:
-            try:
-                payload = await request.json()
-            except Exception:
-                return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
-
             target_root = str(payload.get("target_root", "") or "").strip()
             branch = str(payload.get("branch", "ltx-2-dev") or "ltx-2-dev").strip() or "ltx-2-dev"
             torch_index_url = str(
                 payload.get("torch_index_url", "https://download.pytorch.org/whl/cu124")
                 or "https://download.pytorch.org/whl/cu124"
             ).strip()
-            download_models = bool(payload.get("download_models", False))
+            download_models_flag = bool(payload.get("download_models", False))
+            action = str(payload.get("action", "") or "").strip()
+            if not action:
+                action = "install_and_download" if download_models_flag else "install_tuner"
+            model_family = str(payload.get("model_family", "LTX 2.3") or "LTX 2.3").strip() or "LTX 2.3"
 
-            try:
-                if download_models:
-                    await asyncio.to_thread(_preflight_huggingface_downloads, [])
-                result = await asyncio.to_thread(_install_musubi_tuner, target_root, branch, torch_index_url)
+            if action == "download_models":
+                await asyncio.to_thread(_preflight_huggingface_downloads, [], model_family)
+                install_path = _resolve_existing_install_path(target_root)
+                if not install_path:
+                    raise RuntimeError(
+                        "Could not find an existing Musubi-Tuner install under target_root. "
+                        "Install Musubi-Tuner first, then use the model download button."
+                    )
+                venv_python = os.path.join(install_path, "venv", "Scripts", "python.exe")
+                if not os.path.isfile(venv_python):
+                    raise RuntimeError(
+                        f"Could not find the Musubi-Tuner virtual environment at: {venv_python}"
+                    )
+                result = {
+                    "ok": True,
+                    "install_path": os.path.normpath(install_path),
+                    "python_version": "",
+                    "report_path": os.path.join(install_path, "vrgdg_musubi_install_report.txt"),
+                    "checks": [],
+                    "messages": [f"[VRGDG] Reusing existing Musubi-Tuner install: {install_path}"],
+                }
                 model_result = await asyncio.to_thread(
                     _run_model_downloads,
-                    result["install_path"],
-                    os.path.join(result["install_path"], "venv", "Scripts", "python.exe"),
+                    install_path,
+                    venv_python,
                     result["messages"],
-                    download_models,
+                    True,
+                    model_family,
                 )
                 result.update(model_result)
-                if model_result.get("downloaded"):
-                    model_section = [
-                        "",
-                        "Model Downloads:",
-                        f"- Checkpoint path: {model_result.get('checkpoint_path', '')}",
-                        f"- Gemma root: {model_result.get('gemma_root', '')}",
-                    ]
-                    result["messages"].extend(model_section)
-                    if result.get("report_path"):
-                        with open(result["report_path"], "a", encoding="utf-8") as handle:
-                            handle.write("\n".join(model_section) + "\n")
-                result["status"] = (
-                    "Musubi-Tuner installed and model downloads completed successfully."
-                    if model_result.get("downloaded")
-                    else "Musubi-Tuner installed successfully."
+                model_section = [
+                    "",
+                    "Model Downloads:",
+                    f"- Model family: {model_family}",
+                    f"- Checkpoint path: {model_result.get('checkpoint_path', '')}",
+                    f"- Model assets root: {model_result.get('assets_root', '')}",
+                ]
+                if model_result.get("vae_path"):
+                    model_section.append(f"- VAE path: {model_result.get('vae_path', '')}")
+                if model_result.get("text_encoder_path"):
+                    model_section.append(f"- Text encoder path: {model_result.get('text_encoder_path', '')}")
+                result["messages"].extend(model_section)
+                if result.get("report_path"):
+                    with open(result["report_path"], "a", encoding="utf-8") as handle:
+                        handle.write("\n".join(model_section) + "\n")
+                result["status"] = "Selected model assets downloaded successfully."
+            elif action == "install_and_download":
+                await asyncio.to_thread(_preflight_huggingface_downloads, [], model_family)
+                result = await asyncio.to_thread(_install_musubi_tuner, target_root, branch, torch_index_url)
+                install_path = result.get("install_path", "")
+                venv_python = os.path.join(install_path, "venv", "Scripts", "python.exe")
+                if not os.path.isfile(venv_python):
+                    raise RuntimeError(
+                        f"Could not find the Musubi-Tuner virtual environment at: {venv_python}"
+                    )
+                model_result = await asyncio.to_thread(
+                    _run_model_downloads,
+                    install_path,
+                    venv_python,
+                    result["messages"],
+                    True,
+                    model_family,
                 )
-            except Exception as exc:
-                return web.json_response({"ok": False, "error": str(exc)}, status=500)
-
-            return web.json_response(result)
+                result.update(model_result)
+                model_section = [
+                    "",
+                    "Model Downloads:",
+                    f"- Model family: {model_family}",
+                    f"- Checkpoint path: {model_result.get('checkpoint_path', '')}",
+                    f"- Model assets root: {model_result.get('assets_root', '')}",
+                ]
+                if model_result.get("vae_path"):
+                    model_section.append(f"- VAE path: {model_result.get('vae_path', '')}")
+                if model_result.get("text_encoder_path"):
+                    model_section.append(f"- Text encoder path: {model_result.get('text_encoder_path', '')}")
+                result["messages"].extend(model_section)
+                if result.get("report_path"):
+                    with open(result["report_path"], "a", encoding="utf-8") as handle:
+                        handle.write("\n".join(model_section) + "\n")
+                result["status"] = "Musubi-Tuner installed successfully."
+                result["gemma_root"] = result.get("assets_root", "")
+            else:
+                result = await asyncio.to_thread(_install_musubi_tuner, target_root, branch, torch_index_url)
+                result["status"] = "Musubi-Tuner installed successfully."
+            return result
         finally:
             if acquired:
                 _VRGDG_MUSUBI_INSTALL_LOCK.release()
+
+    @server_instance.routes.post("/vrgdg/musubi/install")
+    async def vrgdg_install_musubi(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+
+        try:
+            result = await _run_musubi_install_job(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+        status_code = 200 if result.get("ok") else 500
+        if "error" in result and not result.get("ok"):
+            status_code = 409 if "already running" in str(result.get("error", "")).lower() else 500
+        return web.json_response(result, status=status_code)
+
+    _VRGDG_MUSUBI_INSTALL_JOB = _run_musubi_install_job
 
     _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED = True
 
@@ -779,6 +974,10 @@ class VRGDG_LTXLoraTrainChunk:
                     "default": False,
                     "tooltip": "Experimental. If enabled, the node will keep the normal Gemma cache path first, then try alternate cache settings if that stage fails."
                 }),
+                "gemma_load_in_4bit": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Loads Gemma in 4-bit mode during text encoder caching. This lowers VRAM more than 8-bit, but can be slower or less stable."
+                }),
             }
         }
 
@@ -856,6 +1055,7 @@ class VRGDG_LTXLoraTrainChunk:
         ltx_mode,
         gemma_load_in_8bit,
         mixed_precision="bf16",
+        gemma_load_in_4bit=False,
     ):
         command = [
             python_exe,
@@ -867,7 +1067,9 @@ class VRGDG_LTXLoraTrainChunk:
             "--gemma_root",
             gemma_root,
         ]
-        if gemma_load_in_8bit:
+        if gemma_load_in_4bit:
+            command.append("--gemma_load_in_4bit")
+        elif gemma_load_in_8bit:
             command.append("--gemma_load_in_8bit")
         command.extend(
             [
@@ -897,6 +1099,7 @@ class VRGDG_LTXLoraTrainChunk:
         cwd,
         log_handle,
         detail_lines=None,
+        gemma_load_in_4bit=False,
     ):
         command = self._build_text_encoder_cache_command(
             python_exe,
@@ -905,6 +1108,7 @@ class VRGDG_LTXLoraTrainChunk:
             gemma_root,
             ltx_mode,
             gemma_load_in_8bit,
+            gemma_load_in_4bit=gemma_load_in_4bit,
         )
         self._run_stage_command(stage_number, total_stages, title, command, cwd, log_handle, detail_lines)
 
@@ -923,6 +1127,7 @@ class VRGDG_LTXLoraTrainChunk:
         cwd,
         log_handle,
         detail_lines=None,
+        gemma_load_in_4bit=False,
     ):
         try:
             self._run_text_encoder_cache_stage(
@@ -938,6 +1143,7 @@ class VRGDG_LTXLoraTrainChunk:
                 cwd,
                 log_handle,
                 detail_lines,
+                gemma_load_in_4bit=gemma_load_in_4bit,
             )
             return
         except RuntimeError as exc:
@@ -945,13 +1151,13 @@ class VRGDG_LTXLoraTrainChunk:
                 raise
             last_exc = exc
 
+        gemma_flag_label = "--gemma_load_in_4bit" if gemma_load_in_4bit else "--gemma_load_in_8bit"
         retry_plans = [
-            (True, "fp16", "experimental recovery: retrying with mixed_precision=fp16 and --gemma_load_in_8bit"),
-            (False, "fp16", "experimental recovery: retrying with mixed_precision=fp16 and without --gemma_load_in_8bit"),
-            (False, "bf16", "experimental recovery: retrying with mixed_precision=bf16 and without --gemma_load_in_8bit"),
+            ("fp16", f"experimental recovery: retrying with mixed_precision=fp16 and {gemma_flag_label}"),
+            ("bf16", f"experimental recovery: retrying with mixed_precision=bf16 and {gemma_flag_label}"),
         ]
 
-        for retry_gemma_load_in_8bit, mixed_precision, label in retry_plans:
+        for mixed_precision, label in retry_plans:
             retry_message = f"[VRGDG] {title} failed. {label}."
             print(retry_message)
             log_handle.write(retry_message + "\n")
@@ -963,8 +1169,9 @@ class VRGDG_LTXLoraTrainChunk:
                 ltx2_checkpoint,
                 gemma_root,
                 ltx_mode,
-                retry_gemma_load_in_8bit,
+                gemma_load_in_8bit,
                 mixed_precision,
+                gemma_load_in_4bit=gemma_load_in_4bit,
             )
             try:
                 self._run_stage_command(stage_number, total_stages, title, retry_command, cwd, log_handle, detail_lines)
@@ -999,6 +1206,67 @@ class VRGDG_LTXLoraTrainChunk:
         for _, _, files in os.walk(cache_dir):
             file_count += len(files)
         return file_count
+
+    def _has_latent_cache_files(self, cache_dir):
+        architecture = "ltx2"
+        if not os.path.isdir(cache_dir):
+            return False
+        for entry in os.scandir(cache_dir):
+            if not entry.is_file():
+                continue
+            if entry.name.endswith(f"_{architecture}.safetensors") and not entry.name.endswith(f"_{architecture}_te.safetensors") and not entry.name.endswith(f"_{architecture}_audio.safetensors"):
+                return True
+        return False
+
+    def _has_complete_text_encoder_cache_files(self, cache_dir):
+        architecture = "ltx2"
+        if not os.path.isdir(cache_dir):
+            return False
+
+        latent_cache_files = []
+        for entry in os.scandir(cache_dir):
+            if not entry.is_file():
+                continue
+            if entry.name.endswith(f"_{architecture}.safetensors") and not entry.name.endswith(f"_{architecture}_te.safetensors") and not entry.name.endswith(f"_{architecture}_audio.safetensors"):
+                latent_cache_files.append(entry.path)
+
+        if not latent_cache_files:
+            return False
+
+        seen_text_cache_files = set()
+        for latent_cache_file in latent_cache_files:
+            expected_text_cache = self._expected_text_cache_path_from_latent_cache_file(cache_dir, latent_cache_file)
+            if not expected_text_cache:
+                continue
+            normalized_expected = os.path.normpath(expected_text_cache)
+            if normalized_expected in seen_text_cache_files:
+                continue
+            seen_text_cache_files.add(normalized_expected)
+            if not os.path.exists(expected_text_cache):
+                return False
+
+        return True
+
+    def _expected_text_cache_path_from_latent_cache_file(self, cache_dir, latent_cache_file):
+        architecture = "ltx2"
+        basename = os.path.basename(latent_cache_file)
+        if not basename.endswith(f"_{architecture}.safetensors"):
+            return ""
+        tokens = basename.split("_")
+        if len(tokens) < 4:
+            return ""
+
+        # Image latents are typically: {item_key}_{WxH}_{arch}.safetensors
+        # Video/AV latents are typically: {item_key}_{start-end}_{WxH}_{arch}.safetensors
+        # Keep the same item_key extraction logic the Musubi loader uses.
+        if len(tokens) >= 5 and re.fullmatch(r"\d+-\d+(?:-\d+)?", tokens[-3]):
+            item_key = "_".join(tokens[:-3])
+        else:
+            item_key = "_".join(tokens[:-2])
+
+        if not item_key:
+            return ""
+        return os.path.join(cache_dir, f"{item_key}_{architecture}_te.safetensors")
 
     def _get_dataset_label(self, dataset_images_dir):
         dataset_images_dir = self._norm(dataset_images_dir)
@@ -1042,7 +1310,7 @@ class VRGDG_LTXLoraTrainChunk:
         return current_prefix
 
     def _clear_memory_before_gemma(self, log_handle):
-        messages = ["[VRGDG] Clearing ComfyUI and CUDA memory before Gemma stage."]
+        messages = ["[VRGDG] Clearing ComfyUI and CUDA memory before text encoder cache stage."]
         try:
             comfy.model_management.unload_all_models()
             messages.append("[VRGDG] unload_all_models() completed.")
@@ -1201,6 +1469,136 @@ class VRGDG_LTXLoraTrainChunk:
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(content)
 
+    def _write_audio_dataset_config(
+        self,
+        path,
+        audio_directory,
+        cache_dir,
+        target_resolution,
+        num_repeats,
+        audio_bucket_strategy,
+        audio_bucket_interval,
+    ):
+        content = (
+            "[general]\n"
+            f"resolution = [{int(target_resolution)}, {int(target_resolution)}]\n"
+            'caption_extension = ".txt"\n'
+            "batch_size = 1\n"
+            "enable_bucket = true\n"
+            "bucket_no_upscale = false\n\n"
+            "[[datasets]]\n"
+            f'audio_directory = "{self._quote(audio_directory)}"\n'
+            f'cache_directory = "{self._quote(cache_dir)}"\n'
+            f"num_repeats = {int(num_repeats)}\n"
+            f'audio_bucket_strategy = "{str(audio_bucket_strategy)}"\n'
+            f"audio_bucket_interval = {float(audio_bucket_interval)}\n"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def _write_audio_training_config(
+        self,
+        path,
+        dataset_config,
+        checkpoint,
+        gemma_root,
+        output_dir,
+        log_dir,
+        output_name,
+        network_dim,
+        network_alpha,
+        blocks_to_swap,
+        learning_rate,
+        max_train_steps,
+        steps_per_run,
+        total_target_steps,
+        lora_target_preset,
+        fp8_base,
+        fp8_scaled,
+        audio_only_sequence_resolution,
+        ltx2_audio_only_model,
+    ):
+        checkpoint_name = os.path.basename(str(checkpoint or "")).lower()
+        effective_fp8_scaled = bool(fp8_scaled) and ("fp8" not in checkpoint_name)
+        content = (
+            "# Auto-generated by VRGDG LTX audio chunk trainer\n"
+            f"# total_target_steps_from_workflow = {int(total_target_steps)}\n"
+            f"# chunk_target_steps_this_run = {int(max_train_steps)}\n"
+            f"# save_interval_per_run = {int(steps_per_run)}\n"
+            f'ltx2_checkpoint = "{self._quote(checkpoint)}"\n'
+            f'gemma_root = "{self._quote(gemma_root)}"\n'
+            f'dataset_config = "{self._quote(dataset_config)}"\n\n'
+            'ltx_mode = "audio"\n'
+            'ltx_version = "2.3"\n'
+            'ltx_version_check_mode = "error"\n'
+            f'lora_target_preset = "{lora_target_preset}"\n'
+            f"ltx2_audio_only_model = {'true' if ltx2_audio_only_model else 'false'}\n"
+            f"audio_only_sequence_resolution = {int(audio_only_sequence_resolution)}\n\n"
+            "cache_text_encoder_outputs = true\n"
+            "cache_text_encoder_outputs_to_disk = false\n\n"
+            f"fp8_base = {'true' if fp8_base else 'false'}\n"
+            f"fp8_scaled = {'true' if effective_fp8_scaled else 'false'}\n"
+            "sdpa = true\n"
+            "gradient_checkpointing = true\n"
+            "gradient_accumulation_steps = 1\n"
+            f"blocks_to_swap = {int(blocks_to_swap)}\n\n"
+            'optimizer_type = "AdamW8Bit"\n'
+            f"learning_rate = {learning_rate}\n"
+            'lr_scheduler = "constant_with_warmup"\n'
+            "lr_warmup_steps = 100\n\n"
+            'network_module = "networks.lora_ltx2"\n'
+            f"network_dim = {int(network_dim)}\n"
+            f"network_alpha = {int(network_alpha)}\n"
+            'timestep_sampling = "shifted_logit_normal"\n'
+            "ltx2_first_frame_conditioning_p = 0.5\n\n"
+            f'output_dir = "{self._quote(output_dir)}"\n'
+            f'output_name = "{output_name}"\n'
+            'log_with = "tensorboard"\n'
+            f'logging_dir = "{self._quote(log_dir)}"\n'
+            "log_config = true\n"
+            f"max_train_steps = {int(max_train_steps)}\n"
+            f"save_every_n_steps = {int(steps_per_run)}\n"
+            'save_model_as = "safetensors"\n'
+            'mixed_precision = "bf16"\n'
+            "save_state = true\n"
+            "save_state_on_train_end = true\n"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def _build_audio_filename_prefix(self, audio_output_subfolder, output_name, step_number):
+        return f"{audio_output_subfolder}/{self._safe_name(output_name, 'LTXAudioRun')}_step_{int(step_number)}"
+
+    def _get_or_create_audio_output_subfolder(self, config_dir, dataset_audio_dir):
+        subfolder_file = os.path.join(config_dir, "audio_output_subfolder.txt")
+        if os.path.isfile(subfolder_file):
+            with open(subfolder_file, "r", encoding="utf-8") as handle:
+                existing_subfolder = handle.read().strip()
+            if existing_subfolder:
+                return existing_subfolder
+
+        dataset_label = self._get_dataset_label(dataset_audio_dir)
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        relative_subfolder = f"{dataset_label}_{stamp}"
+
+        with open(subfolder_file, "w", encoding="utf-8") as handle:
+            handle.write(relative_subfolder)
+
+        output_root = folder_paths.get_output_directory()
+        os.makedirs(os.path.join(output_root, relative_subfolder), exist_ok=True)
+        return relative_subfolder
+
+    def _get_or_create_audio_filename_prefix(self, config_dir, dataset_audio_dir, output_name, step_number):
+        prefix_file = os.path.join(config_dir, "audio_filename_prefix.txt")
+        current_prefix = self._build_audio_filename_prefix(
+            self._get_or_create_audio_output_subfolder(config_dir, dataset_audio_dir),
+            output_name,
+            step_number,
+        )
+        with open(prefix_file, "w", encoding="utf-8") as handle:
+            handle.write(current_prefix)
+        return current_prefix
+
     def _resolve_musubi_executables(self, musubi_root):
         checked = []
         candidate_env_names = [".venv", "venv", "env"]
@@ -1260,7 +1658,7 @@ class VRGDG_LTXLoraTrainChunk:
                 if _has_required_scripts(entry.path):
                     print(
                         f"[VRGDG] Resolved Musubi script root from {musubi_root} to {entry.path} "
-                        f"because the configured root did not contain all required LTX-2 scripts."
+                        f"because the configured root did not contain all required Musubi scripts."
                     )
                     return os.path.normpath(entry.path)
 
@@ -1310,7 +1708,7 @@ class VRGDG_LTXLoraTrainChunk:
             return False
         if not os.path.isdir(cache_dir):
             return True
-        return not any(os.scandir(cache_dir))
+        return not (self._has_latent_cache_files(cache_dir) and self._has_complete_text_encoder_cache_files(cache_dir))
 
     def _export_latest_to_comfy(self, latest_comfy_lora, output_name):
         if not latest_comfy_lora or not os.path.isfile(latest_comfy_lora):
@@ -1516,6 +1914,8 @@ class VRGDG_LTXLoraTrainChunk:
         musubi_root,
         ltx2_checkpoint,
         gemma_root,
+        gemma_load_in_4bit=False,
+        _autochunk_mode=False,
     ):
         dataset_images_dir = self._norm(dataset_images_dir)
         workspace_dir = self._norm(workspace_dir)
@@ -1548,7 +1948,9 @@ class VRGDG_LTXLoraTrainChunk:
             ],
         )
 
-        gemma_load_in_8bit = True
+        gemma_load_in_4bit = bool(gemma_load_in_4bit)
+        gemma_load_in_8bit = not gemma_load_in_4bit
+        gemma_load_mode = "4bit" if gemma_load_in_4bit else "8bit"
 
         python_exe, accelerate_exe, env_source = self._resolve_musubi_executables(musubi_root)
 
@@ -1626,7 +2028,7 @@ class VRGDG_LTXLoraTrainChunk:
             print(f"[VRGDG] musubi_python={python_exe}")
             print(f"[VRGDG] musubi_accelerate={accelerate_exe}")
             print(f"[VRGDG] clear_memory_before_gemma={clear_memory_before_gemma}")
-            print(f"[VRGDG] gemma_load_in_8bit={gemma_load_in_8bit} (hardcoded)")
+            print(f"[VRGDG] gemma_load_mode={gemma_load_mode}")
             print(f"[VRGDG] gemma_recovery_mode={gemma_recovery_mode}")
             print(f"[VRGDG] keep_only_comfy_lora={keep_only_comfy_lora}")
             print(
@@ -1684,7 +2086,7 @@ class VRGDG_LTXLoraTrainChunk:
                         gemma_root,
                         "video",
                         gemma_load_in_8bit,
-                        True,
+                        gemma_recovery_mode,
                         musubi_root,
                         log_handle,
                         [
@@ -1692,6 +2094,7 @@ class VRGDG_LTXLoraTrainChunk:
                             "This is usually the slowest setup stage.",
                             "You should see per-item progress from the text encoder cache script.",
                         ],
+                        gemma_load_in_4bit=gemma_load_in_4bit,
                     )
                 else:
                     self._run_text_encoder_cache_stage(
@@ -1711,6 +2114,7 @@ class VRGDG_LTXLoraTrainChunk:
                             "This is usually the slowest setup stage.",
                             "You should see per-item progress from the text encoder cache script.",
                         ],
+                        gemma_load_in_4bit=gemma_load_in_4bit,
                     )
                 print(f"[VRGDG] cache summary after build: files={self._count_cache_files(cache_dir)}")
             else:
@@ -1817,6 +2221,754 @@ class VRGDG_LTXLoraTrainChunk:
             int(total_target_steps),
         )
 
+
+class VRGDG_LTXAudioOnlyLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
+    DESCRIPTION = "Runs one LTX-2.3 audio-only LoRA training chunk using musubi-tuner on spoken dialogue or music clips."
+
+    AUDIO_PROFILE_PRESETS = {
+        "voice_test": {
+            "audio_only_target_resolution": 64,
+            "audio_only_target_fps": 25.0,
+            "audio_only_sequence_resolution": 64,
+            "steps_per_run": 100,
+            "total_target_steps": 100,
+            "network_dim": 16,
+            "network_alpha": 16,
+            "blocks_to_swap": 0,
+            "lora_target_preset": "audio",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "1e-4",
+            "learning_rate": 1e-4,
+            "num_repeats": 1,
+            "audio_bucket_strategy": "pad",
+            "audio_bucket_interval": 2.0,
+            "ltx2_audio_only_model": True,
+        },
+        "voice": {
+            "audio_only_target_resolution": 64,
+            "audio_only_target_fps": 25.0,
+            "audio_only_sequence_resolution": 64,
+            "steps_per_run": 100,
+            "total_target_steps": 800,
+            "network_dim": 16,
+            "network_alpha": 16,
+            "blocks_to_swap": 2,
+            "lora_target_preset": "audio",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "1e-4",
+            "learning_rate": 1e-4,
+            "num_repeats": 2,
+            "audio_bucket_strategy": "pad",
+            "audio_bucket_interval": 2.0,
+            "ltx2_audio_only_model": True,
+        },
+        "music": {
+            "audio_only_target_resolution": 64,
+            "audio_only_target_fps": 25.0,
+            "audio_only_sequence_resolution": 128,
+            "steps_per_run": 200,
+            "total_target_steps": 1200,
+            "network_dim": 32,
+            "network_alpha": 32,
+            "blocks_to_swap": 4,
+            "lora_target_preset": "audio",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "7e-5",
+            "learning_rate": 7e-5,
+            "num_repeats": 4,
+            "audio_bucket_strategy": "truncate",
+            "audio_bucket_interval": 4.0,
+            "ltx2_audio_only_model": True,
+        },
+        "voice_fast": {
+            "audio_only_target_resolution": 64,
+            "audio_only_target_fps": 25.0,
+            "audio_only_sequence_resolution": 64,
+            "steps_per_run": 100,
+            "total_target_steps": 800,
+            "network_dim": 16,
+            "network_alpha": 16,
+            "blocks_to_swap": 2,
+            "lora_target_preset": "audio",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "1e-4",
+            "learning_rate": 1e-4,
+            "num_repeats": 2,
+            "audio_bucket_strategy": "pad",
+            "audio_bucket_interval": 2.0,
+            "ltx2_audio_only_model": True,
+        },
+        "voice_balanced": {
+            "audio_only_target_resolution": 64,
+            "audio_only_target_fps": 25.0,
+            "audio_only_sequence_resolution": 128,
+            "steps_per_run": 200,
+            "total_target_steps": 1200,
+            "network_dim": 32,
+            "network_alpha": 32,
+            "blocks_to_swap": 4,
+            "lora_target_preset": "audio",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "7e-5",
+            "learning_rate": 7e-5,
+            "num_repeats": 4,
+            "audio_bucket_strategy": "truncate",
+            "audio_bucket_interval": 4.0,
+            "ltx2_audio_only_model": True,
+        },
+    }
+
+    RETURN_TYPES = ("MODEL", "STRING", "STRING", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = (
+        "model",
+        "latest_state_path",
+        "log_path",
+        "dataset_audio_dir",
+        "output_name",
+        "completed_steps",
+        "total_target_steps",
+    )
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/Training"
+
+    @classmethod
+    def _profile_names(cls):
+        return ["voice_test", "voice", "music", "voice_fast", "voice_balanced"]
+
+    @classmethod
+    def _profile_defaults(cls, profile):
+        return dict(cls.AUDIO_PROFILE_PRESETS.get(str(profile or "voice"), cls.AUDIO_PROFILE_PRESETS["voice"]))
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "Base model to return downstream with the latest trained LoRA optionally applied."}),
+                "workspace_dir": ("STRING", {"default": "", "multiline": False, "tooltip": "Working folder for cache, logs, config files, checkpoints, and training state."}),
+                "run_name": ("STRING", {"default": "LTXAudioChunkRun", "multiline": False, "tooltip": "Name prefix used for the log file."}),
+                "output_name": ("STRING", {"default": "LTXAudioChunkRun", "multiline": False, "tooltip": "Name prefix used for saved LoRA files and state folders."}),
+                "audio_profile": (cls._profile_names(), {"default": "voice_test", "tooltip": "voice_test is a short spoken-dialogue sanity check. voice is the spoken-dialogue preset. music uses a larger temporal budget and more capacity. voice_fast and voice_balanced are legacy aliases."}),
+                "use_profile_defaults": ("BOOLEAN", {"default": True, "tooltip": "When enabled, the selected profile controls the audio recipe bundle instead of the manual fields below."}),
+                "audio_only_target_resolution": ("INT", {"default": 64, "min": 32, "max": 4096, "step": 1, "tooltip": "Square target resolution used for audio-only latent geometry."}),
+                "audio_only_target_fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 240.0, "step": 0.1, "tooltip": "Target FPS used to derive frame count from audio duration during caching."}),
+                "audio_only_sequence_resolution": ("INT", {"default": 64, "min": 0, "max": 8192, "step": 1, "tooltip": "Virtual sequence resolution used for shifted_logit_normal in audio mode. Set 0 to use cached virtual geometry."}),
+                "steps_per_run": ("INT", {"default": 100, "min": 1, "max": 100000, "step": 1, "tooltip": "How many steps to train before saving and stopping this chunk."}),
+                "total_target_steps": ("INT", {"default": 800, "min": 1, "max": 1000000, "step": 1, "tooltip": "Total training budget across all chunks."}),
+                "network_dim": ("INT", {"default": 16, "min": 1, "max": 2048, "step": 1, "tooltip": "LoRA rank."}),
+                "network_alpha": ("INT", {"default": 16, "min": 1, "max": 2048, "step": 1, "tooltip": "LoRA alpha."}),
+                "blocks_to_swap": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "How many transformer blocks to offload to CPU."}),
+                "lora_target_preset": (["audio", "t2v", "v2v", "full"], {"default": "audio", "tooltip": "audio is the intended preset for audio-only training."}),
+                "fp8_base": ("BOOLEAN", {"default": True, "tooltip": "Use the FP8 base-model loading path."}),
+                "fp8_scaled": ("BOOLEAN", {"default": True, "tooltip": "Quantize non-FP8 checkpoints into FP8 at load time."}),
+                "ltx2_audio_only_model": ("BOOLEAN", {"default": True, "tooltip": "Force loading the physically audio-only transformer variant. Keep this on for audio-only training."}),
+                "clear_memory_before_gemma": ("BOOLEAN", {"default": True, "tooltip": "Unloads ComfyUI models and clears memory before Gemma caching."}),
+                "gemma_recovery_mode": ("BOOLEAN", {"default": False, "tooltip": "Experimental. If enabled, the node will try alternate Gemma cache settings after the normal path fails."}),
+                "learning_rate_preset": (["Custom", "1e-4", "7e-5", "5e-5", "3e-5", "1e-5"], {"default": "1e-4", "tooltip": "Quick preset for the training learning rate."}),
+                "learning_rate": ("FLOAT", {"default": 1e-4, "min": 1e-8, "max": 1.0, "step": 1e-6, "tooltip": "Custom learning rate used only when the preset is set to Custom."}),
+                "num_repeats": ("INT", {"default": 2, "min": 1, "max": 1000, "step": 1, "tooltip": "How many times each audio-caption pair is repeated in the dataset."}),
+                "audio_bucket_strategy": (["pad", "truncate"], {"default": "pad", "tooltip": "Audio duration bucketing strategy."}),
+                "audio_bucket_interval": ("FLOAT", {"default": 2.0, "min": 0.1, "max": 120.0, "step": 0.1, "tooltip": "Audio bucket step size in seconds."}),
+                "cache_strategy": (["auto", "force", "skip"], {"default": "auto", "tooltip": "Auto rebuilds cache only when the node detects it is missing or stale."}),
+                "copy_latest_to_comfy_loras": ("BOOLEAN", {"default": True, "tooltip": "Copies the latest Comfy-compatible LoRA into the ComfyUI loras folder after training."}),
+                "keep_only_comfy_lora": ("BOOLEAN", {"default": False, "tooltip": "Deletes the standard .safetensors LoRA files after a matching .comfy.safetensors file exists."}),
+                "strength_model": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01, "tooltip": "Strength used if the node applies the latest LoRA back onto the output model."}),
+                "create_captions": ("BOOLEAN", {"default": False, "tooltip": "Creates missing .txt caption files automatically from the caption_text field."}),
+                "caption_text": ("STRING", {"default": "", "multiline": True, "tooltip": "Fallback caption text used when a source audio clip has no caption file."}),
+                "add_trigger_word": ("BOOLEAN", {"default": False, "tooltip": "Prepends trigger_text to every caption."}),
+                "trigger_text": ("STRING", {"default": "", "multiline": False, "tooltip": "Trigger word or phrase to prepend to captions when add_trigger_word is enabled."}),
+                "musubi_root": ("STRING", {"default": "A:/MUSUBI/musubi-tuner-ltx2", "multiline": False, "tooltip": "Root folder of your musubi-tuner-ltx2 install."}),
+                "ltx2_checkpoint": ("STRING", {"default": "A:/MUSUBI/models/ltx/ltx-2.3-22b-dev.safetensors", "multiline": False, "tooltip": "Path to the base LTX checkpoint used for caching and training."}),
+                "gemma_root": ("STRING", {"default": "A:/MUSUBI/models/gemma3", "multiline": False, "tooltip": "Folder containing the Gemma model files used for text encoder caching."}),
+                "gemma_load_in_4bit": ("BOOLEAN", {"default": False, "tooltip": "Loads Gemma in 4-bit mode instead of 8-bit."}),
+            },
+            "optional": {
+                "audio": ("AUDIO", {"tooltip": "Optional connected AUDIO input. If provided, it is copied into a managed audio dataset folder and used instead of audio_directory."}),
+                "audio_directory": ("STRING", {"default": "", "multiline": False, "tooltip": "Optional folder containing audio files with matching .txt captions. Leave empty if you connect an AUDIO input."}),
+            },
+        }
+
+    def _count_audio_dataset_files(self, audio_dir):
+        audio_count = 0
+        caption_count = 0
+        if not os.path.isdir(audio_dir):
+            return audio_count, caption_count
+        for entry in os.scandir(audio_dir):
+            if not entry.is_file():
+                continue
+            ext = os.path.splitext(entry.name)[1].lower()
+            if ext in AUDIO_EXTENSIONS:
+                audio_count += 1
+            elif ext == ".txt":
+                caption_count += 1
+        return audio_count, caption_count
+
+    def _resolve_audio_input_name(self, audio):
+        if not isinstance(audio, dict):
+            return "audio_input"
+        for key in ("filename", "file_name", "name"):
+            value = str(audio.get(key) or "").strip()
+            if value:
+                return self._safe_name(value, "audio_input")
+        for key in ("file_path", "audio_file_path", "path"):
+            value = str(audio.get(key) or "").strip()
+            if value:
+                stem = os.path.splitext(os.path.basename(value))[0]
+                if stem:
+                    return self._safe_name(stem, "audio_input")
+        return "audio_input"
+
+    def _resolve_audio_input_source_path(self, audio):
+        if not isinstance(audio, dict):
+            return ""
+        for key in ("file_path", "audio_file_path", "path"):
+            value = str(audio.get(key) or "").strip()
+            if value and os.path.isfile(value):
+                return os.path.normpath(value)
+        return ""
+
+    def _normalize_audio_waveform(self, audio):
+        if not isinstance(audio, dict):
+            return None, None
+        waveform = audio.get("waveform")
+        sample_rate = audio.get("sample_rate")
+        if waveform is None or sample_rate is None:
+            return None, None
+        if not isinstance(waveform, torch.Tensor):
+            waveform = torch.as_tensor(waveform)
+        if waveform.ndim == 1:
+            waveform = waveform.unsqueeze(0).unsqueeze(0)
+        elif waveform.ndim == 2:
+            waveform = waveform.unsqueeze(0)
+        elif waveform.ndim != 3:
+            raise ValueError(f"Audio waveform must be 1D, 2D, or 3D, got {tuple(waveform.shape)}")
+        return waveform.float(), int(sample_rate)
+
+    def _ensure_audio_captions(self, audio_dir, create_captions, caption_text, add_trigger_word, trigger_text):
+        audio_entries = [
+            entry
+            for entry in os.scandir(audio_dir)
+            if entry.is_file() and os.path.splitext(entry.name)[1].lower() in AUDIO_EXTENSIONS
+        ]
+        base_caption = str(caption_text or "").strip()
+        created_count = 0
+        updated_count = 0
+        for entry in audio_entries:
+            stem = os.path.splitext(entry.name)[0]
+            caption_path = os.path.join(audio_dir, f"{stem}.txt")
+
+            existing_caption = ""
+            if os.path.isfile(caption_path):
+                with open(caption_path, "r", encoding="utf-8") as handle:
+                    existing_caption = handle.read().strip()
+
+            caption_body = existing_caption if existing_caption else base_caption
+            final_caption = self._compose_caption_text(caption_body, add_trigger_word, trigger_text)
+            if not final_caption and not existing_caption and not create_captions and not base_caption:
+                final_caption = ""
+
+            if existing_caption == final_caption:
+                continue
+
+            with open(caption_path, "w", encoding="utf-8") as handle:
+                handle.write(final_caption)
+
+            if existing_caption:
+                updated_count += 1
+            else:
+                created_count += 1
+
+        print(
+            f"[VRGDG] Audio caption prep complete. created={created_count} updated={updated_count} "
+            f"trigger={'on' if add_trigger_word else 'off'}"
+        )
+
+    def _prepare_audio_dataset_directory(
+        self,
+        audio_directory,
+        audio,
+        create_captions,
+        caption_text,
+        add_trigger_word,
+        trigger_text,
+        workspace_dir,
+        run_name,
+    ):
+        if audio is not None:
+            managed_dir = self._ensure_dir(os.path.join(workspace_dir, "audio_inputs", run_name, "audio"))
+            for entry in os.scandir(managed_dir):
+                if not entry.is_file():
+                    continue
+                ext = os.path.splitext(entry.name)[1].lower()
+                if ext in AUDIO_EXTENSIONS or ext == ".txt":
+                    os.remove(entry.path)
+
+            input_name = self._resolve_audio_input_name(audio)
+            source_path = self._resolve_audio_input_source_path(audio)
+            dest_audio_path = os.path.join(managed_dir, f"{input_name}.wav")
+            if source_path:
+                source_ext = os.path.splitext(source_path)[1].lower()
+                if source_ext in AUDIO_EXTENSIONS:
+                    dest_audio_path = os.path.join(managed_dir, f"{input_name}{source_ext}")
+                    shutil.copy2(source_path, dest_audio_path)
+                else:
+                    waveform, sample_rate = self._normalize_audio_waveform(audio)
+                    if waveform is None or sample_rate is None:
+                        raise ValueError("Invalid AUDIO input. Expected waveform and sample_rate.")
+                    if torchaudio is None:
+                        raise ImportError("torchaudio is required to save AUDIO inputs to a managed dataset folder.")
+                    save_waveform = waveform.detach().cpu()
+                    if save_waveform.ndim == 3:
+                        save_waveform = save_waveform[0]
+                    torchaudio.save(dest_audio_path, save_waveform, int(sample_rate))
+            else:
+                waveform, sample_rate = self._normalize_audio_waveform(audio)
+                if waveform is None or sample_rate is None:
+                    raise ValueError("Invalid AUDIO input. Expected waveform and sample_rate.")
+                if torchaudio is None:
+                    raise ImportError("torchaudio is required to save AUDIO inputs to a managed dataset folder.")
+                save_waveform = waveform.detach().cpu()
+                if save_waveform.ndim == 3:
+                    save_waveform = save_waveform[0]
+                torchaudio.save(dest_audio_path, save_waveform, int(sample_rate))
+
+            self._ensure_audio_captions(
+                managed_dir,
+                True,
+                caption_text if str(caption_text or "").strip() else input_name,
+                add_trigger_word,
+                trigger_text,
+            )
+            print(f"[VRGDG] Managed audio dataset prepared from AUDIO input: {managed_dir}")
+            return managed_dir
+
+        audio_directory = str(audio_directory or "").strip()
+        if not audio_directory:
+            raise ValueError("Provide either a connected AUDIO input or an audio_directory path.")
+        audio_directory = self._norm(audio_directory)
+        if not os.path.isdir(audio_directory):
+            raise ValueError(f"audio_directory does not exist: {audio_directory}")
+
+        self._ensure_audio_captions(
+            audio_directory,
+            create_captions,
+            caption_text,
+            add_trigger_word,
+            trigger_text,
+        )
+        return audio_directory
+
+    def run(
+        self,
+        model,
+        workspace_dir,
+        run_name,
+        output_name,
+        audio_profile,
+        use_profile_defaults,
+        audio_only_target_resolution,
+        audio_only_target_fps,
+        audio_only_sequence_resolution,
+        steps_per_run,
+        total_target_steps,
+        network_dim,
+        network_alpha,
+        blocks_to_swap,
+        lora_target_preset,
+        fp8_base,
+        fp8_scaled,
+        ltx2_audio_only_model,
+        clear_memory_before_gemma,
+        gemma_recovery_mode,
+        learning_rate_preset,
+        learning_rate,
+        num_repeats,
+        audio_bucket_strategy,
+        audio_bucket_interval,
+        cache_strategy,
+        copy_latest_to_comfy_loras,
+        keep_only_comfy_lora,
+        strength_model,
+        create_captions,
+        caption_text,
+        add_trigger_word,
+        trigger_text,
+        musubi_root,
+        ltx2_checkpoint,
+        gemma_root,
+        gemma_load_in_4bit=False,
+        audio=None,
+        audio_directory="",
+    ):
+        workspace_dir = self._norm(workspace_dir)
+        musubi_root = self._norm(musubi_root)
+        ltx2_checkpoint = self._norm(ltx2_checkpoint)
+        gemma_root = self._norm(gemma_root)
+        gemma_load_in_4bit = bool(gemma_load_in_4bit)
+        audio_profile = str(audio_profile or "voice_fast").strip()
+        profile_defaults = self._profile_defaults(audio_profile) if bool(use_profile_defaults) else {}
+        if profile_defaults:
+            audio_only_target_resolution = profile_defaults["audio_only_target_resolution"]
+            audio_only_target_fps = profile_defaults["audio_only_target_fps"]
+            audio_only_sequence_resolution = profile_defaults["audio_only_sequence_resolution"]
+            steps_per_run = profile_defaults["steps_per_run"]
+            total_target_steps = profile_defaults["total_target_steps"]
+            network_dim = profile_defaults["network_dim"]
+            network_alpha = profile_defaults["network_alpha"]
+            blocks_to_swap = profile_defaults["blocks_to_swap"]
+            lora_target_preset = profile_defaults["lora_target_preset"]
+            fp8_base = profile_defaults["fp8_base"]
+            fp8_scaled = profile_defaults["fp8_scaled"]
+            learning_rate_preset = profile_defaults["learning_rate_preset"]
+            learning_rate = profile_defaults["learning_rate"]
+            num_repeats = profile_defaults["num_repeats"]
+            audio_bucket_strategy = profile_defaults["audio_bucket_strategy"]
+            audio_bucket_interval = profile_defaults["audio_bucket_interval"]
+            ltx2_audio_only_model = profile_defaults["ltx2_audio_only_model"]
+
+        gemma_load_in_8bit = not gemma_load_in_4bit
+        gemma_load_mode = "4bit" if gemma_load_in_4bit else "8bit"
+        run_name = self._safe_name(run_name, "LTXAudioChunkRun")
+        output_name = self._safe_name(output_name, run_name)
+        effective_learning_rate = self._resolve_learning_rate(learning_rate_preset, learning_rate)
+
+        workspace_dir = self._ensure_dir(workspace_dir)
+        if not os.path.isdir(musubi_root):
+            raise ValueError(f"musubi_root does not exist: {musubi_root}")
+        if not os.path.isfile(ltx2_checkpoint):
+            raise ValueError(f"ltx2_checkpoint does not exist: {ltx2_checkpoint}")
+        if not os.path.isdir(gemma_root):
+            raise ValueError(f"gemma_root does not exist: {gemma_root}")
+
+        dataset_audio_dir = self._prepare_audio_dataset_directory(
+            audio_directory,
+            audio,
+            create_captions,
+            caption_text,
+            add_trigger_word,
+            trigger_text,
+            workspace_dir,
+            run_name,
+        )
+
+        audio_only_target_resolution = int(audio_only_target_resolution)
+        audio_only_target_fps = float(audio_only_target_fps)
+        audio_only_sequence_resolution = int(audio_only_sequence_resolution)
+        audio_bucket_strategy = str(audio_bucket_strategy or "pad").strip().lower()
+        if audio_bucket_strategy not in {"pad", "truncate"}:
+            raise ValueError(f"audio_bucket_strategy must be 'pad' or 'truncate', got '{audio_bucket_strategy}'")
+        audio_bucket_interval = float(audio_bucket_interval)
+
+        python_exe, accelerate_exe, env_source = self._resolve_musubi_executables(musubi_root)
+
+        cache_dir = self._ensure_dir(os.path.join(workspace_dir, "cache"))
+        output_dir = self._ensure_dir(os.path.join(workspace_dir, "output"))
+        logs_dir = self._ensure_dir(os.path.join(workspace_dir, "logs"))
+        config_dir = self._ensure_dir(os.path.join(workspace_dir, "config"))
+        dataset_config = os.path.join(config_dir, "dataset-audio.toml")
+        training_config = os.path.join(config_dir, "training_args_audio.toml")
+        cache_signature_path = os.path.join(cache_dir, "ltx2_audio_cache_signature.json")
+        current_cache_signature = {
+            "dataset_audio_dir": dataset_audio_dir,
+            "audio_only_target_resolution": audio_only_target_resolution,
+            "audio_only_target_fps": audio_only_target_fps,
+            "audio_only_sequence_resolution": audio_only_sequence_resolution,
+            "audio_bucket_strategy": audio_bucket_strategy,
+            "audio_bucket_interval": audio_bucket_interval,
+            "num_repeats": int(num_repeats),
+            "lora_target_preset": str(lora_target_preset),
+            "fp8_base": bool(fp8_base),
+            "fp8_scaled": bool(fp8_scaled),
+            "ltx2_audio_only_model": bool(ltx2_audio_only_model),
+            "use_profile_defaults": bool(use_profile_defaults),
+            "audio_profile": audio_profile,
+            "ltx2_mode": "audio",
+        }
+
+        latest_state_path, completed_steps = self._latest_state_dir(output_dir, output_name)
+        if completed_steps >= int(total_target_steps):
+            raise RuntimeError(
+                f"Training complete: reached {completed_steps}/{int(total_target_steps)} steps. Stopping workflow."
+            )
+
+        next_target_steps = min(completed_steps + int(steps_per_run), int(total_target_steps))
+
+        self._write_audio_dataset_config(
+            dataset_config,
+            dataset_audio_dir,
+            cache_dir,
+            audio_only_target_resolution,
+            num_repeats,
+            audio_bucket_strategy,
+            audio_bucket_interval,
+        )
+        self._write_audio_training_config(
+            training_config,
+            dataset_config,
+            ltx2_checkpoint,
+            gemma_root,
+            output_dir,
+            logs_dir,
+            output_name,
+            network_dim,
+            network_alpha,
+            blocks_to_swap,
+            effective_learning_rate,
+            next_target_steps,
+            steps_per_run,
+            total_target_steps,
+            lora_target_preset,
+            fp8_base,
+            fp8_scaled,
+            audio_only_sequence_resolution,
+            ltx2_audio_only_model,
+        )
+
+        log_path = os.path.join(logs_dir, f"{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        with open(log_path, "w", encoding="utf-8") as log_handle:
+            log_handle.write(f"dataset_audio_dir={dataset_audio_dir}\n")
+            log_handle.write(f"workspace_dir={workspace_dir}\n")
+            log_handle.write(f"completed_steps={completed_steps}\n")
+            log_handle.write(f"next_target_steps={next_target_steps}\n\n")
+            log_handle.flush()
+
+            audio_count, caption_count = self._count_audio_dataset_files(dataset_audio_dir)
+            cache_file_count_before = self._count_cache_files(cache_dir)
+            cache_signature_matches = False
+            if os.path.isfile(cache_signature_path):
+                try:
+                    with open(cache_signature_path, "r", encoding="utf-8") as handle:
+                        cached_signature = json.load(handle)
+                    cache_signature_matches = cached_signature == current_cache_signature
+                except Exception:
+                    cache_signature_matches = False
+            if cache_strategy == "force":
+                should_build_cache = True
+            elif cache_strategy == "skip":
+                should_build_cache = False
+            else:
+                should_build_cache = not self._has_latent_cache_files(cache_dir) or not self._has_complete_text_encoder_cache_files(cache_dir)
+                if self._has_latent_cache_files(cache_dir) and self._has_complete_text_encoder_cache_files(cache_dir) and not cache_signature_matches:
+                    should_build_cache = True
+            total_stages = 3 if should_build_cache else 1
+
+            print(f"[VRGDG] dataset_audio_dir={dataset_audio_dir}")
+            print(f"[VRGDG] workspace_dir={workspace_dir}")
+            print(f"[VRGDG] completed_steps={completed_steps}")
+            print(f"[VRGDG] next_target_steps={next_target_steps}")
+            print(f"[VRGDG] steps_per_run_and_save={steps_per_run}")
+            print(f"[VRGDG] total_target_steps={total_target_steps}")
+            print(f"[VRGDG] blocks_to_swap={int(blocks_to_swap)}")
+            print(f"[VRGDG] musubi_env_source={env_source}")
+            print(f"[VRGDG] musubi_python={python_exe}")
+            print(f"[VRGDG] musubi_accelerate={accelerate_exe}")
+            print(f"[VRGDG] clear_memory_before_gemma={clear_memory_before_gemma}")
+            print(f"[VRGDG] gemma_load_mode={gemma_load_mode}")
+            print(f"[VRGDG] gemma_recovery_mode={gemma_recovery_mode}")
+            print(f"[VRGDG] ltx2_audio_only_model={bool(ltx2_audio_only_model)}")
+            print(f"[VRGDG] dataset summary: audio={audio_count} captions={caption_count}")
+            print(
+                f"[VRGDG] cache summary: strategy={cache_strategy} build_cache={'yes' if should_build_cache else 'no'} "
+                f"existing_cache_files={cache_file_count_before}"
+            )
+            if latest_state_path:
+                print(f"[VRGDG] resume state detected: {latest_state_path}")
+            else:
+                print("[VRGDG] resume state detected: none")
+
+            if should_build_cache:
+                self._run_stage_command(
+                    1,
+                    total_stages,
+                    "Cache audio latents",
+                    [
+                        python_exe,
+                        "ltx2_cache_latents.py",
+                        "--dataset_config",
+                        dataset_config,
+                        "--ltx2_checkpoint",
+                        ltx2_checkpoint,
+                        "--device",
+                        "cuda",
+                        "--vae_dtype",
+                        "bf16",
+                        "--ltx2_mode",
+                        "audio",
+                        "--audio_only_target_resolution",
+                        str(int(audio_only_target_resolution)),
+                        "--audio_only_target_fps",
+                        str(float(audio_only_target_fps)),
+                        "--audio_only_sequence_resolution",
+                        str(int(audio_only_sequence_resolution)),
+                    ],
+                    musubi_root,
+                    log_handle,
+                    [
+                        f"Dataset audio dir: {dataset_audio_dir}",
+                        f"Audio files found: {audio_count}",
+                        f"Captions found: {caption_count}",
+                        f"Cache dir: {cache_dir}",
+                    ],
+                )
+                if clear_memory_before_gemma:
+                    self._clear_memory_before_gemma(log_handle)
+                if gemma_recovery_mode:
+                    self._run_text_encoder_cache_stage_with_recovery(
+                        2,
+                        total_stages,
+                        "Cache audio text encoder outputs",
+                        python_exe,
+                        dataset_config,
+                        ltx2_checkpoint,
+                        gemma_root,
+                        "audio",
+                        gemma_load_in_8bit,
+                        gemma_recovery_mode,
+                        musubi_root,
+                        log_handle,
+                        [
+                            f"Gemma root: {gemma_root}",
+                            "This is usually the slowest setup stage.",
+                            "You should see per-item progress from the text encoder cache script.",
+                        ],
+                        gemma_load_in_4bit=gemma_load_in_4bit,
+                    )
+                else:
+                    self._run_text_encoder_cache_stage(
+                        2,
+                        total_stages,
+                        "Cache audio text encoder outputs",
+                        python_exe,
+                        dataset_config,
+                        ltx2_checkpoint,
+                        gemma_root,
+                        "audio",
+                        gemma_load_in_8bit,
+                        musubi_root,
+                        log_handle,
+                        [
+                            f"Gemma root: {gemma_root}",
+                            "This is usually the slowest setup stage.",
+                            "You should see per-item progress from the text encoder cache script.",
+                        ],
+                        gemma_load_in_4bit=gemma_load_in_4bit,
+                    )
+                with open(cache_signature_path, "w", encoding="utf-8") as handle:
+                    json.dump(current_cache_signature, handle, indent=2, sort_keys=True)
+                print(f"[VRGDG] cache summary after build: files={self._count_cache_files(cache_dir)}")
+            else:
+                self._print_stage_banner(
+                    log_handle,
+                    1,
+                    total_stages,
+                    "Skip cache build",
+                    [
+                        f"Cache strategy: {cache_strategy}",
+                        f"Existing cache files: {cache_file_count_before}",
+                        "Proceeding directly to training.",
+                    ],
+                )
+
+            train_command = [
+                accelerate_exe,
+                "launch",
+                "--num_cpu_threads_per_process",
+                "1",
+                "--mixed_precision",
+                "bf16",
+                "ltx2_train_network.py",
+                "--config_file",
+                training_config,
+                "--ltx2_checkpoint",
+                ltx2_checkpoint,
+                "--ltx2_mode",
+                "audio",
+                "--audio_only_sequence_resolution",
+                str(int(audio_only_sequence_resolution)),
+            ]
+            if ltx2_audio_only_model:
+                train_command.append("--ltx2_audio_only_model")
+            if latest_state_path:
+                train_command.extend(["--resume", latest_state_path])
+
+            self._run_stage_command(
+                total_stages,
+                total_stages,
+                "Train audio LoRA",
+                train_command,
+                musubi_root,
+                log_handle,
+                [
+                    f"Output dir: {output_dir}",
+                    f"Target steps this run: {completed_steps} -> {next_target_steps}",
+                    f"Steps per run and save interval: {steps_per_run}",
+                    f"Blocks to swap: {int(blocks_to_swap)}",
+                    f"Learning rate: {effective_learning_rate}",
+                ],
+            )
+            with open(cache_signature_path, "w", encoding="utf-8") as handle:
+                json.dump(current_cache_signature, handle, indent=2, sort_keys=True)
+
+        latest_lora_path, latest_lora_step = self._latest_file(output_dir, output_name, ".safetensors")
+        latest_comfy_lora_path, latest_comfy_step = self._latest_file(output_dir, output_name, ".comfy.safetensors")
+        latest_state_path, latest_state_step = self._latest_state_dir(output_dir, output_name)
+
+        completed_steps = max(latest_lora_step, latest_comfy_step, latest_state_step)
+        if completed_steps < next_target_steps:
+            raise RuntimeError(
+                f"Training chunk did not produce the expected checkpoint. Expected step {next_target_steps}, got {completed_steps}."
+            )
+
+        print(
+            f"[VRGDG] post-run summary: state_step={latest_state_step} "
+            f"lora_step={latest_lora_step} comfy_lora_step={latest_comfy_step}"
+        )
+
+        if keep_only_comfy_lora and latest_comfy_lora_path:
+            deleted_count = self._delete_standard_lora_files(output_dir, output_name)
+            latest_lora_path = ""
+            print(f"[VRGDG] keep_only_comfy_lora deleted {deleted_count} standard LoRA file(s).")
+
+        if copy_latest_to_comfy_loras and latest_comfy_lora_path:
+            latest_comfy_lora_path = self._export_latest_to_comfy(latest_comfy_lora_path, output_name)
+
+        applied_lora_path = latest_comfy_lora_path or latest_lora_path
+        self._log_message(
+            f"[VRGDG] Latest state selected: {os.path.normpath(latest_state_path) if latest_state_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Latest standard LoRA selected: {os.path.normpath(latest_lora_path) if latest_lora_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Latest Comfy LoRA selected: {os.path.normpath(latest_comfy_lora_path) if latest_comfy_lora_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Applying LoRA to returned MODEL: {os.path.normpath(applied_lora_path) if applied_lora_path else '(none)'} "
+            f"with strength_model={float(strength_model)}",
+            log_path,
+        )
+        output_model = self._apply_lora_to_model(model, applied_lora_path, strength_model)
+        if applied_lora_path and os.path.isfile(applied_lora_path) and float(strength_model) != 0:
+            self._log_message("[VRGDG] LoRA applied successfully to returned MODEL.", log_path)
+        else:
+            self._log_message("[VRGDG] Returned MODEL is unchanged (no LoRA file selected or strength_model is 0).", log_path)
+
+        return (
+            output_model,
+            os.path.normpath(latest_state_path) if latest_state_path else "",
+            os.path.normpath(log_path),
+            os.path.normpath(dataset_audio_dir),
+            output_name,
+            int(completed_steps),
+            int(total_target_steps),
+        )
 
 class VRGDG_LTXPreviewXYZPlot:
     RETURN_TYPES = ("STRING", "BOOLEAN", "STRING")
@@ -2287,6 +3439,10 @@ class VRGDG_SpeedCharacterLoraTraining(VRGDG_LTXLoraTrainChunk):
                     "default": False,
                     "tooltip": "Experimental. If enabled, the node will try alternate Gemma cache settings after the normal path fails."
                 }),
+                "gemma_load_in_4bit": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Loads Gemma in 4-bit mode during text encoder caching. This lowers VRAM more than 8-bit, but can be slower or less stable."
+                }),
             },
             "optional": optional_inputs,
         }
@@ -2371,6 +3527,7 @@ class VRGDG_SpeedCharacterLoraTraining(VRGDG_LTXLoraTrainChunk):
         musubi_root,
         ltx2_checkpoint,
         gemma_root,
+        gemma_load_in_4bit,
         **kwargs,
     ):
         workspace_dir = self._norm(workspace_dir)
@@ -2391,6 +3548,7 @@ class VRGDG_SpeedCharacterLoraTraining(VRGDG_LTXLoraTrainChunk):
             blocks_to_swap=blocks_to_swap,
             clear_memory_before_gemma=clear_memory_before_gemma,
             gemma_recovery_mode=gemma_recovery_mode,
+            gemma_load_in_4bit=gemma_load_in_4bit,
             learning_rate_preset="Custom",
             learning_rate=self.PRESET_LEARNING_RATE,
             num_repeats=self.PRESET_NUM_REPEATS,
@@ -2410,8 +3568,138 @@ class VRGDG_SpeedCharacterLoraTraining(VRGDG_LTXLoraTrainChunk):
 
 class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
     DESCRIPTION = (
-        "Runs one LTX-2 audio-video LoRA training chunk using musubi-tuner on videos with embedded audio."
+        "Runs one LTX-2.3 audio-video LoRA training chunk using musubi-tuner on short videos with embedded audio."
     )
+
+    AV_PROFILE_PRESETS = {
+        "fast_short_clip": {
+            "resolution_width": 768,
+            "resolution_height": 512,
+            "target_frames": "17,33",
+            "frame_extraction": "head",
+            "max_frames": 49,
+            "target_fps": 25.0,
+            "steps_per_run": 100,
+            "total_target_steps": 400,
+            "network_dim": 16,
+            "network_alpha": 16,
+            "blocks_to_swap": 2,
+            "separate_audio_buckets": True,
+            "lora_target_preset": "t2v",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "1e-4",
+            "learning_rate": 1e-4,
+            "num_repeats": 8,
+        },
+        "step200": {
+            "resolution_width": 768,
+            "resolution_height": 512,
+            "target_frames": "17,33",
+            "frame_extraction": "head",
+            "max_frames": 49,
+            "target_fps": 25.0,
+            "steps_per_run": 200,
+            "total_target_steps": 200,
+            "network_dim": 16,
+            "network_alpha": 16,
+            "blocks_to_swap": 2,
+            "separate_audio_buckets": True,
+            "lora_target_preset": "t2v",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "1e-4",
+            "learning_rate": 1e-4,
+            "num_repeats": 2,
+        },
+        "balanced": {
+            "resolution_width": 768,
+            "resolution_height": 512,
+            "target_frames": "17,33,49",
+            "frame_extraction": "head",
+            "max_frames": 97,
+            "target_fps": 25.0,
+            "steps_per_run": 250,
+            "total_target_steps": 1200,
+            "network_dim": 32,
+            "network_alpha": 32,
+            "blocks_to_swap": 4,
+            "separate_audio_buckets": True,
+            "lora_target_preset": "v2v",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "7e-5",
+            "learning_rate": 7e-5,
+            "num_repeats": 4,
+        },
+        "full_video": {
+            "resolution_width": 960,
+            "resolution_height": 544,
+            "target_frames": "1",
+            "frame_extraction": "full",
+            "max_frames": 129,
+            "target_fps": 25.0,
+            "steps_per_run": 250,
+            "total_target_steps": 3000,
+            "network_dim": 32,
+            "network_alpha": 32,
+            "blocks_to_swap": 4,
+            "separate_audio_buckets": True,
+            "lora_target_preset": "full",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "7e-5",
+            "learning_rate": 7e-5,
+            "num_repeats": 1,
+        },
+        "overnight_full_video": {
+            "resolution_width": 960,
+            "resolution_height": 544,
+            "target_frames": "17",
+            "frame_extraction": "chunk",
+            "max_frames": 65,
+            "target_fps": 25.0,
+            "steps_per_run": 250,
+            "total_target_steps": 1000,
+            "network_dim": 16,
+            "network_alpha": 16,
+            "blocks_to_swap": 4,
+            "separate_audio_buckets": True,
+            "lora_target_preset": "v2v",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "learning_rate_preset": "1e-4",
+            "learning_rate": 1e-4,
+            "num_repeats": 1,
+        },
+    }
+
+    @classmethod
+    def _profile_names(cls):
+        return list(cls.AV_PROFILE_PRESETS.keys())
+
+    @classmethod
+    def _profile_defaults(cls, profile):
+        return dict(cls.AV_PROFILE_PRESETS.get(str(profile or "fast_short_clip"), cls.AV_PROFILE_PRESETS["fast_short_clip"]))
+
+    @staticmethod
+    def _find_ffmpeg_path():
+        try:
+            subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+            return "ffmpeg"
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            try:
+                import imageio_ffmpeg
+
+                ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+                print(f"[VRGDG] Using fallback ffmpeg from imageio: {ffmpeg_path}")
+                return ffmpeg_path
+            except Exception as exc:
+                raise RuntimeError(f"FFmpeg was not found: {exc}") from exc
+
+    @staticmethod
+    def _parse_boolish(value):
+        return bool(value)
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -2440,50 +3728,95 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                     "multiline": False,
                     "tooltip": "Name prefix used for saved LoRA files and state folders."
                 }),
+                "av_profile": ([
+                    "fast_short_clip",
+                    "step200",
+                    "balanced",
+                    "full_video",
+                    "overnight_full_video",
+                ], {
+                    "default": "fast_short_clip",
+                    "tooltip": "Training recipe switch. fast_short_clip is the default quick test for one short video. step200 keeps the same fast_short_clip recipe but sets a 200-step chunk budget with lighter repeats. balanced is a stronger middle ground. full_video trains on the whole clip and is the slowest. overnight_full_video is tuned for a longer clip using smaller frame windows, lower resolution, and light swapping so it can run overnight on a midrange GPU."
+                }),
+                "use_profile_defaults": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When enabled, the selected profile controls the AV recipe bundle instead of the manual fields below. Turn this off if you want to hand-tune every value."
+                }),
                 "resolution_width": ("INT", {
-                    "default": 960, "min": 64, "max": 8192, "step": 1,
-                    "tooltip": "Training bucket width for AV samples. Examples: 960 for lighter tests, 1280 for medium runs, 1920 for high-end runs."
+                    "default": 768, "min": 64, "max": 8192, "step": 1,
+                    "tooltip": "Training bucket width in pixels. 768 is a good fast default for a single short clip. Smaller values like 512 are faster; larger values cost more VRAM and time."
                 }),
                 "resolution_height": ("INT", {
-                    "default": 544, "min": 64, "max": 8192, "step": 1,
-                    "tooltip": "Training bucket height for AV samples. Examples: 544 for lighter tests, 720 for medium runs, 1080 for high-end runs."
+                    "default": 512, "min": 64, "max": 8192, "step": 1,
+                    "tooltip": "Training bucket height in pixels. 512 pairs well with 768x512 for a quick short-clip run. Use a lower height for faster experiments."
                 }),
                 "target_frames": ("STRING", {
-                    "default": "1,17,33,49",
+                    "default": "17,33",
                     "multiline": False,
-                    "tooltip": "Comma-separated target frame buckets for video training. Example: 1,17,33,49"
+                    "tooltip": "Comma-separated frame buckets to train on. For a 10-second clip, 17 and 33 frames are a good fast starting point. The trainer rounds values to the required N*4+1 frame buckets."
                 }),
-                "target_fps": ("INT", {
-                    "default": 25, "min": 1, "max": 240, "step": 1,
-                    "tooltip": "Target FPS used during caching/training. Example: 25 for standard LTX training."
+                "frame_extraction": ([
+                    "head",
+                    "chunk",
+                    "slide",
+                    "uniform",
+                    "full",
+                ], {
+                    "default": "head",
+                    "tooltip": "How frames are selected from each video. head uses only the first target_frames window and is the fastest choice for a short single-clip LoRA. full uses the entire video, but is much slower and should be capped with max_frames."
+                }),
+                "max_frames": ("INT", {
+                    "default": 49, "min": 1, "max": 4096, "step": 1,
+                    "tooltip": "Safety cap used when frame_extraction is full. 49 keeps the run short and prevents a 10-second clip from turning into a long heavy sample. It does not affect head/chunk/slide/uniform."
+                }),
+                "target_fps": ("FLOAT", {
+                    "default": 25.0, "min": 1.0, "max": 240.0, "step": 0.1,
+                    "tooltip": "Target FPS used during caching/training. 25.0 is the standard LTX rate and works well for most short clips with audio."
                 }),
                 "steps_per_run": ("INT", {
-                    "default": 250, "min": 1, "max": 100000, "step": 1,
-                    "tooltip": "How many steps to train per run, and also when to save the LoRA/state at the end of that run."
+                    "default": 100, "min": 1, "max": 100000, "step": 1,
+                    "tooltip": "How many steps to train before saving and stopping this chunk. 100 is a fast check-run default for a single short clip."
                 }),
                 "total_target_steps": ("INT", {
-                    "default": 3000, "min": 1, "max": 1000000, "step": 1,
-                    "tooltip": "Training stops once the latest saved step reaches this total."
+                    "default": 400, "min": 1, "max": 1000000, "step": 1,
+                    "tooltip": "Total training budget across all chunks. 400 is a fast starter value for one short video; increase later only if you need more adaptation."
                 }),
                 "network_dim": ("INT", {
-                    "default": 64, "min": 1, "max": 2048, "step": 1,
-                    "tooltip": "LoRA rank."
+                    "default": 16, "min": 1, "max": 2048, "step": 1,
+                    "tooltip": "LoRA rank. 16 is a good quick-training default for one short clip. Use 32 if the result is too weak."
                 }),
                 "network_alpha": ("INT", {
-                    "default": 32, "min": 1, "max": 2048, "step": 1,
-                    "tooltip": "LoRA alpha scaling value."
+                    "default": 16, "min": 1, "max": 2048, "step": 1,
+                    "tooltip": "LoRA alpha. Usually keep this equal to the rank for a simple fast baseline."
                 }),
                 "blocks_to_swap": ("INT", {
-                    "default": 4, "min": 0, "max": 64, "step": 1,
-                    "tooltip": "Higher values reduce VRAM usage but usually slow training."
+                    "default": 2, "min": 0, "max": 64, "step": 1,
+                    "tooltip": "How many transformer blocks to offload to CPU. Lower is faster if you have enough VRAM. Raise this only if you run out of memory."
                 }),
                 "separate_audio_buckets": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Keeps audio and non-audio items in separate batches. Recommended for mixed datasets and generally safe to leave enabled."
+                    "tooltip": "Keeps audio and non-audio items in separate batches. Safe to leave on and useful if your dataset ever mixes audio and silent clips."
                 }),
                 "clear_memory_before_gemma": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Tries to unload ComfyUI models and clear VRAM/RAM before Gemma text encoder caching."
+                    "tooltip": "Unloads ComfyUI models and clears memory before Gemma caching. Leave this on unless you know your workspace is already empty."
+                }),
+                "lora_target_preset": ([
+                    "t2v",
+                    "v2v",
+                    "audio",
+                    "full",
+                ], {
+                    "default": "t2v",
+                    "tooltip": "Which transformer layers get LoRA adapters. t2v is the fastest useful baseline. v2v adds FFN layers. full is the heaviest and produces the largest adapter."
+                }),
+                "fp8_base": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Use the FP8 base-model loading path. Leave this on for speed and lower VRAM."
+                }),
+                "fp8_scaled": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Quantize non-FP8 checkpoints into FP8 at load time. Turn this off if your checkpoint file is already FP8, usually visible from the filename."
                 }),
                 "learning_rate_preset": ([
                     "Custom",
@@ -2493,20 +3826,20 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                     "3e-5",
                     "1e-5",
                 ], {
-                    "default": "7e-5",
-                    "tooltip": "Quick preset for the training learning rate."
+                    "default": "1e-4",
+                    "tooltip": "Quick preset for the training learning rate. 1e-4 is a strong starter value for a short 10-second clip."
                 }),
                 "learning_rate": ("FLOAT", {
-                    "default": 7e-5, "min": 1e-8, "max": 1.0, "step": 1e-6,
+                    "default": 1e-4, "min": 1e-8, "max": 1.0, "step": 1e-6,
                     "tooltip": "Custom learning rate used only when the preset is set to Custom."
                 }),
                 "num_repeats": ("INT", {
-                    "default": 1, "min": 1, "max": 1000, "step": 1,
-                    "tooltip": "How many times each video-caption pair is repeated in the dataset."
+                    "default": 8, "min": 1, "max": 1000, "step": 1,
+                    "tooltip": "How many times each video-caption pair is repeated in the dataset. Higher repeats help a single clip produce enough training signal without needing a huge number of source videos."
                 }),
                 "cache_strategy": (["auto", "force", "skip"], {
                     "default": "auto",
-                    "tooltip": "Auto builds cache only when needed, Force always rebuilds it, Skip goes straight to training."
+                    "tooltip": "Auto rebuilds cache only when the node detects the cache is missing or stale. Force always rebuilds. Skip assumes the cache is already correct."
                 }),
                 "copy_latest_to_comfy_loras": ("BOOLEAN", {
                     "default": True,
@@ -2522,19 +3855,19 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                 }),
                 "create_captions": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "If enabled, missing caption txt files are created automatically using the caption text input."
+                    "tooltip": "Creates missing .txt caption files automatically from the caption_text field. Leave this off if your videos already have captions."
                 }),
                 "caption_text": ("STRING", {
                     "default": "", "multiline": True,
-                    "tooltip": "Base caption text used when create_captions is enabled and a video has no caption file."
+                    "tooltip": "Fallback caption text used only when create_captions is on and a video has no caption file."
                 }),
                 "add_trigger_word": ("BOOLEAN", {
                     "default": False,
-                    "tooltip": "If enabled, the trigger text is prepended to each caption."
+                    "tooltip": "Prepends trigger_text to every caption. Useful when you want a fixed concept token."
                 }),
                 "trigger_text": ("STRING", {
                     "default": "", "multiline": False,
-                    "tooltip": "Trigger word or phrase to prepend to captions."
+                    "tooltip": "Trigger word or phrase to prepend to captions when add_trigger_word is enabled."
                 }),
                 "musubi_root": ("STRING", {
                     "default": "A:/MUSUBI/musubi-tuner-ltx2", "multiline": False,
@@ -2551,6 +3884,10 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                 "gemma_root": ("STRING", {
                     "default": "A:/MUSUBI/models/gemma3", "multiline": False,
                     "tooltip": "Folder containing the Gemma model files used for text encoder caching."
+                }),
+                "gemma_load_in_4bit": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Loads Gemma in 4-bit mode instead of 8-bit. This reduces VRAM further, but can be slower or a little less stable."
                 }),
                 "gemma_recovery_mode": ("BOOLEAN", {
                     "default": False,
@@ -2696,8 +4033,161 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         print(f"[VRGDG] Video dataset prep complete. Using videos folder: {videos_dir} (moved {moved_count} file(s))")
         return os.path.normpath(videos_dir)
 
-    def _write_av_dataset_config(self, path, dataset_videos_dir, cache_dir, width, height, num_repeats, target_frames, target_fps):
+    def _video_files_in_directory(self, videos_dir):
+        video_entries = []
+        if not os.path.isdir(videos_dir):
+            return video_entries
+        for entry in sorted(os.scandir(videos_dir), key=lambda item: item.name.lower()):
+            if entry.is_file() and os.path.splitext(entry.name)[1].lower() in self.VIDEO_EXTENSIONS:
+                video_entries.append(entry.path)
+        return video_entries
+
+    def _read_caption_text_for_video(self, video_path, create_captions, caption_text, add_trigger_word, trigger_text):
+        stem = os.path.splitext(os.path.basename(video_path))[0]
+        caption_path = os.path.join(os.path.dirname(video_path), f"{stem}.txt")
+        if os.path.isfile(caption_path):
+            with open(caption_path, "r", encoding="utf-8") as handle:
+                existing = handle.read().strip()
+            return self._compose_caption_text(existing, add_trigger_word, trigger_text)
+        if not create_captions:
+            return ""
+        return self._compose_caption_text(caption_text, add_trigger_word, trigger_text)
+
+    def _probe_video_frame_info(self, video_path):
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise RuntimeError(f"Could not open video for probing: {video_path}")
+        try:
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        finally:
+            cap.release()
+        if frame_count <= 0:
+            raise RuntimeError(f"Could not determine frame count for: {video_path}")
+        if fps <= 0:
+            fps = 25.0
+        return frame_count, fps
+
+    def _split_video_into_chunks(
+        self,
+        source_video_path,
+        chunk_videos_dir,
+        chunk_frame_count,
+        create_captions,
+        caption_text,
+        add_trigger_word,
+        trigger_text,
+        log_handle,
+    ):
+        ffmpeg_path = self._find_ffmpeg_path()
+        source_stem = os.path.splitext(os.path.basename(source_video_path))[0]
+        source_ext = os.path.splitext(source_video_path)[1].lower() or ".mp4"
+        frame_count, fps = self._probe_video_frame_info(source_video_path)
+        caption = self._read_caption_text_for_video(
+            source_video_path,
+            create_captions,
+            caption_text,
+            add_trigger_word,
+            trigger_text,
+        )
+
+        created_chunk_dirs = []
+        chunk_index = 0
+        for start_frame in range(0, frame_count, max(1, int(chunk_frame_count))):
+            end_frame = min(start_frame + max(1, int(chunk_frame_count)), frame_count)
+            chunk_index += 1
+            chunk_name = f"{source_stem}_chunk{chunk_index:04d}"
+            chunk_dir = self._ensure_dir(os.path.join(chunk_videos_dir, chunk_name))
+            chunk_video_dir = self._ensure_dir(os.path.join(chunk_dir, "videos"))
+            chunk_video_path = os.path.join(chunk_video_dir, f"{chunk_name}{source_ext}")
+            chunk_caption_path = os.path.join(chunk_video_dir, f"{chunk_name}.txt")
+
+            if not os.path.isfile(chunk_video_path):
+                start_seconds = max(0.0, float(start_frame) / float(fps))
+                duration_seconds = max(1.0 / float(fps), float(end_frame - start_frame) / float(fps))
+                self._run_command(
+                    [
+                        ffmpeg_path,
+                        "-y",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-ss",
+                        f"{start_seconds:.6f}",
+                        "-t",
+                        f"{duration_seconds:.6f}",
+                        "-i",
+                        source_video_path,
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "veryfast",
+                        "-crf",
+                        "18",
+                        "-c:a",
+                        "aac",
+                        "-b:a",
+                        "128k",
+                        "-movflags",
+                        "+faststart",
+                        chunk_video_path,
+                    ],
+                    chunk_dir,
+                    log_handle,
+                )
+
+            if caption and not os.path.isfile(chunk_caption_path):
+                with open(chunk_caption_path, "w", encoding="utf-8") as handle:
+                    handle.write(caption)
+
+            created_chunk_dirs.append(chunk_video_dir)
+
+        print(
+            f"[VRGDG] Auto-chunked {os.path.basename(source_video_path)} into {len(created_chunk_dirs)} chunk(s) "
+            f"of up to {int(chunk_frame_count)} frame(s)."
+        )
+        return created_chunk_dirs
+
+    def _prepare_step400_autochunk_dataset(
+        self,
+        dataset_videos_dir,
+        workspace_dir,
+        run_name,
+        create_captions,
+        caption_text,
+        add_trigger_word,
+        trigger_text,
+        log_handle,
+    ):
+        chunk_source_dirs = []
+        chunk_root = self._ensure_dir(os.path.join(workspace_dir, "autochunks", run_name))
+        source_videos = self._video_files_in_directory(dataset_videos_dir)
+        if not source_videos:
+            raise RuntimeError(f"No video files were found for autochunking in: {dataset_videos_dir}")
+
+        target_chunk_frames = 33
+        for source_video_path in source_videos:
+            chunk_source_dirs.extend(
+                self._split_video_into_chunks(
+                    source_video_path,
+                    chunk_root,
+                    target_chunk_frames,
+                    create_captions,
+                    caption_text,
+                    add_trigger_word,
+                    trigger_text,
+                    log_handle,
+                )
+            )
+
+        if not chunk_source_dirs:
+            raise RuntimeError(f"Autochunking produced no chunk datasets for: {dataset_videos_dir}")
+
+        return chunk_source_dirs, target_chunk_frames
+
+    def _write_av_dataset_config(self, path, dataset_videos_dir, cache_dir, width, height, num_repeats, target_frames, target_fps, frame_extraction, max_frames):
         frame_list = ", ".join(str(int(frame)) for frame in target_frames)
+        target_fps_value = float(target_fps)
         content = (
             "[general]\n"
             f"resolution = [{int(width)}, {int(height)}]\n"
@@ -2709,7 +4199,9 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             f'video_directory = "{self._quote(dataset_videos_dir)}"\n'
             f'cache_directory = "{self._quote(cache_dir)}"\n'
             f"target_frames = [{frame_list}]\n"
-            f"target_fps = {int(target_fps)}\n"
+            f'frame_extraction = "{frame_extraction}"\n'
+            f"max_frames = {int(max_frames)}\n"
+            f"target_fps = {target_fps_value:.1f}\n"
             f"num_repeats = {int(num_repeats)}\n"
         )
         with open(path, "w", encoding="utf-8") as handle:
@@ -2732,7 +4224,12 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         steps_per_run,
         total_target_steps,
         separate_audio_buckets,
+        lora_target_preset,
+        fp8_base,
+        fp8_scaled,
     ):
+        checkpoint_name = os.path.basename(str(checkpoint or "")).lower()
+        effective_fp8_scaled = bool(fp8_scaled) and ("fp8" not in checkpoint_name)
         content = (
             "# Auto-generated by VRGDG LTX audio-video chunk trainer\n"
             f"# total_target_steps_from_workflow = {int(total_target_steps)}\n"
@@ -2744,12 +4241,12 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             'ltx_mode = "av"\n'
             'ltx_version = "2.3"\n'
             'ltx_version_check_mode = "error"\n'
-            'lora_target_preset = "full"\n\n'
+            f'lora_target_preset = "{lora_target_preset}"\n\n'
             "cache_text_encoder_outputs = true\n"
             "cache_text_encoder_outputs_to_disk = false\n"
             f"separate_audio_buckets = {'true' if separate_audio_buckets else 'false'}\n\n"
-            "fp8_base = true\n"
-            "fp8_scaled = true\n"
+            f"fp8_base = {'true' if fp8_base else 'false'}\n"
+            f"fp8_scaled = {'true' if effective_fp8_scaled else 'false'}\n"
             "sdpa = true\n"
             "gradient_checkpointing = true\n"
             "gradient_accumulation_steps = 1\n"
@@ -2785,9 +4282,13 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         workspace_dir,
         run_name,
         output_name,
+        av_profile,
+        use_profile_defaults,
         resolution_width,
         resolution_height,
         target_frames,
+        frame_extraction,
+        max_frames,
         target_fps,
         steps_per_run,
         total_target_steps,
@@ -2795,6 +4296,9 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         network_alpha,
         blocks_to_swap,
         separate_audio_buckets,
+        lora_target_preset,
+        fp8_base,
+        fp8_scaled,
         clear_memory_before_gemma,
         gemma_recovery_mode,
         learning_rate_preset,
@@ -2811,12 +4315,38 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         musubi_root,
         ltx2_checkpoint,
         gemma_root,
+        gemma_load_in_4bit=False,
+        _autochunk_mode=False,
     ):
         dataset_videos_dir = self._norm(dataset_videos_dir)
         workspace_dir = self._norm(workspace_dir)
         musubi_root = self._norm(musubi_root)
         ltx2_checkpoint = self._norm(ltx2_checkpoint)
         gemma_root = self._norm(gemma_root)
+        gemma_load_in_4bit = bool(gemma_load_in_4bit)
+        av_profile = str(av_profile or "fast_short_clip").strip()
+        profile_defaults = self._profile_defaults(av_profile) if bool(use_profile_defaults) else {}
+        if profile_defaults:
+            resolution_width = profile_defaults["resolution_width"]
+            resolution_height = profile_defaults["resolution_height"]
+            target_frames = profile_defaults["target_frames"]
+            frame_extraction = profile_defaults["frame_extraction"]
+            max_frames = profile_defaults["max_frames"]
+            target_fps = profile_defaults["target_fps"]
+            steps_per_run = profile_defaults["steps_per_run"]
+            total_target_steps = profile_defaults["total_target_steps"]
+            network_dim = profile_defaults["network_dim"]
+            network_alpha = profile_defaults["network_alpha"]
+            blocks_to_swap = profile_defaults["blocks_to_swap"]
+            separate_audio_buckets = profile_defaults["separate_audio_buckets"]
+            lora_target_preset = profile_defaults["lora_target_preset"]
+            fp8_base = profile_defaults["fp8_base"]
+            fp8_scaled = profile_defaults["fp8_scaled"]
+            learning_rate_preset = profile_defaults["learning_rate_preset"]
+            learning_rate = profile_defaults["learning_rate"]
+            num_repeats = profile_defaults["num_repeats"]
+        gemma_load_in_8bit = not gemma_load_in_4bit
+        gemma_load_mode = "4bit" if gemma_load_in_4bit else "8bit"
         run_name = self._safe_name(run_name, "LTXAVChunkRun")
         output_name = self._safe_name(output_name, run_name)
         effective_learning_rate = self._resolve_learning_rate(learning_rate_preset, learning_rate)
@@ -2837,6 +4367,54 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         if not os.path.isdir(gemma_root):
             raise ValueError(f"gemma_root does not exist: {gemma_root}")
 
+        autochunk_enabled = bool(profile_defaults) and str(av_profile).strip() == "step200"
+        autochunk_total_steps = None
+        if autochunk_enabled:
+            logs_dir = self._ensure_dir(os.path.join(workspace_dir, "logs"))
+            master_log_path = os.path.join(
+                logs_dir,
+                f"{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_autochunk.log",
+            )
+            with open(master_log_path, "w", encoding="utf-8") as log_handle:
+                chunk_dataset_dirs, chunk_frame_count = self._prepare_step400_autochunk_dataset(
+                    dataset_videos_dir,
+                    workspace_dir,
+                    run_name,
+                    create_captions,
+                    caption_text,
+                    add_trigger_word,
+                    trigger_text,
+                    log_handle,
+                )
+                autochunk_total_steps = len(chunk_dataset_dirs) * int(steps_per_run)
+                if completed_steps >= int(autochunk_total_steps):
+                    raise RuntimeError(
+                        f"Training complete: reached {completed_steps}/{int(autochunk_total_steps)} steps. Stopping workflow."
+                    )
+                chunk_index = min(len(chunk_dataset_dirs) - 1, int(completed_steps) // int(steps_per_run))
+                selected_chunk_dir = chunk_dataset_dirs[chunk_index]
+                chunk_start_step = int(completed_steps) + 1
+                chunk_end_step = min(int(completed_steps) + int(steps_per_run), int(autochunk_total_steps))
+                print(
+                    f"[VRGDG] step200 autochunk enabled: chunk_frame_count={chunk_frame_count} "
+                    f"chunk_count={len(chunk_dataset_dirs)} total_target_steps={int(autochunk_total_steps)}"
+                )
+                print(
+                    f"[VRGDG] step200 autochunk chunk {chunk_index + 1}/{len(chunk_dataset_dirs)} "
+                    f"dataset={selected_chunk_dir} steps={chunk_start_step}-{chunk_end_step}"
+                )
+                log_handle.write(
+                    f"step200 autochunk enabled: chunk_frame_count={chunk_frame_count} "
+                    f"chunk_count={len(chunk_dataset_dirs)} total_target_steps={int(autochunk_total_steps)}\n"
+                )
+                log_handle.write(
+                    f"step200 autochunk chunk {chunk_index + 1}/{len(chunk_dataset_dirs)} "
+                    f"dataset={selected_chunk_dir} steps={chunk_start_step}-{chunk_end_step}\n"
+                )
+                log_handle.flush()
+                dataset_videos_dir = selected_chunk_dir
+                total_target_steps = int(autochunk_total_steps)
+
         python_exe, accelerate_exe, env_source = self._resolve_musubi_executables(musubi_root)
 
         cache_dir = self._ensure_dir(os.path.join(workspace_dir, "cache"))
@@ -2845,8 +4423,74 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         config_dir = self._ensure_dir(os.path.join(workspace_dir, "config"))
         dataset_config = os.path.join(config_dir, "dataset-av.toml")
         training_config = os.path.join(config_dir, "training_args_av.toml")
-
         latest_state_path, completed_steps = self._latest_state_dir(output_dir, output_name)
+        autochunk_total_steps = None
+        if bool(profile_defaults) and str(av_profile).strip() == "step200":
+            master_log_path = os.path.join(
+                logs_dir,
+                f"{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_autochunk.log",
+            )
+            with open(master_log_path, "w", encoding="utf-8") as log_handle:
+                chunk_dataset_dirs, chunk_frame_count = self._prepare_step400_autochunk_dataset(
+                    dataset_videos_dir,
+                    workspace_dir,
+                    run_name,
+                    create_captions,
+                    caption_text,
+                    add_trigger_word,
+                    trigger_text,
+                    log_handle,
+                )
+                autochunk_total_steps = len(chunk_dataset_dirs) * int(steps_per_run)
+                if completed_steps >= int(autochunk_total_steps):
+                    raise RuntimeError(
+                        f"Training complete: reached {completed_steps}/{int(autochunk_total_steps)} steps. Stopping workflow."
+                    )
+                chunk_index = min(len(chunk_dataset_dirs) - 1, int(completed_steps) // int(steps_per_run))
+                selected_chunk_dir = chunk_dataset_dirs[chunk_index]
+                chunk_start_step = int(completed_steps) + 1
+                chunk_end_step = min(int(completed_steps) + int(steps_per_run), int(autochunk_total_steps))
+                print(
+                    f"[VRGDG] step200 autochunk enabled: chunk_frame_count={chunk_frame_count} "
+                    f"chunk_count={len(chunk_dataset_dirs)} total_target_steps={int(autochunk_total_steps)}"
+                )
+                print(
+                    f"[VRGDG] step200 autochunk chunk {chunk_index + 1}/{len(chunk_dataset_dirs)} "
+                    f"dataset={selected_chunk_dir} steps={chunk_start_step}-{chunk_end_step}"
+                )
+                log_handle.write(
+                    f"step200 autochunk enabled: chunk_frame_count={chunk_frame_count} "
+                    f"chunk_count={len(chunk_dataset_dirs)} total_target_steps={int(autochunk_total_steps)}\n"
+                )
+                log_handle.write(
+                    f"step200 autochunk chunk {chunk_index + 1}/{len(chunk_dataset_dirs)} "
+                    f"dataset={selected_chunk_dir} steps={chunk_start_step}-{chunk_end_step}\n"
+                )
+                log_handle.flush()
+                dataset_videos_dir = selected_chunk_dir
+                total_target_steps = int(autochunk_total_steps)
+
+        cache_signature_path = os.path.join(cache_dir, "ltx2_av_cache_signature.json")
+        current_cache_signature = {
+            "dataset_videos_dir": dataset_videos_dir,
+            "ltx2_checkpoint": ltx2_checkpoint,
+            "gemma_root": gemma_root,
+            "resolution_width": int(resolution_width),
+            "resolution_height": int(resolution_height),
+            "target_frames": parsed_target_frames,
+            "frame_extraction": str(frame_extraction),
+            "max_frames": int(max_frames),
+            "target_fps": float(target_fps),
+            "num_repeats": int(num_repeats),
+            "separate_audio_buckets": bool(separate_audio_buckets),
+            "lora_target_preset": str(lora_target_preset),
+            "fp8_base": bool(fp8_base),
+            "fp8_scaled": bool(fp8_scaled),
+            "ltx2_mode": "av",
+            "av_profile": av_profile,
+            "use_profile_defaults": bool(use_profile_defaults),
+        }
+
         if completed_steps >= int(total_target_steps):
             raise RuntimeError(
                 f"Training complete: reached {completed_steps}/{int(total_target_steps)} steps. Stopping workflow."
@@ -2869,6 +4513,8 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             num_repeats,
             parsed_target_frames,
             target_fps,
+            frame_extraction,
+            max_frames,
         )
         self._write_av_training_config(
             training_config,
@@ -2886,6 +4532,9 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             steps_per_run,
             total_target_steps,
             separate_audio_buckets,
+            lora_target_preset,
+            fp8_base,
+            fp8_scaled,
         )
 
         log_path = os.path.join(
@@ -2901,8 +4550,29 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
 
             video_count, caption_count = self._count_video_dataset_files(dataset_videos_dir)
             cache_file_count_before = self._count_cache_files(cache_dir)
-            should_build_cache = self._should_build_cache(cache_strategy, cache_dir)
-            total_stages = 3 if should_build_cache else 1
+            has_latent_cache_files = self._has_latent_cache_files(cache_dir)
+            has_complete_text_cache_files = self._has_complete_text_encoder_cache_files(cache_dir)
+            cache_signature_matches = False
+            if os.path.isfile(cache_signature_path):
+                try:
+                    with open(cache_signature_path, "r", encoding="utf-8") as handle:
+                        cached_signature = json.load(handle)
+                    cache_signature_matches = cached_signature == current_cache_signature
+                except Exception:
+                    cache_signature_matches = False
+            if cache_strategy == "force":
+                should_build_latent_cache = True
+                should_build_text_cache = True
+            elif cache_strategy == "skip":
+                should_build_latent_cache = False
+                should_build_text_cache = False
+            else:
+                should_build_latent_cache = not has_latent_cache_files
+                should_build_text_cache = should_build_latent_cache or not has_complete_text_cache_files
+                if has_latent_cache_files and has_complete_text_cache_files and not cache_signature_matches:
+                    should_build_latent_cache = True
+                    should_build_text_cache = True
+            total_stages = int(should_build_latent_cache) + int(should_build_text_cache) + 1
 
             print(f"[VRGDG] dataset_videos_dir={dataset_videos_dir}")
             print(f"[VRGDG] workspace_dir={workspace_dir}")
@@ -2911,15 +4581,21 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             print(f"[VRGDG] next_target_steps={next_target_steps}")
             print(f"[VRGDG] steps_per_run_and_save={steps_per_run}")
             print(f"[VRGDG] total_target_steps={total_target_steps}")
+            print(f"[VRGDG] av_profile={av_profile}")
+            print(f"[VRGDG] use_profile_defaults={bool(use_profile_defaults)}")
             print(f"[VRGDG] target_frames={parsed_target_frames}")
-            print(f"[VRGDG] target_fps={int(target_fps)}")
+            print(f"[VRGDG] frame_extraction={frame_extraction}")
+            print(f"[VRGDG] max_frames={int(max_frames)}")
+            print(f"[VRGDG] target_fps={float(target_fps):.1f}")
             print(f"[VRGDG] blocks_to_swap={int(blocks_to_swap)}")
             print(f"[VRGDG] separate_audio_buckets={bool(separate_audio_buckets)}")
+            print(f"[VRGDG] lora_target_preset={lora_target_preset}")
+            print(f"[VRGDG] fp8_base={bool(fp8_base)} fp8_scaled={bool(fp8_scaled)}")
             print(f"[VRGDG] musubi_env_source={env_source}")
             print(f"[VRGDG] musubi_python={python_exe}")
             print(f"[VRGDG] musubi_accelerate={accelerate_exe}")
             print(f"[VRGDG] clear_memory_before_gemma={clear_memory_before_gemma}")
-            print("[VRGDG] gemma_load_in_8bit=True (hardcoded)")
+            print(f"[VRGDG] gemma_load_mode={gemma_load_mode}")
             print(f"[VRGDG] gemma_recovery_mode={gemma_recovery_mode}")
             print(f"[VRGDG] keep_only_comfy_lora={keep_only_comfy_lora}")
             print(
@@ -2928,15 +4604,18 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             )
             print(f"[VRGDG] dataset summary: videos={video_count} captions={caption_count}")
             print(
-                f"[VRGDG] cache summary: strategy={cache_strategy} build_cache={'yes' if should_build_cache else 'no'} "
-                f"existing_cache_files={cache_file_count_before}"
+                f"[VRGDG] cache summary: strategy={cache_strategy} "
+                f"build_latent={'yes' if should_build_latent_cache else 'no'} "
+                f"build_text={'yes' if should_build_text_cache else 'no'} "
+                f"existing_cache_files={cache_file_count_before} "
+                f"cache_signature_match={cache_signature_matches}"
             )
             if latest_state_path:
                 print(f"[VRGDG] resume state detected: {latest_state_path}")
             else:
                 print("[VRGDG] resume state detected: none")
 
-            if should_build_cache:
+            if should_build_latent_cache:
                 self._run_stage_command(
                     1,
                     total_stages,
@@ -2966,11 +4645,12 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                         f"Cache dir: {cache_dir}",
                     ],
                 )
+            if should_build_text_cache:
                 if clear_memory_before_gemma:
                     self._clear_memory_before_gemma(log_handle)
                 if gemma_recovery_mode:
                     self._run_text_encoder_cache_stage_with_recovery(
-                        2,
+                        2 if should_build_latent_cache else 1,
                         total_stages,
                         "Cache AV text encoder outputs",
                         python_exe,
@@ -2978,7 +4658,8 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                         ltx2_checkpoint,
                         gemma_root,
                         "av",
-                        True,
+                        gemma_load_in_8bit,
+                        gemma_recovery_mode,
                         musubi_root,
                         log_handle,
                         [
@@ -2986,10 +4667,11 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                             "This is usually the slowest setup stage.",
                             "You should see per-item progress from the text encoder cache script.",
                         ],
+                        gemma_load_in_4bit=gemma_load_in_4bit,
                     )
                 else:
                     self._run_text_encoder_cache_stage(
-                        2,
+                        2 if should_build_latent_cache else 1,
                         total_stages,
                         "Cache AV text encoder outputs",
                         python_exe,
@@ -2997,6 +4679,7 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                         ltx2_checkpoint,
                         gemma_root,
                         "av",
+                        gemma_load_in_8bit,
                         musubi_root,
                         log_handle,
                         [
@@ -3004,8 +4687,11 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                             "This is usually the slowest setup stage.",
                             "You should see per-item progress from the text encoder cache script.",
                         ],
+                        gemma_load_in_4bit=gemma_load_in_4bit,
                     )
-                print(f"[VRGDG] cache summary after build: files={self._count_cache_files(cache_dir)}")
+                    print(f"[VRGDG] cache summary after build: files={self._count_cache_files(cache_dir)}")
+                    with open(cache_signature_path, "w", encoding="utf-8") as handle:
+                        json.dump(current_cache_signature, handle, indent=2, sort_keys=True)
             else:
                 self._print_stage_banner(
                     log_handle,
@@ -3052,6 +4738,9 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
                     f"Learning rate: {effective_learning_rate}",
                 ],
             )
+
+            with open(cache_signature_path, "w", encoding="utf-8") as handle:
+                json.dump(current_cache_signature, handle, indent=2, sort_keys=True)
 
         latest_lora_path, latest_lora_step = self._latest_file(output_dir, output_name, ".safetensors")
         latest_comfy_lora_path, latest_comfy_step = self._latest_file(
@@ -3113,6 +4802,1028 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
             output_name,
             int(completed_steps),
             int(total_target_steps),
+        )
+
+
+class VRGDG_ZImageLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
+    DESCRIPTION = (
+        "Runs one Z-Image LoRA training chunk using musubi-tuner, optionally caches if needed, "
+        "converts the latest LoRA to ComfyUI format, and can apply it to the returned MODEL."
+    )
+
+    RETURN_TYPES = ("MODEL", "STRING", "STRING", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = (
+        "model",
+        "latest_state_path",
+        "log_path",
+        "latest_comfy_lora_path",
+        "output_name",
+        "completed_steps",
+        "total_target_steps",
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {
+                    "tooltip": "Base model to return downstream with the latest trained LoRA optionally applied."
+                }),
+                "dataset_images_dir": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Folder containing your training images, or a parent folder that will be organized into an images subfolder."
+                }),
+                "workspace_dir": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Working folder for cache, logs, config files, checkpoints, and training state."
+                }),
+                "run_name": ("STRING", {
+                    "default": "ZImageChunkRun",
+                    "multiline": False,
+                    "tooltip": "Name prefix used for the log file."
+                }),
+                "output_name": ("STRING", {
+                    "default": "ZImageChunkRun",
+                    "multiline": False,
+                    "tooltip": "Name prefix used for saved LoRA files and state folders."
+                }),
+                "resolution_width": ("INT", {
+                    "default": 1024, "min": 64, "max": 8192, "step": 1,
+                    "tooltip": "Training bucket width written to the musubi dataset config."
+                }),
+                "resolution_height": ("INT", {
+                    "default": 1024, "min": 64, "max": 8192, "step": 1,
+                    "tooltip": "Training bucket height written to the musubi dataset config."
+                }),
+                "steps_per_run": ("INT", {
+                    "default": 250, "min": 1, "max": 100000, "step": 1,
+                    "tooltip": "How many steps to train per run, and also when to save the LoRA/state at the end of that run."
+                }),
+                "total_target_steps": ("INT", {
+                    "default": 3000, "min": 1, "max": 1000000, "step": 1,
+                    "tooltip": "Training stops once the latest saved step reaches this total."
+                }),
+                "network_dim": ("INT", {
+                    "default": 32, "min": 1, "max": 2048, "step": 1,
+                    "tooltip": "LoRA rank."
+                }),
+                "network_alpha": ("INT", {
+                    "default": 32, "min": 1, "max": 2048, "step": 1,
+                    "tooltip": "LoRA alpha scaling value."
+                }),
+                "blocks_to_swap": ("INT", {
+                    "default": 4, "min": 0, "max": 28, "step": 1,
+                    "tooltip": "Higher values reduce VRAM usage but usually slow training."
+                }),
+                "clear_memory_before_text_encoder": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Tries to unload ComfyUI models and clear VRAM/RAM before text encoder caching."
+                }),
+                "learning_rate_preset": ([
+                    "Custom",
+                    "1e-4",
+                    "7e-5",
+                    "5e-5",
+                    "3e-5",
+                    "1e-5",
+                ], {
+                    "default": "1e-4",
+                    "tooltip": "Quick preset for the training learning rate. Choose Custom to use the float input below."
+                }),
+                "learning_rate": ("FLOAT", {
+                    "default": 1e-4, "min": 1e-8, "max": 1.0, "step": 1e-6,
+                    "tooltip": "Custom learning rate used only when the preset is set to Custom."
+                }),
+                "num_repeats": ("INT", {
+                    "default": 1, "min": 1, "max": 1000, "step": 1,
+                    "tooltip": "How many times each image-caption pair is repeated in the dataset."
+                }),
+                "cache_strategy": (["auto", "force", "skip"], {
+                    "default": "auto",
+                    "tooltip": "Auto builds cache only when needed, Force always rebuilds it, Skip goes straight to training."
+                }),
+                "copy_latest_to_comfy_loras": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Copies the latest Comfy-compatible LoRA into the ComfyUI loras folder after training."
+                }),
+                "keep_only_comfy_lora": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "If enabled, deletes the standard .safetensors LoRA files after a matching .comfy.safetensors file exists."
+                }),
+                "strength_model": ("FLOAT", {
+                    "default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01,
+                    "tooltip": "Strength used if the node applies the latest LoRA back onto the output model."
+                }),
+                "create_captions": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "If enabled, missing caption txt files are created automatically using the caption text input."
+                }),
+                "caption_text": ("STRING", {
+                    "default": "", "multiline": True,
+                    "tooltip": "Base caption text used when create_captions is enabled and an image has no caption file."
+                }),
+                "add_trigger_word": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "If enabled, the trigger text is prepended to each caption."
+                }),
+                "trigger_text": ("STRING", {
+                    "default": "", "multiline": False,
+                    "tooltip": "Trigger word or phrase to prepend to captions when add_trigger_word is enabled."
+                }),
+                "musubi_root": ("STRING", {
+                    "default": "A:/MUSUBI/musubi-tuner-ltx2", "multiline": False,
+                    "tooltip": "Root folder of your musubi-tuner-ltx2 install."
+                }),
+                "zimage_checkpoint": ("STRING", {
+                    "default": "A:/MUSUBI/models/zimage/zimage-base.safetensors", "multiline": False,
+                    "tooltip": "Path to the base Z-Image DiT checkpoint used for caching and training."
+                }),
+                "vae": ("STRING", {
+                    "default": "A:/MUSUBI/models/zimage/vae.safetensors", "multiline": False,
+                    "tooltip": "Path to the Z-Image VAE checkpoint."
+                }),
+                "text_encoder": ("STRING", {
+                    "default": "A:/MUSUBI/models/qwen3", "multiline": False,
+                    "tooltip": "Path to the Qwen3 text encoder checkpoint or directory."
+                }),
+                "fp8_base": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable fp8 base model weights during Z-Image training."
+                }),
+                "fp8_scaled": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable scaled fp8 weights during Z-Image training. Requires fp8_base."
+                }),
+                "fp8_llm": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Loads the text encoder in fp8 mode during caching to reduce VRAM usage."
+                }),
+                "use_32bit_attention": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Use 32-bit precision for attention computations in the Z-Image model."
+                }),
+            }
+        }
+
+    @staticmethod
+    def _get_zimage_cache_architecture():
+        return "zi"
+
+    @staticmethod
+    def _find_first_matching_safetensor_file(root_dir, include_any=None, exclude_any=None):
+        include_any = [str(item).lower() for item in (include_any or []) if str(item or "").strip()]
+        exclude_any = [str(item).lower() for item in (exclude_any or []) if str(item or "").strip()]
+        if not os.path.isdir(root_dir):
+            return ""
+
+        candidates = []
+        for current_root, _dirs, files in os.walk(root_dir):
+            for name in files:
+                if not name.lower().endswith(".safetensors"):
+                    continue
+                lowered = name.lower()
+                if include_any and not any(token in lowered for token in include_any):
+                    continue
+                if exclude_any and any(token in lowered for token in exclude_any):
+                    continue
+                candidates.append(os.path.join(current_root, name))
+
+        if not candidates:
+            return ""
+
+        def _sort_key(path):
+            name = os.path.basename(path).lower()
+            split_rank = 0 if re.search(r"00001-of-\d+", name) else 1
+            return (split_rank, len(path), path.lower())
+
+        candidates.sort(key=_sort_key)
+        return os.path.normpath(candidates[0])
+
+    def _resolve_zimage_model_path(self, path, kind):
+        path = self._norm(path)
+        if os.path.isfile(path):
+            return path
+        if not os.path.isdir(path):
+            raise ValueError(f"{kind} does not exist: {path}")
+
+        if kind == "vae":
+            candidate = self._find_first_matching_safetensor_file(
+                path,
+                include_any=["vae"],
+                exclude_any=["qwen", "text", "tokenizer", "llm"],
+            )
+        elif kind == "text_encoder":
+            candidate = self._find_first_matching_safetensor_file(
+                path,
+                include_any=["qwen", "text", "llm"],
+                exclude_any=["vae"],
+            )
+        else:
+            candidate = self._find_first_matching_safetensor_file(
+                path,
+                include_any=["00001-of-", "dit", "transformer", "model"],
+                exclude_any=["vae", "qwen", "text", "tokenizer", "llm"],
+            )
+
+        if candidate:
+            return candidate
+
+        if kind == "text_encoder":
+            # If the tokenizer/model bundle is installed as a repo snapshot directory,
+            # keep the directory path as a fallback for troubleshooting, but the loader
+            # still expects a safetensors file if it can be found.
+            raise ValueError(
+                "text_encoder directory does not contain a recognizable Qwen3 safetensors file. "
+                "Point it at the split checkpoint file or the repository root that contains it."
+            )
+
+        raise ValueError(
+            f"Could not resolve a {kind} safetensors file from directory: {path}. "
+            "Point the node at the file directly or the repository root that contains it."
+        )
+
+    def _has_latent_cache_files(self, cache_dir):
+        architecture = self._get_zimage_cache_architecture()
+        if not os.path.isdir(cache_dir):
+            return False
+        for entry in os.scandir(cache_dir):
+            if not entry.is_file():
+                continue
+            if entry.name.endswith(f"_{architecture}.safetensors") and not entry.name.endswith(f"_{architecture}_te.safetensors"):
+                return True
+        return False
+
+    def _expected_text_cache_path_from_latent_cache_file(self, cache_dir, latent_cache_file):
+        architecture = self._get_zimage_cache_architecture()
+        basename = os.path.basename(latent_cache_file)
+        if not basename.endswith(f"_{architecture}.safetensors"):
+            return ""
+
+        tokens = basename.split("_")
+        if len(tokens) < 4:
+            return ""
+
+        item_key = "_".join(tokens[:-2])
+        if not item_key:
+            return ""
+        return os.path.join(cache_dir, f"{item_key}_{architecture}_te.safetensors")
+
+    def _has_complete_text_encoder_cache_files(self, cache_dir):
+        architecture = self._get_zimage_cache_architecture()
+        if not os.path.isdir(cache_dir):
+            return False
+
+        latent_cache_files = []
+        for entry in os.scandir(cache_dir):
+            if not entry.is_file():
+                continue
+            if entry.name.endswith(f"_{architecture}.safetensors") and not entry.name.endswith(f"_{architecture}_te.safetensors"):
+                latent_cache_files.append(entry.path)
+
+        if not latent_cache_files:
+            return False
+
+        seen_text_cache_files = set()
+        for latent_cache_file in latent_cache_files:
+            expected_text_cache = self._expected_text_cache_path_from_latent_cache_file(cache_dir, latent_cache_file)
+            if not expected_text_cache:
+                continue
+            normalized_expected = os.path.normpath(expected_text_cache)
+            if normalized_expected in seen_text_cache_files:
+                continue
+            seen_text_cache_files.add(normalized_expected)
+            if not os.path.exists(expected_text_cache):
+                return False
+
+        return True
+
+    def _write_zimage_training_config(
+        self,
+        path,
+        dataset_config,
+        checkpoint,
+        vae,
+        text_encoder,
+        output_dir,
+        log_dir,
+        output_name,
+        network_dim,
+        network_alpha,
+        blocks_to_swap,
+        learning_rate,
+        max_train_steps,
+        steps_per_run,
+        total_target_steps,
+        fp8_base,
+        fp8_scaled,
+        fp8_llm,
+        use_32bit_attention,
+    ):
+        fp8_base = bool(fp8_base)
+        fp8_scaled = bool(fp8_scaled)
+        fp8_llm = bool(fp8_llm)
+        use_32bit_attention = bool(use_32bit_attention)
+        content = (
+            "# Auto-generated by VRGDG Z-Image chunk trainer\n"
+            f"# total_target_steps_from_workflow = {int(total_target_steps)}\n"
+            f"# chunk_target_steps_this_run = {int(max_train_steps)}\n"
+            f"# save_interval_per_run = {int(steps_per_run)}\n"
+            f'dit = "{self._quote(checkpoint)}"\n'
+            f'vae = "{self._quote(vae)}"\n'
+            f'text_encoder = "{self._quote(text_encoder)}"\n'
+            f'dataset_config = "{self._quote(dataset_config)}"\n\n'
+            'network_module = "networks.lora_zimage"\n'
+            f"network_dim = {int(network_dim)}\n"
+            f"network_alpha = {int(network_alpha)}\n\n"
+            'cache_text_encoder_outputs = true\n'
+            'cache_text_encoder_outputs_to_disk = false\n'
+            'sdpa = true\n'
+            'gradient_checkpointing = true\n'
+            'gradient_accumulation_steps = 1\n'
+            f"blocks_to_swap = {int(blocks_to_swap)}\n"
+            'optimizer_type = "AdamW8Bit"\n'
+            f"learning_rate = {learning_rate}\n"
+            'lr_scheduler = "constant_with_warmup"\n'
+            "lr_warmup_steps = 100\n\n"
+            'timestep_sampling = "shift"\n'
+            'weighting_scheme = "none"\n'
+            'discrete_flow_shift = 2.0\n\n'
+            f"fp8_base = {'true' if fp8_base else 'false'}\n"
+            f"fp8_scaled = {'true' if fp8_scaled else 'false'}\n"
+            f"fp8_llm = {'true' if fp8_llm else 'false'}\n"
+            f"use_32bit_attention = {'true' if use_32bit_attention else 'false'}\n\n"
+            f'output_dir = "{self._quote(output_dir)}"\n'
+            f'output_name = "{output_name}"\n'
+            'log_with = "tensorboard"\n'
+            f'logging_dir = "{self._quote(log_dir)}"\n'
+            "log_config = true\n"
+            f"max_train_steps = {int(max_train_steps)}\n"
+            f"save_every_n_steps = {int(steps_per_run)}\n"
+            'save_model_as = "safetensors"\n'
+            'mixed_precision = "bf16"\n'
+            "save_state = true\n"
+            "save_state_on_train_end = true\n"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def _ensure_zimage_checkpointing_compatibility(self, musubi_root, log_path=None):
+        zimage_model_path = os.path.normpath(
+            os.path.join(musubi_root, "src", "musubi_tuner", "zimage", "zimage_model.py")
+        )
+        backup_path = zimage_model_path + ".vrgdg_checkpointing_backup"
+
+        self._log_message(
+            f"[VRGDG] Z-Image checkpointing compatibility check: {zimage_model_path}",
+            log_path,
+        )
+
+        if not os.path.isfile(zimage_model_path):
+            raise RuntimeError(
+                f"Z-Image checkpointing compatibility patch target not found: {zimage_model_path}"
+            )
+
+        with open(zimage_model_path, "r", encoding="utf-8") as handle:
+            original = handle.read()
+
+        match = re.search(
+            r"^\s*def\s+enable_gradient_checkpointing\(\s*self,\s*cpu_offload:\s*bool\s*=\s*False(?P<rest>[^)]*)\):\s*$",
+            original,
+            flags=re.MULTILINE,
+        )
+        if not match:
+            raise RuntimeError(
+                "Could not locate the Z-Image gradient checkpointing method signature to patch."
+            )
+
+        signature_tail = match.group("rest") or ""
+        if "blocks_to_checkpoint" in signature_tail or "**kwargs" in signature_tail:
+            self._log_message(
+                "[VRGDG] Z-Image checkpointing compatibility check: already compatible; no patch needed.",
+                log_path,
+            )
+            return False
+
+        if not os.path.isfile(backup_path):
+            shutil.copy2(zimage_model_path, backup_path)
+            self._log_message(
+                f"[VRGDG] Z-Image checkpointing compatibility check: backed up original file to {backup_path}",
+                log_path,
+            )
+
+        patched = re.sub(
+            r"^\s*def\s+enable_gradient_checkpointing\(\s*self,\s*cpu_offload:\s*bool\s*=\s*False\s*\):\s*$",
+            "    def enable_gradient_checkpointing(self, cpu_offload: bool = False, blocks_to_checkpoint=None, **kwargs):",
+            original,
+            count=1,
+            flags=re.MULTILINE,
+        )
+
+        if patched == original:
+            raise RuntimeError(
+                "Failed to apply the Z-Image checkpointing compatibility patch; musubi file contents did not change."
+            )
+
+        with open(zimage_model_path, "w", encoding="utf-8") as handle:
+            handle.write(patched)
+
+        self._log_message(
+            "[VRGDG] Z-Image checkpointing compatibility check: patch applied; the local musubi install can now accept blocks_to_checkpoint.",
+            log_path,
+        )
+        return True
+
+    def _convert_lora_to_comfy(self, stage_number, total_stages, python_exe, musubi_root, input_lora_path, output_name, log_handle):
+        comfy_output_path = os.path.splitext(input_lora_path)[0] + ".comfy.safetensors"
+        self._run_stage_command(
+            stage_number,
+            total_stages,
+            "Convert LoRA for ComfyUI",
+            [
+                python_exe,
+                "convert_lora.py",
+                "--input",
+                input_lora_path,
+                "--output",
+                comfy_output_path,
+                "--target",
+                "other",
+            ],
+            musubi_root,
+            log_handle,
+            [
+                f"Input LoRA: {input_lora_path}",
+                f"Output LoRA: {comfy_output_path}",
+                f"Output name: {output_name}",
+            ],
+        )
+        if not os.path.isfile(comfy_output_path):
+            raise RuntimeError(f"ComfyUI LoRA conversion did not produce an output file: {comfy_output_path}")
+        return os.path.normpath(comfy_output_path)
+
+    def run(
+        self,
+        model,
+        dataset_images_dir,
+        workspace_dir,
+        run_name,
+        output_name,
+        resolution_width,
+        resolution_height,
+        steps_per_run,
+        total_target_steps,
+        network_dim,
+        network_alpha,
+        blocks_to_swap,
+        clear_memory_before_text_encoder,
+        learning_rate_preset,
+        learning_rate,
+        num_repeats,
+        cache_strategy,
+        copy_latest_to_comfy_loras,
+        keep_only_comfy_lora,
+        strength_model,
+        create_captions,
+        caption_text,
+        add_trigger_word,
+        trigger_text,
+        musubi_root,
+        zimage_checkpoint,
+        vae,
+        text_encoder,
+        fp8_base,
+        fp8_scaled,
+        fp8_llm=False,
+        use_32bit_attention=False,
+    ):
+        dataset_images_dir = self._norm(dataset_images_dir)
+        workspace_dir = self._norm(workspace_dir)
+        musubi_root = self._norm(musubi_root)
+        zimage_checkpoint = self._resolve_zimage_model_path(zimage_checkpoint, "checkpoint")
+        vae = self._resolve_zimage_model_path(vae, "vae")
+        text_encoder = self._resolve_zimage_model_path(text_encoder, "text_encoder")
+        run_name = self._safe_name(run_name, "ZImageChunkRun")
+        output_name = self._safe_name(output_name, run_name)
+        effective_learning_rate = self._resolve_learning_rate(learning_rate_preset, learning_rate)
+
+        dataset_images_dir = self._prepare_dataset_directory(
+            dataset_images_dir,
+            create_captions,
+            caption_text,
+            add_trigger_word,
+            trigger_text,
+        )
+        workspace_dir = self._ensure_dir(workspace_dir)
+        if bool(fp8_scaled) and not bool(fp8_base):
+            raise ValueError("fp8_scaled requires fp8_base to be enabled.")
+
+        musubi_root = self._resolve_musubi_script_root(
+            musubi_root,
+            [
+                "zimage_cache_latents.py",
+                "zimage_cache_text_encoder_outputs.py",
+                "zimage_train_network.py",
+                "convert_lora.py",
+            ],
+        )
+
+        python_exe, accelerate_exe, env_source = self._resolve_musubi_executables(musubi_root)
+
+        cache_dir = self._ensure_dir(os.path.join(workspace_dir, "cache"))
+        output_dir = self._ensure_dir(os.path.join(workspace_dir, "output"))
+        logs_dir = self._ensure_dir(os.path.join(workspace_dir, "logs"))
+        config_dir = self._ensure_dir(os.path.join(workspace_dir, "config"))
+        dataset_config = os.path.join(config_dir, "dataset-01.toml")
+        training_config = os.path.join(config_dir, "training_args.toml")
+
+        latest_state_path, completed_steps = self._latest_state_dir(output_dir, output_name)
+        if completed_steps >= int(total_target_steps):
+            raise RuntimeError(
+                f"Training complete: reached {completed_steps}/{int(total_target_steps)} steps. Stopping workflow."
+            )
+
+        next_target_steps = min(completed_steps + int(steps_per_run), int(total_target_steps))
+        self._write_dataset_config(
+            dataset_config,
+            dataset_images_dir,
+            cache_dir,
+            resolution_width,
+            resolution_height,
+            num_repeats,
+        )
+        self._write_zimage_training_config(
+            training_config,
+            dataset_config,
+            zimage_checkpoint,
+            vae,
+            text_encoder,
+            output_dir,
+            logs_dir,
+            output_name,
+            network_dim,
+            network_alpha,
+            blocks_to_swap,
+            effective_learning_rate,
+            next_target_steps,
+            steps_per_run,
+            total_target_steps,
+            fp8_base,
+            fp8_scaled,
+            fp8_llm,
+            use_32bit_attention,
+        )
+
+        log_path = os.path.join(
+            logs_dir,
+            f"{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
+        )
+        with open(log_path, "w", encoding="utf-8") as log_handle:
+            log_handle.write(f"dataset_images_dir={dataset_images_dir}\n")
+            log_handle.write(f"workspace_dir={workspace_dir}\n")
+            log_handle.write(f"completed_steps={completed_steps}\n")
+            log_handle.write(f"next_target_steps={next_target_steps}\n\n")
+            log_handle.flush()
+
+            self._ensure_zimage_checkpointing_compatibility(musubi_root, log_path)
+
+            image_count, caption_count = self._count_dataset_files(dataset_images_dir)
+            cache_file_count_before = self._count_cache_files(cache_dir)
+            should_build_cache = self._should_build_cache(cache_strategy, cache_dir)
+            total_stages = 4 if should_build_cache else 3
+
+            print(f"[VRGDG] dataset_images_dir={dataset_images_dir}")
+            print(f"[VRGDG] workspace_dir={workspace_dir}")
+            print(f"[VRGDG] completed_steps={completed_steps}")
+            print(f"[VRGDG] next_target_steps={next_target_steps}")
+            print(f"[VRGDG] steps_per_run_and_save={steps_per_run}")
+            print(f"[VRGDG] total_target_steps={total_target_steps}")
+            print(f"[VRGDG] blocks_to_swap={int(blocks_to_swap)}")
+            print(f"[VRGDG] musubi_env_source={env_source}")
+            print(f"[VRGDG] musubi_python={python_exe}")
+            print(f"[VRGDG] musubi_accelerate={accelerate_exe}")
+            print(f"[VRGDG] clear_memory_before_text_encoder={clear_memory_before_text_encoder}")
+            print(f"[VRGDG] fp8_base={bool(fp8_base)} fp8_scaled={bool(fp8_scaled)} fp8_llm={bool(fp8_llm)}")
+            print(f"[VRGDG] use_32bit_attention={bool(use_32bit_attention)}")
+            print(
+                f"[VRGDG] learning_rate={effective_learning_rate} "
+                f"(preset={learning_rate_preset})"
+            )
+            print(f"[VRGDG] dataset summary: images={image_count} captions={caption_count}")
+            print(
+                f"[VRGDG] cache summary: strategy={cache_strategy} build_cache={'yes' if should_build_cache else 'no'} "
+                f"existing_cache_files={cache_file_count_before}"
+            )
+            if latest_state_path:
+                print(f"[VRGDG] resume state detected: {latest_state_path}")
+            else:
+                print("[VRGDG] resume state detected: none")
+
+            if should_build_cache:
+                self._run_stage_command(
+                    1,
+                    total_stages,
+                    "Cache latents",
+                    [
+                        python_exe,
+                        "zimage_cache_latents.py",
+                        "--dataset_config",
+                        dataset_config,
+                        "--vae",
+                        vae,
+                        "--device",
+                        "cuda",
+                    ],
+                    musubi_root,
+                    log_handle,
+                    [
+                        f"Dataset images dir: {dataset_images_dir}",
+                        f"Images found: {image_count}",
+                        f"Captions found: {caption_count}",
+                        f"Cache dir: {cache_dir}",
+                    ],
+                )
+                if clear_memory_before_text_encoder:
+                    self._clear_memory_before_gemma(log_handle)
+                self._run_stage_command(
+                    2,
+                    total_stages,
+                    "Cache text encoder outputs",
+                    [
+                        python_exe,
+                        "zimage_cache_text_encoder_outputs.py",
+                        "--dataset_config",
+                        dataset_config,
+                        "--text_encoder",
+                        text_encoder,
+                        "--device",
+                        "cuda",
+                    ]
+                    + (["--fp8_llm"] if bool(fp8_llm) else []),
+                    musubi_root,
+                    log_handle,
+                    [
+                        f"Text encoder: {text_encoder}",
+                        "This is usually the slowest setup stage.",
+                        "You should see per-item progress from the text encoder cache script.",
+                    ],
+                )
+                print(f"[VRGDG] cache summary after build: files={self._count_cache_files(cache_dir)}")
+            else:
+                self._print_stage_banner(
+                    log_handle,
+                    1,
+                    total_stages,
+                    "Skip cache build",
+                    [
+                        f"Cache strategy: {cache_strategy}",
+                        f"Existing cache files: {cache_file_count_before}",
+                        "Proceeding directly to training.",
+                    ],
+                )
+
+            train_stage_number = 3 if should_build_cache else 2
+            convert_stage_number = train_stage_number + 1
+            train_command = [
+                accelerate_exe,
+                "launch",
+                "--num_cpu_threads_per_process",
+                "1",
+                "--mixed_precision",
+                "bf16",
+                "zimage_train_network.py",
+                "--config_file",
+                training_config,
+                "--dit",
+                zimage_checkpoint,
+                "--vae",
+                vae,
+                "--text_encoder",
+                text_encoder,
+            ]
+            if latest_state_path:
+                train_command.extend(["--resume", latest_state_path])
+
+            self._run_stage_command(
+                train_stage_number,
+                total_stages,
+                "Train LoRA",
+                train_command,
+                musubi_root,
+                log_handle,
+                [
+                    f"Output dir: {output_dir}",
+                    f"Target steps this run: {completed_steps} -> {next_target_steps}",
+                    f"Steps per run and save interval: {steps_per_run}",
+                    f"Blocks to swap: {int(blocks_to_swap)}",
+                    f"Learning rate: {effective_learning_rate}",
+                ],
+            )
+
+        latest_lora_path, latest_lora_step = self._latest_file(output_dir, output_name, ".safetensors")
+        latest_state_path, latest_state_step = self._latest_state_dir(output_dir, output_name)
+
+        completed_steps = max(latest_lora_step, latest_state_step)
+        if completed_steps < next_target_steps:
+            raise RuntimeError(
+                f"Training chunk did not produce the expected checkpoint. Expected step {next_target_steps}, got {completed_steps}."
+            )
+
+        with open(log_path, "a", encoding="utf-8") as log_handle:
+            latest_comfy_lora_path = self._convert_lora_to_comfy(
+                convert_stage_number,
+                total_stages,
+                python_exe,
+                musubi_root,
+                latest_lora_path,
+                output_name,
+                log_handle,
+            )
+
+        if keep_only_comfy_lora and latest_comfy_lora_path:
+            deleted_count = self._delete_standard_lora_files(output_dir, output_name)
+            latest_lora_path = ""
+            print(f"[VRGDG] Deleted {deleted_count} standard LoRA file(s); keeping only Comfy LoRA files.")
+
+        if copy_latest_to_comfy_loras:
+            latest_comfy_lora_path = self._export_latest_to_comfy(latest_comfy_lora_path, output_name)
+
+        applied_lora_path = latest_comfy_lora_path if latest_comfy_lora_path else latest_lora_path
+        self._log_message(
+            f"[VRGDG] Latest state path selected: {os.path.normpath(latest_state_path) if latest_state_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Latest standard LoRA selected: {os.path.normpath(latest_lora_path) if latest_lora_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Latest Comfy LoRA selected: {os.path.normpath(latest_comfy_lora_path) if latest_comfy_lora_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Applying LoRA to returned MODEL: {os.path.normpath(applied_lora_path) if applied_lora_path else '(none)'} "
+            f"with strength_model={float(strength_model)}",
+            log_path,
+        )
+        output_model = self._apply_lora_to_model(model, applied_lora_path, strength_model)
+        if applied_lora_path and os.path.isfile(applied_lora_path) and float(strength_model) != 0:
+            self._log_message("[VRGDG] LoRA applied successfully to returned MODEL.", log_path)
+        else:
+            self._log_message("[VRGDG] Returned MODEL is unchanged (no LoRA file selected or strength_model is 0).", log_path)
+
+        return (
+            output_model,
+            os.path.normpath(latest_state_path) if latest_state_path else "",
+            os.path.normpath(log_path),
+            os.path.normpath(latest_comfy_lora_path) if latest_comfy_lora_path else "",
+            output_name,
+            int(completed_steps),
+            int(total_target_steps),
+        )
+
+
+class VRGDG_ZImageSpeedCharacterLoraTraining(VRGDG_ZImageLoraTrainChunk):
+    DESCRIPTION = (
+        "Runs the Z-Image trainer with a fast character-LoRA preset using dynamic IMAGE and caption inputs."
+    )
+    MAX_IMAGE_SLOTS = 20
+    PRESET_TRAINING_STEPS = 400
+    PRESET_LEARNING_RATE = 0.0002
+    PRESET_LORA_RANK = 16
+    PRESET_LORA_ALPHA = 16
+    PRESET_NUM_REPEATS = 1
+    PRESET_COPY_LATEST = False
+    PRESET_KEEP_ONLY_COMFY = True
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional_inputs = {
+            f"image{i}": ("IMAGE", {
+                "forceInput": True,
+            })
+            for i in range(1, cls.MAX_IMAGE_SLOTS + 1)
+        }
+        optional_inputs.update({
+            f"caption_{i}": ("STRING", {
+                "default": "",
+                "multiline": False,
+            })
+            for i in range(1, cls.MAX_IMAGE_SLOTS + 1)
+        })
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "workspace_dir": ("STRING", {
+                    "default": "A:/MUSUBI/Training/ZImageSpeedCharacterLoraTraining",
+                    "multiline": False,
+                    "tooltip": "Workspace folder for cache, output, logs, config, and the managed dynamic dataset."
+                }),
+                "run_name": ("STRING", {
+                    "default": "ZImageSpeedCharacterLoraTrainingRun",
+                    "multiline": False,
+                    "tooltip": "Run name used for logs."
+                }),
+                "output_name": ("STRING", {
+                    "default": "ZImageSpeedCharacterLoraTraining",
+                    "multiline": False,
+                    "tooltip": "LoRA output name used for checkpoints and downstream preview naming."
+                }),
+                "image_count": ("INT", {
+                    "default": 4, "min": 1, "max": cls.MAX_IMAGE_SLOTS, "step": 1,
+                    "tooltip": "How many dynamic image inputs and caption fields to show."
+                }),
+                "resolution_width": ("INT", {
+                    "default": 1024, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Training bucket width. Pick the resolution preset you want to train at."
+                }),
+                "resolution_height": ("INT", {
+                    "default": 1024, "min": 64, "max": 4096, "step": 8,
+                    "tooltip": "Training bucket height. Pick the resolution preset you want to train at."
+                }),
+                "blocks_to_swap": ("INT", {
+                    "default": 0, "min": 0, "max": 64, "step": 1,
+                    "tooltip": "How many transformer blocks to swap to CPU. 0 is fastest if VRAM allows it."
+                }),
+                "clear_memory_before_text_encoder": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Clears Comfy and CUDA memory before the text encoder cache stage."
+                }),
+                "cache_strategy": ([
+                    "auto",
+                    "force",
+                    "skip",
+                ], {
+                    "default": "auto",
+                    "tooltip": "Cache behavior. auto reuses cache when present, force rebuilds, skip bypasses cache creation."
+                }),
+                "strength_model": ("FLOAT", {
+                    "default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01,
+                    "tooltip": "Strength used when applying the newest trained LoRA back onto the returned MODEL."
+                }),
+                "musubi_root": ("STRING", {
+                    "default": "A:/MUSUBI/musubi-tuner-ltx2",
+                    "multiline": False,
+                    "tooltip": "Root folder of your musubi install."
+                }),
+                "zimage_checkpoint": ("STRING", {
+                    "default": "A:/MUSUBI/models/zimage/zimage-base.safetensors",
+                    "multiline": False,
+                    "tooltip": "Path to the base Z-Image DiT checkpoint."
+                }),
+                "vae": ("STRING", {
+                    "default": "A:/MUSUBI/models/zimage/vae.safetensors",
+                    "multiline": False,
+                    "tooltip": "Path to the Z-Image VAE checkpoint."
+                }),
+                "text_encoder": ("STRING", {
+                    "default": "A:/MUSUBI/models/qwen3",
+                    "multiline": False,
+                    "tooltip": "Path to the Qwen3 text encoder checkpoint or directory."
+                }),
+                "fp8_base": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable fp8 base model weights during Z-Image training."
+                }),
+                "fp8_scaled": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable scaled fp8 weights during Z-Image training. Requires fp8_base."
+                }),
+                "fp8_llm": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Loads the text encoder in fp8 mode during caching to reduce VRAM usage."
+                }),
+                "use_32bit_attention": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Use 32-bit precision for attention computations in the Z-Image model."
+                }),
+            },
+            "optional": optional_inputs,
+        }
+
+    def _extract_single_image_tensor(self, value):
+        if value is None:
+            return None
+        if isinstance(value, torch.Tensor):
+            tensor = value
+            if tensor.ndim == 4:
+                if int(tensor.shape[0]) <= 0:
+                    return None
+                return tensor[0]
+            if tensor.ndim == 3:
+                return tensor
+            return None
+        if isinstance(value, dict):
+            for nested_value in value.values():
+                tensor = self._extract_single_image_tensor(nested_value)
+                if tensor is not None:
+                    return tensor
+            return None
+        if isinstance(value, (list, tuple, set)):
+            for nested_value in value:
+                tensor = self._extract_single_image_tensor(nested_value)
+                if tensor is not None:
+                    return tensor
+            return None
+        return None
+
+    def _save_dynamic_dataset_inputs(self, workspace_dir, image_count, kwargs):
+        dataset_root = self._ensure_dir(os.path.join(workspace_dir, "dynamic_dataset"))
+        images_dir = self._ensure_dir(os.path.join(dataset_root, "images"))
+
+        for entry in os.scandir(images_dir):
+            if not entry.is_file():
+                continue
+            ext = os.path.splitext(entry.name)[1].lower()
+            if ext in self.IMAGE_EXTENSIONS or ext == ".txt":
+                os.remove(entry.path)
+
+        saved_count = 0
+        for index in range(1, int(image_count) + 1):
+            image_tensor = self._extract_single_image_tensor(kwargs.get(f"image{index}"))
+            if image_tensor is None:
+                continue
+
+            image_array = image_tensor.detach().cpu().numpy()
+            image_array = np.clip(image_array * 255.0, 0, 255).astype(np.uint8)
+            image_bgr = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
+            stem = f"image{index:03d}"
+            image_path = os.path.join(images_dir, f"{stem}.png")
+            caption_path = os.path.join(images_dir, f"{stem}.txt")
+            cv2.imwrite(image_path, image_bgr)
+
+            caption_text = str(kwargs.get(f"caption_{index}", "") or "").strip()
+            with open(caption_path, "w", encoding="utf-8") as handle:
+                handle.write(caption_text)
+
+            saved_count += 1
+
+        if saved_count <= 0:
+            raise ValueError("No connected images were found. Connect at least one image input.")
+
+        print(f"[VRGDG] Prepared dynamic dataset with {saved_count} image-caption pair(s): {images_dir}")
+        return os.path.normpath(images_dir)
+
+    def run(
+        self,
+        model,
+        workspace_dir,
+        run_name,
+        output_name,
+        image_count,
+        resolution_width,
+        resolution_height,
+        blocks_to_swap,
+        clear_memory_before_text_encoder,
+        cache_strategy,
+        strength_model,
+        musubi_root,
+        zimage_checkpoint,
+        vae,
+        text_encoder,
+        fp8_base,
+        fp8_scaled,
+        fp8_llm=False,
+        use_32bit_attention=False,
+        **kwargs,
+    ):
+        workspace_dir = self._norm(workspace_dir)
+        managed_dataset_dir = self._save_dynamic_dataset_inputs(workspace_dir, image_count, kwargs)
+
+        return super().run(
+            model=model,
+            dataset_images_dir=managed_dataset_dir,
+            workspace_dir=workspace_dir,
+            run_name=run_name,
+            output_name=output_name,
+            resolution_width=resolution_width,
+            resolution_height=resolution_height,
+            steps_per_run=self.PRESET_TRAINING_STEPS,
+            total_target_steps=self.PRESET_TRAINING_STEPS,
+            network_dim=self.PRESET_LORA_RANK,
+            network_alpha=self.PRESET_LORA_ALPHA,
+            blocks_to_swap=blocks_to_swap,
+            clear_memory_before_text_encoder=clear_memory_before_text_encoder,
+            learning_rate_preset="Custom",
+            learning_rate=self.PRESET_LEARNING_RATE,
+            num_repeats=self.PRESET_NUM_REPEATS,
+            cache_strategy=cache_strategy,
+            copy_latest_to_comfy_loras=self.PRESET_COPY_LATEST,
+            keep_only_comfy_lora=self.PRESET_KEEP_ONLY_COMFY,
+            strength_model=strength_model,
+            create_captions=False,
+            caption_text="",
+            add_trigger_word=False,
+            trigger_text="",
+            musubi_root=musubi_root,
+            zimage_checkpoint=zimage_checkpoint,
+            vae=vae,
+            text_encoder=text_encoder,
+            fp8_base=fp8_base,
+            fp8_scaled=fp8_scaled,
+            fp8_llm=fp8_llm,
+            use_32bit_attention=use_32bit_attention,
         )
 
 
@@ -3509,11 +6220,11 @@ class VRGDG_VideoFolderGridPlot(VRGDG_LTXPreviewXYZPlot):
 
 class VRGDG_MusubiTunerInstaller:
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("install_root", "status", "checkpoint_path", "gemma_root", "report_path")
+    RETURN_NAMES = ("install_root", "status", "checkpoint_path", "assets_root", "report_path")
     FUNCTION = "run"
     CATEGORY = "VRGDG/Training"
     DESCRIPTION = (
-        "Downloads and installs Musubi-Tuner into a chosen folder when the button is clicked."
+        "Provides buttons for installing Musubi-Tuner, downloading the selected model family, or doing both."
     )
 
     @classmethod
@@ -3523,11 +6234,11 @@ class VRGDG_MusubiTunerInstaller:
                 "target_root": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "Parent folder where Musubi-Tuner should be installed. The node will create Musubi-tuner here, or VRGDG_Musubi-tuner if that name already exists."
+                    "tooltip": "Point this to the Musubi root folder location where Musubi-Tuner should be installed or already exists, not to an arbitrary file path. The node will create Musubi-tuner here, or VRGDG_Musubi-tuner if that name already exists."
                 }),
-                "download_models": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "If enabled, downloads the LTX checkpoint and Gemma model into a models folder inside the Musubi install."
+                "model_family": (["LTX 2.3", "Z-Image Turbo"], {
+                    "default": "LTX 2.3",
+                    "tooltip": "Select which model family the model-download buttons should fetch."
                 }),
             },
             "hidden": {
@@ -3539,12 +6250,12 @@ class VRGDG_MusubiTunerInstaller:
                 "checkpoint_path": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "Downloaded LTX checkpoint path written by the installer button."
+                    "tooltip": "Downloaded checkpoint path written by the installer button."
                 }),
-                "gemma_root_out": ("STRING", {
+                "assets_root_out": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "tooltip": "Downloaded Gemma folder written by the installer button."
+                    "tooltip": "Downloaded model assets folder written by the installer button."
                 }),
                 "report_path": ("STRING", {
                     "default": "",
@@ -3571,22 +6282,22 @@ class VRGDG_MusubiTunerInstaller:
     def run(
         self,
         target_root,
-        download_models,
+        model_family,
         install_root="",
         checkpoint_path="",
-        gemma_root_out="",
+        assets_root_out="",
         report_path="",
         status_text="",
     ):
+        # Queue execution is intentionally passive.
+        # The installer only runs from the node buttons.
         target_root = self._norm(target_root)
-        status = "Click the Install Musubi-Tuner button to run the installer."
-        if download_models:
-            status = "Install will also download the LTX checkpoint and Gemma models."
+        status = "Use the buttons to install the tuner, install the selected models, or do both."
         return (
             self._blankable_norm(install_root) or target_root,
             str(status_text or "").strip() or status,
             self._blankable_norm(checkpoint_path),
-            self._blankable_norm(gemma_root_out),
+            self._blankable_norm(assets_root_out),
             self._blankable_norm(report_path),
         )
 
@@ -3594,6 +6305,9 @@ class VRGDG_MusubiTunerInstaller:
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXLoraTrainChunk": VRGDG_LTXLoraTrainChunk,
     "VRGDG_LTXAudioVideoLoraTrainChunk": VRGDG_LTXAudioVideoLoraTrainChunk,
+    "VRGDG_LTXAudioOnlyLoraTrainChunk": VRGDG_LTXAudioOnlyLoraTrainChunk,
+    "VRGDG_ZImageLoraTrainChunk": VRGDG_ZImageLoraTrainChunk,
+    "VRGDG_ZImageSpeedCharacterLoraTraining": VRGDG_ZImageSpeedCharacterLoraTraining,
     "VRGDG_SpeedCharacterLoraTraining": VRGDG_SpeedCharacterLoraTraining,
     "VRGDG_LTXPreviewXYZPlot": VRGDG_LTXPreviewXYZPlot,
     "VRGDG_VideoFolderGridPlot": VRGDG_VideoFolderGridPlot,
@@ -3603,7 +6317,10 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LTXLoraTrainChunk": "VRGDG LTX LoRA Train Chunk",
     "VRGDG_LTXAudioVideoLoraTrainChunk": "VRGDG LTX Audio Video LoRA Train Chunk",
-    "VRGDG_SpeedCharacterLoraTraining": "VRGDG Speed Character Lora Training",
+    "VRGDG_LTXAudioOnlyLoraTrainChunk": "VRGDG LTX Audio Only LoRA Train Chunk",
+    "VRGDG_ZImageLoraTrainChunk": "VRGDG Z-Image LoRA Train Chunk",
+    "VRGDG_ZImageSpeedCharacterLoraTraining": "VRGDG Z-Image Speed Character Lora Training",
+    "VRGDG_SpeedCharacterLoraTraining": "VRGDG LTX Speed Character Lora Training",
     "VRGDG_LTXPreviewXYZPlot": "VRGDG LTX Preview XYZ Plot",
     "VRGDG_VideoFolderGridPlot": "VRGDG Video Folder Grid Plot",
     "VRGDG_MusubiTunerInstaller": "VRGDG Musubi-Tuner Installer",
