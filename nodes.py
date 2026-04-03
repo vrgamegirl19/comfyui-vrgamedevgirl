@@ -295,6 +295,22 @@ class FastSobelSharpen:
                     "FLOAT",
                     {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.01},
                 ),
+                "mode": (
+                    ["darken", "lighten", "balanced"],
+                    {"default": "darken"},
+                ),
+                "line_thickness": (
+                    "INT",
+                    {"default": 3, "min": 1, "max": 11, "step": 1},
+                ),
+                "edge_threshold": (
+                    "FLOAT",
+                    {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01},
+                ),
+                "anti_halo": (
+                    "FLOAT",
+                    {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01},
+                ),
                 "use_gpu": (
                     "BOOLEAN",
                     {"default": False},
@@ -311,6 +327,10 @@ class FastSobelSharpen:
         self,
         images: torch.Tensor,
         strength: float,
+        mode: str,
+        line_thickness: int,
+        edge_threshold: float,
+        anti_halo: float,
         use_gpu: bool,
     ) -> Tuple[torch.Tensor]:
 
@@ -342,7 +362,37 @@ class FastSobelSharpen:
             gy = F.conv2d(x, sobel_y, padding=1, groups=3)
 
             edges = torch.sqrt(gx * gx + gy * gy + 1e-6)
-            out = (x + strength * edges).clamp(0.0, 1.0)
+
+            edge_map = edges.mean(dim=1, keepdim=True)
+            if edge_threshold > 0.0:
+                edge_map = torch.clamp(edge_map - edge_threshold, min=0.0)
+                edge_map = edge_map / (1.0 - edge_threshold + 1e-6)
+
+            if line_thickness > 1:
+                edge_map = F.max_pool2d(
+                    edge_map,
+                    kernel_size=line_thickness,
+                    stride=1,
+                    padding=line_thickness // 2,
+                )
+
+            if anti_halo > 0.0:
+                # Reduce edge strength in highlights to suppress light/dark halos.
+                luma = 0.299 * x[:, 0:1] + 0.587 * x[:, 1:2] + 0.114 * x[:, 2:3]
+                highlight = torch.clamp((luma - 0.6) / 0.4, min=0.0, max=1.0)
+                edge_map = edge_map * (1.0 - anti_halo * highlight)
+
+            edge_map = edge_map.expand(-1, 3, -1, -1)
+
+            if mode == "lighten":
+                out = x + strength * edge_map
+            elif mode == "balanced":
+                signed = (gx + gy).mean(dim=1, keepdim=True).sign().expand(-1, 3, -1, -1)
+                out = x + strength * edge_map * signed
+            else:
+                out = x - strength * edge_map
+
+            out = out.clamp(0.0, 1.0)
 
             out = out.permute(0, 2, 3, 1)
             return (out.to(comfy.model_management.intermediate_device()),)
@@ -374,7 +424,49 @@ class FastSobelSharpen:
 
         edges = np.sqrt(gx * gx + gy * gy)
 
-        out = img + strength * edges
+        edge_map = edges.mean(axis=3, keepdims=True)
+        if edge_threshold > 0.0:
+            edge_map = np.clip(edge_map - edge_threshold, 0.0, None)
+            edge_map = edge_map / (1.0 - edge_threshold + 1e-6)
+
+        if line_thickness > 1:
+            t = max(1, int(line_thickness))
+            if t % 2 == 0:
+                t += 1
+            p2 = np.pad(
+                edge_map,
+                ((0, 0), (t // 2, t // 2), (t // 2, t // 2), (0, 0)),
+                mode="edge",
+            )
+            thick = np.empty_like(edge_map)
+            for y in range(t):
+                for x2 in range(t):
+                    if y == 0 and x2 == 0:
+                        thick[:] = p2[:, y:y + edge_map.shape[1], x2:x2 + edge_map.shape[2], :]
+                    else:
+                        np.maximum(
+                            thick,
+                            p2[:, y:y + edge_map.shape[1], x2:x2 + edge_map.shape[2], :],
+                            out=thick,
+                        )
+            edge_map = thick
+
+        if anti_halo > 0.0:
+            # Reduce edge strength in highlights to suppress light/dark halos.
+            luma = 0.299 * img[:, :, :, 0:1] + 0.587 * img[:, :, :, 1:2] + 0.114 * img[:, :, :, 2:3]
+            highlight = np.clip((luma - 0.6) / 0.4, 0.0, 1.0)
+            edge_map = edge_map * (1.0 - anti_halo * highlight)
+
+        edge_map = np.repeat(edge_map, 3, axis=3)
+
+        if mode == "lighten":
+            out = img + strength * edge_map
+        elif mode == "balanced":
+            signed = np.sign((gx + gy).mean(axis=3, keepdims=True))
+            out = img + strength * edge_map * np.repeat(signed, 3, axis=3)
+        else:
+            out = img - strength * edge_map
+
         np.clip(out, 0.0, 1.0, out=out)
 
         return (torch.from_numpy(out),)
