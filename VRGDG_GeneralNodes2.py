@@ -698,7 +698,37 @@ class VRGDG_NoteBox:
     def run(self, title, note, font_size):
         return ()
 
+class VRGDG_MultiStringConcat:
+    MAX_STRING_SLOTS = 20
 
+    @classmethod
+    def INPUT_TYPES(cls):
+        required = {
+            "string_count": ("INT", {"default": 2, "min": 1, "max": cls.MAX_STRING_SLOTS, "step": 1}),
+            "delimiter": ("STRING", {"default": "", "multiline": False}),
+        }
+        for i in range(1, cls.MAX_STRING_SLOTS + 1):
+            required[f"string_{i}"] = ("STRING", {"default": "", "multiline": True})
+        return {"required": required}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "concat"
+    CATEGORY = "VRGDG/General"
+    DESCRIPTION = "Concatenates multiple multiline string widgets with an optional delimiter."
+
+    def concat(self, string_count, delimiter, **kwargs):
+        count = max(1, min(self.MAX_STRING_SLOTS, int(string_count or 1)))
+        parts = []
+        for i in range(1, count + 1):
+            value = kwargs.get(f"string_{i}", "")
+            if value is None:
+                continue
+            text = str(value)
+            if text == "":
+                continue
+            parts.append(text)
+        return (str(delimiter or "").join(parts),)
 class VRGDG_SetMuteStateMulti:
     @classmethod
     def INPUT_TYPES(cls):
@@ -866,6 +896,10 @@ class VRGDG_SetGroupStateMulti:
         return (signal,)
 
 
+
+
+
+
 class VRGDG_MuteUnmute4PromptCreatorWF_1(VRGDG_SetGroupStateMulti):
     pass
 
@@ -882,6 +916,11 @@ class VRGDG_MuteUnmute4PromptCreatorWF_0(VRGDG_SetGroupStateMulti):
 
 
 _ensure_test_save_route_registered()
+
+
+
+
+
 
 NODE_CLASS_MAPPINGS = {
     "VRGDG_ShowText": VRGDG_ShowText,
@@ -900,6 +939,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_MuteUnmute4PromptCreatorWF_2": VRGDG_MuteUnmute4PromptCreatorWF_2,
     "VRGDG_MuteUnmute4PromptCreatorWF_0": VRGDG_MuteUnmute4PromptCreatorWF_0,
     "VRGDG_PromptCreatorUI": VRGDG_PromptCreatorUI,
+    "VRGDG_MultiStringConcat": VRGDG_MultiStringConcat,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -919,4 +959,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MuteUnmute4PromptCreatorWF_2": "VRGDG_MuteUnmute4PromptCreatorWF_2",
     "VRGDG_MuteUnmute4PromptCreatorWF_0": "VRGDG_MuteUnmute4PromptCreatorWF_0",
     "VRGDG_PromptCreatorUI": "VRGDG_PromptCreatorUI",
+    "VRGDG_MultiStringConcat": "VRGDG_MultiStringConcat",
 }
