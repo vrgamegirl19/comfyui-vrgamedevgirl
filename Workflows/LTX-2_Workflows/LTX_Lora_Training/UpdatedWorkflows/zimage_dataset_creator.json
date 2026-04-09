@@ -1,0 +1,2068 @@
+{
+  "id": "5fd10337-523a-4e69-83da-58166e48a518",
+  "revision": 0,
+  "last_node_id": 1042,
+  "last_link_id": 1629,
+  "nodes": [
+    {
+      "id": 1039,
+      "type": "ShowText|pysssss",
+      "pos": [
+        375.3980784052644,
+        8123.660193450572
+      ],
+      "size": [
+        402.57000000000005,
+        130.0600000000013
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1624
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "a barber trimming a beard"
+      ]
+    },
+    {
+      "id": 1037,
+      "type": "StringConcatenate",
+      "pos": [
+        803.3718054637022,
+        7856.219402732231
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "widget": {
+            "name": "string_b"
+          },
+          "link": 1623
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1622,
+            1626
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "StringConcatenate",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "user input: \n\n",
+        "a knight in the ruined cathedral\n",
+        ""
+      ]
+    },
+    {
+      "id": 1042,
+      "type": "ShowText|pysssss",
+      "pos": [
+        815.0990999949784,
+        8113.402453718372
+      ],
+      "size": [
+        347.89999999999986,
+        128.3000000000011
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1626
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "user input: \n\na barber trimming a beard"
+      ]
+    },
+    {
+      "id": 1029,
+      "type": "SaveImageKJ",
+      "pos": [
+        3246.2310267217035,
+        7532.974355851347
+      ],
+      "size": [
+        288,
+        126
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 1610
+        },
+        {
+          "name": "caption",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1627
+        },
+        {
+          "name": "output_folder",
+          "type": "STRING",
+          "widget": {
+            "name": "output_folder"
+          },
+          "link": 1611
+        }
+      ],
+      "outputs": [
+        {
+          "name": "filename",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "a9ab19d2a7933e03f72bc00103863f06b9483300",
+        "Node name for S&R": "SaveImageKJ",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "image",
+        "output",
+        ".txt"
+      ]
+    },
+    {
+      "id": 1038,
+      "type": "VRGDG_PromptSplitter_General",
+      "pos": [
+        377.83017840526446,
+        7859.197753450558
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "index",
+          "type": "INT",
+          "widget": {
+            "name": "index"
+          },
+          "link": 1625
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "type": "STRING",
+          "links": [
+            1623,
+            1624
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_PromptSplitter_General",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "[\n  \"a pirate captain searching for buried treasure\",\n  \"a knight battling a fire-breathing dragon\",\n  \"a wizard casting a glowing spell\",\n  \"a baker decorating a towering cake\",\n  \"a fisherman reeling in a giant fish\",\n  \"a king announcing a royal decree\",\n  \"a queen hosting a grand celebration\",\n  \"a jester juggling colorful balls\",\n  \"a blacksmith hammering molten metal\",\n  \"a sailor steering through crashing waves\",\n  \"a chef tossing vegetables in a pan\",\n  \"a farmer harvesting golden wheat\",\n  \"a librarian stacking ancient books\",\n  \"a doctor examining a patient\",\n  \"a musician playing a grand piano\",\n  \"a dancer spinning gracefully\",\n  \"a magician pulling a rabbit from a hat\",\n  \"a hunter tracking animal footprints\",\n  \"a miner discovering sparkling gems\",\n  \"a teacher writing on a chalkboard\",\n  \"a detective examining clues with a magnifying glass\",\n  \"a painter creating a landscape masterpiece\",\n  \"a tailor stitching a fancy coat\",\n  \"a carpenter building wooden furniture\",\n  \"a florist arranging a bouquet\",\n  \"a gardener watering blooming flowers\",\n  \"a circus performer swinging on a trapeze\",\n  \"a clown riding a tiny bicycle\",\n  \"a ringmaster introducing a circus act\",\n  \"a toy maker assembling wooden toys\",\n  \"a clockmaker adjusting delicate gears\",\n  \"a storyteller reading from an old book\",\n  \"a prince practicing sword fighting\",\n  \"a princess waving from a balcony\",\n  \"a dragon keeper feeding a small dragon\",\n  \"a lighthouse keeper lighting the beacon\",\n  \"a train conductor signaling departure\",\n  \"a pilot checking flight controls\",\n  \"a treasure hunter opening a mysterious chest\",\n  \"an explorer mapping unknown lands\",\n  \"a shepherd guiding a flock of sheep\",\n  \"a merchant weighing goods on a scale\",\n  \"a jeweler polishing a sparkling ring\",\n  \"a soldier standing at attention\",\n  \"a monk ringing a temple bell\",\n  \"a scientist mixing bubbling potions\",\n  \"a barber trimming a beard\",\n  \"a watchman holding a lantern at night\",\n  \"a street performer balancing on stilts\",\n  \"a storyteller performing a dramatic tale\"\n]",
+        0
+      ]
+    },
+    {
+      "id": 1025,
+      "type": "PrimitiveString",
+      "pos": [
+        2678.1008467217066,
+        7545.629715851356
+      ],
+      "size": [
+        538.6199999999999,
+        99.13999999999942
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1611
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "PrimitiveString",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "A:\\MUSUBI\\musubi-tuner-ltx2\\local\\ldataset\\marionette"
+      ]
+    },
+    {
+      "id": 1033,
+      "type": "StringConcatenate",
+      "pos": [
+        1250.7285099718508,
+        7767.261761403799
+      ],
+      "size": [
+        401.65289256198366,
+        666.1157024793392
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "widget": {
+            "name": "string_b"
+          },
+          "link": 1622
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1618
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "StringConcatenate",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "You are a text-to-image prompt generator that creates one single detailed prompt in a handcrafted marionette string puppet theatrical style.\n\nThe only user input will be a subject type.\n\nYou must generate one random subject that fits the provided subject type.\n\nDo not ask questions.\nDo not request clarification.\nAlways generate immediately.\n\nFixed Visual Style Rule\n\nEvery prompt must always use the same visual style:\n\nA handcrafted wooden marionette puppet scene featuring suspended string-controlled characters performing on a theatrical stage with visible control strings, wooden jointed limbs, fabric costumes, and stage lighting.\n\nThis style is permanently fixed.\n\nIt must never change.\n\nDo not switch to:\n\nFoam puppet styles\nStop-motion miniature styles\nPlush toy styles\nMechanical animatronic styles\nReal humans\n\nAll characters must clearly appear as suspended marionette puppets.\n\nCore Marionette Construction Rule (MANDATORY)\n\nAll characters must be suspended wooden marionettes.\n\nCharacters must include:\n\nWooden head structure\nWooden jointed limbs\nSegmented body construction\nArticulated wooden arms\nArticulated wooden legs\nWooden torso pieces\n\nEvery marionette must include:\n\nVisible string connections\nMultiple control strings\nSuspension from above\n\nStrings are required.\n\nWithout strings, the image is incorrect.\n\nString Visibility Rule (CRITICAL)\n\nEvery marionette must have:\n\nClearly visible strings connecting:\n\nHead\nArms\nHands\nLegs\n\nStrings must:\n\nExtend upward\nRemain visible\nControl movement direction\n\nAvoid:\n\nHidden strings\nImplied strings\nInvisible control.\n\nVisible strings define marionette realism.\n\nSuspension Rule\n\nMarionettes must always appear:\n\nSuspended in the air\nNot standing freely\n\nFeet may:\n\nHover slightly\nTouch stage lightly\n\nBut characters must still appear controlled by strings.\n\nAvoid:\n\nGrounded figures\nFree-standing puppets.\n\nJoint Construction Rule\n\nAll limbs must clearly show jointed articulation.\n\nInclude:\n\nRound wooden joints\nConnection pegs\nSegmented limb pieces\nJoint hinges\n\nMovement capability must feel mechanical but handcrafted.\n\nAvoid:\n\nSoft flexible bodies\nFoam-based limbs.\n\nSurface Material Rule\n\nMaterials must appear handcrafted and physical.\n\nInclude:\n\nCarved wood surfaces\nPainted wooden faces\nFabric clothing\nThread stitching\nHand-painted details\nWood grain visibility\n\nSurfaces may include:\n\nPaint wear\nSurface scratches\nAging effects\n\nAvoid:\n\nSoft plush materials\nSmooth digital surfaces.\n\nFace Design Rule\n\nMarionette faces must appear carved and painted.\n\nInclude:\n\nPainted eyes\nDefined painted eyebrows\nWood-carved facial features\nGlossy painted surfaces\n\nExpressions may feel:\n\nStylized\nTheatrical\nHandcrafted\n\nAvoid:\n\nSoft foam faces\nRealistic human skin.\n\nCostume Rule\n\nAll marionettes must wear fabric costumes.\n\nInclude:\n\nLayered clothing\nFabric textures\nSmall buttons\nDecorative stitching\nStage costumes\n\nClothing must feel:\n\nHandmade\nScaled to puppet size.\n\nEnvironment Rule (MANDATORY)\n\nScenes must occur in theatrical marionette environments.\n\nExamples:\n\nWooden puppet stages\nMiniature theater sets\nCurtained stage areas\nStorybook-style stage backdrops\nIndoor theater environments\n\nInclude:\n\nStage curtains\nWooden flooring\nDecorative stage props\nPainted background scenery\n\nAvoid:\n\nReal-world modern environments\nOutdoor natural landscapes\nIndustrial locations.\n\nStage Lighting Rule (MANDATORY)\n\nLighting must resemble theatrical stage lighting.\n\nUse:\n\nWarm spotlight lighting\nStage illumination\nDirectional lighting from above\nSoft theatrical lighting\n\nLighting must:\n\nHighlight puppet faces\nCast shadows beneath suspended figures\nEmphasize strings and movement\n\nAvoid:\n\nNatural daylight realism\nIndustrial lighting\nHarsh white lighting.\n\nLighting should feel:\n\nPerformance-focused.\n\nMulti-Marionette Performance Rule (HIGHLY RECOMMENDED)\n\nScenes should frequently include:\n\nMultiple marionette characters performing together.\n\nExamples:\n\nActing\nDancing\nInteracting\nPerforming story moments\n\nMulti-character staging strengthens authenticity.\n\nMovement Rule\n\nCharacters must appear mid-performance.\n\nExamples:\n\nWalking motion\nDancing posture\nArm gestures\nLeaning motion\nTurning posture\n\nMovement must feel:\n\nSuspended\nString-driven\n\nAvoid static poses.\n\nDepth and Stage Composition Rule\n\nScenes must include layered stage depth.\n\nInclude:\n\nForeground marionettes\nMid-stage characters\nBackground painted scenery\n\nCurtains may frame edges.\n\nEverything must feel:\n\nLike a live puppet performance.\n\nColor Palette Rule\n\nUse classic theatrical and storybook tones.\n\nExamples:\n\nDeep reds\nWarm browns\nGold accents\nPainted decorative colors\nClassic stage colors\n\nColors should feel:\n\nVintage\nTheatrical\nHandcrafted.\n\nAvoid neon modern palettes.\n\nImperfection Rule\n\nAll marionettes must show handcrafted details.\n\nInclude:\n\nVisible brush strokes\nSlight paint variation\nWood imperfections\nMinor costume wrinkles\n\nAvoid perfect digital smoothness.\n\nHandcrafted realism strengthens believability.\n\nScale Rule\n\nEverything must feel:\n\nMiniature and stage-scaled.\n\nInclude:\n\nSmall props\nMiniature furniture\nTiny stage elements\n\nAvoid life-sized realism.\n\nMood Rule\n\nScenes should feel:\n\nStorybook-like\nTheatrical\nCharming\nClassic\nPerformance-driven\n\nMood should reflect staged storytelling.\n\nSubject Generation Rule\n\nUse the user-provided subject type to generate one random subject belonging to that category.\n\nAvoid repetition.\n\nAvoid predictable outputs.\n\nSubjects must feel appropriate for theatrical marionette storytelling.\n\nOutput Structure Rule\n\nWrite one continuous paragraph.\n\nDo not label sections.\n\nThe paragraph must naturally include:\n\nMarionette subject description\nString and joint details\nStage environment description\nLighting description\nMovement description\nCostume detail\nMood description\n\nEverything must read like a theatrical puppet performance.\n\nOutput Rules\n\nOutput exactly one prompt.\n\nOutput plain text only.\n\nDo not:\n\nUse tables\nUse numbering\nUse bullet points\nAdd explanations\nAdd commentary\nAdd headings\nOutput multiple prompts\n\nOutput only:\n\nOne complete handcrafted marionette puppet stage scene prompt.\n\nNothing else.\n\n",
+        "user input: \na hedgehog in the garden shrub bed\n",
+        ""
+      ]
+    },
+    {
+      "id": 1018,
+      "type": "62af61d6-9745-4fea-bc43-a1f89f5cab8a",
+      "pos": [
+        2135.190905103441,
+        7731.352723665887
+      ],
+      "size": [
+        425.5431526736188,
+        422
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 1616
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1610,
+            1614
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [
+          [
+            "-1",
+            "text"
+          ],
+          [
+            "-1",
+            "text_1"
+          ],
+          [
+            "-1",
+            "unet_name"
+          ],
+          [
+            "-1",
+            "vae_name"
+          ],
+          [
+            "-1",
+            "width_1"
+          ],
+          [
+            "-1",
+            "height_1"
+          ],
+          [
+            "-1",
+            "noise_seed"
+          ],
+          [
+            "-1",
+            "value"
+          ],
+          [
+            "-1",
+            "start_at_step"
+          ]
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.3.75",
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A bright travel-style close-up headshot of a young woman with blonde hair with lavender streaks, wispy bangs, green eyes, wearing a light summer dress with thin straps. She is standing in a colorful outdoor market with hanging lights and vibrant stalls blurred behind her. Natural HDR color grading. Camera angle: eye-level close-up, 85mm lens. Warm sunset light illuminating her face.",
+        "bad hands, extra fingers, missing fingers, fused fingers, broken hands, mutant hands, twisted limbs, extra limbs, missing limbs, dimple ",
+        "z_image_turbo_bf16.safetensors",
+        "ae.safetensors",
+        1920,
+        1080,
+        69,
+        10,
+        0
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 1040,
+      "type": "PrimitiveInt",
+      "pos": [
+        454.0480784052645,
+        7725.570193450563
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            1625
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "PrimitiveInt",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        0,
+        "increment"
+      ]
+    },
+    {
+      "id": 1030,
+      "type": "PreviewImage",
+      "pos": [
+        2613.3815547217005,
+        7765.252682851354
+      ],
+      "size": [
+        1049.0730000000003,
+        611.6399999999994
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 1614
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 1032,
+      "type": "ShowText|pysssss",
+      "pos": [
+        1679.34868838888,
+        8069.320628465297
+      ],
+      "size": [
+        443.35799999999995,
+        337.6849999999995
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1617
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-custom-scripts",
+        "ver": "f2838ed5e59de4d73cde5c98354b87a8d3200190",
+        "Node name for S&R": "ShowText|pysssss",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "A handcrafted wooden marionette scene unfurls on a miniature theatrical stage, where an eccentric alchemist marionette, meticulously carved from wood with visible grain and painted features, is suspended by multiple fine strings from its wooden head, articulated wooden arms, hands, and jointed wooden legs, all extending clearly upward and controlling its diligent movements. Its segmented body construction and round wooden joints with connection pegs are distinctly visible, giving a sense of mechanical yet handcrafted articulation. The alchemist, clad in a richly layered fabric costume of a deep indigo velvet robe and a tiny embroidered waistcoat, leans slightly over a small wooden table, its wooden hands carefully stirring a miniature, glowing, bubbling potion in a tiny, hand-blown glass beaker. The stage is framed by heavy, deep red velvet curtains, and the wooden stage floor gleams under warm spotlight illumination from above, casting theatrical shadows beneath the suspended figure and emphasizing the taut control strings. A painted backdrop depicting an arcane laboratory filled with tiny glass vials and ancient scrolls provides depth to the scene. The marionette's carved wooden face, with its painted eyes and defined eyebrows, reflects the focused intensity of the performance. Every detail, from the visible thread stitching on the fabric costume to slight paint wear on the wooden surfaces, contributes to a charming, storybook-like mood, capturing a moment of classic, performance-driven theatrical storytelling."
+      ]
+    },
+    {
+      "id": 1031,
+      "type": "GeminiNode",
+      "pos": [
+        1673.4954655646811,
+        7736.274989074491
+      ],
+      "size": [
+        420.7831000000001,
+        274
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "video",
+          "shape": 7,
+          "type": "VIDEO",
+          "link": null
+        },
+        {
+          "name": "files",
+          "shape": 7,
+          "type": "GEMINI_INPUT_FILES",
+          "link": null
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 1618
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1616,
+            1617,
+            1627
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "GeminiNode",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "Single Claymation Prompt Generator\n\nYou are now a text-to-image prompt generator that creates one single detailed prompt in a handcrafted claymation style.\n\nAfter the user provides details (or even minimal details), you will generate 1 unique prompt only, written in plain text, with no tables, no numbering, and no extra commentary.\n\nAll prompts must be created in a handcrafted claymation style, featuring textured modeling clay, visible fingerprints, handmade imperfections, and a whimsical stop-motion aesthetic.\n\nCore Style Rule (Always Apply)\n\nEvery prompt must describe:\n\nA handcrafted claymation-style scene\nObjects and characters made from textured modeling clay\nVisible fingerprints, slight surface imperfections, and handmade details\nA cozy, whimsical, stop-motion aesthetic\nSoft, tactile surfaces that feel sculpted by hand\n\nThis claymation style must never change.\n\nPrompt Construction Rules\n\nUse the following structure to build the single prompt:\n\n1. Color Style\n\nChoose one color style that enhances the claymation mood. Examples:\n\nWarm cinematic\nMatte\nSoft HDR\nVintage warm tone\nCozy natural lighting\n\nPrefer warm, cozy tones that complement clay textures.\n\n2. Mood\n\nChoose a fitting mood such as:\n\nCozy\nWhimsical\nCheerful\nPeaceful\nPlayful\nMagical\nCalm\n3. Character or Subject\n\nIf a person or character is present, describe:\n\nFacial features\nExpression\nHair style and shape (sculpted clay look)\nClothing made of clay\nAccessories if relevant\nBody proportions (small, round, stylized clay figure if applicable)\n\nIf no person is provided, create:\n\nA clay object\nCreature\nAnimal\nFood\nScene\nOr whimsical subject\n\nAll must be made of clay.\n\n4. Environment\n\nCreate a clay environment that matches the mood\n\nAll surfaces must be clay-based.\n\n5. Camera Angle\n\nChoose a cinematic camera angle\n\nThe camera should enhance storytelling and depth.\n\n6. Time of Day and Lighting\n\nInclude:\n\nTime of day\nLighting direction\nLighting mood\n\n\nInclude weather when relevant:\n\n\n8. Texture and Motion Details\n\nAlways include tactile clay details such as:\n\nVisible fingerprints\nSlight cracks\nSoft clay folds\nRounded sculpted edges\nPowder-like clay dust\nSubtle handmade imperfections\n\nThese details are required.\n\nOutput Rules (Strict)\nOutput exactly one prompt\nOutput must be plain text only\nDo not use tables\nDo not number the prompt\nDo not explain anything\nDo not include headings\nDo not repeat instructions\nDo not output multiple variations\n\nJust output one complete claymation-style prompt.",
+        "gemini-2.5-flash",
+        1098090568986114,
+        "fixed",
+        ""
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    }
+  ],
+  "links": [
+    [
+      1610,
+      1018,
+      0,
+      1029,
+      0,
+      "IMAGE"
+    ],
+    [
+      1611,
+      1025,
+      0,
+      1029,
+      2,
+      "STRING"
+    ],
+    [
+      1614,
+      1018,
+      0,
+      1030,
+      0,
+      "IMAGE"
+    ],
+    [
+      1616,
+      1031,
+      0,
+      1018,
+      0,
+      "STRING"
+    ],
+    [
+      1617,
+      1031,
+      0,
+      1032,
+      0,
+      "STRING"
+    ],
+    [
+      1618,
+      1033,
+      0,
+      1031,
+      4,
+      "STRING"
+    ],
+    [
+      1622,
+      1037,
+      0,
+      1033,
+      0,
+      "STRING"
+    ],
+    [
+      1623,
+      1038,
+      0,
+      1037,
+      0,
+      "STRING"
+    ],
+    [
+      1624,
+      1038,
+      0,
+      1039,
+      0,
+      "STRING"
+    ],
+    [
+      1625,
+      1040,
+      0,
+      1038,
+      0,
+      "INT"
+    ],
+    [
+      1626,
+      1037,
+      0,
+      1042,
+      0,
+      "STRING"
+    ],
+    [
+      1627,
+      1031,
+      0,
+      1029,
+      1,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 29,
+      "title": "Group",
+      "bounding": [
+        365.3980784052644,
+        7651.970193450563,
+        847.9737270584378,
+        611.7500000000097
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 30,
+      "title": "Group",
+      "bounding": [
+        1240.7285099718508,
+        7657.752723665887,
+        1330.0055478052088,
+        785.6247402172509
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 31,
+      "title": "Group",
+      "bounding": [
+        2668.1008467217066,
+        7459.374355851347,
+        876.1301799999969,
+        209.6
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "62af61d6-9745-4fea-bc43-a1f89f5cab8a",
+        "version": 1,
+        "state": {
+          "lastGroupId": 31,
+          "lastNodeId": 1042,
+          "lastLinkId": 1629,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Z-Image upscale/enhance",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -219.8663686894322,
+            -705.9977743396407,
+            120,
+            220
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1719.1074614635447,
+            -726.9713262850722,
+            120,
+            60
+          ]
+        },
+        "inputs": [
+          {
+            "id": "d57da5ba-eaed-4402-80d8-d3b56f6f7546",
+            "name": "text",
+            "type": "STRING",
+            "linkIds": [
+              147
+            ],
+            "pos": [
+              -119.86636868943219,
+              -685.9977743396407
+            ]
+          },
+          {
+            "id": "46e37f8f-0a6f-4e6c-b786-dba4e813185d",
+            "name": "text_1",
+            "type": "STRING",
+            "linkIds": [
+              148
+            ],
+            "pos": [
+              -119.86636868943219,
+              -665.9977743396407
+            ]
+          },
+          {
+            "id": "69dff8a0-c242-4bb2-a130-9d1ddea79bd2",
+            "name": "unet_name",
+            "type": "COMBO",
+            "linkIds": [
+              334
+            ],
+            "pos": [
+              -119.86636868943219,
+              -645.9977743396407
+            ]
+          },
+          {
+            "id": "5ef38fd5-20e0-4665-955d-0e4873bb8a5d",
+            "name": "vae_name",
+            "type": "COMBO",
+            "linkIds": [
+              336
+            ],
+            "pos": [
+              -119.86636868943219,
+              -625.9977743396407
+            ]
+          },
+          {
+            "id": "bc70de0c-b8e0-4b98-ad9d-fc6c10bf73b7",
+            "name": "width_1",
+            "type": "INT",
+            "linkIds": [
+              1263
+            ],
+            "pos": [
+              -119.86636868943219,
+              -605.9977743396407
+            ]
+          },
+          {
+            "id": "16f90ee2-d6ca-47f8-ae70-78202b4cffa0",
+            "name": "height_1",
+            "type": "INT",
+            "linkIds": [
+              1264
+            ],
+            "pos": [
+              -119.86636868943219,
+              -585.9977743396407
+            ]
+          },
+          {
+            "id": "87c4a9b8-d8f0-442e-9a4a-e74373ead271",
+            "name": "noise_seed",
+            "type": "INT",
+            "linkIds": [
+              1265
+            ],
+            "pos": [
+              -119.86636868943219,
+              -565.9977743396407
+            ]
+          },
+          {
+            "id": "3fbd5396-2a05-4587-a930-6af73c0f0140",
+            "name": "value",
+            "type": "INT",
+            "linkIds": [
+              1283
+            ],
+            "pos": [
+              -119.86636868943219,
+              -545.9977743396407
+            ]
+          },
+          {
+            "id": "f62a2957-6461-443e-a01a-2100d9ad2058",
+            "name": "start_at_step",
+            "type": "INT",
+            "linkIds": [
+              1286
+            ],
+            "pos": [
+              -119.86636868943219,
+              -525.9977743396407
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "4428fbe9-87ff-4269-ab8c-3c99f26fd122",
+            "name": "IMAGE",
+            "type": "IMAGE",
+            "linkIds": [
+              85
+            ],
+            "localized_name": "IMAGE",
+            "pos": [
+              1739.1074614635447,
+              -706.9713262850722
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 16,
+            "type": "UNETLoader",
+            "pos": [
+              116.9064951295994,
+              -752.5894828208529
+            ],
+            "size": [
+              270,
+              91.66666666666667
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "unet_name",
+                "name": "unet_name",
+                "type": "COMBO",
+                "widget": {
+                  "name": "unet_name"
+                },
+                "link": 334
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [
+                  1628,
+                  1629
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.73",
+              "Node name for S&R": "UNETLoader",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              "z_image_turbo_bf16.safetensors",
+              "default"
+            ]
+          },
+          {
+            "id": 818,
+            "type": "PrimitiveInt",
+            "pos": [
+              406.41165470220085,
+              20.325680681123323
+            ],
+            "size": [
+              270,
+              82
+            ],
+            "flags": {},
+            "order": 12,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "value",
+                "name": "value",
+                "type": "INT",
+                "widget": {
+                  "name": "value"
+                },
+                "link": 1283
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "INT",
+                "name": "INT",
+                "type": "INT",
+                "links": [
+                  1284,
+                  1285
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.16.3",
+              "Node name for S&R": "PrimitiveInt",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              10,
+              "fixed"
+            ]
+          },
+          {
+            "id": 8,
+            "type": "VAEDecode",
+            "pos": [
+              2417.948933842736,
+              -754.3746819144473
+            ],
+            "size": [
+              210,
+              55
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 1593
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 45
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "slot_index": 0,
+                "links": [
+                  85
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.73",
+              "Node name for S&R": "VAEDecode",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": []
+          },
+          {
+            "id": 195,
+            "type": "SamplerCustom",
+            "pos": [
+              1492.6214517892006,
+              -596.5711070446775
+            ],
+            "size": [
+              270,
+              230
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 1628
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 341
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 342
+              },
+              {
+                "localized_name": "sampler",
+                "name": "sampler",
+                "type": "SAMPLER",
+                "link": 344
+              },
+              {
+                "localized_name": "sigmas",
+                "name": "sigmas",
+                "type": "SIGMAS",
+                "link": 346
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 1606
+              },
+              {
+                "localized_name": "noise_seed",
+                "name": "noise_seed",
+                "type": "INT",
+                "widget": {
+                  "name": "noise_seed"
+                },
+                "link": 1265
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "output",
+                "name": "output",
+                "type": "LATENT",
+                "links": [
+                  1607
+                ]
+              },
+              {
+                "localized_name": "denoised_output",
+                "name": "denoised_output",
+                "type": "LATENT",
+                "links": null
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.75",
+              "Node name for S&R": "SamplerCustom",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              true,
+              69,
+              "randomize",
+              1
+            ]
+          },
+          {
+            "id": 1016,
+            "type": "CLIPLoader",
+            "pos": [
+              232.74240698777476,
+              -476.4293614714113
+            ],
+            "size": [
+              364.42708333333337,
+              106
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "CLIP",
+                "name": "CLIP",
+                "type": "CLIP",
+                "links": [
+                  1588,
+                  1589
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.8.2",
+              "Node name for S&R": "CLIPLoader",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "version": "7.5.2",
+                "input_ue_unconnectable": {}
+              },
+              "models": [
+                {
+                  "name": "qwen_3_4b.safetensors",
+                  "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors",
+                  "directory": "text_encoders"
+                }
+              ],
+              "enableTabs": false,
+              "tabWidth": 65,
+              "tabXOffset": 10,
+              "hasSecondTab": false,
+              "secondTabText": "Send Back",
+              "secondTabOffset": 80,
+              "secondTabWidth": 65
+            },
+            "widgets_values": [
+              "qwen_3_4b.safetensors",
+              "lumina2",
+              "default"
+            ]
+          },
+          {
+            "id": 6,
+            "type": "CLIPTextEncode",
+            "pos": [
+              812.9388704602036,
+              -573.3273866886516
+            ],
+            "size": [
+              450,
+              285
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 1588
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 147
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "slot_index": 0,
+                "links": [
+                  341,
+                  1596
+                ]
+              }
+            ],
+            "title": "CLIP Text Encode (Positive Prompt)",
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.73",
+              "Node name for S&R": "CLIPTextEncode",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              "A bright travel-style close-up headshot of a young woman with blonde hair with lavender streaks, wispy bangs, green eyes, wearing a light summer dress with thin straps. She is standing in a colorful outdoor market with hanging lights and vibrant stalls blurred behind her. Natural HDR color grading. Camera angle: eye-level close-up, 85mm lens. Warm sunset light illuminating her face."
+            ],
+            "color": "#232",
+            "bgcolor": "#353"
+          },
+          {
+            "id": 7,
+            "type": "CLIPTextEncode",
+            "pos": [
+              776.4896682976251,
+              -209.35613514401203
+            ],
+            "size": [
+              420,
+              135
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 1589
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 148
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "slot_index": 0,
+                "links": [
+                  342,
+                  1597
+                ]
+              }
+            ],
+            "title": "CLIP Text Encode (Negative Prompt)",
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.73",
+              "Node name for S&R": "CLIPTextEncode",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              "bad hands, extra fingers, missing fingers, fused fingers, broken hands, mutant hands, twisted limbs, extra limbs, missing limbs, dimple "
+            ],
+            "color": "#322",
+            "bgcolor": "#533"
+          },
+          {
+            "id": 85,
+            "type": "KSamplerSelect",
+            "pos": [
+              1089.4017285543387,
+              -717.4033977996079
+            ],
+            "size": [
+              315,
+              58
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "SAMPLER",
+                "name": "SAMPLER",
+                "type": "SAMPLER",
+                "slot_index": 0,
+                "links": [
+                  344,
+                  1598
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.43",
+              "Node name for S&R": "KSamplerSelect",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              "dpmpp_sde"
+            ]
+          },
+          {
+            "id": 196,
+            "type": "FlowMatchEulerDiscreteScheduler (Custom)",
+            "pos": [
+              1378.943221520243,
+              -266.2664108845292
+            ],
+            "size": [
+              389.9,
+              466
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "steps",
+                "name": "steps",
+                "type": "INT",
+                "widget": {
+                  "name": "steps"
+                },
+                "link": 1284
+              },
+              {
+                "localized_name": "start_at_step",
+                "name": "start_at_step",
+                "type": "INT",
+                "widget": {
+                  "name": "start_at_step"
+                },
+                "link": 1286
+              },
+              {
+                "localized_name": "end_at_step",
+                "name": "end_at_step",
+                "type": "INT",
+                "widget": {
+                  "name": "end_at_step"
+                },
+                "link": 1285
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "sigmas",
+                "name": "sigmas",
+                "type": "SIGMAS",
+                "links": [
+                  346
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "erosdiffusion-eulerflowmatchingdiscretescheduler",
+              "ver": "1.0.7",
+              "Node name for S&R": "FlowMatchEulerDiscreteScheduler (Custom)",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              20,
+              0,
+              20,
+              256,
+              0.5,
+              "disable",
+              8192,
+              1.15,
+              1000,
+              3,
+              0,
+              "disable",
+              "exponential",
+              "disable",
+              "disable",
+              "disable",
+              "disable",
+              "cuda"
+            ]
+          },
+          {
+            "id": 1021,
+            "type": "FlowMatchEulerDiscreteScheduler (Custom)",
+            "pos": [
+              1866.8132861019067,
+              -266.78999559230874
+            ],
+            "size": [
+              389.9,
+              466
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "sigmas",
+                "name": "sigmas",
+                "type": "SIGMAS",
+                "links": [
+                  1599
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "erosdiffusion-eulerflowmatchingdiscretescheduler",
+              "ver": "1.0.7",
+              "Node name for S&R": "FlowMatchEulerDiscreteScheduler (Custom)",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              20,
+              10,
+              20,
+              256,
+              0.5,
+              "disable",
+              8192,
+              1.15,
+              1000,
+              3,
+              0,
+              "disable",
+              "exponential",
+              "disable",
+              "disable",
+              "disable",
+              "disable",
+              "cuda"
+            ]
+          },
+          {
+            "id": 17,
+            "type": "VAELoader",
+            "pos": [
+              128.0506351849089,
+              -596.8004341912036
+            ],
+            "size": [
+              270,
+              63.33333333333334
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "vae_name",
+                "name": "vae_name",
+                "type": "COMBO",
+                "widget": {
+                  "name": "vae_name"
+                },
+                "link": 336
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "VAE",
+                "name": "VAE",
+                "type": "VAE",
+                "links": [
+                  45
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.73",
+              "Node name for S&R": "VAELoader",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              "ae.safetensors"
+            ]
+          },
+          {
+            "id": 1019,
+            "type": "SamplerCustom",
+            "pos": [
+              2177.2437951194984,
+              -608.717958897279
+            ],
+            "size": [
+              270,
+              230
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 1629
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 1596
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 1597
+              },
+              {
+                "localized_name": "sampler",
+                "name": "sampler",
+                "type": "SAMPLER",
+                "link": 1598
+              },
+              {
+                "localized_name": "sigmas",
+                "name": "sigmas",
+                "type": "SIGMAS",
+                "link": 1599
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 1608
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "output",
+                "name": "output",
+                "type": "LATENT",
+                "links": [
+                  1593
+                ]
+              },
+              {
+                "localized_name": "denoised_output",
+                "name": "denoised_output",
+                "type": "LATENT",
+                "links": null
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.3.75",
+              "Node name for S&R": "SamplerCustom",
+              "ue_properties": {
+                "version": "7.5.2",
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {}
+              }
+            },
+            "widgets_values": [
+              true,
+              319477529964111,
+              "randomize",
+              1
+            ]
+          },
+          {
+            "id": 807,
+            "type": "LatentUpscale",
+            "pos": [
+              1816.7419187235957,
+              -843.4240752226345
+            ],
+            "size": [
+              270,
+              130
+            ],
+            "flags": {},
+            "order": 11,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 1607
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "widget": {
+                  "name": "width"
+                },
+                "link": 1263
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "widget": {
+                  "name": "height"
+                },
+                "link": 1264
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  1608
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.16.3",
+              "Node name for S&R": "LatentUpscale",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "nearest-exact",
+              1920,
+              1080,
+              "center"
+            ]
+          },
+          {
+            "id": 1027,
+            "type": "EmptyLatentImage",
+            "pos": [
+              910.1452678178329,
+              67.927618390151
+            ],
+            "size": [
+              270,
+              106
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  1606
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.16.3",
+              "Node name for S&R": "EmptyLatentImage",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              1280,
+              720,
+              1
+            ]
+          }
+        ],
+        "groups": [
+          {
+            "id": 8,
+            "title": "Group",
+            "bounding": [
+              735.5912661843734,
+              -835.2757429151827,
+              1101.7865181833015,
+              1022.5534554218699
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          },
+          {
+            "id": 10,
+            "title": "Group",
+            "bounding": [
+              105.54008939317045,
+              -826.189482820853,
+              608.9878492831501,
+              532.6811129336879
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          }
+        ],
+        "links": [
+          {
+            "id": 45,
+            "origin_id": 17,
+            "origin_slot": 0,
+            "target_id": 8,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 85,
+            "origin_id": 8,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 147,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 6,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 148,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 7,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 334,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 16,
+            "target_slot": 0,
+            "type": "COMBO"
+          },
+          {
+            "id": 336,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 17,
+            "target_slot": 0,
+            "type": "COMBO"
+          },
+          {
+            "id": 341,
+            "origin_id": 6,
+            "origin_slot": 0,
+            "target_id": 195,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 342,
+            "origin_id": 7,
+            "origin_slot": 0,
+            "target_id": 195,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 344,
+            "origin_id": 85,
+            "origin_slot": 0,
+            "target_id": 195,
+            "target_slot": 3,
+            "type": "SAMPLER"
+          },
+          {
+            "id": 346,
+            "origin_id": 196,
+            "origin_slot": 0,
+            "target_id": 195,
+            "target_slot": 4,
+            "type": "SIGMAS"
+          },
+          {
+            "id": 1263,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 807,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 1264,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 807,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 1265,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 195,
+            "target_slot": 6,
+            "type": "INT"
+          },
+          {
+            "id": 1283,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 818,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 1284,
+            "origin_id": 818,
+            "origin_slot": 0,
+            "target_id": 196,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 1285,
+            "origin_id": 818,
+            "origin_slot": 0,
+            "target_id": 196,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 1286,
+            "origin_id": -10,
+            "origin_slot": 8,
+            "target_id": 196,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 1588,
+            "origin_id": 1016,
+            "origin_slot": 0,
+            "target_id": 6,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 1589,
+            "origin_id": 1016,
+            "origin_slot": 0,
+            "target_id": 7,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 1593,
+            "origin_id": 1019,
+            "origin_slot": 0,
+            "target_id": 8,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 1596,
+            "origin_id": 6,
+            "origin_slot": 0,
+            "target_id": 1019,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 1597,
+            "origin_id": 7,
+            "origin_slot": 0,
+            "target_id": 1019,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 1598,
+            "origin_id": 85,
+            "origin_slot": 0,
+            "target_id": 1019,
+            "target_slot": 3,
+            "type": "SAMPLER"
+          },
+          {
+            "id": 1599,
+            "origin_id": 1021,
+            "origin_slot": 0,
+            "target_id": 1019,
+            "target_slot": 4,
+            "type": "SIGMAS"
+          },
+          {
+            "id": 1606,
+            "origin_id": 1027,
+            "origin_slot": 0,
+            "target_id": 195,
+            "target_slot": 5,
+            "type": "LATENT"
+          },
+          {
+            "id": 1607,
+            "origin_id": 195,
+            "origin_slot": 0,
+            "target_id": 807,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 1608,
+            "origin_id": 807,
+            "origin_slot": 0,
+            "target_id": 1019,
+            "target_slot": 5,
+            "type": "LATENT"
+          },
+          {
+            "id": 1628,
+            "origin_id": 16,
+            "origin_slot": 0,
+            "target_id": 195,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 1629,
+            "origin_id": 16,
+            "origin_slot": 0,
+            "target_id": 1019,
+            "target_slot": 0,
+            "type": "MODEL"
+          }
+        ],
+        "extra": {
+          "workflowRendererVersion": "LG",
+          "ue_links": [],
+          "links_added_by_ue": []
+        }
+      }
+    ]
+  },
+  "config": {},
+  "extra": {
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "links_added_by_ue": [],
+    "ds": {
+      "scale": 0.424097618372485,
+      "offset": [
+        -167.23718962361036,
+        -6659.168483092504
+      ]
+    },
+    "frontendVersion": "1.39.19",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}
