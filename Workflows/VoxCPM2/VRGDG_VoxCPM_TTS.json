@@ -1,0 +1,215 @@
+{
+  "id": "56fbe9c9-ee8a-41f9-be91-9cf4093bacc9",
+  "revision": 0,
+  "last_node_id": 6,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 4,
+      "type": "VHS_LoadAudioUpload",
+      "pos": [
+        404.454545454545,
+        418.72727272727263
+      ],
+      "size": [
+        251,
+        204
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "duration",
+          "type": "FLOAT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.7.9",
+        "Node name for S&R": "VHS_LoadAudioUpload",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": {
+        "audio": "me.mp3",
+        "start_time": 0,
+        "duration": 30,
+        "audiopreview": {
+          "params": {
+            "start_time": 0,
+            "duration": 30,
+            "filename": "me.mp3",
+            "type": "input"
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "VRGDG_VoxCPM2Generate",
+      "pos": [
+        706.090909090909,
+        416.90909090909093
+      ],
+      "size": [
+        400,
+        538
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "reference_audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 6
+        },
+        {
+          "name": "prompt_audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "saved_audio_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "sample_rate",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_VoxCPM2Generate"
+      },
+      "widgets_values": [
+        "The wind whispers secrets as I wander, chasing memories that fade before I can hold them still.",
+        "controllable_clone",
+        "auto",
+        2,
+        10,
+        false,
+        false,
+        true,
+        3,
+        6,
+        2,
+        4096,
+        "voxcpm2",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 3,
+      "type": "SaveAudio",
+      "pos": [
+        1139.9090909090896,
+        413.2727272727272
+      ],
+      "size": [
+        270,
+        112
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 7
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "SaveAudio",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "audio/ComfyUI"
+      ]
+    }
+  ],
+  "links": [
+    [
+      6,
+      4,
+      0,
+      6,
+      0,
+      "AUDIO"
+    ],
+    [
+      7,
+      6,
+      0,
+      3,
+      0,
+      "AUDIO"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "links_added_by_ue": [],
+    "ds": {
+      "scale": 1.1,
+      "offset": [
+        -168.09090909090924,
+        -196.90909090909093
+      ]
+    },
+    "frontendVersion": "1.39.19",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}
