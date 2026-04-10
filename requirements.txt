@@ -9,3 +9,4 @@ demucs
 transformers
 accelerate
 huggingface_hub
+voxcpm
