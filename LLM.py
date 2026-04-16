@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from PIL import Image
 from io import BytesIO
+from functools import lru_cache
 from typing import Optional, Tuple
 import json
 import base64
@@ -12,17 +13,17 @@ import urllib.request
 import urllib.error
 import folder_paths
 
-try:
-    import google.generativeai as genai_legacy
-except Exception:
-    genai_legacy = None
-try:
-    from google import genai as genai_new
-except Exception:
-    genai_new = None
-
-
 _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
+
+
+@lru_cache(maxsize=1)
+def _load_google_genai_client():
+    try:
+        from google import genai as genai_new  # type: ignore
+        return genai_new
+    except Exception:
+        return None
+
 
 def _google_rest_parts_from_contents(contents) -> list[dict]:
     if not isinstance(contents, list):
@@ -83,10 +84,7 @@ def _google_generate_content_rest(api_key: str, model: str, contents) -> dict:
 
 
 def _google_generate_content(api_key: str, model: str, contents):
-    if genai_legacy is not None and hasattr(genai_legacy, "configure") and hasattr(genai_legacy, "GenerativeModel"):
-        genai_legacy.configure(api_key=api_key)
-        gm = genai_legacy.GenerativeModel(model)
-        return gm.generate_content(contents)
+    genai_new = _load_google_genai_client()
     if genai_new is not None and hasattr(genai_new, "Client"):
         client = genai_new.Client(api_key=api_key)
         return client.models.generate_content(model=model, contents=contents)
