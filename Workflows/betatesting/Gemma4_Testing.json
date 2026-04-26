@@ -1,0 +1,622 @@
+{
+  "id": "ce52e302-181b-4d9a-97d1-f9879bcf7f9c",
+  "revision": 0,
+  "last_node_id": 13,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 2,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -9874.19515157615,
+        -493.46341832730354
+      ],
+      "size": [
+        386.4166820499653,
+        265.9062043398154
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [
+        "Cinematic and Dramatic photograph of a weathered elven wanderer with silver-streaked hair and piercing amber eyes. She wears intricate, tattered leather armor layered over deep emerald silk, standing in a poised, contemplative stance while holding an ancient, glowing compass. The scene takes place in a dense, ancient redwood forest where massive trees reach toward a misty canopy. Camera is a low angle, emphasizing her commanding presence. The weather is misty with light sunbeams filtering through the branches during the golden hour of late afternoon. Additional cinematic details: swirling forest particles, heavy depth of field with a soft bokeh background, dramatic god-rays, and a subtle mystical haze."
+      ]
+    },
+    {
+      "id": 5,
+      "type": "LoadImage",
+      "pos": [
+        -10599.62074574268,
+        194.3543303678726
+      ],
+      "size": [
+        284.9558089159382,
+        326
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "cnr_id": "comfy-core",
+        "ver": "0.16.2",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "_fzg2w30a20wiri9j4y56_2.png",
+        "image"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -9780.22279430036,
+        198.1838190756438
+      ],
+      "size": [
+        393.8503954238753,
+        305.55267566733403
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [
+        "A cinematic close-up portrait of a woman with dark hair and bangs. She slowly turns her head toward the camera with a subtle, graceful smile, her eyes blinking naturally as she shifts her gaze. The camera performs a smooth, dynamic zoom-out, transitioning from a tight facial shot to a medium shot that reveals her elegant, off-the-shoulder beige garment. A gentle breeze catches the loose strands of her hair, causing them to flutter softly against her skin. The lighting remains soft and even, highlighting her features. The scene feels sophisticated, intimate, and elegantly composed."
+      ]
+    },
+    {
+      "id": 4,
+      "type": "VRGDG_SuperGemmaGGUFChat",
+      "pos": [
+        -10234.962942808903,
+        196.4645517826801
+      ],
+      "size": [
+        400.2513276497557,
+        297.86168629449276
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "used_model",
+          "type": "STRING",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_SuperGemmaGGUFChat"
+      },
+      "widgets_values": [
+        "gemma-4-26B-A4B-it-UD-IQ2_M.gguf",
+        "mmproj-BF16.gguf",
+        "image_to_video",
+        "",
+        "Create a image to video prompt. \nzoom out with dynamic character and camera motion.",
+        "",
+        1,
+        false,
+        true,
+        7936,
+        99,
+        8,
+        "",
+        0.4,
+        0.8,
+        32000,
+        null
+      ]
+    },
+    {
+      "id": 9,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -10015.2110374849,
+        31.38392136666544
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [
+        "ok"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -10253.103828097213,
+        33.34148450532465
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [
+        "A:\\AI Models\\LLM\\gemma-4-26B-A4B-it-UD-IQ2_M.gguf"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -10363.672187845259,
+        -649.7094164328023
+      ],
+      "size": [
+        194.0411904948454,
+        97.97186130194473
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [
+        "A:\\AI Models\\LLM\\supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+      ]
+    },
+    {
+      "id": 1,
+      "type": "VRGDG_SuperGemmaGGUFChat",
+      "pos": [
+        -10365.434907218048,
+        -493.8453367547168
+      ],
+      "size": [
+        470.99540684048225,
+        258.7204493922908
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "used_model",
+          "type": "STRING",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_SuperGemmaGGUFChat"
+      },
+      "widgets_values": [
+        "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+        "mmproj-BF16.gguf",
+        "text_to_image",
+        "",
+        "create a random text to image propmt",
+        "",
+        0,
+        false,
+        true,
+        7936,
+        99,
+        8,
+        "",
+        0.4,
+        0.8,
+        32000
+      ]
+    },
+    {
+      "id": 8,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -10121.013480319043,
+        -651.7135217288237
+      ],
+      "size": [
+        212.40020988798676,
+        100.22450171828086
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText"
+      },
+      "widgets_values": [
+        "ok"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "MarkdownNote",
+      "pos": [
+        -10599.828458940363,
+        -471.40369038390816
+      ],
+      "size": [
+        210,
+        171.00979934199222
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# Model Download\n\nDownload the model here:\n\n[supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf](https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf)\n\nPlace the downloaded file here:\n\n```text\nModels/LLM"
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 11,
+      "type": "MarkdownNote",
+      "pos": [
+        -10580.77942189719,
+        -41.822648903806034
+      ],
+      "size": [
+        240.41064562053907,
+        178.10561665345153
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# Model Download\n\nDownload these files:\n\n[gemma-4-26B-A4B-it-UD-IQ2_M.gguf](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf)\n\n[mmproj-BF16.gguf](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf)\n\nPlace both downloaded files here:\n\n```text\nModels/LLM"
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 13,
+      "type": "MarkdownNote",
+      "pos": [
+        -10560.148085062949,
+        -1031.7359637747036
+      ],
+      "size": [
+        1027.708471130074,
+        246.5858853100749
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# I need people to test these nodes. make sure you download the models from the links in this workflow and use them.\n# Please keep advanced settings at default for testing.\n# I just need to make sure these nodes work on other people's computers and troubleshoot issues.\n\n---\n\n## The first group is for text output only. You can use the presets or custom for testing.\n## The 2nd group can take image inputs, so please test that too.\n"
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      5,
+      0,
+      4,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      4,
+      0,
+      6,
+      0,
+      "STRING"
+    ],
+    [
+      4,
+      1,
+      1,
+      7,
+      0,
+      "STRING"
+    ],
+    [
+      5,
+      1,
+      2,
+      8,
+      0,
+      "STRING"
+    ],
+    [
+      6,
+      4,
+      1,
+      10,
+      0,
+      "STRING"
+    ],
+    [
+      7,
+      4,
+      2,
+      9,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Text only",
+      "bounding": [
+        -10627.514478738045,
+        -763.0750356831685,
+        1149.7360092118597,
+        545.5178216956804
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Vision",
+      "bounding": [
+        -10626.853444927654,
+        -123.80168796003979,
+        1257.3515993209949,
+        752.3101346867574
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "links_added_by_ue": [],
+    "ds": {
+      "scale": 0.4556058876589908,
+      "offset": [
+        11872.476171465263,
+        1336.714014957053
+      ]
+    },
+    "frontendVersion": "1.39.19",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false
+  },
+  "version": 0.4
+}
