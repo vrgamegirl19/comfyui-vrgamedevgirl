@@ -14,6 +14,7 @@ import urllib.error
 import folder_paths
 
 _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
+_GGUF_MODEL_CACHE: dict[tuple, object] = {}
 
 
 @lru_cache(maxsize=1)
