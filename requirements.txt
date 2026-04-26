@@ -10,3 +10,4 @@ transformers
 accelerate
 huggingface_hub
 voxcpm
+llama-cpp-python
