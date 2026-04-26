@@ -12,6 +12,8 @@ import uuid
 import urllib.request
 import urllib.error
 import folder_paths
+import gc
+
 
 _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
 _GGUF_MODEL_CACHE: dict[tuple, object] = {}
