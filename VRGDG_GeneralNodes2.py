@@ -15,7 +15,6 @@ class AnyType(str):
     def __ne__(self, __value: object) -> bool:
         return False
 
-
 any_typ = AnyType("*")
 
 _VRGDG_TEST_SAVE_ROUTE_REGISTERED = False
@@ -276,17 +275,7 @@ def _ensure_test_save_route_registered():
     _VRGDG_TEST_SAVE_ROUTE_REGISTERED = True
 
 
-class VRGDG_PromptCreatorUI:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {"required": {}}
 
-    RETURN_TYPES = ()
-    FUNCTION = "noop"
-    CATEGORY = "VRGDG/General"
-
-    def noop(self):
-        return ()
 
 
 class VRGDG_ShowText:
@@ -919,6 +908,694 @@ _ensure_test_save_route_registered()
 
 
 
+class VRGDG_LyricSegmentJsonFixer:
+    OUTPUT_KEY_PATTERN = "lyricSegment"
+    ACCEPTED_KEY_PREFIXES = ("lyricSegment", "segment")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "JSON", "BOOLEAN", "STRING")
+    RETURN_NAMES = ("fixed_text", "json_output", "was_fixed", "notes")
+    FUNCTION = "fix_json"
+    CATEGORY = "VRGDG/General"
+
+    def _strip_markdown_json_fence(self, text):
+        value = str(text or "").strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if lines:
+                first = lines[0].strip().lower()
+                if first == "```" or first.startswith("```json"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                value = "\n".join(lines).strip()
+        return value
+
+    def _basic_cleanup(self, text):
+        cleaned = self._strip_markdown_json_fence(text)
+        cleaned = cleaned.replace("\ufeff", "").replace("\u200b", "")
+        cleaned = cleaned.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+        return cleaned.strip()
+
+    def _escape_unescaped_inner_quotes(self, s):
+        chars = []
+        in_string = False
+        escaped = False
+        n = len(s)
+        i = 0
+
+        while i < n:
+            ch = s[i]
+
+            if not in_string:
+                chars.append(ch)
+                if ch == '"':
+                    in_string = True
+                    escaped = False
+                i += 1
+                continue
+
+            if escaped:
+                chars.append(ch)
+                escaped = False
+                i += 1
+                continue
+
+            if ch == "\\":
+                chars.append(ch)
+                escaped = True
+                i += 1
+                continue
+
+            if ch == '"':
+                j = i + 1
+                while j < n and s[j].isspace():
+                    j += 1
+                next_ch = s[j] if j < n else ""
+                if next_ch not in [",", "}", "]", ":", ""]:
+                    chars.append("\\")
+                    chars.append('"')
+                    i += 1
+                    continue
+
+                chars.append(ch)
+                in_string = False
+                i += 1
+                continue
+
+            chars.append(ch)
+            i += 1
+
+        return "".join(chars)
+
+    def _json_object_slices(self, text):
+        slices = []
+        stack = []
+        start = None
+        in_string = False
+        escaped = False
+
+        for i, ch in enumerate(text):
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+                escaped = False
+                continue
+
+            if ch == "{":
+                if not stack:
+                    start = i
+                stack.append(ch)
+                continue
+
+            if ch == "}" and stack:
+                stack.pop()
+                if not stack and start is not None:
+                    slices.append(text[start : i + 1])
+                    start = None
+
+        return slices
+
+    def _extract_json_slice(self, text):
+        slices = self._json_object_slices(text)
+        if slices:
+            return slices[-1]
+        start = text.find("{")
+        if start < 0:
+            return text
+        end = text.rfind("}")
+        if end >= start:
+            return text[start : end + 1]
+        return text[start:]
+
+    def _remove_duplicate_open_braces(self, text):
+        chars = []
+        in_string = False
+        escaped = False
+        i = 0
+        changes = 0
+
+        while i < len(text):
+            ch = text[i]
+            if in_string:
+                chars.append(ch)
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+
+            if ch == '"':
+                in_string = True
+                chars.append(ch)
+                i += 1
+                continue
+
+            if ch == "{":
+                chars.append(ch)
+                j = i + 1
+                while j < len(text) and text[j].isspace():
+                    j += 1
+                if j < len(text) and text[j] == "{":
+                    changes += 1
+                    i = j
+                    continue
+                i += 1
+                continue
+
+            chars.append(ch)
+            i += 1
+
+        return "".join(chars), changes
+
+    def _remove_trailing_commas(self, text):
+        import re
+
+        updated = re.sub(r",(\s*[}\]])", r"\1", text)
+        return updated, int(updated != text)
+
+    def _insert_missing_key_commas(self, text):
+        import re
+
+        updated = re.sub(
+            r'("(?:(?:[A-Za-z]*segment[A-Za-z]*)|(?:segment))\d+"\s*:\s*"((?:\\.|[^"\\])*)")(\s*)"(?=(?:(?:[A-Za-z]*segment[A-Za-z]*)|(?:segment))\d+"\s*:)',
+            r'\1,\3"',
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        return updated, int(updated != text)
+
+    def _remove_loose_text_before_keys(self, text):
+        updated = re.sub(
+            r'([,{]\s*)[^"{}\[\],:\r\n]+(?="[^"\r\n]*segment[^"\r\n]*\d+"\s*:)',
+            r'\1',
+            text,
+            flags=re.IGNORECASE,
+        )
+        return updated, int(updated != text)
+
+    def _balance_outer_structure(self, text):
+        stripped = text.strip()
+        changes = 0
+        if stripped.startswith("{") and stripped.count("{") > stripped.count("}"):
+            text += "}" * (stripped.count("{") - stripped.count("}"))
+            changes += 1
+        return text, changes
+
+    def _format_json_error(self, exc, text, label):
+        if not isinstance(exc, json.JSONDecodeError):
+            return f"{label}: {exc}"
+
+        lines = str(text or "").splitlines()
+        context = ""
+        if 1 <= exc.lineno <= len(lines):
+            line = lines[exc.lineno - 1]
+            pointer = " " * max(0, exc.colno - 1) + "^"
+            context = f" Line {exc.lineno}, column {exc.colno}:\n{line}\n{pointer}"
+        return f"{label}: {exc.msg}.{context}"
+
+    def _split_key(self, key):
+        if not isinstance(key, str):
+            return None, None
+        stripped = key.strip()
+        lowered = stripped.lower()
+        for prefix in self.ACCEPTED_KEY_PREFIXES:
+            if lowered.startswith(prefix.lower()):
+                suffix = stripped[len(prefix) :]
+                if str(suffix).isdigit():
+                    return prefix, suffix
+        match = re.fullmatch(r"(?i)([A-Za-z]*segment[A-Za-z]*)(\d+)", stripped)
+        if match:
+            return self.OUTPUT_KEY_PATTERN, match.group(2)
+        compact = re.sub(r"[^A-Za-z0-9]", "", stripped)
+        match = re.fullmatch(r"(?i)([A-Za-z]*segment[A-Za-z]*)(\d+)", compact)
+        if match:
+            return self.OUTPUT_KEY_PATTERN, match.group(2)
+        match = re.fullmatch(r"(?i)((?:lyric|segment)[A-Za-z]*)(\d+)", compact)
+        if match:
+            return self.OUTPUT_KEY_PATTERN, match.group(2)
+        match = re.fullmatch(r"(?i)([ls][A-Za-z0-9]*?)(\d+)", compact)
+        if match:
+            return self.OUTPUT_KEY_PATTERN, match.group(2)
+        return None, None
+
+    def _payload_items(self, data):
+        if isinstance(data, dict):
+            return list(data.items())
+        if isinstance(data, list) and all(isinstance(item, (list, tuple)) and len(item) == 2 for item in data):
+            return data
+        return None
+
+    def _payload_numbers(self, data):
+        numbers = []
+        items = self._payload_items(data) or []
+        for key, _ in items:
+            _, suffix = self._split_key(key)
+            try:
+                numbers.append(int(str(suffix)))
+            except Exception:
+                pass
+        return numbers
+
+    def _parse_json_preserving_order(self, text):
+        return json.loads(text, object_pairs_hook=list)
+
+    def _validate_payload(self, data):
+        errors = []
+        items = self._payload_items(data)
+        if items is None:
+            return ["Top-level JSON must be an object of lyricSegment/segment keys."]
+
+        if not items:
+            return ["At least one lyricSegment or segment key is required."]
+
+        valid_item_count = 0
+        found_prefixes = set()
+        for key, value in items:
+            prefix, suffix = self._split_key(key)
+            if prefix is None:
+                errors.append(f"Invalid key '{key}'. Expected keys like lyricSegment1 or segment1.")
+                continue
+            found_prefixes.add(prefix)
+            try:
+                segment_number = int(suffix)
+            except Exception:
+                errors.append(f"Invalid key '{key}'. Expected numeric suffix, e.g. lyricSegment1 or segment1.")
+                continue
+            if segment_number <= 0:
+                errors.append(f"Invalid segment number in '{key}'. It must be greater than 0.")
+                continue
+            valid_item_count += 1
+            if not isinstance(value, str):
+                errors.append(f"{key} must be a string.")
+
+        if not valid_item_count:
+            errors.append("No valid lyricSegment/segment keys were found.")
+
+        return errors
+
+    def _normalize_payload(self, data):
+        validation_errors = self._validate_payload(data)
+        if validation_errors:
+            raise ValueError(" ".join(validation_errors))
+
+        normalized = {}
+        for idx, (key, value) in enumerate(self._payload_items(data), start=1):
+            normalized[f"{self.OUTPUT_KEY_PATTERN}{idx}"] = "" if value is None else str(value)
+        return normalized
+
+    def _repair_schema_text(self, text):
+        notes = []
+        working = self._basic_cleanup(text)
+        sliced = self._extract_json_slice(working)
+        if sliced != working:
+            notes.append("trimmed extra text outside JSON")
+            working = sliced
+
+        working, duplicate_count = self._remove_duplicate_open_braces(working)
+        if duplicate_count:
+            notes.append(f"removed duplicate '{{' x{duplicate_count}")
+
+        escaped_quotes = self._escape_unescaped_inner_quotes(working)
+        if escaped_quotes != working:
+            working = escaped_quotes
+            notes.append("escaped inner quotes inside segment text")
+
+        working, comma_cleanup = self._remove_trailing_commas(working)
+        if comma_cleanup:
+            notes.append("removed trailing commas")
+
+        working, inserted_commas = self._insert_missing_key_commas(working)
+        if inserted_commas:
+            notes.append(f"inserted missing commas between lyric segments x{inserted_commas}")
+
+        working, loose_key_prefixes = self._remove_loose_text_before_keys(working)
+        if loose_key_prefixes:
+            notes.append(f"removed loose text before segment keys x{loose_key_prefixes}")
+
+        working, balance_changes = self._balance_outer_structure(working)
+        if balance_changes:
+            notes.append("balanced closing braces")
+
+        return working, notes
+
+    def fix_json(self, text):
+        original = self._basic_cleanup(text)
+        notes = []
+
+        try:
+            parsed = self._parse_json_preserving_order(original)
+        except json.JSONDecodeError as exc:
+            repaired_text, notes = self._repair_schema_text(text)
+            try:
+                parsed = self._parse_json_preserving_order(repaired_text)
+            except json.JSONDecodeError as repaired_exc:
+                original_error = self._format_json_error(exc, original, "Original JSON parse failed")
+                repaired_error = self._format_json_error(repaired_exc, repaired_text, "Repair attempt still invalid")
+                raise ValueError(f"VRGDG_LyricSegmentJsonFixer: {original_error}\n{repaired_error}")
+        else:
+            repaired_text = original
+
+        original_numbers = self._payload_numbers(parsed)
+        expected_numbers = list(range(1, len(original_numbers) + 1))
+        if original_numbers and original_numbers != expected_numbers:
+            notes.append("renumbered lyricSegment keys sequentially")
+
+        try:
+            normalized = self._normalize_payload(parsed)
+        except ValueError as exc:
+            raise ValueError(f"VRGDG_LyricSegmentJsonFixer schema error: {exc}")
+
+        fixed_text = json.dumps(normalized, indent=2, ensure_ascii=False)
+        was_fixed = bool(notes) or fixed_text.strip() != original.strip()
+        note_text = "; ".join(notes) if notes else ("normalized formatting" if was_fixed else "")
+        return (fixed_text, normalized, was_fixed, note_text)
+
+
+class VRGDG_PromptMapJsonFixer:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "JSON", "BOOLEAN", "STRING", "INT")
+    RETURN_NAMES = ("fixed_text", "json_output", "was_fixed", "notes", "prompt_count")
+    FUNCTION = "fix_json"
+    CATEGORY = "VRGDG/General"
+
+    def _strip_markdown_json_fence(self, text):
+        value = str(text or "").strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if lines:
+                first = lines[0].strip().lower()
+                if first == "```" or first.startswith("```json"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                value = "\n".join(lines).strip()
+        return value
+
+    def _basic_cleanup(self, text):
+        cleaned = self._strip_markdown_json_fence(text)
+        cleaned = cleaned.replace("\ufeff", "").replace("\u200b", "")
+        cleaned = cleaned.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+        return cleaned.strip()
+
+    def _extract_json_slice(self, text):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end >= start:
+            return text[start : end + 1]
+        if start >= 0:
+            return text[start:]
+        return text
+
+    def _remove_trailing_commas(self, text):
+        return re.sub(r",(\s*[}\]])", r"\1", text)
+
+    def _normalize_prompt_text(self, value):
+        if value is None:
+            value = ""
+        elif not isinstance(value, str):
+            value = str(value)
+        return " ".join(value.replace("\r", " ").replace("\n", " ").split())
+
+    def _normalize_from_mapping(self, data):
+        prompts = {}
+        notes = []
+
+        for key, value in data.items():
+            key_text = str(key)
+            match = re.search(r"(\d+)", key_text)
+            if not match:
+                continue
+            index = int(match.group(1))
+            if index <= 0:
+                continue
+            if not re.fullmatch(r"Prompt\d+", key_text):
+                notes.append(f"renamed {key_text} to Prompt{index}")
+            if index in prompts:
+                notes.append(f"duplicate Prompt{index}; kept last value")
+            prompts[index] = self._normalize_prompt_text(value)
+
+        if not prompts and data:
+            for index, value in enumerate(data.values(), start=1):
+                prompts[index] = self._normalize_prompt_text(value)
+            notes.append("no numbered prompt keys found; used object order")
+
+        return prompts, notes
+
+    def _extract_prompt_entries(self, text):
+        entries = {}
+        notes = ["rebuilt object from Prompt entries"]
+        pattern = re.compile(
+            r'(?i)(?:^|[,{]\s*|[\r\n]\s*)[A-Za-z]*"?Prompt[A-Za-z]*(\d+)"?\s*:\s*"((?:\\.|[^"\\])*)"',
+            re.DOTALL,
+        )
+
+        for match in pattern.finditer(text):
+            index = int(match.group(1))
+            if index <= 0:
+                continue
+            raw_value = match.group(2)
+            try:
+                value = json.loads(f'"{raw_value}"')
+            except Exception:
+                value = raw_value.replace('\\"', '"')
+            if index in entries:
+                notes.append(f"duplicate Prompt{index}; kept last value")
+            entries[index] = self._normalize_prompt_text(value)
+
+        return entries, notes
+
+    def _build_output(self, prompts):
+        normalized = {
+            f"Prompt{index}": prompts[index]
+            for index in sorted(prompts)
+        }
+        return normalized
+
+    def fix_json(self, text):
+        original = str(text or "")
+        cleaned = self._basic_cleanup(original)
+        sliced = self._extract_json_slice(cleaned)
+        candidate = self._remove_trailing_commas(sliced)
+        notes = []
+
+        try:
+            parsed = json.loads(candidate)
+            if not isinstance(parsed, dict):
+                raise ValueError("top-level JSON is not an object")
+            prompts, normalize_notes = self._normalize_from_mapping(parsed)
+            notes.extend(normalize_notes)
+        except Exception:
+            prompts, extract_notes = self._extract_prompt_entries(candidate)
+            notes.extend(extract_notes)
+
+        normalized = self._build_output(prompts)
+        prompt_count = len(normalized)
+
+        fixed_text = json.dumps(normalized, indent=2, ensure_ascii=False)
+        was_fixed = fixed_text.strip() != cleaned.strip()
+        if cleaned.startswith("```"):
+            notes.append("removed markdown code fence")
+        if candidate != cleaned:
+            notes.append("trimmed text outside JSON or removed trailing commas")
+        if was_fixed and not notes:
+            notes.append("normalized formatting")
+
+        return (fixed_text, normalized, was_fixed, "; ".join(notes), prompt_count)
+
+
+class VRGDG_LyricSegmentDurationMerger:
+    ACCEPTED_KEY_PREFIXES = ("lyricSegment", "segment")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "srt_text": ("STRING", {"multiline": True, "default": ""}),
+                "segments_json": ("STRING", {"multiline": True, "default": "{}"}),
+                "strict_count_match": ("BOOLEAN", {"default": True}),
+                "decimal_places": ("INT", {"default": 3, "min": 0, "max": 6, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "JSON", "INT", "INT")
+    RETURN_NAMES = ("merged_text", "merged_json", "segment_count", "duration_count")
+    FUNCTION = "merge"
+    CATEGORY = "VRGDG/General"
+
+    def _strip_markdown_json_fence(self, text):
+        value = str(text or "").strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if lines:
+                first = lines[0].strip().lower()
+                if first == "```" or first.startswith("```json"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                value = "\n".join(lines).strip()
+        return value
+
+    def _split_key(self, key):
+        if not isinstance(key, str):
+            return None, None
+        for prefix in self.ACCEPTED_KEY_PREFIXES:
+            if key.startswith(prefix):
+                return prefix, key[len(prefix) :]
+        return None, None
+
+    def _parse_segments(self, segments_json):
+        cleaned = self._strip_markdown_json_fence(segments_json)
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"VRGDG_LyricSegmentDurationMerger: segment JSON is invalid at line {exc.lineno}, "
+                f"column {exc.colno}: {exc.msg}"
+            )
+
+        if not isinstance(data, dict):
+            raise ValueError("VRGDG_LyricSegmentDurationMerger: segment JSON must be an object.")
+
+        found_prefixes = set()
+        ordered_segments = []
+        for key, value in data.items():
+            prefix, suffix = self._split_key(key)
+            if prefix is None:
+                raise ValueError(
+                    f"VRGDG_LyricSegmentDurationMerger: invalid key '{key}'. "
+                    "Expected keys like lyricSegment1 or segment1."
+                )
+            found_prefixes.add(prefix)
+            try:
+                index = int(suffix)
+            except Exception:
+                raise ValueError(
+                    f"VRGDG_LyricSegmentDurationMerger: invalid key '{key}'. "
+                    "Numeric suffix is required."
+                )
+            if index <= 0:
+                raise ValueError(
+                    f"VRGDG_LyricSegmentDurationMerger: invalid key '{key}'. Index must be greater than 0."
+                )
+            if not isinstance(value, str):
+                raise ValueError(f"VRGDG_LyricSegmentDurationMerger: {key} must map to a string.")
+            ordered_segments.append((index, key, value))
+
+        if not ordered_segments:
+            raise ValueError("VRGDG_LyricSegmentDurationMerger: no segment keys were found.")
+
+        if len(found_prefixes) > 1:
+            raise ValueError(
+                "VRGDG_LyricSegmentDurationMerger: do not mix 'segmentN' and 'lyricSegmentN' keys."
+            )
+
+        ordered_segments.sort(key=lambda item: item[0])
+        expected = list(range(1, len(ordered_segments) + 1))
+        actual = [item[0] for item in ordered_segments]
+        if actual != expected:
+            raise ValueError(
+                "VRGDG_LyricSegmentDurationMerger: segment keys must be sequential starting at 1. "
+                f"Found: {', '.join(str(v) for v in actual)}."
+            )
+        return ordered_segments
+
+    def _to_seconds(self, timestamp):
+        hours, minutes, seconds_ms = timestamp.split(":")
+        seconds, milliseconds = seconds_ms.split(",")
+        return (
+            int(hours) * 3600
+            + int(minutes) * 60
+            + int(seconds)
+            + int(milliseconds) / 1000.0
+        )
+
+    def _parse_durations(self, srt_text):
+        import re
+
+        matches = re.findall(
+            r"(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})",
+            str(srt_text or ""),
+        )
+        if not matches:
+            raise ValueError("VRGDG_LyricSegmentDurationMerger: no SRT timestamps were found.")
+
+        durations = []
+        for start, end in matches:
+            duration = self._to_seconds(end) - self._to_seconds(start)
+            if duration < 0:
+                raise ValueError(
+                    "VRGDG_LyricSegmentDurationMerger: found a subtitle end time earlier than its start time."
+                )
+            durations.append(duration)
+        return durations
+
+    def _format_duration(self, value, decimal_places):
+        rounded = round(float(value), int(decimal_places))
+        text = f"{rounded:.{int(decimal_places)}f}" if int(decimal_places) > 0 else str(int(round(rounded)))
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text or "0"
+
+    def merge(self, srt_text, segments_json, strict_count_match=True, decimal_places=3):
+        ordered_segments = self._parse_segments(segments_json)
+        durations = self._parse_durations(srt_text)
+
+        if strict_count_match and len(ordered_segments) != len(durations):
+            raise ValueError(
+                "VRGDG_LyricSegmentDurationMerger: segment count does not match SRT duration count. "
+                f"Segments: {len(ordered_segments)}, durations: {len(durations)}."
+            )
+
+        merged = {}
+        for idx, (_, original_key, value) in enumerate(ordered_segments):
+            duration_value = durations[idx] if idx < len(durations) else 0.0
+            duration_text = self._format_duration(duration_value, decimal_places)
+            merged[f"{original_key}_duration_{duration_text}"] = value
+
+        merged_text = json.dumps(merged, indent=2, ensure_ascii=False)
+        return (merged_text, merged, len(ordered_segments), len(durations))
+
+
+class VRGDG_PromptCreatorUI:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    RETURN_TYPES = ()
+    FUNCTION = "noop"
+    CATEGORY = "VRGDG/General"
+
+    def noop(self):
+        return ()
+
+class VRGDG_PromptCreatorUI_V2(VRGDG_PromptCreatorUI):
+    pass
 
 
 
@@ -940,6 +1617,11 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_MuteUnmute4PromptCreatorWF_0": VRGDG_MuteUnmute4PromptCreatorWF_0,
     "VRGDG_PromptCreatorUI": VRGDG_PromptCreatorUI,
     "VRGDG_MultiStringConcat": VRGDG_MultiStringConcat,
+    "VRGDG_StoryGroupJsonFixer": VRGDG_StoryGroupJsonFixer,
+    "VRGDG_LyricSegmentJsonFixer": VRGDG_LyricSegmentJsonFixer,
+    "VRGDG_PromptMapJsonFixer": VRGDG_PromptMapJsonFixer,    
+    "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
+    
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -960,4 +1642,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MuteUnmute4PromptCreatorWF_0": "VRGDG_MuteUnmute4PromptCreatorWF_0",
     "VRGDG_PromptCreatorUI": "VRGDG_PromptCreatorUI",
     "VRGDG_MultiStringConcat": "VRGDG_MultiStringConcat",
+    "VRGDG_StoryGroupJsonFixer": "VRGDG_StoryGroupJsonFixer",
+    "VRGDG_LyricSegmentJsonFixer": "VRGDG_LyricSegmentJsonFixer",
+    "VRGDG_PromptMapJsonFixer": "VRGDG_PromptMapJsonFixer",
+    "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
+    
 }
