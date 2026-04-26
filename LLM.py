@@ -3660,7 +3660,30 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
 
         # Remove <think> blocks safely
         try:
-            text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+            text = re.sub(r"</?thought>", "", text, flags=re.IGNORECASE)
+        except Exception:
+            pass
+
+        # Remove leaked chat/control tokens from Gemma/GGUF templates.
+        try:
+            control_patterns = [
+                r"^\s*_?\s*<\|channel>\s*(?:thought|analysis|reasoning)?\s*",
+                r"^\s*_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
+                r"^\s*_?\s*<channel\|>\s*",
+                r"^\s*_?\s*(?:thought|analysis|reasoning)\s*<channel\|>\s*",
+                r"^\s*_?\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
+            ]
+            while True:
+                previous = text
+                for p in control_patterns:
+                    text = re.sub(p, "", text, flags=re.IGNORECASE | re.DOTALL)
+                if text == previous:
+                    break
+
+            text = re.sub(r"_?\s*<\|channel>\s*", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"_?\s*<\|?channel\|?>\s*", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"_?\s*<channel\|>\s*", "", text, flags=re.IGNORECASE)
         except Exception:
             pass
 
