@@ -694,7 +694,7 @@ class VRGDG_MultiStringConcat:
     def INPUT_TYPES(cls):
         required = {
             "string_count": ("INT", {"default": 2, "min": 1, "max": cls.MAX_STRING_SLOTS, "step": 1}),
-            "delimiter": ("STRING", {"default": "", "multiline": False}),
+            "delimiter": ("STRING", {"default": "\n\n", "multiline": True}),
         }
         for i in range(1, cls.MAX_STRING_SLOTS + 1):
             required[f"string_{i}"] = ("STRING", {"default": "", "multiline": True})
@@ -718,6 +718,10 @@ class VRGDG_MultiStringConcat:
                 continue
             parts.append(text)
         return (str(delimiter or "").join(parts),)
+
+
+
+
 class VRGDG_SetMuteStateMulti:
     @classmethod
     def INPUT_TYPES(cls):
