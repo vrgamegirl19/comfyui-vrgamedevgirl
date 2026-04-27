@@ -1601,7 +1601,317 @@ class VRGDG_PromptCreatorUI:
 class VRGDG_PromptCreatorUI_V2(VRGDG_PromptCreatorUI):
     pass
 
+class VRGDG_StoryGroupJsonFixer:
+    REQUIRED_GROUP_KEYS = ("index", "subject", "camera", "scene_and_lighting", "frame")
 
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True, "default": ""}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "JSON", "BOOLEAN", "STRING")
+    RETURN_NAMES = ("fixed_text", "json_output", "was_fixed", "notes")
+    FUNCTION = "fix_json"
+    CATEGORY = "VRGDG/General"
+
+    def _strip_markdown_json_fence(self, text):
+        value = str(text or "").strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if lines:
+                first = lines[0].strip().lower()
+                if first == "```" or first.startswith("```json"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                value = "\n".join(lines).strip()
+        return value
+
+    def _basic_cleanup(self, text):
+        cleaned = self._strip_markdown_json_fence(text)
+        cleaned = cleaned.replace("\ufeff", "").replace("\u200b", "")
+        cleaned = cleaned.replace("“", "\"").replace("”", "\"").replace("‘", "'").replace("’", "'")
+        return cleaned.strip()
+
+    def _extract_json_slice(self, text):
+        start_candidates = [idx for idx in (text.find("{"), text.find("[")) if idx >= 0]
+        if not start_candidates:
+            return text
+        start = min(start_candidates)
+        end_obj = text.rfind("}")
+        end_arr = text.rfind("]")
+        end = max(end_obj, end_arr)
+        if end >= start:
+            return text[start : end + 1]
+        return text[start:]
+
+    def _remove_duplicate_open_braces(self, text):
+        chars = []
+        in_string = False
+        escaped = False
+        i = 0
+        changes = 0
+
+        while i < len(text):
+            ch = text[i]
+            if in_string:
+                chars.append(ch)
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+
+            if ch == '"':
+                in_string = True
+                chars.append(ch)
+                i += 1
+                continue
+
+            if ch == "{":
+                chars.append(ch)
+                j = i + 1
+                while j < len(text) and text[j].isspace():
+                    j += 1
+                if j < len(text) and text[j] == "{":
+                    changes += 1
+                    i = j
+                    continue
+                i += 1
+                continue
+
+            chars.append(ch)
+            i += 1
+
+        return "".join(chars), changes
+
+    def _remove_trailing_commas(self, text):
+        import re
+
+        updated = re.sub(r",(\s*[}\]])", r"\1", text)
+        return updated, int(updated != text)
+
+    def _insert_missing_object_commas(self, text):
+        chars = []
+        in_string = False
+        escaped = False
+        changes = 0
+        i = 0
+
+        while i < len(text):
+            ch = text[i]
+            chars.append(ch)
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+
+            if ch == '"':
+                in_string = True
+                i += 1
+                continue
+
+            if ch == "}":
+                j = i + 1
+                whitespace = []
+                while j < len(text) and text[j].isspace():
+                    whitespace.append(text[j])
+                    j += 1
+                if j < len(text) and text[j] == "{":
+                    chars.extend(whitespace)
+                    chars.append(",")
+                    changes += 1
+                    i = j
+                    continue
+            i += 1
+
+        return "".join(chars), changes
+
+    def _balance_outer_structure(self, text):
+        stripped = text.strip()
+        changes = 0
+        if stripped.startswith("{") and stripped.count("{") > stripped.count("}"):
+            text += "}" * (stripped.count("{") - stripped.count("}"))
+            changes += 1
+        if stripped.startswith("[") and stripped.count("[") > stripped.count("]"):
+            text += "]" * (stripped.count("[") - stripped.count("]"))
+            changes += 1
+        if '"groups"' in text:
+            prefix = text.split('"groups"', 1)[0]
+            if prefix.count("[") > prefix.count("]") + 1:
+                text += "]" * (prefix.count("[") - prefix.count("]") - 1)
+                changes += 1
+            if text.count("[") > text.count("]"):
+                text += "]" * (text.count("[") - text.count("]"))
+                changes += 1
+        return text, changes
+
+    def _format_json_error(self, exc, text, label):
+        if not isinstance(exc, json.JSONDecodeError):
+            return f"{label}: {exc}"
+
+        lines = str(text or "").splitlines()
+        context = ""
+        if 1 <= exc.lineno <= len(lines):
+            line = lines[exc.lineno - 1]
+            pointer = " " * max(0, exc.colno - 1) + "^"
+            context = f" Line {exc.lineno}, column {exc.colno}:\n{line}\n{pointer}"
+        return f"{label}: {exc.msg}.{context}"
+
+    def _validate_story_payload(self, data):
+        errors = []
+        if not isinstance(data, dict):
+            return ["Top-level JSON must be an object with 'story_summary' and 'groups'."]
+
+        if "story_summary" not in data:
+            errors.append("Missing top-level key 'story_summary'.")
+        elif not isinstance(data.get("story_summary"), str):
+            errors.append("'story_summary' must be a string.")
+
+        if "groups" not in data:
+            errors.append("Missing top-level key 'groups'.")
+            return errors
+
+        groups = data.get("groups")
+        if not isinstance(groups, list):
+            errors.append("'groups' must be a list.")
+            return errors
+
+        seen_indexes = set()
+        for pos, group in enumerate(groups, start=1):
+            if not isinstance(group, dict):
+                errors.append(f"groups[{pos}] must be an object.")
+                continue
+
+            missing = [key for key in self.REQUIRED_GROUP_KEYS if key not in group]
+            if missing:
+                errors.append(f"groups[{pos}] is missing keys: {', '.join(missing)}.")
+
+            if "index" in group:
+                try:
+                    index_value = int(group.get("index"))
+                    if index_value <= 0:
+                        errors.append(f"groups[{pos}].index must be greater than 0.")
+                    elif index_value in seen_indexes:
+                        errors.append(f"Duplicate group index {index_value}.")
+                    else:
+                        seen_indexes.add(index_value)
+                except Exception:
+                    errors.append(f"groups[{pos}].index must be an integer.")
+
+            for key in self.REQUIRED_GROUP_KEYS[1:]:
+                if key in group and not isinstance(group.get(key), str):
+                    errors.append(f"groups[{pos}].{key} must be a string.")
+
+        return errors
+
+    def _normalize_group(self, item, fallback_index):
+        if not isinstance(item, dict):
+            item = {}
+
+        normalized = {}
+        raw_index = item.get("index", fallback_index)
+        try:
+            normalized["index"] = int(raw_index)
+        except Exception:
+            normalized["index"] = fallback_index
+
+        for key in self.REQUIRED_GROUP_KEYS[1:]:
+            value = item.get(key, "")
+            if value is None:
+                value = ""
+            elif not isinstance(value, str):
+                value = str(value)
+            normalized[key] = value
+        return normalized
+
+    def _normalize_story_payload(self, data):
+        validation_errors = self._validate_story_payload(data)
+        if validation_errors:
+            raise ValueError(" ".join(validation_errors))
+
+        story_summary = data.get("story_summary", "")
+        groups = data.get("groups", [])
+
+        normalized_groups = []
+        for idx, group in enumerate(groups, start=1):
+            normalized_groups.append(self._normalize_group(group, idx))
+
+        normalized_groups.sort(key=lambda item: item.get("index", 0))
+        for idx, group in enumerate(normalized_groups, start=1):
+            if group.get("index") <= 0:
+                group["index"] = idx
+
+        return {
+            "story_summary": story_summary,
+            "groups": normalized_groups,
+        }
+
+    def _parse_json_preserving_order(self, text):
+        return json.loads(text)
+
+    def _repair_schema_text(self, text):
+        notes = []
+        working = self._basic_cleanup(text)
+        sliced = self._extract_json_slice(working)
+        if sliced != working:
+            notes.append("trimmed extra text outside JSON")
+            working = sliced
+
+        working, duplicate_count = self._remove_duplicate_open_braces(working)
+        if duplicate_count:
+            notes.append(f"removed duplicate '{{' x{duplicate_count}")
+
+        working, comma_cleanup = self._remove_trailing_commas(working)
+        if comma_cleanup:
+            notes.append("removed trailing commas")
+
+        working, inserted_commas = self._insert_missing_object_commas(working)
+        if inserted_commas:
+            notes.append(f"inserted missing commas between objects x{inserted_commas}")
+
+        working, balance_changes = self._balance_outer_structure(working)
+        if balance_changes:
+            notes.append("balanced closing brackets/braces")
+
+        return working, notes
+
+    def fix_json(self, text):
+        original = self._basic_cleanup(text)
+        notes = []
+
+        try:
+            parsed = self._parse_json_preserving_order(original)
+        except json.JSONDecodeError as exc:
+            repaired_text, notes = self._repair_schema_text(text)
+            try:
+                parsed = self._parse_json_preserving_order(repaired_text)
+            except json.JSONDecodeError as repaired_exc:
+                original_error = self._format_json_error(exc, original, "Original JSON parse failed")
+                repaired_error = self._format_json_error(repaired_exc, repaired_text, "Repair attempt still invalid")
+                raise ValueError(f"VRGDG_StoryGroupJsonFixer: {original_error}\n{repaired_error}")
+        else:
+            repaired_text = original
+
+        try:
+            normalized = self._normalize_story_payload(parsed)
+        except ValueError as exc:
+            raise ValueError(f"VRGDG_StoryGroupJsonFixer schema error: {exc}")
+        fixed_text = json.dumps(normalized, indent=2, ensure_ascii=False)
+        was_fixed = bool(notes) or fixed_text.strip() != original.strip()
+        note_text = "; ".join(notes) if notes else ("normalized formatting" if was_fixed else "")
+        return (fixed_text, normalized, was_fixed, note_text)
 
 NODE_CLASS_MAPPINGS = {
     "VRGDG_ShowText": VRGDG_ShowText,
