@@ -4,6 +4,7 @@ import os
 import threading
 import torch
 import time
+import re
 
 import folder_paths
 from aiohttp import web
