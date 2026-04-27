@@ -1,10 +1,10 @@
 import json
 import numbers
 import os
+import re
 import threading
 import torch
 import time
-import re
 
 import folder_paths
 from aiohttp import web
@@ -695,7 +695,15 @@ class VRGDG_MultiStringConcat:
     def INPUT_TYPES(cls):
         required = {
             "string_count": ("INT", {"default": 2, "min": 1, "max": cls.MAX_STRING_SLOTS, "step": 1}),
-            "delimiter": ("STRING", {"default": "\n\n", "multiline": True}),
+            "delimiter": (
+                "STRING",
+                {
+                    "default": "\\n\\n",
+                    "multiline": False,
+                    "placeholder": "Text inserted between strings. Use \\n for newline.",
+                    "tooltip": "Text inserted between each non-empty string. Use \\n for newline, \\t for tab, or clear for no delimiter.",
+                },
+            ),
         }
         for i in range(1, cls.MAX_STRING_SLOTS + 1):
             required[f"string_{i}"] = ("STRING", {"default": "", "multiline": True})
@@ -706,6 +714,10 @@ class VRGDG_MultiStringConcat:
     FUNCTION = "concat"
     CATEGORY = "VRGDG/General"
     DESCRIPTION = "Concatenates multiple multiline string widgets with an optional delimiter."
+
+    @staticmethod
+    def _normalize_delimiter(delimiter):
+        return str(delimiter or "").replace("\\r\\n", "\r\n").replace("\\n", "\n").replace("\\t", "\t")
 
     def concat(self, string_count, delimiter, **kwargs):
         count = max(1, min(self.MAX_STRING_SLOTS, int(string_count or 1)))
@@ -718,7 +730,7 @@ class VRGDG_MultiStringConcat:
             if text == "":
                 continue
             parts.append(text)
-        return (str(delimiter or "").join(parts),)
+        return (self._normalize_delimiter(delimiter).join(parts),)
 
 
 
