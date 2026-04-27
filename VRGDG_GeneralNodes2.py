@@ -1934,6 +1934,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_StoryGroupJsonFixer": VRGDG_StoryGroupJsonFixer,
     "VRGDG_LyricSegmentJsonFixer": VRGDG_LyricSegmentJsonFixer,
     "VRGDG_PromptMapJsonFixer": VRGDG_PromptMapJsonFixer,    
+    "VRGDG_LyricSegmentDurationMerger": VRGDG_LyricSegmentDurationMerger,
     "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
     
 }
@@ -1959,6 +1960,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_StoryGroupJsonFixer": "VRGDG_StoryGroupJsonFixer",
     "VRGDG_LyricSegmentJsonFixer": "VRGDG_LyricSegmentJsonFixer",
     "VRGDG_PromptMapJsonFixer": "VRGDG_PromptMapJsonFixer",
+    "VRGDG_LyricSegmentDurationMerger": "VRGDG_LyricSegmentDurationMerger",
     "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
     
 }
