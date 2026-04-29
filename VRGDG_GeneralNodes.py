@@ -6,6 +6,8 @@ import re
 import shutil
 import sys
 import time
+import random
+
 
 import folder_paths
 from aiohttp import web
@@ -2356,6 +2358,320 @@ class VRGDG_ArchiveLlmBatchFolders:
 
         return (str(trigger), details)
 
+class VRGDG_CyclingTextPicker:
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = ("formatted_text", "selected_item", "selected_items", "wrapped_index", "item_count")
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/General"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "index": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": -999999,
+                        "max": 999999,
+                        "tooltip": (
+                            "The step number used to choose from the list. In index mode this wraps around automatically: "
+                            "with 5 items, index 0 selects item 1, index 4 selects item 5, and index 5 starts over at item 1. "
+                            "In random modes, this still acts like the current step so each frame/batch/index can pick a different item."
+                        ),
+                    },
+                ),
+                "items": (
+                    "STRING",
+                    {
+                        "default": "slow push in\nwide orbit\nhandheld follow\nlow angle reveal\ncrane up",
+                        "multiline": True,
+                        "tooltip": (
+                            "The list of text choices to pick from. Works with one item per line, blank-line-separated chunks, "
+                            "comma-separated text, pipe-separated text, JSON arrays like [\"push in\", \"orbit left\"], "
+                            "Python-style lists/sets, or JSON objects with an items/values/motions key. "
+                            "Example: slow push in, orbit left, handheld follow."
+                        ),
+                    },
+                ),
+                "label": (
+                    "STRING",
+                    {
+                        "default": "Camera Motion",
+                        "multiline": False,
+                        "tooltip": (
+                            "Optional name placed before the selected text in the formatted output. "
+                            "Example label Camera Motion outputs: Camera Motion = slow push in. "
+                            "Leave blank if you only want the selected text with no prefix."
+                        ),
+                    },
+                ),
+                "max_items": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 999999,
+                        "tooltip": (
+                            "Optional limit for how many parsed list items are used. Leave at 0 to use the full list automatically. "
+                            "Example: if the list has 20 items and max_items is 5, only the first 5 items are used and the index loops through those 5."
+                        ),
+                    },
+                ),
+                "pick_count": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 50,
+                        "tooltip": (
+                            "How many items to select at once. Use 1 for a single motion. Use 2 to combine two motions, "
+                            "such as: Camera Motion = start with slow push in then follow with orbit left. "
+                            "For more than 2, the selected items can be output as lines or comma-separated text."
+                        ),
+                    },
+                ),
+                "split_mode": (
+                    ["auto", "json/python", "line", "blank line", "comma", "pipe"],
+                    {
+                        "tooltip": (
+                            "How to split the items text into a list. Auto tries JSON/Python first, then detects blank lines, commas, pipes, or normal lines. "
+                            "Use line for one item per line, blank line for paragraph/chunk lists, comma for a,b,c, pipe for a|b|c, "
+                            "or json/python for structured input only."
+                        ),
+                    },
+                ),
+                "selection_mode": (
+                    ["index", "random", "random no repeat"],
+                    {
+                        "tooltip": (
+                            "How items are chosen. index selects by index and wraps around the list. random picks a seeded random item for each index. "
+                            "random no repeat creates a seeded shuffled order, walks through every item once, then reshuffles for the next cycle. "
+                            "Example with 5 items: indexes 0-4 use all 5 in random order before any item repeats."
+                        ),
+                    },
+                ),
+                "seed": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": (
+                            "Controls the random order for random and random no repeat modes. Same seed plus same index gives the same result, "
+                            "which makes workflows repeatable. Change the seed to get a different random order. Ignored by normal index mode."
+                        ),
+                    },
+                ),
+                "multi_format": (
+                    ["auto", "lines", "comma", "sentence"],
+                    {
+                        "tooltip": (
+                            "How multiple selected items are combined in formatted_text. auto uses the two_item_template when pick_count is 2, "
+                            "otherwise it uses commas. lines outputs each selected item on its own line. comma outputs item1, item2, item3. "
+                            "sentence uses the two_item_template for exactly 2 items."
+                        ),
+                    },
+                ),
+                "two_item_template": (
+                    "STRING",
+                    {
+                        "default": "start with {item1} then follow with {item2}",
+                        "multiline": False,
+                        "tooltip": (
+                            "Editable sentence template used when pick_count is 2 and multi_format is auto or sentence. "
+                            "Keep {item1} and {item2} where you want the selected items inserted. You can also use {items} for both items joined by commas. "
+                            "Example: begin with {item1}, then transition into {item2}."
+                        ),
+                    },
+                ),
+                "keep_empty": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": (
+                            "Whether blank entries count as selectable items. Usually leave this off. "
+                            "If off, blank lines are ignored. If on, blank lines can be selected and may output an empty value, "
+                            "for example: Camera Motion = ."
+                        ),
+                    },
+                ),
+            }
+        }
+
+    @staticmethod
+    def _stringify_item(value):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (dict, list, tuple, set)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except Exception:
+                return str(value)
+        return str(value)
+
+    @classmethod
+    def _items_from_structured_value(cls, value):
+        if isinstance(value, dict):
+            for key in ("items", "values", "motions", "camera_motions", "camera motions"):
+                found = value.get(key)
+                if isinstance(found, (list, tuple, set)):
+                    return [cls._stringify_item(item) for item in found]
+            return [cls._stringify_item(item) for item in value.values()]
+        if isinstance(value, (list, tuple, set)):
+            return [cls._stringify_item(item) for item in value]
+        return None
+
+    @classmethod
+    def _parse_structured_items(cls, text):
+        stripped = str(text or "").strip()
+        if not stripped:
+            return []
+
+        for parser in (json.loads, ast.literal_eval):
+            try:
+                parsed = parser(stripped)
+            except Exception:
+                continue
+            items = cls._items_from_structured_value(parsed)
+            if items is not None:
+                return items
+
+        return None
+
+    @staticmethod
+    def _clean_split_item(item):
+        cleaned = str(item or "").strip()
+        cleaned = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+", "", cleaned)
+        return cleaned.strip().strip(",")
+
+    @classmethod
+    def _split_items(cls, text, split_mode):
+        raw = str(text or "")
+        mode = str(split_mode or "auto").strip().lower()
+
+        if mode in ("auto", "json/python"):
+            structured = cls._parse_structured_items(raw)
+            if structured is not None:
+                return structured
+            if mode == "json/python":
+                return []
+
+        if mode == "blank line" or (mode == "auto" and re.search(r"\n\s*\n", raw)):
+            return re.split(r"\n\s*\n+", raw.strip())
+        if mode == "comma" or (mode == "auto" and "\n" not in raw and "," in raw):
+            return raw.split(",")
+        if mode == "pipe" or (mode == "auto" and "\n" not in raw and "|" in raw):
+            return raw.split("|")
+        return raw.splitlines() if "\n" in raw else [raw]
+
+    @classmethod
+    def _parse_items(cls, text, split_mode, keep_empty):
+        items = [cls._clean_split_item(item) for item in cls._split_items(text, split_mode)]
+        if not keep_empty:
+            items = [item for item in items if item]
+        return items
+
+    @staticmethod
+    def _random_index(index, item_count, seed):
+        rng = random.Random(f"{int(seed)}:{int(index)}:{item_count}")
+        return rng.randrange(item_count)
+
+    @classmethod
+    def _random_no_repeat_index(cls, index, item_count, seed):
+        if item_count <= 1:
+            return 0
+
+        index = int(index)
+        cycle = index // item_count
+        offset = index % item_count
+
+        rng = random.Random(f"{int(seed)}:{cycle}:{item_count}")
+        order = list(range(item_count))
+        rng.shuffle(order)
+
+        if cycle > 0:
+            prev_rng = random.Random(f"{int(seed)}:{cycle - 1}:{item_count}")
+            prev_order = list(range(item_count))
+            prev_rng.shuffle(prev_order)
+            if order[0] == prev_order[-1]:
+                order[0], order[1] = order[1], order[0]
+
+        return order[offset]
+
+    @classmethod
+    def _select_index(cls, index, item_count, selection_mode, seed):
+        mode = str(selection_mode or "index").strip().lower()
+        if mode == "random":
+            return cls._random_index(index, item_count, seed)
+        if mode == "random no repeat":
+            return cls._random_no_repeat_index(index, item_count, seed)
+        return int(index) % item_count
+
+    @staticmethod
+    def _format_selected_items(selected_items, multi_format, two_item_template):
+        count = len(selected_items)
+        if count <= 0:
+            return ""
+        if count == 1:
+            return selected_items[0]
+
+        mode = str(multi_format or "auto").strip().lower()
+        if count == 2 and mode in ("auto", "sentence"):
+            template = str(two_item_template or "").strip()
+            if not template:
+                template = "start with {item1} then follow with {item2}"
+            try:
+                return template.format(
+                    item1=selected_items[0],
+                    item2=selected_items[1],
+                    items=", ".join(selected_items),
+                )
+            except Exception:
+                return f"start with {selected_items[0]} then follow with {selected_items[1]}"
+
+        if mode == "lines":
+            return "\n".join(selected_items)
+        return ", ".join(selected_items)
+
+    def run(
+        self,
+        index,
+        items,
+        label,
+        max_items,
+        pick_count,
+        split_mode,
+        selection_mode,
+        seed,
+        multi_format,
+        two_item_template,
+        keep_empty,
+    ):
+        parsed_items = self._parse_items(items, split_mode, keep_empty)
+        if max_items and max_items > 0:
+            parsed_items = parsed_items[:max_items]
+
+        item_count = len(parsed_items)
+        if item_count <= 0:
+            return ("", "", "", 0, 0)
+
+        selected_indexes = [
+            self._select_index(int(index) + i, item_count, selection_mode, seed)
+            for i in range(max(1, int(pick_count)))
+        ]
+        wrapped_index = selected_indexes[0]
+        selected_items = [parsed_items[i] for i in selected_indexes]
+        selected_item = selected_items[0]
+        selected_items_text = "\n".join(selected_items)
+        formatted_value = self._format_selected_items(
+            selected_items,
+            multi_format,
+            two_item_template,
+        )
+        label_text = str(label or "").strip()
+        formatted_text = f"{label_text} = {formatted_value}" if label_text else formatted_value
+        return (formatted_text, selected_item, selected_items_text, wrapped_index, item_count)
 
 NODE_CLASS_MAPPINGS = {
     "VRGDG_GeneralPromptBatcher": VRGDG_GeneralPromptBatcher,
@@ -2371,6 +2687,9 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_LoadAudioFilePath": VRGDG_LoadAudioFilePath,
     "VRGDG_IntToString": VRGDG_IntToString,
     "VRGDG_ArchiveLlmBatchFolders": VRGDG_ArchiveLlmBatchFolders,
+    "VRGDG_CyclingTextPicker": VRGDG_CyclingTextPicker,
+
+    
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -2387,6 +2706,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LoadAudioFilePath": "VRGDG_LoadAudioFilePath",
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
+    "VRGDG_CyclingTextPicker": "VRGDG Cycling Text Picker",
+    
 }
 
 
