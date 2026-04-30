@@ -2673,6 +2673,65 @@ class VRGDG_CyclingTextPicker:
         formatted_text = f"{label_text} = {formatted_value}" if label_text else formatted_value
         return (formatted_text, selected_item, selected_items_text, wrapped_index, item_count)
 
+class VRGDG_SaveTextAdvancedConcat:
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("text", "file_path")
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/General"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder_name": ("STRING", {"default": "story"}),
+                "file_name": ("STRING", {"default": "story"}),
+                "overwrite": ("BOOLEAN", {"default": False}),
+                "concat": ("BOOLEAN", {"default": False}),
+                "text": ("STRING", {"multiline": True, "forceInput": True}),
+                "trigger": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            }
+        }
+
+    def run(self, folder_name, file_name, overwrite, concat, text, trigger):
+        folder_path, _ = _get_text_files_manual_folder(folder_name)
+        os.makedirs(folder_path, exist_ok=True)
+
+        safe_base_name = _sanitize_text_segment(file_name, "text")
+        if concat:
+            final_name = f"{safe_base_name}.txt"
+        elif overwrite:
+            final_name = f"{safe_base_name}.txt"
+        else:
+            final_name = _next_incremental_prefixed_file_name(folder_path, safe_base_name)
+
+        file_path = os.path.normpath(os.path.join(folder_path, final_name))
+        text_to_write = _coerce_text_payload(text)
+        saved_text = text_to_write
+
+        if concat and os.path.isfile(file_path):
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    existing_text = f.read()
+            except UnicodeDecodeError:
+                with open(file_path, "r", encoding="utf-8-sig") as f:
+                    existing_text = f.read()
+
+            if existing_text and text_to_write:
+                saved_text = existing_text.rstrip("\r\n") + "\n\n" + text_to_write.lstrip("\r\n")
+            elif existing_text:
+                saved_text = existing_text
+
+        print(
+            f"[VRGDG_SaveTextAdvancedConcat] len={len(saved_text)} concat={bool(concat)} "
+            f"start={repr(saved_text[:1])} end={repr(saved_text[-1:])}"
+        )
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(saved_text)
+
+        return (saved_text, file_path)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_GeneralPromptBatcher": VRGDG_GeneralPromptBatcher,
     "VRGDG_PythonCodeRunner": VRGDG_PythonCodeRunner,
@@ -2688,6 +2747,8 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_IntToString": VRGDG_IntToString,
     "VRGDG_ArchiveLlmBatchFolders": VRGDG_ArchiveLlmBatchFolders,
     "VRGDG_CyclingTextPicker": VRGDG_CyclingTextPicker,
+    "VRGDG_SaveTextAdvancedConcat": VRGDG_SaveTextAdvancedConcat,
+    
 
     
 }
@@ -2707,6 +2768,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
     "VRGDG_CyclingTextPicker": "VRGDG Cycling Text Picker",
+    "VRGDG_SaveTextAdvancedConcat": "VRGDG_SaveTextAdvancedConcat",
     
 }
 
