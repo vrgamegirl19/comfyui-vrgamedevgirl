@@ -3332,6 +3332,37 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
     MISSING_MODEL_OPTION = "[No Gemma GGUF found in models/LLM]"
     MISSING_MMPROJ_OPTION = "[No mmproj GGUF found in models/LLM]"
     DEFAULT_N_CTX = 262144
+    LLAMA_CPP_HELP_URLS = (
+        "https://pypi.org/project/llama-cpp-python/",
+        "https://llama-cpp-python.readthedocs.io/en/latest/",
+        "https://github.com/abetlen/llama-cpp-python",
+    )
+
+    @classmethod
+    def _format_supergemma_failure(cls, status: str, used_model: str = "") -> str:
+        status_text = str(status or "").strip() or "Unknown error."
+        used_model_text = str(used_model or "").strip()
+        lines = [
+            "SuperGemma GGUF Chat failed before it could produce text.",
+            "",
+            "Status:",
+            status_text,
+            "",
+            "Most common cause:",
+            "llama-cpp-python is missing, installed into the wrong Python, or installed without the CUDA/CPU wheel your system needs.",
+            "",
+            "What to try:",
+            "1. Install into ComfyUI's embedded Python, not your system Python.",
+            "2. Remove conflicting packages first: llama-cpp-python, llama_cpp_python, llama-cpp, llama_cpp, and llama-cpp-py.",
+            "3. Install a llama-cpp-python wheel that matches your OS, Python version, CUDA version, and GPU architecture.",
+            "4. Restart ComfyUI after installing.",
+            "",
+            "Useful docs:",
+            *cls.LLAMA_CPP_HELP_URLS,
+        ]
+        if used_model_text:
+            lines.extend(["", "Model:", used_model_text])
+        return "\n".join(lines)
 
     @classmethod
     def _supergemma_models_root(cls) -> list[str]:
@@ -3649,6 +3680,9 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
             max_new_tokens=max_new_tokens,
             **kwargs,
         )
+
+        if str(status or "").strip().lower() != "ok":
+            raise Exception(self._format_supergemma_failure(status, used_model))
 
         # --- Remove reasoning / template junk ---
 
