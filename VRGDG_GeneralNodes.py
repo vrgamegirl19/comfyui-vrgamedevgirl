@@ -2418,19 +2418,6 @@ class VRGDG_CyclingTextPicker:
                         ),
                     },
                 ),
-                "pick_count": (
-                    "INT",
-                    {
-                        "default": 1,
-                        "min": 1,
-                        "max": 50,
-                        "tooltip": (
-                            "How many items to select at once. Use 1 for a single motion. Use 2 to combine two motions, "
-                            "such as: Camera Motion = start with slow push in then follow with orbit left. "
-                            "For more than 2, the selected items can be output as lines or comma-separated text."
-                        ),
-                    },
-                ),
                 "split_mode": (
                     ["auto", "json/python", "line", "blank line", "comma", "pipe"],
                     {
@@ -2455,7 +2442,7 @@ class VRGDG_CyclingTextPicker:
                     "INT",
                     {
                         "default": 0,
-                        "min": 0,
+                        "min": -0xFFFFFFFFFFFFFFFF,
                         "max": 0xFFFFFFFFFFFFFFFF,
                         "tooltip": (
                             "Controls the random order for random and random no repeat modes. Same seed plus same index gives the same result, "
@@ -2493,6 +2480,19 @@ class VRGDG_CyclingTextPicker:
                             "Whether blank entries count as selectable items. Usually leave this off. "
                             "If off, blank lines are ignored. If on, blank lines can be selected and may output an empty value, "
                             "for example: Camera Motion = ."
+                        ),
+                    },
+                ),
+                "pick_count": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 50,
+                        "tooltip": (
+                            "How many items to select at once. Use 1 for a single motion. Use 2 to combine two motions, "
+                            "such as: Camera Motion = start with slow push in then follow with orbit left. "
+                            "For more than 2, the selected items can be output as lines or comma-separated text."
                         ),
                     },
                 ),
@@ -2640,13 +2640,13 @@ class VRGDG_CyclingTextPicker:
         items,
         label,
         max_items,
-        pick_count,
         split_mode,
         selection_mode,
         seed,
         multi_format,
         two_item_template,
         keep_empty,
+        pick_count,
     ):
         parsed_items = self._parse_items(items, split_mode, keep_empty)
         if max_items and max_items > 0:
