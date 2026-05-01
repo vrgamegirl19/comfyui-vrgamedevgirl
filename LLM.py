@@ -9,6 +9,9 @@ import json
 import base64
 import re
 import uuid
+import sys
+import subprocess
+import platform
 import urllib.request
 import urllib.error
 import folder_paths
@@ -3752,6 +3755,297 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
         # --- GUARANTEED RETURN ---
         return (text or "", used_model or "", status or "")
 
+
+class VRGDG_LlamaCppDoctor:
+    COMMON_BAD_PACKAGES = [
+        "llama_cpp_python",
+        "llama-cpp",
+        "llama_cpp",
+        "llama-cpp-py",
+    ]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "include_install_help": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Include install cleanup commands and docs for fixing llama-cpp-python.",
+                    },
+                ),
+                "include_nvidia_smi": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Try to read nvidia-smi for driver/GPU details if it is available on PATH.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("status", "report", "support_bundle", "install_hint", "python_exe")
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/LLM"
+
+    @staticmethod
+    def _run_command(command: list[str], timeout: int = 10) -> tuple[int | None, str]:
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                shell=False,
+            )
+            output = "\n".join(
+                part.strip()
+                for part in (result.stdout or "", result.stderr or "")
+                if part and part.strip()
+            )
+            return result.returncode, output.strip()
+        except FileNotFoundError:
+            return None, f"Command not found: {command[0]}"
+        except Exception as e:
+            return None, str(e)
+
+    @classmethod
+    def _pip_show(cls, package: str) -> str:
+        code, output = cls._run_command(
+            [sys.executable, "-m", "pip", "show", package],
+            timeout=15,
+        )
+        if code == 0 and output:
+            keep = []
+            for line in output.splitlines():
+                if line.startswith(("Name:", "Version:", "Location:", "Requires:")):
+                    keep.append(line)
+            return "\n".join(keep) if keep else output
+        return "not installed"
+
+    @staticmethod
+    def _torch_report() -> list[str]:
+        lines = []
+        try:
+            lines.append(f"torch: {getattr(torch, '__version__', 'unknown')}")
+            cuda_version = getattr(getattr(torch, "version", None), "cuda", None)
+            lines.append(f"torch CUDA build: {cuda_version or 'not reported'}")
+            cuda_available = bool(torch.cuda.is_available())
+            lines.append(f"torch.cuda.is_available: {cuda_available}")
+            if cuda_available:
+                lines.append(f"torch CUDA device count: {torch.cuda.device_count()}")
+                current = torch.cuda.current_device()
+                lines.append(f"torch current CUDA device: {current}")
+                lines.append(f"torch CUDA device name: {torch.cuda.get_device_name(current)}")
+        except Exception as e:
+            lines.append(f"torch check failed: {e}")
+        return lines
+
+    @staticmethod
+    def _llama_cpp_report() -> tuple[bool, list[str]]:
+        lines = []
+        try:
+            import llama_cpp
+            from llama_cpp import Llama
+
+            lines.append("llama_cpp import: OK")
+            lines.append(f"llama-cpp-python version: {getattr(llama_cpp, '__version__', 'unknown')}")
+            lines.append(f"llama_cpp module path: {getattr(llama_cpp, '__file__', 'unknown')}")
+            lines.append(f"Llama class: {Llama}")
+            return True, lines
+        except Exception as e:
+            lines.append("llama_cpp import: FAILED")
+            lines.append(f"error: {e}")
+            return False, lines
+
+    @staticmethod
+    def _llama_cpp_system_info() -> str:
+        try:
+            from llama_cpp import llama_cpp as llama_cpp_lib
+
+            info = llama_cpp_lib.llama_print_system_info()
+            if isinstance(info, bytes):
+                info = info.decode("utf-8", errors="replace")
+            return str(info or "").strip()
+        except Exception as e:
+            return f"not available: {e}"
+
+    @staticmethod
+    def _install_hint() -> str:
+        python_exe = sys.executable
+        return "\n".join(
+            [
+                "Install/fix checklist:",
+                "",
+                "1. Use the Python that is running ComfyUI:",
+                f"   {python_exe} -m pip install llama-cpp-python",
+                "",
+                "2. Remove common wrong/conflicting packages first:",
+                f"   {python_exe} -m pip uninstall -y llama-cpp-python llama_cpp_python llama-cpp llama_cpp llama-cpp-py",
+                "",
+                "3. Install the wheel that matches the user's OS, Python version, CUDA version, and GPU architecture.",
+                "",
+                "Official CUDA wheel indexes currently cover CUDA 12.1 through 12.5:",
+                "   https://pypi.org/project/llama-cpp-python/",
+                "   https://llama-cpp-python.readthedocs.io/en/latest/",
+                "",
+                "For RTX 50-series/Blackwell systems, use a wheel built for Blackwell and the matching CUDA runtime.",
+                "",
+                "4. Restart ComfyUI after installing or changing llama-cpp-python.",
+            ]
+        )
+
+    @staticmethod
+    def _diagnosis_notes(import_ok: bool, torch_lines: list[str], nvidia_smi_output: str) -> list[str]:
+        notes = []
+        torch_text = "\n".join(torch_lines).lower()
+        nvidia_text = str(nvidia_smi_output or "").lower()
+        if import_ok:
+            notes.append("llama_cpp import is OK, so `from llama_cpp import Llama` should work in this ComfyUI Python.")
+        else:
+            notes.append("llama_cpp import failed. The most likely issue is missing/wrong llama-cpp-python installation.")
+        if "torch.cuda.is_available: true" in torch_text:
+            notes.append("PyTorch can see CUDA, so the NVIDIA driver/GPU path is visible to ComfyUI.")
+        elif "torch.cuda.is_available: false" in torch_text:
+            notes.append("PyTorch cannot see CUDA. Fix NVIDIA driver/CUDA/PyTorch before expecting GPU offload.")
+        if "rtx 50" in nvidia_text or "rtx 5090" in nvidia_text or "rtx 5080" in nvidia_text or "blackwell" in nvidia_text:
+            notes.append("Detected an RTX 50-series/Blackwell GPU. Use a llama-cpp-python wheel built for Blackwell, not a generic CPU wheel.")
+        if import_ok and "torch.cuda.is_available: true" in torch_text:
+            notes.append("This report proves imports and CUDA visibility, but not that llama.cpp is actually GPU-offloading a GGUF. A model load test is needed for that.")
+        return notes
+
+    @staticmethod
+    def _support_bundle(
+        status: str,
+        python_exe: str,
+        llama_lines: list[str],
+        pip_sections: list[tuple[str, str]],
+        torch_lines: list[str],
+        nvidia_smi_output: str,
+        llama_system_info: str,
+        diagnosis_notes: list[str],
+        install_hint: str,
+    ) -> str:
+        lines = [
+            "COPY/PASTE SUPPORT BUNDLE - VRGDG Llama CPP Doctor",
+            "",
+            "Problem:",
+            "I am trying to use a ComfyUI custom node that imports `from llama_cpp import Llama` for GGUF/SuperGemma chat.",
+            "Please diagnose whether llama-cpp-python is installed correctly and what I should do next.",
+            "",
+            f"Doctor status: {status}",
+            "",
+            "ComfyUI Python:",
+            python_exe,
+            "",
+            "llama_cpp import/version/path:",
+            *llama_lines,
+            "",
+            "pip package checks:",
+        ]
+        for package, info in pip_sections:
+            lines.extend([f"[{package}]", info, ""])
+        lines.extend([
+            "Torch/CUDA:",
+            *torch_lines,
+            "",
+            "nvidia-smi:",
+            nvidia_smi_output or "not available",
+            "",
+            "llama.cpp system info:",
+            llama_system_info or "not available",
+            "",
+            "Doctor notes:",
+        ])
+        lines.extend(f"- {note}" for note in diagnosis_notes)
+        if install_hint:
+            lines.extend(["", install_hint])
+        lines.extend([
+            "",
+            "What I need help with:",
+            "1. Tell me if this is installed into the correct Python environment.",
+            "2. Tell me if I have conflicting packages installed.",
+            "3. Tell me which llama-cpp-python wheel/install command best matches my Python, OS, CUDA, and GPU.",
+            "4. Tell me what command I should run next, and whether I need to restart ComfyUI.",
+        ])
+        return "\n".join(lines)
+
+    def run(
+        self,
+        include_install_help: bool,
+        include_nvidia_smi: bool,
+    ) -> Tuple[str, str, str, str, str]:
+        python_exe = sys.executable
+        import_ok, llama_lines = self._llama_cpp_report()
+        status = "OK" if import_ok else "ERROR"
+        torch_lines = self._torch_report()
+        pip_sections = [("llama-cpp-python", self._pip_show("llama-cpp-python"))]
+        for package in self.COMMON_BAD_PACKAGES:
+            pip_sections.append((package, self._pip_show(package)))
+
+        nvidia_smi_output = ""
+        if include_nvidia_smi:
+            code, output = self._run_command(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,driver_version,memory.total",
+                    "--format=csv,noheader",
+                ],
+                timeout=8,
+            )
+            nvidia_smi_output = output if output else f"exit code: {code}"
+
+        llama_system_info = self._llama_cpp_system_info()
+        diagnosis_notes = self._diagnosis_notes(import_ok, torch_lines, nvidia_smi_output)
+        install_hint = self._install_hint() if include_install_help else ""
+
+        lines = [
+            "VRGDG Llama CPP Doctor",
+            "",
+            "Python:",
+            f"executable: {python_exe}",
+            f"version: {sys.version.replace(os.linesep, ' ')}",
+            f"platform: {platform.platform()}",
+            f"machine: {platform.machine()}",
+            "",
+            "llama_cpp:",
+            *llama_lines,
+            "",
+            "pip package check:",
+        ]
+
+        for package, info in pip_sections:
+            lines.extend([f"{package}:", info, ""])
+
+        lines.extend(["Torch/CUDA:", *torch_lines])
+
+        if include_nvidia_smi:
+            lines.extend(["", "nvidia-smi:"])
+            lines.append(nvidia_smi_output)
+
+        lines.extend(["", "llama.cpp system info:", llama_system_info or "not available"])
+        lines.extend(["", "Doctor notes:"])
+        lines.extend(f"- {note}" for note in diagnosis_notes)
+
+        if install_hint:
+            lines.extend(["", install_hint])
+
+        support_bundle = self._support_bundle(
+            status=status,
+            python_exe=python_exe,
+            llama_lines=llama_lines,
+            pip_sections=pip_sections,
+            torch_lines=torch_lines,
+            nvidia_smi_output=nvidia_smi_output,
+            llama_system_info=llama_system_info,
+            diagnosis_notes=diagnosis_notes,
+            install_hint=install_hint,
+        )
+
+        return (status, "\n".join(lines), support_bundle, install_hint, python_exe)
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_NanoBananaPro": VRGDG_NanoBananaPro,
     "VRGDG_LLM_Multi": VRGDG_LLM_Multi,
@@ -3761,6 +4055,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_GeneralVLM": VRGDG_GeneralVLM,
     "VRGDG_GeneralGGUF": VRGDG_GeneralGGUF,    
     "VRGDG_SuperGemmaGGUFChat": VRGDG_SuperGemmaGGUFChat,    
+    "VRGDG_LlamaCppDoctor": VRGDG_LlamaCppDoctor,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -3772,4 +4067,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_GeneralVLM": "🧠 VRGDG General VLM 🧠",
     "VRGDG_GeneralGGUF": "🧠 VRGDG General GGUF 🧠",    
     "VRGDG_SuperGemmaGGUFChat": "🧠 VRGDG SuperGemma GGUF Chat 🧠",    
+    "VRGDG_LlamaCppDoctor": "🩺 VRGDG Llama CPP Doctor 🩺",
 }
