@@ -40,11 +40,14 @@ class FastFilmGrain:
 
     def apply_grain(self, images, grain_intensity, saturation_mix, batch_size):
         device = comfy.model_management.get_torch_device()
-        images = images.to(device)
+
+        # batch_size==0 (allowed by INPUT_TYPES min) would crash range();
+        # treat as "process everything in a single batch".
+        step = batch_size if batch_size > 0 else images.shape[0]
 
         outputs = []
-        for i in range(0, images.shape[0], batch_size):
-            batch = images[i:i + batch_size]
+        for i in range(0, images.shape[0], step):
+            batch = images[i:i + step].to(device)
             grain = torch.randn_like(batch)
 
             grain[:, :, :, 0] *= 2.0  # red
@@ -55,7 +58,8 @@ class FastFilmGrain:
 
             output = batch + grain * grain_intensity
             output = output.clamp(0.0, 1.0)
-            outputs.append(output)
+            outputs.append(output.cpu())
+            del batch, grain, gray, output
 
         output = torch.cat(outputs, dim=0)
         output = output.to(comfy.model_management.intermediate_device())
