@@ -2674,8 +2674,8 @@ class VRGDG_CyclingTextPicker:
         return (formatted_text, selected_item, selected_items_text, wrapped_index, item_count)
 
 class VRGDG_SaveTextAdvancedConcat:
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("text", "file_path")
+    RETURN_TYPES = ("STRING", "STRING", "JSON", "STRING")
+    RETURN_NAMES = ("text", "file_path", "json", "json_string")
     FUNCTION = "run"
     CATEGORY = "VRGDG/General"
 
@@ -2692,6 +2692,47 @@ class VRGDG_SaveTextAdvancedConcat:
             }
         }
 
+    def _clean_prompt_for_json(self, text):
+        return "\n".join(
+            line.rstrip()
+            for line in str(text or "").splitlines()
+            if line.strip()
+        ).strip()
+
+    def _load_existing_prompt_json(self, json_path, existing_text):
+        if os.path.isfile(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    prompts = [
+                        str(loaded[key])
+                        for key in sorted(
+                            loaded.keys(),
+                            key=lambda key: int(key[6:]) if re.fullmatch(r"Prompt\d+", key) else 999999,
+                        )
+                        if str(loaded[key]).strip()
+                    ]
+                    if prompts:
+                        return {
+                            f"Prompt{i}": prompt
+                            for i, prompt in enumerate(prompts, start=1)
+                        }
+            except Exception as exc:
+                print(f"[VRGDG_SaveTextAdvancedConcat] Could not read JSON sidecar: {exc}")
+
+        cleaned_existing = self._clean_prompt_for_json(existing_text)
+        if cleaned_existing:
+            return {"Prompt1": cleaned_existing}
+        return {}
+
+    def _build_prompt_json(self, existing_prompt_json, text_to_add):
+        prompt_json = dict(existing_prompt_json or {})
+        cleaned_prompt = self._clean_prompt_for_json(text_to_add)
+        if cleaned_prompt:
+            prompt_json[f"Prompt{len(prompt_json) + 1}"] = cleaned_prompt
+        return prompt_json, json.dumps(prompt_json, ensure_ascii=False, indent=2)
+
     def run(self, folder_name, file_name, overwrite, concat, text, trigger):
         folder_path, _ = _get_text_files_manual_folder(folder_name)
         os.makedirs(folder_path, exist_ok=True)
@@ -2705,8 +2746,10 @@ class VRGDG_SaveTextAdvancedConcat:
             final_name = _next_incremental_prefixed_file_name(folder_path, safe_base_name)
 
         file_path = os.path.normpath(os.path.join(folder_path, final_name))
+        json_path = os.path.splitext(file_path)[0] + ".json"
         text_to_write = _coerce_text_payload(text)
         saved_text = text_to_write
+        existing_text = ""
 
         if concat and os.path.isfile(file_path):
             try:
@@ -2729,7 +2772,16 @@ class VRGDG_SaveTextAdvancedConcat:
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(saved_text)
 
-        return (saved_text, file_path)
+        existing_prompt_json = {}
+        if concat:
+            existing_prompt_json = self._load_existing_prompt_json(json_path, existing_text)
+
+        prompt_json, prompt_json_string = self._build_prompt_json(existing_prompt_json, text_to_write)
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            f.write(prompt_json_string)
+
+        return (saved_text, file_path, prompt_json, prompt_json_string)
 
 
 NODE_CLASS_MAPPINGS = {
