@@ -964,7 +964,30 @@ class VRGDG_LoadAudioSplitUpload:
         return (meta, requested_total, *tuple(segments))
 
 
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
+try:
+    from transformers import WhisperProcessor, WhisperForConditionalGeneration
+    _WHISPER_IMPORT_ERROR = None
+except Exception as _e:
+    # transformers' Whisper components transitively import flash_attn,
+    # which is unavailable on macOS and on some CPU-only setups. Defer
+    # the failure to use-time so the rest of the module still loads.
+    # See vrgamegirl19/comfyui-vrgamedevgirl#66.
+    WhisperProcessor = None
+    WhisperForConditionalGeneration = None
+    _WHISPER_IMPORT_ERROR = _e
+
+
+def _require_whisper():
+    if WhisperProcessor is None or WhisperForConditionalGeneration is None:
+        raise RuntimeError(
+            "Whisper transcription requires `transformers`'s Whisper components, "
+            "which failed to import in this environment "
+            f"({type(_WHISPER_IMPORT_ERROR).__name__}: {_WHISPER_IMPORT_ERROR}). "
+            "On macOS this is commonly because `flash_attn` is not available. "
+            "Either install a working transformers + flash_attn stack, or avoid "
+            "the VRGDG_TranscribeLyric / *_HUMO_Transcribe nodes."
+        ) from _WHISPER_IMPORT_ERROR
+
 
 class VRGDG_TranscribeLyric:
     @classmethod
@@ -1013,6 +1036,7 @@ class VRGDG_TranscribeLyric:
             waveform = waveform.mean(dim=0)
         waveform = waveform.squeeze()
 
+        _require_whisper()
         model_name = "openai/whisper-large-v3"
         processor = WhisperProcessor.from_pretrained(model_name)
         model = WhisperForConditionalGeneration.from_pretrained(model_name).to(device).eval()
@@ -1057,7 +1081,9 @@ class VRGDG_TranscribeLyric:
 
 import random
 import re
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
+# Whisper imports are guarded above; the duplicate import here was redundant
+# and would re-raise on macOS / CPU-only setups even when guarded above. See
+# `_require_whisper` above.
 
 class VRGDG_LoadAudioSplit_HUMO_Transcribe:
     RETURN_TYPES = ("DICT", "FLOAT", "STRING") + tuple(["AUDIO"] * 50)
@@ -1142,6 +1168,7 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
         transcriptions = []
 
         if enable_lyrics:
+            _require_whisper()
             device = "cuda" if torch.cuda.is_available() else "cpu"
             processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
             model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3").to(device).eval()
@@ -1712,6 +1739,7 @@ class VRGDG_LoadAudioSplit_HUMO_Transcribe:
         transcriptions = []
 
         if enable_lyrics:
+            _require_whisper()
             device = "cuda" if torch.cuda.is_available() else "cpu"
             processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
             model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v3").to(device).eval()
