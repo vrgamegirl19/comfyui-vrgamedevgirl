@@ -2,8 +2,47 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 
 const NODE_NAME = "VRGDG_PromptCreatorUI_V2";
+const PART2_NODE_NAME = "VRGDG_Part2WorkflowUI";
 const MODAL_ID = "vrgdg-prompt-creator-ui-v2-modal";
+const PART2_MODAL_ID = "vrgdg-prompt-creator-part2-ui-modal";
 const BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM.png?v=20260505_2020_refresh", import.meta.url).href;
+const PART2_BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM-002.png?v=20260505_224432", import.meta.url).href;
+const PART2_NODE_IDS = {
+  modelLoader: 271,
+  settings: 736,
+  useSrtSwitch: 837,
+  llmI2V: 811,
+  llmT2I: 805,
+  camera: 830,
+  promptJson: 543,
+  zImageModels: 797,
+};
+const PART2_MODEL_FIELDS = [
+  { nodeId: 271, key: "unet_name", label: "LTX GGUF model" },
+  { nodeId: 271, key: "vae_name", label: "Video VAE" },
+  { nodeId: 271, key: "clip_name1", label: "Gemma Clip Model" },
+  { nodeId: 271, key: "clip_name2", label: "Text Projecton clip model" },
+  { nodeId: 271, key: "model_name", label: "Latent Upscaler" },
+  { nodeId: 271, key: "vae_name_1", label: "Audio VAE" },
+  { nodeId: 797, key: "lora_name", label: "Z-Image Lora" },
+  { nodeId: 797, key: "unet_name", label: "Z-Image Turbo Model" },
+  { nodeId: 797, key: "clip_name", label: "Z-Image Clip" },
+  { nodeId: 797, key: "vae_name", label: "Z-Image VAE" },
+];
+const PART2_SETTING_FIELDS = [
+  { key: "value", label: "Frames Per Second", type: "number", step: "1", note: "Must match the FPS used in the Part 1 workflow." },
+  { key: "value_1", label: "Width", type: "number", step: "8" },
+  { key: "value_2", label: "Height", type: "number", step: "8" },
+  { key: "value_3", label: "Seed", type: "number", step: "1" },
+  {
+    key: "value_4",
+    label: "Scene Duration When Fixed",
+    type: "number",
+    step: "1",
+    fixedDurationOnly: true,
+    note: "Only shown when Use SRT Duration is OFF. Going over 20 seconds can cause OOM issues during video creation.",
+  },
+];
 const TEXT_FIELDS = [
   {
     key: "full_lyrics",
@@ -56,6 +95,8 @@ const SUBGRAPH_WIDGET_ORDER = [
   "section_4_text",
   "section_4_text_1",
   "language",
+  "switch",
+  "scene_duration_seconds",
 ];
 const SUBGRAPH_FIELDS = [
   {
@@ -116,6 +157,22 @@ const SUBGRAPH_FIELDS = [
       "chinese",
     ],
     note: "Language hint for Whisper transcription. Use auto to let Whisper detect it, or pick the song language for more consistent lyric timing.",
+  },
+  {
+    key: "switch",
+    label: "Use SRT Durations",
+    type: "boolean",
+    defaultValue: "true",
+    note: "ON uses the SRT/beat timing for scene lengths. OFF uses one fixed scene duration instead.",
+  },
+  {
+    key: "scene_duration_seconds",
+    label: "Fixed Scene Duration Seconds",
+    type: "number",
+    step: "0.1",
+    defaultValue: "4.0",
+    fixedDurationOnly: true,
+    note: "Only used when Use SRT Durations is OFF. Choose the fixed duration for each scene in seconds. Going over 20 seconds can cause OOM issues during video creation.",
   },
 ];
 
@@ -185,12 +242,15 @@ function createPathHint() {
 }
 
 function createSubgraphInput(field) {
-  const input = field.type === "select" ? document.createElement("select") : document.createElement("input");
-  if (field.type === "select") {
-    for (const optionValue of field.options || []) {
+  const input = field.type === "select" || field.type === "boolean" ? document.createElement("select") : document.createElement("input");
+  if (field.type === "select" || field.type === "boolean") {
+    const options = field.type === "boolean" ? ["true", "false"] : field.options || [];
+    for (const optionValue of options) {
       const option = document.createElement("option");
       option.value = optionValue;
-      option.textContent = optionValue;
+      option.textContent = field.type === "boolean"
+        ? (optionValue === "true" ? "ON" : "OFF")
+        : optionValue;
       input.appendChild(option);
     }
   } else {
@@ -212,6 +272,9 @@ function createSubgraphInput(field) {
 
 function coerceSubgraphValue(field, value) {
   const text = String(value ?? "").trim();
+  if (field.type === "boolean") {
+    return text.toLowerCase() !== "false";
+  }
   if (field.type !== "number") {
     return text;
   }
@@ -467,6 +530,7 @@ function ensureModal() {
   `;
 
   const subgraphInputs = {};
+  const subgraphFieldWraps = {};
   for (const field of SUBGRAPH_FIELDS) {
     const fieldWrap = document.createElement("label");
     fieldWrap.style.cssText = "display: block; font-size: 12px; color: #cbd5e1;";
@@ -489,6 +553,7 @@ function ensureModal() {
     fieldWrap.append(fieldLabel, input, fieldNote);
     subgraphGrid.appendChild(fieldWrap);
     subgraphInputs[field.key] = input;
+    subgraphFieldWraps[field.key] = fieldWrap;
   }
 
   subgraphSection.append(subgraphTitleRow, subgraphGrid);
@@ -585,6 +650,7 @@ function ensureModal() {
     textareas,
     pathHints,
     subgraphInputs,
+    subgraphFieldWraps,
   };
 
   function setStatus(message, isError = false) {
@@ -606,6 +672,15 @@ function ensureModal() {
     }
     for (const field of SUBGRAPH_FIELDS) {
       state.node.properties[`vrgdg_test_popup_subgraph_${field.key}`] = String(subgraphInputs[field.key].value || "");
+    }
+  }
+
+  function updateSubgraphVisibility() {
+    const useSrtDurations = String(subgraphInputs.switch?.value || "true").toLowerCase() !== "false";
+    for (const field of SUBGRAPH_FIELDS) {
+      const fieldWrap = subgraphFieldWraps[field.key];
+      if (!fieldWrap || !field.fixedDurationOnly) continue;
+      fieldWrap.style.display = useSrtDurations ? "none" : "block";
     }
   }
 
@@ -707,8 +782,14 @@ function ensureModal() {
     textareas[field.key].addEventListener("input", syncNodeProperties);
   }
   for (const field of SUBGRAPH_FIELDS) {
-    subgraphInputs[field.key].addEventListener("input", syncNodeProperties);
-    subgraphInputs[field.key].addEventListener("change", syncNodeProperties);
+    subgraphInputs[field.key].addEventListener("input", () => {
+      syncNodeProperties();
+      updateSubgraphVisibility();
+    });
+    subgraphInputs[field.key].addEventListener("change", () => {
+      syncNodeProperties();
+      updateSubgraphVisibility();
+    });
   }
 
   overlay.__vrgdgOpenForNode = async (node) => {
@@ -727,6 +808,7 @@ function ensureModal() {
         : String(liveValue ?? field.defaultValue ?? "");
     }
     syncNodeProperties();
+    updateSubgraphVisibility();
 
     const audioName = String(state.node.properties.vrgdg_test_popup_audio_filename || "");
     audioFileName.textContent = audioName ? `Current uploaded audio: ${audioName}` : "No audio file selected.";
@@ -746,14 +828,423 @@ function ensureModal() {
   return overlay;
 }
 
+function getPart2Node(nodeId) {
+  return app.graph?.getNodeById?.(nodeId) || null;
+}
+
+function getPart2Widget(node, name, fallbackIndex = -1) {
+  if (!node) return null;
+  const widgets = node.widgets || [];
+  return widgets.find((widget) => widget?.name === name) || widgets[fallbackIndex] || null;
+}
+
+function getPart2WidgetOptions(widget) {
+  const options = widget?.options || {};
+  const values = options.values || options.items || options.value || [];
+  return Array.isArray(values) ? values.map((value) => String(value)) : [];
+}
+
+function getPart2WidgetValue(nodeId, name, fallbackIndex = -1) {
+  const node = getPart2Node(nodeId);
+  const widget = getPart2Widget(node, name, fallbackIndex);
+  if (widget) return widget.value;
+  if (Array.isArray(node?.widgets_values) && fallbackIndex >= 0) return node.widgets_values[fallbackIndex];
+  return "";
+}
+
+function setPart2WidgetValue(nodeId, name, value, fallbackIndex = -1) {
+  const node = getPart2Node(nodeId);
+  if (!node) return false;
+
+  const widget = getPart2Widget(node, name, fallbackIndex);
+  if (widget) {
+    widget.value = value;
+    widget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+  }
+
+  if (Array.isArray(node.widgets_values)) {
+    const widgetIndex = (node.widgets || []).findIndex((item) => item?.name === name);
+    const resolvedIndex = widgetIndex >= 0 ? widgetIndex : fallbackIndex;
+    if (resolvedIndex >= 0) node.widgets_values[resolvedIndex] = value;
+  }
+
+  app.graph?.setDirtyCanvas?.(true, true);
+  return true;
+}
+
+function fillSelectOptions(select, options, currentValue) {
+  const optionSet = new Set(options.map((value) => String(value)));
+  if (currentValue !== undefined && currentValue !== null && String(currentValue) && !optionSet.has(String(currentValue))) {
+    optionSet.add(String(currentValue));
+  }
+  select.innerHTML = "";
+  for (const value of optionSet) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  }
+  select.value = String(currentValue ?? "");
+}
+
+function createPart2Field(labelText, control, noteText = "") {
+  const wrapper = document.createElement("label");
+  wrapper.style.cssText = "display: block; font-size: 12px; color: #cbd5e1;";
+
+  const label = document.createElement("div");
+  label.textContent = labelText;
+  label.style.cssText = "margin-bottom: 5px; font-weight: 700;";
+
+  const note = document.createElement("div");
+  note.textContent = noteText || "";
+  note.style.cssText = `
+    margin-top: 5px;
+    color: #94a3b8;
+    font-size: 11px;
+    line-height: 1.35;
+  `;
+
+  wrapper.append(label, control, note);
+  return wrapper;
+}
+
+function stylePart2Input(input) {
+  input.style.cssText = `
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #4b5563;
+    background: #0d1217;
+    color: #f3f4f6;
+    font-size: 13px;
+  `;
+  return input;
+}
+
+function createPart2Section(titleText, hintText = "") {
+  const section = document.createElement("div");
+  section.style.cssText = `
+    border: 1px solid #364152;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 16px;
+    background: #14191f;
+  `;
+
+  const title = document.createElement("div");
+  title.textContent = titleText;
+  title.style.cssText = "font-size: 15px; font-weight: 700;";
+
+  const hint = document.createElement("div");
+  hint.textContent = hintText;
+  hint.style.cssText = "margin-top: 4px; margin-bottom: 12px; font-size: 12px; color: #94a3b8;";
+
+  section.append(title, hint);
+  return section;
+}
+
+function ensurePart2Modal() {
+  let overlay = document.getElementById(PART2_MODAL_ID);
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = PART2_MODAL_ID;
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.52);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 16px;
+  `;
+
+  const panel = document.createElement("div");
+  panel.style.cssText = `
+    width: min(1500px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    background: #1f2328;
+    color: #f3f4f6;
+    border: 1px solid #364152;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    padding: 18px;
+    font-family: Arial, sans-serif;
+  `;
+
+  const titleRow = document.createElement("div");
+  titleRow.style.cssText = `
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  `;
+
+  const banner = document.createElement("img");
+  banner.src = PART2_BANNER_URL;
+  banner.alt = "VRGDG Part 2 Workflow banner";
+  banner.style.cssText = `
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+    object-fit: contain;
+    border-radius: 10px;
+    border: 1px solid #364152;
+    margin-bottom: 14px;
+  `;
+
+  const titleBlock = document.createElement("div");
+  const title = document.createElement("div");
+  title.textContent = "Part 2 Workflow Controls";
+  title.style.cssText = "font-size: 20px; font-weight: 700;";
+  const subtitle = document.createElement("div");
+  subtitle.textContent = "Control model pickers, render settings, SRT/fixed timing, camera motions, and copied prompt JSON.";
+  subtitle.style.cssText = "margin-top: 4px; font-size: 13px; color: #94a3b8;";
+  titleBlock.append(title, subtitle);
+
+  const closeButton = createButton(
+    "Close UI Window",
+    "border: 1px solid #dc2626; background: #ef4444; color: white; padding: 13px 20px; font-size: 14px; font-weight: 700;"
+  );
+
+  const topApplyButton = createButton(
+    "Apply Part 2 Settings",
+    "border: 1px solid #b45309; background: #d97706; color: white; font-weight: 700;"
+  );
+
+  const titleActions = document.createElement("div");
+  titleActions.style.cssText = "display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end;";
+  titleActions.append(topApplyButton, closeButton);
+
+  titleRow.append(titleBlock, titleActions);
+
+  const controls = {
+    modelSelects: {},
+    settings: {},
+    useSrt: null,
+    cameraItems: null,
+    cameraMode: null,
+    promptJson: null,
+    wrappers: {},
+  };
+
+  const modelSection = createPart2Section("Models", "Model dropdowns for LTX 2.3, Z-image and the LLM node.");
+  const modelGrid = document.createElement("div");
+  modelGrid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px;";
+
+  for (const field of PART2_MODEL_FIELDS) {
+    const select = stylePart2Input(document.createElement("select"));
+    controls.modelSelects[`${field.nodeId}:${field.key}`] = select;
+    modelGrid.appendChild(createPart2Field(field.label, select));
+  }
+
+  const llmSelect = stylePart2Input(document.createElement("select"));
+  controls.modelSelects["llm"] = llmSelect;
+  modelGrid.appendChild(createPart2Field("LLM Model (Nodes 811 and 805)", llmSelect, "Updates both LLM nodes."));
+  modelSection.appendChild(modelGrid);
+
+  const settingsSection = createPart2Section("Main Settings", "FPS should match the FPS used in Part 1.");
+  const settingsGrid = document.createElement("div");
+  settingsGrid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;";
+
+  const useSrtSelect = stylePart2Input(document.createElement("select"));
+  for (const [value, label] of [["true", "ON"], ["false", "OFF"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    useSrtSelect.appendChild(option);
+  }
+  controls.useSrt = useSrtSelect;
+  settingsGrid.appendChild(createPart2Field("Use SRT Duration", useSrtSelect, "Match this to the Part 1 workflow."));
+
+  const orderedPart2Settings = [
+    ...PART2_SETTING_FIELDS.filter((field) => field.fixedDurationOnly),
+    ...PART2_SETTING_FIELDS.filter((field) => !field.fixedDurationOnly),
+  ];
+  for (const field of orderedPart2Settings) {
+    const input = stylePart2Input(document.createElement("input"));
+    input.type = field.type || "text";
+    if (field.step) input.step = field.step;
+    controls.settings[field.key] = input;
+    const wrapper = createPart2Field(field.label, input, field.note);
+    controls.wrappers[field.key] = wrapper;
+    settingsGrid.appendChild(wrapper);
+  }
+  settingsSection.appendChild(settingsGrid);
+
+  const cameraSection = createPart2Section("Camera Motions", "Edit the camera motion list if you want a custom list or leave as is. Choose how the LLM receives motions for each scene.");
+  const cameraMode = stylePart2Input(document.createElement("select"));
+  for (const [value, label] of [["index", "Index-based"], ["random", "Random"], ["random no repeat", "Random No Repeat"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    cameraMode.appendChild(option);
+  }
+  controls.cameraMode = cameraMode;
+  cameraSection.appendChild(createPart2Field("Selection Mode", cameraMode, "Index-based walks through the list in order and wraps. Random picks a seeded random motion. Random No Repeat walks a seeded shuffled order before repeating."));
+
+  const cameraItems = document.createElement("textarea");
+  cameraItems.rows = 8;
+  stylePart2Input(cameraItems);
+  cameraItems.style.resize = "vertical";
+  controls.cameraItems = cameraItems;
+  cameraSection.appendChild(createPart2Field("Camera Motion List", cameraItems, "One motion per line."));
+
+  const promptSection = createPart2Section("Prompt JSON From Part 1", "Paste the JSON text created by the previous workflow in here.");
+  const promptJson = document.createElement("textarea");
+  promptJson.rows = 12;
+  stylePart2Input(promptJson);
+  promptJson.style.resize = "vertical";
+  controls.promptJson = promptJson;
+  promptSection.appendChild(createPart2Field("Prompt JSON", promptJson, "This updates the Prompt Splitter node."));
+
+  const status = document.createElement("div");
+  status.style.cssText = `
+    min-height: 20px;
+    margin-top: 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #cbd5e1;
+    white-space: pre-wrap;
+  `;
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap;";
+  const applyButton = createButton(
+    "Apply Part 2 Settings",
+    "border: 1px solid #b45309; background: #d97706; color: white; font-weight: 700;"
+  );
+  actions.append(applyButton);
+
+  panel.append(banner, titleRow, modelSection, settingsSection, cameraSection, promptSection, status, actions);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  function setStatus(message, isError = false) {
+    status.textContent = message || "";
+    status.style.color = isError ? "#fca5a5" : "#cbd5e1";
+  }
+
+  function closeModal() {
+    overlay.style.display = "none";
+    setStatus("");
+  }
+
+  function updateFixedDurationVisibility() {
+    const useSrt = String(controls.useSrt.value || "true").toLowerCase() !== "false";
+    if (controls.wrappers.value_4) {
+      controls.wrappers.value_4.style.display = useSrt ? "none" : "block";
+    }
+  }
+
+  function refreshPart2Controls() {
+    const missing = [];
+
+    for (const field of PART2_MODEL_FIELDS) {
+      const node = getPart2Node(field.nodeId);
+      const widget = getPart2Widget(node, field.key);
+      const current = getPart2WidgetValue(field.nodeId, field.key);
+      fillSelectOptions(controls.modelSelects[`${field.nodeId}:${field.key}`], getPart2WidgetOptions(widget), current);
+      if (!node || !widget) missing.push(`node ${field.nodeId}.${field.key}`);
+    }
+
+    const llmNode = getPart2Node(PART2_NODE_IDS.llmI2V);
+    const llmWidget = getPart2Widget(llmNode, null, 0);
+    fillSelectOptions(controls.modelSelects.llm, getPart2WidgetOptions(llmWidget), getPart2WidgetValue(PART2_NODE_IDS.llmI2V, null, 0));
+    if (!llmNode || !llmWidget) missing.push("node 811 LLM model");
+
+    for (const field of PART2_SETTING_FIELDS) {
+      controls.settings[field.key].value = String(getPart2WidgetValue(PART2_NODE_IDS.settings, field.key) ?? "");
+      if (!getPart2Widget(getPart2Node(PART2_NODE_IDS.settings), field.key)) missing.push(`node 736.${field.key}`);
+    }
+
+    controls.useSrt.value = String(getPart2WidgetValue(PART2_NODE_IDS.useSrtSwitch, "switch", 0)).toLowerCase() === "false" ? "false" : "true";
+    controls.cameraItems.value = String(getPart2WidgetValue(PART2_NODE_IDS.camera, "items", 1) || "");
+    controls.cameraMode.value = String(getPart2WidgetValue(PART2_NODE_IDS.camera, "selection_mode", 3) || "index");
+    controls.promptJson.value = String(getPart2WidgetValue(PART2_NODE_IDS.promptJson, null, 0) || "");
+    updateFixedDurationVisibility();
+
+    setStatus(missing.length ? `Loaded with missing widgets:\n${missing.join("\n")}` : "");
+  }
+
+  function applyPart2Settings() {
+    const missing = [];
+    let updated = 0;
+
+    for (const field of PART2_MODEL_FIELDS) {
+      if (setPart2WidgetValue(field.nodeId, field.key, controls.modelSelects[`${field.nodeId}:${field.key}`].value)) updated += 1;
+      else missing.push(`node ${field.nodeId}.${field.key}`);
+    }
+
+    const llmValue = controls.modelSelects.llm.value;
+    if (setPart2WidgetValue(PART2_NODE_IDS.llmI2V, null, llmValue, 0)) updated += 1;
+    else missing.push("node 811 LLM model");
+    if (setPart2WidgetValue(PART2_NODE_IDS.llmT2I, null, llmValue, 0)) updated += 1;
+    else missing.push("node 805 LLM model");
+
+    for (const field of PART2_SETTING_FIELDS) {
+      const rawValue = controls.settings[field.key].value;
+      const numberValue = Number(rawValue);
+      const value = Number.isFinite(numberValue) ? numberValue : rawValue;
+      if (setPart2WidgetValue(PART2_NODE_IDS.settings, field.key, value)) updated += 1;
+      else missing.push(`node 736.${field.key}`);
+    }
+
+    const useSrt = String(controls.useSrt.value).toLowerCase() !== "false";
+    if (setPart2WidgetValue(PART2_NODE_IDS.useSrtSwitch, "switch", useSrt, 0)) updated += 1;
+    else missing.push("node 837.switch");
+
+    if (setPart2WidgetValue(PART2_NODE_IDS.camera, "items", controls.cameraItems.value, 1)) updated += 1;
+    else missing.push("node 830.items");
+    if (setPart2WidgetValue(PART2_NODE_IDS.camera, "selection_mode", controls.cameraMode.value, 3)) updated += 1;
+    else missing.push("node 830.selection_mode");
+
+    if (setPart2WidgetValue(PART2_NODE_IDS.promptJson, null, controls.promptJson.value, 0)) updated += 1;
+    else missing.push("node 543 prompt JSON");
+
+    updateFixedDurationVisibility();
+    setStatus(missing.length ? `Updated ${updated} settings.\nMissing:\n${missing.join("\n")}` : `Updated ${updated} Part 2 settings.`);
+  }
+
+  closeButton.addEventListener("click", closeModal);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closeModal();
+  });
+  controls.useSrt.addEventListener("change", updateFixedDurationVisibility);
+  applyButton.addEventListener("click", applyPart2Settings);
+  topApplyButton.addEventListener("click", applyPart2Settings);
+
+  overlay.__vrgdgOpenPart2 = () => {
+    overlay.style.display = "flex";
+    refreshPart2Controls();
+  };
+
+  return overlay;
+}
+
 function attachButton(node) {
-  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Prompt Creator UI V2")) {
+  if (!(node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Prompt Creator UI V2")) {
+    node.addWidget("button", "Open Prompt Creator UI V2", null, () => {
+      const modal = ensureModal();
+      modal.__vrgdgOpenForNode(node);
+    });
+  }
+
+}
+
+function attachPart2Button(node) {
+  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Part 2 Workflow UI")) {
     return;
   }
 
-  node.addWidget("button", "Open Prompt Creator UI V2", null, () => {
-    const modal = ensureModal();
-    modal.__vrgdgOpenForNode(node);
+  node.addWidget("button", "Open Part 2 Workflow UI", null, () => {
+    const modal = ensurePart2Modal();
+    modal.__vrgdgOpenPart2();
   });
 }
 
@@ -761,7 +1252,7 @@ app.registerExtension({
   name: "vrgdg." + NODE_NAME,
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
-    if (nodeData.name !== NODE_NAME) return;
+    if (nodeData.name !== NODE_NAME && nodeData.name !== PART2_NODE_NAME) return;
 
     const onNodeCreated = nodeType.prototype.onNodeCreated;
     const onConfigure = nodeType.prototype.onConfigure;
@@ -770,14 +1261,16 @@ app.registerExtension({
       const result = onNodeCreated?.apply(this, arguments);
       this.serialize_widgets = true;
       this.properties = this.properties || {};
-      attachButton(this);
+      if (nodeData.name === PART2_NODE_NAME) attachPart2Button(this);
+      else attachButton(this);
       return result;
     };
 
     nodeType.prototype.onConfigure = function () {
       const result = onConfigure?.apply(this, arguments);
       this.properties = this.properties || {};
-      attachButton(this);
+      if (nodeData.name === PART2_NODE_NAME) attachPart2Button(this);
+      else attachButton(this);
       return result;
     };
   },

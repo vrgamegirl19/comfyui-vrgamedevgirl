@@ -1457,6 +1457,7 @@ class VRGDG_LyricSegmentDurationMerger:
                 "segments_json": ("STRING", {"multiline": True, "default": "{}"}),
                 "strict_count_match": ("BOOLEAN", {"default": True}),
                 "decimal_places": ("INT", {"default": 3, "min": 0, "max": 6, "step": 1}),
+                "use_srt_durations": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -1579,11 +1580,11 @@ class VRGDG_LyricSegmentDurationMerger:
             text = text.rstrip("0").rstrip(".")
         return text or "0"
 
-    def merge(self, srt_text, segments_json, strict_count_match=True, decimal_places=3):
+    def merge(self, srt_text, segments_json, strict_count_match=True, decimal_places=3, use_srt_durations=True):
         ordered_segments = self._parse_segments(segments_json)
-        durations = self._parse_durations(srt_text)
+        durations = self._parse_durations(srt_text) if use_srt_durations else []
 
-        if strict_count_match and len(ordered_segments) != len(durations):
+        if use_srt_durations and strict_count_match and len(ordered_segments) != len(durations):
             raise ValueError(
                 "VRGDG_LyricSegmentDurationMerger: segment count does not match SRT duration count. "
                 f"Segments: {len(ordered_segments)}, durations: {len(durations)}."
@@ -1591,6 +1592,9 @@ class VRGDG_LyricSegmentDurationMerger:
 
         merged = {}
         for idx, (_, original_key, value) in enumerate(ordered_segments):
+            if not use_srt_durations:
+                merged[original_key] = value
+                continue
             duration_value = durations[idx] if idx < len(durations) else 0.0
             duration_text = self._format_duration(duration_value, decimal_places)
             merged[f"{original_key}_duration_{duration_text}"] = value
@@ -1612,6 +1616,9 @@ class VRGDG_PromptCreatorUI:
         return ()
 
 class VRGDG_PromptCreatorUI_V2(VRGDG_PromptCreatorUI):
+    pass
+
+class VRGDG_Part2WorkflowUI(VRGDG_PromptCreatorUI):
     pass
 
 class VRGDG_StoryGroupJsonFixer:
@@ -1949,6 +1956,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_PromptMapJsonFixer": VRGDG_PromptMapJsonFixer,    
     "VRGDG_LyricSegmentDurationMerger": VRGDG_LyricSegmentDurationMerger,
     "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
+    "VRGDG_Part2WorkflowUI": VRGDG_Part2WorkflowUI,
     
 }
 
@@ -1975,5 +1983,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptMapJsonFixer": "VRGDG_PromptMapJsonFixer",
     "VRGDG_LyricSegmentDurationMerger": "VRGDG_LyricSegmentDurationMerger",
     "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
+    "VRGDG_Part2WorkflowUI": "VRGDG Part 2 Workflow UI",
     
 }
