@@ -1684,6 +1684,110 @@ class VRGDG_PromptMapJsonFixer:
         return (fixed_text, normalized, was_fixed, "; ".join(notes), prompt_count)
 
 
+class VRGDG_PromptJsonSubjectPrepender:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "subject": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "placeholder": "a female wearing a red dress",
+                    },
+                ),
+                "prompt_json": (any_typ, {"multiline": True, "default": "{}"}),
+                "separator": (
+                    "STRING",
+                    {
+                        "default": ", ",
+                        "multiline": False,
+                        "tooltip": "Text inserted between the subject and each prompt.",
+                    },
+                ),
+                "skip_if_already_starts_with_subject": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Avoids adding the subject twice when a prompt already starts with it.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "JSON", "INT")
+    RETURN_NAMES = ("json_text", "json_output", "prompt_count")
+    FUNCTION = "prepend_subject"
+    CATEGORY = "VRGDG/General"
+    DESCRIPTION = "Prepends the same subject text to every Prompt value in prompt-map JSON."
+
+    @staticmethod
+    def _strip_markdown_json_fence(text):
+        value = str(text or "").strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if lines:
+                first = lines[0].strip().lower()
+                if first == "```" or first.startswith("```json"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                value = "\n".join(lines).strip()
+        return value
+
+    @staticmethod
+    def _extract_json_slice(text):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end >= start:
+            return text[start : end + 1]
+        return text
+
+    @staticmethod
+    def _normalize_prompt_text(value):
+        if value is None:
+            return ""
+        return " ".join(str(value).replace("\r", " ").replace("\n", " ").split())
+
+    @staticmethod
+    def _as_bool(value):
+        if isinstance(value, str):
+            return value.strip().lower() == "true"
+        return bool(value)
+
+    def _load_prompt_map(self, prompt_json):
+        if isinstance(prompt_json, dict):
+            return prompt_json
+
+        cleaned = self._strip_markdown_json_fence(prompt_json)
+        cleaned = cleaned.replace("\ufeff", "").replace("\u200b", "")
+        candidate = self._extract_json_slice(cleaned)
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"VRGDG_PromptJsonSubjectPrepender: invalid prompt JSON: {exc}")
+        if not isinstance(parsed, dict):
+            raise ValueError("VRGDG_PromptJsonSubjectPrepender: prompt JSON must be an object.")
+        return parsed
+
+    def prepend_subject(self, subject, prompt_json, separator=", ", skip_if_already_starts_with_subject=True):
+        subject_text = self._normalize_prompt_text(subject)
+        separator_text = str(separator or "")
+        prompt_map = self._load_prompt_map(prompt_json)
+        skip_existing = self._as_bool(skip_if_already_starts_with_subject)
+
+        output = {}
+        for key, value in prompt_map.items():
+            prompt_text = self._normalize_prompt_text(value)
+            if subject_text and not (skip_existing and prompt_text.lower().startswith(subject_text.lower())):
+                prompt_text = f"{subject_text}{separator_text}{prompt_text}" if prompt_text else subject_text
+            output[str(key)] = prompt_text
+
+        json_text = json.dumps(output, indent=2, ensure_ascii=False)
+        return (json_text, output, len(output))
+
+
 class VRGDG_LyricSegmentDurationMerger:
     ACCEPTED_KEY_PREFIXES = ("lyricSegment", "segment")
 
@@ -2193,6 +2297,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_StoryGroupJsonFixer": VRGDG_StoryGroupJsonFixer,
     "VRGDG_LyricSegmentJsonFixer": VRGDG_LyricSegmentJsonFixer,
     "VRGDG_PromptMapJsonFixer": VRGDG_PromptMapJsonFixer,    
+    "VRGDG_PromptJsonSubjectPrepender": VRGDG_PromptJsonSubjectPrepender,
     "VRGDG_LyricSegmentDurationMerger": VRGDG_LyricSegmentDurationMerger,
     "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
     "VRGDG_Part2WorkflowUI": VRGDG_Part2WorkflowUI,
@@ -2221,6 +2326,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_StoryGroupJsonFixer": "VRGDG_StoryGroupJsonFixer",
     "VRGDG_LyricSegmentJsonFixer": "VRGDG_LyricSegmentJsonFixer",
     "VRGDG_PromptMapJsonFixer": "VRGDG_PromptMapJsonFixer",
+    "VRGDG_PromptJsonSubjectPrepender": "VRGDG Prompt JSON Subject Prepender",
     "VRGDG_LyricSegmentDurationMerger": "VRGDG_LyricSegmentDurationMerger",
     "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
     "VRGDG_Part2WorkflowUI": "VRGDG Part 2 Workflow UI",
