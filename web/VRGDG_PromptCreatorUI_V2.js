@@ -438,6 +438,15 @@ async function saveText(payload) {
   return data;
 }
 
+async function loadPart2ConceptPrompts() {
+  const response = await api.fetchApi("/vrgdg/part2/load_concept_prompts", { cache: "no-store" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `Concept prompts load failed (${response.status})`));
+  }
+  return data;
+}
+
 function ensureModal() {
   let overlay = document.getElementById(MODAL_ID);
   if (overlay) return overlay;
@@ -1449,7 +1458,22 @@ function ensurePart2Modal() {
   stylePart2Input(promptJson);
   promptJson.style.resize = "vertical";
   controls.promptJson = promptJson;
-  promptSection.appendChild(createPart2Field("Prompt JSON", promptJson, "This updates the Prompt Splitter node."));
+  const promptField = createPart2Field("Prompt JSON", promptJson, "This updates the Prompt Splitter node.");
+  const promptHeader = promptField.querySelector("div");
+  const pasteFromStep1Button = createButton(
+    "Paste From Step 1",
+    "border: 1px solid #2563eb; background: #1d4ed8; color: white; padding: 6px 9px; font-size: 11px; font-weight: 700;"
+  );
+  if (promptHeader) {
+    promptHeader.style.display = "flex";
+    promptHeader.style.alignItems = "center";
+    promptHeader.style.justifyContent = "space-between";
+    promptHeader.style.gap = "8px";
+    promptHeader.appendChild(pasteFromStep1Button);
+  } else {
+    promptField.insertBefore(pasteFromStep1Button, promptJson);
+  }
+  promptSection.appendChild(promptField);
 
   const status = document.createElement("div");
   status.style.cssText = `
@@ -1786,6 +1810,24 @@ function ensurePart2Modal() {
     return updated;
   }
 
+  async function pastePromptJsonFromStep1() {
+    pasteFromStep1Button.disabled = true;
+    const previousText = pasteFromStep1Button.textContent;
+    pasteFromStep1Button.textContent = "Loading...";
+    try {
+      const data = await loadPart2ConceptPrompts();
+      controls.promptJson.value = String(data.text ?? "");
+      controls.promptJson.dispatchEvent(new Event("input", { bubbles: true }));
+      savePart2Draft();
+      setStatus("Loaded prompt JSON from Step 1. Click Apply Part 2 Settings when ready.");
+    } catch (error) {
+      setStatus(error?.message || "Could not load prompt JSON from Step 1.", true);
+    } finally {
+      pasteFromStep1Button.disabled = false;
+      pasteFromStep1Button.textContent = previousText;
+    }
+  }
+
   function refreshPart2Controls() {
     const missing = [];
     suppressDraftSave = true;
@@ -1884,6 +1926,7 @@ function ensurePart2Modal() {
   controls.zImageLora.useCustom.addEventListener("change", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("input", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
+  pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
 
   const draftControls = [
     ...Object.values(controls.modelSelects),
