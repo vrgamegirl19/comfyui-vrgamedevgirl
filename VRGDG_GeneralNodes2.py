@@ -6,6 +6,7 @@ import threading
 import torch
 import time
 
+import comfy
 import folder_paths
 from aiohttp import web
 from nodes import PreviewImage
@@ -664,6 +665,147 @@ class VRGDG_ImageIndex0HUMOEDIT:
         return (empty_image,)
 
 
+class VRGDG_OptionalMultiLoraModelOnly:
+    MAX_LORA_SLOTS = 20
+    NONE_LORA = "[none]"
+
+    def __init__(self):
+        self._loaded_loras = {}
+
+    @staticmethod
+    def _lora_stem(lora_name):
+        if not lora_name:
+            return ""
+        return os.path.splitext(os.path.basename(str(lora_name)))[0]
+
+    @classmethod
+    def _lora_choices(cls):
+        loras = folder_paths.get_filename_list("loras")
+        return [cls.NONE_LORA] + [name for name in loras if str(name or "").strip() != cls.NONE_LORA]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        lora_choices = cls._lora_choices()
+        required = {
+            "model": ("MODEL",),
+            "use_custom_loras": (
+                "BOOLEAN",
+                {
+                    "default": False,
+                    "tooltip": "Off passes the model through unchanged and ignores all LoRA slots.",
+                },
+            ),
+            "lora_count": (
+                "INT",
+                {
+                    "default": 0,
+                    "min": 0,
+                    "max": cls.MAX_LORA_SLOTS,
+                    "step": 1,
+                    "tooltip": "How many LoRA slots to show and apply. Zero applies none.",
+                },
+            ),
+            "ltx_two_pass_mode": (
+                "BOOLEAN",
+                {
+                    "default": True,
+                    "tooltip": "When enabled, first_pass_model uses half strength and second_pass_model uses full strength.",
+                },
+            ),
+        }
+
+        for i in range(1, cls.MAX_LORA_SLOTS + 1):
+            required[f"lora_{i}"] = (
+                lora_choices,
+                {
+                    "default": cls.NONE_LORA,
+                    "tooltip": "Choose [none] to leave this slot unused.",
+                },
+            )
+            required[f"strength_{i}"] = (
+                "FLOAT",
+                {
+                    "default": 1.0,
+                    "min": -100.0,
+                    "max": 100.0,
+                    "step": 0.01,
+                    "tooltip": "Full-strength value. In LTX two-pass mode, first pass uses half of this.",
+                },
+            )
+
+        return {"required": required}
+
+    RETURN_TYPES = ("MODEL", "MODEL", "STRING")
+    RETURN_NAMES = ("first_pass_model", "second_pass_model", "lora_names")
+    FUNCTION = "apply_loras"
+    CATEGORY = "VRGDG/Loaders"
+    DESCRIPTION = "Safely applies optional model-only LoRAs. Defaults to [none], so shared workflows do not warn about missing LoRA files."
+
+    def _is_none_lora(self, lora_name):
+        value = str(lora_name or "").strip()
+        return not value or value == self.NONE_LORA
+
+    @staticmethod
+    def _as_bool(value):
+        if isinstance(value, str):
+            return value.strip().lower() == "true"
+        return bool(value)
+
+    def _get_lora_data(self, lora_name):
+        lora_path = folder_paths.get_full_path_or_raise("loras", lora_name)
+        if lora_path not in self._loaded_loras:
+            self._loaded_loras[lora_path] = comfy.utils.load_torch_file(lora_path, safe_load=True)
+        return self._loaded_loras[lora_path]
+
+    def _collect_lora_specs(self, lora_count, kwargs):
+        try:
+            count = int(lora_count)
+        except Exception:
+            count = 0
+        count = max(0, min(self.MAX_LORA_SLOTS, count))
+
+        specs = []
+        for slot in range(1, count + 1):
+            lora_name = kwargs.get(f"lora_{slot}", self.NONE_LORA)
+            if self._is_none_lora(lora_name):
+                continue
+
+            try:
+                strength = float(kwargs.get(f"strength_{slot}", 1.0))
+            except Exception:
+                strength = 1.0
+            if strength == 0:
+                continue
+
+            specs.append((str(lora_name), strength))
+        return specs
+
+    def _apply_specs(self, model, specs, multiplier):
+        output_model = model
+        for lora_name, strength in specs:
+            effective_strength = float(strength) * float(multiplier)
+            if effective_strength == 0:
+                continue
+            lora = self._get_lora_data(lora_name)
+            output_model, _ = comfy.sd.load_lora_for_models(output_model, None, lora, effective_strength, 0)
+        return output_model
+
+    def apply_loras(self, model, use_custom_loras=False, lora_count=0, ltx_two_pass_mode=True, **kwargs):
+        if not self._as_bool(use_custom_loras):
+            return (model, model, "")
+
+        specs = self._collect_lora_specs(lora_count, kwargs)
+        if not specs:
+            return (model, model, "")
+
+        first_multiplier = 0.5 if self._as_bool(ltx_two_pass_mode) else 1.0
+        second_multiplier = 1.0
+        first_pass_model = self._apply_specs(model, specs, first_multiplier)
+        second_pass_model = self._apply_specs(model, specs, second_multiplier)
+        lora_names = ", ".join(self._lora_stem(name) for name, _ in specs)
+        return (first_pass_model, second_pass_model, lora_names)
+
+
 class VRGDG_NoteBox:
     RETURN_TYPES = ()
     FUNCTION = "run"
@@ -1313,6 +1455,24 @@ class VRGDG_PromptMapJsonFixer:
         return {
             "required": {
                 "text": ("STRING", {"multiline": True, "default": ""}),
+                "use_srt_file": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": "When enabled, count scene entries in the connected SRT file/text and require it to match the prompt count.",
+                    },
+                ),
+            },
+            "optional": {
+                "srt_file": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "forceInput": True,
+                        "tooltip": "Connect an SRT file path, or raw SRT text. Ignored when Use SRT File is off.",
+                    },
+                ),
             }
         }
 
@@ -1414,7 +1574,35 @@ class VRGDG_PromptMapJsonFixer:
         }
         return normalized
 
-    def fix_json(self, text):
+    def _read_srt_source(self, srt_file):
+        value = str(srt_file or "").strip().strip("\"'")
+        if not value:
+            raise ValueError("VRGDG_PromptMapJsonFixer: Use SRT File is enabled, but no SRT file/text was connected.")
+
+        if os.path.isfile(value):
+            with open(value, "r", encoding="utf-8-sig") as file_obj:
+                return file_obj.read(), value
+
+        if "-->" in value:
+            return value, "connected SRT text"
+
+        raise ValueError(
+            "VRGDG_PromptMapJsonFixer: connected SRT value is not an existing file path and does not look like SRT text."
+        )
+
+    def _count_srt_scenes(self, srt_file):
+        srt_text, source_label = self._read_srt_source(srt_file)
+        timestamp_lines = re.findall(
+            r"(?m)^\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}.*$",
+            str(srt_text or ""),
+        )
+        if not timestamp_lines:
+            raise ValueError(
+                f"VRGDG_PromptMapJsonFixer: no SRT timestamp lines were found in {source_label}."
+            )
+        return len(timestamp_lines), source_label
+
+    def fix_json(self, text, use_srt_file=False, srt_file=""):
         original = str(text or "")
         cleaned = self._basic_cleanup(original)
         sliced = self._extract_json_slice(cleaned)
@@ -1433,6 +1621,15 @@ class VRGDG_PromptMapJsonFixer:
 
         normalized = self._build_output(prompts)
         prompt_count = len(normalized)
+
+        if bool(use_srt_file):
+            srt_scene_count, source_label = self._count_srt_scenes(srt_file)
+            if prompt_count != srt_scene_count:
+                raise ValueError(
+                    "VRGDG_PromptMapJsonFixer: prompt count does not match SRT scene count. "
+                    f"Prompts: {prompt_count}, SRT scenes: {srt_scene_count}. Source: {source_label}."
+                )
+            notes.append(f"SRT scene count matched prompt count ({prompt_count})")
 
         fixed_text = json.dumps(normalized, indent=2, ensure_ascii=False)
         was_fixed = fixed_text.strip() != cleaned.strip()
@@ -1943,6 +2140,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_BoxIT": VRGDG_BoxIT,
     "VRGDG_IntToFloat": VRGDG_IntToFloat,
     "VRGDG_ImageIndex0HUMOEDIT": VRGDG_ImageIndex0HUMOEDIT,
+    "VRGDG_OptionalMultiLoraModelOnly": VRGDG_OptionalMultiLoraModelOnly,
     "VRGDG_NoteBox": VRGDG_NoteBox,
     "VRGDG_SetMuteStateMulti": VRGDG_SetMuteStateMulti,
     "VRGDG_SetGroupStateMulti": VRGDG_SetGroupStateMulti,
@@ -1970,6 +2168,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_BoxIT": "VRGDG_BoxIT",
     "VRGDG_IntToFloat": "VRGDG_IntToFloat",
     "VRGDG_ImageIndex0HUMOEDIT": "VRGDG_ImageIndex0HUMOEDIT",
+    "VRGDG_OptionalMultiLoraModelOnly": "VRGDG Optional Multi LoRA Model Only",
     "VRGDG_NoteBox": "VRGDG_NoteBox",
     "VRGDG_SetMuteStateMulti": "VRGDG_SetMuteStateMulti",
     "VRGDG_SetGroupStateMulti": "VRGDG_SetGroupStateMulti",
