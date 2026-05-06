@@ -159,6 +159,18 @@ def _get_test_popup_text_path(field_name):
     return os.path.normpath(os.path.join(folder_paths.get_output_directory(), *parts))
 
 
+def _get_part2_concept_prompts_path():
+    return os.path.normpath(
+        os.path.join(
+            folder_paths.get_output_directory(),
+            "VRGDG_TEMP",
+            "TextFiles",
+            "ConceptPrompts",
+            "ConceptPrompts.txt",
+        )
+    )
+
+
 def _ensure_test_save_route_registered():
     global _VRGDG_TEST_SAVE_ROUTE_REGISTERED
     if _VRGDG_TEST_SAVE_ROUTE_REGISTERED:
@@ -179,8 +191,37 @@ def _ensure_test_save_route_registered():
                 "ok": True,
                 "audio_dir": _get_test_popup_audio_dir(),
                 "text_targets": text_targets,
+                "concept_prompts_path": _get_part2_concept_prompts_path(),
             }
         )
+
+    @server_instance.routes.get("/vrgdg/part2/load_concept_prompts")
+    async def vrgdg_part2_load_concept_prompts(request):
+        target_path = _get_part2_concept_prompts_path()
+        if not os.path.isfile(target_path):
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": "ConceptPrompts.txt was not found. Run Step 1 first or paste the prompt JSON manually.",
+                    "path": target_path,
+                },
+                status=404,
+            )
+
+        try:
+            with open(target_path, "r", encoding="utf-8-sig") as handle:
+                text = handle.read()
+        except Exception as exc:
+            return web.json_response(
+                {
+                    "ok": False,
+                    "error": f"Could not read ConceptPrompts.txt: {exc}",
+                    "path": target_path,
+                },
+                status=500,
+            )
+
+        return web.json_response({"ok": True, "text": text, "path": target_path})
 
     @server_instance.routes.post("/vrgdg/test_popup/save_text")
     async def vrgdg_test_popup_save_text(request):
