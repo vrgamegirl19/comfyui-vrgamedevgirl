@@ -7,6 +7,10 @@ const MODAL_ID = "vrgdg-prompt-creator-ui-v2-modal";
 const PART2_MODAL_ID = "vrgdg-prompt-creator-part2-ui-modal";
 const BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM.png?v=20260505_2020_refresh", import.meta.url).href;
 const PART2_BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM-002.png?v=20260505_224432", import.meta.url).href;
+const LYRIC_CREATOR_GPT_URL = "https://chatgpt.com/g/g-69979b391cc88191ae4fe298b59c236e-ai-lyric-creator";
+const STYLE_THEME_GPT_URL = "https://chatgpt.com/g/g-69fb415a964c8191b4a737f84f37227f-ltx-2-3-style-theme-guide/c/69fb427d-4518-8331-bfd7-505c0f55d2cc";
+const STORY_IDEA_GPT_URL = "https://chatgpt.com/g/g-69fb3cb767448191a6caa88be94940d5-ltx-2-3-story-concept-helper/c/69fb3e25-7e74-8326-abd6-7df9cf847a5b";
+const SUBJECT_LOCATION_GPT_URL = "https://chatgpt.com/g/g-69fb38a997fc8191a2fa479e44a3c675-ltx-2-3-subject-and-location-creator/c/69fb39e2-2ba0-8328-94c0-6ac9c94d0c89";
 const PART2_NODE_IDS = {
   modelLoader: 271,
   settings: 736,
@@ -97,8 +101,17 @@ const SUBGRAPH_WIDGET_ORDER = [
   "language",
   "switch",
   "scene_duration_seconds",
+  "model_file",
 ];
 const SUBGRAPH_FIELDS = [
+  {
+    key: "model_file",
+    label: "LLM Model",
+    type: "combo",
+    defaultValue: "",
+    headerControl: true,
+    note: "Model used by the Part 1 prompt creator LLM.",
+  },
   {
     key: "fps",
     label: "FPS",
@@ -242,8 +255,8 @@ function createPathHint() {
 }
 
 function createSubgraphInput(field) {
-  const input = field.type === "select" || field.type === "boolean" ? document.createElement("select") : document.createElement("input");
-  if (field.type === "select" || field.type === "boolean") {
+  const input = field.type === "select" || field.type === "boolean" || field.type === "combo" ? document.createElement("select") : document.createElement("input");
+  if (field.type === "select" || field.type === "boolean" || field.type === "combo") {
     const options = field.type === "boolean" ? ["true", "false"] : field.options || [];
     for (const optionValue of options) {
       const option = document.createElement("option");
@@ -332,6 +345,13 @@ function getSubgraphWidgetValue(targetNode, field) {
   }
 
   return undefined;
+}
+
+function getSubgraphWidgetOptions(targetNode, field) {
+  const widget = (targetNode?.widgets || []).find((item) => item?.name === field.key);
+  const options = widget?.options || {};
+  const values = options.values || options.items || options.value || [];
+  return Array.isArray(values) ? values.map((value) => String(value)) : [];
 }
 
 async function fetchConfig() {
@@ -515,12 +535,19 @@ function ensureModal() {
 
   subgraphTitleBlock.append(subgraphTitle, subgraphHint);
 
+  const subgraphTitleActions = document.createElement("div");
+  subgraphTitleActions.style.cssText = `
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  `;
+
   const applySubgraphButton = createButton(
     "Apply Settings",
     "border: 1px solid #b45309; background: #d97706; color: white;"
   );
-
-  subgraphTitleRow.append(subgraphTitleBlock, applySubgraphButton);
 
   const subgraphGrid = document.createElement("div");
   subgraphGrid.style.cssText = `
@@ -551,11 +578,18 @@ function ensureModal() {
     `;
 
     fieldWrap.append(fieldLabel, input, fieldNote);
-    subgraphGrid.appendChild(fieldWrap);
+    if (field.headerControl) {
+      fieldWrap.style.minWidth = "320px";
+      subgraphTitleActions.appendChild(fieldWrap);
+    } else {
+      subgraphGrid.appendChild(fieldWrap);
+    }
     subgraphInputs[field.key] = input;
     subgraphFieldWraps[field.key] = fieldWrap;
   }
 
+  subgraphTitleActions.appendChild(applySubgraphButton);
+  subgraphTitleRow.append(subgraphTitleBlock, subgraphTitleActions);
   subgraphSection.append(subgraphTitleRow, subgraphGrid);
 
   const textGrid = document.createElement("div");
@@ -576,9 +610,18 @@ function ensureModal() {
       background: #14191f;
     `;
 
+    const labelRow = document.createElement("div");
+    labelRow.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    `;
+
     const label = document.createElement("label");
     label.textContent = field.label;
-    label.style.cssText = "display: block; margin-bottom: 8px; font-size: 14px; font-weight: 700;";
+    label.style.cssText = "display: block; font-size: 14px; font-weight: 700;";
 
     const textarea = document.createElement("textarea");
     textarea.rows = field.rows;
@@ -607,7 +650,38 @@ function ensureModal() {
 
     const hint = createPathHint();
 
-    section.append(label, textarea, helper, hint);
+    labelRow.appendChild(label);
+    if (field.key === "full_lyrics") {
+      const lyricsHelp = createButton(
+        "If you have not yet created a song and need help creating lyrics then click here",
+        "border: 1px solid #1d4ed8; background: #2563eb; color: white; padding: 8px 12px; font-size: 12px; font-weight: 700; line-height: 1.3; text-align: center; max-width: 360px;"
+      );
+      lyricsHelp.type = "button";
+      lyricsHelp.addEventListener("click", () => {
+        window.open(LYRIC_CREATOR_GPT_URL, "_blank", "noopener,noreferrer");
+      });
+      labelRow.appendChild(lyricsHelp);
+    }
+
+    const gptUrlByField = {
+      style_theme: STYLE_THEME_GPT_URL,
+      story_idea: STORY_IDEA_GPT_URL,
+      subjects_and_scenes: SUBJECT_LOCATION_GPT_URL,
+    };
+    const gptUrl = gptUrlByField[field.key];
+    if (gptUrl) {
+      const useGptButton = createButton(
+        "Use GPT",
+        "border: 1px solid #7c3aed; background: #8b5cf6; color: white; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+      );
+      useGptButton.type = "button";
+      useGptButton.addEventListener("click", () => {
+        window.open(gptUrl, "_blank", "noopener,noreferrer");
+      });
+      labelRow.appendChild(useGptButton);
+    }
+
+    section.append(labelRow, textarea, helper, hint);
     textGrid.appendChild(section);
     textareas[field.key] = textarea;
     pathHints[field.key] = hint;
@@ -803,9 +877,13 @@ function ensureModal() {
     const targetSubgraphNode = findTheGutsSubgraphNode();
     for (const field of SUBGRAPH_FIELDS) {
       const liveValue = getSubgraphWidgetValue(targetSubgraphNode, field);
-      subgraphInputs[field.key].value = hasStoredSubgraphValue(state.node, field)
+      const selectedValue = hasStoredSubgraphValue(state.node, field)
         ? getStoredSubgraphValue(state.node, field)
         : String(liveValue ?? field.defaultValue ?? "");
+      if (field.type === "combo") {
+        fillSelectOptions(subgraphInputs[field.key], getSubgraphWidgetOptions(targetSubgraphNode, field), selectedValue);
+      }
+      subgraphInputs[field.key].value = selectedValue;
     }
     syncNodeProperties();
     updateSubgraphVisibility();
