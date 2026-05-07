@@ -117,21 +117,52 @@ Peaceful`,
 };
 const PICKER_FIELDS = [
   "preset",
-  "index",
   "items",
   "label",
-  "max_items",
-  "split_mode",
   "selection_mode",
-  "seed",
-  "multi_format",
   "two_item_template",
-  "keep_empty",
   "pick_count",
 ];
 
 function getWidget(node, name) {
   return (node.widgets || []).find((widget) => widget.name === name);
+}
+
+function migrateWidgetValues(values) {
+  if (!Array.isArray(values)) return values;
+
+  const compactCount = 2 + MAX_PICKERS * 6;
+  const currentCount = 2 + MAX_PICKERS * 10;
+  const oldCount = 2 + MAX_PICKERS * 12;
+  if (values.length !== currentCount && values.length !== oldCount) return values;
+
+  const migrated = new Array(compactCount).fill("");
+  migrated[0] = values[0] ?? 0;
+  migrated[1] = values[1] ?? "newline";
+
+  for (let i = 1; i <= MAX_PICKERS; i++) {
+    const compactBase = 2 + (i - 1) * 6;
+    if (values.length === currentCount) {
+      const sourceBase = 2 + (i - 1) * 10;
+      migrated[compactBase] = values[sourceBase] ?? (i === 1 ? "Camera Motion" : "Custom");
+      migrated[compactBase + 1] = values[sourceBase + 1] ?? "";
+      migrated[compactBase + 2] = values[sourceBase + 2] ?? "";
+      migrated[compactBase + 3] = values[sourceBase + 5] ?? "index";
+      migrated[compactBase + 4] = values[sourceBase + 7] ?? "start with {item1} then follow with {item2}";
+      migrated[compactBase + 5] = values[sourceBase + 9] ?? 1;
+      continue;
+    }
+
+    const sourceBase = 2 + (i - 1) * 12;
+    migrated[compactBase] = values[sourceBase] ?? (i === 1 ? "Camera Motion" : "Custom");
+    migrated[compactBase + 1] = values[sourceBase + 2] ?? "";
+    migrated[compactBase + 2] = values[sourceBase + 3] ?? "";
+    migrated[compactBase + 3] = values[sourceBase + 6] ?? "index";
+    migrated[compactBase + 4] = values[sourceBase + 9] ?? "start with {item1} then follow with {item2}";
+    migrated[compactBase + 5] = values[sourceBase + 11] ?? 1;
+  }
+
+  return migrated;
 }
 
 function setWidgetVisible(widget, visible) {
@@ -159,9 +190,9 @@ function setWidgetVisible(widget, visible) {
 
 function getPickerCount(node) {
   const countWidget = getWidget(node, "picker_count");
-  const rawCount = Number(countWidget?.value ?? 2);
-  const count = Number.isFinite(rawCount) ? rawCount : 2;
-  return Math.max(1, Math.min(MAX_PICKERS, Math.round(count)));
+  const rawCount = Number(countWidget?.value ?? 0);
+  const count = Number.isFinite(rawCount) ? rawCount : 0;
+  return Math.max(0, Math.min(MAX_PICKERS, Math.round(count)));
 }
 
 function ensureOutput(node, index, name, type) {
@@ -340,8 +371,9 @@ function ensureInputSocket(node, name, type) {
 }
 
 function refreshIndexSeedInputs(node, count) {
+  const socketCount = Math.max(1, count);
   const keepNames = new Set();
-  for (let i = 1; i <= count; i++) {
+  for (let i = 1; i <= socketCount; i++) {
     keepNames.add(`index_${i}`);
     keepNames.add(`seed_${i}`);
   }
@@ -351,7 +383,7 @@ function refreshIndexSeedInputs(node, count) {
     return keepNames.has(input.name);
   });
 
-  for (let i = 1; i <= count; i++) {
+  for (let i = 1; i <= socketCount; i++) {
     ensureInputSocket(node, `index_${i}`, "INT");
     ensureInputSocket(node, `seed_${i}`, "INT");
   }
@@ -466,7 +498,11 @@ app.registerExtension({
     };
 
     nodeType.prototype.onConfigure = function () {
+      if (arguments[0]?.widgets_values) {
+        arguments[0].widgets_values = migrateWidgetValues(arguments[0].widgets_values);
+      }
       const result = origOnConfigure?.apply(this, arguments);
+      this.widgets_values = migrateWidgetValues(this.widgets_values);
       bindPickerCount(this);
       refreshWidgets(this);
       return result;

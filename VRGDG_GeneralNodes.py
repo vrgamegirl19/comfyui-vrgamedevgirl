@@ -2872,23 +2872,6 @@ Peaceful""",
                     "tooltip": f"Picker {i}: optional label placed before this picker output.",
                 },
             ),
-            f"max_items_{i}": (
-                "INT",
-                {
-                    "default": 0,
-                    "min": 0,
-                    "max": 999999,
-                    "tooltip": f"Picker {i}: optional limit for how many parsed list items are used. Leave 0 for all.",
-                },
-            ),
-            f"split_mode_{i}": (
-                "STRING",
-                {
-                    "default": "auto",
-                    "multiline": False,
-                    "tooltip": f"Picker {i}: how to split this picker items text into a list.",
-                },
-            ),
             f"selection_mode_{i}": (
                 "STRING",
                 {
@@ -2907,27 +2890,12 @@ Peaceful""",
                     "tooltip": f"Picker {i}: seed used by random modes.",
                 },
             ),
-            f"multi_format_{i}": (
-                "STRING",
-                {
-                    "default": "auto",
-                    "multiline": False,
-                    "tooltip": f"Picker {i}: how multiple selected items are combined.",
-                },
-            ),
             f"two_item_template_{i}": (
                 "STRING",
                 {
                     "default": "start with {item1} then follow with {item2}",
                     "multiline": False,
                     "tooltip": f"Picker {i}: sentence template used when this picker selects exactly two items.",
-                },
-            ),
-            f"keep_empty_{i}": (
-                "BOOLEAN",
-                {
-                    "default": False,
-                    "tooltip": f"Picker {i}: whether blank entries count as selectable items.",
                 },
             ),
             f"pick_count_{i}": (
@@ -2953,33 +2921,53 @@ Peaceful""",
         return "\n".join(values)
 
     @staticmethod
-    def _extract_label_directive(raw_items):
+    def _extract_item_directives(raw_items):
         text = str(raw_items or "")
         lines = text.splitlines()
-        if not lines:
-            return "", text
+        directives = {}
+        body_lines = []
+        in_directive_header = True
+        directive_names = {
+            "LABEL": "label",
+            "SELECTION_MODE": "selection_mode",
+            "PICK_COUNT": "pick_count",
+            "TEMPLATE": "template",
+        }
 
-        first = lines[0].strip()
-        for prefix in ("# VRGDG_LABEL:", "# LABEL:"):
-            if first.startswith(prefix):
-                return first[len(prefix):].strip(), "\n".join(lines[1:])
+        for line in lines:
+            stripped = line.strip()
+            directive_key = None
+            directive_value = None
+            if stripped.startswith("#") and in_directive_header:
+                raw_directive = stripped[1:].strip()
+                if ":" in raw_directive:
+                    raw_name, raw_value = raw_directive.split(":", 1)
+                    raw_name = raw_name.strip().upper()
+                    if raw_name.startswith("VRGDG_"):
+                        raw_name = raw_name[6:]
+                    directive_key = directive_names.get(raw_name)
+                    directive_value = raw_value.strip()
 
-        return "", text
+            if directive_key:
+                directives[directive_key] = directive_value
+                continue
+
+            in_directive_header = False
+            body_lines.append(line)
+
+        return directives, "\n".join(body_lines)
 
     def _run_one_picker(self, i, kwargs):
         preset = str(kwargs.get(f"preset_{i}", "Custom") or "Custom")
         raw_items = kwargs.get(f"items_{i}", "")
-        directive_label, raw_items = self._extract_label_directive(raw_items)
+        directives, raw_items = self._extract_item_directives(raw_items)
         if not str(raw_items or "").strip() and preset in self.PRESET_ITEMS:
             raw_items = self.PRESET_ITEMS[preset]
         parsed_items = self._parse_items(
             raw_items,
-            kwargs.get(f"split_mode_{i}", "auto"),
-            kwargs.get(f"keep_empty_{i}", False),
+            "auto",
+            False,
         )
-        max_items = int(kwargs.get(f"max_items_{i}", 0) or 0)
-        if max_items > 0:
-            parsed_items = parsed_items[:max_items]
 
         item_count = len(parsed_items)
         if item_count <= 0:
@@ -2993,12 +2981,15 @@ Peaceful""",
             }
 
         base_index = int(kwargs.get(f"index_{i}", 0) or 0)
-        pick_count = max(1, int(kwargs.get(f"pick_count_{i}", 1) or 1))
+        pick_count_raw = directives.get("pick_count", kwargs.get(f"pick_count_{i}", 1))
+        pick_count = max(1, int(pick_count_raw or 1))
+        selection_mode = directives.get("selection_mode") or kwargs.get(f"selection_mode_{i}", "index")
+        template = directives.get("template") or kwargs.get(f"two_item_template_{i}", "")
         selected_indexes = [
             self._select_index(
                 base_index + offset,
                 item_count,
-                kwargs.get(f"selection_mode_{i}", "index"),
+                selection_mode,
                 kwargs.get(f"seed_{i}", 0),
             )
             for offset in range(pick_count)
@@ -3006,10 +2997,10 @@ Peaceful""",
         selected_items = [parsed_items[index] for index in selected_indexes]
         formatted_value = self._format_selected_items(
             selected_items,
-            kwargs.get(f"multi_format_{i}", "auto"),
-            kwargs.get(f"two_item_template_{i}", ""),
+            "auto",
+            template,
         )
-        label_text = str(kwargs.get(f"label_{i}", "") or "").strip() or directive_label
+        label_text = directives.get("label") or str(kwargs.get(f"label_{i}", "") or "").strip()
         if not label_text and preset != "Custom":
             label_text = preset
         if not label_text:
@@ -3029,15 +3020,9 @@ Peaceful""",
         }
 
     def run(self, picker_count=2, joiner="newline", **kwargs):
-        active_count = max(1, min(self.MAX_PICKERS, int(picker_count or 1)))
-        inferred_count = active_count
-        for i in range(1, self.MAX_PICKERS + 1):
-            preset = str(kwargs.get(f"preset_{i}", "Custom") or "Custom")
-            raw_items = kwargs.get(f"items_{i}", "")
-            _, clean_items = self._extract_label_directive(raw_items)
-            if str(clean_items or "").strip() or preset != "Custom":
-                inferred_count = i
-        active_count = max(active_count, inferred_count)
+        active_count = max(0, min(self.MAX_PICKERS, int(picker_count or 0)))
+        if active_count <= 0:
+            return ("", "[]", *([""] * self.MAX_PICKERS))
         results = [self._run_one_picker(i, kwargs) for i in range(1, active_count + 1)]
         formatted_outputs = [result["formatted_text"] for result in results]
         active_formatted_outputs = [value for value in formatted_outputs if value]

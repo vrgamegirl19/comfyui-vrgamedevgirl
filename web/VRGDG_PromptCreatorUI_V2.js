@@ -1131,6 +1131,22 @@ function findAdvancedPickerInSubgraph(subgraph) {
   return getSubgraphNodes(subgraph).find(isAdvancedPickerNode) || null;
 }
 
+function findAdvancedPickersInGraph(graph) {
+  return getSubgraphNodes(graph).filter(isAdvancedPickerNode);
+}
+
+function findPreferredAdvancedPickerInGraph(graph) {
+  const pickers = findAdvancedPickersInGraph(graph);
+  if (!pickers.length) return null;
+  return pickers.find((node) =>
+    (node.outputs || []).some((output) =>
+      String(output?.name || "") === "combined_formatted_text" &&
+      Array.isArray(output?.links) &&
+      output.links.length
+    )
+  ) || pickers[0];
+}
+
 function getPart2AdvancedPickerContext() {
   return getPart2AdvancedPickerContexts()[0] || null;
 }
@@ -1143,8 +1159,10 @@ function getPart2AdvancedPickerContexts() {
     const key = `${String(subgraph?.id || subgraph?.name || "graph")}:${String(node?.id || node?.title || contexts.length)}`;
     if (seen.has(key)) return;
     seen.add(key);
-    contexts.push({ node, subgraph });
+    contexts.push({ node, subgraph, isTopGraph: subgraph === app.graph });
   };
+
+  addContext(findPreferredAdvancedPickerInGraph(app.graph), app.graph);
 
   const activeGraph = app.canvas?.graph;
   addContext(findAdvancedPickerInSubgraph(activeGraph), activeGraph);
@@ -1518,6 +1536,7 @@ function ensurePart2Modal() {
       section: null,
     },
     advanced: {
+      enabled: null,
       count: null,
       modeAll: null,
       pickers: [],
@@ -1721,13 +1740,20 @@ function ensurePart2Modal() {
   advancedSection.appendChild(advancedGptRow);
 
   const advancedCountRow = document.createElement("div");
-  advancedCountRow.style.cssText = "display: grid; grid-template-columns: minmax(180px, 260px) minmax(220px, 320px) 1fr; gap: 12px; align-items: end; margin-bottom: 14px;";
+  advancedCountRow.style.cssText = "display: grid; grid-template-columns: minmax(160px, 220px) minmax(180px, 260px) minmax(220px, 320px) 1fr; gap: 12px; align-items: end; margin-bottom: 14px;";
+
+  const advancedEnabled = document.createElement("input");
+  advancedEnabled.type = "checkbox";
+  advancedEnabled.checked = false;
+  controls.advanced.enabled = advancedEnabled;
+  advancedCountRow.appendChild(createPart2Field("Advanced Settings", advancedEnabled, "Turn this on only when you want to add custom prompt detail lists."));
 
   const advancedCount = stylePart2Input(document.createElement("input"));
   advancedCount.type = "number";
-  advancedCount.min = "1";
+  advancedCount.min = "0";
   advancedCount.max = String(PART2_ADVANCED_MAX_PICKERS);
   advancedCount.step = "1";
+  advancedCount.value = "0";
   controls.advanced.count = advancedCount;
   advancedCountRow.appendChild(createPart2Field("Settings Count", advancedCount, ""));
 
@@ -2144,29 +2170,13 @@ function ensurePart2Modal() {
     if (!Array.isArray(node?.widgets_values)) return indexes;
 
     const valueCount = node.widgets_values.length;
+    const expectedCompactCount = 2 + PART2_ADVANCED_MAX_PICKERS * 6;
     const expectedNewCount = 2 + PART2_ADVANCED_MAX_PICKERS * 10;
     const expectedOldCount = 2 + PART2_ADVANCED_MAX_PICKERS * 12;
 
-    if (valueCount === expectedNewCount) return indexes.slice(0, 1);
+    if (valueCount === expectedCompactCount) return indexes.slice(0, 1);
+    if (valueCount === expectedNewCount) return indexes.slice(1, 2);
     if (valueCount === expectedOldCount) return indexes.slice(-1);
-
-    const textName = String(name || "");
-    const newMatch = /^(preset|items|label|max_items|split_mode|selection_mode|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(textName);
-    const oldMatch = /^(preset|index|items|label|max_items|split_mode|selection_mode|seed|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(textName);
-
-    if (newMatch) {
-      const newIndex = indexes[0];
-      const pickerStart = 2 + (Number(newMatch[2]) - 1) * 10;
-      const marker = node.widgets_values[pickerStart + 7];
-      if (String(marker || "").includes("{item1}")) return [newIndex];
-    }
-
-    if (oldMatch) {
-      const oldIndex = indexes[indexes.length - 1];
-      const pickerStart = 2 + (Number(oldMatch[2]) - 1) * 12;
-      const marker = node.widgets_values[pickerStart + 9];
-      if (String(marker || "").includes("{item1}")) return [oldIndex];
-    }
 
     return indexes.slice(0, 1);
   }
@@ -2175,9 +2185,22 @@ function ensurePart2Modal() {
     if (name === "picker_count") return [0];
     if (name === "joiner") return [1];
     const textName = String(name || "");
+    const compactMatch = /^(preset|items|label|selection_mode|two_item_template|pick_count)_(\d+)$/.exec(textName);
     const newMatch = /^(preset|items|label|max_items|split_mode|selection_mode|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(textName);
     const oldMatch = /^(preset|index|items|label|max_items|split_mode|selection_mode|seed|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(textName);
     const indexes = [];
+
+    if (compactMatch) {
+      const compactOffsets = {
+        preset: 0,
+        items: 1,
+        label: 2,
+        selection_mode: 3,
+        two_item_template: 4,
+        pick_count: 5,
+      };
+      indexes.push(2 + (Number(compactMatch[2]) - 1) * 6 + compactOffsets[compactMatch[1]]);
+    }
 
     if (newMatch) {
       const newOffsets = {
@@ -2270,6 +2293,15 @@ function ensurePart2Modal() {
     if (Array.isArray(node.widgets_values)) {
       for (const fallbackIndex of fallbackIndexes) {
         if (fallbackIndex >= 0) node.widgets_values[fallbackIndex] = value;
+      }
+    }
+
+    if (Array.isArray(node?.widgets)) {
+      for (const fallbackIndex of fallbackIndexes) {
+        const fallbackWidget = node.widgets[fallbackIndex];
+        if (!fallbackWidget || fallbackWidget === widget || !Object.prototype.hasOwnProperty.call(fallbackWidget, "value")) continue;
+        fallbackWidget.value = value;
+        fallbackWidget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
       }
     }
 
@@ -2402,6 +2434,25 @@ function ensurePart2Modal() {
     return false;
   }
 
+  function findSourceFromInputLink(graph, targetNode, targetInputName) {
+    const targetInput = (targetNode?.inputs || []).find((input) => input?.name === targetInputName);
+    const linkId = targetInput?.link;
+    if (linkId === null || linkId === undefined) return null;
+
+    const nodes = getSubgraphNodes(graph);
+    for (const node of nodes) {
+      const outputs = Array.isArray(node?.outputs) ? node.outputs : [];
+      for (let slot = 0; slot < outputs.length; slot++) {
+        const links = outputs[slot]?.links;
+        if (Array.isArray(links) && links.some((id) => Number(id) === Number(linkId))) {
+          return { node, slot };
+        }
+      }
+    }
+
+    return null;
+  }
+
   function ensureAdvancedInputSocket(node, name, type) {
     const inputs = Array.isArray(node?.inputs) ? node.inputs : [];
     if (inputs.some((input) => input?.name === name)) return true;
@@ -2424,6 +2475,25 @@ function ensurePart2Modal() {
     }
 
     return false;
+  }
+
+  function autoWireAdvancedTopGraphIndexSeed(graph, node, count) {
+    if (!graph || !node) return 0;
+
+    const indexSource = findSourceFromInputLink(graph, node, "index_1");
+    const seedSource = findSourceFromInputLink(graph, node, "seed_1");
+    let linked = 0;
+
+    for (let i = 1; i <= count; i++) {
+      ensureAdvancedInputSocket(node, `index_${i}`, "INT");
+      ensureAdvancedInputSocket(node, `seed_${i}`, "INT");
+      if (indexSource && ensureSubgraphNodeLink(graph, indexSource.node, indexSource.slot, node, `index_${i}`, "INT")) linked += 1;
+      if (seedSource && ensureSubgraphNodeLink(graph, seedSource.node, seedSource.slot, node, `seed_${i}`, "INT")) linked += 1;
+    }
+
+    node?.setSize?.([node.size?.[0] || 430, node.computeSize?.()[1] || node.size?.[1] || 440]);
+    app.graph?.setDirtyCanvas?.(true, true);
+    return linked;
   }
 
   function autoWireAdvancedIndexSeed(subgraph, node, count, missing) {
@@ -2454,6 +2524,7 @@ function ensurePart2Modal() {
   }
 
   function getAdvancedCount() {
+    if (!controls.advanced.enabled.checked) return 0;
     const rawCount = Number(controls.advanced.count.value || 1);
     return Math.max(1, Math.min(PART2_ADVANCED_MAX_PICKERS, Number.isFinite(rawCount) ? Math.round(rawCount) : 1));
   }
@@ -2483,7 +2554,11 @@ function ensurePart2Modal() {
   function updateAdvancedVisibility() {
     const count = getAdvancedCount();
     controls.advanced.count.value = String(count);
-    advancedSummary.textContent = `${count} active prompt detail ${count === 1 ? "list" : "lists"}`;
+    controls.advanced.count.disabled = count <= 0;
+    controls.advanced.modeAll.disabled = count <= 0;
+    advancedSummary.textContent = count <= 0
+      ? "Advanced prompt details are off"
+      : `${count} active prompt detail ${count === 1 ? "list" : "lists"}`;
 
     for (let i = 1; i <= PART2_ADVANCED_MAX_PICKERS; i++) {
       const picker = controls.advanced.pickers[i - 1];
@@ -2509,20 +2584,17 @@ function ensurePart2Modal() {
     const picker = controls.advanced.pickers[index - 1];
     if (!picker) return;
     const preset = String(picker.preset.value || "Custom");
-    picker.label.value = preset === "Custom" ? "" : preset;
-    picker.items.value = PART2_ADVANCED_PRESET_ITEMS[preset] || "";
+    if (preset !== "Custom") {
+      picker.label.value = preset;
+      picker.items.value = PART2_ADVANCED_PRESET_ITEMS[preset] || "";
+    }
     updateAdvancedPickerHeader(index);
     savePart2Draft();
   }
 
   function getAdvancedPresetForApply(picker) {
     const preset = String(picker?.preset?.value || "Custom").trim();
-    if (preset !== "Custom") return preset;
-
-    const label = String(picker?.label?.value || "").trim();
-    if (PART2_ADVANCED_PRESETS.includes(label) && label !== "Custom") return label;
-
-    return "Custom";
+    return PART2_ADVANCED_PRESETS.includes(preset) ? preset : "Custom";
   }
 
   function getAdvancedLabelForApply(picker, preset, index) {
@@ -2532,18 +2604,48 @@ function ensurePart2Modal() {
     return index === 1 ? "Camera Motion" : "";
   }
 
+  function getAdvancedItemDirectives(items) {
+    const directives = {};
+    const lines = String(items || "").split(/\r?\n/);
+    for (const line of lines) {
+      const match = /^#\s*(?:VRGDG_)?(LABEL|SELECTION_MODE|PICK_COUNT|TEMPLATE):\s*(.*?)\s*$/.exec(line);
+      if (!match) break;
+      directives[match[1].toLowerCase()] = match[2];
+    }
+    return directives;
+  }
+
+  function withAdvancedItemDirectives(items, values) {
+    const cleanItems = stripAdvancedItemDirectives(items);
+    const cleanLabel = String(values?.label || "").trim();
+    const selectionMode = String(values?.selectionMode || "index").trim();
+    const pickCount = Math.max(1, Math.min(50, Number.isFinite(Number(values?.pickCount)) ? Math.round(Number(values.pickCount)) : 1));
+    const template = String(values?.template || "").trim();
+    const directives = [];
+    if (cleanLabel) directives.push(`# VRGDG_LABEL: ${cleanLabel}`);
+    if (selectionMode) directives.push(`# VRGDG_SELECTION_MODE: ${selectionMode}`);
+    directives.push(`# VRGDG_PICK_COUNT: ${pickCount}`);
+    if (template) directives.push(`# VRGDG_TEMPLATE: ${template}`);
+    return `${directives.join("\n")}\n${cleanItems}`;
+  }
+
   function withAdvancedLabelDirective(items, label) {
-    const cleanItems = String(items || "").replace(/^# (?:VRGDG_LABEL|LABEL):.*(?:\r?\n|$)/, "");
+    const cleanItems = stripAdvancedItemDirectives(items);
     const cleanLabel = String(label || "").trim();
     return cleanLabel ? `# VRGDG_LABEL: ${cleanLabel}\n${cleanItems}` : cleanItems;
   }
 
+  function stripAdvancedItemDirectives(items) {
+    return String(items || "").replace(/^(#\s*(?:VRGDG_)?(?:LABEL|SELECTION_MODE|PICK_COUNT|TEMPLATE):.*(?:\r?\n|$))+/i, "");
+  }
+
   function stripAdvancedLabelDirective(items) {
-    return String(items || "").replace(/^# (?:VRGDG_LABEL|LABEL):.*(?:\r?\n|$)/, "");
+    return stripAdvancedItemDirectives(items);
   }
 
   function collectAdvancedDraft() {
     return {
+      enabled: controls.advanced.enabled.checked,
       count: controls.advanced.count.value,
       modeAll: controls.advanced.modeAll.value,
       pickers: controls.advanced.pickers.map((picker) => ({
@@ -2562,6 +2664,7 @@ function ensurePart2Modal() {
 
   function applyAdvancedDraft(draft) {
     if (!draft || typeof draft !== "object") return;
+    if (draft.enabled !== undefined) controls.advanced.enabled.checked = Boolean(draft.enabled);
     if (draft.count !== undefined) controls.advanced.count.value = String(draft.count);
     if (draft.modeAll !== undefined) setSelectValueAllowingDraft(controls.advanced.modeAll, draft.modeAll);
     for (let i = 0; i < controls.advanced.pickers.length; i++) {
@@ -2569,6 +2672,7 @@ function ensurePart2Modal() {
       const picker = controls.advanced.pickers[i];
       if (pickerDraft.preset !== undefined) setSelectValueAllowingDraft(picker.preset, pickerDraft.preset);
       if (pickerDraft.label !== undefined) picker.label.value = String(pickerDraft.label);
+      if (picker.preset.value && picker.preset.value !== "Custom") picker.label.value = picker.preset.value;
       if (pickerDraft.selectionMode !== undefined) setSelectValueAllowingDraft(picker.selectionMode, pickerDraft.selectionMode);
       if (pickerDraft.index !== undefined) picker.index.value = String(pickerDraft.index);
       if (pickerDraft.seed !== undefined) picker.seed.value = String(pickerDraft.seed);
@@ -2587,7 +2691,9 @@ function ensurePart2Modal() {
       return;
     }
 
-    controls.advanced.count.value = String(getAdvancedWidgetValue(node, "picker_count", 1));
+    const savedCount = Math.max(0, Math.min(PART2_ADVANCED_MAX_PICKERS, Number(getAdvancedWidgetValue(node, "picker_count", 0)) || 0));
+    controls.advanced.enabled.checked = savedCount > 0;
+    controls.advanced.count.value = String(savedCount);
     if (getAdvancedWidgetFallbackIndex("picker_count") < 0) missing.push("node 830 inner picker_count");
     const activeCount = getAdvancedCount();
 
@@ -2606,13 +2712,18 @@ function ensurePart2Modal() {
       ];
 
       fillSelectOptions(picker.preset, getPart2WidgetOptions(presetWidget).length ? getPart2WidgetOptions(presetWidget) : PART2_ADVANCED_PRESETS, getAdvancedWidgetValue(node, `preset_${i}`, i === 1 ? "Camera Motion" : "Custom"));
-      picker.label.value = String(getAdvancedWidgetValue(node, `label_${i}`, i === 1 ? "Camera Motion" : ""));
-      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
+      const rawItems = getAdvancedWidgetValue(node, `items_${i}`, "");
+      const preset = String(picker.preset.value || "Custom");
+      const itemDirectives = getAdvancedItemDirectives(rawItems);
+      picker.label.value = preset !== "Custom"
+        ? preset
+        : String(getAdvancedWidgetValue(node, `label_${i}`, itemDirectives.label || (i === 1 ? "Camera Motion" : "")));
+      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, itemDirectives.selection_mode || getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
       picker.index.value = String(getAdvancedWidgetValue(node, `index_${i}`, 0));
       picker.seed.value = String(getAdvancedWidgetValue(node, `seed_${i}`, 0));
-      picker.pickCount.value = String(getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
-      picker.template.value = String(getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
-      picker.items.value = stripAdvancedLabelDirective(getAdvancedWidgetValue(node, `items_${i}`, ""));
+      picker.pickCount.value = String(itemDirectives.pick_count || getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
+      picker.template.value = String(itemDirectives.template || getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
+      picker.items.value = stripAdvancedItemDirectives(rawItems);
 
       if (i <= activeCount) {
         for (const [name, widget] of requiredWidgets) {
@@ -2640,21 +2751,24 @@ function ensurePart2Modal() {
       if (setAdvancedWidgetValue(node, "picker_count", count)) updated += 1;
       else missing.push(`node ${node?.id || 830} inner picker_count`);
 
+      if (count <= 0) continue;
+
       for (let i = 1; i <= count; i++) {
         const picker = controls.advanced.pickers[i - 1];
         const preset = getAdvancedPresetForApply(picker);
         const label = getAdvancedLabelForApply(picker, preset, i);
         const values = {
           [`preset_${i}`]: preset,
-          [`items_${i}`]: withAdvancedLabelDirective(picker.items.value, label),
+          [`items_${i}`]: withAdvancedItemDirectives(picker.items.value, {
+            label,
+            selectionMode: picker.selectionMode.value || "index",
+            pickCount: picker.pickCount.value,
+            template: picker.template.value,
+          }),
           [`label_${i}`]: label,
-          [`max_items_${i}`]: 0,
-          [`split_mode_${i}`]: "auto",
           [`selection_mode_${i}`]: picker.selectionMode.value,
-          [`multi_format_${i}`]: "auto",
           [`pick_count_${i}`]: Number.isFinite(Number(picker.pickCount.value)) ? Number(picker.pickCount.value) : 1,
           [`two_item_template_${i}`]: picker.template.value,
-          [`keep_empty_${i}`]: false,
         };
 
         for (const [name, value] of Object.entries(values)) {
@@ -2664,7 +2778,9 @@ function ensurePart2Modal() {
         }
       }
 
-      updated += autoWireAdvancedIndexSeed(context.subgraph, node, count, missing);
+      updated += context.isTopGraph
+        ? autoWireAdvancedTopGraphIndexSeed(context.subgraph, node, count)
+        : autoWireAdvancedIndexSeed(context.subgraph, node, count, missing);
     }
 
     syncAdvancedOuterProxyValue("picker_count", count);
@@ -2960,6 +3076,13 @@ function ensurePart2Modal() {
   controls.zImageLora.count.addEventListener("input", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
   pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
+  controls.advanced.enabled.addEventListener("change", () => {
+    if (controls.advanced.enabled.checked && Number(controls.advanced.count.value || 0) <= 0) {
+      controls.advanced.count.value = "1";
+    }
+    updateAdvancedVisibility();
+    savePart2Draft();
+  });
   controls.advanced.count.addEventListener("input", updateAdvancedVisibility);
   controls.advanced.count.addEventListener("change", updateAdvancedVisibility);
   controls.advanced.modeAll.addEventListener("change", applyAdvancedModeToActivePickers);
@@ -2982,6 +3105,7 @@ function ensurePart2Modal() {
     ...Object.values(controls.modelSelects),
     ...Object.values(controls.settings),
     controls.useSrt,
+    controls.advanced.enabled,
     controls.advanced.count,
     controls.advanced.modeAll,
     controls.promptJson,
