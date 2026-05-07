@@ -10,6 +10,9 @@ const PART2_DRAFT_STORAGE_KEY = "vrgdg.part2.workflow.ui.draft.v1";
 const PART2_OPTIONAL_LORA_NODE_NAME = "VRGDG_OptionalMultiLoraModelOnly";
 const PART2_MAX_LORA_SLOTS = 20;
 const PART2_Z_IMAGE_LORA_INNER_NODE_ID = 847;
+const PART2_Z_IMAGE_TRIGGER_NODE_ID = 867;
+const PART2_LTX_TRIGGER_NODE_ID = 885;
+const PART3_LTX_TRIGGER_NODE_ID = 884;
 const BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM.png?v=20260505_2020_refresh", import.meta.url).href;
 const PART2_BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM-002.png?v=20260505_224432", import.meta.url).href;
 const LYRIC_CREATOR_GPT_URL = "https://chatgpt.com/g/g-69979b391cc88191ae4fe298b59c236e-ai-lyric-creator";
@@ -1093,6 +1096,19 @@ function getPart2Node(nodeId) {
   return app.graph?.getNodeById?.(nodeId) || null;
 }
 
+function findPart2NodeDeep(nodeId) {
+  const targetId = Number(nodeId);
+  const topNode = getPart2Node(targetId);
+  if (topNode) return topNode;
+
+  for (const graph of [app.graph, app.canvas?.graph, ...getGraphSubgraphDefinitions()]) {
+    const node = getSubgraphNodes(graph).find((item) => Number(item?.id) === targetId);
+    if (node) return node;
+  }
+
+  return null;
+}
+
 function getPart2NodeByType(typeName) {
   const nodes = app.graph?._nodes || [];
   return nodes.find((node) => node?.comfyClass === typeName || node?.type === typeName) || null;
@@ -1262,6 +1278,46 @@ function setPart2WidgetValueStrict(nodeId, name, value) {
   return true;
 }
 
+function getTriggerNodeId(kind, workflowKind = "part2") {
+  if (kind === "zImage") return PART2_Z_IMAGE_TRIGGER_NODE_ID;
+  return workflowKind === "part3" ? PART3_LTX_TRIGGER_NODE_ID : PART2_LTX_TRIGGER_NODE_ID;
+}
+
+function findWidgetByAliases(node, aliases, fallbackIndex = -1) {
+  if (!node) return null;
+  const accepted = new Set(aliases.map((alias) => String(alias).trim().toLowerCase()));
+  const widgets = node.widgets || [];
+  return widgets.find((widget) => accepted.has(String(widget?.name || "").trim().toLowerCase())) || widgets[fallbackIndex] || null;
+}
+
+function getTriggerWidgetValue(node, aliases, fallbackIndex, fallbackValue = "") {
+  const widget = findWidgetByAliases(node, aliases, fallbackIndex);
+  if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) return widget.value;
+  if (Array.isArray(node?.widgets_values) && fallbackIndex >= 0 && fallbackIndex < node.widgets_values.length) {
+    return node.widgets_values[fallbackIndex];
+  }
+  return fallbackValue;
+}
+
+function setTriggerWidgetValue(node, aliases, fallbackIndex, value) {
+  if (!node) return false;
+  const widget = findWidgetByAliases(node, aliases, fallbackIndex);
+  if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) {
+    widget.value = value;
+    widget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+  }
+
+  if (Array.isArray(node.widgets_values)) {
+    const accepted = new Set(aliases.map((alias) => String(alias).trim().toLowerCase()));
+    const widgetIndex = (node.widgets || []).findIndex((item) => accepted.has(String(item?.name || "").trim().toLowerCase()));
+    const resolvedIndex = widgetIndex >= 0 ? widgetIndex : fallbackIndex;
+    if (resolvedIndex >= 0) node.widgets_values[resolvedIndex] = value;
+  }
+
+  app.graph?.setDirtyCanvas?.(true, true);
+  return Boolean(widget) || (Array.isArray(node?.widgets_values) && fallbackIndex >= 0);
+}
+
 function fillSelectOptions(select, options, currentValue) {
   const optionSet = new Set(options.map((value) => String(value)));
   if (currentValue !== undefined && currentValue !== null && String(currentValue) && !optionSet.has(String(currentValue))) {
@@ -1308,6 +1364,20 @@ function createPart2Field(labelText, control, noteText = "") {
 
   wrapper.append(label, control, note);
   return wrapper;
+}
+
+function createPart2TriggerControls(noteText) {
+  const useTrigger = document.createElement("input");
+  useTrigger.type = "checkbox";
+
+  const triggerWord = stylePart2Input(document.createElement("input"));
+  triggerWord.type = "text";
+  triggerWord.placeholder = "Trigger word or LoRA name";
+
+  const useWrapper = createPart2Field("Use Trigger Word", useTrigger, noteText);
+  const wordWrapper = createPart2Field("Add Trigger Word", triggerWord, "This is sent to the trigger-word subgraph string_1 input.");
+
+  return { useTrigger, triggerWord, useWrapper, wordWrapper };
 }
 
 function createPart2ModelField(field, control) {
@@ -1528,12 +1598,14 @@ function ensurePart2Modal() {
       twoPass: null,
       slots: [],
       section: null,
+      trigger: null,
     },
     zImageLora: {
       useCustom: null,
       count: null,
       slots: [],
       section: null,
+      trigger: null,
     },
     advanced: {
       enabled: null,
@@ -1588,13 +1660,20 @@ function ensurePart2Modal() {
   controls.lora.useCustom = loraUseSelect;
   loraGrid.appendChild(createPart2Field("Use Custom LoRAs", loraUseSelect, "OFF leaves both first and second pass models unchanged."));
 
+  const ltxTriggerControls = createPart2TriggerControls("Optional trigger word for the selected LTX LoRA.");
+  controls.lora.trigger = ltxTriggerControls;
+  ltxTriggerControls.wordWrapper.style.display = "none";
+  loraGrid.append(ltxTriggerControls.useWrapper, ltxTriggerControls.wordWrapper);
+
   const loraCountInput = stylePart2Input(document.createElement("input"));
   loraCountInput.type = "number";
   loraCountInput.min = "0";
   loraCountInput.max = String(PART2_MAX_LORA_SLOTS);
   loraCountInput.step = "1";
   controls.lora.count = loraCountInput;
-  loraGrid.appendChild(createPart2Field("LoRA Count", loraCountInput, "How many LoRA slots to show and apply."));
+  const loraCountWrapper = createPart2Field("LoRA Count", loraCountInput, "How many LoRA slots to show and apply.");
+  loraCountWrapper.style.display = "none";
+  loraGrid.appendChild(loraCountWrapper);
 
   const loraTwoPassSelect = stylePart2Input(document.createElement("select"));
   for (const [value, label] of [["true", "ON"], ["false", "OFF"]]) {
@@ -1604,7 +1683,9 @@ function ensurePart2Modal() {
     loraTwoPassSelect.appendChild(option);
   }
   controls.lora.twoPass = loraTwoPassSelect;
-  loraGrid.appendChild(createPart2Field("LTX Two Pass Strength", loraTwoPassSelect, "ON uses half of each selected LoRA strength on first pass to preserve motion, then the full selected strength on the upscale pass. OFF uses the selected strength on both passes."));
+  const loraTwoPassWrapper = createPart2Field("LTX Two Pass Strength", loraTwoPassSelect, "ON uses half of each selected LoRA strength on first pass to preserve motion, then the full selected strength on the upscale pass. OFF uses the selected strength on both passes.");
+  loraTwoPassWrapper.style.display = "none";
+  loraGrid.appendChild(loraTwoPassWrapper);
 
   for (let i = 1; i <= PART2_MAX_LORA_SLOTS; i++) {
     const select = stylePart2Input(document.createElement("select"));
@@ -1616,6 +1697,8 @@ function ensurePart2Modal() {
 
     const loraWrapper = createPart2Field(`LoRA ${i}`, select);
     const strengthWrapper = createPart2Field(`Strength ${i}`, strength, "Selected/full strength for the upscale pass. First pass uses half of this value when two-pass strength is ON.");
+    loraWrapper.style.display = "none";
+    strengthWrapper.style.display = "none";
     controls.lora.slots.push({ select, strength, loraWrapper, strengthWrapper });
     loraGrid.append(loraWrapper, strengthWrapper);
   }
@@ -1640,13 +1723,20 @@ function ensurePart2Modal() {
   controls.zImageLora.useCustom = zImageLoraUseSelect;
   zImageLoraGrid.appendChild(createPart2Field("Use Z-Image LoRAs", zImageLoraUseSelect, "OFF leaves the Z-Image model unchanged."));
 
+  const zImageTriggerControls = createPart2TriggerControls("Optional trigger word for the selected Z-Image LoRA.");
+  controls.zImageLora.trigger = zImageTriggerControls;
+  zImageTriggerControls.wordWrapper.style.display = "none";
+  zImageLoraGrid.append(zImageTriggerControls.useWrapper, zImageTriggerControls.wordWrapper);
+
   const zImageLoraCountInput = stylePart2Input(document.createElement("input"));
   zImageLoraCountInput.type = "number";
   zImageLoraCountInput.min = "0";
   zImageLoraCountInput.max = String(PART2_MAX_LORA_SLOTS);
   zImageLoraCountInput.step = "1";
   controls.zImageLora.count = zImageLoraCountInput;
-  zImageLoraGrid.appendChild(createPart2Field("Z-Image LoRA Count", zImageLoraCountInput, "How many Z-Image LoRA slots to show and apply."));
+  const zImageLoraCountWrapper = createPart2Field("Z-Image LoRA Count", zImageLoraCountInput, "How many Z-Image LoRA slots to show and apply.");
+  zImageLoraCountWrapper.style.display = "none";
+  zImageLoraGrid.appendChild(zImageLoraCountWrapper);
 
   for (let i = 1; i <= PART2_MAX_LORA_SLOTS; i++) {
     const select = stylePart2Input(document.createElement("select"));
@@ -1658,6 +1748,8 @@ function ensurePart2Modal() {
 
     const loraWrapper = createPart2Field(`Z-Image LoRA ${i}`, select);
     const strengthWrapper = createPart2Field(`Z-Image Strength ${i}`, strength, "Applied at this exact strength.");
+    loraWrapper.style.display = "none";
+    strengthWrapper.style.display = "none";
     controls.zImageLora.slots.push({ select, strength, loraWrapper, strengthWrapper });
     zImageLoraGrid.append(loraWrapper, strengthWrapper);
   }
@@ -2009,6 +2101,10 @@ function ensurePart2Modal() {
           lora: slot.select.value,
           strength: slot.strength.value,
         })),
+        trigger: {
+          enabled: controls.lora.trigger.useTrigger.checked,
+          word: controls.lora.trigger.triggerWord.value,
+        },
       },
     };
 
@@ -2020,6 +2116,10 @@ function ensurePart2Modal() {
           lora: slot.select.value,
           strength: slot.strength.value,
         })),
+        trigger: {
+          enabled: controls.zImageLora.trigger.useTrigger.checked,
+          word: controls.zImageLora.trigger.triggerWord.value,
+        },
       };
     }
 
@@ -2084,6 +2184,10 @@ function ensurePart2Modal() {
         if (slotDraft.lora !== undefined) setSelectValueAllowingDraft(controls.lora.slots[i].select, slotDraft.lora);
         if (slotDraft.strength !== undefined) controls.lora.slots[i].strength.value = String(slotDraft.strength);
       }
+      if (draft.lora.trigger) {
+        controls.lora.trigger.useTrigger.checked = Boolean(draft.lora.trigger.enabled);
+        controls.lora.trigger.triggerWord.value = String(draft.lora.trigger.word ?? "");
+      }
       updateLoraVisibility();
     }
 
@@ -2094,6 +2198,10 @@ function ensurePart2Modal() {
         const slotDraft = draft.zImageLora.slots?.[i] || {};
         if (slotDraft.lora !== undefined) setSelectValueAllowingDraft(controls.zImageLora.slots[i].select, slotDraft.lora);
         if (slotDraft.strength !== undefined) controls.zImageLora.slots[i].strength.value = String(slotDraft.strength);
+      }
+      if (draft.zImageLora.trigger) {
+        controls.zImageLora.trigger.useTrigger.checked = Boolean(draft.zImageLora.trigger.enabled);
+        controls.zImageLora.trigger.triggerWord.value = String(draft.zImageLora.trigger.word ?? "");
       }
       updateZImageLoraVisibility();
     }
@@ -2124,6 +2232,8 @@ function ensurePart2Modal() {
 
     controls.lora.count.parentElement.style.display = useLoras ? "block" : "none";
     controls.lora.twoPass.parentElement.style.display = useLoras ? "block" : "none";
+    controls.lora.trigger.useWrapper.style.display = "block";
+    controls.lora.trigger.wordWrapper.style.display = controls.lora.trigger.useTrigger.checked ? "block" : "none";
 
     for (let i = 0; i < controls.lora.slots.length; i++) {
       const visible = useLoras && i < count;
@@ -2143,6 +2253,8 @@ function ensurePart2Modal() {
     const count = useLoras ? Math.max(0, Math.min(PART2_MAX_LORA_SLOTS, Number.isFinite(rawCount) ? rawCount : 0)) : 0;
 
     controls.zImageLora.count.parentElement.style.display = useLoras ? "block" : "none";
+    controls.zImageLora.trigger.useWrapper.style.display = "block";
+    controls.zImageLora.trigger.wordWrapper.style.display = controls.zImageLora.trigger.useTrigger.checked ? "block" : "none";
 
     for (let i = 0; i < controls.zImageLora.slots.length; i++) {
       const visible = useLoras && i < count;
@@ -2889,6 +3001,54 @@ function ensurePart2Modal() {
     return updated;
   }
 
+  function refreshTriggerControls(kind, missing) {
+    const trigger = kind === "zImage" ? controls.zImageLora.trigger : controls.lora.trigger;
+    if (!trigger) return;
+
+    if (kind === "zImage" && controls.workflowKind === "part3") {
+      trigger.useWrapper.style.display = "none";
+      trigger.wordWrapper.style.display = "none";
+      return;
+    }
+
+    const nodeId = getTriggerNodeId(kind, controls.workflowKind);
+    const node = findPart2NodeDeep(nodeId);
+    if (!node) {
+      trigger.useTrigger.checked = false;
+      trigger.triggerWord.value = "";
+      missing.push(`${kind === "zImage" ? "Z-Image" : "LTX"} trigger subgraph ${nodeId}`);
+      return;
+    }
+
+    trigger.useTrigger.checked = String(getTriggerWidgetValue(node, ["switch", "boolean", "enabled", "value"], 0, false)).toLowerCase() === "true";
+    trigger.triggerWord.value = String(getTriggerWidgetValue(node, ["string_1", "STRING_1", "trigger_word", "text", "string"], 1, "") ?? "");
+  }
+
+  function applyTriggerControls(kind, missing) {
+    if (kind === "zImage" && controls.workflowKind === "part3") return 0;
+
+    const trigger = kind === "zImage" ? controls.zImageLora.trigger : controls.lora.trigger;
+    const nodeId = getTriggerNodeId(kind, controls.workflowKind);
+    const node = findPart2NodeDeep(nodeId);
+    const label = kind === "zImage" ? "Z-Image trigger" : "LTX trigger";
+    if (!node) {
+      missing.push(`${label} subgraph ${nodeId}`);
+      return 0;
+    }
+
+    let updated = 0;
+    const enabled = Boolean(trigger?.useTrigger?.checked);
+    if (setTriggerWidgetValue(node, ["switch", "boolean", "enabled", "value"], 0, enabled)) updated += 1;
+    else missing.push(`${label} boolean switch`);
+
+    if (enabled) {
+      if (setTriggerWidgetValue(node, ["string_1", "STRING_1", "trigger_word", "text", "string"], 1, trigger.triggerWord.value || "")) updated += 1;
+      else missing.push(`${label} string_1`);
+    }
+
+    return updated;
+  }
+
   function refreshZImageLoraControls(missing) {
     if (controls.workflowKind === "part3") {
       controls.zImageLora.section.style.display = "none";
@@ -3003,7 +3163,11 @@ function ensurePart2Modal() {
     updateFixedDurationVisibility();
     refreshAdvancedControls(missing);
     refreshLoraControls(missing);
+    refreshTriggerControls("ltx", missing);
     refreshZImageLoraControls(missing);
+    refreshTriggerControls("zImage", missing);
+    updateLoraVisibility();
+    updateZImageLoraVisibility();
     suppressDraftSave = false;
 
     const draft = loadPart2Draft();
@@ -3057,9 +3221,13 @@ function ensurePart2Modal() {
     else missing.push(`node ${nodeIds.promptJson} prompt JSON`);
 
     updated += applyLoraControls(missing);
+    updated += applyTriggerControls("ltx", missing);
     updated += applyZImageLoraControls(missing);
+    updated += applyTriggerControls("zImage", missing);
 
     updateFixedDurationVisibility();
+    updateLoraVisibility();
+    updateZImageLoraVisibility();
     clearPart2Draft();
     setStatus(missing.length ? `Updated ${updated} settings.\nMissing:\n${missing.join("\n")}` : `Updated ${updated} Part 2 settings.`);
   }
@@ -3072,9 +3240,11 @@ function ensurePart2Modal() {
   controls.lora.useCustom.addEventListener("change", updateLoraVisibility);
   controls.lora.count.addEventListener("input", updateLoraVisibility);
   controls.lora.count.addEventListener("change", updateLoraVisibility);
+  controls.lora.trigger.useTrigger.addEventListener("change", updateLoraVisibility);
   controls.zImageLora.useCustom.addEventListener("change", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("input", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
+  controls.zImageLora.trigger.useTrigger.addEventListener("change", updateZImageLoraVisibility);
   pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
   controls.advanced.enabled.addEventListener("change", () => {
     if (controls.advanced.enabled.checked && Number(controls.advanced.count.value || 0) <= 0) {
@@ -3112,8 +3282,12 @@ function ensurePart2Modal() {
     controls.lora.useCustom,
     controls.lora.count,
     controls.lora.twoPass,
+    controls.lora.trigger.useTrigger,
+    controls.lora.trigger.triggerWord,
     controls.zImageLora.useCustom,
     controls.zImageLora.count,
+    controls.zImageLora.trigger.useTrigger,
+    controls.zImageLora.trigger.triggerWord,
   ];
   for (const slot of controls.lora.slots) {
     draftControls.push(slot.select, slot.strength);
