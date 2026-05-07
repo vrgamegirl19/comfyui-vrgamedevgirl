@@ -1490,6 +1490,168 @@ class VRGDG_LyricSegmentJsonFixer:
         return (fixed_text, normalized, was_fixed, note_text)
 
 
+class VRGDG_LyricSegmentTextCleaner:
+    FILLER_WORDS = {"oh", "you"}
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "lyrics_text": ("STRING", {"multiline": True, "default": ""}),
+                "repeat_output_count": ("INT", {"default": 3, "min": 2, "max": 8, "step": 1}),
+                "min_repeats_to_collapse": ("INT", {"default": 4, "min": 2, "max": 50, "step": 1}),
+                "bridge_single_word_segments": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "When a segment has one non-filler word, blend it with neighboring lyric words.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "INT", "STRING")
+    RETURN_NAMES = ("cleaned_lyrics_text", "changed_count", "notes")
+    FUNCTION = "clean"
+    CATEGORY = "VRGDG/General"
+    DESCRIPTION = "Cleans extracted lyricSegmentN text by shortening repeated filler lyrics and smoothing one-word fragments."
+
+    @staticmethod
+    def _parse_segment_line(line):
+        match = re.match(r"^(\s*lyricSegment)(\d+)(\s*=\s*)(.*)$", str(line or ""), re.IGNORECASE)
+        if not match:
+            return None
+        return {
+            "prefix": match.group(1),
+            "number": int(match.group(2)),
+            "separator": match.group(3),
+            "text": match.group(4).strip(),
+        }
+
+    @staticmethod
+    def _word_tokens(text):
+        return re.findall(r"[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)?", str(text or ""))
+
+    @staticmethod
+    def _clean_word(word, title_case=False):
+        value = str(word or "").strip()
+        if not value:
+            return ""
+        value = value[0].upper() + value[1:].lower()
+        return value if title_case else value
+
+    @classmethod
+    def _is_filler_word(cls, text):
+        words = cls._word_tokens(text)
+        return len(words) == 1 and words[0].lower() in cls.FILLER_WORDS
+
+    @classmethod
+    def _collapse_repeated_words(cls, text, repeat_output_count, min_repeats_to_collapse):
+        words = cls._word_tokens(text)
+        if not words:
+            return None
+
+        lowered = [word.lower() for word in words]
+        if len(set(lowered)) != 1:
+            return None
+
+        word = lowered[0]
+        if len(words) < int(min_repeats_to_collapse) and word not in cls.FILLER_WORDS:
+            return None
+
+        display_word = "Oh" if word in cls.FILLER_WORDS else cls._clean_word(words[0])
+        return ", ".join([display_word] * int(repeat_output_count)) + "."
+
+    @staticmethod
+    def _last_word_before(segments, current_index):
+        for index in range(current_index - 1, -1, -1):
+            words = VRGDG_LyricSegmentTextCleaner._word_tokens(segments[index].get("original_text", segments[index]["text"]))
+            if words:
+                return words[-1], len(words) > 1
+        return "", False
+
+    @staticmethod
+    def _first_words_after(segments, current_index):
+        for index in range(current_index + 1, len(segments)):
+            words = VRGDG_LyricSegmentTextCleaner._word_tokens(segments[index].get("original_text", segments[index]["text"]))
+            if words:
+                if words[0].lower() == "the" and len(words) > 1:
+                    return words[:2]
+                return words[:1]
+        return []
+
+    @classmethod
+    def _bridge_single_word(cls, segments, current_index):
+        current_words = cls._word_tokens(segments[current_index]["text"])
+        if len(current_words) != 1:
+            return None
+
+        current = current_words[0]
+        previous, previous_from_phrase = cls._last_word_before(segments, current_index)
+        next_words = cls._first_words_after(segments, current_index)
+
+        parts = []
+        if previous and previous.lower() != current.lower():
+            parts.append(cls._clean_word(previous) if previous_from_phrase else previous.lower())
+
+        parts.append(current.lower())
+
+        if next_words:
+            first_next = next_words[0]
+            if first_next.lower() != current.lower():
+                if first_next.lower() == "the":
+                    tail = " ".join(cls._clean_word(word) for word in next_words)
+                    if len(parts) > 1:
+                        return f"{parts[0]}, {parts[1]}. {tail}."
+                    return f"{parts[0]}. {tail}."
+                parts.append(first_next.lower())
+
+        if len(parts) <= 1:
+            return None
+        return ", ".join(parts) + "."
+
+    def clean(self, lyrics_text, repeat_output_count=3, min_repeats_to_collapse=4, bridge_single_word_segments=True):
+        lines = str(lyrics_text or "").splitlines()
+        parsed_by_line = {}
+        segments = []
+
+        for line_index, line in enumerate(lines):
+            parsed = self._parse_segment_line(line)
+            if parsed is None:
+                continue
+            parsed["line_index"] = line_index
+            parsed["original_text"] = parsed["text"]
+            parsed_by_line[line_index] = parsed
+            segments.append(parsed)
+
+        changed_count = 0
+        notes = []
+
+        for segment_index, segment in enumerate(segments):
+            original_text = segment["text"]
+            replacement = self._collapse_repeated_words(
+                original_text,
+                repeat_output_count,
+                min_repeats_to_collapse,
+            )
+            if replacement is None and self._is_filler_word(original_text):
+                replacement = ", ".join(["Oh"] * int(repeat_output_count)) + "."
+            if replacement is None and bool(bridge_single_word_segments):
+                replacement = self._bridge_single_word(segments, segment_index)
+
+            if replacement and replacement != original_text:
+                segment["text"] = replacement
+                changed_count += 1
+                notes.append(f"lyricSegment{segment['number']}")
+
+        output_lines = list(lines)
+        for line_index, segment in parsed_by_line.items():
+            output_lines[line_index] = f"{segment['prefix']}{segment['number']}{segment['separator']}{segment['text']}"
+
+        note_text = "Cleaned " + ", ".join(notes) if notes else "No lyric cleanup needed"
+        return ("\n".join(output_lines), changed_count, note_text)
+
+
 class VRGDG_PromptMapJsonFixer:
     @classmethod
     def INPUT_TYPES(cls):
@@ -1682,6 +1844,110 @@ class VRGDG_PromptMapJsonFixer:
             notes.append("normalized formatting")
 
         return (fixed_text, normalized, was_fixed, "; ".join(notes), prompt_count)
+
+
+class VRGDG_PromptJsonSubjectPrepender:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "subject": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "placeholder": "a female wearing a red dress",
+                    },
+                ),
+                "prompt_json": (any_typ, {"multiline": True, "default": "{}"}),
+                "separator": (
+                    "STRING",
+                    {
+                        "default": ", ",
+                        "multiline": False,
+                        "tooltip": "Text inserted between the subject and each prompt.",
+                    },
+                ),
+                "skip_if_already_starts_with_subject": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Avoids adding the subject twice when a prompt already starts with it.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "JSON", "INT")
+    RETURN_NAMES = ("json_text", "json_output", "prompt_count")
+    FUNCTION = "prepend_subject"
+    CATEGORY = "VRGDG/General"
+    DESCRIPTION = "Prepends the same subject text to every Prompt value in prompt-map JSON."
+
+    @staticmethod
+    def _strip_markdown_json_fence(text):
+        value = str(text or "").strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if lines:
+                first = lines[0].strip().lower()
+                if first == "```" or first.startswith("```json"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                value = "\n".join(lines).strip()
+        return value
+
+    @staticmethod
+    def _extract_json_slice(text):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end >= start:
+            return text[start : end + 1]
+        return text
+
+    @staticmethod
+    def _normalize_prompt_text(value):
+        if value is None:
+            return ""
+        return " ".join(str(value).replace("\r", " ").replace("\n", " ").split())
+
+    @staticmethod
+    def _as_bool(value):
+        if isinstance(value, str):
+            return value.strip().lower() == "true"
+        return bool(value)
+
+    def _load_prompt_map(self, prompt_json):
+        if isinstance(prompt_json, dict):
+            return prompt_json
+
+        cleaned = self._strip_markdown_json_fence(prompt_json)
+        cleaned = cleaned.replace("\ufeff", "").replace("\u200b", "")
+        candidate = self._extract_json_slice(cleaned)
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"VRGDG_PromptJsonSubjectPrepender: invalid prompt JSON: {exc}")
+        if not isinstance(parsed, dict):
+            raise ValueError("VRGDG_PromptJsonSubjectPrepender: prompt JSON must be an object.")
+        return parsed
+
+    def prepend_subject(self, subject, prompt_json, separator=", ", skip_if_already_starts_with_subject=True):
+        subject_text = self._normalize_prompt_text(subject)
+        separator_text = str(separator or "")
+        prompt_map = self._load_prompt_map(prompt_json)
+        skip_existing = self._as_bool(skip_if_already_starts_with_subject)
+
+        output = {}
+        for key, value in prompt_map.items():
+            prompt_text = self._normalize_prompt_text(value)
+            if subject_text and not (skip_existing and prompt_text.lower().startswith(subject_text.lower())):
+                prompt_text = f"{subject_text}{separator_text}{prompt_text}" if prompt_text else subject_text
+            output[str(key)] = prompt_text
+
+        json_text = json.dumps(output, indent=2, ensure_ascii=False)
+        return (json_text, output, len(output))
 
 
 class VRGDG_LyricSegmentDurationMerger:
@@ -2192,7 +2458,9 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_MultiStringConcat": VRGDG_MultiStringConcat,
     "VRGDG_StoryGroupJsonFixer": VRGDG_StoryGroupJsonFixer,
     "VRGDG_LyricSegmentJsonFixer": VRGDG_LyricSegmentJsonFixer,
+    "VRGDG_LyricSegmentTextCleaner": VRGDG_LyricSegmentTextCleaner,
     "VRGDG_PromptMapJsonFixer": VRGDG_PromptMapJsonFixer,    
+    "VRGDG_PromptJsonSubjectPrepender": VRGDG_PromptJsonSubjectPrepender,
     "VRGDG_LyricSegmentDurationMerger": VRGDG_LyricSegmentDurationMerger,
     "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
     "VRGDG_Part2WorkflowUI": VRGDG_Part2WorkflowUI,
@@ -2220,7 +2488,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_MultiStringConcat": "VRGDG_MultiStringConcat",
     "VRGDG_StoryGroupJsonFixer": "VRGDG_StoryGroupJsonFixer",
     "VRGDG_LyricSegmentJsonFixer": "VRGDG_LyricSegmentJsonFixer",
+    "VRGDG_LyricSegmentTextCleaner": "VRGDG Lyric Segment Text Cleaner",
     "VRGDG_PromptMapJsonFixer": "VRGDG_PromptMapJsonFixer",
+    "VRGDG_PromptJsonSubjectPrepender": "VRGDG Prompt JSON Subject Prepender",
     "VRGDG_LyricSegmentDurationMerger": "VRGDG_LyricSegmentDurationMerger",
     "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
     "VRGDG_Part2WorkflowUI": "VRGDG Part 2 Workflow UI",
