@@ -2810,10 +2810,10 @@ Peaceful""",
             "picker_count": (
                 "INT",
                 {
-                    "default": 2,
-                    "min": 1,
+                    "default": 0,
+                    "min": 0,
                     "max": cls.MAX_PICKERS,
-                    "tooltip": "How many independent cycling text pickers to use. Extra picker sections are hidden in the UI.",
+                    "tooltip": "How many independent cycling text pickers to use. Set 0 to disable advanced prompt details.",
                 },
             ),
             "joiner": (
