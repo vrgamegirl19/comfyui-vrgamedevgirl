@@ -1138,6 +1138,26 @@ function getGraphSubgraphDefinitions() {
   ];
 }
 
+function getSubgraphDefinitionForNode(node) {
+  if (!node) return null;
+  const possibleIds = new Set(
+    [
+      node.type,
+      node.comfyClass,
+      node.subgraph_id,
+      node.subgraphId,
+      node.properties?.subgraph_id,
+      node.properties?.subgraphId,
+      node.properties?.["Subgraph ID"],
+    ]
+      .filter((value) => value !== undefined && value !== null && String(value).trim())
+      .map((value) => String(value))
+  );
+
+  if (!possibleIds.size) return null;
+  return getGraphSubgraphDefinitions().find((subgraph) => possibleIds.has(String(subgraph?.id || ""))) || null;
+}
+
 function isAdvancedPickerNode(node) {
   const type = String(node?.comfyClass || node?.type || node?.properties?.["Node name for S&R"] || "");
   return type === PART2_ADVANCED_NODE_NAME;
@@ -1206,7 +1226,10 @@ function getPart2AdvancedPickerNode() {
 
 function getPart2ZImageOptionalLoraNode() {
   const zNode = getPart2Node(PART2_NODE_IDS.zImageModels);
-  const subNodes = getSubgraphNodes(zNode?.subgraph);
+  const subNodes = [
+    ...getSubgraphNodes(zNode?.subgraph),
+    ...getSubgraphNodes(getSubgraphDefinitionForNode(zNode)),
+  ];
   return (
     subNodes.find((node) => Number(node?.id) === PART2_Z_IMAGE_LORA_INNER_NODE_ID) ||
     subNodes.find((node) => node?.comfyClass === PART2_OPTIONAL_LORA_NODE_NAME || node?.type === PART2_OPTIONAL_LORA_NODE_NAME) ||
@@ -1343,6 +1366,13 @@ function setSelectValueAllowingDraft(select, value) {
     select.appendChild(option);
   }
   select.value = text;
+}
+
+function getValidSlotCountDraftValue(value) {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const count = Number(value);
+  if (!Number.isFinite(count)) return null;
+  return String(Math.max(0, Math.min(PART2_MAX_LORA_SLOTS, Math.round(count))));
 }
 
 function createPart2Field(labelText, control, noteText = "") {
@@ -2177,7 +2207,8 @@ function ensurePart2Modal() {
 
     if (draft.lora) {
       controls.lora.useCustom.value = String(draft.lora.useCustom ?? "false");
-      controls.lora.count.value = String(draft.lora.count ?? "0");
+      const loraDraftCount = getValidSlotCountDraftValue(draft.lora.count);
+      if (loraDraftCount !== null) controls.lora.count.value = loraDraftCount;
       controls.lora.twoPass.value = String(draft.lora.twoPass ?? "true");
       for (let i = 0; i < controls.lora.slots.length; i++) {
         const slotDraft = draft.lora.slots?.[i] || {};
@@ -2193,7 +2224,8 @@ function ensurePart2Modal() {
 
     if (draft.zImageLora) {
       controls.zImageLora.useCustom.value = String(draft.zImageLora.useCustom ?? "false");
-      controls.zImageLora.count.value = String(draft.zImageLora.count ?? "0");
+      const zImageDraftCount = getValidSlotCountDraftValue(draft.zImageLora.count);
+      if (zImageDraftCount !== null) controls.zImageLora.count.value = zImageDraftCount;
       for (let i = 0; i < controls.zImageLora.slots.length; i++) {
         const slotDraft = draft.zImageLora.slots?.[i] || {};
         if (slotDraft.lora !== undefined) setSelectValueAllowingDraft(controls.zImageLora.slots[i].select, slotDraft.lora);
@@ -2919,6 +2951,20 @@ function ensurePart2Modal() {
     return fallbackValue;
   }
 
+  function getLoraSelectFallbackOptions(slotIndex = 0) {
+    const ltxSlotOptions = Array.from(controls.lora.slots[slotIndex]?.select?.options || []).map((option) => option.value);
+    if (ltxSlotOptions.length) return ltxSlotOptions;
+
+    const loraNode = getPart2OptionalLoraNode();
+    for (let i = 1; i <= PART2_MAX_LORA_SLOTS; i++) {
+      const widget = getPart2Widget(loraNode, `lora_${i}`);
+      const options = getPart2WidgetOptions(widget);
+      if (options.length) return options;
+    }
+
+    return ["[none]"];
+  }
+
   function refreshLoraControls(missing) {
     const loraNode = getPart2OptionalLoraNode();
     if (!loraNode) {
@@ -3020,8 +3066,8 @@ function ensurePart2Modal() {
       return;
     }
 
-    trigger.useTrigger.checked = String(getTriggerWidgetValue(node, ["switch", "boolean", "enabled", "value"], 0, false)).toLowerCase() === "true";
-    trigger.triggerWord.value = String(getTriggerWidgetValue(node, ["string_1", "STRING_1", "trigger_word", "text", "string"], 1, "") ?? "");
+    trigger.useTrigger.checked = String(getPart2WidgetValue(nodeId, null, 0) ?? false).toLowerCase() === "true";
+    trigger.triggerWord.value = String(getPart2WidgetValue(nodeId, null, 1) ?? "");
   }
 
   function applyTriggerControls(kind, missing) {
@@ -3038,12 +3084,15 @@ function ensurePart2Modal() {
 
     let updated = 0;
     const enabled = Boolean(trigger?.useTrigger?.checked);
-    if (setTriggerWidgetValue(node, ["switch", "boolean", "enabled", "value"], 0, enabled)) updated += 1;
+    if (setPart2WidgetValue(nodeId, null, enabled, 0)) updated += 1;
     else missing.push(`${label} boolean switch`);
 
+    const word = trigger.triggerWord.value || "";
     if (enabled) {
-      if (setTriggerWidgetValue(node, ["string_1", "STRING_1", "trigger_word", "text", "string"], 1, trigger.triggerWord.value || "")) updated += 1;
+      if (setPart2WidgetValue(nodeId, null, word, 1)) updated += 1;
       else missing.push(`${label} string_1`);
+    } else {
+      setPart2WidgetValue(nodeId, null, "", 1);
     }
 
     return updated;
@@ -3069,8 +3118,9 @@ function ensurePart2Modal() {
     for (let i = 1; i <= PART2_MAX_LORA_SLOTS; i++) {
       const slot = controls.zImageLora.slots[i - 1];
       const loraWidget = getPart2Widget(loraNode, `lora_${i}`, getLoraWidgetFallbackIndex(`lora_${i}`));
-      const currentLora = getNodeWidgetValueFlexible(loraNode, `lora_${i}`, "[none]");
-      fillSelectOptions(slot.select, getPart2WidgetOptions(loraWidget), currentLora);
+      const currentLora = getNodeWidgetValueFlexible(loraNode, `lora_${i}`, "[none]") || "[none]";
+      const loraOptions = getPart2WidgetOptions(loraWidget);
+      fillSelectOptions(slot.select, loraOptions.length ? loraOptions : getLoraSelectFallbackOptions(i - 1), currentLora);
       slot.strength.value = String(getNodeWidgetValueFlexible(loraNode, `strength_${i}`, 1));
     }
 
