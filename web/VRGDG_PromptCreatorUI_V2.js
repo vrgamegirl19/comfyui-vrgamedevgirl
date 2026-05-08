@@ -39,6 +39,9 @@ const PART3_NODE_IDS = {
   zImageModels: null,
 };
 const PART2_ADVANCED_NODE_NAME = "VRGDG_MultiCyclingTextPicker";
+const PART2_ADVANCED_EASY_NODE_NAME = "VRGDG_EasyMultiCyclingTextPicker";
+const PART2_ADVANCED_EASY_NODE_ID = 902;
+const PART3_ADVANCED_EASY_NODE_ID = 887;
 const PART2_MODEL_FIELDS = [
   { nodeId: 271, key: "unet_name", label: "LTX GGUF model", downloadUrl: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { nodeId: 271, key: "vae_name", label: "Video VAE", downloadUrl: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
@@ -1160,7 +1163,12 @@ function getSubgraphDefinitionForNode(node) {
 
 function isAdvancedPickerNode(node) {
   const type = String(node?.comfyClass || node?.type || node?.properties?.["Node name for S&R"] || "");
-  return type === PART2_ADVANCED_NODE_NAME;
+  return type === PART2_ADVANCED_NODE_NAME || type === PART2_ADVANCED_EASY_NODE_NAME;
+}
+
+function isEasyAdvancedPickerNode(node) {
+  const type = String(node?.comfyClass || node?.type || node?.properties?.["Node name for S&R"] || "");
+  return type === PART2_ADVANCED_EASY_NODE_NAME;
 }
 
 function findAdvancedPickerInSubgraph(subgraph) {
@@ -1171,23 +1179,65 @@ function findAdvancedPickersInGraph(graph) {
   return getSubgraphNodes(graph).filter(isAdvancedPickerNode);
 }
 
-function findPreferredAdvancedPickerInGraph(graph) {
+function findAdvancedPickerById(graph, id) {
+  if (id === null || id === undefined) return null;
+  const node = getSubgraphNodes(graph).find((item) => Number(item?.id) === Number(id));
+  return isAdvancedPickerNode(node) ? node : null;
+}
+
+function getAdvancedEasyPickerIdForWorkflowKind(workflowKind = "part2") {
+  return workflowKind === "part3" ? PART3_ADVANCED_EASY_NODE_ID : PART2_ADVANCED_EASY_NODE_ID;
+}
+
+function getNodePosition(node) {
+  const pos = node?.pos || node?.position;
+  if (Array.isArray(pos)) return [Number(pos[0]) || 0, Number(pos[1]) || 0];
+  return [0, 0];
+}
+
+function distanceBetweenNodes(a, b) {
+  if (!a || !b) return Number.POSITIVE_INFINITY;
+  const [ax, ay] = getNodePosition(a);
+  const [bx, by] = getNodePosition(b);
+  return Math.hypot(ax - bx, ay - by);
+}
+
+function findPreferredAdvancedPickerInGraph(graph, ownerNode = null) {
   const pickers = findAdvancedPickersInGraph(graph);
   if (!pickers.length) return null;
-  return pickers.find((node) =>
+  const linkedPickers = pickers.filter((node) =>
     (node.outputs || []).some((output) =>
       String(output?.name || "") === "combined_formatted_text" &&
       Array.isArray(output?.links) &&
       output.links.length
     )
-  ) || pickers[0];
+  );
+  const linkedEasyPickers = linkedPickers.filter(isEasyAdvancedPickerNode);
+  const easyPickers = pickers.filter(isEasyAdvancedPickerNode);
+  if (linkedEasyPickers.length) {
+    return ownerNode
+      ? linkedEasyPickers.slice().sort((a, b) => distanceBetweenNodes(a, ownerNode) - distanceBetweenNodes(b, ownerNode))[0]
+      : linkedEasyPickers[0];
+  }
+  if (linkedPickers.length) {
+    return ownerNode
+      ? linkedPickers.slice().sort((a, b) => distanceBetweenNodes(a, ownerNode) - distanceBetweenNodes(b, ownerNode))[0]
+      : linkedPickers[0];
+  }
+  if (easyPickers.length && ownerNode) {
+    return easyPickers.slice().sort((a, b) => distanceBetweenNodes(a, ownerNode) - distanceBetweenNodes(b, ownerNode))[0];
+  }
+  return easyPickers[0] || pickers[0];
 }
 
-function getPart2AdvancedPickerContext() {
-  return getPart2AdvancedPickerContexts()[0] || null;
+function getPart2AdvancedPickerContext(ownerNode = null) {
+  return getPart2AdvancedPickerContexts({ ownerNode, singleTarget: true, workflowKind: "part2" })[0] || null;
 }
 
-function getPart2AdvancedPickerContexts() {
+function getPart2AdvancedPickerContexts(options = {}) {
+  const ownerNode = options.ownerNode || null;
+  const singleTarget = Boolean(options.singleTarget);
+  const workflowKind = options.workflowKind || "part2";
   const contexts = [];
   const seen = new Set();
   const addContext = (node, subgraph) => {
@@ -1198,12 +1248,17 @@ function getPart2AdvancedPickerContexts() {
     contexts.push({ node, subgraph, isTopGraph: subgraph === app.graph });
   };
 
-  addContext(findPreferredAdvancedPickerInGraph(app.graph), app.graph);
+  addContext(findAdvancedPickerById(app.graph, getAdvancedEasyPickerIdForWorkflowKind(workflowKind)), app.graph);
+  if (singleTarget && contexts[0]) return [contexts[0]];
+
+  addContext(findPreferredAdvancedPickerInGraph(app.graph, ownerNode), app.graph);
+  if (singleTarget && contexts[0] && isEasyAdvancedPickerNode(contexts[0].node)) return [contexts[0]];
 
   const activeGraph = app.canvas?.graph;
   addContext(findAdvancedPickerInSubgraph(activeGraph), activeGraph);
+  if (singleTarget && contexts[0]) return [contexts[0]];
 
-  const outerNode = getPart2Node(PART2_NODE_IDS.camera);
+  const outerNode = ownerNode || getPart2Node(PART2_NODE_IDS.camera);
   if (!outerNode) return contexts;
 
   const directSubgraph = outerNode.subgraph || outerNode.sub_graph || outerNode.graph;
@@ -1212,9 +1267,11 @@ function getPart2AdvancedPickerContexts() {
   const outerType = String(outerNode.type || outerNode.comfyClass || "");
   const matchingDefinition = getGraphSubgraphDefinitions().find((subgraph) => String(subgraph?.id || "") === outerType);
   addContext(findAdvancedPickerInSubgraph(matchingDefinition), matchingDefinition);
+  if (singleTarget && contexts[0]) return [contexts[0]];
 
   for (const subgraph of getGraphSubgraphDefinitions()) {
     addContext(findAdvancedPickerInSubgraph(subgraph), subgraph);
+    if (singleTarget && contexts[0]) return [contexts[0]];
   }
 
   return contexts;
@@ -1618,6 +1675,7 @@ function ensurePart2Modal() {
 
   const controls = {
     workflowKind: "part2",
+    workflowNode: null,
     modelSelects: {},
     modelFieldWrappers: {},
     settings: {},
@@ -1887,6 +1945,15 @@ function ensurePart2Modal() {
   advancedSummary.style.cssText = "font-size: 12px; color: #94a3b8; padding-bottom: 8px;";
   advancedCountRow.appendChild(advancedSummary);
   advancedSection.appendChild(advancedCountRow);
+
+  const advancedApplyRow = document.createElement("div");
+  advancedApplyRow.style.cssText = "display: flex; justify-content: flex-end; margin: -2px 0 14px;";
+  const advancedApplyButton = createButton(
+    "Apply Advanced Settings Only",
+    "border: 1px solid #2563eb; background: #1d4ed8; color: white; font-weight: 700;"
+  );
+  advancedApplyRow.appendChild(advancedApplyButton);
+  advancedSection.appendChild(advancedApplyRow);
 
   const advancedPickerList = document.createElement("div");
   advancedPickerList.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
@@ -2165,7 +2232,7 @@ function ensurePart2Modal() {
   function savePart2Draft() {
     if (suppressDraftSave) return;
     try {
-      localStorage.setItem(PART2_DRAFT_STORAGE_KEY, JSON.stringify(collectPart2Draft()));
+      localStorage.setItem(getPart2DraftStorageKey(), JSON.stringify(collectPart2Draft()));
       hasDraft = true;
     } catch (error) {
       // Browser storage can be disabled; form still works normally.
@@ -2174,7 +2241,7 @@ function ensurePart2Modal() {
 
   function loadPart2Draft() {
     try {
-      const raw = localStorage.getItem(PART2_DRAFT_STORAGE_KEY);
+      const raw = localStorage.getItem(getPart2DraftStorageKey());
       return raw ? JSON.parse(raw) : null;
     } catch (error) {
       return null;
@@ -2183,11 +2250,16 @@ function ensurePart2Modal() {
 
   function clearPart2Draft() {
     try {
-      localStorage.removeItem(PART2_DRAFT_STORAGE_KEY);
+      localStorage.removeItem(getPart2DraftStorageKey());
     } catch (error) {
       // ignore
     }
     hasDraft = false;
+  }
+
+  function getPart2DraftStorageKey() {
+    const nodeId = controls.workflowNode?.id ?? "global";
+    return `${PART2_DRAFT_STORAGE_KEY}.${controls.workflowKind}.node.${nodeId}`;
   }
 
   function applyPart2Draft(draft) {
@@ -2451,6 +2523,22 @@ function ensurePart2Modal() {
 
     app.graph?.setDirtyCanvas?.(true, true);
     return Boolean(widget) || (Array.isArray(node.widgets_values) && fallbackIndexes.length > 0);
+  }
+
+  function setEasyAdvancedWidgetValue(node, name, value) {
+    const widget = getAdvancedWidget(node, name);
+    if (!widget) return false;
+    widget.value = value;
+    widget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+    const index = (node.widgets || []).indexOf(widget);
+    if (Array.isArray(node.widgets_values) && index >= 0) node.widgets_values[index] = value;
+    app.graph?.setDirtyCanvas?.(true, true);
+    return true;
+  }
+
+  function getEasyAdvancedWidgetValue(node, name, fallback = "") {
+    const widget = getAdvancedWidget(node, name);
+    return widget?.value ?? fallback;
   }
 
   function syncAdvancedOuterProxyValue(name, value) {
@@ -2748,6 +2836,50 @@ function ensurePart2Modal() {
     return index === 1 ? "Camera Motion" : "";
   }
 
+  function getAdvancedPickerDirectApplyValues(index) {
+    const picker = controls.advanced.pickers[index - 1];
+    const preset = getAdvancedPresetForApply(picker);
+    const label = getAdvancedLabelForApply(picker, preset, index);
+    const pickCount = Math.max(1, Math.min(50, Number.isFinite(Number(picker.pickCount.value)) ? Math.round(Number(picker.pickCount.value)) : 1));
+    return {
+      preset,
+      items: stripAdvancedItemDirectives(picker.items.value),
+      label,
+      selection_mode: picker.selectionMode.value || "index",
+      two_item_template: picker.template.value || "start with {item1} then follow with {item2}",
+      pick_count: pickCount,
+    };
+  }
+
+  function applyEasyAdvancedPickerState(node, count) {
+    if (!node) return 0;
+    let updated = 0;
+    if (setEasyAdvancedWidgetValue(node, "picker_count", count)) updated += 1;
+    if (setEasyAdvancedWidgetValue(node, "joiner", "newline")) updated += 1;
+
+    for (let i = 1; i <= PART2_ADVANCED_MAX_PICKERS; i++) {
+      const values = i <= count ? getAdvancedPickerDirectApplyValues(i) : {
+        preset: i === 1 ? "Camera Motion" : "Custom",
+        items: "",
+        label: "",
+        selection_mode: "index",
+        two_item_template: "start with {item1} then follow with {item2}",
+        pick_count: 1,
+      };
+
+      if (setEasyAdvancedWidgetValue(node, `preset_${i}`, values.preset)) updated += 1;
+      if (setEasyAdvancedWidgetValue(node, `label_${i}`, values.label)) updated += 1;
+      if (setEasyAdvancedWidgetValue(node, `selection_mode_${i}`, values.selection_mode)) updated += 1;
+      if (setEasyAdvancedWidgetValue(node, `items_${i}`, values.items)) updated += 1;
+      if (setEasyAdvancedWidgetValue(node, `pick_count_${i}`, values.pick_count)) updated += 1;
+      if (setEasyAdvancedWidgetValue(node, `two_item_template_${i}`, values.two_item_template)) updated += 1;
+    }
+
+    node.setSize?.([Math.max(780, node.size?.[0] || 780), node.computeSize?.()[1] || node.size?.[1] || 440]);
+    app.graph?.setDirtyCanvas?.(true, true);
+    return updated;
+  }
+
   function getAdvancedItemDirectives(items) {
     const directives = {};
     const lines = String(items || "").split(/\r?\n/);
@@ -2829,9 +2961,9 @@ function ensurePart2Modal() {
   }
 
   function refreshAdvancedControls(missing) {
-    const node = getPart2AdvancedPickerNode();
+    const node = getPart2AdvancedPickerContexts({ ownerNode: controls.workflowNode, singleTarget: true, workflowKind: controls.workflowKind })[0]?.node || null;
     if (!node) {
-      missing.push("node 830 inner VRGDG_MultiCyclingTextPicker");
+      missing.push("VRGDG_EasyMultiCyclingTextPicker or VRGDG_MultiCyclingTextPicker");
       return;
     }
 
@@ -2855,19 +2987,21 @@ function ensurePart2Modal() {
         [`two_item_template_${i}`, getAdvancedWidget(node, `two_item_template_${i}`)],
       ];
 
-      fillSelectOptions(picker.preset, getPart2WidgetOptions(presetWidget).length ? getPart2WidgetOptions(presetWidget) : PART2_ADVANCED_PRESETS, getAdvancedWidgetValue(node, `preset_${i}`, i === 1 ? "Camera Motion" : "Custom"));
-      const rawItems = getAdvancedWidgetValue(node, `items_${i}`, "");
+      fillSelectOptions(picker.preset, getPart2WidgetOptions(presetWidget).length ? getPart2WidgetOptions(presetWidget) : PART2_ADVANCED_PRESETS, isEasyAdvancedPickerNode(node) ? getEasyAdvancedWidgetValue(node, `preset_${i}`, i === 1 ? "Camera Motion" : "Custom") : getAdvancedWidgetValue(node, `preset_${i}`, i === 1 ? "Camera Motion" : "Custom"));
+      const rawItems = isEasyAdvancedPickerNode(node) ? getEasyAdvancedWidgetValue(node, `items_${i}`, "") : getAdvancedWidgetValue(node, `items_${i}`, "");
       const preset = String(picker.preset.value || "Custom");
       const itemDirectives = getAdvancedItemDirectives(rawItems);
-      picker.label.value = preset !== "Custom"
-        ? preset
-        : String(getAdvancedWidgetValue(node, `label_${i}`, itemDirectives.label || (i === 1 ? "Camera Motion" : "")));
-      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, itemDirectives.selection_mode || getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
-      picker.index.value = String(getAdvancedWidgetValue(node, `index_${i}`, 0));
-      picker.seed.value = String(getAdvancedWidgetValue(node, `seed_${i}`, 0));
-      picker.pickCount.value = String(itemDirectives.pick_count || getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
-      picker.template.value = String(itemDirectives.template || getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
-      picker.items.value = stripAdvancedItemDirectives(rawItems);
+      picker.label.value = isEasyAdvancedPickerNode(node)
+        ? String(getEasyAdvancedWidgetValue(node, `label_${i}`, preset !== "Custom" ? preset : (i === 1 ? "Camera Motion" : "")))
+        : preset !== "Custom"
+          ? preset
+          : String(getAdvancedWidgetValue(node, `label_${i}`, itemDirectives.label || (i === 1 ? "Camera Motion" : "")));
+      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, isEasyAdvancedPickerNode(node) ? getEasyAdvancedWidgetValue(node, `selection_mode_${i}`, "index") : itemDirectives.selection_mode || getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
+      picker.index.value = String(isEasyAdvancedPickerNode(node) ? 0 : getAdvancedWidgetValue(node, `index_${i}`, 0));
+      picker.seed.value = String(isEasyAdvancedPickerNode(node) ? 0 : getAdvancedWidgetValue(node, `seed_${i}`, 0));
+      picker.pickCount.value = String(isEasyAdvancedPickerNode(node) ? getEasyAdvancedWidgetValue(node, `pick_count_${i}`, 1) : itemDirectives.pick_count || getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
+      picker.template.value = String(isEasyAdvancedPickerNode(node) ? getEasyAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}") : itemDirectives.template || getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
+      picker.items.value = isEasyAdvancedPickerNode(node) ? String(rawItems || "") : stripAdvancedItemDirectives(rawItems);
 
       if (i <= activeCount) {
         for (const [name, widget] of requiredWidgets) {
@@ -2881,9 +3015,9 @@ function ensurePart2Modal() {
   }
 
   function applyAdvancedControls(missing) {
-    const contexts = getPart2AdvancedPickerContexts();
+    const contexts = getPart2AdvancedPickerContexts({ ownerNode: controls.workflowNode, singleTarget: true, workflowKind: controls.workflowKind });
     if (!contexts.length) {
-      missing.push("node 830 inner VRGDG_MultiCyclingTextPicker");
+      missing.push("VRGDG_EasyMultiCyclingTextPicker or VRGDG_MultiCyclingTextPicker");
       return 0;
     }
 
@@ -2892,6 +3026,12 @@ function ensurePart2Modal() {
 
     for (const context of contexts) {
       const node = context.node;
+
+      if (isEasyAdvancedPickerNode(node)) {
+        updated += applyEasyAdvancedPickerState(node, count);
+        continue;
+      }
+
       if (setAdvancedWidgetValue(node, "picker_count", count)) updated += 1;
       else missing.push(`node ${node?.id || 830} inner picker_count`);
 
@@ -3282,6 +3422,19 @@ function ensurePart2Modal() {
     setStatus(missing.length ? `Updated ${updated} settings.\nMissing:\n${missing.join("\n")}` : `Updated ${updated} Part 2 settings.`);
   }
 
+  function applyAdvancedOnlySettings() {
+    const missing = [];
+    const contexts = getPart2AdvancedPickerContexts({ ownerNode: controls.workflowNode, singleTarget: true, workflowKind: controls.workflowKind });
+    const targetId = contexts[0]?.node?.id;
+    const updated = applyAdvancedControls(missing);
+    savePart2Draft();
+    setStatus(
+      missing.length
+        ? `Updated ${updated} advanced settings${targetId ? ` on picker #${targetId}` : ""}.\nMissing:\n${missing.join("\n")}`
+        : `Updated ${updated} advanced settings${targetId ? ` on picker #${targetId}` : ""}.`
+    );
+  }
+
   closeButton.addEventListener("click", closeModal);
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) closeModal();
@@ -3364,9 +3517,11 @@ function ensurePart2Modal() {
 
   applyButton.addEventListener("click", applyPart2Settings);
   topApplyButton.addEventListener("click", applyPart2Settings);
+  advancedApplyButton.addEventListener("click", applyAdvancedOnlySettings);
 
-  overlay.__vrgdgOpenPart2 = (workflowKind = "part2") => {
+  overlay.__vrgdgOpenPart2 = (workflowKind = "part2", workflowNode = null) => {
     controls.workflowKind = workflowKind === "part3" ? "part3" : "part2";
+    controls.workflowNode = workflowNode;
     title.textContent = controls.workflowKind === "part3" ? "Workflow 3 Controls" : "Part 2 Workflow Controls";
     subtitle.textContent = controls.workflowKind === "part3"
       ? "Control model pickers, render settings, SRT/fixed timing, prompt detail lists, and copied prompt JSON."
@@ -3400,7 +3555,7 @@ function attachWorkflowButton(node, workflowKind) {
 
   node.addWidget("button", buttonName, null, () => {
     const modal = ensurePart2Modal();
-    modal.__vrgdgOpenPart2(workflowKind);
+    modal.__vrgdgOpenPart2(workflowKind, node);
   });
 }
 
