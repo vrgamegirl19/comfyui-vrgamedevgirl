@@ -16,6 +16,48 @@ from transformers import (
 )
 
 
+def _whisper_input_features_to_model(input_features, model, fallback_device):
+    encoder = getattr(getattr(model, "model", None), "encoder", None)
+    conv1 = getattr(encoder, "conv1", None)
+    for tensor in (
+        getattr(conv1, "bias", None),
+        getattr(conv1, "weight", None),
+    ):
+        if tensor is not None:
+            return input_features.to(device=tensor.device, dtype=tensor.dtype)
+
+    for tensor in model.parameters():
+        if tensor.is_floating_point():
+            return input_features.to(device=tensor.device, dtype=tensor.dtype)
+
+    return input_features.to(device=fallback_device, dtype=torch.float32)
+
+
+def _is_whisper_dtype_mismatch_error(exc):
+    message = str(exc).lower()
+    return (
+        "input type" in message
+        and "bias type" in message
+        and "should be the same" in message
+    )
+
+
+def _whisper_generate_with_dtype_fallback(model, input_features, fallback_device, **kwargs):
+    try:
+        return model.generate(input_features, **kwargs)
+    except RuntimeError as exc:
+        if not _is_whisper_dtype_mismatch_error(exc):
+            raise
+
+        print("[Whisper] Retrying with model dtype/device after PyTorch dtype mismatch.")
+        aligned_features = _whisper_input_features_to_model(
+            input_features,
+            model,
+            fallback_device,
+        )
+        return model.generate(aligned_features, **kwargs)
+
+
 class VRGDG_ManualLyricsExtractor:
     """
     Transcribes entire audio file and outputs all lyrics as a formatted string.
@@ -71,14 +113,22 @@ class VRGDG_ManualLyricsExtractor:
                 flat_seg = torchaudio.functional.resample(flat_seg, sample_rate, 16000)
 
             inputs = processor(flat_seg, sampling_rate=16000, return_tensors="pt", padding="longest")
-            model_dtype = next(model.parameters()).dtype
-            input_features = inputs["input_features"].to(device=device, dtype=model_dtype)
+            input_features = inputs["input_features"].to(device)
 
             if language == "auto":
-                generated_ids = model.generate(input_features)
+                generated_ids = _whisper_generate_with_dtype_fallback(
+                    model,
+                    input_features,
+                    device,
+                )
             else:
                 decoder_ids = processor.get_decoder_prompt_ids(language=language)
-                generated_ids = model.generate(input_features, forced_decoder_ids=decoder_ids)
+                generated_ids = _whisper_generate_with_dtype_fallback(
+                    model,
+                    input_features,
+                    device,
+                    forced_decoder_ids=decoder_ids,
+                )
 
             text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
             return text
@@ -1138,11 +1188,17 @@ class VRGDG_ManualLyricsExtractor_SRT:
 
             with torch.no_grad():
                 if language == "auto":
-                    generated_ids = model.generate(input_features)
+                    generated_ids = _whisper_generate_with_dtype_fallback(
+                        model,
+                        input_features,
+                        device,
+                    )
                 else:
                     decoder_ids = processor.get_decoder_prompt_ids(language=language)
-                    generated_ids = model.generate(
+                    generated_ids = _whisper_generate_with_dtype_fallback(
+                        model,
                         input_features,
+                        device,
                         forced_decoder_ids=decoder_ids
                     )
 
