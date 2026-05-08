@@ -3,18 +3,23 @@ import { api } from "../../../scripts/api.js";
 
 const NODE_NAME = "VRGDG_PromptCreatorUI_V2";
 const PART2_NODE_NAME = "VRGDG_Part2WorkflowUI";
+const PART3_NODE_NAME = "VRGDG_Part3WorkflowUI";
 const MODAL_ID = "vrgdg-prompt-creator-ui-v2-modal";
 const PART2_MODAL_ID = "vrgdg-prompt-creator-part2-ui-modal";
 const PART2_DRAFT_STORAGE_KEY = "vrgdg.part2.workflow.ui.draft.v1";
 const PART2_OPTIONAL_LORA_NODE_NAME = "VRGDG_OptionalMultiLoraModelOnly";
 const PART2_MAX_LORA_SLOTS = 20;
 const PART2_Z_IMAGE_LORA_INNER_NODE_ID = 847;
+const PART2_Z_IMAGE_TRIGGER_NODE_ID = 867;
+const PART2_LTX_TRIGGER_NODE_ID = 885;
+const PART3_LTX_TRIGGER_NODE_ID = 884;
 const BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM.png?v=20260505_2020_refresh", import.meta.url).href;
 const PART2_BANNER_URL = new URL("./ChatGPT Image May 5, 2026, 08_07_18 PM-002.png?v=20260505_224432", import.meta.url).href;
 const LYRIC_CREATOR_GPT_URL = "https://chatgpt.com/g/g-69979b391cc88191ae4fe298b59c236e-ai-lyric-creator";
 const STYLE_THEME_GPT_URL = "https://chatgpt.com/g/g-69fb415a964c8191b4a737f84f37227f-ltx-2-3-style-theme-guide/c/69fb427d-4518-8331-bfd7-505c0f55d2cc";
 const STORY_IDEA_GPT_URL = "https://chatgpt.com/g/g-69fb3cb767448191a6caa88be94940d5-ltx-2-3-story-concept-helper/c/69fb3e25-7e74-8326-abd6-7df9cf847a5b";
 const SUBJECT_LOCATION_GPT_URL = "https://chatgpt.com/g/g-69fb38a997fc8191a2fa479e44a3c675-ltx-2-3-subject-and-location-creator/c/69fb39e2-2ba0-8328-94c0-6ac9c94d0c89";
+const ADVANCED_PROMPT_DETAILS_GPT_URL = "https://chatgpt.com/g/g-69fbebf16b3c81919db550b8d2e87db7-ltx-2-3-advanced-prompt-details";
 const PART2_NODE_IDS = {
   modelLoader: 271,
   settings: 736,
@@ -26,6 +31,14 @@ const PART2_NODE_IDS = {
   zImageModels: 797,
   optionalLoras: 842,
 };
+const PART3_NODE_IDS = {
+  ...PART2_NODE_IDS,
+  llmI2V: 853,
+  llmT2I: null,
+  promptJson: 860,
+  zImageModels: null,
+};
+const PART2_ADVANCED_NODE_NAME = "VRGDG_MultiCyclingTextPicker";
 const PART2_MODEL_FIELDS = [
   { nodeId: 271, key: "unet_name", label: "LTX GGUF model", downloadUrl: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { nodeId: 271, key: "vae_name", label: "Video VAE", downloadUrl: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
@@ -33,9 +46,9 @@ const PART2_MODEL_FIELDS = [
   { nodeId: 271, key: "clip_name2", label: "Text Projection clip model", downloadUrl: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/text_encoders" },
   { nodeId: 271, key: "model_name", label: "Latent Upscaler", downloadUrl: "https://huggingface.co/prince-canuma/LTX-2.3-distilled/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" },
   { nodeId: 271, key: "vae_name_1", label: "Audio VAE", downloadUrl: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
-  { nodeId: 797, key: "unet_name", label: "Z-Image Turbo Model", downloadUrl: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
-  { nodeId: 797, key: "clip_name", label: "Z-Image Clip", downloadUrl: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
-  { nodeId: 797, key: "vae_name", label: "Z-Image VAE", downloadUrl: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" },
+  { nodeId: 797, key: "unet_name", label: "Z-Image Turbo Model", downloadUrl: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors", zImageOnly: true },
+  { nodeId: 797, key: "clip_name", label: "Z-Image Clip", downloadUrl: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors", zImageOnly: true },
+  { nodeId: 797, key: "vae_name", label: "Z-Image VAE", downloadUrl: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors", zImageOnly: true },
 ];
 const PART2_LLM_DOWNLOADS = [
   {
@@ -61,6 +74,118 @@ const PART2_SETTING_FIELDS = [
     note: "Only shown when Use SRT Duration is OFF. Going over 20 seconds can cause OOM issues during video creation.",
   },
 ];
+const PART2_ADVANCED_MAX_PICKERS = 20;
+const PART2_ADVANCED_PRESET_ITEMS = {
+  "Camera Motion": `Slow push-in
+Track right
+Track left
+Dolly backward
+Handheld follow
+Over-the-shoulder push-in
+Slow pan right
+Slow pan left
+Tilt up
+Tilt down
+Arc around subject
+Orbit shot
+Low-angle tracking shot
+Crane rising move
+Slow zoom-in`,
+  "Character Movement/Motion": `Walks toward camera with confident swagger
+Strides across the frame
+Leans toward the camera
+Points into the lens
+Throws arms wide
+Raises both hands overhead
+Runs a hand through their hair
+Slowly backs away from the camera
+Drops to one knee
+Throws their head back
+Whips a jacket off one shoulder
+Stomps forward with attitude
+Tilts chin upward
+Reaches toward the camera
+Collapses dramatically to the floor`,
+  Lighting: `Soft natural light
+Hard direct sunlight
+Warm tungsten light
+Cool fluorescent light
+Neon nightclub light
+Moody low-key lighting
+High-key studio lighting
+Backlit silhouette
+Rim lighting
+Side lighting
+Top-down lighting
+Underlighting
+Golden hour light
+Blue hour light
+Strobe lighting`,
+  "Time of Day": `Pre-dawn
+Dawn
+Early morning
+Mid-morning
+Late morning
+Noon
+Early afternoon
+Mid-afternoon
+Late afternoon
+Golden hour
+Sunset
+Dusk
+Blue hour
+Night
+After midnight`,
+  Weather: `Clear sky
+Partly cloudy
+Overcast
+Light rain
+Heavy rain
+Thunderstorm
+Drizzle
+Fog
+Mist
+Snowfall
+Blizzard
+Hail
+Strong wind
+Dust storm
+Humid haze`,
+  Dialogue: "",
+  "Facial Expression": `Calm expression
+Serious expression
+Confident smirk
+Cold stare
+Worried expression
+Sad expression
+Angry glare
+Fearful expression
+Surprised expression
+Blank expression
+Dreamy expression
+Suspicious look
+Pained expression
+Defiant expression
+Soft smile`,
+  Emotion: `Joyful
+Melancholic
+Anxious
+Furious
+Heartbroken
+Hopeful
+Jealous
+Lonely
+Nostalgic
+Conflicted
+Euphoric
+Ashamed
+Determined
+Vengeful
+Peaceful`,
+  Custom: "",
+};
+const PART2_ADVANCED_PRESETS = Object.keys(PART2_ADVANCED_PRESET_ITEMS);
+const PART2_ADVANCED_SELECTION_MODES = ["index", "random", "random no repeat"];
 const TEXT_FIELDS = [
   {
     key: "full_lyrics",
@@ -971,6 +1096,19 @@ function getPart2Node(nodeId) {
   return app.graph?.getNodeById?.(nodeId) || null;
 }
 
+function findPart2NodeDeep(nodeId) {
+  const targetId = Number(nodeId);
+  const topNode = getPart2Node(targetId);
+  if (topNode) return topNode;
+
+  for (const graph of [app.graph, app.canvas?.graph, ...getGraphSubgraphDefinitions()]) {
+    const node = getSubgraphNodes(graph).find((item) => Number(item?.id) === targetId);
+    if (node) return node;
+  }
+
+  return null;
+}
+
 function getPart2NodeByType(typeName) {
   const nodes = app.graph?._nodes || [];
   return nodes.find((node) => node?.comfyClass === typeName || node?.type === typeName) || null;
@@ -988,6 +1126,82 @@ function getSubgraphNodes(subgraph) {
   if (Array.isArray(subgraph?.nodes)) return subgraph.nodes;
   if (Array.isArray(subgraph?._nodes)) return subgraph._nodes;
   return [];
+}
+
+function getGraphSubgraphDefinitions() {
+  const graph = app.graph || {};
+  return [
+    ...(Array.isArray(graph.subgraphs) ? graph.subgraphs : []),
+    ...(Array.isArray(graph._subgraphs) ? graph._subgraphs : []),
+    ...(Array.isArray(graph.definitions?.subgraphs) ? graph.definitions.subgraphs : []),
+    ...(Array.isArray(graph.extra?.definitions?.subgraphs) ? graph.extra.definitions.subgraphs : []),
+  ];
+}
+
+function isAdvancedPickerNode(node) {
+  const type = String(node?.comfyClass || node?.type || node?.properties?.["Node name for S&R"] || "");
+  return type === PART2_ADVANCED_NODE_NAME;
+}
+
+function findAdvancedPickerInSubgraph(subgraph) {
+  return getSubgraphNodes(subgraph).find(isAdvancedPickerNode) || null;
+}
+
+function findAdvancedPickersInGraph(graph) {
+  return getSubgraphNodes(graph).filter(isAdvancedPickerNode);
+}
+
+function findPreferredAdvancedPickerInGraph(graph) {
+  const pickers = findAdvancedPickersInGraph(graph);
+  if (!pickers.length) return null;
+  return pickers.find((node) =>
+    (node.outputs || []).some((output) =>
+      String(output?.name || "") === "combined_formatted_text" &&
+      Array.isArray(output?.links) &&
+      output.links.length
+    )
+  ) || pickers[0];
+}
+
+function getPart2AdvancedPickerContext() {
+  return getPart2AdvancedPickerContexts()[0] || null;
+}
+
+function getPart2AdvancedPickerContexts() {
+  const contexts = [];
+  const seen = new Set();
+  const addContext = (node, subgraph) => {
+    if (!node || !subgraph) return;
+    const key = `${String(subgraph?.id || subgraph?.name || "graph")}:${String(node?.id || node?.title || contexts.length)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    contexts.push({ node, subgraph, isTopGraph: subgraph === app.graph });
+  };
+
+  addContext(findPreferredAdvancedPickerInGraph(app.graph), app.graph);
+
+  const activeGraph = app.canvas?.graph;
+  addContext(findAdvancedPickerInSubgraph(activeGraph), activeGraph);
+
+  const outerNode = getPart2Node(PART2_NODE_IDS.camera);
+  if (!outerNode) return contexts;
+
+  const directSubgraph = outerNode.subgraph || outerNode.sub_graph || outerNode.graph;
+  addContext(findAdvancedPickerInSubgraph(directSubgraph), directSubgraph);
+
+  const outerType = String(outerNode.type || outerNode.comfyClass || "");
+  const matchingDefinition = getGraphSubgraphDefinitions().find((subgraph) => String(subgraph?.id || "") === outerType);
+  addContext(findAdvancedPickerInSubgraph(matchingDefinition), matchingDefinition);
+
+  for (const subgraph of getGraphSubgraphDefinitions()) {
+    addContext(findAdvancedPickerInSubgraph(subgraph), subgraph);
+  }
+
+  return contexts;
+}
+
+function getPart2AdvancedPickerNode() {
+  return getPart2AdvancedPickerContext()?.node || null;
 }
 
 function getPart2ZImageOptionalLoraNode() {
@@ -1045,6 +1259,65 @@ function setPart2WidgetValue(nodeId, name, value, fallbackIndex = -1) {
   return true;
 }
 
+function setPart2WidgetValueStrict(nodeId, name, value) {
+  const node = getPart2Node(nodeId);
+  if (!node) return false;
+
+  const widget = getPart2Widget(node, name);
+  if (!widget) return false;
+
+  widget.value = value;
+  widget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+
+  if (Array.isArray(node.widgets_values)) {
+    const widgetIndex = (node.widgets || []).findIndex((item) => item?.name === name);
+    if (widgetIndex >= 0) node.widgets_values[widgetIndex] = value;
+  }
+
+  app.graph?.setDirtyCanvas?.(true, true);
+  return true;
+}
+
+function getTriggerNodeId(kind, workflowKind = "part2") {
+  if (kind === "zImage") return PART2_Z_IMAGE_TRIGGER_NODE_ID;
+  return workflowKind === "part3" ? PART3_LTX_TRIGGER_NODE_ID : PART2_LTX_TRIGGER_NODE_ID;
+}
+
+function findWidgetByAliases(node, aliases, fallbackIndex = -1) {
+  if (!node) return null;
+  const accepted = new Set(aliases.map((alias) => String(alias).trim().toLowerCase()));
+  const widgets = node.widgets || [];
+  return widgets.find((widget) => accepted.has(String(widget?.name || "").trim().toLowerCase())) || widgets[fallbackIndex] || null;
+}
+
+function getTriggerWidgetValue(node, aliases, fallbackIndex, fallbackValue = "") {
+  const widget = findWidgetByAliases(node, aliases, fallbackIndex);
+  if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) return widget.value;
+  if (Array.isArray(node?.widgets_values) && fallbackIndex >= 0 && fallbackIndex < node.widgets_values.length) {
+    return node.widgets_values[fallbackIndex];
+  }
+  return fallbackValue;
+}
+
+function setTriggerWidgetValue(node, aliases, fallbackIndex, value) {
+  if (!node) return false;
+  const widget = findWidgetByAliases(node, aliases, fallbackIndex);
+  if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) {
+    widget.value = value;
+    widget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+  }
+
+  if (Array.isArray(node.widgets_values)) {
+    const accepted = new Set(aliases.map((alias) => String(alias).trim().toLowerCase()));
+    const widgetIndex = (node.widgets || []).findIndex((item) => accepted.has(String(item?.name || "").trim().toLowerCase()));
+    const resolvedIndex = widgetIndex >= 0 ? widgetIndex : fallbackIndex;
+    if (resolvedIndex >= 0) node.widgets_values[resolvedIndex] = value;
+  }
+
+  app.graph?.setDirtyCanvas?.(true, true);
+  return Boolean(widget) || (Array.isArray(node?.widgets_values) && fallbackIndex >= 0);
+}
+
 function fillSelectOptions(select, options, currentValue) {
   const optionSet = new Set(options.map((value) => String(value)));
   if (currentValue !== undefined && currentValue !== null && String(currentValue) && !optionSet.has(String(currentValue))) {
@@ -1091,6 +1364,20 @@ function createPart2Field(labelText, control, noteText = "") {
 
   wrapper.append(label, control, note);
   return wrapper;
+}
+
+function createPart2TriggerControls(noteText) {
+  const useTrigger = document.createElement("input");
+  useTrigger.type = "checkbox";
+
+  const triggerWord = stylePart2Input(document.createElement("input"));
+  triggerWord.type = "text";
+  triggerWord.placeholder = "Trigger word or LoRA name";
+
+  const useWrapper = createPart2Field("Use Trigger Word", useTrigger, noteText);
+  const wordWrapper = createPart2Field("Add Trigger Word", triggerWord, "This is sent to the trigger-word subgraph string_1 input.");
+
+  return { useTrigger, triggerWord, useWrapper, wordWrapper };
 }
 
 function createPart2ModelField(field, control) {
@@ -1144,6 +1431,32 @@ function createPart2LlmField(control) {
   label.textContent = "SuperGemma LLM Model";
   label.style.cssText = "font-weight: 700;";
 
+  const buttons = document.createElement("div");
+  buttons.style.cssText = "display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;";
+
+  for (const item of PART2_LLM_DOWNLOADS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label;
+    button.style.cssText = `
+      border: 1px solid #2563eb;
+      background: #1d4ed8;
+      color: white;
+      border-radius: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    `;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.open(item.url, "_blank", "noopener,noreferrer");
+    });
+    buttons.appendChild(button);
+  }
+
   const note = document.createElement("div");
   note.textContent = "Download both files for the Gemma LLM Node.";
   note.style.cssText = `
@@ -1153,7 +1466,7 @@ function createPart2LlmField(control) {
     line-height: 1.35;
   `;
 
-  labelRow.append(label, createLlmDownloadButtons());
+  labelRow.append(label, buttons);
   wrapper.append(labelRow, control, note);
   return wrapper;
 }
@@ -1274,7 +1587,9 @@ function ensurePart2Modal() {
   titleRow.append(titleBlock, titleActions);
 
   const controls = {
+    workflowKind: "part2",
     modelSelects: {},
+    modelFieldWrappers: {},
     settings: {},
     useSrt: null,
     lora: {
@@ -1283,18 +1598,32 @@ function ensurePart2Modal() {
       twoPass: null,
       slots: [],
       section: null,
+      trigger: null,
     },
     zImageLora: {
       useCustom: null,
       count: null,
       slots: [],
       section: null,
+      trigger: null,
     },
-    cameraItems: null,
-    cameraMode: null,
+    advanced: {
+      enabled: null,
+      count: null,
+      modeAll: null,
+      pickers: [],
+    },
     promptJson: null,
     wrappers: {},
   };
+
+  function getWorkflowNodeIds() {
+    return controls.workflowKind === "part3" ? PART3_NODE_IDS : PART2_NODE_IDS;
+  }
+
+  function isModelFieldVisible(field) {
+    return controls.workflowKind !== "part3" || !field.zImageOnly;
+  }
 
   const modelSection = createPart2Section("Models", "Model dropdowns for LTX 2.3, Z-image and the LLM node.");
   const modelGrid = document.createElement("div");
@@ -1303,7 +1632,9 @@ function ensurePart2Modal() {
   for (const field of PART2_MODEL_FIELDS) {
     const select = stylePart2Input(document.createElement("select"));
     controls.modelSelects[`${field.nodeId}:${field.key}`] = select;
-    modelGrid.appendChild(createPart2ModelField(field, select));
+    const wrapper = createPart2ModelField(field, select);
+    controls.modelFieldWrappers[`${field.nodeId}:${field.key}`] = wrapper;
+    modelGrid.appendChild(wrapper);
   }
 
   const llmSelect = stylePart2Input(document.createElement("select"));
@@ -1329,13 +1660,20 @@ function ensurePart2Modal() {
   controls.lora.useCustom = loraUseSelect;
   loraGrid.appendChild(createPart2Field("Use Custom LoRAs", loraUseSelect, "OFF leaves both first and second pass models unchanged."));
 
+  const ltxTriggerControls = createPart2TriggerControls("Optional trigger word for the selected LTX LoRA.");
+  controls.lora.trigger = ltxTriggerControls;
+  ltxTriggerControls.wordWrapper.style.display = "none";
+  loraGrid.append(ltxTriggerControls.useWrapper, ltxTriggerControls.wordWrapper);
+
   const loraCountInput = stylePart2Input(document.createElement("input"));
   loraCountInput.type = "number";
   loraCountInput.min = "0";
   loraCountInput.max = String(PART2_MAX_LORA_SLOTS);
   loraCountInput.step = "1";
   controls.lora.count = loraCountInput;
-  loraGrid.appendChild(createPart2Field("LoRA Count", loraCountInput, "How many LoRA slots to show and apply."));
+  const loraCountWrapper = createPart2Field("LoRA Count", loraCountInput, "How many LoRA slots to show and apply.");
+  loraCountWrapper.style.display = "none";
+  loraGrid.appendChild(loraCountWrapper);
 
   const loraTwoPassSelect = stylePart2Input(document.createElement("select"));
   for (const [value, label] of [["true", "ON"], ["false", "OFF"]]) {
@@ -1345,7 +1683,9 @@ function ensurePart2Modal() {
     loraTwoPassSelect.appendChild(option);
   }
   controls.lora.twoPass = loraTwoPassSelect;
-  loraGrid.appendChild(createPart2Field("LTX Two Pass Strength", loraTwoPassSelect, "ON uses half of each selected LoRA strength on first pass to preserve motion, then the full selected strength on the upscale pass. OFF uses the selected strength on both passes."));
+  const loraTwoPassWrapper = createPart2Field("LTX Two Pass Strength", loraTwoPassSelect, "ON uses half of each selected LoRA strength on first pass to preserve motion, then the full selected strength on the upscale pass. OFF uses the selected strength on both passes.");
+  loraTwoPassWrapper.style.display = "none";
+  loraGrid.appendChild(loraTwoPassWrapper);
 
   for (let i = 1; i <= PART2_MAX_LORA_SLOTS; i++) {
     const select = stylePart2Input(document.createElement("select"));
@@ -1357,6 +1697,8 @@ function ensurePart2Modal() {
 
     const loraWrapper = createPart2Field(`LoRA ${i}`, select);
     const strengthWrapper = createPart2Field(`Strength ${i}`, strength, "Selected/full strength for the upscale pass. First pass uses half of this value when two-pass strength is ON.");
+    loraWrapper.style.display = "none";
+    strengthWrapper.style.display = "none";
     controls.lora.slots.push({ select, strength, loraWrapper, strengthWrapper });
     loraGrid.append(loraWrapper, strengthWrapper);
   }
@@ -1365,7 +1707,7 @@ function ensurePart2Modal() {
 
   const zImageLoraSection = createPart2Section(
     "Z-Image Optional LoRA",
-    "Optional LoRA for the Z-Image still-image branch. This does not use two-pass strength; selected LoRAs apply at the strength you enter."
+    "Optional LoRA for the Z-Image still-image branch inside subgraph node 797. This does not use two-pass strength; selected LoRAs apply at the strength you enter."
   );
   controls.zImageLora.section = zImageLoraSection;
   const zImageLoraGrid = document.createElement("div");
@@ -1381,13 +1723,20 @@ function ensurePart2Modal() {
   controls.zImageLora.useCustom = zImageLoraUseSelect;
   zImageLoraGrid.appendChild(createPart2Field("Use Z-Image LoRAs", zImageLoraUseSelect, "OFF leaves the Z-Image model unchanged."));
 
+  const zImageTriggerControls = createPart2TriggerControls("Optional trigger word for the selected Z-Image LoRA.");
+  controls.zImageLora.trigger = zImageTriggerControls;
+  zImageTriggerControls.wordWrapper.style.display = "none";
+  zImageLoraGrid.append(zImageTriggerControls.useWrapper, zImageTriggerControls.wordWrapper);
+
   const zImageLoraCountInput = stylePart2Input(document.createElement("input"));
   zImageLoraCountInput.type = "number";
   zImageLoraCountInput.min = "0";
   zImageLoraCountInput.max = String(PART2_MAX_LORA_SLOTS);
   zImageLoraCountInput.step = "1";
   controls.zImageLora.count = zImageLoraCountInput;
-  zImageLoraGrid.appendChild(createPart2Field("Z-Image LoRA Count", zImageLoraCountInput, "How many Z-Image LoRA slots to show and apply."));
+  const zImageLoraCountWrapper = createPart2Field("Z-Image LoRA Count", zImageLoraCountInput, "How many Z-Image LoRA slots to show and apply.");
+  zImageLoraCountWrapper.style.display = "none";
+  zImageLoraGrid.appendChild(zImageLoraCountWrapper);
 
   for (let i = 1; i <= PART2_MAX_LORA_SLOTS; i++) {
     const select = stylePart2Input(document.createElement("select"));
@@ -1399,6 +1748,8 @@ function ensurePart2Modal() {
 
     const loraWrapper = createPart2Field(`Z-Image LoRA ${i}`, select);
     const strengthWrapper = createPart2Field(`Z-Image Strength ${i}`, strength, "Applied at this exact strength.");
+    loraWrapper.style.display = "none";
+    strengthWrapper.style.display = "none";
     controls.zImageLora.slots.push({ select, strength, loraWrapper, strengthWrapper });
     zImageLoraGrid.append(loraWrapper, strengthWrapper);
   }
@@ -1434,23 +1785,198 @@ function ensurePart2Modal() {
   }
   settingsSection.appendChild(settingsGrid);
 
-  const cameraSection = createPart2Section("Camera Motions", "Edit the camera motion list if you want a custom list or leave as is. Choose how the LLM receives motions for each scene.");
-  const cameraMode = stylePart2Input(document.createElement("select"));
-  for (const [value, label] of [["index", "Index-based"], ["random", "Random"], ["random no repeat", "Random No Repeat"]]) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    cameraMode.appendChild(option);
-  }
-  controls.cameraMode = cameraMode;
-  cameraSection.appendChild(createPart2Field("Selection Mode", cameraMode, "Index-based walks through the list in order and wraps. Random picks a seeded random motion. Random No Repeat walks a seeded shuffled order before repeating."));
+  const advancedSection = createPart2Section("Advanced Prompt Details", "Create custom details for the LLM.");
+  const advancedIntro = document.createElement("div");
+  advancedIntro.style.cssText = `
+    border: 1px solid #243244;
+    border-radius: 8px;
+    background: #0d1217;
+    padding: 10px 12px;
+    color: #cbd5e1;
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 14px;
+  `;
+  advancedIntro.textContent = "Each active list adds one prompt detail category. The workflow supplies the scene index and random seed outside this subgraph, so this UI focuses on the editable category label, list text, selection behavior, and how multiple selected items are phrased.";
+  advancedSection.appendChild(advancedIntro);
 
-  const cameraItems = document.createElement("textarea");
-  cameraItems.rows = 8;
-  stylePart2Input(cameraItems);
-  cameraItems.style.resize = "vertical";
-  controls.cameraItems = cameraItems;
-  cameraSection.appendChild(createPart2Field("Camera Motion List", cameraItems, "One motion per line."));
+  const advancedGptRow = document.createElement("div");
+  advancedGptRow.style.cssText = `
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid #243244;
+    border-radius: 8px;
+    background: #0d1217;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  `;
+
+  const advancedGptNote = document.createElement("div");
+  advancedGptNote.textContent = "Use this GPT to help create your lists based off your prompt, then change the selection mode to index. This will create fully custom lists that go with each prompt.";
+  advancedGptNote.style.cssText = "color: #cbd5e1; font-size: 12px; line-height: 1.45; flex: 1 1 360px;";
+
+  const advancedGptButton = createButton(
+    "Open List Helper GPT",
+    "border: 1px solid #2563eb; background: #1d4ed8; color: white; font-weight: 700;"
+  );
+  advancedGptButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.open(ADVANCED_PROMPT_DETAILS_GPT_URL, "_blank", "noopener,noreferrer");
+  });
+
+  advancedGptRow.append(advancedGptNote, advancedGptButton);
+  advancedSection.appendChild(advancedGptRow);
+
+  const advancedCountRow = document.createElement("div");
+  advancedCountRow.style.cssText = "display: grid; grid-template-columns: minmax(160px, 220px) minmax(180px, 260px) minmax(220px, 320px) 1fr; gap: 12px; align-items: end; margin-bottom: 14px;";
+
+  const advancedEnabled = document.createElement("input");
+  advancedEnabled.type = "checkbox";
+  advancedEnabled.checked = false;
+  controls.advanced.enabled = advancedEnabled;
+  advancedCountRow.appendChild(createPart2Field("Advanced Settings", advancedEnabled, "Turn this on only when you want to add custom prompt detail lists."));
+
+  const advancedCount = stylePart2Input(document.createElement("input"));
+  advancedCount.type = "number";
+  advancedCount.min = "0";
+  advancedCount.max = String(PART2_ADVANCED_MAX_PICKERS);
+  advancedCount.step = "1";
+  advancedCount.value = "0";
+  controls.advanced.count = advancedCount;
+  advancedCountRow.appendChild(createPart2Field("Settings Count", advancedCount, ""));
+
+  const advancedModeAll = createAdvancedSelectionModeSelect();
+  controls.advanced.modeAll = advancedModeAll;
+  advancedCountRow.appendChild(createPart2Field("Selection Mode For All", advancedModeAll, "Quickly sets every active list to the same selection mode. You can still change any list afterward."));
+
+  const advancedSummary = document.createElement("div");
+  advancedSummary.style.cssText = "font-size: 12px; color: #94a3b8; padding-bottom: 8px;";
+  advancedCountRow.appendChild(advancedSummary);
+  advancedSection.appendChild(advancedCountRow);
+
+  const advancedPickerList = document.createElement("div");
+  advancedPickerList.style.cssText = "display: flex; flex-direction: column; gap: 12px;";
+  advancedSection.appendChild(advancedPickerList);
+
+  function createAdvancedPresetSelect() {
+    const select = stylePart2Input(document.createElement("select"));
+    for (const preset of PART2_ADVANCED_PRESETS) {
+      const option = document.createElement("option");
+      option.value = preset;
+      option.textContent = preset;
+      select.appendChild(option);
+    }
+    return select;
+  }
+
+  function createAdvancedSelectionModeSelect() {
+    const select = stylePart2Input(document.createElement("select"));
+    for (const mode of PART2_ADVANCED_SELECTION_MODES) {
+      const option = document.createElement("option");
+      option.value = mode;
+      option.textContent = mode === "index" ? "Index-based" : mode.replace(/\b\w/g, (char) => char.toUpperCase());
+      select.appendChild(option);
+    }
+    return select;
+  }
+
+  function createAdvancedField(labelText, control, noteText = "") {
+    const field = createPart2Field(labelText, control, noteText);
+    const note = field.lastElementChild;
+    if (note) {
+      note.style.fontSize = "12px";
+      note.style.lineHeight = "1.45";
+      note.style.color = "#b6c2d1";
+    }
+    return field;
+  }
+
+  for (let i = 1; i <= PART2_ADVANCED_MAX_PICKERS; i++) {
+    const picker = {
+      wrapper: document.createElement("div"),
+      header: document.createElement("button"),
+      body: document.createElement("div"),
+      preset: createAdvancedPresetSelect(),
+      label: stylePart2Input(document.createElement("input")),
+      selectionMode: createAdvancedSelectionModeSelect(),
+      index: stylePart2Input(document.createElement("input")),
+      seed: stylePart2Input(document.createElement("input")),
+      pickCount: stylePart2Input(document.createElement("input")),
+      template: stylePart2Input(document.createElement("input")),
+      items: document.createElement("textarea"),
+      collapsed: i > 1,
+    };
+
+    picker.wrapper.style.cssText = `
+      border: 1px solid #364152;
+      border-radius: 8px;
+      background: #0f141a;
+      overflow: hidden;
+    `;
+    picker.header.type = "button";
+    picker.header.style.cssText = `
+      width: 100%;
+      border: 0;
+      background: #14191f;
+      color: #f3f4f6;
+      padding: 10px 12px;
+      cursor: pointer;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    `;
+    picker.body.style.cssText = "padding: 12px;";
+
+    picker.index.type = "number";
+    picker.index.step = "1";
+    picker.seed.type = "number";
+    picker.seed.step = "1";
+    picker.pickCount.type = "number";
+    picker.pickCount.min = "1";
+    picker.pickCount.max = "50";
+    picker.pickCount.step = "1";
+    picker.items.rows = 8;
+    stylePart2Input(picker.items);
+    picker.items.style.resize = "vertical";
+
+    const pickerGrid = document.createElement("div");
+    pickerGrid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 12px;";
+    pickerGrid.append(
+      createAdvancedField("Preset", picker.preset, "Pick a starter category. The list below stays editable after you choose one."),
+      createAdvancedField("Label", picker.label, "The Label for this category."),
+      createAdvancedField("Selection Mode", picker.selectionMode, "Index-based follows the scene number. Random picks from the list. Random No Repeat shuffles the list before repeating.")
+    );
+
+    const pickerRulesGrid = document.createElement("div");
+    pickerRulesGrid.style.cssText = "display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; margin-bottom: 10px;";
+    pickerRulesGrid.append(
+      createAdvancedField(
+        "Items Per Prompt",
+        picker.pickCount,
+        "How many entries this category adds to each scene. Example: with Facial Expression, 1 might output Soft smile. If set to 2, it might output start with Calm expression then follow with Cold stare."
+      ),
+      createAdvancedField(
+        "Item Template",
+        picker.template,
+        "Used when Items Per Prompt is 2. Keep {item1} and {item2}; the node replaces them with the two selected list entries."
+      )
+    );
+    picker.body.append(
+      pickerGrid,
+      pickerRulesGrid,
+      createAdvancedField("List", picker.items, "One entry per line. Presets fill this list, but you can edit, remove, or add entries.")
+    );
+    picker.wrapper.append(picker.header, picker.body);
+    advancedPickerList.appendChild(picker.wrapper);
+    controls.advanced.pickers.push(picker);
+  }
 
   const promptSection = createPart2Section("Prompt JSON From Part 1", "Paste the JSON text created by the previous workflow in here.");
   const promptJson = document.createElement("textarea");
@@ -1475,6 +2001,61 @@ function ensurePart2Modal() {
   }
   promptSection.appendChild(promptField);
 
+  const tabBar = document.createElement("div");
+  tabBar.style.cssText = `
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid #364152;
+    flex-wrap: wrap;
+  `;
+
+  function createPart2TabButton(label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.style.cssText = `
+      border: 1px solid transparent;
+      border-bottom: 0;
+      background: transparent;
+      color: #cbd5e1;
+      border-radius: 8px 8px 0 0;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+    `;
+    return button;
+  }
+
+  const mainTabButton = createPart2TabButton("Workflow Settings");
+  const advancedTabButton = createPart2TabButton("Advanced Settings");
+  tabBar.append(mainTabButton, advancedTabButton);
+
+  const mainTabPanel = document.createElement("div");
+  mainTabPanel.append(modelSection, loraSection, zImageLoraSection, settingsSection, promptSection);
+
+  const advancedTabPanel = document.createElement("div");
+  advancedTabPanel.style.display = "none";
+  advancedTabPanel.style.minHeight = "120px";
+  advancedTabPanel.appendChild(advancedSection);
+
+  function setPart2ActiveTab(tabName) {
+    const isAdvanced = tabName === "advanced";
+    mainTabPanel.style.display = isAdvanced ? "none" : "block";
+    advancedTabPanel.style.display = isAdvanced ? "block" : "none";
+
+    for (const [button, active] of [[mainTabButton, !isAdvanced], [advancedTabButton, isAdvanced]]) {
+      button.style.background = active ? "#14191f" : "transparent";
+      button.style.borderColor = active ? "#364152" : "transparent";
+      button.style.color = active ? "#f3f4f6" : "#cbd5e1";
+    }
+  }
+
+  mainTabButton.addEventListener("click", () => setPart2ActiveTab("main"));
+  advancedTabButton.addEventListener("click", () => setPart2ActiveTab("advanced"));
+  setPart2ActiveTab("main");
+
   const status = document.createElement("div");
   status.style.cssText = `
     min-height: 20px;
@@ -1493,7 +2074,7 @@ function ensurePart2Modal() {
   );
   actions.append(applyButton);
 
-  panel.append(banner, titleRow, modelSection, loraSection, zImageLoraSection, settingsSection, cameraSection, promptSection, status, actions);
+  panel.append(banner, titleRow, tabBar, mainTabPanel, advancedTabPanel, status, actions);
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
 
@@ -1503,14 +2084,14 @@ function ensurePart2Modal() {
   }
 
   let suppressDraftSave = false;
+  let hasDraft = false;
 
   function collectPart2Draft() {
     const draft = {
       modelSelects: {},
       settings: {},
       useSrt: controls.useSrt.value,
-      cameraItems: controls.cameraItems.value,
-      cameraMode: controls.cameraMode.value,
+      advanced: collectAdvancedDraft(),
       promptJson: controls.promptJson.value,
       lora: {
         useCustom: controls.lora.useCustom.value,
@@ -1520,16 +2101,27 @@ function ensurePart2Modal() {
           lora: slot.select.value,
           strength: slot.strength.value,
         })),
+        trigger: {
+          enabled: controls.lora.trigger.useTrigger.checked,
+          word: controls.lora.trigger.triggerWord.value,
+        },
       },
-      zImageLora: {
+    };
+
+    if (controls.workflowKind !== "part3") {
+      draft.zImageLora = {
         useCustom: controls.zImageLora.useCustom.value,
         count: controls.zImageLora.count.value,
         slots: controls.zImageLora.slots.map((slot) => ({
           lora: slot.select.value,
           strength: slot.strength.value,
         })),
-      },
-    };
+        trigger: {
+          enabled: controls.zImageLora.trigger.useTrigger.checked,
+          word: controls.zImageLora.trigger.triggerWord.value,
+        },
+      };
+    }
 
     for (const [key, select] of Object.entries(controls.modelSelects)) {
       draft.modelSelects[key] = select.value;
@@ -1544,6 +2136,7 @@ function ensurePart2Modal() {
     if (suppressDraftSave) return;
     try {
       localStorage.setItem(PART2_DRAFT_STORAGE_KEY, JSON.stringify(collectPart2Draft()));
+      hasDraft = true;
     } catch (error) {
       // Browser storage can be disabled; form still works normally.
     }
@@ -1564,6 +2157,7 @@ function ensurePart2Modal() {
     } catch (error) {
       // ignore
     }
+    hasDraft = false;
   }
 
   function applyPart2Draft(draft) {
@@ -1578,8 +2172,7 @@ function ensurePart2Modal() {
     }
 
     if (draft.useSrt !== undefined) controls.useSrt.value = String(draft.useSrt);
-    if (draft.cameraItems !== undefined) controls.cameraItems.value = String(draft.cameraItems);
-    if (draft.cameraMode !== undefined) controls.cameraMode.value = String(draft.cameraMode);
+    if (draft.advanced !== undefined) applyAdvancedDraft(draft.advanced);
     if (draft.promptJson !== undefined) controls.promptJson.value = String(draft.promptJson);
 
     if (draft.lora) {
@@ -1590,6 +2183,10 @@ function ensurePart2Modal() {
         const slotDraft = draft.lora.slots?.[i] || {};
         if (slotDraft.lora !== undefined) setSelectValueAllowingDraft(controls.lora.slots[i].select, slotDraft.lora);
         if (slotDraft.strength !== undefined) controls.lora.slots[i].strength.value = String(slotDraft.strength);
+      }
+      if (draft.lora.trigger) {
+        controls.lora.trigger.useTrigger.checked = Boolean(draft.lora.trigger.enabled);
+        controls.lora.trigger.triggerWord.value = String(draft.lora.trigger.word ?? "");
       }
       updateLoraVisibility();
     }
@@ -1602,11 +2199,16 @@ function ensurePart2Modal() {
         if (slotDraft.lora !== undefined) setSelectValueAllowingDraft(controls.zImageLora.slots[i].select, slotDraft.lora);
         if (slotDraft.strength !== undefined) controls.zImageLora.slots[i].strength.value = String(slotDraft.strength);
       }
+      if (draft.zImageLora.trigger) {
+        controls.zImageLora.trigger.useTrigger.checked = Boolean(draft.zImageLora.trigger.enabled);
+        controls.zImageLora.trigger.triggerWord.value = String(draft.zImageLora.trigger.word ?? "");
+      }
       updateZImageLoraVisibility();
     }
 
     updateFixedDurationVisibility();
     suppressDraftSave = false;
+    hasDraft = true;
     return true;
   }
 
@@ -1630,6 +2232,8 @@ function ensurePart2Modal() {
 
     controls.lora.count.parentElement.style.display = useLoras ? "block" : "none";
     controls.lora.twoPass.parentElement.style.display = useLoras ? "block" : "none";
+    controls.lora.trigger.useWrapper.style.display = "block";
+    controls.lora.trigger.wordWrapper.style.display = controls.lora.trigger.useTrigger.checked ? "block" : "none";
 
     for (let i = 0; i < controls.lora.slots.length; i++) {
       const visible = useLoras && i < count;
@@ -1639,17 +2243,661 @@ function ensurePart2Modal() {
   }
 
   function updateZImageLoraVisibility() {
+    if (controls.workflowKind === "part3") {
+      controls.zImageLora.section.style.display = "none";
+      return;
+    }
+
     const useLoras = String(controls.zImageLora.useCustom.value || "false").toLowerCase() === "true";
     const rawCount = Number(controls.zImageLora.count.value || 0);
     const count = useLoras ? Math.max(0, Math.min(PART2_MAX_LORA_SLOTS, Number.isFinite(rawCount) ? rawCount : 0)) : 0;
 
     controls.zImageLora.count.parentElement.style.display = useLoras ? "block" : "none";
+    controls.zImageLora.trigger.useWrapper.style.display = "block";
+    controls.zImageLora.trigger.wordWrapper.style.display = controls.zImageLora.trigger.useTrigger.checked ? "block" : "none";
 
     for (let i = 0; i < controls.zImageLora.slots.length; i++) {
       const visible = useLoras && i < count;
       controls.zImageLora.slots[i].loraWrapper.style.display = visible ? "block" : "none";
       controls.zImageLora.slots[i].strengthWrapper.style.display = visible ? "block" : "none";
     }
+  }
+
+  function updateWorkflowSpecificVisibility() {
+    const isPart3 = controls.workflowKind === "part3";
+    for (const field of PART2_MODEL_FIELDS) {
+      const wrapper = controls.modelFieldWrappers[`${field.nodeId}:${field.key}`];
+      if (wrapper) wrapper.style.display = isPart3 && field.zImageOnly ? "none" : "block";
+    }
+    zImageLoraSection.style.display = isPart3 ? "none" : "block";
+  }
+
+  function getAdvancedWidgetFallbackIndex(name) {
+    const indexes = getAdvancedWidgetFallbackIndexes(name);
+    return indexes.length ? indexes[0] : -1;
+  }
+
+  function getAdvancedWidgetFallbackIndexesForNode(node, name) {
+    const indexes = getAdvancedWidgetFallbackIndexes(name);
+    if (!Array.isArray(node?.widgets_values)) return indexes;
+
+    const valueCount = node.widgets_values.length;
+    const expectedCompactCount = 2 + PART2_ADVANCED_MAX_PICKERS * 6;
+    const expectedNewCount = 2 + PART2_ADVANCED_MAX_PICKERS * 10;
+    const expectedOldCount = 2 + PART2_ADVANCED_MAX_PICKERS * 12;
+
+    if (valueCount === expectedCompactCount) return indexes.slice(0, 1);
+    if (valueCount === expectedNewCount) return indexes.slice(1, 2);
+    if (valueCount === expectedOldCount) return indexes.slice(-1);
+
+    return indexes.slice(0, 1);
+  }
+
+  function getAdvancedWidgetFallbackIndexes(name) {
+    if (name === "picker_count") return [0];
+    if (name === "joiner") return [1];
+    const textName = String(name || "");
+    const compactMatch = /^(preset|items|label|selection_mode|two_item_template|pick_count)_(\d+)$/.exec(textName);
+    const newMatch = /^(preset|items|label|max_items|split_mode|selection_mode|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(textName);
+    const oldMatch = /^(preset|index|items|label|max_items|split_mode|selection_mode|seed|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(textName);
+    const indexes = [];
+
+    if (compactMatch) {
+      const compactOffsets = {
+        preset: 0,
+        items: 1,
+        label: 2,
+        selection_mode: 3,
+        two_item_template: 4,
+        pick_count: 5,
+      };
+      indexes.push(2 + (Number(compactMatch[2]) - 1) * 6 + compactOffsets[compactMatch[1]]);
+    }
+
+    if (newMatch) {
+      const newOffsets = {
+        preset: 0,
+        items: 1,
+        label: 2,
+        max_items: 3,
+        split_mode: 4,
+        selection_mode: 5,
+        multi_format: 6,
+        two_item_template: 7,
+        keep_empty: 8,
+        pick_count: 9,
+      };
+      indexes.push(2 + (Number(newMatch[2]) - 1) * 10 + newOffsets[newMatch[1]]);
+    }
+
+    if (oldMatch) {
+      const oldOffsets = {
+        preset: 0,
+        index: 1,
+        items: 2,
+        label: 3,
+        max_items: 4,
+        split_mode: 5,
+        selection_mode: 6,
+        seed: 7,
+        multi_format: 8,
+        two_item_template: 9,
+        keep_empty: 10,
+        pick_count: 11,
+      };
+      indexes.push(2 + (Number(oldMatch[2]) - 1) * 12 + oldOffsets[oldMatch[1]]);
+    }
+
+    return [...new Set(indexes)];
+  }
+
+  function getAdvancedWidgetFallbackIndexOld(name) {
+    if (name === "picker_count") return 0;
+    if (name === "joiner") return 1;
+    const match = /^(preset|index|items|label|max_items|split_mode|selection_mode|seed|multi_format|two_item_template|keep_empty|pick_count)_(\d+)$/.exec(String(name || ""));
+    if (!match) return -1;
+    const fieldOffsets = {
+      preset: 0,
+      index: 1,
+      items: 2,
+      label: 3,
+      max_items: 4,
+      split_mode: 5,
+      selection_mode: 6,
+      seed: 7,
+      multi_format: 8,
+      two_item_template: 9,
+      keep_empty: 10,
+      pick_count: 11,
+    };
+    return 2 + (Number(match[2]) - 1) * 12 + fieldOffsets[match[1]];
+  }
+
+  function getAdvancedWidget(node, name) {
+    if (!node) return null;
+    return (node.widgets || []).find((widget) => widget?.name === name) || null;
+  }
+
+  function getAdvancedWidgetValue(node, name, fallbackValue = "") {
+    const widget = getAdvancedWidget(node, name);
+    if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) return widget.value;
+    const fallbackIndexes = getAdvancedWidgetFallbackIndexesForNode(node, name);
+    if (Array.isArray(node?.widgets_values)) {
+      for (const fallbackIndex of fallbackIndexes) {
+        if (fallbackIndex >= 0 && fallbackIndex < node.widgets_values.length) {
+          const value = node.widgets_values[fallbackIndex];
+          if (value !== undefined && value !== null && String(value) !== "") return value;
+        }
+      }
+    }
+    return fallbackValue;
+  }
+
+  function setAdvancedWidgetValue(node, name, value) {
+    if (!node) return false;
+    const fallbackIndexes = getAdvancedWidgetFallbackIndexesForNode(node, name);
+    const widget = getAdvancedWidget(node, name);
+    if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) {
+      widget.value = value;
+      widget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+    }
+
+    if (Array.isArray(node.widgets_values)) {
+      for (const fallbackIndex of fallbackIndexes) {
+        if (fallbackIndex >= 0) node.widgets_values[fallbackIndex] = value;
+      }
+    }
+
+    if (Array.isArray(node?.widgets)) {
+      for (const fallbackIndex of fallbackIndexes) {
+        const fallbackWidget = node.widgets[fallbackIndex];
+        if (!fallbackWidget || fallbackWidget === widget || !Object.prototype.hasOwnProperty.call(fallbackWidget, "value")) continue;
+        fallbackWidget.value = value;
+        fallbackWidget.callback?.(value, app.canvas, node, app.canvas?.graph_mouse);
+      }
+    }
+
+    app.graph?.setDirtyCanvas?.(true, true);
+    return Boolean(widget) || (Array.isArray(node.widgets_values) && fallbackIndexes.length > 0);
+  }
+
+  function syncAdvancedOuterProxyValue(name, value) {
+    const outerNode = getPart2Node(PART2_NODE_IDS.camera);
+    const widget = getPart2Widget(outerNode, name);
+    if (widget && Object.prototype.hasOwnProperty.call(widget, "value")) {
+      widget.value = value;
+      widget.callback?.(value, app.canvas, outerNode, app.canvas?.graph_mouse);
+    }
+
+    if (Array.isArray(outerNode?.widgets_values)) {
+      const widgetIndex = (outerNode.widgets || []).findIndex((item) => item?.name === name);
+      if (widgetIndex >= 0) outerNode.widgets_values[widgetIndex] = value;
+    }
+  }
+
+  function getSubgraphLinksArray(subgraph) {
+    if (Array.isArray(subgraph?.links)) return subgraph.links;
+    if (Array.isArray(subgraph?._links)) return subgraph._links;
+    return null;
+  }
+
+  function findSubgraphInputSlot(subgraph, names) {
+    const accepted = new Set(names.map((name) => String(name).trim().toLowerCase()));
+    const inputs = Array.isArray(subgraph?.inputs) ? subgraph.inputs : [];
+    return inputs.findIndex((input) => {
+      const name = String(input?.name || "").trim().toLowerCase();
+      const label = String(input?.label || input?.localized_name || "").trim().toLowerCase();
+      return accepted.has(name) || accepted.has(label);
+    });
+  }
+
+  function nextSubgraphLinkId(subgraph, links) {
+    const current = Number(subgraph?.state?.lastLinkId || 0);
+    const maxExisting = links.reduce((maxId, link) => Math.max(maxId, Number(link?.id || 0)), 0);
+    const next = Math.max(current, maxExisting) + 1;
+    subgraph.state = subgraph.state || {};
+    subgraph.state.lastLinkId = next;
+    return next;
+  }
+
+  function removeSubgraphTargetLink(subgraph, links, targetNode, targetSlot) {
+    const input = targetNode?.inputs?.[targetSlot];
+    const linkId = input?.link;
+    if (linkId === null || linkId === undefined) return;
+
+    const index = links.findIndex((link) => Number(link?.id) === Number(linkId));
+    if (index >= 0) {
+      const [oldLink] = links.splice(index, 1);
+      const originInput = Array.isArray(subgraph?.inputs) ? subgraph.inputs[oldLink.origin_slot] : null;
+      if (Array.isArray(originInput?.linkIds)) {
+        originInput.linkIds = originInput.linkIds.filter((id) => Number(id) !== Number(linkId));
+      }
+    }
+    input.link = null;
+  }
+
+  function ensureSubgraphInputLink(subgraph, sourceSlot, targetNode, targetInputName, type) {
+    const links = getSubgraphLinksArray(subgraph);
+    const targetSlot = (targetNode?.inputs || []).findIndex((input) => input?.name === targetInputName);
+    if (!links || sourceSlot < 0 || targetSlot < 0) return false;
+
+    const existing = links.find((link) =>
+      Number(link?.origin_id) === -10 &&
+      Number(link?.origin_slot) === Number(sourceSlot) &&
+      Number(link?.target_id) === Number(targetNode.id) &&
+      Number(link?.target_slot) === Number(targetSlot)
+    );
+    if (existing) {
+      targetNode.inputs[targetSlot].link = existing.id;
+      return false;
+    }
+
+    removeSubgraphTargetLink(subgraph, links, targetNode, targetSlot);
+    const linkId = nextSubgraphLinkId(subgraph, links);
+    links.push({
+      id: linkId,
+      origin_id: -10,
+      origin_slot: sourceSlot,
+      target_id: targetNode.id,
+      target_slot: targetSlot,
+      type,
+    });
+
+    targetNode.inputs[targetSlot].link = linkId;
+    const sourceInput = Array.isArray(subgraph?.inputs) ? subgraph.inputs[sourceSlot] : null;
+    if (sourceInput) {
+      sourceInput.linkIds = Array.isArray(sourceInput.linkIds) ? sourceInput.linkIds : [];
+      if (!sourceInput.linkIds.some((id) => Number(id) === Number(linkId))) {
+        sourceInput.linkIds.push(linkId);
+      }
+    }
+    return true;
+  }
+
+  function findSubgraphSourceNode(subgraph, names, type = "INT") {
+    const accepted = new Set(names.map((name) => String(name).trim().toLowerCase()));
+    return getSubgraphNodes(subgraph).find((node) => {
+      const title = String(node?.title || node?.name || node?.label || "").trim().toLowerCase();
+      const nodeType = String(node?.type || node?.comfyClass || "").trim().toLowerCase();
+      const outputs = Array.isArray(node?.outputs) ? node.outputs : [];
+      const hasTypedOutput = outputs.some((output) => String(output?.type || "").toUpperCase() === type);
+      const outputNameMatches = outputs.some((output) => accepted.has(String(output?.name || output?.label || "").trim().toLowerCase()));
+      return hasTypedOutput && (accepted.has(title) || accepted.has(nodeType) || outputNameMatches);
+    }) || null;
+  }
+
+  function findFirstOutputSlot(node, type = "INT") {
+    return (node?.outputs || []).findIndex((output) => String(output?.type || "").toUpperCase() === type);
+  }
+
+  function ensureSubgraphNodeLink(subgraph, sourceNode, sourceSlot, targetNode, targetInputName, type) {
+    const targetSlot = (targetNode?.inputs || []).findIndex((input) => input?.name === targetInputName);
+    if (!sourceNode || sourceSlot < 0 || targetSlot < 0) return false;
+
+    if (typeof sourceNode.connect === "function") {
+      const oldLinkId = targetNode.inputs?.[targetSlot]?.link;
+      const result = sourceNode.connect(sourceSlot, targetNode, targetSlot);
+      const newLinkId = targetNode.inputs?.[targetSlot]?.link;
+      if (newLinkId !== null && newLinkId !== undefined) {
+        return Number(oldLinkId) !== Number(newLinkId);
+      }
+      if (result) return true;
+    }
+    return false;
+  }
+
+  function findSourceFromInputLink(graph, targetNode, targetInputName) {
+    const targetInput = (targetNode?.inputs || []).find((input) => input?.name === targetInputName);
+    const linkId = targetInput?.link;
+    if (linkId === null || linkId === undefined) return null;
+
+    const nodes = getSubgraphNodes(graph);
+    for (const node of nodes) {
+      const outputs = Array.isArray(node?.outputs) ? node.outputs : [];
+      for (let slot = 0; slot < outputs.length; slot++) {
+        const links = outputs[slot]?.links;
+        if (Array.isArray(links) && links.some((id) => Number(id) === Number(linkId))) {
+          return { node, slot };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function ensureAdvancedInputSocket(node, name, type) {
+    const inputs = Array.isArray(node?.inputs) ? node.inputs : [];
+    if (inputs.some((input) => input?.name === name)) return true;
+
+    if (typeof node?.addInput === "function") {
+      node.addInput(name, type);
+      return true;
+    }
+
+    if (node) {
+      node.inputs = inputs;
+      node.inputs.push({
+        localized_name: name,
+        name,
+        type,
+        widget: { name },
+        link: null,
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  function autoWireAdvancedTopGraphIndexSeed(graph, node, count) {
+    if (!graph || !node) return 0;
+
+    const indexSource = findSourceFromInputLink(graph, node, "index_1");
+    const seedSource = findSourceFromInputLink(graph, node, "seed_1");
+    let linked = 0;
+
+    for (let i = 1; i <= count; i++) {
+      ensureAdvancedInputSocket(node, `index_${i}`, "INT");
+      ensureAdvancedInputSocket(node, `seed_${i}`, "INT");
+      if (indexSource && ensureSubgraphNodeLink(graph, indexSource.node, indexSource.slot, node, `index_${i}`, "INT")) linked += 1;
+      if (seedSource && ensureSubgraphNodeLink(graph, seedSource.node, seedSource.slot, node, `seed_${i}`, "INT")) linked += 1;
+    }
+
+    node?.setSize?.([node.size?.[0] || 430, node.computeSize?.()[1] || node.size?.[1] || 440]);
+    app.graph?.setDirtyCanvas?.(true, true);
+    return linked;
+  }
+
+  function autoWireAdvancedIndexSeed(subgraph, node, count, missing) {
+    if (!subgraph || !node) {
+      missing.push("node 830 inner subgraph wiring");
+      return 0;
+    }
+
+    const indexNode = findSubgraphSourceNode(subgraph, ["index", "get_index"], "INT");
+    const seedNode = findSubgraphSourceNode(subgraph, ["random seed", "seed", "random_seed"], "INT");
+    const indexNodeSlot = findFirstOutputSlot(indexNode, "INT");
+    const seedNodeSlot = findFirstOutputSlot(seedNode, "INT");
+    let linked = 0;
+
+    if (!indexNode) missing.push("inner index INT node");
+    if (!seedNode) missing.push("inner random seed INT node");
+
+    for (let i = 1; i <= count; i++) {
+      ensureAdvancedInputSocket(node, `index_${i}`, "INT");
+      ensureAdvancedInputSocket(node, `seed_${i}`, "INT");
+      if (indexNode && ensureSubgraphNodeLink(subgraph, indexNode, indexNodeSlot, node, `index_${i}`, "INT")) linked += 1;
+      if (seedNode && ensureSubgraphNodeLink(subgraph, seedNode, seedNodeSlot, node, `seed_${i}`, "INT")) linked += 1;
+    }
+
+    node?.setSize?.([node.size?.[0] || 430, node.computeSize?.()[1] || node.size?.[1] || 440]);
+    app.graph?.setDirtyCanvas?.(true, true);
+    return linked;
+  }
+
+  function getAdvancedCount() {
+    if (!controls.advanced.enabled.checked) return 0;
+    const rawCount = Number(controls.advanced.count.value || 1);
+    return Math.max(1, Math.min(PART2_ADVANCED_MAX_PICKERS, Number.isFinite(rawCount) ? Math.round(rawCount) : 1));
+  }
+
+  function countAdvancedItems(text) {
+    return String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean).length;
+  }
+
+  function updateAdvancedPickerHeader(index) {
+    const picker = controls.advanced.pickers[index - 1];
+    if (!picker) return;
+    const label = String(picker.label.value || picker.preset.value || `Setting ${index}`).trim();
+    const itemCount = countAdvancedItems(picker.items.value);
+    const mode = String(picker.selectionMode.value || "index");
+    picker.header.innerHTML = "";
+    const title = document.createElement("span");
+    title.textContent = `${index}. ${label || `Setting ${index}`} · ${mode}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${itemCount} items`;
+    meta.style.cssText = "color: #94a3b8; font-weight: 600; white-space: nowrap;";
+    picker.header.append(title, meta);
+  }
+
+  function updateAdvancedVisibility() {
+    const count = getAdvancedCount();
+    controls.advanced.count.value = String(count);
+    controls.advanced.count.disabled = count <= 0;
+    controls.advanced.modeAll.disabled = count <= 0;
+    advancedSummary.textContent = count <= 0
+      ? "Advanced prompt details are off"
+      : `${count} active prompt detail ${count === 1 ? "list" : "lists"}`;
+
+    for (let i = 1; i <= PART2_ADVANCED_MAX_PICKERS; i++) {
+      const picker = controls.advanced.pickers[i - 1];
+      const visible = i <= count;
+      picker.wrapper.style.display = visible ? "block" : "none";
+      picker.body.style.display = visible && !picker.collapsed ? "block" : "none";
+      updateAdvancedPickerHeader(i);
+    }
+  }
+
+  function applyAdvancedModeToActivePickers() {
+    const count = getAdvancedCount();
+    const mode = String(controls.advanced.modeAll.value || "index");
+    for (let i = 1; i <= count; i++) {
+      const picker = controls.advanced.pickers[i - 1];
+      setSelectValueAllowingDraft(picker.selectionMode, mode);
+      updateAdvancedPickerHeader(i);
+    }
+    savePart2Draft();
+  }
+
+  function applyAdvancedPreset(index) {
+    const picker = controls.advanced.pickers[index - 1];
+    if (!picker) return;
+    const preset = String(picker.preset.value || "Custom");
+    if (preset !== "Custom") {
+      picker.label.value = preset;
+      picker.items.value = PART2_ADVANCED_PRESET_ITEMS[preset] || "";
+    }
+    updateAdvancedPickerHeader(index);
+    savePart2Draft();
+  }
+
+  function getAdvancedPresetForApply(picker) {
+    const preset = String(picker?.preset?.value || "Custom").trim();
+    return PART2_ADVANCED_PRESETS.includes(preset) ? preset : "Custom";
+  }
+
+  function getAdvancedLabelForApply(picker, preset, index) {
+    const label = String(picker?.label?.value || "").trim();
+    if (label) return label;
+    if (preset && preset !== "Custom") return preset;
+    return index === 1 ? "Camera Motion" : "";
+  }
+
+  function getAdvancedItemDirectives(items) {
+    const directives = {};
+    const lines = String(items || "").split(/\r?\n/);
+    for (const line of lines) {
+      const match = /^#\s*(?:VRGDG_)?(LABEL|SELECTION_MODE|PICK_COUNT|TEMPLATE):\s*(.*?)\s*$/.exec(line);
+      if (!match) break;
+      directives[match[1].toLowerCase()] = match[2];
+    }
+    return directives;
+  }
+
+  function withAdvancedItemDirectives(items, values) {
+    const cleanItems = stripAdvancedItemDirectives(items);
+    const cleanLabel = String(values?.label || "").trim();
+    const selectionMode = String(values?.selectionMode || "index").trim();
+    const pickCount = Math.max(1, Math.min(50, Number.isFinite(Number(values?.pickCount)) ? Math.round(Number(values.pickCount)) : 1));
+    const template = String(values?.template || "").trim();
+    const directives = [];
+    if (cleanLabel) directives.push(`# VRGDG_LABEL: ${cleanLabel}`);
+    if (selectionMode) directives.push(`# VRGDG_SELECTION_MODE: ${selectionMode}`);
+    directives.push(`# VRGDG_PICK_COUNT: ${pickCount}`);
+    if (template) directives.push(`# VRGDG_TEMPLATE: ${template}`);
+    return `${directives.join("\n")}\n${cleanItems}`;
+  }
+
+  function withAdvancedLabelDirective(items, label) {
+    const cleanItems = stripAdvancedItemDirectives(items);
+    const cleanLabel = String(label || "").trim();
+    return cleanLabel ? `# VRGDG_LABEL: ${cleanLabel}\n${cleanItems}` : cleanItems;
+  }
+
+  function stripAdvancedItemDirectives(items) {
+    return String(items || "").replace(/^(#\s*(?:VRGDG_)?(?:LABEL|SELECTION_MODE|PICK_COUNT|TEMPLATE):.*(?:\r?\n|$))+/i, "");
+  }
+
+  function stripAdvancedLabelDirective(items) {
+    return stripAdvancedItemDirectives(items);
+  }
+
+  function collectAdvancedDraft() {
+    return {
+      enabled: controls.advanced.enabled.checked,
+      count: controls.advanced.count.value,
+      modeAll: controls.advanced.modeAll.value,
+      pickers: controls.advanced.pickers.map((picker) => ({
+        preset: picker.preset.value,
+        label: picker.label.value,
+        selectionMode: picker.selectionMode.value,
+        index: picker.index.value,
+        seed: picker.seed.value,
+        pickCount: picker.pickCount.value,
+        template: picker.template.value,
+        items: picker.items.value,
+        collapsed: picker.collapsed,
+      })),
+    };
+  }
+
+  function applyAdvancedDraft(draft) {
+    if (!draft || typeof draft !== "object") return;
+    if (draft.enabled !== undefined) controls.advanced.enabled.checked = Boolean(draft.enabled);
+    if (draft.count !== undefined) controls.advanced.count.value = String(draft.count);
+    if (draft.modeAll !== undefined) setSelectValueAllowingDraft(controls.advanced.modeAll, draft.modeAll);
+    for (let i = 0; i < controls.advanced.pickers.length; i++) {
+      const pickerDraft = draft.pickers?.[i] || {};
+      const picker = controls.advanced.pickers[i];
+      if (pickerDraft.preset !== undefined) setSelectValueAllowingDraft(picker.preset, pickerDraft.preset);
+      if (pickerDraft.label !== undefined) picker.label.value = String(pickerDraft.label);
+      if (picker.preset.value && picker.preset.value !== "Custom") picker.label.value = picker.preset.value;
+      if (pickerDraft.selectionMode !== undefined) setSelectValueAllowingDraft(picker.selectionMode, pickerDraft.selectionMode);
+      if (pickerDraft.index !== undefined) picker.index.value = String(pickerDraft.index);
+      if (pickerDraft.seed !== undefined) picker.seed.value = String(pickerDraft.seed);
+      if (pickerDraft.pickCount !== undefined) picker.pickCount.value = String(pickerDraft.pickCount);
+      if (pickerDraft.template !== undefined) picker.template.value = String(pickerDraft.template);
+      if (pickerDraft.items !== undefined) picker.items.value = String(pickerDraft.items);
+      if (pickerDraft.collapsed !== undefined) picker.collapsed = Boolean(pickerDraft.collapsed);
+    }
+    updateAdvancedVisibility();
+  }
+
+  function refreshAdvancedControls(missing) {
+    const node = getPart2AdvancedPickerNode();
+    if (!node) {
+      missing.push("node 830 inner VRGDG_MultiCyclingTextPicker");
+      return;
+    }
+
+    const savedCount = Math.max(0, Math.min(PART2_ADVANCED_MAX_PICKERS, Number(getAdvancedWidgetValue(node, "picker_count", 0)) || 0));
+    controls.advanced.enabled.checked = savedCount > 0;
+    controls.advanced.count.value = String(savedCount);
+    if (getAdvancedWidgetFallbackIndex("picker_count") < 0) missing.push("node 830 inner picker_count");
+    const activeCount = getAdvancedCount();
+
+    for (let i = 1; i <= PART2_ADVANCED_MAX_PICKERS; i++) {
+      const picker = controls.advanced.pickers[i - 1];
+      const presetWidget = getAdvancedWidget(node, `preset_${i}`);
+      const labelWidget = getAdvancedWidget(node, `label_${i}`);
+      const modeWidget = getAdvancedWidget(node, `selection_mode_${i}`);
+      const requiredWidgets = [
+        [`preset_${i}`, presetWidget],
+        [`items_${i}`, getAdvancedWidget(node, `items_${i}`)],
+        [`label_${i}`, labelWidget],
+        [`selection_mode_${i}`, modeWidget],
+        [`pick_count_${i}`, getAdvancedWidget(node, `pick_count_${i}`)],
+        [`two_item_template_${i}`, getAdvancedWidget(node, `two_item_template_${i}`)],
+      ];
+
+      fillSelectOptions(picker.preset, getPart2WidgetOptions(presetWidget).length ? getPart2WidgetOptions(presetWidget) : PART2_ADVANCED_PRESETS, getAdvancedWidgetValue(node, `preset_${i}`, i === 1 ? "Camera Motion" : "Custom"));
+      const rawItems = getAdvancedWidgetValue(node, `items_${i}`, "");
+      const preset = String(picker.preset.value || "Custom");
+      const itemDirectives = getAdvancedItemDirectives(rawItems);
+      picker.label.value = preset !== "Custom"
+        ? preset
+        : String(getAdvancedWidgetValue(node, `label_${i}`, itemDirectives.label || (i === 1 ? "Camera Motion" : "")));
+      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, itemDirectives.selection_mode || getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
+      picker.index.value = String(getAdvancedWidgetValue(node, `index_${i}`, 0));
+      picker.seed.value = String(getAdvancedWidgetValue(node, `seed_${i}`, 0));
+      picker.pickCount.value = String(itemDirectives.pick_count || getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
+      picker.template.value = String(itemDirectives.template || getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
+      picker.items.value = stripAdvancedItemDirectives(rawItems);
+
+      if (i <= activeCount) {
+        for (const [name, widget] of requiredWidgets) {
+          if (!widget && getAdvancedWidgetFallbackIndex(name) < 0) missing.push(`node 830 inner ${name}`);
+        }
+      }
+    }
+
+    controls.advanced.modeAll.value = controls.advanced.pickers[0]?.selectionMode.value || "index";
+    updateAdvancedVisibility();
+  }
+
+  function applyAdvancedControls(missing) {
+    const contexts = getPart2AdvancedPickerContexts();
+    if (!contexts.length) {
+      missing.push("node 830 inner VRGDG_MultiCyclingTextPicker");
+      return 0;
+    }
+
+    let updated = 0;
+    const count = getAdvancedCount();
+
+    for (const context of contexts) {
+      const node = context.node;
+      if (setAdvancedWidgetValue(node, "picker_count", count)) updated += 1;
+      else missing.push(`node ${node?.id || 830} inner picker_count`);
+
+      if (count <= 0) continue;
+
+      for (let i = 1; i <= count; i++) {
+        const picker = controls.advanced.pickers[i - 1];
+        const preset = getAdvancedPresetForApply(picker);
+        const label = getAdvancedLabelForApply(picker, preset, i);
+        const values = {
+          [`preset_${i}`]: preset,
+          [`items_${i}`]: withAdvancedItemDirectives(picker.items.value, {
+            label,
+            selectionMode: picker.selectionMode.value || "index",
+            pickCount: picker.pickCount.value,
+            template: picker.template.value,
+          }),
+          [`label_${i}`]: label,
+          [`selection_mode_${i}`]: picker.selectionMode.value,
+          [`pick_count_${i}`]: Number.isFinite(Number(picker.pickCount.value)) ? Number(picker.pickCount.value) : 1,
+          [`two_item_template_${i}`]: picker.template.value,
+        };
+
+        for (const [name, value] of Object.entries(values)) {
+          if (setAdvancedWidgetValue(node, name, value)) updated += 1;
+          else missing.push(`node ${node?.id || 830} inner ${name}`);
+          if (i === 1) syncAdvancedOuterProxyValue(name, value);
+        }
+      }
+
+      updated += context.isTopGraph
+        ? autoWireAdvancedTopGraphIndexSeed(context.subgraph, node, count)
+        : autoWireAdvancedIndexSeed(context.subgraph, node, count, missing);
+    }
+
+    syncAdvancedOuterProxyValue("picker_count", count);
+    updateAdvancedVisibility();
+    return updated;
   }
 
   function getLoraWidgetFallbackIndex(name) {
@@ -1753,11 +3001,64 @@ function ensurePart2Modal() {
     return updated;
   }
 
+  function refreshTriggerControls(kind, missing) {
+    const trigger = kind === "zImage" ? controls.zImageLora.trigger : controls.lora.trigger;
+    if (!trigger) return;
+
+    if (kind === "zImage" && controls.workflowKind === "part3") {
+      trigger.useWrapper.style.display = "none";
+      trigger.wordWrapper.style.display = "none";
+      return;
+    }
+
+    const nodeId = getTriggerNodeId(kind, controls.workflowKind);
+    const node = findPart2NodeDeep(nodeId);
+    if (!node) {
+      trigger.useTrigger.checked = false;
+      trigger.triggerWord.value = "";
+      missing.push(`${kind === "zImage" ? "Z-Image" : "LTX"} trigger subgraph ${nodeId}`);
+      return;
+    }
+
+    trigger.useTrigger.checked = String(getTriggerWidgetValue(node, ["switch", "boolean", "enabled", "value"], 0, false)).toLowerCase() === "true";
+    trigger.triggerWord.value = String(getTriggerWidgetValue(node, ["string_1", "STRING_1", "trigger_word", "text", "string"], 1, "") ?? "");
+  }
+
+  function applyTriggerControls(kind, missing) {
+    if (kind === "zImage" && controls.workflowKind === "part3") return 0;
+
+    const trigger = kind === "zImage" ? controls.zImageLora.trigger : controls.lora.trigger;
+    const nodeId = getTriggerNodeId(kind, controls.workflowKind);
+    const node = findPart2NodeDeep(nodeId);
+    const label = kind === "zImage" ? "Z-Image trigger" : "LTX trigger";
+    if (!node) {
+      missing.push(`${label} subgraph ${nodeId}`);
+      return 0;
+    }
+
+    let updated = 0;
+    const enabled = Boolean(trigger?.useTrigger?.checked);
+    if (setTriggerWidgetValue(node, ["switch", "boolean", "enabled", "value"], 0, enabled)) updated += 1;
+    else missing.push(`${label} boolean switch`);
+
+    if (enabled) {
+      if (setTriggerWidgetValue(node, ["string_1", "STRING_1", "trigger_word", "text", "string"], 1, trigger.triggerWord.value || "")) updated += 1;
+      else missing.push(`${label} string_1`);
+    }
+
+    return updated;
+  }
+
   function refreshZImageLoraControls(missing) {
+    if (controls.workflowKind === "part3") {
+      controls.zImageLora.section.style.display = "none";
+      return;
+    }
+
     const loraNode = getPart2ZImageOptionalLoraNode();
     if (!loraNode) {
       controls.zImageLora.section.style.display = "none";
-      missing.push("Z-Image optional LoRA node");
+      missing.push("Z-Image subgraph optional LoRA node 847");
       return;
     }
 
@@ -1777,9 +3078,13 @@ function ensurePart2Modal() {
   }
 
   function applyZImageLoraControls(missing) {
+    if (controls.workflowKind === "part3") {
+      return 0;
+    }
+
     const loraNode = getPart2ZImageOptionalLoraNode();
     if (!loraNode) {
-      missing.push("Z-Image optional LoRA node");
+      missing.push("Z-Image subgraph optional LoRA node 847");
       return 0;
     }
 
@@ -1791,7 +3096,7 @@ function ensurePart2Modal() {
     if (setPart2NodeWidgetValue(loraNode, "use_custom_loras", useLoras)) updated += 1;
     else missing.push("Z-Image LoRA use_custom_loras");
     if (setPart2WidgetValue(PART2_NODE_IDS.zImageModels, "use_custom_loras", useLoras, 6)) updated += 1;
-    else missing.push("Z-Image use custom LoRAs toggle");
+    else missing.push("node 797.use_custom_loras");
     if (setPart2NodeWidgetValue(loraNode, "lora_count", count)) updated += 1;
     else missing.push("Z-Image LoRA lora_count");
     setPart2NodeWidgetValue(loraNode, "ltx_two_pass_mode", false);
@@ -1831,32 +3136,38 @@ function ensurePart2Modal() {
   function refreshPart2Controls() {
     const missing = [];
     suppressDraftSave = true;
+    const nodeIds = getWorkflowNodeIds();
+    updateWorkflowSpecificVisibility();
 
     for (const field of PART2_MODEL_FIELDS) {
+      if (!isModelFieldVisible(field)) continue;
       const node = getPart2Node(field.nodeId);
       const widget = getPart2Widget(node, field.key);
       const current = getPart2WidgetValue(field.nodeId, field.key);
       fillSelectOptions(controls.modelSelects[`${field.nodeId}:${field.key}`], getPart2WidgetOptions(widget), current);
-      if (!node || !widget) missing.push(field.label);
+      if (!node || !widget) missing.push(`node ${field.nodeId}.${field.key}`);
     }
 
-    const llmNode = getPart2Node(PART2_NODE_IDS.llmI2V);
+    const llmNode = getPart2Node(nodeIds.llmI2V);
     const llmWidget = getPart2Widget(llmNode, null, 0);
-    fillSelectOptions(controls.modelSelects.llm, getPart2WidgetOptions(llmWidget), getPart2WidgetValue(PART2_NODE_IDS.llmI2V, null, 0));
-    if (!llmNode || !llmWidget) missing.push("SuperGemma LLM model");
+    fillSelectOptions(controls.modelSelects.llm, getPart2WidgetOptions(llmWidget), getPart2WidgetValue(nodeIds.llmI2V, null, 0));
+    if (!llmNode || !llmWidget) missing.push(`node ${nodeIds.llmI2V} LLM model`);
 
     for (const field of PART2_SETTING_FIELDS) {
-      controls.settings[field.key].value = String(getPart2WidgetValue(PART2_NODE_IDS.settings, field.key) ?? "");
-      if (!getPart2Widget(getPart2Node(PART2_NODE_IDS.settings), field.key)) missing.push(field.label);
+      controls.settings[field.key].value = String(getPart2WidgetValue(nodeIds.settings, field.key) ?? "");
+      if (!getPart2Widget(getPart2Node(nodeIds.settings), field.key)) missing.push(`node ${nodeIds.settings}.${field.key}`);
     }
 
-    controls.useSrt.value = String(getPart2WidgetValue(PART2_NODE_IDS.useSrtSwitch, "switch", 0)).toLowerCase() === "false" ? "false" : "true";
-    controls.cameraItems.value = String(getPart2WidgetValue(PART2_NODE_IDS.camera, "items", 1) || "");
-    controls.cameraMode.value = String(getPart2WidgetValue(PART2_NODE_IDS.camera, "selection_mode", 3) || "index");
-    controls.promptJson.value = String(getPart2WidgetValue(PART2_NODE_IDS.promptJson, null, 0) || "");
+    controls.useSrt.value = String(getPart2WidgetValue(nodeIds.useSrtSwitch, "switch", 0)).toLowerCase() === "false" ? "false" : "true";
+    controls.promptJson.value = String(getPart2WidgetValue(nodeIds.promptJson, null, 0) || "");
     updateFixedDurationVisibility();
+    refreshAdvancedControls(missing);
     refreshLoraControls(missing);
+    refreshTriggerControls("ltx", missing);
     refreshZImageLoraControls(missing);
+    refreshTriggerControls("zImage", missing);
+    updateLoraVisibility();
+    updateZImageLoraVisibility();
     suppressDraftSave = false;
 
     const draft = loadPart2Draft();
@@ -1876,41 +3187,47 @@ function ensurePart2Modal() {
   function applyPart2Settings() {
     const missing = [];
     let updated = 0;
+    const nodeIds = getWorkflowNodeIds();
 
     for (const field of PART2_MODEL_FIELDS) {
+      if (!isModelFieldVisible(field)) continue;
       if (setPart2WidgetValue(field.nodeId, field.key, controls.modelSelects[`${field.nodeId}:${field.key}`].value)) updated += 1;
-      else missing.push(field.label);
+      else missing.push(`node ${field.nodeId}.${field.key}`);
     }
 
     const llmValue = controls.modelSelects.llm.value;
-    if (setPart2WidgetValue(PART2_NODE_IDS.llmI2V, null, llmValue, 0)) updated += 1;
-    else missing.push("SuperGemma LLM model");
-    if (setPart2WidgetValue(PART2_NODE_IDS.llmT2I, null, llmValue, 0)) updated += 1;
-    else missing.push("SuperGemma LLM model for text-to-image");
+    if (setPart2WidgetValue(nodeIds.llmI2V, null, llmValue, 0)) updated += 1;
+    else missing.push(`node ${nodeIds.llmI2V} LLM model`);
+    if (nodeIds.llmT2I) {
+      if (setPart2WidgetValue(nodeIds.llmT2I, null, llmValue, 0)) updated += 1;
+      else missing.push(`node ${nodeIds.llmT2I} LLM model`);
+    }
 
     for (const field of PART2_SETTING_FIELDS) {
       const rawValue = controls.settings[field.key].value;
       const numberValue = Number(rawValue);
       const value = Number.isFinite(numberValue) ? numberValue : rawValue;
-      if (setPart2WidgetValue(PART2_NODE_IDS.settings, field.key, value)) updated += 1;
-      else missing.push(field.label);
+      if (setPart2WidgetValue(nodeIds.settings, field.key, value)) updated += 1;
+      else missing.push(`node ${nodeIds.settings}.${field.key}`);
     }
 
     const useSrt = String(controls.useSrt.value).toLowerCase() !== "false";
-    if (setPart2WidgetValue(PART2_NODE_IDS.useSrtSwitch, "switch", useSrt, 0)) updated += 1;
-    else missing.push("Use SRT Duration toggle");
+    if (setPart2WidgetValue(nodeIds.useSrtSwitch, "switch", useSrt, 0)) updated += 1;
+    else missing.push(`node ${nodeIds.useSrtSwitch}.switch`);
 
-    if (setPart2WidgetValue(PART2_NODE_IDS.camera, "items", controls.cameraItems.value, 1)) updated += 1;
-    else missing.push("Camera motion list");
-    if (setPart2WidgetValue(PART2_NODE_IDS.camera, "selection_mode", controls.cameraMode.value, 3)) updated += 1;
-    else missing.push("Camera motion mode");
+    updated += applyAdvancedControls(missing);
 
-    if (setPart2WidgetValue(PART2_NODE_IDS.promptJson, null, controls.promptJson.value, 0)) updated += 1;
-    else missing.push("Prompt JSON");
+    if (setPart2WidgetValue(nodeIds.promptJson, null, controls.promptJson.value, 0)) updated += 1;
+    else missing.push(`node ${nodeIds.promptJson} prompt JSON`);
 
     updated += applyLoraControls(missing);
+    updated += applyTriggerControls("ltx", missing);
     updated += applyZImageLoraControls(missing);
+    updated += applyTriggerControls("zImage", missing);
+
     updateFixedDurationVisibility();
+    updateLoraVisibility();
+    updateZImageLoraVisibility();
     clearPart2Draft();
     setStatus(missing.length ? `Updated ${updated} settings.\nMissing:\n${missing.join("\n")}` : `Updated ${updated} Part 2 settings.`);
   }
@@ -1923,26 +3240,73 @@ function ensurePart2Modal() {
   controls.lora.useCustom.addEventListener("change", updateLoraVisibility);
   controls.lora.count.addEventListener("input", updateLoraVisibility);
   controls.lora.count.addEventListener("change", updateLoraVisibility);
+  controls.lora.trigger.useTrigger.addEventListener("change", updateLoraVisibility);
   controls.zImageLora.useCustom.addEventListener("change", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("input", updateZImageLoraVisibility);
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
+  controls.zImageLora.trigger.useTrigger.addEventListener("change", updateZImageLoraVisibility);
   pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
+  controls.advanced.enabled.addEventListener("change", () => {
+    if (controls.advanced.enabled.checked && Number(controls.advanced.count.value || 0) <= 0) {
+      controls.advanced.count.value = "1";
+    }
+    updateAdvancedVisibility();
+    savePart2Draft();
+  });
+  controls.advanced.count.addEventListener("input", updateAdvancedVisibility);
+  controls.advanced.count.addEventListener("change", updateAdvancedVisibility);
+  controls.advanced.modeAll.addEventListener("change", applyAdvancedModeToActivePickers);
+
+  for (let i = 1; i <= controls.advanced.pickers.length; i++) {
+    const picker = controls.advanced.pickers[i - 1];
+    picker.header.addEventListener("click", () => {
+      picker.collapsed = !picker.collapsed;
+      updateAdvancedVisibility();
+      savePart2Draft();
+    });
+    picker.preset.addEventListener("change", () => applyAdvancedPreset(i));
+    for (const control of [picker.label, picker.selectionMode, picker.index, picker.seed, picker.pickCount, picker.template, picker.items]) {
+      control.addEventListener("input", () => updateAdvancedPickerHeader(i));
+      control.addEventListener("change", () => updateAdvancedPickerHeader(i));
+    }
+  }
 
   const draftControls = [
     ...Object.values(controls.modelSelects),
     ...Object.values(controls.settings),
     controls.useSrt,
-    controls.cameraItems,
-    controls.cameraMode,
+    controls.advanced.enabled,
+    controls.advanced.count,
+    controls.advanced.modeAll,
     controls.promptJson,
     controls.lora.useCustom,
     controls.lora.count,
     controls.lora.twoPass,
+    controls.lora.trigger.useTrigger,
+    controls.lora.trigger.triggerWord,
     controls.zImageLora.useCustom,
     controls.zImageLora.count,
+    controls.zImageLora.trigger.useTrigger,
+    controls.zImageLora.trigger.triggerWord,
   ];
-  for (const slot of controls.lora.slots) draftControls.push(slot.select, slot.strength);
-  for (const slot of controls.zImageLora.slots) draftControls.push(slot.select, slot.strength);
+  for (const slot of controls.lora.slots) {
+    draftControls.push(slot.select, slot.strength);
+  }
+  for (const slot of controls.zImageLora.slots) {
+    draftControls.push(slot.select, slot.strength);
+  }
+  for (const picker of controls.advanced.pickers) {
+    draftControls.push(
+      picker.preset,
+      picker.label,
+      picker.selectionMode,
+      picker.index,
+      picker.seed,
+      picker.pickCount,
+      picker.template,
+      picker.items
+    );
+  }
   for (const control of draftControls) {
     control?.addEventListener?.("input", savePart2Draft);
     control?.addEventListener?.("change", savePart2Draft);
@@ -1951,7 +3315,15 @@ function ensurePart2Modal() {
   applyButton.addEventListener("click", applyPart2Settings);
   topApplyButton.addEventListener("click", applyPart2Settings);
 
-  overlay.__vrgdgOpenPart2 = () => {
+  overlay.__vrgdgOpenPart2 = (workflowKind = "part2") => {
+    controls.workflowKind = workflowKind === "part3" ? "part3" : "part2";
+    title.textContent = controls.workflowKind === "part3" ? "Workflow 3 Controls" : "Part 2 Workflow Controls";
+    subtitle.textContent = controls.workflowKind === "part3"
+      ? "Control model pickers, render settings, SRT/fixed timing, prompt detail lists, and copied prompt JSON."
+      : "Control model pickers, render settings, SRT/fixed timing, camera motions, and copied prompt JSON.";
+    topApplyButton.textContent = controls.workflowKind === "part3" ? "Apply Workflow 3 Settings" : "Apply Part 2 Settings";
+    applyButton.textContent = controls.workflowKind === "part3" ? "Apply Workflow 3 Settings" : "Apply Part 2 Settings";
+    updateWorkflowSpecificVisibility();
     overlay.style.display = "flex";
     refreshPart2Controls();
   };
@@ -1969,14 +3341,16 @@ function attachButton(node) {
 
 }
 
-function attachPart2Button(node) {
-  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Part 2 Workflow UI")) {
+function attachWorkflowButton(node, workflowKind) {
+  const isPart3 = workflowKind === "part3";
+  const buttonName = isPart3 ? "Open Workflow 3 UI" : "Open Part 2 Workflow UI";
+  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === buttonName)) {
     return;
   }
 
-  node.addWidget("button", "Open Part 2 Workflow UI", null, () => {
+  node.addWidget("button", buttonName, null, () => {
     const modal = ensurePart2Modal();
-    modal.__vrgdgOpenPart2();
+    modal.__vrgdgOpenPart2(workflowKind);
   });
 }
 
@@ -1984,7 +3358,7 @@ app.registerExtension({
   name: "vrgdg." + NODE_NAME,
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
-    if (nodeData.name !== NODE_NAME && nodeData.name !== PART2_NODE_NAME) return;
+    if (nodeData.name !== NODE_NAME && nodeData.name !== PART2_NODE_NAME && nodeData.name !== PART3_NODE_NAME) return;
 
     const onNodeCreated = nodeType.prototype.onNodeCreated;
     const onConfigure = nodeType.prototype.onConfigure;
@@ -1993,7 +3367,8 @@ app.registerExtension({
       const result = onNodeCreated?.apply(this, arguments);
       this.serialize_widgets = true;
       this.properties = this.properties || {};
-      if (nodeData.name === PART2_NODE_NAME) attachPart2Button(this);
+      if (nodeData.name === PART2_NODE_NAME) attachWorkflowButton(this, "part2");
+      else if (nodeData.name === PART3_NODE_NAME) attachWorkflowButton(this, "part3");
       else attachButton(this);
       return result;
     };
@@ -2001,7 +3376,8 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const result = onConfigure?.apply(this, arguments);
       this.properties = this.properties || {};
-      if (nodeData.name === PART2_NODE_NAME) attachPart2Button(this);
+      if (nodeData.name === PART2_NODE_NAME) attachWorkflowButton(this, "part2");
+      else if (nodeData.name === PART3_NODE_NAME) attachWorkflowButton(this, "part3");
       else attachButton(this);
       return result;
     };

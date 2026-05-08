@@ -2125,6 +2125,10 @@ class VRGDG_PromptCreatorUI_V2(VRGDG_PromptCreatorUI):
 class VRGDG_Part2WorkflowUI(VRGDG_PromptCreatorUI):
     pass
 
+
+class VRGDG_Part3WorkflowUI(VRGDG_PromptCreatorUI):
+    pass
+
 class VRGDG_StoryGroupJsonFixer:
     REQUIRED_GROUP_KEYS = ("index", "subject", "camera", "scene_and_lighting", "frame")
 
@@ -2464,6 +2468,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_LyricSegmentDurationMerger": VRGDG_LyricSegmentDurationMerger,
     "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
     "VRGDG_Part2WorkflowUI": VRGDG_Part2WorkflowUI,
+    "VRGDG_Part3WorkflowUI": VRGDG_Part3WorkflowUI,
     
 }
 
@@ -2494,5 +2499,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LyricSegmentDurationMerger": "VRGDG_LyricSegmentDurationMerger",
     "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
     "VRGDG_Part2WorkflowUI": "VRGDG Part 2 Workflow UI",
+    "VRGDG_Part3WorkflowUI": "VRGDG Workflow 3 UI",
     
 }

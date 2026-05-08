@@ -2673,6 +2673,364 @@ class VRGDG_CyclingTextPicker:
         formatted_text = f"{label_text} = {formatted_value}" if label_text else formatted_value
         return (formatted_text, selected_item, selected_items_text, wrapped_index, item_count)
 
+
+class VRGDG_MultiCyclingTextPicker(VRGDG_CyclingTextPicker):
+    MAX_PICKERS = 20
+    PRESET_LABELS = [
+        "Camera Motion",
+        "Character Movement/Motion",
+        "Lighting",
+        "Time of Day",
+        "Weather",
+        "Dialogue",
+        "Facial Expression",
+        "Emotion",
+        "Custom",
+    ]
+    PRESET_ITEMS = {
+        "Camera Motion": """Slow push-in
+Track right
+Track left
+Dolly backward
+Handheld follow
+Over-the-shoulder push-in
+Slow pan right
+Slow pan left
+Tilt up
+Tilt down
+Arc around subject
+Orbit shot
+Low-angle tracking shot
+Crane rising move
+Slow zoom-in""",
+        "Character Movement/Motion": """Walks toward camera with confident swagger
+Strides across the frame
+Leans toward the camera
+Points into the lens
+Throws arms wide
+Raises both hands overhead
+Runs a hand through their hair
+Slowly backs away from the camera
+Drops to one knee
+Throws their head back
+Whips a jacket off one shoulder
+Stomps forward with attitude
+Tilts chin upward
+Reaches toward the camera
+Collapses dramatically to the floor""",
+        "Lighting": """Soft natural light
+Hard direct sunlight
+Warm tungsten light
+Cool fluorescent light
+Neon nightclub light
+Moody low-key lighting
+High-key studio lighting
+Backlit silhouette
+Rim lighting
+Side lighting
+Top-down lighting
+Underlighting
+Golden hour light
+Blue hour light
+Strobe lighting""",
+        "Time of Day": """Pre-dawn
+Dawn
+Early morning
+Mid-morning
+Late morning
+Noon
+Early afternoon
+Mid-afternoon
+Late afternoon
+Golden hour
+Sunset
+Dusk
+Blue hour
+Night
+After midnight""",
+        "Weather": """Clear sky
+Partly cloudy
+Overcast
+Light rain
+Heavy rain
+Thunderstorm
+Drizzle
+Fog
+Mist
+Snowfall
+Blizzard
+Hail
+Strong wind
+Dust storm
+Humid haze""",
+        "Dialogue": "",
+        "Facial Expression": """Calm expression
+Serious expression
+Confident smirk
+Cold stare
+Worried expression
+Sad expression
+Angry glare
+Fearful expression
+Surprised expression
+Blank expression
+Dreamy expression
+Suspicious look
+Pained expression
+Defiant expression
+Soft smile""",
+        "Emotion": """Joyful
+Melancholic
+Anxious
+Furious
+Heartbroken
+Hopeful
+Jealous
+Lonely
+Nostalgic
+Conflicted
+Euphoric
+Ashamed
+Determined
+Vengeful
+Peaceful""",
+        "Custom": "",
+    }
+    RETURN_TYPES = ("STRING", "STRING") + tuple(["STRING"] * MAX_PICKERS)
+    RETURN_NAMES = (
+        "combined_formatted_text",
+        "results_json",
+    ) + tuple(f"formatted_text_{i}" for i in range(1, MAX_PICKERS + 1))
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/General"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        required = {
+            "picker_count": (
+                "INT",
+                {
+                    "default": 2,
+                    "min": 1,
+                    "max": cls.MAX_PICKERS,
+                    "tooltip": "How many independent cycling text pickers to use. Extra picker sections are hidden in the UI.",
+                },
+            ),
+            "joiner": (
+                ["newline", "blank line", "comma", "pipe"],
+                {
+                    "tooltip": "How to combine the active formatted_text outputs into combined_formatted_text.",
+                },
+            ),
+        }
+
+        optional = {}
+        for i in range(1, cls.MAX_PICKERS + 1):
+            picker_inputs = cls._picker_input_types(i)
+            for name, input_type in picker_inputs.items():
+                if name.startswith("index_") or name.startswith("seed_"):
+                    optional[name] = input_type
+                else:
+                    required[name] = input_type
+
+        return {"required": required, "optional": optional}
+
+    @staticmethod
+    def _picker_input_types(i):
+        return {
+            f"preset_{i}": (
+                "STRING",
+                {
+                    "default": "Camera Motion" if i == 1 else "Custom",
+                    "multiline": False,
+                    "tooltip": f"Picker {i}: choose a preset label/list, or Custom for your own label and editable list.",
+                },
+            ),
+            f"index_{i}": (
+                "INT",
+                {
+                    "default": 0,
+                    "forceInput": True,
+                    "min": -999999,
+                    "max": 999999,
+                    "tooltip": f"Picker {i}: step number used to choose from this picker list.",
+                },
+            ),
+            f"items_{i}": (
+                "STRING",
+                {
+                    "default": VRGDG_MultiCyclingTextPicker.PRESET_ITEMS["Camera Motion"] if i == 1 else "",
+                    "multiline": True,
+                    "tooltip": f"Picker {i}: list of text choices. Supports lines, blank-line chunks, comma, pipe, JSON/Python lists, or objects with items/values/motions.",
+                },
+            ),
+            f"label_{i}": (
+                "STRING",
+                {
+                    "default": "Camera Motion" if i == 1 else "",
+                    "multiline": False,
+                    "tooltip": f"Picker {i}: optional label placed before this picker output.",
+                },
+            ),
+            f"selection_mode_{i}": (
+                "STRING",
+                {
+                    "default": "index",
+                    "multiline": False,
+                    "tooltip": f"Picker {i}: choose by wrapped index, seeded random, or seeded random no-repeat.",
+                },
+            ),
+            f"seed_{i}": (
+                "INT",
+                {
+                    "default": 0,
+                    "forceInput": True,
+                    "min": -0xFFFFFFFFFFFFFFFF,
+                    "max": 0xFFFFFFFFFFFFFFFF,
+                    "tooltip": f"Picker {i}: seed used by random modes.",
+                },
+            ),
+            f"two_item_template_{i}": (
+                "STRING",
+                {
+                    "default": "start with {item1} then follow with {item2}",
+                    "multiline": False,
+                    "tooltip": f"Picker {i}: sentence template used when this picker selects exactly two items.",
+                },
+            ),
+            f"pick_count_{i}": (
+                "INT",
+                {
+                    "default": 1,
+                    "min": 1,
+                    "max": 50,
+                    "tooltip": f"Picker {i}: how many items to select from this picker at once.",
+                },
+            ),
+        }
+
+    @staticmethod
+    def _join_formatted_text(values, joiner):
+        mode = str(joiner or "newline").strip().lower()
+        if mode == "blank line":
+            return "\n\n".join(values)
+        if mode == "comma":
+            return ", ".join(values)
+        if mode == "pipe":
+            return " | ".join(values)
+        return "\n".join(values)
+
+    @staticmethod
+    def _extract_item_directives(raw_items):
+        text = str(raw_items or "")
+        lines = text.splitlines()
+        directives = {}
+        body_lines = []
+        in_directive_header = True
+        directive_names = {
+            "LABEL": "label",
+            "SELECTION_MODE": "selection_mode",
+            "PICK_COUNT": "pick_count",
+            "TEMPLATE": "template",
+        }
+
+        for line in lines:
+            stripped = line.strip()
+            directive_key = None
+            directive_value = None
+            if stripped.startswith("#") and in_directive_header:
+                raw_directive = stripped[1:].strip()
+                if ":" in raw_directive:
+                    raw_name, raw_value = raw_directive.split(":", 1)
+                    raw_name = raw_name.strip().upper()
+                    if raw_name.startswith("VRGDG_"):
+                        raw_name = raw_name[6:]
+                    directive_key = directive_names.get(raw_name)
+                    directive_value = raw_value.strip()
+
+            if directive_key:
+                directives[directive_key] = directive_value
+                continue
+
+            in_directive_header = False
+            body_lines.append(line)
+
+        return directives, "\n".join(body_lines)
+
+    def _run_one_picker(self, i, kwargs):
+        preset = str(kwargs.get(f"preset_{i}", "Custom") or "Custom")
+        raw_items = kwargs.get(f"items_{i}", "")
+        directives, raw_items = self._extract_item_directives(raw_items)
+        if not str(raw_items or "").strip() and preset in self.PRESET_ITEMS:
+            raw_items = self.PRESET_ITEMS[preset]
+        parsed_items = self._parse_items(
+            raw_items,
+            "auto",
+            False,
+        )
+
+        item_count = len(parsed_items)
+        if item_count <= 0:
+            return {
+                "picker": i,
+                "formatted_text": "",
+                "selected_item": "",
+                "selected_items": [],
+                "wrapped_index": 0,
+                "item_count": 0,
+            }
+
+        base_index = int(kwargs.get(f"index_{i}", 0) or 0)
+        pick_count_raw = directives.get("pick_count", kwargs.get(f"pick_count_{i}", 1))
+        pick_count = max(1, int(pick_count_raw or 1))
+        selection_mode = directives.get("selection_mode") or kwargs.get(f"selection_mode_{i}", "index")
+        template = directives.get("template") or kwargs.get(f"two_item_template_{i}", "")
+        selected_indexes = [
+            self._select_index(
+                base_index + offset,
+                item_count,
+                selection_mode,
+                kwargs.get(f"seed_{i}", 0),
+            )
+            for offset in range(pick_count)
+        ]
+        selected_items = [parsed_items[index] for index in selected_indexes]
+        formatted_value = self._format_selected_items(
+            selected_items,
+            "auto",
+            template,
+        )
+        label_text = directives.get("label") or str(kwargs.get(f"label_{i}", "") or "").strip()
+        if not label_text and preset != "Custom":
+            label_text = preset
+        if not label_text:
+            normalized_items = "\n".join(parsed_items).strip()
+            for preset_name, preset_items in self.PRESET_ITEMS.items():
+                if normalized_items == str(preset_items or "").strip():
+                    label_text = preset_name
+                    break
+        formatted_text = f"{label_text} = {formatted_value}" if label_text else formatted_value
+        return {
+            "picker": i,
+            "formatted_text": formatted_text,
+            "selected_item": selected_items[0],
+            "selected_items": selected_items,
+            "wrapped_index": selected_indexes[0],
+            "item_count": item_count,
+        }
+
+    def run(self, picker_count=2, joiner="newline", **kwargs):
+        active_count = max(0, min(self.MAX_PICKERS, int(picker_count or 0)))
+        if active_count <= 0:
+            return ("", "[]", *([""] * self.MAX_PICKERS))
+        results = [self._run_one_picker(i, kwargs) for i in range(1, active_count + 1)]
+        formatted_outputs = [result["formatted_text"] for result in results]
+        active_formatted_outputs = [value for value in formatted_outputs if value]
+        combined = self._join_formatted_text(active_formatted_outputs, joiner)
+        results_json = json.dumps(results, ensure_ascii=False, indent=2)
+        padded_outputs = formatted_outputs + [""] * (self.MAX_PICKERS - len(formatted_outputs))
+        return (combined, results_json, *padded_outputs)
+
 class VRGDG_SaveTextAdvancedConcat:
     RETURN_TYPES = ("STRING", "STRING", "JSON", "STRING")
     RETURN_NAMES = ("text", "file_path", "json", "json_string")
@@ -2799,6 +3157,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_IntToString": VRGDG_IntToString,
     "VRGDG_ArchiveLlmBatchFolders": VRGDG_ArchiveLlmBatchFolders,
     "VRGDG_CyclingTextPicker": VRGDG_CyclingTextPicker,
+    "VRGDG_MultiCyclingTextPicker": VRGDG_MultiCyclingTextPicker,
     "VRGDG_SaveTextAdvancedConcat": VRGDG_SaveTextAdvancedConcat,
     
 
@@ -2820,6 +3179,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToString": "VRGDG_IntToString",
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
     "VRGDG_CyclingTextPicker": "VRGDG Cycling Text Picker",
+    "VRGDG_MultiCyclingTextPicker": "VRGDG Multi Cycling Text Picker",
     "VRGDG_SaveTextAdvancedConcat": "VRGDG_SaveTextAdvancedConcat",
     
 }
