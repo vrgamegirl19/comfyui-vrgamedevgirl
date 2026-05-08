@@ -39,6 +39,7 @@ const PART3_NODE_IDS = {
   zImageModels: null,
 };
 const PART2_ADVANCED_NODE_NAME = "VRGDG_MultiCyclingTextPicker";
+const PART2_ADVANCED_EASY_NODE_NAME = "VRGDG_EasyMultiCyclingTextPicker";
 const PART2_MODEL_FIELDS = [
   { nodeId: 271, key: "unet_name", label: "LTX GGUF model", downloadUrl: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { nodeId: 271, key: "vae_name", label: "Video VAE", downloadUrl: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
@@ -1160,7 +1161,12 @@ function getSubgraphDefinitionForNode(node) {
 
 function isAdvancedPickerNode(node) {
   const type = String(node?.comfyClass || node?.type || node?.properties?.["Node name for S&R"] || "");
-  return type === PART2_ADVANCED_NODE_NAME;
+  return type === PART2_ADVANCED_NODE_NAME || type === PART2_ADVANCED_EASY_NODE_NAME;
+}
+
+function isEasyAdvancedPickerNode(node) {
+  const type = String(node?.comfyClass || node?.type || node?.properties?.["Node name for S&R"] || "");
+  return type === PART2_ADVANCED_EASY_NODE_NAME;
 }
 
 function findAdvancedPickerInSubgraph(subgraph) {
@@ -1174,7 +1180,7 @@ function findAdvancedPickersInGraph(graph) {
 function findPreferredAdvancedPickerInGraph(graph) {
   const pickers = findAdvancedPickersInGraph(graph);
   if (!pickers.length) return null;
-  return pickers.find((node) =>
+  return pickers.find(isEasyAdvancedPickerNode) || pickers.find((node) =>
     (node.outputs || []).some((output) =>
       String(output?.name || "") === "combined_formatted_text" &&
       Array.isArray(output?.links) &&
@@ -2748,6 +2754,21 @@ function ensurePart2Modal() {
     return index === 1 ? "Camera Motion" : "";
   }
 
+  function getAdvancedPickerDirectApplyValues(index) {
+    const picker = controls.advanced.pickers[index - 1];
+    const preset = getAdvancedPresetForApply(picker);
+    const label = getAdvancedLabelForApply(picker, preset, index);
+    const pickCount = Math.max(1, Math.min(50, Number.isFinite(Number(picker.pickCount.value)) ? Math.round(Number(picker.pickCount.value)) : 1));
+    return {
+      preset,
+      items: stripAdvancedItemDirectives(picker.items.value),
+      label,
+      selection_mode: picker.selectionMode.value || "index",
+      two_item_template: picker.template.value || "start with {item1} then follow with {item2}",
+      pick_count: pickCount,
+    };
+  }
+
   function getAdvancedItemDirectives(items) {
     const directives = {};
     const lines = String(items || "").split(/\r?\n/);
@@ -2831,7 +2852,7 @@ function ensurePart2Modal() {
   function refreshAdvancedControls(missing) {
     const node = getPart2AdvancedPickerNode();
     if (!node) {
-      missing.push("node 830 inner VRGDG_MultiCyclingTextPicker");
+      missing.push("VRGDG_EasyMultiCyclingTextPicker or VRGDG_MultiCyclingTextPicker");
       return;
     }
 
@@ -2859,15 +2880,17 @@ function ensurePart2Modal() {
       const rawItems = getAdvancedWidgetValue(node, `items_${i}`, "");
       const preset = String(picker.preset.value || "Custom");
       const itemDirectives = getAdvancedItemDirectives(rawItems);
-      picker.label.value = preset !== "Custom"
-        ? preset
-        : String(getAdvancedWidgetValue(node, `label_${i}`, itemDirectives.label || (i === 1 ? "Camera Motion" : "")));
-      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, itemDirectives.selection_mode || getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
+      picker.label.value = isEasyAdvancedPickerNode(node)
+        ? String(getAdvancedWidgetValue(node, `label_${i}`, preset !== "Custom" ? preset : (i === 1 ? "Camera Motion" : "")))
+        : preset !== "Custom"
+          ? preset
+          : String(getAdvancedWidgetValue(node, `label_${i}`, itemDirectives.label || (i === 1 ? "Camera Motion" : "")));
+      fillSelectOptions(picker.selectionMode, getPart2WidgetOptions(modeWidget).length ? getPart2WidgetOptions(modeWidget) : PART2_ADVANCED_SELECTION_MODES, isEasyAdvancedPickerNode(node) ? getAdvancedWidgetValue(node, `selection_mode_${i}`, "index") : itemDirectives.selection_mode || getAdvancedWidgetValue(node, `selection_mode_${i}`, "index"));
       picker.index.value = String(getAdvancedWidgetValue(node, `index_${i}`, 0));
       picker.seed.value = String(getAdvancedWidgetValue(node, `seed_${i}`, 0));
-      picker.pickCount.value = String(itemDirectives.pick_count || getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
-      picker.template.value = String(itemDirectives.template || getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
-      picker.items.value = stripAdvancedItemDirectives(rawItems);
+      picker.pickCount.value = String(isEasyAdvancedPickerNode(node) ? getAdvancedWidgetValue(node, `pick_count_${i}`, 1) : itemDirectives.pick_count || getAdvancedWidgetValue(node, `pick_count_${i}`, 1));
+      picker.template.value = String(isEasyAdvancedPickerNode(node) ? getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}") : itemDirectives.template || getAdvancedWidgetValue(node, `two_item_template_${i}`, "start with {item1} then follow with {item2}"));
+      picker.items.value = isEasyAdvancedPickerNode(node) ? String(rawItems || "") : stripAdvancedItemDirectives(rawItems);
 
       if (i <= activeCount) {
         for (const [name, widget] of requiredWidgets) {
@@ -2883,7 +2906,7 @@ function ensurePart2Modal() {
   function applyAdvancedControls(missing) {
     const contexts = getPart2AdvancedPickerContexts();
     if (!contexts.length) {
-      missing.push("node 830 inner VRGDG_MultiCyclingTextPicker");
+      missing.push("VRGDG_EasyMultiCyclingTextPicker or VRGDG_MultiCyclingTextPicker");
       return 0;
     }
 
@@ -2894,6 +2917,32 @@ function ensurePart2Modal() {
       const node = context.node;
       if (setAdvancedWidgetValue(node, "picker_count", count)) updated += 1;
       else missing.push(`node ${node?.id || 830} inner picker_count`);
+
+      if (isEasyAdvancedPickerNode(node)) {
+        if (setAdvancedWidgetValue(node, "joiner", "newline")) updated += 1;
+
+        for (let i = 1; i <= PART2_ADVANCED_MAX_PICKERS; i++) {
+          const values = i <= count ? getAdvancedPickerDirectApplyValues(i) : {
+            preset: i === 1 ? "Camera Motion" : "Custom",
+            items: "",
+            label: "",
+            selection_mode: "index",
+            two_item_template: "start with {item1} then follow with {item2}",
+            pick_count: 1,
+          };
+
+          for (const [field, value] of Object.entries(values)) {
+            const name = `${field}_${i}`;
+            if (setAdvancedWidgetValue(node, name, value)) updated += 1;
+            else if (i <= count) missing.push(`node ${node?.id || 830} inner ${name}`);
+          }
+        }
+
+        getAdvancedWidget(node, "picker_count")?.callback?.(count, app.canvas, node, app.canvas?.graph_mouse);
+        node.setSize?.([Math.max(780, node.size?.[0] || 780), node.computeSize?.()[1] || node.size?.[1] || 440]);
+        app.graph?.setDirtyCanvas?.(true, true);
+        continue;
+      }
 
       if (count <= 0) continue;
 

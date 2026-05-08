@@ -3031,6 +3031,12 @@ Peaceful""",
         padded_outputs = formatted_outputs + [""] * (self.MAX_PICKERS - len(formatted_outputs))
         return (combined, results_json, *padded_outputs)
 
+
+class VRGDG_EasyMultiCyclingTextPicker(VRGDG_MultiCyclingTextPicker):
+    CATEGORY = "VRGDG/General"
+    DESCRIPTION = "A friendlier UI wrapper around VRGDG_MultiCyclingTextPicker. Uses the same picker behavior and outputs."
+
+
 class VRGDG_SaveTextAdvancedConcat:
     RETURN_TYPES = ("STRING", "STRING", "JSON", "STRING")
     RETURN_NAMES = ("text", "file_path", "json", "json_string")
@@ -3158,6 +3164,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_ArchiveLlmBatchFolders": VRGDG_ArchiveLlmBatchFolders,
     "VRGDG_CyclingTextPicker": VRGDG_CyclingTextPicker,
     "VRGDG_MultiCyclingTextPicker": VRGDG_MultiCyclingTextPicker,
+    "VRGDG_EasyMultiCyclingTextPicker": VRGDG_EasyMultiCyclingTextPicker,
     "VRGDG_SaveTextAdvancedConcat": VRGDG_SaveTextAdvancedConcat,
     
 
@@ -3180,6 +3187,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_ArchiveLlmBatchFolders": "VRGDG_ArchiveLlmBatchFolders",
     "VRGDG_CyclingTextPicker": "VRGDG Cycling Text Picker",
     "VRGDG_MultiCyclingTextPicker": "VRGDG Multi Cycling Text Picker",
+    "VRGDG_EasyMultiCyclingTextPicker": "VRGDG Easy Multi Cycling Text Picker",
     "VRGDG_SaveTextAdvancedConcat": "VRGDG_SaveTextAdvancedConcat",
     
 }
