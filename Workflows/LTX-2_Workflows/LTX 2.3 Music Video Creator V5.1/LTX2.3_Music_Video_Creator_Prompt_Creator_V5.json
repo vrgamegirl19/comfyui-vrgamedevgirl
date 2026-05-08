@@ -1,0 +1,5202 @@
+{
+  "id": "9e25125b-c8b3-4d3b-9993-50dc4525c92f",
+  "revision": 0,
+  "last_node_id": 953,
+  "last_link_id": 1507,
+  "nodes": [
+    {
+      "id": 832,
+      "type": "Note",
+      "pos": [
+        -2524.306418840212,
+        1677.4175911626198
+      ],
+      "size": [
+        448.55819396647803,
+        88
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "I would recommend staying with songs no longer than 4 mins long. If they get to long the LLM nodes can \"forget\" things and it can cause issues."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 929,
+      "type": "VRGDG_LlamaCppDoctor",
+      "pos": [
+        -1683.5418468120574,
+        1452.3872247957702
+      ],
+      "size": [
+        317.9,
+        162
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "support_bundle",
+          "type": "STRING",
+          "links": [
+            1469
+          ]
+        },
+        {
+          "name": "install_hint",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "python_exe",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "b3d7eccb44176f8377644683288c9214a93ab4fe",
+        "Node name for S&R": "VRGDG_LlamaCppDoctor",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        true,
+        true
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 931,
+      "type": "MarkdownNote",
+      "pos": [
+        -1945.3765245767327,
+        1374.0448634156137
+      ],
+      "size": [
+        241.8996311923761,
+        334.06795024916573
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 2,
+      "inputs": [],
+      "outputs": [],
+      "title": "LLM Doctor",
+      "properties": {
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# If the LLM nodes gives you an error message mute the below group and unmute this group and then run this node and paste the text it provides into any LLM and it will tell you exactly how to fix the issue. "
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 790,
+      "type": "a0cb0e7f-5976-443e-9040-2d2a7c443f81",
+      "pos": [
+        -3074.8074449926567,
+        1854.681851340306
+      ],
+      "size": [
+        140,
+        86
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            1221
+          ]
+        },
+        {
+          "name": "audio_file_path",
+          "type": "STRING",
+          "links": [
+            1222
+          ]
+        },
+        {
+          "label": "for folder name",
+          "name": "result_text",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1224
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [],
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 785,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -3112.8272826869593,
+        1900.389650951181
+      ],
+      "size": [
+        233.21716218818975,
+        104.22333986873059
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1222
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "TEMP LOCATION",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_AudioFiles\\Quiet Lies - Paper Thin Air - Sonauto.wav"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 951,
+      "type": "MarkdownNote",
+      "pos": [
+        -3423.662607681995,
+        2067.039867595736
+      ],
+      "size": [
+        261.30081023384207,
+        147.55930028695457
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "FULL LYRICS",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# ➡️➡️➡️ MAKE SURE THIS SAYS FULL LYRICS, IF NOT PRESS REFRESH LIST ➡️➡️➡️\n"
+      ],
+      "color": "#232",
+      "bgcolor": "#353",
+      "shape": 1
+    },
+    {
+      "id": 953,
+      "type": "MarkdownNote",
+      "pos": [
+        -3423.662607681995,
+        2289.6906598934975
+      ],
+      "size": [
+        261.30081023384207,
+        147.55930028695457
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "STORY CONCEPT",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# ➡️➡️➡️ MAKE SURE THIS SAYS STORYCONCEPT, IF NOT PRESS REFRESH LIST ➡️➡️➡️\n"
+      ],
+      "color": "#232",
+      "bgcolor": "#353",
+      "shape": 1
+    },
+    {
+      "id": 950,
+      "type": "MarkdownNote",
+      "pos": [
+        -3426.396419762654,
+        2514.272452641618
+      ],
+      "size": [
+        255.39065529214747,
+        154.67548394012874
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "THEME AND STYLE",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# ➡️➡️➡️ MAKE SURE THIS SAYS THEMESTYLE, IF NOT PRESS REFRESH LIST ➡️➡️➡️\n"
+      ],
+      "color": "#232",
+      "bgcolor": "#353",
+      "shape": 1
+    },
+    {
+      "id": 952,
+      "type": "MarkdownNote",
+      "pos": [
+        -3424.9356005972254,
+        2737.3333196145845
+      ],
+      "size": [
+        263.33761608296334,
+        179.68784397890568
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "SUBJECT AND SCENES",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# ➡️➡️➡️ MAKE SURE THIS SAYS SUBJECTANDSCENES, IF NOT PRESS REFRESH LIST ➡️➡️➡️\n"
+      ],
+      "color": "#232",
+      "bgcolor": "#353",
+      "shape": 1
+    },
+    {
+      "id": 928,
+      "type": "MarkdownNote",
+      "pos": [
+        -2821.917720369867,
+        2488.019752446945
+      ],
+      "size": [
+        332.8944328777659,
+        184.5699087446501
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "LLM MODEL",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Model Download\n\nDownload the model here:\n\n[supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf](https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf)\n\n[mmproj-BF16.gguf](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf)\n\nPlace both downloaded files here:\n\n```text\nModels/LLM"
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 917,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -2829.8489033078586,
+        2727.574441490262
+      ],
+      "size": [
+        281.4603802755645,
+        140.2978827288971
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1440
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "first gemma 4 node status",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "ok"
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 918,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -2528.125146178568,
+        2724.4272818198747
+      ],
+      "size": [
+        281.4603802755645,
+        140.2978827288971
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1441
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "2nd gemma 4 node status",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "ok"
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 908,
+      "type": "MarkdownNote",
+      "pos": [
+        -2418.230877329697,
+        1882.3083726721466
+      ],
+      "size": [
+        262.8459735736701,
+        263.924316132292
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "WALK THROUGH VIDOE",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Full Workflow Walkthrough Video\n\nThis video walks through the complete Nano Banana process  \nfrom start to finish using a real video project.\n\n### 🎬 Walkthrough Video\nCOMING SOON \n\nShows full setup, prompt workflow, reference image usage,\nand the exact process used to produce the final result."
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 60,
+      "type": "Note",
+      "pos": [
+        -2408.424901186724,
+        2200.566830738524
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "FPS",
+      "properties": {
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "FPS must be the same as what your video will be."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 804,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -2127.638824784031,
+        1863.2677052051188
+      ],
+      "size": [
+        459.56708126515366,
+        720.7959559936817
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1395
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "VRGDG_ShowText -Fixed Lyrics",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "{\n  \"lyricSegment1_duration_5.572\": \"Don't look at me like that\",\n  \"lyricSegment2_duration_6.502\": \"You say it\",\n  \"lyricSegment3_duration_8.998\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n  \"lyricSegment4_duration_4.504\": \"You play innocent so well I can hear it when you sell\",\n  \"lyricSegment5_duration_8\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n  \"lyricSegment6_duration_5.398\": \"In the silence you left You don't even have to\",\n  \"lyricSegment7_duration_4.099\": \"try I hear it every time it gets quiet when you\",\n  \"lyricSegment8_duration_7\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n  \"lyricSegment9_duration_4.006\": \"I've ever heard\",\n  \"lyricSegment10_duration_7.5\": \"It gets quiet when you lie\",\n  \"lyricSegment11_duration_4.481\": \"Like the air is paper-thin\",\n  \"lyricSegment12_duration_5.48\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n  \"lyricSegment13_duration_7.535\": \"I see it in your eyes\",\n  \"lyricSegment14_duration_8.998\": \"try It gets quiet when you lie\",\n  \"lyricSegment15_duration_4.005\": \"Don't look at me like that\",\n  \"lyricSegment16_duration_5.492\": \"The silence lingers deep\",\n  \"lyricSegment17_duration_9.683\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n  \"lyricSegment18_duration_1.927\": \"When you lie\"\n}"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 943,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1210.8922202729996,
+        2654.549206983168
+      ],
+      "size": [
+        158.9,
+        77.24655669273079
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1493
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\VRGDG_TEMP\\TextFiles\\ConceptPrompts\\ConceptPrompts.txt"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 942,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1213.4756907338233,
+        2666.9323474359103
+      ],
+      "size": [
+        158.9,
+        77.24655669273079
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1492
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "{\n  \"Prompt1\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. small-town radio station: A tense, heavy gaze is exchanged across a vintage microphone in a dimly lit studio, the air thick with unspoken tension.\",\n  \"Prompt2\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. small-town radio station: A single, whispered word hangs in the air as the studio lights flicker slightly with the weight of a spoken secret.\",\n  \"Prompt3\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. dimly lit kitchen: Warm candlelight flickers on a table while sharp, jagged shadows stretch across the walls like hidden teeth.\",\n  \"Prompt4\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. dimly lit kitchen: A deceptive, innocent smile is cast through the soft glow of a kitchen lamp, masking a cold truth.\",\n  \"Prompt5\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: The streetlights hum as the entire world seems to freeze in a sudden, unnatural vacuum of sound.\",\n  \"Prompt6\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: An empty, desolate street stretches out under a pale moon, the stillness feeling heavy and suffocating.\",\n  \"Prompt7\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: The wind stops mid-gust, leaving the suburban trees frozen in a silent, eerie tableau.\",\n  \"Prompt8\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: Long, cavernous shadows stretch between the pillars as the vast, hollow silence of the hall grows overwhelming.\",\n  \"Prompt9\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The sound of a distant, echoing footstep fades into a profound and terrifying stillness.\",\n  \"Prompt10\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The shadows deepen as the atmosphere becomes thick with the weight of a hidden truth.\",\n  \"Prompt11\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The air becomes visually thin and translucent, like fragile paper stretched between the ancient walls.\",\n  \"Prompt12\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: A ghostly, hollow expression reflects the feeling of a stranger's presence in a familiar space.\",\n  \"Prompt13\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: A piercing, searching gaze cuts through the dim light, looking for the truth behind a mask.\",\n  \"Prompt14\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The silence expands, threatening to swallow the architecture as the truth remains buried.\",\n  \"Prompt15\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: A sharp, questioning look is directed toward the viewer in the soft, dim light of a living room.\",\n  \"Prompt16\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: Dust motes hang motionless in the air as the silence settles like a heavy shroud.\",\n  \"Prompt17\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: The room becomes an abyss of soft shadows where the silence feels loud and all-consuming.\",\n  \"Prompt18\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: A final, sudden moment of absolute stillness as the truth is finally laid bare.\"\n}"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 939,
+      "type": "VRGDG_SaveTextAdvanced",
+      "pos": [
+        -1264.0349188339105,
+        2642.0267689687507
+      ],
+      "size": [
+        283.9,
+        150
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 1491
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1492
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": [
+            1493
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "b3d7eccb44176f8377644683288c9214a93ab4fe",
+        "Node name for S&R": "VRGDG_SaveTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "ConceptPrompts",
+        "ConceptPrompts",
+        true,
+        0
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 27,
+      "type": "MarkdownNote",
+      "pos": [
+        -3034.071273788949,
+        1553.6687635155365
+      ],
+      "size": [
+        458.13579288201504,
+        106.45093794428271
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "## 🧩 Workflow Instructions\n\n### click on the UI button and enter everything and then RUN The workflow. \n\n✨ Done!\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 801,
+      "type": "VRGDG_LoadTextAdvanced",
+      "pos": [
+        -3103.281169574706,
+        2284.9339440572107
+      ],
+      "size": [
+        227,
+        174
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1290
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "STORY CONCEPT",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_LoadTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "storyconcept",
+        true,
+        "storyconcept.txt",
+        "storyconcept",
+        null
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 799,
+      "type": "VRGDG_LoadTextAdvanced",
+      "pos": [
+        -3106.209334759108,
+        2513.428738256153
+      ],
+      "size": [
+        235.5250024190093,
+        174
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1286
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "THEMESTYLE",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_LoadTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "themestyle",
+        true,
+        "themestyle.txt",
+        "themestyle",
+        null
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 922,
+      "type": "VRGDG_LoadTextAdvanced",
+      "pos": [
+        -3101.887646863695,
+        2742.5416577150727
+      ],
+      "size": [
+        227,
+        174
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1457
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "subject and scenes",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_LoadTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "subjectandscenes",
+        true,
+        "subjectsandscenes.txt",
+        "subjectandscenes",
+        null
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 798,
+      "type": "VRGDG_LoadTextAdvanced",
+      "pos": [
+        -3110.3324742299983,
+        2057.1921563733226
+      ],
+      "size": [
+        227,
+        174
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1285
+          ]
+        },
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "FULL LYRICS",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_LoadTextAdvanced",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "fulllyrics",
+        true,
+        "full_lyrics.txt",
+        "fulllyrics",
+        null
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 911,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1636.5108850104732,
+        1865.8399181988052
+      ],
+      "size": [
+        996.9139910643303,
+        728.75213619742
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1427
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": [
+            1491
+          ]
+        }
+      ],
+      "title": "VRGDG_ShowText - Concept Prompt for image to video or text to video",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "{\n  \"Prompt1\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. small-town radio station: A tense, heavy gaze is exchanged across a vintage microphone in a dimly lit studio, the air thick with unspoken tension.\",\n  \"Prompt2\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. small-town radio station: A single, whispered word hangs in the air as the studio lights flicker slightly with the weight of a spoken secret.\",\n  \"Prompt3\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. dimly lit kitchen: Warm candlelight flickers on a table while sharp, jagged shadows stretch across the walls like hidden teeth.\",\n  \"Prompt4\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. dimly lit kitchen: A deceptive, innocent smile is cast through the soft glow of a kitchen lamp, masking a cold truth.\",\n  \"Prompt5\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: The streetlights hum as the entire world seems to freeze in a sudden, unnatural vacuum of sound.\",\n  \"Prompt6\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: An empty, desolate street stretches out under a pale moon, the stillness feeling heavy and suffocating.\",\n  \"Prompt7\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: The wind stops mid-gust, leaving the suburban trees frozen in a silent, eerie tableau.\",\n  \"Prompt8\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: Long, cavernous shadows stretch between the pillars as the vast, hollow silence of the hall grows overwhelming.\",\n  \"Prompt9\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The sound of a distant, echoing footstep fades into a profound and terrifying stillness.\",\n  \"Prompt10\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The shadows deepen as the atmosphere becomes thick with the weight of a hidden truth.\",\n  \"Prompt11\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The air becomes visually thin and translucent, like fragile paper stretched between the ancient walls.\",\n  \"Prompt12\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: A ghostly, hollow expression reflects the feeling of a stranger's presence in a familiar space.\",\n  \"Prompt13\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: A piercing, searching gaze cuts through the dim light, looking for the truth behind a mask.\",\n  \"Prompt14\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The silence expands, threatening to swallow the architecture as the truth remains buried.\",\n  \"Prompt15\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: A sharp, questioning look is directed toward the viewer in the soft, dim light of a living room.\",\n  \"Prompt16\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: Dust motes hang motionless in the air as the silence settles like a heavy shroud.\",\n  \"Prompt17\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: The room becomes an abyss of soft shadows where the silence feels loud and all-consuming.\",\n  \"Prompt18\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: A final, sudden moment of absolute stillness as the truth is finally laid bare.\"\n}"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 930,
+      "type": "VRGDG_ShowText",
+      "pos": [
+        -1333.0867614765964,
+        1383.1495439078096
+      ],
+      "size": [
+        360.3296577968657,
+        319.2199466123111
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "text",
+          "shape": 7,
+          "type": "STRING",
+          "link": 1469
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text_output",
+          "shape": 6,
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "VRGDG_ShowText -Fixed Lyrics",
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_ShowText",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        "COPY/PASTE SUPPORT BUNDLE - VRGDG Llama CPP Doctor\n\nProblem:\nI am trying to use a ComfyUI custom node that imports `from llama_cpp import Llama` for GGUF/SuperGemma chat.\nPlease diagnose whether llama-cpp-python is installed correctly and what I should do next.\n\nDoctor status: OK\n\nComfyUI Python:\nZ:\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe\n\nllama_cpp import/version/path:\nllama_cpp import: OK\nllama-cpp-python version: 0.3.20\nllama_cpp module path: Z:\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\Lib\\site-packages\\llama_cpp\\__init__.py\nLlama class: <class 'llama_cpp.llama.Llama'>\n\npip package checks:\n[llama-cpp-python]\nName: llama_cpp_python\nVersion: 0.3.20\nLocation: Z:\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\Lib\\site-packages\nRequires: diskcache, jinja2, numpy, typing-extensions\n\n[llama_cpp_python]\nName: llama_cpp_python\nVersion: 0.3.20\nLocation: Z:\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\Lib\\site-packages\nRequires: diskcache, jinja2, numpy, typing-extensions\n\n[llama-cpp]\nnot installed\n\n[llama_cpp]\nnot installed\n\n[llama-cpp-py]\nnot installed\n\nTorch/CUDA:\ntorch: 2.7.0+cu128\ntorch CUDA build: 12.8\ntorch.cuda.is_available: True\ntorch CUDA device count: 1\ntorch current CUDA device: 0\ntorch CUDA device name: NVIDIA GeForce RTX 5090\n\nnvidia-smi:\nNVIDIA GeForce RTX 5090, 591.86, 32607 MiB\n\nllama.cpp system info:\nCUDA : ARCHS = 1200 | USE_GRAPHS = 1 | PEER_MAX_BATCH_SIZE = 128 | BLACKWELL_NATIVE_FP4 = 1 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 |\n\nDoctor notes:\n- llama_cpp import is OK, so `from llama_cpp import Llama` should work in this ComfyUI Python.\n- PyTorch can see CUDA, so the NVIDIA driver/GPU path is visible to ComfyUI.\n- Detected an RTX 50-series/Blackwell GPU. Use a llama-cpp-python wheel built for Blackwell, not a generic CPU wheel.\n- This report proves imports and CUDA visibility, but not that llama.cpp is actually GPU-offloading a GGUF. A model load test is needed for that.\n\nInstall/fix checklist:\n\n1. Use the Python that is running ComfyUI:\n   Z:\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe -m pip install llama-cpp-python\n\n2. Remove common wrong/conflicting packages first:\n   Z:\\ComfyUI\\ComfyUI_windows_portable\\python_embeded\\python.exe -m pip uninstall -y llama-cpp-python llama_cpp_python llama-cpp llama_cpp llama-cpp-py\n\n3. Install the wheel that matches the user's OS, Python version, CUDA version, and GPU architecture.\n\nOfficial CUDA wheel indexes currently cover CUDA 12.1 through 12.5:\n   https://pypi.org/project/llama-cpp-python/\n   https://llama-cpp-python.readthedocs.io/en/latest/\n\nFor RTX 50-series/Blackwell systems, use a wheel built for Blackwell and the matching CUDA runtime.\n\n4. Restart ComfyUI after installing or changing llama-cpp-python.\n\nWhat I need help with:\n1. Tell me if this is installed into the correct Python environment.\n2. Tell me if I have conflicting packages installed.\n3. Tell me which llama-cpp-python wheel/install command best matches my Python, OS, CUDA, and GPU.\n4. Tell me what command I should run next, and whether I need to restart ComfyUI."
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 906,
+      "type": "VRGDG_PromptCreatorUI_V2",
+      "pos": [
+        -2965.119326350499,
+        1706.2033470731346
+      ],
+      "size": [
+        314.3668331685534,
+        58
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+        "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+        "Node name for S&R": "VRGDG_PromptCreatorUI_V2",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        },
+        "vrgdg_test_popup_full_lyrics": "Full Lyrics\n\n[Intro]\nDon’t look at me like that\n\n[Verse 1]\nYou say it soft, almost sweet\nLike sugar hiding razor teeth\nYour hands are warm against my skin\nBut your eyes don’t let me in\nYou play innocent so well\nI can hear it when you sell\n\n[Chorus]\nIt gets quiet when you lie\nLike the whole room holds its breath\nI can feel it in the night\nIn the silence you left\nYou don’t even have to try\nI hear it every time\nIt gets quiet\nWhen you lie\n\n[Verse 2]\nYou think I don’t notice\nThe space between your words\nBut silence is the loudest thing\nI’ve ever heard\n\n[Chorus]\nIt gets quiet when you lie\nLike the air is paper-thin\nEvery “love you” sounds rehearsed\nLike a stranger wearing skin\nYou don’t even have to try\nI see it in your eyes\nIt gets quiet\nWhen you lie\n\n[Outro Hook]\nDon’t look at me like that\nIt gets quiet when you lie\nSo quiet\nWhen you lie",
+        "vrgdg_test_popup_style_theme": "STYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood.",
+        "vrgdg_test_popup_story_idea": "A late-night radio host famous for exposing small-town corruption begins noticing a terrifying pattern in her own marriage: every time her husband lies, the world around her falls unnervingly silent. Clocks stop ticking, traffic noise disappears, even dogs freeze mid-bark. At first she dismisses it as stress, until anonymous callers start warning her that her husband has been hiding the disappearance of a woman connected to the town’s most powerful family. As the unnatural silences grow longer and more dangerous, she realizes the quiet isn’t just a feeling—it’s something consuming reality itself whenever the truth is buried. To survive, she must force a confession from the man she still loves before the silence swallows her completely.",
+        "vrgdg_test_popup_audio_filename": "Quiet Lies - Paper Thin Air - Sonauto.wav",
+        "vrgdg_test_popup_subjects_and_scenes": "subject: a woman, with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots.\n\nLocations:\nsmall-town radio station\ndimly lit kitchen\nempty suburban street at night\nbedroom with silent clocks\ntown diner after closing\nold county courthouse hallway\nquiet residential living room\ndeserted gas station parking lot",
+        "vrgdg_test_popup_subgraph_fps": "24",
+        "vrgdg_test_popup_subgraph_min_duration": "4",
+        "vrgdg_test_popup_subgraph_max_duration": "10",
+        "vrgdg_test_popup_subgraph_bias": "0.7",
+        "vrgdg_test_popup_subgraph_duration_preset": "varied_no_repeat",
+        "vrgdg_test_popup_subgraph_language": "english",
+        "vrgdg_test_popup_subgraph_switch": "true",
+        "vrgdg_test_popup_subgraph_scene_duration_seconds": "15",
+        "vrgdg_test_popup_subgraph_model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+      },
+      "widgets_values": [
+        null
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 28,
+      "type": "b628ba4c-455d-4afa-ab26-31aecee2a895",
+      "pos": [
+        -2838.9092039360507,
+        1887.3672249744918
+      ],
+      "size": [
+        368,
+        550
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "story",
+          "name": "section_2_text",
+          "type": "STRING",
+          "widget": {
+            "name": "section_2_text"
+          },
+          "link": 1290
+        },
+        {
+          "label": "full lyrics",
+          "name": "section_2_text_1",
+          "type": "STRING",
+          "link": 1285
+        },
+        {
+          "name": "final_mix",
+          "type": "AUDIO",
+          "link": 1221
+        },
+        {
+          "name": "output_filename",
+          "type": "STRING",
+          "widget": {
+            "name": "output_filename"
+          },
+          "link": 1224
+        },
+        {
+          "label": "them and style",
+          "name": "section_4_text",
+          "type": "STRING",
+          "widget": {
+            "name": "section_4_text"
+          },
+          "link": 1286
+        },
+        {
+          "name": "section_4_text_1",
+          "type": "STRING",
+          "widget": {
+            "name": "section_4_text_1"
+          },
+          "link": 1457
+        },
+        {
+          "label": "use SRT durations",
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "label": "scene_duration_seconds when SRT mode is off",
+          "name": "scene_duration_seconds",
+          "type": "FLOAT",
+          "widget": {
+            "name": "scene_duration_seconds"
+          },
+          "link": null
+        },
+        {
+          "label": "LLM Model",
+          "name": "model_file",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_file"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "LyricSegments",
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            1395
+          ]
+        },
+        {
+          "label": "use these",
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            1427
+          ]
+        },
+        {
+          "name": "status",
+          "type": "STRING",
+          "links": [
+            1440
+          ]
+        },
+        {
+          "name": "status_1",
+          "type": "STRING",
+          "links": [
+            1441
+          ]
+        }
+      ],
+      "properties": {
+        "proxyWidgets": [
+          [
+            "-1",
+            "fps"
+          ],
+          [
+            "-1",
+            "output_filename"
+          ],
+          [
+            "-1",
+            "min_duration"
+          ],
+          [
+            "-1",
+            "max_duration"
+          ],
+          [
+            "-1",
+            "bias"
+          ],
+          [
+            "-1",
+            "duration_preset"
+          ],
+          [
+            "-1",
+            "section_2_text"
+          ],
+          [
+            "-1",
+            "section_4_text"
+          ],
+          [
+            "-1",
+            "section_4_text_1"
+          ],
+          [
+            "-1",
+            "language"
+          ],
+          [
+            "-1",
+            "switch"
+          ],
+          [
+            "-1",
+            "scene_duration_seconds"
+          ],
+          [
+            "-1",
+            "model_file"
+          ]
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.3.76",
+        "ue_properties": {
+          "version": "7.5.2",
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        24,
+        0.5,
+        4,
+        10,
+        0.7,
+        "varied_no_repeat",
+        "",
+        "",
+        "",
+        "english",
+        true,
+        15,
+        "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    }
+  ],
+  "links": [
+    [
+      1221,
+      790,
+      0,
+      28,
+      2,
+      "AUDIO"
+    ],
+    [
+      1222,
+      790,
+      1,
+      785,
+      0,
+      "STRING"
+    ],
+    [
+      1224,
+      790,
+      3,
+      28,
+      3,
+      "STRING"
+    ],
+    [
+      1285,
+      798,
+      0,
+      28,
+      1,
+      "STRING"
+    ],
+    [
+      1286,
+      799,
+      0,
+      28,
+      4,
+      "STRING"
+    ],
+    [
+      1290,
+      801,
+      0,
+      28,
+      0,
+      "STRING"
+    ],
+    [
+      1395,
+      28,
+      0,
+      804,
+      0,
+      "STRING"
+    ],
+    [
+      1427,
+      28,
+      1,
+      911,
+      0,
+      "STRING"
+    ],
+    [
+      1440,
+      28,
+      2,
+      917,
+      0,
+      "STRING"
+    ],
+    [
+      1441,
+      28,
+      3,
+      918,
+      0,
+      "STRING"
+    ],
+    [
+      1457,
+      922,
+      0,
+      28,
+      5,
+      "STRING"
+    ],
+    [
+      1469,
+      929,
+      2,
+      930,
+      0,
+      "STRING"
+    ],
+    [
+      1491,
+      911,
+      0,
+      939,
+      0,
+      "STRING"
+    ],
+    [
+      1492,
+      939,
+      0,
+      942,
+      0,
+      "STRING"
+    ],
+    [
+      1493,
+      939,
+      1,
+      943,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 3,
+      "title": "Concept prompt for image to video or text to video",
+      "bounding": [
+        -3133.4931900551305,
+        1779.1882190478043,
+        2520.784433454155,
+        1159.8041230725141
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 30,
+      "title": "Llama doctor if you have issus with the LLM node!!!",
+      "bounding": [
+        -1972.2531879540788,
+        1272.6403072775115,
+        1015.911899233047,
+        488.24542554231266
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "b628ba4c-455d-4afa-ab26-31aecee2a895",
+        "version": 1,
+        "state": {
+          "lastGroupId": 31,
+          "lastNodeId": 953,
+          "lastLinkId": 1507,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "The guts",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -12706.319324956452,
+            -402.8003234593945,
+            304,
+            340
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            -7234.122005836301,
+            -256.3885803561575,
+            125,
+            120
+          ]
+        },
+        "inputs": [
+          {
+            "id": "f3c77658-e1d9-4700-8394-03c563e40ee6",
+            "name": "section_2_text",
+            "type": "STRING",
+            "linkIds": [
+              1247,
+              1423
+            ],
+            "label": "story",
+            "pos": [
+              -12422.319324956452,
+              -382.8003234593945
+            ]
+          },
+          {
+            "id": "54ac08fb-4f43-48e7-b7e9-506eda78c30c",
+            "name": "section_2_text_1",
+            "type": "STRING",
+            "linkIds": [
+              1248,
+              1298
+            ],
+            "label": "full lyrics",
+            "pos": [
+              -12422.319324956452,
+              -362.8003234593945
+            ]
+          },
+          {
+            "id": "d99483f1-2089-4bb3-9cde-202106133b10",
+            "name": "fps",
+            "type": "INT",
+            "linkIds": [
+              147
+            ],
+            "pos": [
+              -12422.319324956452,
+              -342.8003234593945
+            ]
+          },
+          {
+            "id": "c7b205c7-0272-4bdd-9bd6-4e386db8703f",
+            "name": "final_mix",
+            "type": "AUDIO",
+            "linkIds": [
+              152,
+              219
+            ],
+            "pos": [
+              -12422.319324956452,
+              -322.8003234593945
+            ]
+          },
+          {
+            "id": "6e5e9883-0e62-4382-839a-b5976e15db57",
+            "name": "output_filename",
+            "type": "STRING",
+            "linkIds": [
+              172
+            ],
+            "pos": [
+              -12422.319324956452,
+              -302.8003234593945
+            ]
+          },
+          {
+            "id": "e738aa22-a908-44e1-ae77-fa40b7eb2d06",
+            "name": "section_4_text",
+            "type": "STRING",
+            "linkIds": [
+              1249,
+              1409,
+              1424
+            ],
+            "label": "them and style",
+            "pos": [
+              -12422.319324956452,
+              -282.8003234593945
+            ]
+          },
+          {
+            "id": "8ac3b655-91dc-406f-9e78-1319576313a2",
+            "name": "min_duration",
+            "type": "FLOAT",
+            "linkIds": [
+              1403
+            ],
+            "pos": [
+              -12422.319324956452,
+              -262.8003234593945
+            ]
+          },
+          {
+            "id": "f6a78c24-27b6-4aa9-a18b-4144377ab63f",
+            "name": "max_duration",
+            "type": "FLOAT",
+            "linkIds": [
+              1404
+            ],
+            "pos": [
+              -12422.319324956452,
+              -242.80032345939452
+            ]
+          },
+          {
+            "id": "7e45a525-8a8b-4b39-b36f-0471b2c73601",
+            "name": "bias",
+            "type": "FLOAT",
+            "linkIds": [
+              1405
+            ],
+            "pos": [
+              -12422.319324956452,
+              -222.80032345939452
+            ]
+          },
+          {
+            "id": "f808506d-a2e8-488d-8d73-8a1282c950c4",
+            "name": "duration_preset",
+            "type": "COMBO",
+            "linkIds": [
+              1407
+            ],
+            "pos": [
+              -12422.319324956452,
+              -202.80032345939452
+            ]
+          },
+          {
+            "id": "1e328d83-5471-4581-b77c-2a89502b19cb",
+            "name": "section_4_text_1",
+            "type": "STRING",
+            "linkIds": [
+              1463,
+              1464,
+              1494
+            ],
+            "pos": [
+              -12422.319324956452,
+              -182.80032345939452
+            ]
+          },
+          {
+            "id": "57693da4-5528-4c83-ab32-bbf86c231f7c",
+            "name": "language",
+            "type": "COMBO",
+            "linkIds": [
+              1468
+            ],
+            "pos": [
+              -12422.319324956452,
+              -162.80032345939452
+            ]
+          },
+          {
+            "id": "347afb6f-0033-426e-8c3d-d8449ffff603",
+            "name": "switch",
+            "type": "BOOLEAN",
+            "linkIds": [
+              1473,
+              1482,
+              1487
+            ],
+            "label": "use SRT durations",
+            "pos": [
+              -12422.319324956452,
+              -142.80032345939452
+            ]
+          },
+          {
+            "id": "608038eb-394d-4c11-8401-05f4d6676ebe",
+            "name": "scene_duration_seconds",
+            "type": "FLOAT",
+            "linkIds": [
+              1478
+            ],
+            "label": "scene_duration_seconds when SRT mode is off",
+            "pos": [
+              -12422.319324956452,
+              -122.80032345939452
+            ]
+          },
+          {
+            "id": "4a3afd64-80f9-41f2-b4d0-1e8d07b34236",
+            "name": "model_file",
+            "type": "COMBO",
+            "linkIds": [
+              1483,
+              1484
+            ],
+            "label": "LLM Model",
+            "pos": [
+              -12422.319324956452,
+              -102.80032345939452
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "74e5c820-f3a4-46b2-86ad-2ac476522490",
+            "name": "STRING",
+            "type": "STRING",
+            "linkIds": [
+              1438
+            ],
+            "label": "LyricSegments",
+            "pos": [
+              -7214.122005836301,
+              -236.3885803561575
+            ]
+          },
+          {
+            "id": "b651fbe7-e515-4da6-8197-562e5e81cf00",
+            "name": "text",
+            "type": "STRING",
+            "linkIds": [
+              1498
+            ],
+            "label": "use these",
+            "pos": [
+              -7214.122005836301,
+              -216.3885803561575
+            ]
+          },
+          {
+            "id": "58b2a8d9-26f8-4a41-9350-e480601fc181",
+            "name": "status",
+            "type": "STRING",
+            "linkIds": [
+              1437
+            ],
+            "pos": [
+              -7214.122005836301,
+              -196.3885803561575
+            ]
+          },
+          {
+            "id": "63893b3a-e25c-420e-8607-0d41eefaff85",
+            "name": "status_1",
+            "type": "STRING",
+            "linkIds": [
+              1439
+            ],
+            "pos": [
+              -7214.122005836301,
+              -176.3885803561575
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 126,
+            "type": "PreviewAudio",
+            "pos": [
+              -12290.020148101457,
+              -405.5932609747495
+            ],
+            "size": [
+              270,
+              88
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "audio",
+                "name": "audio",
+                "type": "AUDIO",
+                "link": 236
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.10.0",
+              "Node name for S&R": "PreviewAudio",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 859,
+            "type": "Reroute",
+            "pos": [
+              -10484.29452787473,
+              -377.9133832746798
+            ],
+            "size": [
+              84.23660037357331,
+              26
+            ],
+            "flags": {},
+            "order": 11,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 1298
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "*",
+                "links": [
+                  1299
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false,
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "version": "7.5.2",
+                "input_ue_unconnectable": {}
+              }
+            }
+          },
+          {
+            "id": 114,
+            "type": "VRGDG_GetStems",
+            "pos": [
+              -12283.10589765053,
+              -270.21996190866054
+            ],
+            "size": [
+              270,
+              166
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "audio",
+                "name": "audio",
+                "shape": 7,
+                "type": "AUDIO",
+                "link": 219
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "vocals",
+                "name": "vocals",
+                "type": "AUDIO",
+                "links": [
+                  214,
+                  218,
+                  236
+                ]
+              },
+              {
+                "localized_name": "drums",
+                "name": "drums",
+                "type": "AUDIO",
+                "links": [
+                  215
+                ]
+              },
+              {
+                "localized_name": "bass",
+                "name": "bass",
+                "type": "AUDIO",
+                "links": [
+                  216
+                ]
+              },
+              {
+                "localized_name": "other",
+                "name": "other",
+                "type": "AUDIO",
+                "links": [
+                  217
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_GetStems",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "htdemucs_ft",
+              "auto",
+              ""
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 816,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -11970.539168751746,
+              453.49962305965465
+            ],
+            "size": [
+              294.9,
+              400.8192013869965
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1247
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "VRGDG_ShowText - Preview story Idea",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "A late-night radio host famous for exposing small-town corruption begins noticing a terrifying pattern in her own marriage: every time her husband lies, the world around her falls unnervingly silent. Clocks stop ticking, traffic noise disappears, even dogs freeze mid-bark. At first she dismisses it as stress, until anonymous callers start warning her that her husband has been hiding the disappearance of a woman connected to the town’s most powerful family. As the unnatural silences grow longer and more dangerous, she realizes the quiet isn’t just a feeling—it’s something consuming reality itself whenever the truth is buried. To survive, she must force a confession from the man she still loves before the silence swallows her completely."
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 818,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -11348.829355908596,
+              444.2139006829454
+            ],
+            "size": [
+              305.9,
+              440.7529198726237
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1249
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "VRGDG_ShowText - preview style/theme",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "STYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood."
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 888,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -9943.207595952555,
+              137.50169753931283
+            ],
+            "size": [
+              345.08323004276133,
+              442.6097593954578
+            ],
+            "flags": {},
+            "order": 18,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1504
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "{\n  \"lyricSegment1_duration_5.572\": \"Don't look at me like that\",\n  \"lyricSegment2_duration_6.502\": \"You say it\",\n  \"lyricSegment3_duration_8.998\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n  \"lyricSegment4_duration_4.504\": \"You play innocent so well I can hear it when you sell\",\n  \"lyricSegment5_duration_8\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n  \"lyricSegment6_duration_5.398\": \"In the silence you left You don't even have to\",\n  \"lyricSegment7_duration_4.099\": \"try I hear it every time it gets quiet when you\",\n  \"lyricSegment8_duration_7\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n  \"lyricSegment9_duration_4.006\": \"I've ever heard\",\n  \"lyricSegment10_duration_7.5\": \"It gets quiet when you lie\",\n  \"lyricSegment11_duration_4.481\": \"Like the air is paper-thin\",\n  \"lyricSegment12_duration_5.48\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n  \"lyricSegment13_duration_7.535\": \"I see it in your eyes\",\n  \"lyricSegment14_duration_8.998\": \"try It gets quiet when you lie\",\n  \"lyricSegment15_duration_4.005\": \"Don't look at me like that\",\n  \"lyricSegment16_duration_5.492\": \"The silence lingers deep\",\n  \"lyricSegment17_duration_9.683\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n  \"lyricSegment18_duration_1.927\": \"When you lie\"\n}"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 886,
+            "type": "VRGDG_ShowAny",
+            "pos": [
+              -9960.36379053818,
+              -383.74953569488434
+            ],
+            "size": [
+              155.9,
+              76.00000000000006
+            ],
+            "flags": {},
+            "order": 16,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "value",
+                "name": "value",
+                "shape": 7,
+                "type": "*",
+                "link": 1455
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowAny",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "true"
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+          },
+          {
+            "id": 885,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -9780.630628218736,
+              -389.2020967730016
+            ],
+            "size": [
+              210,
+              88
+            ],
+            "flags": {},
+            "order": 15,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1454
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "normalized formatting"
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+          },
+          {
+            "id": 946,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -8643.420171048523,
+              94.43753671050969
+            ],
+            "size": [
+              430.8808115806445,
+              435.77426180045063
+            ],
+            "flags": {},
+            "order": 30,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1495
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots."
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 890,
+            "type": "VRGDG_LyricSegmentJsonFixer",
+            "pos": [
+              -9876.931313247027,
+              -254.77575115642657
+            ],
+            "size": [
+              291.54042727751073,
+              148
+            ],
+            "flags": {
+              "collapsed": true
+            },
+            "order": 19,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 1451
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "fixed_text",
+                "name": "fixed_text",
+                "type": "STRING",
+                "links": [
+                  1452
+                ]
+              },
+              {
+                "localized_name": "json_output",
+                "name": "json_output",
+                "type": "JSON",
+                "links": null
+              },
+              {
+                "localized_name": "was_fixed",
+                "name": "was_fixed",
+                "type": "BOOLEAN",
+                "links": [
+                  1455
+                ]
+              },
+              {
+                "localized_name": "notes",
+                "name": "notes",
+                "type": "STRING",
+                "links": [
+                  1454
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_LyricSegmentJsonFixer",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              ""
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+          },
+          {
+            "id": 910,
+            "type": "VRGDG_PromptTemplateBuilder",
+            "pos": [
+              -9530.587573572939,
+              -397.8758738343418
+            ],
+            "size": [
+              422.6753296361476,
+              424.0000000000001
+            ],
+            "flags": {},
+            "order": 22,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "section_1_text",
+                "name": "section_1_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_1_text"
+                },
+                "link": 1434
+              },
+              {
+                "localized_name": "section_2_text",
+                "name": "section_2_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_2_text"
+                },
+                "link": 1423
+              },
+              {
+                "localized_name": "section_3_text",
+                "name": "section_3_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_3_text"
+                },
+                "link": 1424
+              },
+              {
+                "localized_name": "section_4_text",
+                "name": "section_4_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_4_text"
+                },
+                "link": 1463
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "formatted_prompt",
+                "name": "formatted_prompt",
+                "type": "STRING",
+                "links": [
+                  1425,
+                  1489
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PromptTemplateBuilder",
+              "vrgdg_prompt_template_builder_values": {
+                "section_1_type": "Lyric Segment",
+                "section_1_text": "You are a lyric-to-visual-story prompt generator.\n\nThe user will provide a JSON object where each key is a lyric segment ID and each value is a lyric line. The user may also provide theme, style, character, setting, or story notes.\n\nReturn one JSON object only.\n\nRules:\n- Keep every input key exactly the same.\n- Replace every lyric value with one visual scene description.\n- The output format must match the input format exactly: same keys, same JSON object structure.\n- Do not add extra fields.\n- Do not remove any fields.\n- Do not rename keys.\n- Do not include markdown, explanations, notes, or comments.\n- Each scene must be one sentence.\n- All scenes must connect into one continuous visual story from start to finish.\n- Keep the same main character, world, mood, and visual continuity unless the story notes say otherwise.\n- Each segment should visually reflect the emotion or meaning of its lyric.\n- Chorus or repeated ideas should evolve the visuals instead of repeating the same scene.\n- Write concrete imageable scenes with subject, setting, action, mood, and visual details.\n- Do not quote or repeat the lyrics unless absolutely necessary.\n\nExample output format:\n{\n  \"lyricSegment1_duration_8.362\": \"A young woman stands in a cramped city apartment living room with peeling beige walls, shoulders tense and chin raised, while a man sits on a worn couch glaring at her.\",\n  \"lyricSegment2_duration_7.926\": \"The young woman sits upright on the edge of a neatly made bed in a small pastel bedroom, hands folded tightly in her lap as morning light falls across the floor.\"\n}\n",
+                "section_2_type": "Story",
+                "section_2_text": "",
+                "section_3_type": "Theme / Style",
+                "section_3_text": "",
+                "section_4_type": "Other Notes",
+                "section_4_text": "",
+                "section_5_type": "Other Notes",
+                "section_5_text": ""
+              },
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "Lyric Segment",
+              "You are a lyric-to-visual-story prompt generator.\n\nThe user will provide a JSON object where each key is a lyric segment ID and each value is a lyric line. The user may also provide theme, style, character, setting, or story notes.\n\nReturn one JSON object only.\n\nRules:\n- Keep every input key exactly the same.\n- Replace every lyric value with one visual scene description.\n- The output format must match the input format exactly: same keys, same JSON object structure.\n- Do not add extra fields.\n- Do not remove any fields.\n- Do not rename keys.\n- Do not include markdown, explanations, notes, or comments.\n- Each scene must be one sentence.\n- All scenes must connect into one continuous visual story from start to finish.\n- Keep the same main character, world, mood, and visual continuity unless the story notes say otherwise.\n- Each segment should visually reflect the emotion or meaning of its lyric.\n- Chorus or repeated ideas should evolve the visuals instead of repeating the same scene.\n- Write concrete imageable scenes with subject, setting, action, mood, and visual details.\n- Do not quote or repeat the lyrics unless absolutely necessary.\n\nExample output format:\n{\n  \"lyricSegment1_duration_8.362\": \"A young woman stands in a cramped city apartment living room with peeling beige walls, shoulders tense and chin raised, while a man sits on a worn couch glaring at her.\",\n  \"lyricSegment2_duration_7.926\": \"The young woman sits upright on the edge of a neatly made bed in a small pastel bedroom, hands folded tightly in her lap as morning light falls across the floor.\"\n}\n",
+              "Story",
+              "",
+              "Theme / Style",
+              "",
+              "Other Notes",
+              "",
+              "Other Notes",
+              ""
+            ],
+            "color": "#223",
+            "bgcolor": "#335"
+          },
+          {
+            "id": 920,
+            "type": "VRGDG_PromptMapJsonFixer",
+            "pos": [
+              -8989.726454503512,
+              76.35343789648361
+            ],
+            "size": [
+              400,
+              200
+            ],
+            "flags": {
+              "collapsed": true
+            },
+            "order": 24,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "srt_file",
+                "name": "srt_file",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1488
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 1444
+              },
+              {
+                "localized_name": "use_srt_file",
+                "name": "use_srt_file",
+                "type": "BOOLEAN",
+                "widget": {
+                  "name": "use_srt_file"
+                },
+                "link": 1487
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "fixed_text",
+                "name": "fixed_text",
+                "type": "STRING",
+                "links": [
+                  1499
+                ]
+              },
+              {
+                "localized_name": "json_output",
+                "name": "json_output",
+                "type": "JSON",
+                "links": null
+              },
+              {
+                "localized_name": "was_fixed",
+                "name": "was_fixed",
+                "type": "BOOLEAN",
+                "links": null
+              },
+              {
+                "localized_name": "notes",
+                "name": "notes",
+                "type": "STRING",
+                "links": null
+              },
+              {
+                "localized_name": "prompt_count",
+                "name": "prompt_count",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PromptMapJsonFixer",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "",
+              true
+            ],
+            "color": "#223",
+            "bgcolor": "#335"
+          },
+          {
+            "id": 940,
+            "type": "VRGDG_MultiStringConcat",
+            "pos": [
+              -9537.07222214671,
+              69.51650621524387
+            ],
+            "size": [
+              400,
+              34
+            ],
+            "flags": {
+              "collapsed": true
+            },
+            "order": 28,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string_2",
+                "name": "string_2",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_2"
+                },
+                "link": 1489
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  1502
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "b3d7eccb44176f8377644683288c9214a93ab4fe",
+              "Node name for S&R": "VRGDG_MultiStringConcat",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              2,
+              "\\n\\n",
+              "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every prompt must use one location from that list as the primary setting.\nUse the location wording exactly or nearly exactly as provided.\nYou may reuse a location only when the story beat clearly continues there or intentionally echoes an earlier moment.\nYou may add environmental details around the selected location, but do not replace it with a different setting.\nIf LOCATIONS is not provided, create a location from STORY and THEME_STYLE.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ]
+          },
+          {
+            "id": 915,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -10481.732188486236,
+              91.65711410238637
+            ],
+            "size": [
+              478.08831619067166,
+              481.4081829234776
+            ],
+            "flags": {},
+            "order": 23,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1435
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "{\n\"segment1\": \"Don't look at me like that\",\n\"segment2\": \"You say it\",\n\"segment3\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n\"segment4\": \"You play innocent so well I can hear it when you sell\",\n\"segment5\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n\"segment6\": \"In the silence you left You don't even have to\",\n\"segment7\": \"try I hear it every time it gets quiet when you\",\n\"segment8\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n\"segment9\": \"I've ever heard\",\n\"segment10\": \"It gets quiet when you lie\",\n\"segment11\": \"Like the air is paper-thin\",\n\"segment12\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n\"segment13\": \"I see it in your eyes\",\n\"segment14\": \"try It gets quiet when you lie\",\n\"segment15\": \"Don't look at me like that\",\n\"segment16\": \"The silence lingers deep\",\n\"segment17\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n\"segment18\": \"When you lie\"\n}"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 945,
+            "type": "VRGDG_SuperGemmaGGUFChat",
+            "pos": [
+              -8644.577804748275,
+              -401.5318816602946
+            ],
+            "size": [
+              400.42428431818826,
+              446
+            ],
+            "flags": {},
+            "order": 29,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "user_input",
+                "name": "user_input",
+                "type": "STRING",
+                "widget": {
+                  "name": "user_input"
+                },
+                "link": 1494
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  1495,
+                  1496
+                ]
+              },
+              {
+                "localized_name": "used_model",
+                "name": "used_model",
+                "type": "STRING",
+                "links": null
+              },
+              {
+                "localized_name": "status",
+                "name": "status",
+                "type": "STRING",
+                "links": []
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_SuperGemmaGGUFChat",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+              "mmproj-BF16.gguf",
+              "custom",
+              "Extract only the subject from the user input.\n\nReturn one clean sentence in this format:\nA/An [subject].\n\nRules:\n- Ignore locations and all other fields.\n- Preserve the subject details.\n- Add commas only where they improve readability.\n- End with a period.\n- Do not add extra text.\n\nExample input:\nsubject: female with blond hair wearing a red dress\nlocations:\nwoods\nkitchen\nvan\nbeach\n\nExample output:\nA female with blond hair, wearing a red dress.\n\nuser input:\n",
+              "",
+              "",
+              0,
+              true,
+              true,
+              14848,
+              99,
+              8,
+              "",
+              0.3,
+              0.8,
+              32000
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 817,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -11654.755501055814,
+              444.89015472053194
+            ],
+            "size": [
+              285.9,
+              456.7264072668746
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1248
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "VRGDG_ShowText - Preview full lyrics",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "Full Lyrics\n\n[Intro]\nDon’t look at me like that\n\n[Verse 1]\nYou say it soft, almost sweet\nLike sugar hiding razor teeth\nYour hands are warm against my skin\nBut your eyes don’t let me in\nYou play innocent so well\nI can hear it when you sell\n\n[Chorus]\nIt gets quiet when you lie\nLike the whole room holds its breath\nI can feel it in the night\nIn the silence you left\nYou don’t even have to try\nI hear it every time\nIt gets quiet\nWhen you lie\n\n[Verse 2]\nYou think I don’t notice\nThe space between your words\nBut silence is the loudest thing\nI’ve ever heard\n\n[Chorus]\nIt gets quiet when you lie\nLike the air is paper-thin\nEvery “love you” sounds rehearsed\nLike a stranger wearing skin\nYou don’t even have to try\nI see it in your eyes\nIt gets quiet\nWhen you lie\n\n[Outro Hook]\nDon’t look at me like that\nIt gets quiet when you lie\nSo quiet\nWhen you lie"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 927,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -12277.700763711175,
+              450.3825118257154
+            ],
+            "size": [
+              276.9,
+              404.2420915429075
+            ],
+            "flags": {},
+            "order": 26,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1464
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "VRGDG_ShowText - Preview subject",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "subject: a woman, with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots.\n\nLocations:\nsmall-town radio station\ndimly lit kitchen\nempty suburban street at night\nbedroom with silent clocks\ntown diner after closing\nold county courthouse hallway\nquiet residential living room\ndeserted gas station parking lot"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 909,
+            "type": "VRGDG_SuperGemmaGGUFChat",
+            "pos": [
+              -9091.589801168915,
+              -414.4979288227978
+            ],
+            "size": [
+              400.42428431818826,
+              446
+            ],
+            "flags": {},
+            "order": 21,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model_file",
+                "name": "model_file",
+                "type": "COMBO",
+                "widget": {
+                  "name": "model_file"
+                },
+                "link": 1484
+              },
+              {
+                "localized_name": "user_input",
+                "name": "user_input",
+                "type": "STRING",
+                "widget": {
+                  "name": "user_input"
+                },
+                "link": 1425
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  1444,
+                  1503
+                ]
+              },
+              {
+                "localized_name": "used_model",
+                "name": "used_model",
+                "type": "STRING",
+                "links": null
+              },
+              {
+                "localized_name": "status",
+                "name": "status",
+                "type": "STRING",
+                "links": [
+                  1439
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_SuperGemmaGGUFChat",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+              "mmproj-BF16.gguf",
+              "custom",
+              "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every Prompt value must begin with one exact location phrase copied from the LOCATIONS list, followed by a colon.\nDo not use a location unless it appears in LOCATIONS.\nDo not shorten, rename, paraphrase, or replace the location.\nIf the story needs to stay in the same place, reuse the same exact location phrase.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n",
+              "",
+              "",
+              0,
+              true,
+              true,
+              14848,
+              99,
+              8,
+              "",
+              0.3,
+              0.8,
+              32000
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 887,
+            "type": "VRGDG_LyricSegmentDurationMerger",
+            "pos": [
+              -9908.18404053259,
+              -235.7662433849181
+            ],
+            "size": [
+              296.782468551752,
+              274
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 17,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "srt_text",
+                "name": "srt_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "srt_text"
+                },
+                "link": 1361
+              },
+              {
+                "localized_name": "segments_json",
+                "name": "segments_json",
+                "type": "STRING",
+                "widget": {
+                  "name": "segments_json"
+                },
+                "link": 1452
+              },
+              {
+                "localized_name": "use_srt_durations",
+                "name": "use_srt_durations",
+                "type": "BOOLEAN",
+                "widget": {
+                  "name": "use_srt_durations"
+                },
+                "link": 1482
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "merged_text",
+                "name": "merged_text",
+                "type": "STRING",
+                "links": [
+                  1434,
+                  1438,
+                  1504
+                ]
+              },
+              {
+                "localized_name": "merged_json",
+                "name": "merged_json",
+                "type": "JSON",
+                "links": null
+              },
+              {
+                "localized_name": "segment_count",
+                "name": "segment_count",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "duration_count",
+                "name": "duration_count",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_LyricSegmentDurationMerger",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "",
+              "{}",
+              true,
+              3,
+              true
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+          },
+          {
+            "id": 860,
+            "type": "Reroute",
+            "pos": [
+              -11658.804848284833,
+              -340.8324184496624
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 12,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "widget": {
+                  "name": "value"
+                },
+                "link": 1507
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "STRING",
+                "links": [
+                  1301
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false,
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "version": "7.5.2",
+                "input_ue_unconnectable": {}
+              }
+            },
+            "color": "#233",
+            "bgcolor": "#355"
+          },
+          {
+            "id": 849,
+            "type": "VRGDG_PromptTemplateBuilder",
+            "pos": [
+              -10907.775206673916,
+              -405.4678861568394
+            ],
+            "size": [
+              422.6753296361476,
+              424.0000000000001
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "section_2_text",
+                "name": "section_2_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_2_text"
+                },
+                "link": 1299
+              },
+              {
+                "localized_name": "section_3_text",
+                "name": "section_3_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_3_text"
+                },
+                "link": 1301
+              },
+              {
+                "localized_name": "section_5_text",
+                "name": "section_5_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "section_5_text"
+                },
+                "link": 1409
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "formatted_prompt",
+                "name": "formatted_prompt",
+                "type": "STRING",
+                "links": [
+                  1293,
+                  1362
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_PromptTemplateBuilder",
+              "vrgdg_prompt_template_builder_values": {
+                "section_1_type": "Instructions",
+                "section_1_text": "Whisper Segment Repair Prompt\n\nINPUTS\nYou will receive exactly:\n1. WHISPER_TRANSCRIPTION: numbered Whisper segments.\n2. MAIN_LYRICS: the correct full lyrics.\n3. STYLE_THEME: style/theme for filler replacements only.\n\nTASK\nRepair each Whisper segment in place.\n\nMOST IMPORTANT RULE\nDo not create a clean lyric sheet.\nDo not copy MAIN_LYRICS line by line into the JSON.\nDo not make segment1 the first lyric line, segment2 the second lyric line, segment3 the third lyric line, etc.\n\nHOW TO WORK\nFor each input segment number:\n1. Start with the text from that exact same Whisper segment.\n2. Find the matching words in MAIN_LYRICS.\n3. Fix only misheard words inside that same segment.\n4. Write the fixed text to the same output number.\n\nThe output for segmentN must be a corrected version of lyricSegmentN.\nsegmentN must not be based on lyricSegmentN+1.\nsegmentN must not be based on lyricSegmentN-1.\nsegmentN must not be based on the next clean line in MAIN_LYRICS.\n\nKEEP WHISPER CHUNKS\nIf lyricSegmentN contains parts of two or three lyric lines, segmentN must also contain those parts.\nIf lyricSegmentN starts in the middle of a lyric line, segmentN should also start in the middle.\nIf lyricSegmentN ends before the lyric line is finished, segmentN should also end before that lyric line is finished.\nDo not move leftover words to the next segment unless Whisper already put them there.\n\nFILLER SEGMENTS\nWhisper often writes \"Thank you.\" when it detects silence or non-lyric audio.\nIf lyricSegmentN is filler such as \"Thank you.\" and does not match sung lyrics at that time, replace it with a short new lyric phrase.\nThe phrase should feel like it happens right after the nearest previous real lyric segment.\nUse STYLE_THEME for the phrase.\nUse 3 to 8 words.\nDo not use an empty string.\nDo not use the next real lyric line from MAIN_LYRICS.\n\nKEY CHECK\nReturn exactly one key for every input segment.\nKeys must be exactly \"segment1\", \"segment2\", \"segment3\", and so on.\nNever write \"segments14\".\nNever write \"lyricSegment14\".\nNever skip a number.\n\nFINAL SELF-CHECK BEFORE ANSWERING\nCheck segment2 against lyricSegment2.\nCheck segment11 against lyricSegment11.\nCheck segment16 against lyricSegment16.\nIf any output is just the next clean lyric line instead of the same Whisper chunk, fix it before answering.\n\nOUTPUT\nReturn JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"segment1\": \"corrected version of lyricSegment1\",\n  \"segment2\": \"corrected version of lyricSegment2\",\n  \"segment3\": \"corrected version of lyricSegment3\"\n}\n",
+                "section_2_type": "Other Notes",
+                "section_2_text": "other notes go  here",
+                "section_3_type": "Lyric Segment",
+                "section_3_text": "lyric segments go here",
+                "section_4_type": "Other Notes",
+                "section_4_text": "",
+                "section_5_type": "Theme / Style",
+                "section_5_text": ""
+              },
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "Instructions",
+              "Whisper Segment Repair Prompt\n\nINPUTS\nYou will receive exactly:\n1. WHISPER_TRANSCRIPTION: numbered Whisper segments.\n2. MAIN_LYRICS: the correct full lyrics.\n3. STYLE_THEME: style/theme for filler replacements only.\n\nTASK\nRepair each Whisper segment in place.\n\nMOST IMPORTANT RULE\nDo not create a clean lyric sheet.\nDo not copy MAIN_LYRICS line by line into the JSON.\nDo not make segment1 the first lyric line, segment2 the second lyric line, segment3 the third lyric line, etc.\n\nHOW TO WORK\nFor each input segment number:\n1. Start with the text from that exact same Whisper segment.\n2. Find the matching words in MAIN_LYRICS.\n3. Fix only misheard words inside that same segment.\n4. Write the fixed text to the same output number.\n\nThe output for segmentN must be a corrected version of lyricSegmentN.\nsegmentN must not be based on lyricSegmentN+1.\nsegmentN must not be based on lyricSegmentN-1.\nsegmentN must not be based on the next clean line in MAIN_LYRICS.\n\nKEEP WHISPER CHUNKS\nIf lyricSegmentN contains parts of two or three lyric lines, segmentN must also contain those parts.\nIf lyricSegmentN starts in the middle of a lyric line, segmentN should also start in the middle.\nIf lyricSegmentN ends before the lyric line is finished, segmentN should also end before that lyric line is finished.\nDo not move leftover words to the next segment unless Whisper already put them there.\n\nFILLER SEGMENTS\nWhisper often writes \"Thank you.\" when it detects silence or non-lyric audio.\nIf lyricSegmentN is filler such as \"Thank you.\" and does not match sung lyrics at that time, replace it with a short new lyric phrase.\nThe phrase should feel like it happens right after the nearest previous real lyric segment.\nUse STYLE_THEME for the phrase.\nUse 3 to 8 words.\nDo not use an empty string.\nDo not use the next real lyric line from MAIN_LYRICS.\n\nKEY CHECK\nReturn exactly one key for every input segment.\nKeys must be exactly \"segment1\", \"segment2\", \"segment3\", and so on.\nNever write \"segments14\".\nNever write \"lyricSegment14\".\nNever skip a number.\n\nFINAL SELF-CHECK BEFORE ANSWERING\nCheck segment2 against lyricSegment2.\nCheck segment11 against lyricSegment11.\nCheck segment16 against lyricSegment16.\nIf any output is just the next clean lyric line instead of the same Whisper chunk, fix it before answering.\n\nOUTPUT\nReturn JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"segment1\": \"corrected version of lyricSegment1\",\n  \"segment2\": \"corrected version of lyricSegment2\",\n  \"segment3\": \"corrected version of lyricSegment3\"\n}\n",
+              "Other Notes",
+              "other notes go  here",
+              "Lyric Segment",
+              "lyric segments go here",
+              "Other Notes",
+              "",
+              "Theme / Style",
+              ""
+            ],
+            "color": "#233",
+            "bgcolor": "#355"
+          },
+          {
+            "id": 82,
+            "type": "BeatImpactAnalysisNode",
+            "pos": [
+              -11871.842381812623,
+              -368.3346636949344
+            ],
+            "size": [
+              205.9,
+              106
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "final_mix",
+                "name": "final_mix",
+                "type": "AUDIO",
+                "link": 152
+              },
+              {
+                "localized_name": "drums",
+                "name": "drums",
+                "shape": 7,
+                "type": "AUDIO",
+                "link": 215
+              },
+              {
+                "localized_name": "bass",
+                "name": "bass",
+                "shape": 7,
+                "type": "AUDIO",
+                "link": 216
+              },
+              {
+                "localized_name": "vocals",
+                "name": "vocals",
+                "shape": 7,
+                "type": "AUDIO",
+                "link": 214
+              },
+              {
+                "localized_name": "other",
+                "name": "other",
+                "shape": 7,
+                "type": "AUDIO",
+                "link": 217
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "beat_data",
+                "name": "beat_data",
+                "type": "STRING",
+                "links": [
+                  139
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+              "Node name for S&R": "BeatImpactAnalysisNode",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 934,
+            "type": "PrimitiveString",
+            "pos": [
+              -11799.912818274483,
+              -157.39952716188162
+            ],
+            "size": [
+              270,
+              58
+            ],
+            "flags": {
+              "collapsed": true
+            },
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  1472
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.16.2",
+              "Node name for S&R": "PrimitiveString",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              ""
+            ]
+          },
+          {
+            "id": 870,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -11549.26243687773,
+              -387.18510963813316
+            ],
+            "size": [
+              552.7744124477161,
+              552.8025601441166
+            ],
+            "flags": {},
+            "order": 14,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1506
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "VRGDG_ShowText(whisper transcription)",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "# Lyrics to fix: (18 segments)\n\nlyricSegment1=Don't look at me like that\nlyricSegment2=You say it's\nlyricSegment3=Soft  almost sweet  like sugar hiding razor teeth. Your hands are warm against my skin. But your eyes don't let me.\nlyricSegment4=You play innocent so well I can hear it when you sell\nlyricSegment5=It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\nlyricSegment6=In the silence you live You don't even have to\nlyricSegment7=I hear it every time it gets quiet when you\nlyricSegment8=I think I don't notice the space between your words  but silence is the loudest thing\nlyricSegment9=I've never heard\nlyricSegment10=It gets quiet when you lie\nlyricSegment11=Like the heiress pick person\nlyricSegment12=Every love you sound rehearsed like a stranger worries can't you don't even\nlyricSegment13=I see it in your eyes.\nlyricSegment14=to get caught when you lie\nlyricSegment15=Oh, Oh, Oh.\nlyricSegment16=Thank you.\nlyricSegment17=Don't look at me like that. It gets quiet when you lie. So quiet.\nlyricSegment18=Only white."
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 854,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -10918.282146521462,
+              61.02535940948069
+            ],
+            "size": [
+              406.25748301647616,
+              513.2992505061
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1293
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "### Instructions\nWhisper Segment Repair Prompt\n\nINPUTS\nYou will receive exactly:\n1. WHISPER_TRANSCRIPTION: numbered Whisper segments.\n2. MAIN_LYRICS: the correct full lyrics.\n3. STYLE_THEME: style/theme for filler replacements only.\n\nTASK\nRepair each Whisper segment in place.\n\nMOST IMPORTANT RULE\nDo not create a clean lyric sheet.\nDo not copy MAIN_LYRICS line by line into the JSON.\nDo not make segment1 the first lyric line, segment2 the second lyric line, segment3 the third lyric line, etc.\n\nHOW TO WORK\nFor each input segment number:\n1. Start with the text from that exact same Whisper segment.\n2. Find the matching words in MAIN_LYRICS.\n3. Fix only misheard words inside that same segment.\n4. Write the fixed text to the same output number.\n\nThe output for segmentN must be a corrected version of lyricSegmentN.\nsegmentN must not be based on lyricSegmentN+1.\nsegmentN must not be based on lyricSegmentN-1.\nsegmentN must not be based on the next clean line in MAIN_LYRICS.\n\nKEEP WHISPER CHUNKS\nIf lyricSegmentN contains parts of two or three lyric lines, segmentN must also contain those parts.\nIf lyricSegmentN starts in the middle of a lyric line, segmentN should also start in the middle.\nIf lyricSegmentN ends before the lyric line is finished, segmentN should also end before that lyric line is finished.\nDo not move leftover words to the next segment unless Whisper already put them there.\n\nFILLER SEGMENTS\nWhisper often writes \"Thank you.\" when it detects silence or non-lyric audio.\nIf lyricSegmentN is filler such as \"Thank you.\" and does not match sung lyrics at that time, replace it with a short new lyric phrase.\nThe phrase should feel like it happens right after the nearest previous real lyric segment.\nUse STYLE_THEME for the phrase.\nUse 3 to 8 words.\nDo not use an empty string.\nDo not use the next real lyric line from MAIN_LYRICS.\n\nKEY CHECK\nReturn exactly one key for every input segment.\nKeys must be exactly \"segment1\", \"segment2\", \"segment3\", and so on.\nNever write \"segments14\".\nNever write \"lyricSegment14\".\nNever skip a number.\n\nFINAL SELF-CHECK BEFORE ANSWERING\nCheck segment2 against lyricSegment2.\nCheck segment11 against lyricSegment11.\nCheck segment16 against lyricSegment16.\nIf any output is just the next clean lyric line instead of the same Whisper chunk, fix it before answering.\n\nOUTPUT\nReturn JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"segment1\": \"corrected version of lyricSegment1\",\n  \"segment2\": \"corrected version of lyricSegment2\",\n  \"segment3\": \"corrected version of lyricSegment3\"\n}\n\n### Other Notes\nFull Lyrics\n\n[Intro]\nDon’t look at me like that\n\n[Verse 1]\nYou say it soft, almost sweet\nLike sugar hiding razor teeth\nYour hands are warm against my skin\nBut your eyes don’t let me in\nYou play innocent so well\nI can hear it when you sell\n\n[Chorus]\nIt gets quiet when you lie\nLike the whole room holds its breath\nI can feel it in the night\nIn the silence you left\nYou don’t even have to try\nI hear it every time\nIt gets quiet\nWhen you lie\n\n[Verse 2]\nYou think I don’t notice\nThe space between your words\nBut silence is the loudest thing\nI’ve ever heard\n\n[Chorus]\nIt gets quiet when you lie\nLike the air is paper-thin\nEvery “love you” sounds rehearsed\nLike a stranger wearing skin\nYou don’t even have to try\nI see it in your eyes\nIt gets quiet\nWhen you lie\n\n[Outro Hook]\nDon’t look at me like that\nIt gets quiet when you lie\nSo quiet\nWhen you lie\n\n### Lyric Segment\n# Lyrics to fix: (18 segments)\n\nlyricSegment1=Don't look at me like that\nlyricSegment2=You say it's\nlyricSegment3=Soft  almost sweet  like sugar hiding razor teeth. Your hands are warm against my skin. But your eyes don't let me.\nlyricSegment4=You play innocent so well I can hear it when you sell\nlyricSegment5=It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\nlyricSegment6=In the silence you live You don't even have to\nlyricSegment7=I hear it every time it gets quiet when you\nlyricSegment8=I think I don't notice the space between your words  but silence is the loudest thing\nlyricSegment9=I've never heard\nlyricSegment10=It gets quiet when you lie\nlyricSegment11=Like the heiress pick person\nlyricSegment12=Every love you sound rehearsed like a stranger worries can't you don't even\nlyricSegment13=I see it in your eyes.\nlyricSegment14=to get caught when you lie\nlyricSegment15=Oh, Oh, Oh.\nlyricSegment16=Thank you.\nlyricSegment17=Don't look at me like that. It gets quiet when you lie. So quiet.\nlyricSegment18=Only white.\n\n### Theme / Style\nSTYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood."
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 947,
+            "type": "VRGDG_PromptJsonSubjectPrepender",
+            "pos": [
+              -8233.017803227407,
+              -388.8694483315433
+            ],
+            "size": [
+              310.9,
+              197.46588702389113
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 31,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "prompt_json",
+                "name": "prompt_json",
+                "type": "*",
+                "link": 1499
+              },
+              {
+                "localized_name": "subject",
+                "name": "subject",
+                "type": "STRING",
+                "widget": {
+                  "name": "subject"
+                },
+                "link": 1496
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "json_text",
+                "name": "json_text",
+                "type": "STRING",
+                "links": [
+                  1498
+                ]
+              },
+              {
+                "localized_name": "json_output",
+                "name": "json_output",
+                "type": "JSON",
+                "links": null
+              },
+              {
+                "localized_name": "prompt_count",
+                "name": "prompt_count",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "b3d7eccb44176f8377644683288c9214a93ab4fe",
+              "Node name for S&R": "VRGDG_PromptJsonSubjectPrepender",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "a women with red hair wearing a black dress",
+              " ",
+              ""
+            ],
+            "color": "#223",
+            "bgcolor": "#335"
+          },
+          {
+            "id": 869,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -12234.947442555202,
+              131.758512744343
+            ],
+            "size": [
+              235.9983543242655,
+              205.15539044127553
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 223
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "VRGDG_ShowText -SRT",
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "1\n00:00:00,000 --> 00:00:05,572\nSCENE 1\n\n2\n00:00:05,572 --> 00:00:12,074\nSCENE 2\n\n3\n00:00:12,074 --> 00:00:21,072\nSCENE 3\n\n4\n00:00:21,072 --> 00:00:25,576\nSCENE 4\n\n5\n00:00:25,576 --> 00:00:33,576\nSCENE 5\n\n6\n00:00:33,576 --> 00:00:38,974\nSCENE 6\n\n7\n00:00:38,974 --> 00:00:43,073\nSCENE 7\n\n8\n00:00:43,073 --> 00:00:50,073\nSCENE 8\n\n9\n00:00:50,073 --> 00:00:54,079\nSCENE 9\n\n10\n00:00:54,079 --> 00:01:01,579\nSCENE 10\n\n11\n00:01:01,579 --> 00:01:06,060\nSCENE 11\n\n12\n00:01:06,060 --> 00:01:11,540\nSCENE 12\n\n13\n00:01:11,540 --> 00:01:19,075\nSCENE 13\n\n14\n00:01:19,075 --> 00:01:28,073\nSCENE 14\n\n15\n00:01:28,073 --> 00:01:32,078\nSCENE 15\n\n16\n00:01:32,078 --> 00:01:37,570\nSCENE 16\n\n17\n00:01:37,570 --> 00:01:47,253\nSCENE 17\n\n18\n00:01:47,253 --> 00:01:49,180\nSCENE 18\n"
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 79,
+            "type": "VRGDG_ManualLyricsExtractor_SRT",
+            "pos": [
+              -12288.007159259012,
+              -58.152101631192856
+            ],
+            "size": [
+              304.9,
+              154
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "audio",
+                "name": "audio",
+                "type": "AUDIO",
+                "link": 218
+              },
+              {
+                "localized_name": "srt_path",
+                "name": "srt_path",
+                "type": "STRING",
+                "widget": {
+                  "name": "srt_path"
+                },
+                "link": 1481
+              },
+              {
+                "localized_name": "fps",
+                "name": "fps",
+                "type": "INT",
+                "widget": {
+                  "name": "fps"
+                },
+                "link": 147
+              },
+              {
+                "localized_name": "scene_duration_seconds",
+                "name": "scene_duration_seconds",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "scene_duration_seconds"
+                },
+                "link": 1478
+              },
+              {
+                "localized_name": "language",
+                "name": "language",
+                "type": "COMBO",
+                "widget": {
+                  "name": "language"
+                },
+                "link": 1468
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "all_lyrics_combined",
+                "name": "all_lyrics_combined",
+                "type": "STRING",
+                "links": [
+                  1505
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+              "Node name for S&R": "VRGDG_ManualLyricsExtractor_SRT",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "",
+              24,
+              15,
+              false,
+              "english"
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 80,
+            "type": "BeatSceneDurationNode",
+            "pos": [
+              -11899.144784592834,
+              72.41945780511239
+            ],
+            "size": [
+              296.9,
+              246
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "beat_data",
+                "name": "beat_data",
+                "type": "STRING",
+                "widget": {
+                  "name": "beat_data"
+                },
+                "link": 139
+              },
+              {
+                "localized_name": "min_duration",
+                "name": "min_duration",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "min_duration"
+                },
+                "link": 1403
+              },
+              {
+                "localized_name": "max_duration",
+                "name": "max_duration",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "max_duration"
+                },
+                "link": 1404
+              },
+              {
+                "localized_name": "bias",
+                "name": "bias",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "bias"
+                },
+                "link": 1405
+              },
+              {
+                "localized_name": "duration_preset",
+                "name": "duration_preset",
+                "type": "COMBO",
+                "widget": {
+                  "name": "duration_preset"
+                },
+                "link": 1407
+              },
+              {
+                "localized_name": "output_filename",
+                "name": "output_filename",
+                "type": "STRING",
+                "widget": {
+                  "name": "output_filename"
+                },
+                "link": 172
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "srt_text",
+                "name": "srt_text",
+                "type": "STRING",
+                "links": [
+                  223,
+                  1361
+                ]
+              },
+              {
+                "localized_name": "srt_path",
+                "name": "srt_path",
+                "type": "STRING",
+                "links": [
+                  1470,
+                  1488
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "0b6d046efe93289ded6c1038cabd33642b602f78",
+              "Node name for S&R": "BeatSceneDurationNode",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "",
+              4,
+              10,
+              0.7,
+              "varied_no_repeat",
+              9,
+              "increment",
+              0.5
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 933,
+            "type": "ComfySwitchNode",
+            "pos": [
+              -11896.75139398413,
+              -174.09009851676817
+            ],
+            "size": [
+              270,
+              78
+            ],
+            "flags": {},
+            "order": 27,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "on_false",
+                "name": "on_false",
+                "type": "STRING",
+                "link": 1472
+              },
+              {
+                "localized_name": "on_true",
+                "name": "on_true",
+                "type": "STRING",
+                "link": 1470
+              },
+              {
+                "localized_name": "switch",
+                "name": "switch",
+                "type": "BOOLEAN",
+                "widget": {
+                  "name": "switch"
+                },
+                "link": 1473
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "output",
+                "name": "output",
+                "type": "STRING",
+                "links": [
+                  1481
+                ]
+              }
+            ],
+            "title": "use SRT duration file",
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.16.2",
+              "Node name for S&R": "ComfySwitchNode",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              true
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+          },
+          {
+            "id": 892,
+            "type": "VRGDG_SuperGemmaGGUFChat",
+            "pos": [
+              -10457.353368243197,
+              -408.002181083323
+            ],
+            "size": [
+              391.8541122025763,
+              446
+            ],
+            "flags": {},
+            "order": 20,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model_file",
+                "name": "model_file",
+                "type": "COMBO",
+                "widget": {
+                  "name": "model_file"
+                },
+                "link": 1483
+              },
+              {
+                "localized_name": "custom_instructions",
+                "name": "custom_instructions",
+                "type": "STRING",
+                "widget": {
+                  "name": "custom_instructions"
+                },
+                "link": 1362
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  1435,
+                  1451
+                ]
+              },
+              {
+                "localized_name": "used_model",
+                "name": "used_model",
+                "type": "STRING",
+                "links": null
+              },
+              {
+                "localized_name": "status",
+                "name": "status",
+                "type": "STRING",
+                "links": [
+                  1437
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_SuperGemmaGGUFChat",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+              "mmproj-BF16.gguf",
+              "custom",
+              "### Instructions\n🎯 Whisper Transcription Correction Guidelines \nALIGNMENT RULES\n\nThere are exactly [N] input segments – return exactly [N] corrected segments.\n\nEach output segment number must match the same input segment number.\n\nExample: corrections for segment5 must appear only in segment5.\n\nNever move, merge, skip, or reorder segments.\n\nNever transfer words between segments.\n\nEach segment corresponds to a fixed 4-second time window — timing and numbering must remain locked.\n\nCORRECTION BEHAVIOR\n\nFix typos, misheard words, capitalization, and small grammatical issues using the reference lyrics as a guide.\n\nKeep the meaning, tone, and mood consistent with that segment’s place in the song.\n\nDo not replace a segment with a lyric line from another part of the song.\n\nDo not shorten or simplify lines unnecessarily; maintain natural phrasing.\n\n🔁 SHORT SEGMENT EXPANSION RULE (MANDATORY)\n\nIf a segment has fewer than 3 words, you must expand it. You are not allowed to return a single-word or two-word result unless that’s all the singer audibly performs and it cannot be naturally extended.\n\nIf it belongs to a lyric line:\n\nAdd nearby or missing words from that same lyric line in the reference lyrics to make it a natural, complete phrase.\n\nIf it’s part of a vocal or instrumental section:\n\nCreate a short lyrical phrase (3–7 words) that fits the song’s mood, tone, and emotional context.\n\nThis phrase should feel like a believable sung or whispered line that could exist in the same section — not random syllables or filler.\n\nExample:\n\nInstead of \"you\", write \"you fade through the static\".  but make sure you keep it consistent with the rest of the song!\n\nInstead of \"ah\", write \"ah, I’m glowing through the night\". but make sure you keep it consistent with the rest of the song!\n\nIf there is one word in a lyric segment, always expand it to be at least 5 words!!!\n\nThe invented phrase must:\n\nSound authentic and stylistically consistent with the song’s theme.\n\nAvoid generic filler (no “oh yeah,” “hmm,” “la la”).\n\nStay within the time feel of a 4-second window — short, lyrical, musical.\n\nIf still too short, repeat or slightly extend its own phrase to make it musically natural (e.g., \"you fade, fade with me\").\n\nCAPITALIZATION & PUNCTUATION RULE\n\nMatch the style and punctuation of the reference lyrics.\n\nLowercase mid-line; capitalize new sentences or new lyric sections.\n\nUse commas/periods only where musically natural.\n\nOUTPUT FORMAT\n\nReturn only valid JSON in a code block!\nExample Input:\n\nsegment1: \"the women who was\"\nsegment2: \"falling down a hole\"\nsegment3: \"into a tunnel in a city\"\nSegment4: \"yeah\"\n\n\nReference Lyrics:\n\nA woman was falling down a huge hole that it's a tunnel in the city, yeah\n\n\nCorrect Output:\n\n{\n  \"segment1\":(Intro) \"A woman was\",\n  \"segment2\": (verse)\"falling down a huge hole\",\n  \"segment3\": (Chorus)\"that it's a tunnel in the city\"\n  \"segment4\": (Bridge) \"she is falling, she is falling through\"\n}\nEach output segment must begin with the structure label for that segment you can find in the full lyrics that are sent over.\nThe label must be wrapped in parentheses.\nThe model is allowed to infer the correct structure label for each segment by matching it to the reference lyrics\n\nJSON RULES\n\nUse double quotes for all keys and values.\n\nPut the json in a code block\n\nNo trailing commas.\n\nOutput must include exactly [N] segments, matching input numbering (\"segment1\", \"segment2\", etc.).\n\nTL;DR\n\n✅ Keep timing and numbering locked.\n✅ Fix only within the segment’s own text.\n✅ Mandatory: expand any segment under 3 words into a short, natural lyrical phrase (3–7 words).\n✅ Stay consistent with mood and tone — no random filler.\n✅ Output clean, valid JSON only. In a code block for easy copy paste!!!\nDO NOT PUT LYRICSEGMENT MUST JUST BE SEGMENT!\n\n### Other Notes\n[Verse 1]\nYou see him too loud again\nYou like me small\nYou like me sweet\nDangled up at your feet\nYou like your truth diluted down\nSo it doesn't make a sound\nBut I can't whisper what I need\nI won't blur what I see\n\n[Chorus]\nI'm too loud for you\nToo real to dilute\nAnd the crack in your perfect excuse\nYeah I blues, yeah I break\nBut I say what you won't say\nI am too loud\nToo loud for you\n\n[Verse 2]\nYou flinch when I raise my voice\nLike honesty's a choice\nYou call it overreacting\nI call it reacting, yeah\n\n[Chorus]\nI'm too loud for you\nToo sharp to down you\nI'm the truth you're trying to lose\nYeah I burn, yeah I blow\nLike a match in a quiet room\nI am too loud\nToo loud for you\n\n[Bridge]\nIf loving me means silence\nThen I'm too loud for you\nToo loud for you\n\n### Lyric Segment\n# Lyrics to fix: (20 segments)\n\nlyricSegment1=You see him too loud again.\nlyricSegment2=You like me small  you like me sweet  dangled up at your feet.\nlyricSegment3=your truth  they dude it down  so it doesn't make a sound  but I\nlyricSegment4=I can't whisper what I need. I won't blur what I see.\nlyricSegment5=I'm too loud so I...\nlyricSegment6=Too real to dilute\nlyricSegment7=And the crack in your perfect excuse\nlyricSegment8=Yeah  blues  yeah  I break.\nlyricSegment9=what you say I am too loud\nlyricSegment10=Too loud for you\nlyricSegment11=You flinch when I raise my voice Like honesty's a choice You call it overreact\nlyricSegment12=I call it reacting  yeah.\nlyricSegment13=I'm too loud for you\nlyricSegment14=Too sharp to do.\nlyricSegment15=I'm the truth you're trying to lose. Yeah  I burn  yeah  I glow. Like a magic.\nlyricSegment16=In a quiet room\nlyricSegment17=I am too loud  too loud for you.\nlyricSegment18=If loving me means silence\nlyricSegment19=I'm too loud for you. Too loud for you.\nlyricSegment20=Oh.",
+              "",
+              "",
+              0,
+              true,
+              true,
+              13056,
+              99,
+              8,
+              "",
+              0.3,
+              0.8,
+              32000
+            ],
+            "color": "#222",
+            "bgcolor": "#000"
+          },
+          {
+            "id": 949,
+            "type": "VRGDG_LyricSegmentTextCleaner",
+            "pos": [
+              -11895.023954289645,
+              -9.634028514505145
+            ],
+            "size": [
+              273.9,
+              200
+            ],
+            "flags": {
+              "collapsed": true
+            },
+            "order": 33,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "lyrics_text",
+                "name": "lyrics_text",
+                "type": "STRING",
+                "widget": {
+                  "name": "lyrics_text"
+                },
+                "link": 1505
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "cleaned_lyrics_text",
+                "name": "cleaned_lyrics_text",
+                "type": "STRING",
+                "links": [
+                  1506,
+                  1507
+                ]
+              },
+              {
+                "localized_name": "changed_count",
+                "name": "changed_count",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "notes",
+                "name": "notes",
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "b3d7eccb44176f8377644683288c9214a93ab4fe",
+              "Node name for S&R": "VRGDG_LyricSegmentTextCleaner",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "",
+              3,
+              4,
+              true
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+          },
+          {
+            "id": 923,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -9522.570309838396,
+              92.66960815488572
+            ],
+            "size": [
+              345.5798297308205,
+              467.2068052294494
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 25,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1502
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every prompt must use one location from that list as the primary setting.\nUse the location wording exactly or nearly exactly as provided.\nYou may reuse a location only when the story beat clearly continues there or intentionally echoes an earlier moment.\nYou may add environmental details around the selected location, but do not replace it with a different setting.\nIf LOCATIONS is not provided, create a location from STORY and THEME_STYLE.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n\n\n### Lyric Segment\n{\n  \"lyricSegment1_duration_5.572\": \"Don't look at me like that\",\n  \"lyricSegment2_duration_6.502\": \"You say it\",\n  \"lyricSegment3_duration_8.998\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n  \"lyricSegment4_duration_4.504\": \"You play innocent so well I can hear it when you sell\",\n  \"lyricSegment5_duration_8\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n  \"lyricSegment6_duration_5.398\": \"In the silence you left You don't even have to\",\n  \"lyricSegment7_duration_4.099\": \"try I hear it every time it gets quiet when you\",\n  \"lyricSegment8_duration_7\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n  \"lyricSegment9_duration_4.006\": \"I've ever heard\",\n  \"lyricSegment10_duration_7.5\": \"It gets quiet when you lie\",\n  \"lyricSegment11_duration_4.481\": \"Like the air is paper-thin\",\n  \"lyricSegment12_duration_5.48\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n  \"lyricSegment13_duration_7.535\": \"I see it in your eyes\",\n  \"lyricSegment14_duration_8.998\": \"try It gets quiet when you lie\",\n  \"lyricSegment15_duration_4.005\": \"Don't look at me like that\",\n  \"lyricSegment16_duration_5.492\": \"The silence lingers deep\",\n  \"lyricSegment17_duration_9.683\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n  \"lyricSegment18_duration_1.927\": \"When you lie\"\n}\n\n### Story\nA late-night radio host famous for exposing small-town corruption begins noticing a terrifying pattern in her own marriage: every time her husband lies, the world around her falls unnervingly silent. Clocks stop ticking, traffic noise disappears, even dogs freeze mid-bark. At first she dismisses it as stress, until anonymous callers start warning her that her husband has been hiding the disappearance of a woman connected to the town’s most powerful family. As the unnatural silences grow longer and more dangerous, she realizes the quiet isn’t just a feeling—it’s something consuming reality itself whenever the truth is buried. To survive, she must force a confession from the man she still loves before the silence swallows her completely.\n\n### Theme / Style\nSTYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood.\n\n### Other Notes\nsubject: a woman, with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots.\n\nLocations:\nsmall-town radio station\ndimly lit kitchen\nempty suburban street at night\nbedroom with silent clocks\ntown diner after closing\nold county courthouse hallway\nquiet residential living room\ndeserted gas station parking lot"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          },
+          {
+            "id": 948,
+            "type": "VRGDG_ShowText",
+            "pos": [
+              -9081.615202387064,
+              92.79647552040423
+            ],
+            "size": [
+              389.6457562160589,
+              481.1789282613546
+            ],
+            "flags": {
+              "collapsed": false
+            },
+            "order": 32,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "shape": 7,
+                "type": "STRING",
+                "link": 1503
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text_output",
+                "name": "text_output",
+                "shape": 6,
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_ShowText",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "{\n\"Prompt1\": \"small-town radio station: A tense, heavy gaze is exchanged across a vintage microphone in a dimly lit studio, the air thick with unspoken tension.\",\n\"Prompt2\": \"small-town radio station: A single, whispered word hangs in the air as the studio lights flicker slightly with the weight of a spoken secret.\",\n\"Prompt3\": \"dimly lit kitchen: Warm candlelight flickers on a table while sharp, jagged shadows stretch across the walls like hidden teeth.\",\n\"Prompts4\": \"dimly lit kitchen: A deceptive, innocent smile is cast through the soft glow of a kitchen lamp, masking a cold truth.\",\n\"Prompt5\": \"empty suburban street at night: The streetlights hum as the entire world seems to freeze in a sudden, unnatural vacuum of sound.\",\n\"Prompt6\": \"empty suburban street at night: An empty, desolate street stretches out under a pale moon, the stillness feeling heavy and suffocating.\",\n\"Prompt7\": \"empty suburban street at night: The wind stops mid-gust, leaving the suburban trees frozen in a silent, eerie tableau.\",\n\"Prompt8\": \"old county courthouse hallway: Long, cavernous shadows stretch between the pillars as the vast, hollow silence of the hall grows overwhelming.\",\n\"Prompt9\": \"old county courthouse hallway: The sound of a distant, echoing footstep fades into a profound and terrifying stillness.\",\n\"Prompt10\": \"old county courthouse hallway: The shadows deepen as the atmosphere becomes thick with the weight of a hidden truth.\",\n\"Prompt11\": \"old county courthouse hallway: The air becomes visually thin and translucent, like fragile paper stretched between the ancient walls.\",\n\"Prompt12\": \"old county courthouse hallway: A ghostly, hollow expression reflects the feeling of a stranger's presence in a familiar space.\",\n\"Prompt13\": \"old county courthouse hallway: A piercing, searching gaze cuts through the dim light, looking for the truth behind a mask.\",\n\"Prompt14\": \"old county courthouse hallway: The silence expands, threatening to swallow the architecture as the truth remains buried.\",\n\"Prompt15\": \"quiet residential living room: A sharp, questioning look is directed toward the viewer in the soft, dim light of a living room.\",\n\"Prompt16\": \"quiet residential living room: Dust motes hang motionless in the air as the silence settles like a heavy shroud.\",\n\"Prompt17\": \"quiet residential living room: The room becomes an abyss of soft shadows where the silence feels loud and all-consuming.\",\n\"Prompt18\": \"quiet residential living room: A final, sudden moment of absolute stillness as the truth is finally laid bare.\"\n}"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+          }
+        ],
+        "groups": [
+          {
+            "id": 25,
+            "title": "Step 1 - Whisper Transcription and Beat Detection for scene creation",
+            "bounding": [
+              -12300.020148101457,
+              -479.19326097474953,
+              1336.1066460768689,
+              835.8503706214195
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          },
+          {
+            "id": 26,
+            "title": "Preview text",
+            "bounding": [
+              -12284.663676738539,
+              364.4443744087101,
+              1327.339735681977,
+              546.4959335411099
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          },
+          {
+            "id": 27,
+            "title": "Step 2 - Correct Whisper Lyrics",
+            "bounding": [
+              -10938.576265712727,
+              -484.37591567713366,
+              945.2524762804424,
+              1061.538861862242
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          },
+          {
+            "id": 28,
+            "title": "JSON fixing",
+            "bounding": [
+              -9973.246151583224,
+              -481.30783175372085,
+              414.9739338845575,
+              1081.3055587182446
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          },
+          {
+            "id": 29,
+            "title": "Step 3 - Concept for image to video or text to video",
+            "bounding": [
+              -9545.51234499825,
+              -481.5955177194884,
+              868.2482748095135,
+              1086.7752703125511
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          },
+          {
+            "id": 31,
+            "title": "Step -4 prepend subject",
+            "bounding": [
+              -8656.967897388926,
+              -477.3080165299026,
+              748.9522235572676,
+              1079.0326240781724
+            ],
+            "color": "#3f789e",
+            "font_size": 24,
+            "flags": {}
+          }
+        ],
+        "links": [
+          {
+            "id": 139,
+            "origin_id": 82,
+            "origin_slot": 0,
+            "target_id": 80,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 147,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 79,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 152,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 82,
+            "target_slot": 0,
+            "type": "AUDIO"
+          },
+          {
+            "id": 172,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 80,
+            "target_slot": 5,
+            "type": "STRING"
+          },
+          {
+            "id": 214,
+            "origin_id": 114,
+            "origin_slot": 0,
+            "target_id": 82,
+            "target_slot": 3,
+            "type": "AUDIO"
+          },
+          {
+            "id": 215,
+            "origin_id": 114,
+            "origin_slot": 1,
+            "target_id": 82,
+            "target_slot": 1,
+            "type": "AUDIO"
+          },
+          {
+            "id": 216,
+            "origin_id": 114,
+            "origin_slot": 2,
+            "target_id": 82,
+            "target_slot": 2,
+            "type": "AUDIO"
+          },
+          {
+            "id": 217,
+            "origin_id": 114,
+            "origin_slot": 3,
+            "target_id": 82,
+            "target_slot": 4,
+            "type": "AUDIO"
+          },
+          {
+            "id": 218,
+            "origin_id": 114,
+            "origin_slot": 0,
+            "target_id": 79,
+            "target_slot": 0,
+            "type": "AUDIO"
+          },
+          {
+            "id": 219,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 114,
+            "target_slot": 0,
+            "type": "AUDIO"
+          },
+          {
+            "id": 223,
+            "origin_id": 80,
+            "origin_slot": 0,
+            "target_id": 869,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 236,
+            "origin_id": 114,
+            "origin_slot": 0,
+            "target_id": 126,
+            "target_slot": 0,
+            "type": "AUDIO"
+          },
+          {
+            "id": 1247,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 816,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1248,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 817,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1249,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 818,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1293,
+            "origin_id": 849,
+            "origin_slot": 0,
+            "target_id": 854,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1298,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 859,
+            "target_slot": 0,
+            "type": "*"
+          },
+          {
+            "id": 1299,
+            "origin_id": 859,
+            "origin_slot": 0,
+            "target_id": 849,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1301,
+            "origin_id": 860,
+            "origin_slot": 0,
+            "target_id": 849,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1361,
+            "origin_id": 80,
+            "origin_slot": 0,
+            "target_id": 887,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1362,
+            "origin_id": 849,
+            "origin_slot": 0,
+            "target_id": 892,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1403,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 80,
+            "target_slot": 1,
+            "type": "FLOAT"
+          },
+          {
+            "id": 1404,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 80,
+            "target_slot": 2,
+            "type": "FLOAT"
+          },
+          {
+            "id": 1405,
+            "origin_id": -10,
+            "origin_slot": 8,
+            "target_id": 80,
+            "target_slot": 3,
+            "type": "FLOAT"
+          },
+          {
+            "id": 1407,
+            "origin_id": -10,
+            "origin_slot": 9,
+            "target_id": 80,
+            "target_slot": 4,
+            "type": "COMBO"
+          },
+          {
+            "id": 1409,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 849,
+            "target_slot": 2,
+            "type": "STRING"
+          },
+          {
+            "id": 1423,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 910,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1424,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 910,
+            "target_slot": 2,
+            "type": "STRING"
+          },
+          {
+            "id": 1425,
+            "origin_id": 910,
+            "origin_slot": 0,
+            "target_id": 909,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1434,
+            "origin_id": 887,
+            "origin_slot": 0,
+            "target_id": 910,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1435,
+            "origin_id": 892,
+            "origin_slot": 0,
+            "target_id": 915,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1437,
+            "origin_id": 892,
+            "origin_slot": 2,
+            "target_id": -20,
+            "target_slot": 2,
+            "type": "STRING"
+          },
+          {
+            "id": 1438,
+            "origin_id": 887,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1439,
+            "origin_id": 909,
+            "origin_slot": 2,
+            "target_id": -20,
+            "target_slot": 3,
+            "type": "STRING"
+          },
+          {
+            "id": 1444,
+            "origin_id": 909,
+            "origin_slot": 0,
+            "target_id": 920,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1451,
+            "origin_id": 892,
+            "origin_slot": 0,
+            "target_id": 890,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1452,
+            "origin_id": 890,
+            "origin_slot": 0,
+            "target_id": 887,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1454,
+            "origin_id": 890,
+            "origin_slot": 3,
+            "target_id": 885,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1455,
+            "origin_id": 890,
+            "origin_slot": 2,
+            "target_id": 886,
+            "target_slot": 0,
+            "type": "BOOLEAN"
+          },
+          {
+            "id": 1463,
+            "origin_id": -10,
+            "origin_slot": 10,
+            "target_id": 910,
+            "target_slot": 3,
+            "type": "STRING"
+          },
+          {
+            "id": 1464,
+            "origin_id": -10,
+            "origin_slot": 10,
+            "target_id": 927,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1468,
+            "origin_id": -10,
+            "origin_slot": 11,
+            "target_id": 79,
+            "target_slot": 4,
+            "type": "COMBO"
+          },
+          {
+            "id": 1470,
+            "origin_id": 80,
+            "origin_slot": 1,
+            "target_id": 933,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1472,
+            "origin_id": 934,
+            "origin_slot": 0,
+            "target_id": 933,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1473,
+            "origin_id": -10,
+            "origin_slot": 12,
+            "target_id": 933,
+            "target_slot": 2,
+            "type": "BOOLEAN"
+          },
+          {
+            "id": 1478,
+            "origin_id": -10,
+            "origin_slot": 13,
+            "target_id": 79,
+            "target_slot": 3,
+            "type": "FLOAT"
+          },
+          {
+            "id": 1481,
+            "origin_id": 933,
+            "origin_slot": 0,
+            "target_id": 79,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1482,
+            "origin_id": -10,
+            "origin_slot": 12,
+            "target_id": 887,
+            "target_slot": 2,
+            "type": "BOOLEAN"
+          },
+          {
+            "id": 1483,
+            "origin_id": -10,
+            "origin_slot": 14,
+            "target_id": 892,
+            "target_slot": 0,
+            "type": "COMBO"
+          },
+          {
+            "id": 1484,
+            "origin_id": -10,
+            "origin_slot": 14,
+            "target_id": 909,
+            "target_slot": 0,
+            "type": "COMBO"
+          },
+          {
+            "id": 1487,
+            "origin_id": -10,
+            "origin_slot": 12,
+            "target_id": 920,
+            "target_slot": 2,
+            "type": "BOOLEAN"
+          },
+          {
+            "id": 1488,
+            "origin_id": 80,
+            "origin_slot": 1,
+            "target_id": 920,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1489,
+            "origin_id": 910,
+            "origin_slot": 0,
+            "target_id": 940,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1494,
+            "origin_id": -10,
+            "origin_slot": 10,
+            "target_id": 945,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1495,
+            "origin_id": 945,
+            "origin_slot": 0,
+            "target_id": 946,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1496,
+            "origin_id": 945,
+            "origin_slot": 0,
+            "target_id": 947,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1498,
+            "origin_id": 947,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1499,
+            "origin_id": 920,
+            "origin_slot": 0,
+            "target_id": 947,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1502,
+            "origin_id": 940,
+            "origin_slot": 0,
+            "target_id": 923,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1503,
+            "origin_id": 909,
+            "origin_slot": 0,
+            "target_id": 948,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1504,
+            "origin_id": 887,
+            "origin_slot": 0,
+            "target_id": 888,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1505,
+            "origin_id": 79,
+            "origin_slot": 0,
+            "target_id": 949,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1506,
+            "origin_id": 949,
+            "origin_slot": 0,
+            "target_id": 870,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1507,
+            "origin_id": 949,
+            "origin_slot": 0,
+            "target_id": 860,
+            "target_slot": 0,
+            "type": "STRING"
+          }
+        ],
+        "extra": {
+          "workflowRendererVersion": "LG",
+          "ue_links": [],
+          "links_added_by_ue": []
+        }
+      },
+      {
+        "id": "a0cb0e7f-5976-443e-9040-2d2a7c443f81",
+        "version": 1,
+        "state": {
+          "lastGroupId": 31,
+          "lastNodeId": 953,
+          "lastLinkId": 1507,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "load audio file",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -4308.40253030584,
+            1276.6611490225905,
+            120,
+            40
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            -3129.220119285386,
+            1236.6611490225905,
+            127,
+            120
+          ]
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "3609f027-47f4-4fea-accd-40118d2229eb",
+            "name": "audio",
+            "type": "AUDIO",
+            "linkIds": [
+              1214
+            ],
+            "localized_name": "audio",
+            "pos": [
+              20,
+              20
+            ]
+          },
+          {
+            "id": "8ecbaa78-e64e-451e-8aed-6c768724c160",
+            "name": "audio_file_path",
+            "type": "STRING",
+            "linkIds": [
+              1212
+            ],
+            "pos": [
+              20,
+              40
+            ]
+          },
+          {
+            "id": "f8c12cd2-d0ed-4801-8e68-6216446d3e35",
+            "name": "result_text",
+            "type": "STRING",
+            "linkIds": [
+              1213
+            ],
+            "label": "for folder name",
+            "pos": [
+              20,
+              60
+            ]
+          },
+          {
+            "id": "eec505ed-b769-4d4f-8232-e8a546f6bed0",
+            "name": "STRING",
+            "type": "STRING",
+            "linkIds": [
+              1219
+            ],
+            "localized_name": "STRING",
+            "pos": [
+              20,
+              80
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 784,
+            "type": "VHS_LoadAudio",
+            "pos": [
+              -3423.220119285386,
+              1330.903300714806
+            ],
+            "size": [
+              234,
+              180
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "audio_file",
+                "name": "audio_file",
+                "type": "STRING",
+                "widget": {
+                  "name": "audio_file"
+                },
+                "link": 1211
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "audio",
+                "name": "audio",
+                "type": "AUDIO",
+                "links": [
+                  1214
+                ]
+              },
+              {
+                "localized_name": "duration",
+                "name": "duration",
+                "type": "FLOAT",
+                "links": null
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfyui-videohelpersuite",
+              "ver": "1.7.9",
+              "Node name for S&R": "VHS_LoadAudio",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": {
+              "audio_file": "input/",
+              "seek_seconds": 0,
+              "duration": 0,
+              "audiopreview": {
+                "params": {
+                  "start_time": 0,
+                  "duration": 0
+                }
+              }
+            },
+            "color": "#223",
+            "bgcolor": "#335"
+          },
+          {
+            "id": 783,
+            "type": "57425d98-04e5-4d5f-931b-9d101a358111",
+            "pos": [
+              -3768.91893087546,
+              1355.5346950113446
+            ],
+            "size": [
+              316.64118768523963,
+              46
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "audio_file_path",
+                "type": "STRING",
+                "links": [
+                  1211,
+                  1212
+                ]
+              },
+              {
+                "label": "for folder name",
+                "name": "result_text",
+                "type": "STRING",
+                "links": [
+                  1213,
+                  1220
+                ]
+              }
+            ],
+            "properties": {
+              "proxyWidgets": [],
+              "cnr_id": "comfy-core",
+              "ver": "0.10.0",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [],
+            "color": "#323",
+            "bgcolor": "#535"
+          },
+          {
+            "id": 787,
+            "type": "VRGDG_IntToString",
+            "pos": [
+              -4128.056228174829,
+              1257.5734198126231
+            ],
+            "size": [
+              270,
+              58
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "value",
+                "name": "value",
+                "type": "INT",
+                "widget": {
+                  "name": "value"
+                },
+                "link": 1217
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "string",
+                "name": "string",
+                "type": "STRING",
+                "links": [
+                  1218
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_IntToString",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              0
+            ]
+          },
+          {
+            "id": 789,
+            "type": "PrimitiveInt",
+            "pos": [
+              -4128.40253030584,
+              1114.250183074627
+            ],
+            "size": [
+              270,
+              82
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "INT",
+                "name": "INT",
+                "type": "INT",
+                "links": [
+                  1217
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.10.0",
+              "Node name for S&R": "PrimitiveInt",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              253,
+              "increment"
+            ]
+          },
+          {
+            "id": 788,
+            "type": "StringConcatenate",
+            "pos": [
+              -3834.4013307781097,
+              1112.4189973303749
+            ],
+            "size": [
+              400,
+              200
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string_a",
+                "name": "string_a",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_a"
+                },
+                "link": 1220
+              },
+              {
+                "localized_name": "string_b",
+                "name": "string_b",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_b"
+                },
+                "link": 1218
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  1219
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.10.0",
+              "Node name for S&R": "StringConcatenate",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              "SRTFile",
+              "",
+              "_"
+            ]
+          }
+        ],
+        "groups": [],
+        "links": [
+          {
+            "id": 1211,
+            "origin_id": 783,
+            "origin_slot": 0,
+            "target_id": 784,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1217,
+            "origin_id": 789,
+            "origin_slot": 0,
+            "target_id": 787,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 1220,
+            "origin_id": 783,
+            "origin_slot": 1,
+            "target_id": 788,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 1218,
+            "origin_id": 787,
+            "origin_slot": 0,
+            "target_id": 788,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1214,
+            "origin_id": 784,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "AUDIO"
+          },
+          {
+            "id": 1212,
+            "origin_id": 783,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 1213,
+            "origin_id": 783,
+            "origin_slot": 1,
+            "target_id": -20,
+            "target_slot": 2,
+            "type": "STRING"
+          },
+          {
+            "id": 1219,
+            "origin_id": 788,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 3,
+            "type": "STRING"
+          }
+        ],
+        "extra": {
+          "workflowRendererVersion": "LG",
+          "ue_links": [],
+          "links_added_by_ue": []
+        }
+      },
+      {
+        "id": "57425d98-04e5-4d5f-931b-9d101a358111",
+        "version": 1,
+        "state": {
+          "lastGroupId": 31,
+          "lastNodeId": 953,
+          "lastLinkId": 1507,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Auto Get folder name and audio file",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            2570.894808773301,
+            6739.120469013189,
+            120,
+            40
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            3174.9332626183077,
+            6696.531102686386,
+            127,
+            80
+          ]
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "7a431017-5c7b-4225-8a04-651330f56eea",
+            "name": "audio_file_path",
+            "type": "STRING",
+            "linkIds": [
+              43
+            ],
+            "pos": [
+              3194.9332626183077,
+              6716.531102686386
+            ]
+          },
+          {
+            "id": "d246641f-0ecf-474c-9f66-c42e0575e3db",
+            "name": "result_text",
+            "type": "STRING",
+            "linkIds": [
+              44
+            ],
+            "label": "for folder name",
+            "pos": [
+              3194.9332626183077,
+              6736.531102686386
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 35,
+            "type": "PrimitiveInt",
+            "pos": [
+              2754.8147238249067,
+              6662.173944786737
+            ],
+            "size": [
+              270,
+              82
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "INT",
+                "name": "INT",
+                "type": "INT",
+                "links": [
+                  42
+                ]
+              }
+            ],
+            "properties": {
+              "cnr_id": "comfy-core",
+              "ver": "0.10.0",
+              "Node name for S&R": "PrimitiveInt",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              -630152252947771,
+              "randomize"
+            ]
+          },
+          {
+            "id": 39,
+            "type": "VRGDG_LoadAudioFilePath",
+            "pos": [
+              2741.3229816807607,
+              6817.130672098384
+            ],
+            "size": [
+              277.9,
+              78
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "refresh",
+                "name": "refresh",
+                "type": "INT",
+                "widget": {
+                  "name": "refresh"
+                },
+                "link": 42
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "audio_file_path",
+                "name": "audio_file_path",
+                "type": "STRING",
+                "links": [
+                  43
+                ]
+              },
+              {
+                "localized_name": "audio_file_name",
+                "name": "audio_file_name",
+                "type": "STRING",
+                "links": [
+                  44
+                ]
+              }
+            ],
+            "properties": {
+              "aux_id": "vrgamegirl19/comfyui-vrgamedevgirl",
+              "ver": "030410c766ca6f8ef417a352b1311a84da2670f6",
+              "Node name for S&R": "VRGDG_LoadAudioFilePath",
+              "ue_properties": {
+                "widget_ue_connectable": {},
+                "input_ue_unconnectable": {},
+                "version": "7.5.2"
+              }
+            },
+            "widgets_values": [
+              0
+            ]
+          }
+        ],
+        "groups": [],
+        "links": [
+          {
+            "id": 42,
+            "origin_id": 35,
+            "origin_slot": 0,
+            "target_id": 39,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 43,
+            "origin_id": 39,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 44,
+            "origin_id": 39,
+            "origin_slot": 1,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "STRING"
+          }
+        ],
+        "extra": {
+          "workflowRendererVersion": "LG",
+          "ue_links": [],
+          "links_added_by_ue": []
+        }
+      }
+    ]
+  },
+  "config": {},
+  "extra": {
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "frontendVersion": "1.39.19",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": false,
+    "links_added_by_ue": [],
+    "favoritedWidgets": {
+      "favorites": [
+        {
+          "nodeLocatorId": "28",
+          "widgetName": "fps"
+        },
+        {
+          "nodeLocatorId": "28",
+          "widgetName": "max_duration"
+        },
+        {
+          "nodeLocatorId": "28",
+          "widgetName": "min_duration"
+        },
+        {
+          "nodeLocatorId": "28",
+          "widgetName": "bias"
+        },
+        {
+          "nodeLocatorId": "28",
+          "widgetName": "seed"
+        },
+        {
+          "nodeLocatorId": "28",
+          "widgetName": "duration_preset"
+        }
+      ]
+    },
+    "ds": {
+      "scale": 0.7187490820963256,
+      "offset": [
+        3531.4819271372626,
+        -1407.872491631991
+      ]
+    }
+  },
+  "version": 0.4
+}
