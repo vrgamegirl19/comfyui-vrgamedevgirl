@@ -1637,12 +1637,6 @@ def _sanitize_text_segment(value, fallback):
 
 
 def _resolve_comfy_output_directory():
-    custom_nodes_dir = os.path.dirname(os.path.abspath(__file__))
-    comfy_root_dir = os.path.normpath(os.path.join(custom_nodes_dir, "..", ".."))
-    comfy_output_dir = os.path.normpath(os.path.join(comfy_root_dir, "output"))
-    if os.path.isdir(comfy_output_dir):
-        return comfy_output_dir
-
     try:
         output_dir = folder_paths.get_output_directory()
         if output_dir:
@@ -1650,7 +1644,34 @@ def _resolve_comfy_output_directory():
     except Exception:
         pass
 
-    return comfy_output_dir
+    custom_nodes_dir = os.path.dirname(os.path.abspath(__file__))
+    comfy_root_dir = os.path.normpath(os.path.join(custom_nodes_dir, "..", ".."))
+    return os.path.normpath(os.path.join(comfy_root_dir, "output"))
+
+
+def _resolve_default_comfy_output_directory():
+    base_path = getattr(folder_paths, "base_path", None)
+    if base_path:
+        return os.path.normpath(os.path.join(base_path, "output"))
+
+    custom_nodes_dir = os.path.dirname(os.path.abspath(__file__))
+    comfy_root_dir = os.path.normpath(os.path.join(custom_nodes_dir, "..", ".."))
+    return os.path.normpath(os.path.join(comfy_root_dir, "output"))
+
+
+def _get_output_directory_candidates():
+    candidates = [
+        _resolve_comfy_output_directory(),
+        _resolve_default_comfy_output_directory(),
+    ]
+    unique = []
+    seen = set()
+    for path in candidates:
+        key = os.path.normcase(os.path.abspath(path))
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
 
 
 def _get_text_files_root():
@@ -1661,6 +1682,13 @@ def _get_text_files_root():
             TEXT_FILES_SUBFOLDER,
         )
     )
+
+
+def _get_text_files_root_candidates():
+    return [
+        os.path.normpath(os.path.join(output_dir, TEXT_FILES_ROOT_FOLDER, TEXT_FILES_SUBFOLDER))
+        for output_dir in _get_output_directory_candidates()
+    ]
 
 
 def _get_text_files_category_folder(category):
@@ -1674,79 +1702,122 @@ def _get_text_files_manual_folder(folder_name):
 
 
 def _list_text_files_for_category(category):
-    folder = _get_text_files_category_folder(category)
-    if not os.path.isdir(folder):
-        return [], folder
-
-    files = []
-    for name in os.listdir(folder):
-        full = os.path.join(folder, name)
-        if not os.path.isfile(full):
+    category = _normalize_text_file_category(category)
+    first_folder = None
+    for root in _get_text_files_root_candidates():
+        folder = os.path.normpath(os.path.join(root, category))
+        if first_folder is None:
+            first_folder = folder
+        if not os.path.isdir(folder):
             continue
-        if name.lower().endswith(".txt"):
-            files.append(name)
 
-    files.sort(key=str.lower)
-    return files, folder
+        files = []
+        for name in os.listdir(folder):
+            full = os.path.join(folder, name)
+            if not os.path.isfile(full):
+                continue
+            if name.lower().endswith(".txt"):
+                files.append(name)
+
+        files.sort(key=str.lower)
+        if files:
+            return files, folder
+
+    return [], first_folder or _get_text_files_category_folder(category)
 
 
 def _list_text_folder_names():
-    root = _get_text_files_root()
-    if not os.path.isdir(root):
-        return []
+    folders = set()
+    for root in _get_text_files_root_candidates():
+        if not os.path.isdir(root):
+            continue
+        for name in os.listdir(root):
+            full = os.path.join(root, name)
+            if os.path.isdir(full):
+                folders.add(name)
 
-    folders = []
-    for name in os.listdir(root):
-        full = os.path.join(root, name)
-        if os.path.isdir(full):
-            folders.append(name)
-
-    folders.sort(key=str.lower)
-    return folders
+    return sorted(folders, key=str.lower)
 
 
 def _list_text_files_for_folder(folder_name, use_most_recent=False):
-    folder_path, safe_folder = _get_text_files_manual_folder(folder_name)
-    if not os.path.isdir(folder_path):
-        return [], folder_path, safe_folder
-
-    rows = []
-    for name in os.listdir(folder_path):
-        full = os.path.join(folder_path, name)
-        if not os.path.isfile(full):
+    safe_folder = _sanitize_text_segment(folder_name, "default")
+    first_folder_path = None
+    selected_folder_path = None
+    rows_by_name = {}
+    for root in _get_text_files_root_candidates():
+        folder_path = os.path.normpath(os.path.join(root, safe_folder))
+        if first_folder_path is None:
+            first_folder_path = folder_path
+        if not os.path.isdir(folder_path):
             continue
-        if not name.lower().endswith(".txt"):
-            continue
-        try:
-            mtime = os.path.getmtime(full)
-        except OSError:
-            mtime = 0.0
-        rows.append((name, mtime))
 
+        for name in os.listdir(folder_path):
+            full = os.path.join(folder_path, name)
+            if not os.path.isfile(full):
+                continue
+            if not name.lower().endswith(".txt"):
+                continue
+            try:
+                mtime = os.path.getmtime(full)
+                size = os.path.getsize(full)
+            except OSError:
+                mtime = 0.0
+                size = 0
+            existing = rows_by_name.get(name)
+            if existing is None or (size > 0 and existing[2] == 0) or mtime > existing[1]:
+                rows_by_name[name] = (name, mtime, size, folder_path)
+                selected_folder_path = folder_path
+
+    if not rows_by_name:
+        return [], first_folder_path or _get_text_files_manual_folder(folder_name)[0], safe_folder
+
+    rows = list(rows_by_name.values())
     rows.sort(key=lambda x: (-x[1], x[0].lower()))
-    files = [name for name, _ in rows]
+    files = [name for name, _, _, _ in rows]
     if use_most_recent and files:
         files = [files[0]]
 
-    return files, folder_path, safe_folder
+    return files, selected_folder_path or first_folder_path, safe_folder
 
 
 def _list_all_text_file_names():
-    root = _get_text_files_root()
-    if not os.path.isdir(root):
-        return []
-
     names = set()
-    for folder_name in os.listdir(root):
-        folder_path = os.path.join(root, folder_name)
-        if not os.path.isdir(folder_path):
+    for root in _get_text_files_root_candidates():
+        if not os.path.isdir(root):
             continue
-        for file_name in os.listdir(folder_path):
-            full = os.path.join(folder_path, file_name)
-            if os.path.isfile(full) and file_name.lower().endswith(".txt"):
-                names.add(file_name)
+        for folder_name in os.listdir(root):
+            folder_path = os.path.join(root, folder_name)
+            if not os.path.isdir(folder_path):
+                continue
+            for file_name in os.listdir(folder_path):
+                full = os.path.join(folder_path, file_name)
+                if os.path.isfile(full) and file_name.lower().endswith(".txt"):
+                    names.add(file_name)
 
     return sorted(names, key=str.lower)
+
+
+def _resolve_text_file_path(folder_name, file_name):
+    safe_folder = _sanitize_text_segment(folder_name, "default")
+    selected_name = os.path.basename(str(file_name or "").strip())
+    if not selected_name or selected_name != str(file_name or "").strip():
+        return ""
+    if not selected_name.lower().endswith(".txt"):
+        return ""
+
+    fallback = ""
+    for root in _get_text_files_root_candidates():
+        file_path = os.path.normpath(os.path.join(root, safe_folder, selected_name))
+        if not fallback:
+            fallback = file_path
+        if not os.path.isfile(file_path):
+            continue
+        try:
+            if os.path.getsize(file_path) > 0:
+                return file_path
+        except OSError:
+            return file_path
+    return fallback if fallback and os.path.isfile(fallback) else ""
 
 
 
@@ -1906,7 +1977,9 @@ class VRGDG_LoadTextAdvanced:
             else:
                 return f"{selected_folder}|missing-selection|{selected_name}"
 
-        file_path = os.path.normpath(os.path.join(folder_path, chosen_name))
+        file_path = _resolve_text_file_path(selected_folder, chosen_name)
+        if not file_path:
+            file_path = os.path.normpath(os.path.join(folder_path, chosen_name))
         try:
             stats = os.stat(file_path)
             return (
@@ -1937,7 +2010,7 @@ class VRGDG_LoadTextAdvanced:
             else:
                 return ("", "")
 
-        file_path = os.path.normpath(os.path.join(folder_path, chosen_name))
+        file_path = _resolve_text_file_path(selected_folder, chosen_name)
         if not os.path.isfile(file_path):
             return ("", "")
 
@@ -2014,8 +2087,7 @@ class VRGDG_LoadText:
         if selected_name != selected or not selected_name.lower().endswith(".txt"):
             return ("", "")
 
-        folder = _get_text_files_category_folder(category)
-        file_path = os.path.normpath(os.path.join(folder, selected_name))
+        file_path = _resolve_text_file_path(category, selected_name)
         if not os.path.isfile(file_path):
             return ("", "")
 

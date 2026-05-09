@@ -30,6 +30,52 @@ _VRGDG_TEST_TEXT_TARGETS = {
 }
 
 
+def _get_default_comfy_output_directory():
+    base_path = getattr(folder_paths, "base_path", None)
+    if base_path:
+        return os.path.normpath(os.path.join(base_path, "output"))
+
+    custom_nodes_dir = os.path.dirname(os.path.abspath(__file__))
+    comfy_root_dir = os.path.normpath(os.path.join(custom_nodes_dir, "..", ".."))
+    return os.path.normpath(os.path.join(comfy_root_dir, "output"))
+
+
+def _get_output_directory_candidates():
+    candidates = []
+    try:
+        configured_output = folder_paths.get_output_directory()
+        if configured_output:
+            candidates.append(os.path.normpath(configured_output))
+    except Exception:
+        pass
+
+    candidates.append(_get_default_comfy_output_directory())
+
+    unique = []
+    seen = set()
+    for path in candidates:
+        key = os.path.normcase(os.path.abspath(path))
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def _first_existing_nonempty_path(relative_parts):
+    fallback = None
+    for output_dir in _get_output_directory_candidates():
+        path = os.path.normpath(os.path.join(output_dir, *relative_parts))
+        if fallback is None:
+            fallback = path
+        if os.path.isfile(path):
+            try:
+                if os.path.getsize(path) > 0:
+                    return path
+            except OSError:
+                return path
+    return fallback
+
+
 def _apply_backend_node_action(node_id, action):
     action = str(action or "mute").lower()
     if action == "active":
@@ -160,9 +206,8 @@ def _get_test_popup_text_path(field_name):
 
 
 def _get_part2_concept_prompts_path():
-    return os.path.normpath(
-        os.path.join(
-            folder_paths.get_output_directory(),
+    return _first_existing_nonempty_path(
+        (
             "VRGDG_TEMP",
             "TextFiles",
             "ConceptPrompts",
