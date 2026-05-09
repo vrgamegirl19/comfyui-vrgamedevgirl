@@ -42,9 +42,33 @@ def _is_whisper_dtype_mismatch_error(exc):
     )
 
 
+def _is_whisper_mel_length_error(exc):
+    message = str(exc).lower()
+    return (
+        "whisper expects the mel input features to be of length 3000" in message
+        and "found" in message
+    )
+
+
+def _whisper_pad_input_features(input_features, target_length=3000):
+    current_length = input_features.shape[-1]
+    if current_length == target_length:
+        return input_features
+    if current_length > target_length:
+        return input_features[..., :target_length].contiguous()
+    return torch.nn.functional.pad(input_features, (0, target_length - current_length))
+
+
 def _whisper_generate_with_dtype_fallback(model, input_features, fallback_device, **kwargs):
     try:
         return model.generate(input_features, **kwargs)
+    except ValueError as exc:
+        if not _is_whisper_mel_length_error(exc):
+            raise
+
+        print("[Whisper] Retrying with mel input features padded to length 3000.")
+        padded_features = _whisper_pad_input_features(input_features)
+        return model.generate(padded_features, **kwargs)
     except RuntimeError as exc:
         if not _is_whisper_dtype_mismatch_error(exc):
             raise

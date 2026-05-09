@@ -2445,6 +2445,49 @@ class BeatSceneDurationNode:
             ms = int((seconds - int(seconds)) * 1000)
             return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
+        def to_seconds(timestamp):
+            h, m, rest = timestamp.split(":")
+            s, ms = rest.split(",")
+            return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
+
+        def merge_short_first_scene_if_needed(lines, min_first_duration=1.5):
+            # Short-first-scene guard:
+            # Some beat maps can still create an opening cut that is only a few
+            # frames long. Keep this as a final, isolated SRT cleanup so it can
+            # be removed easily if we ever want to revert this behavior.
+            blocks = []
+            for block in "\n".join(lines).strip().split("\n\n"):
+                block_lines = [line.strip() for line in block.splitlines() if line.strip()]
+                if len(block_lines) < 2 or "-->" not in block_lines[1]:
+                    continue
+                start_txt, end_txt = [part.strip() for part in block_lines[1].split("-->")]
+                blocks.append({
+                    "start": to_seconds(start_txt),
+                    "end": to_seconds(end_txt),
+                })
+
+            if len(blocks) < 2:
+                return lines
+
+            first_duration = blocks[0]["end"] - blocks[0]["start"]
+            if first_duration >= float(min_first_duration):
+                return lines
+
+            print(
+                "[BeatSceneDurationNode] Merging short first scene into scene 2: "
+                f"duration={first_duration:.3f}s, threshold={float(min_first_duration):.3f}s"
+            )
+            blocks[1]["start"] = blocks[0]["start"]
+            blocks = blocks[1:]
+
+            rebuilt = []
+            for idx, block in enumerate(blocks, 1):
+                rebuilt.append(str(idx))
+                rebuilt.append(f"{format_time(block['start'])} --> {format_time(block['end'])}")
+                rebuilt.append(f"SCENE {idx}")
+                rebuilt.append("")
+            return rebuilt
+
         srt_lines = []
         current_time = 0.0
         scene_index = 1
@@ -2659,6 +2702,9 @@ class BeatSceneDurationNode:
 
 
         ###############
+        srt_lines = merge_short_first_scene_if_needed(srt_lines)
+        scene_index = len([line for line in srt_lines if line.strip().isdigit()]) + 1
+
         # Save next to THIS custom node file, inside /SRT_Files
         node_dir = os.path.dirname(os.path.abspath(__file__))
 
