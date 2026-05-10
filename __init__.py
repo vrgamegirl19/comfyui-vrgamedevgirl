@@ -1,77 +1,59 @@
+import importlib
 import os
 
 import folder_paths
 
-from .nodes import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_2,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_2,
+# Import each submodule independently so that an ImportError in one (e.g.
+# `transformers` is older than the Whisper API the Humo files expect, or
+# `cv2`/`librosa`/`voxcpm`/`llama_cpp` isn't installed on this user's
+# machine) only takes out the affected submodule's nodes — leaving the
+# rest of the pack registered. With the previous "one big import block"
+# layout, the first import failure raised before reaching the merged
+# `NODE_CLASS_MAPPINGS` dict, which is why simple visual nodes like
+# `FastFilmGrain` and `FastUnsharpSharpen` (which live in `nodes.py` and
+# import cleanly on their own) silently disappeared whenever any other
+# submodule failed. See issue #38.
+_VRGDG_SUBMODULES = (
+    ".nodes",
+    ".HumoAutomation",
+    ".HumoAutomationExtra1",
+    ".HumoAutomationExtra2",
+    ".GeneralVideoNodes",
+    ".GeneralVideoNodes2",
+    ".LLM",
+    ".VRGDGswtichNodes",
+    ".VRGDG_GeneralNodes",
+    ".VRGDG_AudioNodes",
+    ".VRGDG_GeneralNodes2",
+    ".VRGDG_IV_Adjustments",
+    ".LTXLoraTrain",
+    ".VRGDG_VoxCPM2Node",
 )
 
-from .HumoAutomation import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_3,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_3,
-)
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}
 
-from .HumoAutomationExtra1 import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_4,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_4,
-)
+_VRGDG_FAILED = []
 
-from .HumoAutomationExtra2 import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_5,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_5,
-)
+for _modname in _VRGDG_SUBMODULES:
+    try:
+        _mod = importlib.import_module(_modname, package=__name__)
+    except Exception as exc:
+        _VRGDG_FAILED.append((_modname, f"{type(exc).__name__}: {exc}"))
+        continue
+    NODE_CLASS_MAPPINGS.update(getattr(_mod, "NODE_CLASS_MAPPINGS", {}))
+    NODE_DISPLAY_NAME_MAPPINGS.update(getattr(_mod, "NODE_DISPLAY_NAME_MAPPINGS", {}))
 
-
-from .GeneralVideoNodes import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_6,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_6,
-)
-
-from .GeneralVideoNodes2 import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_7,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_7,
-)
-
-from .LLM import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_8,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_8,
-)
-
-from .VRGDGswtichNodes import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_9,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_9,
-)
-
-from .VRGDG_GeneralNodes import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_10,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_10,
-)
-
-from .VRGDG_AudioNodes import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_11,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_11,
-)
-
-from .VRGDG_GeneralNodes2 import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_12,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_12,
-)
-
-from .VRGDG_IV_Adjustments import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_13,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_13,
-)
-
-from .LTXLoraTrain import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_14,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_14,
-)
-
-from .VRGDG_VoxCPM2Node import (
-    NODE_CLASS_MAPPINGS as NODE_CLASS_MAPPINGS_15,
-    NODE_DISPLAY_NAME_MAPPINGS as NODE_DISPLAY_NAME_MAPPINGS_15,
-)
+if _VRGDG_FAILED:
+    print(
+        "[VRGDG] Some submodules failed to import; their nodes will be unavailable:"
+    )
+    for _name, _err in _VRGDG_FAILED:
+        print(f"  - {_name}: {_err}")
+    print(
+        "[VRGDG] The rest of the pack still loaded. "
+        "Install the missing dep(s) above to enable the rest."
+    )
 
 _VRGDG_TEXTFILE_TEMPLATES = (
     ("fulllyrics", "full_lyrics.txt"),
@@ -113,41 +95,6 @@ try:
 except Exception as exc:
     print(f"[VRGDG] Failed to prepare TextFiles placeholders: {exc}")
 
-
-NODE_CLASS_MAPPINGS = {
-    **NODE_CLASS_MAPPINGS_2,
-    **NODE_CLASS_MAPPINGS_3,
-    **NODE_CLASS_MAPPINGS_4,
-    **NODE_CLASS_MAPPINGS_5,
-    **NODE_CLASS_MAPPINGS_6,  
-    **NODE_CLASS_MAPPINGS_7,
-    **NODE_CLASS_MAPPINGS_8,   
-    **NODE_CLASS_MAPPINGS_9,
-    **NODE_CLASS_MAPPINGS_10,
-    **NODE_CLASS_MAPPINGS_11, 
-    **NODE_CLASS_MAPPINGS_12,
-    **NODE_CLASS_MAPPINGS_13,    
-    **NODE_CLASS_MAPPINGS_14,
-    **NODE_CLASS_MAPPINGS_15,    
-    
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    **NODE_DISPLAY_NAME_MAPPINGS_2,
-    **NODE_DISPLAY_NAME_MAPPINGS_3,
-    **NODE_DISPLAY_NAME_MAPPINGS_4,
-    **NODE_DISPLAY_NAME_MAPPINGS_5,
-    **NODE_DISPLAY_NAME_MAPPINGS_6,  
-    **NODE_DISPLAY_NAME_MAPPINGS_7,
-    **NODE_DISPLAY_NAME_MAPPINGS_8,      
-    **NODE_DISPLAY_NAME_MAPPINGS_9,
-    **NODE_DISPLAY_NAME_MAPPINGS_10, 
-    **NODE_DISPLAY_NAME_MAPPINGS_11,
-    **NODE_DISPLAY_NAME_MAPPINGS_12,   
-    **NODE_DISPLAY_NAME_MAPPINGS_13,   
-    **NODE_DISPLAY_NAME_MAPPINGS_14,
-    **NODE_DISPLAY_NAME_MAPPINGS_15,    
-}
 
 WEB_DIRECTORY = "./web"
 
