@@ -566,6 +566,145 @@ async function saveText(payload) {
   return data;
 }
 
+
+function ensureGemma4ProgressOverlay() {
+  let overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "vrgdg-gemma4-progress-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 10030;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.62);
+  `;
+  overlay.innerHTML = `
+    <div style="width:min(520px,calc(100vw - 36px));background:#111827;border:1px solid #334155;border-radius:8px;padding:18px;color:#f8fafc;box-shadow:0 22px 70px rgba(0,0,0,.45);">
+      <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;">Gemma4</h3>
+      <div data-vrgdg-gemma4-progress-text style="font-size:13px;line-height:1.45;color:#cbd5e1;">Gemma4 is writing...</div>
+      <div style="height:8px;border-radius:999px;background:#1f2937;overflow:hidden;margin-top:14px;">
+        <div style="width:42%;height:100%;background:#10b981;border-radius:999px;animation:vrgdgGemma4Progress 1.2s ease-in-out infinite alternate;"></div>
+      </div>
+    </div>
+  `;
+  if (!document.getElementById("vrgdg-gemma4-progress-style")) {
+    const style = document.createElement("style");
+    style.id = "vrgdg-gemma4-progress-style";
+    style.textContent = "@keyframes vrgdgGemma4Progress{from{transform:translateX(-70%)}to{transform:translateX(170%)}}";
+    document.head.appendChild(style);
+  }
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function showGemma4Progress(message) {
+  const overlay = ensureGemma4ProgressOverlay();
+  const text = overlay.querySelector("[data-vrgdg-gemma4-progress-text]");
+  if (text) text.textContent = message || "Gemma4 is writing...";
+  overlay.style.display = "flex";
+}
+
+function hideGemma4Progress() {
+  const overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function createGemma4ModalShell(title) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 10031;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.66);
+  `;
+  const modal = document.createElement("div");
+  modal.style.cssText = `
+    width: min(720px, calc(100vw - 36px));
+    max-height: min(760px, calc(100vh - 36px));
+    overflow: auto;
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 18px;
+    color: #f8fafc;
+    box-shadow: 0 22px 70px rgba(0,0,0,.5);
+  `;
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  heading.style.cssText = "margin:0 0 12px;font-size:18px;font-weight:800;";
+  modal.appendChild(heading);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  return { overlay, modal };
+}
+
+function showGemma4ResultDialog(title, text, options = {}) {
+  return new Promise((resolve) => {
+    const { overlay, modal } = createGemma4ModalShell(title);
+    const output = document.createElement("textarea");
+    output.value = text || "";
+    output.readOnly = true;
+    output.style.cssText = `
+      width: 100%;
+      min-height: 190px;
+      box-sizing: border-box;
+      resize: vertical;
+      background: #0b1015;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      color: #f8fafc;
+      padding: 10px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    `;
+    modal.appendChild(output);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;";
+    const close = () => overlay.remove();
+    const useButton = createButton("Use This", "border:1px solid #059669;background:#10b981;color:#03130d;font-weight:800;padding:8px 14px;");
+    const retryButton = createButton("Try Again", "border:1px solid #7c3aed;background:#8b5cf6;color:white;font-weight:800;padding:8px 14px;");
+    const closeButton = createButton("Close", "border:1px solid #475569;background:#1f2937;color:white;font-weight:700;padding:8px 14px;");
+    useButton.addEventListener("click", () => { close(); resolve("use"); });
+    retryButton.addEventListener("click", () => { close(); resolve("retry"); });
+    closeButton.addEventListener("click", () => { close(); resolve("close"); });
+    actions.append(useButton);
+    if (options.allowRetry !== false) actions.append(retryButton);
+    actions.append(closeButton);
+    modal.appendChild(actions);
+    output.focus();
+  });
+}
+
+async function generateGemma4Text(target, payload) {
+  const response = await api.fetchApi("/vrgdg/gemma4/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target, ...payload }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || `Gemma4 request failed with status ${response.status}.`);
+  }
+  return String(data.text || "").trim();
+}
+
+async function unloadGemma4Model() {
+  try {
+    await api.fetchApi("/vrgdg/gemma4/unload", { method: "POST" });
+  } catch (error) {
+    console.warn("VRGDG Gemma4 unload failed", error);
+  }
+}
+
 async function loadPart2ConceptPrompts() {
   const response = await api.fetchApi("/vrgdg/part2/load_concept_prompts", { cache: "no-store" });
   const data = await response.json().catch(() => ({}));
@@ -3323,6 +3462,97 @@ function ensurePart2Modal() {
     }
   }
 
+
+  function extractPromptListForAdvancedGemma() {
+    const raw = String(controls.promptJson.value || "").trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => {
+          if (typeof item === "string") return item;
+          return item?.prompt || item?.text || item?.positive || JSON.stringify(item);
+        }).filter((line) => String(line || "").trim());
+      }
+      if (parsed && typeof parsed === "object") {
+        const values = parsed.prompts || parsed.scenes || parsed.items || parsed.texts;
+        if (Array.isArray(values)) {
+          return values.map((item) => {
+            if (typeof item === "string") return item;
+            return item?.prompt || item?.text || item?.positive || JSON.stringify(item);
+          }).filter((line) => String(line || "").trim());
+        }
+      }
+    } catch (error) {
+      // Plain text fallback below.
+    }
+    return raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  }
+
+  function cleanGemmaAdvancedList(text, expectedCount) {
+    const lines = String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*(?:[-*]+|\d+[.)])\s*/, "").trim())
+      .filter(Boolean);
+    return lines.slice(0, expectedCount).join("\n");
+  }
+
+  async function runGemma4ForAdvancedLists() {
+    const prompts = extractPromptListForAdvancedGemma();
+    if (!prompts.length) {
+      setStatus("Paste or enter Prompt JSON before asking Gemma4 to create advanced lists.", true);
+      return;
+    }
+
+    const activeCount = Math.max(0, Math.min(12, Number(controls.advanced.count.value || 0)));
+    const activePickers = controls.advanced.pickers.slice(0, activeCount);
+    if (!activePickers.length) {
+      setStatus("Turn on at least one Advanced Prompt Detail list first.", true);
+      return;
+    }
+
+    const modelName = controls.modelSelects?.llm?.value || "";
+    if (!modelName) {
+      setStatus("Choose an LLM model before using Gemma4.", true);
+      return;
+    }
+
+    advancedGemmaButton.disabled = true;
+    showGemma4Progress("Gemma4 is creating advanced prompt detail lists...");
+    try {
+      for (const [index, picker] of activePickers.entries()) {
+        const label = String(picker.label.value || picker.key || `Detail ${index + 1}`).trim();
+        showGemma4Progress(`Gemma4 is creating ${label} (${index + 1} of ${activePickers.length})...`);
+        const result = await generateGemma4Text("advanced_prompt_detail", {
+          model_name: modelName,
+          label,
+          prompts,
+          count: prompts.length,
+          max_tokens: Math.min(2048, Math.max(512, prompts.length * 48)),
+          temperature: 0.85,
+          top_p: 0.92,
+          context_size: 13000,
+          gpu_layers: -1,
+        });
+        picker.items.value = cleanGemmaAdvancedList(result, prompts.length);
+        picker.selectionMode.value = "index";
+        picker.items.dispatchEvent(new Event("input", { bubbles: true }));
+        picker.selectionMode.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      hideGemma4Progress();
+      savePart2Draft();
+      await showGemma4ResultDialog("Gemma4 Lists Created", "Gemma4 filled the active advanced prompt detail lists.", { allowRetry: false });
+      setStatus("Gemma4 created the advanced prompt detail lists.");
+    } catch (error) {
+      hideGemma4Progress();
+      setStatus(error?.message || "Gemma4 could not create the advanced lists.", true);
+      await showGemma4ResultDialog("Gemma4 Failed", error?.message || "Gemma4 could not create the advanced lists.", { allowRetry: false });
+    } finally {
+      await unloadGemma4Model();
+      advancedGemmaButton.disabled = false;
+    }
+  }
+
   function refreshPart2Controls() {
     const missing = [];
     suppressDraftSave = true;
@@ -3449,6 +3679,7 @@ function ensurePart2Modal() {
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
   controls.zImageLora.trigger.useTrigger.addEventListener("change", updateZImageLoraVisibility);
   pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
+  advancedGemmaButton.addEventListener("click", runGemma4ForAdvancedLists);
   controls.advanced.enabled.addEventListener("change", () => {
     if (controls.advanced.enabled.checked && Number(controls.advanced.count.value || 0) <= 0) {
       controls.advanced.count.value = "1";

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import numbers
 import os
@@ -29,6 +30,30 @@ _VRGDG_TEST_TEXT_TARGETS = {
     "image_to_video_notes": ("VRGDG_TEMP", "TextFiles", "i2vNotes", "i2vNotes.txt"),
 }
 
+
+
+_VRGDG_GEMMA4_ADVANCED_PROMPT_DETAIL_INSTRUCTIONS = """You create one short prompt-detail list for a music video workflow.
+
+Input:
+- Label name for the list, such as camera motion, lens style, lighting, expression, action, environment detail, or another prompt detail category
+- Number of items needed
+- A numbered list of scene prompts
+
+Task:
+Return exactly one line per scene prompt.
+Each line must match the requested label and should work as a concise add-on phrase for that same scene.
+
+Rules:
+- Output only the list lines.
+- Do not number the lines.
+- Do not use bullets.
+- Do not add headings, explanations, or extra text.
+- Return exactly the requested number of lines.
+- Keep each line short and specific.
+- Match each line to the corresponding prompt in order.
+- Avoid camera, lens, framing, or composition terms unless the label asks for them.
+- Avoid duplicate lines unless the prompts clearly need repetition.
+"""
 
 def _get_default_comfy_output_directory():
     base_path = getattr(folder_paths, "base_path", None)
@@ -216,6 +241,70 @@ def _get_part2_concept_prompts_path():
     )
 
 
+
+def _clean_gemma4_text(text):
+    text = str(text or "").strip()
+    text = re.sub(r"^```(?:text|markdown)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _build_gemma4_prompt(target, payload):
+    target = str(target or "").strip()
+    payload = payload or {}
+
+    if target == "advanced_prompt_detail":
+        label = str(payload.get("label") or "prompt detail").strip() or "prompt detail"
+        prompts = payload.get("prompts") or []
+        if not isinstance(prompts, list):
+            prompts = []
+        cleaned_prompts = [str(prompt or "").strip() for prompt in prompts if str(prompt or "").strip()]
+        count = int(payload.get("count") or len(cleaned_prompts) or 0)
+        count = max(1, min(200, count))
+        prompt_lines = "\n".join(f"{index + 1}. {prompt}" for index, prompt in enumerate(cleaned_prompts[:count]))
+        return (
+            f"{_VRGDG_GEMMA4_ADVANCED_PROMPT_DETAIL_INSTRUCTIONS}\n\n"
+            f"Label name:\n{label}\n\n"
+            f"Number of items needed:\n{count}\n\n"
+            f"Scene prompts:\n{prompt_lines}"
+        )
+
+    raise ValueError(f"Unknown Gemma4 target: {target}")
+
+
+def _run_gemma4_prompt(target, payload):
+    from . import LLM as vrgdg_llm
+
+    model_name = str(payload.get("model_name") or "").strip()
+    if not model_name:
+        raise ValueError("Choose an LLM model first.")
+
+    prompt = _build_gemma4_prompt(target, payload)
+    max_tokens = int(payload.get("max_tokens") or 1024)
+    temperature = float(payload.get("temperature") or 0.9)
+    top_p = float(payload.get("top_p") or 0.92)
+    context_size = int(payload.get("context_size") or 13000)
+    gpu_layers = int(payload.get("gpu_layers") or -1)
+
+    text = vrgdg_llm.llama_cpp_generate(
+        prompt=prompt,
+        model_name=model_name,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        context_size=context_size,
+        gpu_layers=gpu_layers,
+    )
+    return _clean_gemma4_text(text)
+
+
+def _unload_gemma4_prompt_model():
+    from . import LLM as vrgdg_llm
+
+    unload_fn = getattr(vrgdg_llm, "llama_cpp_unload", None)
+    if callable(unload_fn):
+        unload_fn()
+
 def _ensure_test_save_route_registered():
     global _VRGDG_TEST_SAVE_ROUTE_REGISTERED
     if _VRGDG_TEST_SAVE_ROUTE_REGISTERED:
@@ -328,6 +417,30 @@ def _ensure_test_save_route_registered():
             )
 
         return web.json_response({"ok": True, "path": target_path, "filename": filename})
+
+
+    @server_instance.routes.post("/vrgdg/gemma4/generate")
+    async def vrgdg_gemma4_generate(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON payload."}, status=400)
+
+        target = str(payload.get("target") or "").strip()
+        try:
+            text = await asyncio.to_thread(_run_gemma4_prompt, target, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+        return web.json_response({"ok": True, "text": text})
+
+    @server_instance.routes.post("/vrgdg/gemma4/unload")
+    async def vrgdg_gemma4_unload(request):
+        try:
+            await asyncio.to_thread(_unload_gemma4_prompt_model)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True})
 
     @server_instance.routes.post("/vrgdg/apply_node_modes")
     async def vrgdg_apply_node_modes(request):
