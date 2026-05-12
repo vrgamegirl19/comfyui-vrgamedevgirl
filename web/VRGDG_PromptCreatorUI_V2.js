@@ -2055,7 +2055,16 @@ function ensurePart2Modal() {
     window.open(ADVANCED_PROMPT_DETAILS_GPT_URL, "_blank", "noopener,noreferrer");
   });
 
-  advancedGptRow.append(advancedGptNote, advancedGptButton);
+  const advancedGemmaButton = createButton(
+    "Gemma4 Create Lists",
+    "border: 1px solid #059669; background: #10b981; color: #052e1b; font-weight: 800;"
+  );
+
+  const advancedHelperButtons = document.createElement("div");
+  advancedHelperButtons.style.cssText = "display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;";
+  advancedHelperButtons.append(advancedGemmaButton, advancedGptButton);
+
+  advancedGptRow.append(advancedGptNote, advancedHelperButtons);
   advancedSection.appendChild(advancedGptRow);
 
   const advancedCountRow = document.createElement("div");
