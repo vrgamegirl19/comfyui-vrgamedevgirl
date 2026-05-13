@@ -60,6 +60,8 @@ _VRGDG_TEXTFILE_TEMPLATES = (
     ("subjectandscenes", "subjectsandscenes.txt"),
     ("t2iNotes", "t2iNotes.txt"),
     ("i2vNotes", "i2vNotes.txt"),
+    ("t2i_Prompts", "t2i_Prompts.txt"),
+    ("t2v_Prompts", "t2v_Prompts.txt"),
     ("lyricsegements", "lyricsegements.txt"),
     ("themestyle2", "themestyle2.txt"),
     ("fullstory", "fullstory.txt"),

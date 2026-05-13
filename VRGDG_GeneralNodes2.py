@@ -1,4 +1,3 @@
-import asyncio
 import json
 import numbers
 import os
@@ -6,6 +5,14 @@ import re
 import threading
 import torch
 import time
+import asyncio
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+import uuid
+from datetime import datetime
 
 import comfy
 import folder_paths
@@ -21,6 +28,34 @@ class AnyType(str):
 any_typ = AnyType("*")
 
 _VRGDG_TEST_SAVE_ROUTE_REGISTERED = False
+_VRGDG_ACESTEP_PROCESS = None
+_VRGDG_ACESTEP_LOCK = threading.Lock()
+_VRGDG_ACESTEP_PORT = 8765
+_VRGDG_ACESTEP_CONFIG_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ace_step_config.json"))
+_VRGDG_ACESTEP_PROGRESS = {
+    "stage": "idle",
+    "message": "ACE-Step is idle.",
+    "log": [],
+    "updated": time.time(),
+}
+_VRGDG_T2I_CONCEPT_PROGRESS = {
+    "stage": "idle",
+    "message": "T2I concept prompt generator is idle.",
+    "current": 0,
+    "total": 0,
+    "current_key": "",
+    "output_path": "",
+    "updated": time.time(),
+}
+_VRGDG_T2V_CONCEPT_PROGRESS = {
+    "stage": "idle",
+    "message": "T2V concept prompt generator is idle.",
+    "current": 0,
+    "total": 0,
+    "current_key": "",
+    "output_path": "",
+    "updated": time.time(),
+}
 _VRGDG_TEST_TEXT_TARGETS = {
     "full_lyrics": ("VRGDG_TEMP", "TextFiles", "fulllyrics", "full_lyrics.txt"),
     "style_theme": ("VRGDG_TEMP", "TextFiles", "themestyle", "themestyle.txt"),
@@ -30,32 +65,326 @@ _VRGDG_TEST_TEXT_TARGETS = {
     "image_to_video_notes": ("VRGDG_TEMP", "TextFiles", "i2vNotes", "i2vNotes.txt"),
 }
 
+_VRGDG_GEMMA4_STYLE_INSTRUCTIONS = """send back ONLY  this 3-part block:
 
+STYLE / THEME
+1 short sentence describing the overall feeling, tone, and visual direction.
 
-_VRGDG_GEMMA4_ADVANCED_PROMPT_DETAIL_INSTRUCTIONS = """You create one short prompt-detail list for a music video workflow.
+COLOR PALETTE
+1 short line describing the main colors and accent colors. Never fade into dark colors.
+
+LIGHTING / MOOD
+1 short line describing brightness, contrast, and shadows.
+
+Rules:
+Use simple, everyday words.
+Keep the full output under 1000 characters.
+Do not include camera, lens, framing, composition, or extra detail sections.
+Avoid metaphors, symbolism, poetic language, and extra explanation.
+Output only the block."""
+
+_VRGDG_GEMMA4_STORY_INSTRUCTIONS = """You turn song lyrics and optional user notes into a short story idea/concept.
 
 Input:
-- Label name for the list, such as camera motion, lens style, lighting, expression, action, environment detail, or another prompt detail category
-- Number of items needed
+- Lyrics
+- Optional notes such as style, genre, mood, setting, characters, themes, or constraints
+
+Task:
+Create one concise short story idea inspired by the lyrics and notes.
+
+Rules:
+- Keep the final concept under 1000 characters.
+- Do not quote or reuse long lyric phrases.
+- Capture the emotional core, imagery, conflict, or theme of the lyrics.
+- If notes are provided, follow them.
+- If notes conflict with the lyrics, blend them creatively.
+- Output only the story concept.
+- No explanations, titles, bullet points, or extra text.
+
+Style:
+- Clear, vivid, and specific.
+- Prefer cinematic story hooks.
+- Avoid vague concepts like "a person learns about love."
+- Make it feel like a story premise, not a summary of the song.
+
+CLICK HERE TO START behavior:
+If the user says exactly "CLICK HERE TO START", respond only with:
+Please provide me with the full lyrics and optional style/theme and gender of your main character."""
+
+_VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS = """# LLM Instructions: Subject & Location Extractor
+
+You are a structured extraction assistant.
+
+Your task is to extract and organize:
+
+- One simple subject implied by the story idea and optional user notes
+- A list of distinct physical locations implied by the story idea and optional user notes
+
+USER NOTES PRIORITY
+
+Optional user notes have priority over inference.
+If the user notes provide an exact subject line or say to use a subject line verbatim, copy that subject line exactly as written.
+Do not rewrite, shorten, correct, reformat, or replace a verbatim subject line.
+Only infer the subject when the user did not provide an exact subject line.
+
+OUTPUT FORMAT (Follow Exactly)
+
+subject: a [gender], with [hair color], wearing [outfit].
+
+Locations:
+[one possible location]
+[one possible location]
+[one possible location]
+[one possible location]
+
+RULES FOR SUBJECT
+
+Create one simple subject only.
+
+Infer gender only if clearly implied. If unclear, use:
+
+subject: a person, with [hair color], wearing [outfit].
+
+If hair color is not mentioned, invent a reasonable default that fits the tone.
+
+Do not include eye color.
+Do not include hats, headwear, jewelry, or accessories.
+Keep the subject concise.
+The outfit should reflect the tone, genre, and setting implied by the story idea.
+The outfit must be described using specific clothing items.
+
+Do NOT use vague descriptors such as:
+sleek
+practical
+stylish
+cool
+modern
+fashionable
+
+Do NOT include personality traits, emotions, or backstory.
+Do NOT describe actions.
+Only include gender, hair color, and outfit.
+
+RULES FOR LOCATIONS
+
+List only physical environments or locations.
+Locations should be directly mentioned or strongly implied.
+If locations are not clear, infer simple locations that fit the tone and imagery.
+Locations must be places where a person could realistically be standing and photographed.
+Avoid aerial perspectives, drone views, satellite views, or wide landscape shots that imply the camera is far above the environment.
+Keep descriptions concise.
+Use one short phrase per line.
+No camera directions.
+No emotional language.
+No symbolic explanations.
+No actions.
+Just the setting.
+
+ADDITIONAL RULES
+
+Never output duplicate locations.
+Before producing the final output, remove any repeated lines.
+Do not add commentary.
+Do not explain your choices.
+Do not summarize.
+Only output the structured list.
+If the user says CLICK HERE TO START, respond: Please provide the lyrics and optional gender of the main character and any other details like hair color and clothing. Otherwise I'll make them up."""
+
+_VRGDG_GEMMA4_LYRICS_INSTRUCTIONS = """You are a professional songwriter creating short, complete lyrics for ACE-Step music generation.
+
+Task:
+Turn the user's song idea and optional notes into original song lyrics.
+
+Output only the lyrics.
+No title.
+No genre summary.
+No style prompt.
+No explanations.
+No commentary.
+
+Choose structure based on requested duration:
+
+If duration is 60 seconds or less:
+
+[Verse 1]
+4 lines
+
+[Chorus]
+4 lines
+
+[Verse 2]
+4 lines
+
+[Chorus]
+4 lines
+
+If duration is 61 to 150 seconds:
+
+[Verse 1]
+4 lines
+
+[Chorus]
+4 lines with a strong repeatable hook
+
+[Verse 2]
+4 lines
+
+[Bridge]
+4 lines that add contrast or a shift
+
+[Chorus]
+Repeat or lightly vary the chorus, 4 lines
+
+If duration is over 150 seconds:
+
+[Intro]
+2 lines
+
+[Verse 1]
+4 lines
+
+[Chorus]
+4 lines
+
+[Verse 2]
+4 lines
+
+[Bridge]
+4 lines
+
+[Chorus]
+4 lines
+
+[Outro]
+2 lines
+
+Rules:
+- Keep the song suitable for the requested duration.
+- Use simple, singable phrasing.
+- Keep imagery consistent.
+- Make the chorus memorable.
+- Do not copy existing songs, artists, or lyrics.
+- Do not include section names outside the required bracketed structure.
+- Do not include chords, production notes, style prompts, or metadata.
+- Output only the finished lyrics."""
+
+_VRGDG_GEMMA4_ACESTEP_TAGS_INSTRUCTIONS = """You create ACE-Step 1.5 XL Text2Music Tags.
+
+ACE-Step Tags should be descriptive tags, genres, instruments, vocal style, production style, or scene descriptions separated by commas.
+
+Task:
+Read the lyrics and optional user notes, then output one comma-separated ACE-Step Tags line.
+
+Rules:
+- Output only one comma-separated line.
+- No title.
+- No bullets.
+- No explanations.
+- No quotes.
+- Include genre or genre stack.
+- Include vocal type or vocal style.
+- Include mood or energy.
+- Include production style.
+- Include key instruments.
+- Include atmosphere if useful.
+- Keep it under 350 characters.
+- Do not mention visual video style, camera, colors, lighting, locations, or story details unless they describe musical atmosphere.
+- If user notes ask for a style, follow them and translate into ACE-Step music tags.
+
+Good format:
+dark pop, emotional female vocal, pulsing synth bass, dramatic drums, glossy production, catchy chorus, tense atmosphere"""
+
+_VRGDG_GEMMA4_T2I_FROM_CONCEPT_INSTRUCTIONS = """Create one text-to-image prompt from the user input.
+
+User input includes:
+- subject
+- one current visual prompt
+- a style/theme
+
+Use all parts of the user input together.
+
+Priority:
+- Use the current visual prompt as the main scene foundation.
+- Keep the main action, subject, and setting from the current visual prompt unless the user clearly changes them.
+- Use the style/theme to control the visual aesthetic, color grading, lighting, mood, wardrobe refinement, environment design, and overall cinematic treatment.
+- Use the provided subject as the main subject of the image.
+
+Rules:
+- Create one polished text-to-image prompt.
+- Treat the current visual prompt as the base scene description.
+- Expand and improve that scene using the style/theme.
+- Keep the image prompt concrete and visual.
+- Use the style/theme to influence color palette, tone, texture, lighting style, atmosphere, and production quality.
+- If the current visual prompt includes concrete objects, actions, reflections, or setting details, keep them visible in the final prompt.
+- Do not use metaphors, abstract symbolic wording, or non-visible language.
+- Do not use phrases like "metaphorical thunder," "invisible storm clouds," "lightness of being," or other poetic abstractions.
+- Describe only things that can be seen in the final image.
+- Keep the result as one strong image prompt, not a summary.
+- Correct obvious typos, malformed words, and broken phrases from the current visual prompt before using it.
+- Fix spelling errors in character, clothing, objects, and setting details.
+- Preserve the intended meaning while cleaning the wording.
+- Do not mention that typos were fixed.
+- Do not explain your choices.
+- Only send the final prompt text.
+
+Use this exact format:
+
+A high resolution cinematic photograph of a [subject], [action or pose based primarily on the current visual prompt], in [environment/location shaped by the current visual prompt], during [time of day]. The subject is wearing [main outfit from the current visual prompt refined by the style/theme], [shoes/accessories from the current visual prompt refined by the style/theme], and [additional visible style details inspired by the style/theme]. Their hair is [hair color], [hair length/style], and [movement or texture]. The environment is [visual style of location from the current visual prompt shaped by the style/theme] with [background details that visibly represent the current visual prompt], [lighting and color grading details that match the style/theme], and [surface/reflection/material details connected to the current visual prompt and style/theme]. Camera is [camera angle] with a [lens type or framing]. The weather is [weather condition appropriate to the scene], with [atmospheric detail influenced by the style/theme], creating a [mood/style] mood.
+
+[subject] = character gender! don't just say "subject"!
+
+Only send the final prompt text. Do not include labels, notes, quotes, or extra text."""
+
+_VRGDG_GEMMA4_T2V_FROM_CONCEPT_INSTRUCTIONS = """Convert the user's concept prompt into a dynamic text-to-video prompt.
+
+Use the user's prompt as the full scene foundation. Preserve the original subject, setting, outfit, mood, atmosphere, and scene identity. Infer only the missing video details needed to make the scene feel complete, including time of day, weather, lighting behavior, environmental movement, subject movement, camera movement, and performance energy. Do not add unrelated characters, new locations, major story changes, captions, text overlays, dialogue, or audio instructions.
+
+Add fast, cinematic motion by giving the subject a clear action sequence, expressive facial expressions, strong gestures, and intentional camera movement. Keep the subject visible, centered, and clearly framed throughout. Add lighting only as natural scene behavior, such as flickering stage lights, passing sunlight, glowing streetlights, storm flashes, reflections, or shifting shadows, based on what best fits the user's prompt.
+
+Output one polished paragraph using this structure:
+
+The [Subject] who is singing with passion and in sync with the audio, in [setting/environment] during [time/weather]. The subject [dynamic performance action with expressive face, body movement, and strong gestures]. Their clothing/hair [reacts to movement, wind, or performance energy]. The lighting [changes or reacts naturally within the scene]. The camera [Camera Motion] while maintaining [subject visibility and framing]. The environment [reacts dynamically].
+
+Each word in brackets should be chosen based on the user input and what best fits the scene.
+
+Rules:
+- This is text-to-video
+- Subject must be physically singing with passion
+- Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color grading, camera photo style, or static image-quality descriptions.
+- Keep it vivid, fast, cinematic, dynamic, and video-ready
+- use one location infered by the user's concept prompt. If one is not listed use one from the location list.
+- Must use user input to help create the prompt
+- Only send the final prompt text. Do not include labels, notes, quotes, or extra text."""
+
+_VRGDG_GEMMA4_ADVANCED_PROMPT_DETAIL_INSTRUCTIONS = """You create one visual prompt detail list for a video workflow.
+
+Input:
+- A detail label, such as Camera Motion, Lighting, Weather, Emotion, Facial Expression, Dialogue, or a custom label
 - A numbered list of scene prompts
 
 Task:
-Return exactly one line per scene prompt.
-Each line must match the requested label and should work as a concise add-on phrase for that same scene.
+For each scene prompt, create exactly one matching detail line for the requested label.
 
 Rules:
-- Output only the list lines.
-- Do not number the lines.
-- Do not use bullets.
-- Do not add headings, explanations, or extra text.
-- Return exactly the requested number of lines.
-- Keep each line short and specific.
-- Match each line to the corresponding prompt in order.
+- Output only the list.
+- Return exactly one line per scene prompt.
+- Keep the line order exactly the same as the scene prompt order.
+- Do not include numbers, bullets, labels, titles, quotes, markdown, or explanations.
+- Each line must be short and specific.
+- Each line must fit the requested label only.
 - Follow the optional user guidance if provided.
 - If optional guidance conflicts with the requested label, keep the label as the main category and use the guidance only for tone, speed, mood, intensity, or style.
-- Avoid camera, lens, framing, or composition terms unless the label asks for them.
-- Avoid duplicate lines unless the prompts clearly need repetition.
-"""
+- Do not combine multiple categories in one line.
+- Do not repeat the full prompt.
+- Avoid vague words like cinematic, beautiful, cool, stylish, dramatic, or interesting unless the label specifically asks for mood.
+- If the prompt does not clearly imply a value, invent a simple value that fits the scene.
+- For Camera Motion, output only camera movement phrases.
+- For Dialogue, output only one short spoken line with no quotation marks.
+- For Lighting, output only lighting descriptions.
+- For Weather, output only weather descriptions.
+- For Time of Day, output only time-of-day phrases.
+- For Emotion or Facial Expression, output only the emotion or expression."""
+
 
 def _get_default_comfy_output_directory():
     base_path = getattr(folder_paths, "base_path", None)
@@ -227,6 +556,731 @@ def _get_test_popup_audio_dir():
     return os.path.normpath(os.path.join(folder_paths.get_output_directory(), "VRGDG_AudioFiles"))
 
 
+def _get_acestep_backup_dir():
+    return os.path.normpath(os.path.join(folder_paths.get_output_directory(), "VRGDG_ACE_Step_Songs"))
+
+
+def _default_acestep_root():
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "third_party", "ACE-Step-1.5"))
+
+
+def _read_acestep_config():
+    try:
+        with open(_VRGDG_ACESTEP_CONFIG_PATH, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_acestep_config(data):
+    with open(_VRGDG_ACESTEP_CONFIG_PATH, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2)
+
+
+def _normalize_acestep_root(value):
+    text = str(value or "").strip().strip("\"'")
+    if not text:
+        return _default_acestep_root()
+    expanded = os.path.expandvars(os.path.expanduser(text))
+    root = os.path.normpath(os.path.abspath(expanded))
+    basename = os.path.basename(root).lower()
+    if basename in {"ace-step", "ace_step"}:
+        root = os.path.join(os.path.dirname(root), "ACE-Step-1.5")
+    elif basename not in {"ace-step-1.5", "ace_step-1.5"}:
+        root = os.path.join(root, "ACE-Step-1.5")
+    return os.path.normpath(root)
+
+
+def _set_acestep_root(value):
+    root = _normalize_acestep_root(value)
+    _write_acestep_config({"install_root": root})
+    return root
+
+
+def _get_acestep_root():
+    return _normalize_acestep_root(_read_acestep_config().get("install_root") or _default_acestep_root())
+
+
+def _get_acestep_repo_dir():
+    return _get_acestep_root()
+
+
+def _get_acestep_venv_python():
+    root = _get_acestep_root()
+    if os.name == "nt":
+        return os.path.join(root, ".venv", "Scripts", "python.exe")
+    return os.path.join(root, ".venv", "bin", "python")
+
+
+def _get_acestep_checkpoint_dir():
+    return os.path.join(_get_acestep_root(), "checkpoints", "acestep-v15-xl-turbo")
+
+
+def _get_acestep_log_path():
+    return os.path.join(_get_acestep_root(), "ace_step_api.log")
+
+
+def _set_acestep_progress(stage, message, append=True):
+    text = str(message or "")
+    _VRGDG_ACESTEP_PROGRESS["stage"] = str(stage or "")
+    _VRGDG_ACESTEP_PROGRESS["message"] = text
+    _VRGDG_ACESTEP_PROGRESS["updated"] = time.time()
+    if append and text:
+        log = list(_VRGDG_ACESTEP_PROGRESS.get("log") or [])
+        log.append(f"{datetime.now().strftime('%H:%M:%S')} {text}")
+        _VRGDG_ACESTEP_PROGRESS["log"] = log[-30:]
+
+
+def _get_acestep_progress():
+    data = dict(_VRGDG_ACESTEP_PROGRESS)
+    log_path = _get_acestep_log_path()
+    tail = []
+    try:
+        if os.path.isfile(log_path):
+            with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
+                tail = handle.readlines()[-12:]
+    except Exception:
+        tail = []
+    data["service_log_tail"] = [line.rstrip() for line in tail if line.strip()]
+    data["log_path"] = log_path
+    return data
+
+
+def _set_t2i_concept_progress(stage, message, current=None, total=None, current_key=None, output_path=None):
+    _VRGDG_T2I_CONCEPT_PROGRESS["stage"] = str(stage or "")
+    _VRGDG_T2I_CONCEPT_PROGRESS["message"] = str(message or "")
+    _VRGDG_T2I_CONCEPT_PROGRESS["updated"] = time.time()
+    if current is not None:
+        _VRGDG_T2I_CONCEPT_PROGRESS["current"] = int(current)
+    if total is not None:
+        _VRGDG_T2I_CONCEPT_PROGRESS["total"] = int(total)
+    if current_key is not None:
+        _VRGDG_T2I_CONCEPT_PROGRESS["current_key"] = str(current_key)
+    if output_path is not None:
+        _VRGDG_T2I_CONCEPT_PROGRESS["output_path"] = str(output_path)
+
+
+def _get_t2i_concept_progress():
+    return dict(_VRGDG_T2I_CONCEPT_PROGRESS)
+
+
+def _set_t2v_concept_progress(stage, message, current=None, total=None, current_key=None, output_path=None):
+    _VRGDG_T2V_CONCEPT_PROGRESS["stage"] = str(stage or "")
+    _VRGDG_T2V_CONCEPT_PROGRESS["message"] = str(message or "")
+    _VRGDG_T2V_CONCEPT_PROGRESS["updated"] = time.time()
+    if current is not None:
+        _VRGDG_T2V_CONCEPT_PROGRESS["current"] = int(current)
+    if total is not None:
+        _VRGDG_T2V_CONCEPT_PROGRESS["total"] = int(total)
+    if current_key is not None:
+        _VRGDG_T2V_CONCEPT_PROGRESS["current_key"] = str(current_key)
+    if output_path is not None:
+        _VRGDG_T2V_CONCEPT_PROGRESS["output_path"] = str(output_path)
+
+
+def _get_t2v_concept_progress():
+    return dict(_VRGDG_T2V_CONCEPT_PROGRESS)
+
+
+def _acestep_is_installed():
+    repo_dir = _get_acestep_repo_dir()
+    venv_python = os.path.join(repo_dir, ".venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+    if not os.path.isfile(venv_python):
+        return False
+    try:
+        probe = subprocess.run(
+            [venv_python, "-c", "import sys; print(sys.executable)"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        executable = (probe.stdout or "").strip().lower()
+    except Exception:
+        executable = ""
+    if "python_embed" in executable or "python_embedded" in executable:
+        return False
+    return (
+        os.path.isfile(os.path.join(repo_dir, "pyproject.toml"))
+        and os.path.isfile(os.path.join(repo_dir, "acestep", "api_server.py"))
+        and os.path.isdir(os.path.join(repo_dir, ".venv"))
+    )
+
+
+def _detect_acestep_layout(root):
+    root = _normalize_acestep_root(root)
+    candidates = [
+        root,
+        os.path.join(root, "ACE-Step-1.5"),
+    ]
+    for repo_dir in candidates:
+        api_file = os.path.join(repo_dir, "acestep", "api_server.py")
+        if not os.path.isfile(api_file) or not os.path.isfile(os.path.join(repo_dir, "pyproject.toml")):
+            continue
+        venv_python = os.path.join(repo_dir, ".venv", "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+        if os.path.isfile(venv_python):
+            return {
+                "ok": True,
+                "install_root": repo_dir,
+                "repo_dir": repo_dir,
+                "python_path": venv_python,
+                "checkpoint_dir": os.path.join(repo_dir, "checkpoints", "acestep-v15-xl-turbo"),
+                "engine": "ACE-Step-1.5",
+            }
+    return {
+        "ok": False,
+        "error": "Could not find an ACE-Step-1.5 repo with .venv. Expected pyproject.toml and acestep/api_server.py.",
+    }
+
+
+def _use_existing_acestep(root):
+    detected = _detect_acestep_layout(root)
+    if not detected.get("ok"):
+        raise RuntimeError(detected.get("error") or "ACE-Step install could not be verified.")
+    _write_acestep_config({"install_root": detected["install_root"]})
+    return detected
+
+
+def _acestep_service_url(path=""):
+    return f"http://127.0.0.1:{_VRGDG_ACESTEP_PORT}{path}"
+
+
+def _acestep_health(timeout=1.0):
+    try:
+        with urllib.request.urlopen(_acestep_service_url("/health"), timeout=timeout) as response:
+            if response.status != 200:
+                return False
+            try:
+                data = json.loads(response.read().decode("utf-8", errors="replace"))
+            except Exception:
+                return False
+            service = data.get("data", {}).get("service") if isinstance(data.get("data"), dict) else ""
+            return service == "ACE-Step API"
+    except Exception:
+        return False
+
+
+def _acestep_any_server_on_port(timeout=0.5):
+    try:
+        with urllib.request.urlopen(_acestep_service_url("/health"), timeout=timeout) as response:
+            return response.status == 200
+    except Exception:
+        return False
+
+
+def _stop_process_on_port(port):
+    if os.name != "nt":
+        return False
+    command = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        (
+            f"$c = Get-NetTCPConnection -LocalPort {int(port)} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; "
+            "if ($c) { Stop-Process -Id $c.OwningProcess -Force; Write-Output $c.OwningProcess }"
+        ),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        stopped = (result.stdout or "").strip()
+        return bool(stopped)
+    except Exception:
+        return False
+
+
+def _run_checked(command, cwd=None, log_lines=None, env=None):
+    if log_lines is not None:
+        log_lines.append(f"> {' '.join(command)}")
+    _set_acestep_progress("install", f"Running: {' '.join(command[:4])}{' ...' if len(command) > 4 else ''}")
+    completed = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    if log_lines is not None:
+        if stdout:
+            log_lines.extend(stdout.splitlines()[-80:])
+        if stderr:
+            log_lines.extend(stderr.splitlines()[-80:])
+    if completed.returncode != 0:
+        detail = stderr or stdout or f"exit code {completed.returncode}"
+        raise RuntimeError(detail)
+    return completed
+
+
+def _resolve_venv_python_command():
+    candidates = []
+    launcher = shutil.which("py")
+    if launcher:
+        for minor in (12, 11, 10):
+            candidates.append([launcher, f"-3.{minor}"])
+    candidates.append([sys.executable])
+    python = shutil.which("python")
+    if python:
+        candidates.append([python])
+    python3 = shutil.which("python3")
+    if python3:
+        candidates.append([python3])
+
+    seen = set()
+    for command in candidates:
+        key = tuple(command)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            version = subprocess.run(
+                command + ["--version"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=True,
+            )
+            version_text = (version.stdout or version.stderr or "").strip()
+            if not re.search(r"Python 3\.(10|11|12)\.", version_text):
+                continue
+            venv_check = subprocess.run(
+                command + ["-c", "import venv"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if venv_check.returncode == 0:
+                return command, version_text
+        except Exception:
+            continue
+
+    raise RuntimeError(
+        "Could not find a Python 3.10-3.12 install with the standard venv module. "
+        "The ComfyUI embedded Python does not include venv. Install normal Python 3.10, 3.11, or 3.12, then try again."
+    )
+
+
+def _resolve_uv_command():
+    candidates = [shutil.which("uv")]
+    if os.name == "nt":
+        candidates.extend(
+            [
+                os.path.join(os.path.expanduser("~"), ".local", "bin", "uv.exe"),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links", "uv.exe"),
+            ]
+        )
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    raise RuntimeError(
+        "ACE-Step 1.5 requires the uv package manager. Install uv first, then try again. "
+        "Windows: winget install --id=astral-sh.uv -e"
+    )
+
+
+def _ensure_python_uv(python_command, python_executable, repo_dir, log_lines=None):
+    check = subprocess.run(
+        python_command + ["-m", "uv", "--version"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if check.returncode != 0:
+        bootstrap_dir = os.path.join(repo_dir, ".uv-bootstrap")
+        bootstrap_python = os.path.join(bootstrap_dir, "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+        if not os.path.isfile(bootstrap_python):
+            _set_acestep_progress("install", "Creating local uv bootstrap environment...")
+            _run_checked(python_command + ["-m", "venv", bootstrap_dir], cwd=repo_dir, log_lines=log_lines)
+        _set_acestep_progress("install", "Installing uv into local bootstrap environment...")
+        _run_checked([bootstrap_python, "-m", "pip", "install", "--upgrade", "pip", "uv"], cwd=repo_dir, log_lines=log_lines)
+        version = subprocess.run(
+            [bootstrap_python, "-m", "uv", "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        if log_lines is not None:
+            log_lines.append((version.stdout or version.stderr or "").strip())
+        return [bootstrap_python, "-m", "uv"]
+    version = subprocess.run(
+        python_command + ["-m", "uv", "--version"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+    if log_lines is not None:
+        log_lines.append((version.stdout or version.stderr or "").strip())
+    return python_command + ["-m", "uv"]
+
+
+def _resolve_acestep15_python():
+    candidates = []
+    launcher = shutil.which("py")
+    if launcher:
+        candidates.extend([[launcher, "-3.12"], [launcher, "-3.11"]])
+    for executable in (shutil.which("python"), shutil.which("python3")):
+        if executable:
+            candidates.append([executable])
+    candidates.extend([["C:\\Program Files\\Python312\\python.exe"], ["C:\\Program Files\\Python311\\python.exe"]])
+
+    seen = set()
+    for command in candidates:
+        key = tuple(command)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            probe = subprocess.run(
+                command + [
+                    "-c",
+                    "import sys,platform,venv; print(sys.executable); print(platform.python_version()); print(platform.machine())",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
+        except Exception:
+            continue
+        if probe.returncode != 0:
+            continue
+        lines = [line.strip() for line in (probe.stdout or "").splitlines()]
+        if len(lines) < 3:
+            continue
+        executable, version, machine = lines[:3]
+        if "python_embed" in executable.lower() or "python_embedded" in executable.lower():
+            continue
+        if not re.match(r"3\.(11|12)\.", version):
+            continue
+        if os.name == "nt" and machine.upper() not in {"AMD64", "X86_64"}:
+            continue
+        return command, executable, version
+
+    raise RuntimeError(
+        "ACE-Step 1.5 needs normal Python 3.11 or 3.12, not ComfyUI embedded Python. "
+        "Install Python 3.12 from python.org, then try again."
+    )
+
+
+def _remove_invalid_acestep15_venv(repo_dir, python_executable):
+    venv_dir = os.path.join(repo_dir, ".venv")
+    venv_python = os.path.join(venv_dir, "Scripts" if os.name == "nt" else "bin", "python.exe" if os.name == "nt" else "python")
+    if not os.path.isfile(venv_python):
+        return
+    try:
+        probe = subprocess.run(
+            [venv_python, "-c", "import sys; print(sys.executable)"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+        current = (probe.stdout or "").strip()
+    except Exception:
+        current = ""
+    if "python_embed" in current.lower() or "python_embedded" in current.lower() or not current:
+        _set_acestep_progress("install", "Removing invalid ACE-Step 1.5 venv made with embedded Python...")
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        return
+    if os.path.normcase(os.path.abspath(current)) != os.path.normcase(os.path.abspath(python_executable)):
+        _set_acestep_progress("install", "Recreating ACE-Step 1.5 venv with the selected normal Python...")
+        shutil.rmtree(venv_dir, ignore_errors=True)
+
+
+def _install_acestep(install_root=""):
+    with _VRGDG_ACESTEP_LOCK:
+        _set_acestep_progress("install", "Preparing ACE-Step 1.5 install...")
+        log_lines = []
+        root = _set_acestep_root(install_root)
+        repo_dir = _get_acestep_repo_dir()
+        checkpoint_dir = _get_acestep_checkpoint_dir()
+        parent_dir = os.path.dirname(root)
+        os.makedirs(parent_dir, exist_ok=True)
+
+        if not os.path.isfile(os.path.join(repo_dir, "pyproject.toml")):
+            _set_acestep_progress("install", "Cloning ACE-Step 1.5 repository...")
+            git = shutil.which("git")
+            if not git:
+                raise RuntimeError("Git was not found on PATH. Install Git, then try again.")
+            _run_checked([git, "clone", "https://github.com/ace-step/ACE-Step-1.5.git", repo_dir], cwd=parent_dir, log_lines=log_lines)
+
+        python_command, python_executable, python_version = _resolve_acestep15_python()
+        uv_command = _ensure_python_uv(python_command, python_executable, repo_dir, log_lines=log_lines)
+        _remove_invalid_acestep15_venv(repo_dir, python_executable)
+        log_lines.append(f"Using Python {python_version} for ACE-Step 1.5: {python_executable}")
+        _set_acestep_progress("install", "Installing ACE-Step 1.5 dependencies with uv...")
+        _run_checked(uv_command + ["sync", "--python", python_executable], cwd=repo_dir, log_lines=log_lines)
+
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        _set_acestep_progress("install", "Downloading ACE-Step 1.5 XL Turbo and 1.7B LM models...")
+        _run_checked(
+            uv_command + ["run", "--no-sync", "acestep-download", "--model", "acestep-v15-xl-turbo"],
+            cwd=repo_dir,
+            log_lines=log_lines,
+        )
+        _run_checked(
+            uv_command + ["run", "--no-sync", "acestep-download", "--model", "acestep-5Hz-lm-1.7B"],
+            cwd=repo_dir,
+            log_lines=log_lines,
+        )
+        _set_acestep_progress("ready", "ACE-Step 1.5 install finished.")
+        return {
+            "ok": True,
+            "install_root": root,
+            "repo_dir": repo_dir,
+            "checkpoint_dir": checkpoint_dir,
+            "engine": "ACE-Step-1.5",
+            "log": "\n".join(log_lines[-200:]),
+        }
+
+
+def _start_acestep():
+    global _VRGDG_ACESTEP_PROCESS
+    with _VRGDG_ACESTEP_LOCK:
+        _set_acestep_progress("starting", "Checking ACE-Step API status...")
+        if _acestep_health():
+            _set_acestep_progress("ready", "ACE-Step API is already running.")
+            return {"ok": True, "running": True, "url": _acestep_service_url(), "reused": True}
+        if _acestep_any_server_on_port():
+            _set_acestep_progress("starting", "Stopping older incompatible ACE-Step server...")
+            if not _stop_process_on_port(_VRGDG_ACESTEP_PORT):
+                message = (
+                    f"An older or incompatible ACE-Step server is already running on {_acestep_service_url()}, "
+                    "and VRGDG could not stop it automatically."
+                )
+                _set_acestep_progress("failed", message)
+                raise RuntimeError(message)
+            time.sleep(1.0)
+        if not _acestep_is_installed():
+            raise RuntimeError("ACE-Step is not installed yet.")
+
+        process = _VRGDG_ACESTEP_PROCESS
+        if process is not None and process.poll() is None:
+            _set_acestep_progress("starting", "ACE-Step process is already starting/running.")
+            return {"ok": True, "running": True, "url": _acestep_service_url(), "reused": True}
+
+        _set_acestep_progress("starting", "Launching ACE-Step 1.5 API with 1.7B LM thinking enabled...")
+        repo_dir = _get_acestep_repo_dir()
+        log_path = _get_acestep_log_path()
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        log_handle = open(log_path, "a", encoding="utf-8", errors="replace")
+        uv = _resolve_uv_command()
+        command = [
+            uv,
+            "run",
+            "--no-sync",
+            "acestep-api",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(_VRGDG_ACESTEP_PORT),
+        ]
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["ACESTEP_CONFIG_PATH"] = "acestep-v15-xl-turbo"
+        env["ACESTEP_LM_MODEL_PATH"] = "acestep-5Hz-lm-1.7B"
+        env["ACESTEP_LM_BACKEND"] = "vllm"
+        env["ACESTEP_INIT_LLM"] = "true"
+        env["ACESTEP_CHECKPOINTS_DIR"] = os.path.join(repo_dir, "checkpoints")
+        env["ACESTEP_API_WORKERS"] = "1"
+        _VRGDG_ACESTEP_PROCESS = subprocess.Popen(
+            command,
+            cwd=repo_dir,
+            stdout=log_handle,
+            stderr=log_handle,
+            env=env,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+    for _ in range(40):
+        if _acestep_health(timeout=0.5):
+            _set_acestep_progress("ready", "ACE-Step API is ready.")
+            return {"ok": True, "running": True, "url": _acestep_service_url(), "reused": False, "log_path": log_path}
+        time.sleep(0.5)
+
+    _set_acestep_progress("failed", f"ACE-Step 1.5 API did not become ready. Check log: {log_path}")
+    raise RuntimeError(f"ACE-Step 1.5 API did not become ready. Check log: {log_path}")
+
+
+def _copy_acestep_audio(output_path):
+    _set_acestep_progress("copying", "Copying generated audio to active and backup folders...")
+    if not os.path.isfile(output_path):
+        raise RuntimeError(f"ACE-Step did not create an output file: {output_path}")
+    stem = os.path.splitext(os.path.basename(output_path))[0]
+    filename = f"{stem}.wav"
+    audio_dir = _get_test_popup_audio_dir()
+    backup_dir = _get_acestep_backup_dir()
+    os.makedirs(audio_dir, exist_ok=True)
+    os.makedirs(backup_dir, exist_ok=True)
+    active_path = os.path.join(audio_dir, filename)
+    backup_path = os.path.join(backup_dir, filename)
+
+    for existing_name in os.listdir(audio_dir):
+        existing_path = os.path.join(audio_dir, existing_name)
+        if os.path.isfile(existing_path):
+            os.remove(existing_path)
+
+    shutil.copy2(output_path, active_path)
+    shutil.copy2(output_path, backup_path)
+    _set_acestep_progress("done", "Audio copied successfully.")
+    return active_path, backup_path, filename
+
+
+def _generate_acestep(payload):
+    _set_acestep_progress("generate", "Preparing ACE-Step 1.5 thinking generation request...")
+    if not _acestep_health():
+        _start_acestep()
+
+    prompt = str(payload.get("prompt", "") or "").strip()
+    lyrics = str(payload.get("lyrics", "") or "").strip()
+    if not prompt:
+        raise RuntimeError("ACE-Step prompt/style is required.")
+    if not lyrics:
+        raise RuntimeError("Lyrics are required for this ACE-Step song creator.")
+
+    duration = float(payload.get("audio_duration") or 60)
+    seed = int(payload.get("seed") or 0)
+    use_random_seed = seed <= 0
+
+    temp_dir = os.path.join(folder_paths.get_temp_directory(), "VRGDG_ACE_Step")
+    os.makedirs(temp_dir, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(temp_dir, f"ace_step_{stamp}_{uuid.uuid4().hex[:8]}.wav")
+    inference_steps = max(1, min(20, int(payload.get("infer_step") or 8)))
+    body = {
+        "prompt": prompt,
+        "lyrics": lyrics,
+        "model": "acestep-v15-xl-turbo",
+        "thinking": True,
+        "use_format": True,
+        "lm_model_path": "acestep-5Hz-lm-1.7B",
+        "lm_backend": "vllm",
+        "lm_temperature": float(payload.get("lm_temperature") or 0.85),
+        "lm_cfg_scale": float(payload.get("lm_cfg_scale") or 2.5),
+        "lm_top_p": float(payload.get("lm_top_p") or 0.9),
+        "use_cot_caption": True,
+        "use_cot_language": True,
+        "constrained_decoding": True,
+        "audio_duration": duration,
+        "duration": duration,
+        "vocal_language": "en",
+        "audio_format": "wav",
+        "inference_steps": inference_steps,
+        "guidance_scale": float(payload.get("guidance_scale") or 7.0),
+        "shift": float(payload.get("shift") or 3.0),
+        "infer_method": "ode",
+        "use_adg": False,
+        "batch_size": 1,
+        "use_random_seed": use_random_seed,
+        "seed": -1 if use_random_seed else seed,
+    }
+    request = urllib.request.Request(
+        _acestep_service_url("/release_task"),
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        _set_acestep_progress("generate", "Submitting ACE-Step 1.5 task with thinking + 1.7B LM...")
+        with urllib.request.urlopen(request, timeout=120) as response:
+            created = json.loads(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        _set_acestep_progress("failed", detail or str(exc))
+        raise RuntimeError(detail or str(exc)) from exc
+
+    if int(created.get("code") or 500) != 200:
+        message = str(created.get("error") or created)
+        _set_acestep_progress("failed", message)
+        raise RuntimeError(message)
+
+    task_id = str((created.get("data") or {}).get("task_id") or "")
+    if not task_id:
+        raise RuntimeError(f"ACE-Step 1.5 did not return a task_id: {created}")
+
+    timeout_at = time.time() + max(600, int(max(duration, 60) * 12))
+    result_item = None
+    while time.time() < timeout_at:
+        _set_acestep_progress("generate", f"ACE-Step 1.5 is thinking and generating audio...\nTask: {task_id}", append=False)
+        query_request = urllib.request.Request(
+            _acestep_service_url("/query_result"),
+            data=json.dumps({"task_id_list": [task_id]}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(query_request, timeout=120) as response:
+            queried = json.loads(response.read().decode("utf-8", errors="replace"))
+        if int(queried.get("code") or 500) != 200:
+            raise RuntimeError(str(queried.get("error") or queried))
+        items = queried.get("data") or []
+        if items:
+            item = items[0]
+            status = int(item.get("status") or 0)
+            if status == 1:
+                result_item = item
+                break
+            if status == 2:
+                raise RuntimeError(str(item.get("error") or item.get("message") or item))
+        time.sleep(2.0)
+
+    if not result_item:
+        raise RuntimeError("ACE-Step 1.5 generation timed out before returning audio.")
+
+    raw_result = result_item.get("result")
+    if isinstance(raw_result, str):
+        result_data = json.loads(raw_result or "[]")
+    else:
+        result_data = raw_result or []
+    if isinstance(result_data, dict):
+        result_data = [result_data]
+    if not result_data:
+        raise RuntimeError(f"ACE-Step 1.5 returned no audio result: {result_item}")
+    audio_url = str(result_data[0].get("file") or result_data[0].get("path") or "")
+    if not audio_url:
+        raise RuntimeError(f"ACE-Step 1.5 result did not include an audio file: {result_data[0]}")
+    if audio_url.startswith("/"):
+        audio_url = _acestep_service_url(audio_url)
+    _set_acestep_progress("download", "Downloading generated ACE-Step 1.5 audio...")
+    with urllib.request.urlopen(audio_url, timeout=120) as response:
+        with open(output_path, "wb") as handle:
+            shutil.copyfileobj(response, handle)
+
+    active_path, backup_path, filename = _copy_acestep_audio(output_path)
+    _set_acestep_progress("done", f"ACE-Step song ready: {filename}")
+    return {
+        "ok": True,
+        "path": active_path,
+        "backup_path": backup_path,
+        "filename": filename,
+        "seed": seed,
+        "raw_output_path": output_path,
+        "task_id": task_id,
+        "engine": "ACE-Step-1.5",
+        "thinking": True,
+        "lm_model": "acestep-5Hz-lm-1.7B",
+    }
+
+
 def _get_test_popup_text_path(field_name):
     parts = _VRGDG_TEST_TEXT_TARGETS[field_name]
     return os.path.normpath(os.path.join(folder_paths.get_output_directory(), *parts))
@@ -243,73 +1297,540 @@ def _get_part2_concept_prompts_path():
     )
 
 
+def _get_vrgdg_text_file_path(folder_name, file_name):
+    return os.path.normpath(
+        os.path.join(
+            folder_paths.get_output_directory(),
+            "VRGDG_TEMP",
+            "TextFiles",
+            folder_name,
+            file_name,
+        )
+    )
 
-def _clean_gemma4_text(text):
-    text = str(text or "").strip()
-    text = re.sub(r"^```(?:text|markdown)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
+
+def _get_t2i_prompts_output_path():
+    return _get_vrgdg_text_file_path("t2i_Prompts", "t2i_Prompts.txt")
+
+
+def _get_t2v_prompts_output_path():
+    return _get_vrgdg_text_file_path("t2v_Prompts", "t2v_Prompts.txt")
+
+
+def _read_text_file_if_exists(path):
+    if not os.path.isfile(path):
+        return ""
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+        return handle.read().strip()
+
+
+def _strip_json_fence(text):
+    value = str(text or "").strip()
+    value = re.sub(r"^\s*```(?:json)?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s*```\s*$", "", value)
+    return value.strip()
+
+
+def _parse_concept_prompt_items(text):
+    cleaned = _strip_json_fence(text)
+    if not cleaned:
+        raise ValueError("ConceptPrompts.txt is empty.")
+
+    try:
+        data = json.loads(cleaned, object_pairs_hook=list)
+    except json.JSONDecodeError as exc:
+        blocks = [block.strip() for block in re.split(r"(?:\r?\n){2,}", cleaned) if block.strip()]
+        if not blocks:
+            raise ValueError(
+                f"ConceptPrompts.txt is not valid JSON at line {exc.lineno}, column {exc.colno}: {exc.msg}"
+            )
+        return [(f"prompt_{index}", block) for index, block in enumerate(blocks, start=1)]
+
+    if isinstance(data, list):
+        if all(isinstance(item, (list, tuple)) and len(item) == 2 for item in data):
+            pairs = data
+        else:
+            pairs = [(f"prompt_{index}", item) for index, item in enumerate(data, start=1)]
+    elif isinstance(data, dict):
+        pairs = list(data.items())
+    else:
+        raise ValueError("ConceptPrompts.txt must contain a JSON object or array.")
+
+    items = []
+    for index, (key, value) in enumerate(pairs, start=1):
+        if isinstance(value, str):
+            prompt_text = value.strip()
+        else:
+            prompt_text = json.dumps(value, ensure_ascii=False)
+        if not prompt_text:
+            continue
+        items.append((str(key), prompt_text))
+
+    if not items:
+        raise ValueError("ConceptPrompts.txt did not contain any usable prompt rows.")
+
+    return items
+
+
+def _clean_gemma4_text(value):
+    text = str(value or "").strip()
+    text = re.sub(r"^\s*```(?:text)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```\s*$", "", text)
     return text.strip()
+
+
+def _first_clean_gemma4_line(value):
+    for line in _clean_gemma4_text(value).splitlines():
+        text = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
+        if text:
+            return text
+    return ""
 
 
 def _build_gemma4_prompt(target, payload):
     target = str(target or "").strip()
-    payload = payload or {}
+    notes = str(payload.get("notes", "") or "").strip()
+    lyrics = str(payload.get("lyrics", "") or "").strip()
+    style_theme = str(payload.get("style_theme", "") or "").strip()
+    story_idea = str(payload.get("story_idea", "") or "").strip()
+
+    if target == "style_theme":
+        prompt = f"{_VRGDG_GEMMA4_STYLE_INSTRUCTIONS}\n\nfull lyrics:\n{lyrics}"
+        if notes:
+            prompt += f"\n\nother notes:\n{notes}"
+        return prompt
+
+    if target == "story_idea":
+        prompt = f"{_VRGDG_GEMMA4_STORY_INSTRUCTIONS}\n\nLyrics:\n{lyrics}"
+        if style_theme:
+            prompt += f"\n\nStyle/theme:\n{style_theme}"
+        if notes:
+            prompt += f"\n\nOptional notes:\n{notes}"
+        return prompt
+
+    if target == "subjects_and_scenes":
+        prompt = f"{_VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS}"
+        if notes:
+            prompt += f"\n\nUser notes - highest priority:\n{notes}"
+        prompt += f"\n\nStory idea:\n{story_idea}"
+        return prompt
+
+    if target == "song_lyrics":
+        duration = str(payload.get("duration", "") or "").strip()
+        prompt = f"{_VRGDG_GEMMA4_LYRICS_INSTRUCTIONS}"
+        if duration:
+            prompt += f"\n\nRequested duration seconds:\n{duration}"
+        prompt += f"\n\nSong idea and notes:\n{notes}"
+        if not notes:
+            prompt += "\nCreate an original short song about refusing to give up."
+        return prompt
+
+    if target == "ace_step_tags":
+        prompt = f"{_VRGDG_GEMMA4_ACESTEP_TAGS_INSTRUCTIONS}\n\nLyrics:\n{lyrics}"
+        if notes:
+            prompt += f"\n\nUser music style notes:\n{notes}"
+        return prompt
+
+    if target == "text_to_image_from_concept":
+        concept_prompt = str(payload.get("concept_prompt", "") or "").strip()
+        if not concept_prompt:
+            raise ValueError("No concept prompt was provided for text-to-image generation.")
+        extra_user_input = str(payload.get("extra_user_input", "") or "").strip()
+        prompt = (
+            f"{_VRGDG_GEMMA4_T2I_FROM_CONCEPT_INSTRUCTIONS}\n\n"
+            f"Story idea:\n{story_idea}\n\n"
+            f"Style/theme:\n{style_theme}\n\n"
+            f"Current visual prompt:\n{concept_prompt}"
+        )
+        if extra_user_input:
+            prompt += f"\n\nExtra user input:\n{extra_user_input}"
+        return prompt
+
+    if target == "text_to_video_from_concept":
+        concept_prompt = str(payload.get("concept_prompt", "") or "").strip()
+        if not concept_prompt:
+            raise ValueError("No concept prompt was provided for text-to-video generation.")
+        subjects_and_scenes = str(payload.get("subjects_and_scenes", "") or "").strip()
+        extra_user_input = str(payload.get("extra_user_input", "") or "").strip()
+        prompt = (
+            f"{_VRGDG_GEMMA4_T2V_FROM_CONCEPT_INSTRUCTIONS}\n\n"
+            f"Subject and location list:\n{subjects_and_scenes}\n\n"
+            f"Style/theme:\n{style_theme}\n\n"
+            f"Concept prompt:\n{concept_prompt}"
+        )
+        if extra_user_input:
+            prompt += f"\n\nUser input:\n{extra_user_input}"
+        return prompt
 
     if target == "advanced_prompt_detail":
-        label = str(payload.get("label") or "prompt detail").strip() or "prompt detail"
-        notes = str(payload.get("notes") or "").strip()
+        label = str(payload.get("label", "") or "").strip() or "Custom"
         prompts = payload.get("prompts") or []
         if not isinstance(prompts, list):
             prompts = []
-        cleaned_prompts = [str(prompt or "").strip() for prompt in prompts if str(prompt or "").strip()]
-        count = int(payload.get("count") or len(cleaned_prompts) or 0)
-        count = max(1, min(200, count))
-        prompt_lines = "\n".join(f"{index + 1}. {prompt}" for index, prompt in enumerate(cleaned_prompts[:count]))
+        prompt_lines = []
+        for index, item in enumerate(prompts, start=1):
+            text = str(item or "").strip()
+            if text:
+                prompt_lines.append(f"{index}. {text}")
+        if not prompt_lines:
+            raise ValueError("No scene prompts were provided for Gemma4 advanced list generation.")
         prompt = (
             f"{_VRGDG_GEMMA4_ADVANCED_PROMPT_DETAIL_INSTRUCTIONS}\n\n"
-            f"Label name:\n{label}\n\n"
-            f"Number of items needed:\n{count}\n\n"
+            f"Detail label:\n{label}\n\n"
         )
         if notes:
             prompt += f"Optional user guidance for all lists:\n{notes}\n\n"
-        prompt += f"Scene prompts:\n{prompt_lines}"
+        prompt += f"Scene prompts:\n" + "\n".join(prompt_lines)
         return prompt
 
-    raise ValueError(f"Unknown Gemma4 target: {target}")
+    raise ValueError(f"Unsupported Gemma4 target: {target}")
 
 
-def _run_gemma4_prompt(target, payload):
-    from . import LLM as vrgdg_llm
+def _run_gemma4_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat
 
-    model_name = str(payload.get("model_name") or "").strip()
-    if not model_name:
-        raise ValueError("Choose an LLM model first.")
+    target = str(payload.get("target", "") or "").strip()
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file:
+        raise ValueError("No Gemma4 model_file was selected.")
 
     prompt = _build_gemma4_prompt(target, payload)
-    max_tokens = int(payload.get("max_tokens") or 1024)
-    temperature = float(payload.get("temperature") or 0.9)
-    top_p = float(payload.get("top_p") or 0.92)
-    context_size = int(payload.get("context_size") or 13000)
-    gpu_layers = int(payload.get("gpu_layers") or -1)
+    if not prompt.strip():
+        raise ValueError("Gemma4 prompt was empty.")
 
-    text = vrgdg_llm.llama_cpp_generate(
-        prompt=prompt,
-        model_name=model_name,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        context_size=context_size,
-        gpu_layers=gpu_layers,
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    # Match the known-good SuperGemma settings used in the workflow node.
+    n_ctx = int(payload.get("n_ctx") or 13000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.75)
+    top_p = float(payload.get("top_p") or 0.95)
+    max_new_tokens = int(payload.get("max_new_tokens") or 32000)
+    unload_after = bool(payload.get("unload_after"))
+
+    mmproj_path = ""
+    model = None
+    try:
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+            mmproj_path=mmproj_path,
+        )
+        text = llm._run_gguf_text_pipeline(
+            model=model,
+            instruction_text=prompt,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
+        text = _clean_gemma4_text(text)
+        if not text:
+            raise ValueError("Gemma4 returned an empty response.")
+        return {
+            "text": text,
+            "used_model": model_path,
+            "unloaded": unload_after,
+        }
+    finally:
+        if unload_after and model_path:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+
+
+def _unload_gemma4_prompt_model(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file:
+        return {"unloaded": False, "reason": "No model_file provided."}
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    n_ctx = int(payload.get("n_ctx") or 13000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    llm._unload_gguf_model(
+        model_path=model_path,
+        n_ctx=n_ctx,
+        n_gpu_layers=n_gpu_layers,
+        n_threads=n_threads,
+        chat_format=chat_format,
+        mmproj_path="",
     )
-    return _clean_gemma4_text(text)
+    return {"unloaded": True, "used_model": model_path}
 
 
-def _unload_gemma4_prompt_model():
-    from . import LLM as vrgdg_llm
+def _generate_t2i_prompts_from_concepts(payload):
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file:
+        raise ValueError("Choose a Gemma4 model first.")
+    extra_user_input = str(payload.get("extra_user_input", "") or "").strip()
 
-    unload_fn = getattr(vrgdg_llm, "llama_cpp_unload", None)
-    if callable(unload_fn):
-        unload_fn()
+    _set_t2i_concept_progress(
+        "starting",
+        "Reading ConceptPrompts.txt, themestyle.txt, and storyconcept.txt...",
+        current=0,
+        total=0,
+        current_key="",
+        output_path="",
+    )
+
+    concept_path = _get_part2_concept_prompts_path()
+    style_path = _get_vrgdg_text_file_path("themestyle", "themestyle.txt")
+    story_path = _get_vrgdg_text_file_path("storyconcept", "storyconcept.txt")
+    output_path = _get_t2i_prompts_output_path()
+
+    concept_text = _read_text_file_if_exists(concept_path)
+    style_theme = _read_text_file_if_exists(style_path)
+    story_idea = _read_text_file_if_exists(story_path)
+
+    if not os.path.isfile(concept_path):
+        raise FileNotFoundError(f"ConceptPrompts.txt was not found: {concept_path}")
+    if not style_theme:
+        raise ValueError(f"Style/theme text file is empty or missing: {style_path}")
+    if not story_idea:
+        raise ValueError(f"Story concept text file is empty or missing: {story_path}")
+
+    concept_items = _parse_concept_prompt_items(concept_text)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    total_steps = len(concept_items) * 3
+    _set_t2i_concept_progress(
+        "running",
+        f"Loaded {len(concept_items)} concept prompt row(s). Starting Gemma...",
+        current=0,
+        total=total_steps,
+        output_path=output_path,
+    )
+
+    generated = {}
+    used_model = ""
+    current_step = 0
+    for index, (key, concept_prompt) in enumerate(concept_items, start=1):
+        current_step += 1
+        _set_t2i_concept_progress(
+            "running",
+            f"Generating camera motion for prompt {index} of {len(concept_items)}...",
+            current=current_step,
+            total=total_steps,
+            current_key=key,
+            output_path=output_path,
+        )
+        camera_result = _run_gemma4_prompt(
+            {
+                "target": "advanced_prompt_detail",
+                "model_file": model_file,
+                "label": "Camera Motion",
+                "prompts": [concept_prompt],
+                "notes": extra_user_input,
+                "n_ctx": int(payload.get("n_ctx") or 13000),
+                "max_new_tokens": 512,
+                "temperature": float(payload.get("temperature") or 0.75),
+                "top_p": float(payload.get("top_p") or 0.95),
+                "unload_after": False,
+            }
+        )
+        used_model = str(camera_result.get("used_model") or used_model)
+        camera_motion = _first_clean_gemma4_line(camera_result.get("text") or "")
+
+        current_step += 1
+        _set_t2i_concept_progress(
+            "running",
+            f"Generating character motion for prompt {index} of {len(concept_items)}...",
+            current=current_step,
+            total=total_steps,
+            current_key=key,
+            output_path=output_path,
+        )
+        character_result = _run_gemma4_prompt(
+            {
+                "target": "advanced_prompt_detail",
+                "model_file": model_file,
+                "label": "Character Movement/Motion",
+                "prompts": [concept_prompt],
+                "notes": extra_user_input,
+                "n_ctx": int(payload.get("n_ctx") or 13000),
+                "max_new_tokens": 512,
+                "temperature": float(payload.get("temperature") or 0.75),
+                "top_p": float(payload.get("top_p") or 0.95),
+                "unload_after": False,
+            }
+        )
+        used_model = str(character_result.get("used_model") or used_model)
+        character_motion = _first_clean_gemma4_line(character_result.get("text") or "")
+
+        t2i_user_input = []
+        if camera_motion:
+            t2i_user_input.append(f"camera motion = {camera_motion}")
+        if character_motion:
+            t2i_user_input.append(f"character motion = {character_motion}")
+        if extra_user_input:
+            t2i_user_input.append(f"extra user input = {extra_user_input}")
+
+        current_step += 1
+        _set_t2i_concept_progress(
+            "running",
+            f"Creating final text-to-image prompt {index} of {len(concept_items)}...",
+            current=current_step,
+            total=total_steps,
+            current_key=key,
+            output_path=output_path,
+        )
+        result = _run_gemma4_prompt(
+            {
+                "target": "text_to_image_from_concept",
+                "model_file": model_file,
+                "style_theme": style_theme,
+                "story_idea": story_idea,
+                "concept_prompt": concept_prompt,
+                "extra_user_input": "\n".join(t2i_user_input),
+                "n_ctx": int(payload.get("n_ctx") or 13000),
+                "max_new_tokens": int(payload.get("max_new_tokens") or 1600),
+                "temperature": float(payload.get("temperature") or 0.75),
+                "top_p": float(payload.get("top_p") or 0.95),
+                "unload_after": index == len(concept_items),
+            }
+        )
+        used_model = str(result.get("used_model") or used_model)
+        generated[key] = _clean_gemma4_text(result.get("text") or "")
+        with open(output_path, "w", encoding="utf-8") as handle:
+            json.dump(generated, handle, indent=2, ensure_ascii=False)
+        _set_t2i_concept_progress(
+            "running",
+            f"Saved prompt {index} of {len(concept_items)} to t2i_Prompts.txt.",
+            current=current_step,
+            total=total_steps,
+            current_key=key,
+            output_path=output_path,
+        )
+
+    _set_t2i_concept_progress(
+        "done",
+        f"Finished {len(generated)} text-to-image prompt(s). Gemma was unloaded.",
+        current=total_steps,
+        total=total_steps,
+        current_key="",
+        output_path=output_path,
+    )
+    return {
+        "ok": True,
+        "count": len(generated),
+        "output_path": output_path,
+        "concept_path": concept_path,
+        "style_path": style_path,
+        "story_path": story_path,
+        "used_model": used_model,
+    }
+
+
+def _generate_t2v_prompts_from_concepts(payload):
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file:
+        raise ValueError("Choose a Gemma4 model first.")
+    extra_user_input = str(payload.get("extra_user_input", "") or "").strip()
+
+    _set_t2v_concept_progress(
+        "starting",
+        "Reading ConceptPrompts.txt, themestyle.txt, and subjectsandscenes.txt...",
+        current=0,
+        total=0,
+        current_key="",
+        output_path="",
+    )
+
+    concept_path = _get_part2_concept_prompts_path()
+    style_path = _get_vrgdg_text_file_path("themestyle", "themestyle.txt")
+    subjects_path = _get_vrgdg_text_file_path("subjectandscenes", "subjectsandscenes.txt")
+    output_path = _get_t2v_prompts_output_path()
+
+    concept_text = _read_text_file_if_exists(concept_path)
+    style_theme = _read_text_file_if_exists(style_path)
+    subjects_and_scenes = _read_text_file_if_exists(subjects_path)
+
+    if not os.path.isfile(concept_path):
+        raise FileNotFoundError(f"ConceptPrompts.txt was not found: {concept_path}")
+    if not style_theme:
+        raise ValueError(f"Style/theme text file is empty or missing: {style_path}")
+    if not subjects_and_scenes:
+        raise ValueError(f"Subject/location text file is empty or missing: {subjects_path}")
+
+    concept_items = _parse_concept_prompt_items(concept_text)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    _set_t2v_concept_progress(
+        "running",
+        f"Loaded {len(concept_items)} concept prompt row(s). Starting Gemma...",
+        current=0,
+        total=len(concept_items),
+        output_path=output_path,
+    )
+
+    generated = {}
+    used_model = ""
+    for index, (key, concept_prompt) in enumerate(concept_items, start=1):
+        _set_t2v_concept_progress(
+            "running",
+            f"Creating text-to-video prompt {index} of {len(concept_items)}...",
+            current=index,
+            total=len(concept_items),
+            current_key=key,
+            output_path=output_path,
+        )
+        result = _run_gemma4_prompt(
+            {
+                "target": "text_to_video_from_concept",
+                "model_file": model_file,
+                "style_theme": style_theme,
+                "subjects_and_scenes": subjects_and_scenes,
+                "concept_prompt": concept_prompt,
+                "extra_user_input": extra_user_input,
+                "n_ctx": int(payload.get("n_ctx") or 13000),
+                "max_new_tokens": int(payload.get("max_new_tokens") or 1200),
+                "temperature": float(payload.get("temperature") or 0.75),
+                "top_p": float(payload.get("top_p") or 0.95),
+                "unload_after": index == len(concept_items),
+            }
+        )
+        used_model = str(result.get("used_model") or used_model)
+        generated[key] = _clean_gemma4_text(result.get("text") or "")
+        with open(output_path, "w", encoding="utf-8") as handle:
+            json.dump(generated, handle, indent=2, ensure_ascii=False)
+        _set_t2v_concept_progress(
+            "running",
+            f"Saved prompt {index} of {len(concept_items)} to t2v_Prompts.txt.",
+            current=index,
+            total=len(concept_items),
+            current_key=key,
+            output_path=output_path,
+        )
+
+    _set_t2v_concept_progress(
+        "done",
+        f"Finished {len(generated)} text-to-video prompt(s). Gemma was unloaded.",
+        current=len(concept_items),
+        total=len(concept_items),
+        current_key="",
+        output_path=output_path,
+    )
+    return {
+        "ok": True,
+        "count": len(generated),
+        "output_path": output_path,
+        "concept_path": concept_path,
+        "style_path": style_path,
+        "subjects_path": subjects_path,
+        "used_model": used_model,
+    }
+
 
 def _ensure_test_save_route_registered():
     global _VRGDG_TEST_SAVE_ROUTE_REGISTERED
@@ -330,6 +1851,9 @@ def _ensure_test_save_route_registered():
             {
                 "ok": True,
                 "audio_dir": _get_test_popup_audio_dir(),
+                "ace_step_backup_dir": _get_acestep_backup_dir(),
+                "ace_step_installed": _acestep_is_installed(),
+                "ace_step_running": _acestep_health(),
                 "text_targets": text_targets,
                 "concept_prompts_path": _get_part2_concept_prompts_path(),
             }
@@ -424,29 +1948,168 @@ def _ensure_test_save_route_registered():
 
         return web.json_response({"ok": True, "path": target_path, "filename": filename})
 
-
     @server_instance.routes.post("/vrgdg/gemma4/generate")
     async def vrgdg_gemma4_generate(request):
         try:
             payload = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "Invalid JSON payload."}, status=400)
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
 
-        target = str(payload.get("target") or "").strip()
+        if not isinstance(payload, dict):
+            return web.json_response({"ok": False, "error": "JSON body must be an object."}, status=400)
+
         try:
-            text = await asyncio.to_thread(_run_gemma4_prompt, target, payload)
+            result = await asyncio.to_thread(_run_gemma4_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
 
-        return web.json_response({"ok": True, "text": text})
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/gemma4/unload")
     async def vrgdg_gemma4_unload(request):
         try:
-            await asyncio.to_thread(_unload_gemma4_prompt_model)
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        try:
+            result = await asyncio.to_thread(_unload_gemma4_prompt_model, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
-        return web.json_response({"ok": True})
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/t2i_from_concepts/generate")
+    async def vrgdg_t2i_from_concepts_generate(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+
+        if not isinstance(payload, dict):
+            return web.json_response({"ok": False, "error": "JSON body must be an object."}, status=400)
+
+        try:
+            result = await asyncio.to_thread(_generate_t2i_prompts_from_concepts, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+        return web.json_response(result)
+
+    @server_instance.routes.get("/vrgdg/t2i_from_concepts/progress")
+    async def vrgdg_t2i_from_concepts_progress(request):
+        return web.json_response({"ok": True, **_get_t2i_concept_progress()})
+
+    @server_instance.routes.post("/vrgdg/t2v_from_concepts/generate")
+    async def vrgdg_t2v_from_concepts_generate(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+
+        if not isinstance(payload, dict):
+            return web.json_response({"ok": False, "error": "JSON body must be an object."}, status=400)
+
+        try:
+            result = await asyncio.to_thread(_generate_t2v_prompts_from_concepts, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+        return web.json_response(result)
+
+    @server_instance.routes.get("/vrgdg/t2v_from_concepts/progress")
+    async def vrgdg_t2v_from_concepts_progress(request):
+        return web.json_response({"ok": True, **_get_t2v_concept_progress()})
+
+    @server_instance.routes.get("/vrgdg/acestep/status")
+    async def vrgdg_acestep_status(request):
+        return web.json_response(
+            {
+                "ok": True,
+                "installed": _acestep_is_installed(),
+                "running": _acestep_health(),
+                "install_root": _get_acestep_root(),
+                "checkpoint_dir": _get_acestep_checkpoint_dir(),
+                "audio_dir": _get_test_popup_audio_dir(),
+                "backup_dir": _get_acestep_backup_dir(),
+                "url": _acestep_service_url(),
+                "engine": "ACE-Step-1.5",
+                "thinking": True,
+                "lm_model": "acestep-5Hz-lm-1.7B",
+                "lm_backend": "vllm",
+            }
+        )
+
+    @server_instance.routes.get("/vrgdg/acestep/progress")
+    async def vrgdg_acestep_progress(request):
+        return web.json_response({"ok": True, **_get_acestep_progress()})
+
+    @server_instance.routes.post("/vrgdg/acestep/install")
+    async def vrgdg_acestep_install(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        try:
+            result = await asyncio.to_thread(_install_acestep, payload.get("install_root", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/acestep/start")
+    async def vrgdg_acestep_start(request):
+        try:
+            result = await asyncio.to_thread(_start_acestep)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/acestep/use_existing")
+    async def vrgdg_acestep_use_existing(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        try:
+            result = await asyncio.to_thread(_use_existing_acestep, payload.get("install_root", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response(result)
+
+    @server_instance.routes.post("/vrgdg/acestep/generate")
+    async def vrgdg_acestep_generate(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = await asyncio.to_thread(_generate_acestep, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response(result)
+
+    @server_instance.routes.get("/vrgdg/audio/preview")
+    async def vrgdg_audio_preview(request):
+        raw_path = str(request.query.get("path", "") or "").strip()
+        if not raw_path:
+            return web.json_response({"ok": False, "error": "Missing path."}, status=400)
+        requested = os.path.normpath(os.path.abspath(raw_path))
+        allowed_roots = [
+            os.path.normpath(os.path.abspath(_get_test_popup_audio_dir())),
+            os.path.normpath(os.path.abspath(_get_acestep_backup_dir())),
+        ]
+        allowed = False
+        for root in allowed_roots:
+            try:
+                common = os.path.commonpath([root, requested])
+            except Exception:
+                common = ""
+            if os.path.normcase(common) == os.path.normcase(root):
+                allowed = True
+                break
+        if not allowed:
+            return web.json_response({"ok": False, "error": "Audio preview path is not allowed."}, status=403)
+        if not os.path.isfile(requested):
+            return web.json_response({"ok": False, "error": "Audio file was not found."}, status=404)
+        return web.FileResponse(requested)
 
     @server_instance.routes.post("/vrgdg/apply_node_modes")
     async def vrgdg_apply_node_modes(request):
@@ -2293,6 +3956,67 @@ class VRGDG_Part2WorkflowUI(VRGDG_PromptCreatorUI):
 class VRGDG_Part3WorkflowUI(VRGDG_PromptCreatorUI):
     pass
 
+
+class VRGDG_T2IPromptsFromConcepts:
+    @classmethod
+    def INPUT_TYPES(cls):
+        try:
+            from .LLM import VRGDG_SuperGemmaGGUFChat
+
+            gemma_choices = VRGDG_SuperGemmaGGUFChat._list_local_gemma_gguf_choices()
+        except Exception:
+            gemma_choices = ["[No Gemma GGUF found in models/LLM]"]
+
+        return {
+            "required": {
+                "model_file": (
+                    gemma_choices,
+                    {
+                        "default": gemma_choices[0],
+                        "tooltip": "Gemma GGUF model used to create t2i prompts from ConceptPrompts.txt.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "noop"
+    CATEGORY = "VRGDG/General"
+
+    def noop(self, model_file):
+        return ()
+
+
+class VRGDG_T2VPromptsFromConcepts:
+    @classmethod
+    def INPUT_TYPES(cls):
+        try:
+            from .LLM import VRGDG_SuperGemmaGGUFChat
+
+            gemma_choices = VRGDG_SuperGemmaGGUFChat._list_local_gemma_gguf_choices()
+        except Exception:
+            gemma_choices = ["[No Gemma GGUF found in models/LLM]"]
+
+        return {
+            "required": {
+                "model_file": (
+                    gemma_choices,
+                    {
+                        "default": gemma_choices[0],
+                        "tooltip": "Gemma GGUF model used to create t2v prompts from ConceptPrompts.txt.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "noop"
+    CATEGORY = "VRGDG/General"
+
+    def noop(self, model_file):
+        return ()
+
+
 class VRGDG_StoryGroupJsonFixer:
     REQUIRED_GROUP_KEYS = ("index", "subject", "camera", "scene_and_lighting", "frame")
 
@@ -2633,6 +4357,8 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_PromptCreatorUI_V2": VRGDG_PromptCreatorUI_V2,
     "VRGDG_Part2WorkflowUI": VRGDG_Part2WorkflowUI,
     "VRGDG_Part3WorkflowUI": VRGDG_Part3WorkflowUI,
+    "VRGDG_T2IPromptsFromConcepts": VRGDG_T2IPromptsFromConcepts,
+    "VRGDG_T2VPromptsFromConcepts": VRGDG_T2VPromptsFromConcepts,
     
 }
 
@@ -2664,5 +4390,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptCreatorUI_V2": "VRGDG_PromptCreatorUI_V2",
     "VRGDG_Part2WorkflowUI": "VRGDG Part 2 Workflow UI",
     "VRGDG_Part3WorkflowUI": "VRGDG Workflow 3 UI",
+    "VRGDG_T2IPromptsFromConcepts": "Text to image prompts from concepts",
+    "VRGDG_T2VPromptsFromConcepts": "Text to video prompts from concepts",
     
 }

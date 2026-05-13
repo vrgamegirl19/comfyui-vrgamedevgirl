@@ -7,6 +7,7 @@ const PART3_NODE_NAME = "VRGDG_Part3WorkflowUI";
 const MODAL_ID = "vrgdg-prompt-creator-ui-v2-modal";
 const PART2_MODAL_ID = "vrgdg-prompt-creator-part2-ui-modal";
 const PART2_DRAFT_STORAGE_KEY = "vrgdg.part2.workflow.ui.draft.v1";
+const ACE_STEP_DRAFT_STORAGE_KEY = "vrgdg.ace.step.song.draft.v1";
 const PART2_OPTIONAL_LORA_NODE_NAME = "VRGDG_OptionalMultiLoraModelOnly";
 const PART2_MAX_LORA_SLOTS = 20;
 const PART2_Z_IMAGE_LORA_INNER_NODE_ID = 847;
@@ -189,6 +190,62 @@ Peaceful`,
 };
 const PART2_ADVANCED_PRESETS = Object.keys(PART2_ADVANCED_PRESET_ITEMS);
 const PART2_ADVANCED_SELECTION_MODES = ["index", "random", "random no repeat"];
+const ACE_STEP_TAG_PRESETS = {
+  "Pop Rock": "pop rock, energetic female vocal, bright drums, electric guitar, catchy chorus",
+  "Dark Pop": "dark pop, emotional female vocal, pulsing synth bass, dramatic drums, glossy production",
+  "Synthwave": "synthwave, nostalgic analog synths, steady electronic drums, dreamy vocal, bright neon mood",
+  "Country Pop": "country pop, warm acoustic guitar, clean drums, heartfelt vocal, radio-ready chorus",
+  "Hip Hop": "hip hop, heavy 808 bass, crisp trap drums, confident vocal, modern club energy",
+  "Cinematic Ballad": "cinematic ballad, emotional vocal, piano, strings, slow build, powerful chorus",
+  "Punk": "punk rock, fast drums, distorted guitar, shouted vocal, raw live band energy",
+  "Instrumental EDM": "instrumental EDM, bright synth lead, driving kick, festival drop, high energy",
+};
+
+async function requestAceStepTagNotes() {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell("Gemma4 ACE-Step Tags");
+    const body = document.createElement("div");
+    body.textContent = "Optional: describe the music style you want. Gemma4 will combine this with the lyrics and return one ACE-Step Tags line.";
+    body.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 6;
+    textarea.placeholder = "Example: dark punk pop, female vocal, angry but catchy, fast drums";
+    textarea.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #4b5563;
+      background: #0d1217;
+      color: #f3f4f6;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px;";
+    const noThanks = createButton(
+      "Use Lyrics Only",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const ok = createButton(
+      "Create Tags",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+    noThanks.addEventListener("click", () => finish(""));
+    ok.addEventListener("click", () => finish(String(textarea.value || "").trim()));
+    actions.append(noThanks, ok);
+    panel.append(body, textarea, actions);
+    setTimeout(() => textarea.focus(), 0);
+  });
+}
 const TEXT_FIELDS = [
   {
     key: "full_lyrics",
@@ -426,6 +483,951 @@ function createPathHint() {
   return hint;
 }
 
+function ensureGemma4ProgressOverlay() {
+  let overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "vrgdg-gemma4-progress-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.62);
+  `;
+
+  const panel = document.createElement("div");
+  panel.style.cssText = `
+    width: min(420px, calc(100vw - 32px));
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #111827;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    padding: 18px;
+    color: #f8fafc;
+  `;
+
+  const title = document.createElement("div");
+  title.textContent = "Gemma4";
+  title.style.cssText = "font-size: 16px; font-weight: 800; margin-bottom: 8px;";
+
+  const message = document.createElement("div");
+  message.textContent = "Starting...";
+  message.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; white-space: pre-wrap;";
+
+  const bar = document.createElement("div");
+  bar.style.cssText = `
+    height: 8px;
+    margin-top: 14px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #1f2937;
+  `;
+  const fill = document.createElement("div");
+  fill.style.cssText = `
+    width: 42%;
+    height: 100%;
+    border-radius: 999px;
+    background: #10b981;
+    animation: vrgdgGemma4Pulse 1.1s ease-in-out infinite alternate;
+  `;
+
+  if (!document.getElementById("vrgdg-gemma4-progress-style")) {
+    const style = document.createElement("style");
+    style.id = "vrgdg-gemma4-progress-style";
+    style.textContent = `
+      @keyframes vrgdgGemma4Pulse {
+        from { transform: translateX(-55%); opacity: 0.65; }
+        to { transform: translateX(145%); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  bar.appendChild(fill);
+  panel.append(title, message, bar);
+  overlay.appendChild(panel);
+  overlay.__vrgdgSetMessage = (text) => {
+    message.textContent = String(text || "");
+  };
+  overlay.__vrgdgSetTitle = (text) => {
+    title.textContent = String(text || "Gemma4");
+  };
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function showGemma4Progress(message, title = "Gemma4") {
+  const overlay = ensureGemma4ProgressOverlay();
+  overlay.__vrgdgSetTitle?.(title);
+  overlay.__vrgdgSetMessage?.(message);
+  overlay.style.display = "flex";
+  return overlay;
+}
+
+function hideGemma4Progress() {
+  const overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function startAceStepProgressPolling(overlay) {
+  let stopped = false;
+  async function poll() {
+    if (stopped) return;
+    try {
+      const response = await api.fetchApi("/vrgdg/acestep/progress", { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (data?.ok) {
+        const lines = [data.message || ""];
+        const serviceTail = Array.isArray(data.service_log_tail) ? data.service_log_tail.slice(-4) : [];
+        if (serviceTail.length) {
+          lines.push("", "ACE-Step log:", ...serviceTail);
+        }
+        overlay.__vrgdgSetMessage?.(lines.join("\n").trim());
+      }
+    } catch (error) {
+      console.warn("[VRGDG] ACE-Step progress poll failed:", error);
+    }
+    setTimeout(poll, 1200);
+  }
+  poll();
+  return () => {
+    stopped = true;
+  };
+}
+
+function createGemma4ModalShell(titleText) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.66);
+  `;
+
+  const panel = document.createElement("div");
+  panel.style.cssText = `
+    width: min(680px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #111827;
+    box-shadow: 0 20px 70px rgba(0, 0, 0, 0.48);
+    padding: 18px;
+    color: #f8fafc;
+  `;
+
+  const title = document.createElement("div");
+  title.textContent = titleText;
+  title.style.cssText = "font-size: 16px; font-weight: 800; margin-bottom: 8px;";
+
+  panel.appendChild(title);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  return { overlay, panel };
+}
+
+function requestGemma4Notes(targetLabel) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell(`Gemma4 ${targetLabel}`);
+
+    const body = document.createElement("div");
+    body.textContent = targetLabel === "Song Lyrics"
+      ? "Describe what the song should be about. You can include mood, genre, vocal type, story, phrases, or anything else."
+      : targetLabel === "Subject and Locations"
+        ? "Optional: add exact subject and location details. If you want a specific subject line, paste it here and say to use it verbatim."
+      : "Add optional notes like song style, genre, main character details, constraints, or anything else.";
+    body.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 7;
+    textarea.placeholder = targetLabel === "Subject and Locations"
+      ? "Example: Use this subject line verbatim: subject: a woman, with black hair, wearing a red leather jacket."
+      : "Optional notes...";
+    textarea.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #4b5563;
+      background: #0d1217;
+      color: #f3f4f6;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px;";
+
+    const noThanks = createButton(
+      "No thanks",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const ok = createButton(
+      "OK",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+
+    noThanks.addEventListener("click", () => finish(""));
+    ok.addEventListener("click", () => finish(String(textarea.value || "").trim()));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish("");
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish("");
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) finish(String(textarea.value || "").trim());
+    });
+
+    actions.append(noThanks, ok);
+    panel.append(body, textarea, actions);
+    setTimeout(() => textarea.focus(), 0);
+  });
+}
+
+function requestGemma4AdvancedListNotes() {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell("Gemma4 List Guidance");
+
+    const body = document.createElement("div");
+    body.textContent = "Optional: tell Gemma what kind of details you want in these lists, such as fast camera movement, fast character motion, harsher lighting, calmer expressions, or any style rules it should follow.";
+    body.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 7;
+    textarea.placeholder = "Example: Make the camera motion fast and energetic. Character movement should feel intense, with quick gestures and strong performance energy.";
+    textarea.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #4b5563;
+      background: #0d1217;
+      color: #f3f4f6;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
+    const cancel = createButton(
+      "Cancel",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const skip = createButton(
+      "Use No Extra Notes",
+      "border: 1px solid #2563eb; background: #1d4ed8; color: white; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    const create = createButton(
+      "Create Lists",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+
+    cancel.addEventListener("click", () => finish(null));
+    skip.addEventListener("click", () => finish(""));
+    create.addEventListener("click", () => finish(String(textarea.value || "").trim()));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish(null);
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        finish(String(textarea.value || "").trim());
+      }
+    });
+
+    actions.append(cancel, skip, create);
+    panel.append(body, textarea, actions);
+    setTimeout(() => textarea.focus(), 0);
+  });
+}
+
+function showGemma4ResultDialog({ title, text, isError = false }) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell(title);
+
+    const message = document.createElement("div");
+    message.textContent = text;
+    message.style.cssText = `
+      max-height: min(48vh, 420px);
+      overflow: auto;
+      white-space: pre-wrap;
+      border: 1px solid ${isError ? "#7f1d1d" : "#334155"};
+      border-radius: 8px;
+      background: ${isError ? "#2b1215" : "#0d1217"};
+      color: ${isError ? "#fecaca" : "#f3f4f6"};
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      margin: 4px 0 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
+
+    const cancel = createButton(
+      isError ? "Close" : "Cancel",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const retry = createButton(
+      "Try Again",
+      "border: 1px solid #d97706; background: #f59e0b; color: #111827; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    const use = createButton(
+      "Use This",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    use.style.display = isError ? "none" : "";
+
+    function finish(action) {
+      overlay.remove();
+      resolve(action);
+    }
+
+    cancel.addEventListener("click", () => finish("cancel"));
+    retry.addEventListener("click", () => finish("retry"));
+    use.addEventListener("click", () => finish("use"));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish("cancel");
+    });
+
+    actions.append(cancel, retry, use);
+    panel.append(message, actions);
+  });
+}
+
+function showAceStepInfoDialog({ title, text, isError = false }) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell(title);
+    const message = document.createElement("div");
+    message.textContent = text;
+    message.style.cssText = `
+      white-space: pre-wrap;
+      border: 1px solid ${isError ? "#7f1d1d" : "#334155"};
+      border-radius: 8px;
+      background: ${isError ? "#2b1215" : "#0d1217"};
+      color: ${isError ? "#fecaca" : "#f3f4f6"};
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      margin: 4px 0 14px;
+      max-height: min(48vh, 420px);
+      overflow: auto;
+    `;
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end;";
+    const close = createButton(
+      "Close",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    close.addEventListener("click", () => {
+      overlay.remove();
+      resolve();
+    });
+    actions.appendChild(close);
+    panel.append(message, actions);
+  });
+}
+
+function showAceStepSongReadyDialog(data) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell("ACE-Step Song Ready");
+    const filename = String(data?.filename || "");
+    const path = String(data?.path || "");
+    const backupPath = String(data?.backup_path || "");
+
+    const info = document.createElement("div");
+    info.textContent = `Created: ${filename}\n\nActive audio:\n${path}\n\nBackup copy:\n${backupPath}`;
+    info.style.cssText = `
+      white-space: pre-wrap;
+      color: #cbd5e1;
+      font-size: 12px;
+      line-height: 1.45;
+      margin-bottom: 12px;
+      word-break: break-all;
+    `;
+
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.src = `/vrgdg/audio/preview?path=${encodeURIComponent(path)}`;
+    audio.style.cssText = "width: 100%; margin-bottom: 14px;";
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
+    const close = createButton(
+      "Close",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    close.addEventListener("click", () => {
+      overlay.remove();
+      resolve();
+    });
+    actions.appendChild(close);
+    panel.append(info, audio, actions);
+  });
+}
+
+function requestAceStepInstall(status) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell("Install ACE-Step 1.5");
+    const message = document.createElement("div");
+    message.textContent = [
+      "ACE-Step 1.5 is not installed yet.",
+      "",
+      "This will clone ACE-Step 1.5, create a separate Python environment, install dependencies, and download the XL Turbo model plus the 1.7B LM for Thinking mode.",
+      "",
+      "Expected disk use: roughly 35-55 GB. Please choose a drive with at least 60 GB free.",
+      "",
+      "Choose the parent folder below. The installer will create/use an ACE-Step-1.5 folder there.",
+    ].join("\n");
+    message.style.cssText = "white-space: pre-wrap; color: #cbd5e1; font-size: 13px; line-height: 1.45; margin-bottom: 14px;";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = String(status?.install_root || "");
+    input.placeholder = "Example: D:\\AI_TOOLS";
+    input.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #4b5563;
+      border-radius: 8px;
+      background: #0d1217;
+      color: #f3f4f6;
+      padding: 9px 10px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    `;
+
+    const finalPath = document.createElement("div");
+    finalPath.style.cssText = "white-space: pre-wrap; color: #fbbf24; font-size: 12px; line-height: 1.4; margin-bottom: 14px;";
+    function normalizedDisplayPath() {
+      const raw = String(input.value || status?.install_root || "").trim();
+      if (!raw) return "";
+      return /[\\/]ACE-Step-1\.5[\\/]?$/i.test(raw) ? raw : `${raw.replace(/[\\/]+$/, "")}\\ACE-Step-1.5`;
+    }
+    function updatePath() {
+      finalPath.textContent = `ACE-Step 1.5 will be installed here:\n${normalizedDisplayPath()}`;
+    }
+    input.addEventListener("input", updatePath);
+    updatePath();
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px;";
+    const cancel = createButton(
+      "Cancel",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const useExisting = createButton(
+      "Use Existing ACE-Step 1.5",
+      "border: 1px solid #2563eb; background: #1d4ed8; color: white; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    const install = createButton(
+      "Install ACE-Step 1.5",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+    cancel.addEventListener("click", () => finish(false));
+    useExisting.addEventListener("click", () => {
+      const installRoot = String(input.value || "").trim();
+      if (!installRoot) {
+        finalPath.textContent = "Please enter the folder for your existing ACE-Step 1.5 install.";
+        return;
+      }
+      finish({ action: "use_existing", installRoot });
+    });
+    install.addEventListener("click", () => {
+      const installRoot = String(input.value || "").trim();
+      if (!installRoot) {
+        finalPath.textContent = "Please enter an install folder.";
+        return;
+      }
+      const ok = window.confirm(`Install ACE-Step 1.5 to this folder?\n\n${normalizedDisplayPath()}\n\nThis may use 35-55 GB of disk space.`);
+      if (ok) finish({ action: "install", installRoot });
+    });
+    actions.append(cancel, useExisting, install);
+    panel.append(message, input, finalPath, actions);
+    setTimeout(() => input.focus(), 0);
+  });
+}
+
+function requestAceStepSongInputs(defaultLyrics, gemmaModelFile = "") {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell("Create Song with ACE-Step");
+    let gemmaWasUsed = false;
+    let saveTimer = null;
+
+    function loadDraft() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(ACE_STEP_DRAFT_STORAGE_KEY) || "{}");
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch (error) {
+        console.warn("[VRGDG] ACE-Step draft load failed:", error);
+        return {};
+      }
+    }
+
+    const draft = loadDraft();
+
+    const guide = document.createElement("div");
+    guide.textContent = "ACE-Step Text2Music uses Tags for music direction: genres, instruments, vocal style, production style, or scene descriptions separated by commas. Lyrics work best with structure tags like [verse], [chorus], and [bridge].";
+    guide.style.cssText = "color: #cbd5e1; font-size: 12px; line-height: 1.45; margin-bottom: 12px;";
+
+    const grid = document.createElement("div");
+    grid.style.cssText = "display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;";
+
+    function addField(labelText, control, noteText = "") {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = "display: block; color: #cbd5e1; font-size: 12px;";
+      const label = document.createElement("div");
+      label.textContent = labelText;
+      label.style.cssText = "font-weight: 800; margin-bottom: 5px;";
+      wrap.append(label, control);
+      if (noteText) {
+        const note = document.createElement("div");
+        note.textContent = noteText;
+        note.style.cssText = "color: #94a3b8; font-size: 11px; line-height: 1.35; margin-top: 5px;";
+        wrap.append(note);
+      }
+      return wrap;
+    }
+
+    function styleInput(input) {
+      input.style.cssText = `
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #4b5563;
+        border-radius: 8px;
+        background: #0d1217;
+        color: #f3f4f6;
+        padding: 9px 10px;
+        font-size: 13px;
+        line-height: 1.45;
+      `;
+      return input;
+    }
+
+    const lyrics = styleInput(document.createElement("textarea"));
+    lyrics.rows = 9;
+    lyrics.value = String(draft.lyrics || defaultLyrics.replace(/^Full Lyrics\b/i, "").trim());
+
+    const lyricsHeader = document.createElement("div");
+    lyricsHeader.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px;";
+    const lyricsLabel = document.createElement("div");
+    lyricsLabel.textContent = "Lyrics";
+    lyricsLabel.style.cssText = "font-weight: 800;";
+    const gemmaLyricsButton = createButton(
+      "Gemma4 Lyrics",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 6px 9px; font-size: 11px; font-weight: 800;"
+    );
+    gemmaLyricsButton.type = "button";
+
+    const prompt = styleInput(document.createElement("textarea"));
+    prompt.rows = 9;
+    prompt.value = String(draft.prompt || "");
+    prompt.placeholder = "descriptive tags, genres, instruments, vocal style, production style";
+
+    const tagsHeader = document.createElement("div");
+    tagsHeader.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px;";
+    const tagsLabel = document.createElement("div");
+    tagsLabel.textContent = "ACE-Step Tags";
+    tagsLabel.style.cssText = "font-weight: 800;";
+    const gemmaTagsButton = createButton(
+      "Gemma4 Tags",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 6px 9px; font-size: 11px; font-weight: 800;"
+    );
+    gemmaTagsButton.type = "button";
+
+    const preset = styleInput(document.createElement("select"));
+    const customOption = document.createElement("option");
+    customOption.value = "";
+    customOption.textContent = "Choose a music preset...";
+    preset.appendChild(customOption);
+    for (const [name, value] of Object.entries(ACE_STEP_TAG_PRESETS)) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = name;
+      preset.appendChild(option);
+    }
+    preset.addEventListener("change", () => {
+      if (!preset.value) return;
+      if (String(prompt.value || "").trim()) {
+        const ok = window.confirm("Replace the current ACE-Step Tags with this preset?");
+        if (!ok) {
+          preset.value = "";
+          return;
+        }
+      }
+      prompt.value = preset.value;
+    });
+
+    const duration = styleInput(document.createElement("input"));
+    duration.type = "number";
+    duration.min = "10";
+    duration.max = "240";
+    duration.step = "1";
+    duration.value = String(draft.duration || "60");
+
+    const autoDurationWrap = document.createElement("label");
+    autoDurationWrap.style.cssText = "display: flex; align-items: center; gap: 8px; color: #cbd5e1; font-size: 12px; margin-top: 8px;";
+    const autoDuration = document.createElement("input");
+    autoDuration.type = "checkbox";
+    autoDuration.checked = Boolean(draft.autoDuration);
+    autoDurationWrap.append(autoDuration, document.createTextNode("Auto duration (-1, ACE-Step decides)"));
+    autoDuration.addEventListener("change", () => {
+      duration.disabled = autoDuration.checked;
+      duration.style.opacity = autoDuration.checked ? "0.55" : "1";
+    });
+    duration.disabled = autoDuration.checked;
+    duration.style.opacity = autoDuration.checked ? "0.55" : "1";
+
+    const durationWrap = document.createElement("div");
+    durationWrap.append(duration, autoDurationWrap);
+
+    const seed = styleInput(document.createElement("input"));
+    seed.type = "number";
+    seed.step = "1";
+    seed.value = String(draft.seed ?? "0");
+    seed.placeholder = "0 = random";
+
+    const quality = styleInput(document.createElement("select"));
+    [
+      ["8", "Turbo recommended (8 steps)"],
+      ["16", "VRGDG current favorite (16 steps)"],
+      ["20", "Max turbo test (20 steps)"],
+    ].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      quality.appendChild(option);
+    });
+    quality.value = String(draft.inferStep || "16");
+
+    grid.append(
+      addField("Preset: fills ACE-Step Tags", preset, "Optional shortcut. Choosing one replaces the Tags box with a starter music direction."),
+      addField("Duration Seconds", durationWrap, "Target song length. If lyrics are too short or too long for this, vocals may get unstable."),
+      addField("Quality", quality, "Controls inference steps. ACE-Step 1.5 Turbo recommends 8; 16 has tested well here; 20 is the upper turbo limit."),
+      addField("Seed", seed, "0 makes a new random version. Reuse a seed to retry similar settings.")
+    );
+
+    const lyricsWrap = document.createElement("label");
+    lyricsWrap.style.cssText = "display: block; color: #cbd5e1; font-size: 12px;";
+    lyricsHeader.append(lyricsLabel, gemmaLyricsButton);
+    lyricsWrap.append(lyricsHeader, lyrics);
+    grid.insertBefore(lyricsWrap, grid.children[0]);
+
+    const tagsWrap = document.createElement("label");
+    tagsWrap.style.cssText = "display: block; color: #cbd5e1; font-size: 12px;";
+    tagsHeader.append(tagsLabel, gemmaTagsButton);
+    tagsWrap.append(tagsHeader, prompt);
+    grid.insertBefore(tagsWrap, grid.children[2]);
+
+    const advanced = document.createElement("details");
+    advanced.style.cssText = "border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; margin: -2px 0 14px; color: #cbd5e1;";
+    const advancedSummary = document.createElement("summary");
+    advancedSummary.textContent = "Advanced ACE-Step Settings";
+    advancedSummary.style.cssText = "cursor: pointer; font-weight: 800; font-size: 12px;";
+    const advancedGrid = document.createElement("div");
+    advancedGrid.style.cssText = "display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px;";
+
+    const guidanceScale = styleInput(document.createElement("input"));
+    guidanceScale.type = "number";
+    guidanceScale.min = "0";
+    guidanceScale.max = "30";
+    guidanceScale.step = "0.1";
+    guidanceScale.value = String(draft.guidanceScale || "7");
+
+    const schedulerType = styleInput(document.createElement("select"));
+    ["euler", "heun", "pingpong"].forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      schedulerType.appendChild(option);
+    });
+    schedulerType.value = String(draft.schedulerType || "euler");
+
+    const cfgType = styleInput(document.createElement("select"));
+    ["apg", "cfg", "cfg_star"].forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      cfgType.appendChild(option);
+    });
+    cfgType.value = String(draft.cfgType || "apg");
+
+    const omegaScale = styleInput(document.createElement("input"));
+    omegaScale.type = "number";
+    omegaScale.min = "-20";
+    omegaScale.max = "40";
+    omegaScale.step = "0.1";
+    omegaScale.value = String(draft.omegaScale || "10");
+
+    function makeCheck(labelText, checked, noteText = "") {
+      const label = document.createElement("label");
+      label.style.cssText = "display: block; color: #cbd5e1; font-size: 12px;";
+      const row = document.createElement("div");
+      row.style.cssText = "display: flex; align-items: center; gap: 8px; min-height: 38px; font-weight: 800;";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = checked;
+      row.append(input, document.createTextNode(labelText));
+      label.append(row);
+      if (noteText) {
+        const note = document.createElement("div");
+        note.textContent = noteText;
+        note.style.cssText = "color: #94a3b8; font-size: 11px; line-height: 1.35; margin-top: 5px;";
+        label.append(note);
+      }
+      return { label, input };
+    }
+
+    const useErgTag = makeCheck("ERG Tag", draft.useErgTag ?? true, "Weakens tag attention a bit for variety. ACE-Step default is on.");
+    const useErgLyric = makeCheck("ERG Lyric", draft.useErgLyric ?? false, "Applies ERG to lyric attention. ACE-Step default is off; turn on only when testing.");
+    const useErgDiffusion = makeCheck("ERG Diffusion", draft.useErgDiffusion ?? true, "Applies ERG during diffusion. ACE-Step default is on.");
+
+    advancedGrid.append(
+      addField("Guidance Scale", guidanceScale, "How strongly ACE-Step follows tags and lyrics. Lower is looser; too high can sound harsh."),
+      addField("Scheduler", schedulerType, "Sampling method. euler is recommended; heun is slower; pingpong is experimental."),
+      addField("CFG Type", cfgType, "Guidance style. apg is recommended by ACE-Step; cfg/cfg_star are advanced alternatives."),
+      addField("Omega Scale", omegaScale, "Granularity/artifact control. Around 10 is normal; higher may reduce artifacts or change texture."),
+      useErgTag.label,
+      useErgLyric.label,
+      useErgDiffusion.label
+    );
+    advanced.append(advancedSummary, advancedGrid);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: space-between; gap: 8px;";
+    const leftActions = document.createElement("div");
+    leftActions.style.cssText = "display: flex; align-items: center; gap: 8px;";
+    const rightActions = document.createElement("div");
+    rightActions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px;";
+    const draftStatus = document.createElement("div");
+    draftStatus.textContent = "Draft autosaved";
+    draftStatus.style.cssText = "color: #94a3b8; font-size: 11px;";
+    const clearDraft = createButton(
+      "Clear Draft",
+      "border: 1px solid #475569; background: #111827; color: #cbd5e1; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const cancel = createButton(
+      "Cancel",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const generate = createButton(
+      "Generate Song",
+      "border: 1px solid #0f766e; background: #0f766e; color: white; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+
+    function getDraftPayload() {
+      return {
+        lyrics: String(lyrics.value || ""),
+        prompt: String(prompt.value || ""),
+        duration: String(duration.value || "60"),
+        autoDuration: Boolean(autoDuration.checked),
+        seed: String(seed.value || "0"),
+        inferStep: String(quality.value || "16"),
+        guidanceScale: String(guidanceScale.value || "7"),
+        schedulerType: String(schedulerType.value || "euler"),
+        cfgType: String(cfgType.value || "apg"),
+        omegaScale: String(omegaScale.value || "10"),
+        useErgTag: Boolean(useErgTag.input.checked),
+        useErgLyric: Boolean(useErgLyric.input.checked),
+        useErgDiffusion: Boolean(useErgDiffusion.input.checked),
+      };
+    }
+
+    function saveDraftNow() {
+      try {
+        localStorage.setItem(ACE_STEP_DRAFT_STORAGE_KEY, JSON.stringify(getDraftPayload()));
+        draftStatus.textContent = "Draft autosaved";
+      } catch (error) {
+        draftStatus.textContent = "Draft save failed";
+        console.warn("[VRGDG] ACE-Step draft save failed:", error);
+      }
+    }
+
+    function scheduleDraftSave() {
+      draftStatus.textContent = "Saving draft...";
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(saveDraftNow, 250);
+    }
+
+    [
+      lyrics,
+      prompt,
+      duration,
+      autoDuration,
+      seed,
+      quality,
+      guidanceScale,
+      schedulerType,
+      cfgType,
+      omegaScale,
+      useErgTag.input,
+      useErgLyric.input,
+      useErgDiffusion.input,
+    ].forEach((control) => {
+      control.addEventListener("input", scheduleDraftSave);
+      control.addEventListener("change", scheduleDraftSave);
+    });
+    saveDraftNow();
+
+    function finish(value) {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveDraftNow();
+      if (gemmaWasUsed && String(gemmaModelFile || "").trim()) {
+        unloadGemma4Model({
+          model_file: String(gemmaModelFile || "").trim(),
+          n_ctx: 13000,
+        }).catch((error) => console.warn("[VRGDG] Gemma4 unload failed:", error));
+      }
+      overlay.remove();
+      resolve(value);
+    }
+    clearDraft.addEventListener("click", () => {
+      localStorage.removeItem(ACE_STEP_DRAFT_STORAGE_KEY);
+      lyrics.value = defaultLyrics.replace(/^Full Lyrics\b/i, "").trim();
+      prompt.value = "";
+      duration.value = "60";
+      autoDuration.checked = false;
+      duration.disabled = false;
+      duration.style.opacity = "1";
+      seed.value = "0";
+      quality.value = "16";
+      guidanceScale.value = "7";
+      schedulerType.value = "euler";
+      cfgType.value = "apg";
+      omegaScale.value = "10";
+      useErgTag.input.checked = true;
+      useErgLyric.input.checked = false;
+      useErgDiffusion.input.checked = true;
+      draftStatus.textContent = "Draft cleared";
+    });
+    cancel.addEventListener("click", () => finish(null));
+    generate.addEventListener("click", () => {
+      finish({
+        lyrics: String(lyrics.value || "").trim(),
+        prompt: String(prompt.value || "").trim(),
+        audio_duration: autoDuration.checked ? -1 : Number(duration.value || 60),
+        seed: Number(seed.value || 0),
+        infer_step: Number(quality.value || 16),
+        guidance_scale: Number(guidanceScale.value || 7),
+        scheduler_type: String(schedulerType.value || "euler"),
+        cfg_type: String(cfgType.value || "apg"),
+        omega_scale: Number(omegaScale.value || 10),
+        use_erg_tag: Boolean(useErgTag.input.checked),
+        use_erg_lyric: Boolean(useErgLyric.input.checked),
+        use_erg_diffusion: Boolean(useErgDiffusion.input.checked),
+      });
+    });
+    leftActions.append(clearDraft, draftStatus);
+    rightActions.append(cancel, generate);
+    actions.append(leftActions, rightActions);
+    panel.append(guide, grid, advanced, actions);
+    gemmaLyricsButton.addEventListener("click", async () => {
+      if (!String(gemmaModelFile || "").trim()) {
+        await showAceStepInfoDialog({
+          title: "Gemma4 Lyrics Failed",
+          text: "Choose a Gemma4 model in the main LLM Model dropdown first.",
+          isError: true,
+        });
+        return;
+      }
+      const notes = await requestGemma4Notes("Song Lyrics");
+      showGemma4Progress("Gemma4 is creating song lyrics...", "Gemma4");
+      try {
+        const data = await generateGemma4Text({
+          target: "song_lyrics",
+          model_file: String(gemmaModelFile || "").trim(),
+          notes,
+          duration: autoDuration.checked ? "120" : String(duration.value || "120"),
+          n_ctx: 13000,
+          max_new_tokens: 32000,
+        });
+        gemmaWasUsed = true;
+        hideGemma4Progress();
+        const text = String(data.text || "").trim();
+        if (text) {
+          lyrics.value = text;
+          saveDraftNow();
+        }
+      } catch (error) {
+        hideGemma4Progress();
+        await showAceStepInfoDialog({
+          title: "Gemma4 Lyrics Failed",
+          text: String(error?.message || error),
+          isError: true,
+        });
+      }
+    });
+    gemmaTagsButton.addEventListener("click", async () => {
+      const lyricText = String(lyrics.value || "").trim();
+      if (!lyricText) {
+        prompt.value = "Add lyrics first, then click Gemma4 Tags.";
+        return;
+      }
+      const notes = await requestAceStepTagNotes();
+      if (!String(gemmaModelFile || "").trim()) {
+        await showAceStepInfoDialog({
+          title: "Gemma4 Tags Failed",
+          text: "Choose a Gemma4 model in the main LLM Model dropdown first.",
+          isError: true,
+        });
+        return;
+      }
+      showGemma4Progress("Gemma4 is creating ACE-Step Tags...", "Gemma4");
+      try {
+        const data = await generateGemma4Text({
+          target: "ace_step_tags",
+          model_file: String(gemmaModelFile || "").trim(),
+          lyrics: lyricText,
+          notes,
+          n_ctx: 13000,
+          max_new_tokens: 512,
+        });
+        gemmaWasUsed = true;
+        hideGemma4Progress();
+        const text = String(data.text || "").trim();
+        if (text) {
+          prompt.value = text;
+          saveDraftNow();
+        }
+      } catch (error) {
+        hideGemma4Progress();
+        await showAceStepInfoDialog({
+          title: "Gemma4 Tags Failed",
+          text: String(error?.message || error),
+          isError: true,
+        });
+      }
+    });
+    setTimeout(() => lyrics.focus(), 0);
+  });
+}
+
 function createSubgraphInput(field) {
   const input = field.type === "select" || field.type === "boolean" || field.type === "combo" ? document.createElement("select") : document.createElement("input");
   if (field.type === "select" || field.type === "boolean" || field.type === "combo") {
@@ -566,195 +1568,30 @@ async function saveText(payload) {
   return data;
 }
 
-
-function ensureGemma4ProgressOverlay() {
-  let overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
-  if (overlay) return overlay;
-
-  overlay = document.createElement("div");
-  overlay.id = "vrgdg-gemma4-progress-overlay";
-  overlay.style.cssText = `
-    position: fixed;
-    inset: 0;
-    z-index: 10030;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(2, 6, 23, 0.62);
-  `;
-  overlay.innerHTML = `
-    <div style="width:min(520px,calc(100vw - 36px));background:#111827;border:1px solid #334155;border-radius:8px;padding:18px;color:#f8fafc;box-shadow:0 22px 70px rgba(0,0,0,.45);">
-      <h3 style="margin:0 0 8px;font-size:18px;font-weight:800;">Gemma4</h3>
-      <div data-vrgdg-gemma4-progress-text style="font-size:13px;line-height:1.45;color:#cbd5e1;">Gemma4 is writing...</div>
-      <div style="height:8px;border-radius:999px;background:#1f2937;overflow:hidden;margin-top:14px;">
-        <div style="width:42%;height:100%;background:#10b981;border-radius:999px;animation:vrgdgGemma4Progress 1.2s ease-in-out infinite alternate;"></div>
-      </div>
-    </div>
-  `;
-  if (!document.getElementById("vrgdg-gemma4-progress-style")) {
-    const style = document.createElement("style");
-    style.id = "vrgdg-gemma4-progress-style";
-    style.textContent = "@keyframes vrgdgGemma4Progress{from{transform:translateX(-70%)}to{transform:translateX(170%)}}";
-    document.head.appendChild(style);
-  }
-  document.body.appendChild(overlay);
-  return overlay;
-}
-
-function showGemma4Progress(message) {
-  const overlay = ensureGemma4ProgressOverlay();
-  const text = overlay.querySelector("[data-vrgdg-gemma4-progress-text]");
-  if (text) text.textContent = message || "Gemma4 is writing...";
-  overlay.style.display = "flex";
-}
-
-function hideGemma4Progress() {
-  const overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
-  if (overlay) overlay.style.display = "none";
-}
-
-function createGemma4ModalShell(title) {
-  const overlay = document.createElement("div");
-  overlay.style.cssText = `
-    position: fixed;
-    inset: 0;
-    z-index: 10031;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(2, 6, 23, 0.66);
-  `;
-  const modal = document.createElement("div");
-  modal.style.cssText = `
-    width: min(720px, calc(100vw - 36px));
-    max-height: min(760px, calc(100vh - 36px));
-    overflow: auto;
-    background: #111827;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    padding: 18px;
-    color: #f8fafc;
-    box-shadow: 0 22px 70px rgba(0,0,0,.5);
-  `;
-  const heading = document.createElement("h3");
-  heading.textContent = title;
-  heading.style.cssText = "margin:0 0 12px;font-size:18px;font-weight:800;";
-  modal.appendChild(heading);
-  overlay.appendChild(modal);
-  document.body.appendChild(overlay);
-  return { overlay, modal };
-}
-
-function showGemma4ResultDialog(title, text, options = {}) {
-  return new Promise((resolve) => {
-    const { overlay, modal } = createGemma4ModalShell(title);
-    const output = document.createElement("textarea");
-    output.value = text || "";
-    output.readOnly = true;
-    output.style.cssText = `
-      width: 100%;
-      min-height: 190px;
-      box-sizing: border-box;
-      resize: vertical;
-      background: #0b1015;
-      border: 1px solid #475569;
-      border-radius: 6px;
-      color: #f8fafc;
-      padding: 10px;
-      font-family: Consolas, monospace;
-      font-size: 12px;
-      line-height: 1.45;
-    `;
-    modal.appendChild(output);
-
-    const actions = document.createElement("div");
-    actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;";
-    const close = () => overlay.remove();
-    const useButton = createButton("Use This", "border:1px solid #059669;background:#10b981;color:#03130d;font-weight:800;padding:8px 14px;");
-    const retryButton = createButton("Try Again", "border:1px solid #7c3aed;background:#8b5cf6;color:white;font-weight:800;padding:8px 14px;");
-    const closeButton = createButton("Close", "border:1px solid #475569;background:#1f2937;color:white;font-weight:700;padding:8px 14px;");
-    useButton.addEventListener("click", () => { close(); resolve("use"); });
-    retryButton.addEventListener("click", () => { close(); resolve("retry"); });
-    closeButton.addEventListener("click", () => { close(); resolve("close"); });
-    actions.append(useButton);
-    if (options.allowRetry !== false) actions.append(retryButton);
-    actions.append(closeButton);
-    modal.appendChild(actions);
-    output.focus();
-  });
-}
-
-function requestGemma4AdvancedListNotes() {
-  return new Promise((resolve) => {
-    const { overlay, modal } = createGemma4ModalShell("Gemma4 List Guidance");
-
-    const help = document.createElement("div");
-    help.textContent = "Optional: tell Gemma what kind of details you want in these lists, such as fast camera movement, fast character motion, harsher lighting, calmer expressions, or any style rules it should follow.";
-    help.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
-
-    const textarea = document.createElement("textarea");
-    textarea.rows = 7;
-    textarea.placeholder = "Example: Make the camera motion fast and energetic. Character movement should feel intense, with quick gestures and strong performance energy.";
-    textarea.style.cssText = `
-      width: 100%;
-      box-sizing: border-box;
-      resize: vertical;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      background: #0d1217;
-      color: #f3f4f6;
-      padding: 10px;
-      font-size: 13px;
-      line-height: 1.45;
-      margin-bottom: 12px;
-    `;
-
-    const actions = document.createElement("div");
-    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
-    const cancel = createButton("Cancel", "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px;");
-    const skip = createButton("Use No Extra Notes", "border: 1px solid #2563eb; background: #1d4ed8; color: white; padding: 8px 12px; font-weight: 700;");
-    const create = createButton("Create Lists", "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-weight: 800;");
-
-    function finish(value) {
-      overlay.remove();
-      resolve(value);
-    }
-
-    cancel.addEventListener("click", () => finish(null));
-    skip.addEventListener("click", () => finish(""));
-    create.addEventListener("click", () => finish(String(textarea.value || "").trim()));
-    overlay.addEventListener("click", (event) => {
-      if (event.target === overlay) finish(null);
-    });
-    textarea.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") finish(null);
-      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) finish(String(textarea.value || "").trim());
-    });
-
-    actions.append(cancel, skip, create);
-    modal.append(help, textarea, actions);
-    setTimeout(() => textarea.focus(), 0);
-  });
-}
-async function generateGemma4Text(target, payload) {
+async function generateGemma4Text(payload) {
   const response = await api.fetchApi("/vrgdg/gemma4/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target, ...payload }),
+    body: JSON.stringify(payload),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) {
-    throw new Error(data?.error || `Gemma4 request failed with status ${response.status}.`);
+    throw new Error(String(data?.error || `Gemma4 generation failed (${response.status})`));
   }
-  return String(data.text || "").trim();
+  return data;
 }
 
-async function unloadGemma4Model() {
-  try {
-    await api.fetchApi("/vrgdg/gemma4/unload", { method: "POST" });
-  } catch (error) {
-    console.warn("VRGDG Gemma4 unload failed", error);
+async function unloadGemma4Model(payload) {
+  const response = await api.fetchApi("/vrgdg/gemma4/unload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `Gemma4 unload failed (${response.status})`));
   }
+  return data;
 }
 
 async function loadPart2ConceptPrompts() {
@@ -762,6 +1599,67 @@ async function loadPart2ConceptPrompts() {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) {
     throw new Error(String(data?.error || `Concept prompts load failed (${response.status})`));
+  }
+  return data;
+}
+
+async function fetchAceStepStatus() {
+  const response = await api.fetchApi("/vrgdg/acestep/status", { cache: "no-store" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `ACE-Step status failed (${response.status})`));
+  }
+  return data;
+}
+
+async function installAceStep(installRoot) {
+  const response = await api.fetchApi("/vrgdg/acestep/install", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ install_root: installRoot }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `ACE-Step install failed (${response.status})`));
+  }
+  return data;
+}
+
+async function startAceStep() {
+  const response = await api.fetchApi("/vrgdg/acestep/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `ACE-Step start failed (${response.status})`));
+  }
+  return data;
+}
+
+async function useExistingAceStep(installRoot) {
+  const response = await api.fetchApi("/vrgdg/acestep/use_existing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ install_root: installRoot }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `ACE-Step existing install check failed (${response.status})`));
+  }
+  return data;
+}
+
+async function generateAceStepSong(payload) {
+  const response = await api.fetchApi("/vrgdg/acestep/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `ACE-Step generation failed (${response.status})`));
   }
   return data;
 }
@@ -863,6 +1761,11 @@ function ensureModal() {
     "border: 1px solid #0f766e; background: #0f766e; color: white;"
   );
 
+  const aceStepButton = createButton(
+    "Create Song with ACE-Step",
+    "border: 1px solid #7c2d12; background: #ea580c; color: white;"
+  );
+
   const topSaveButton = createButton(
     "Save Text Files",
     "border: 1px solid #1d4ed8; background: #2563eb; color: white;"
@@ -873,7 +1776,7 @@ function ensureModal() {
   hiddenAudioInput.accept = "audio/*,video/*";
   hiddenAudioInput.style.display = "none";
 
-  audioActions.append(chooseAudioButton, topSaveButton, hiddenAudioInput);
+  audioActions.append(chooseAudioButton, aceStepButton, topSaveButton, hiddenAudioInput);
   audioSection.append(audioTitle, audioHint, audioFileName, audioActions);
 
   const subgraphSection = document.createElement("div");
@@ -1041,6 +1944,16 @@ function ensureModal() {
         window.open(LYRIC_CREATOR_GPT_URL, "_blank", "noopener,noreferrer");
       });
       labelRow.appendChild(lyricsHelp);
+
+      const gemmaLyricsButton = createButton(
+        "Gemma4 Lyrics",
+        "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+      );
+      gemmaLyricsButton.type = "button";
+      gemmaLyricsButton.addEventListener("click", () => {
+        runGemma4ForField(field.key);
+      });
+      labelRow.appendChild(gemmaLyricsButton);
     }
 
     const gptUrlByField = {
@@ -1050,6 +1963,16 @@ function ensureModal() {
     };
     const gptUrl = gptUrlByField[field.key];
     if (gptUrl) {
+      const gemma4Button = createButton(
+        "Gemma4",
+        "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+      );
+      gemma4Button.type = "button";
+      gemma4Button.addEventListener("click", () => {
+        runGemma4ForField(field.key);
+      });
+      labelRow.appendChild(gemma4Button);
+
       const useGptButton = createButton(
         "Use GPT",
         "border: 1px solid #7c3aed; background: #8b5cf6; color: white; padding: 8px 12px; font-size: 12px; font-weight: 700;"
@@ -1098,6 +2021,7 @@ function ensureModal() {
     saveButton,
     topSaveButton,
     chooseAudioButton,
+    aceStepButton,
     hiddenAudioInput,
     audioFileName,
     audioHint,
@@ -1167,6 +2091,102 @@ function ensureModal() {
     setStatus(`Updated ${updated} fields on ${targetName}.`);
   }
 
+  async function runGemma4ForField(targetKey) {
+    const labelByTarget = {
+      full_lyrics: "Song Lyrics",
+      style_theme: "Style/theme",
+      story_idea: "Story idea",
+      subjects_and_scenes: "Subject and Locations",
+    };
+    const targetLabel = labelByTarget[targetKey] || targetKey;
+    const extraNotes = await requestGemma4Notes(targetLabel);
+    const modelFile = String(subgraphInputs.model_file?.value || "").trim();
+      if (!modelFile) {
+        setStatus("Choose a Gemma4 model in the LLM Model dropdown first.", true);
+        return;
+      }
+      const requestedDuration = targetKey === "full_lyrics"
+        ? window.prompt("Song duration in seconds for Gemma4 lyrics? Use the same duration you plan to use in ACE-Step.", "120")
+        : "";
+      if (targetKey === "full_lyrics" && requestedDuration === null) {
+        setStatus("Gemma4 lyrics generation was cancelled.");
+        return;
+      }
+
+      const lyrics = String(textareas.full_lyrics?.value || "").trim();
+    const lyricsBody = lyrics.replace(/^Full Lyrics\b/i, "").trim();
+    const styleTheme = String(textareas.style_theme?.value || "").trim();
+    const storyIdea = String(textareas.story_idea?.value || "").trim();
+    if ((targetKey === "style_theme" || targetKey === "story_idea") && !lyricsBody) {
+      setStatus("Add full lyrics before running Gemma4 for this field.", true);
+      return;
+    }
+    if (targetKey === "subjects_and_scenes" && !storyIdea) {
+      setStatus("Add or generate a story idea before running Gemma4 for Subject and Locations.", true);
+      return;
+    }
+
+    while (true) {
+      const progress = showGemma4Progress(
+        targetKey === "subjects_and_scenes"
+          ? "Generating Subject and Locations...\nThe model will unload after this finishes."
+          : `Generating ${targetLabel}...`
+      );
+      setStatus(`Gemma4 is generating ${targetLabel}...`);
+
+      try {
+        const data = await generateGemma4Text({
+          target: targetKey === "full_lyrics" ? "song_lyrics" : targetKey,
+          model_file: modelFile,
+          lyrics,
+          style_theme: styleTheme,
+          story_idea: storyIdea,
+          notes: extraNotes,
+          unload_after: targetKey === "subjects_and_scenes",
+          n_ctx: 13000,
+          max_new_tokens: 32000,
+          duration: targetKey === "full_lyrics" ? String(requestedDuration || "120") : "",
+        });
+        const text = String(data.text || "").trim();
+        if (!text) {
+          throw new Error("Gemma4 returned an empty response.");
+        }
+        progress.__vrgdgSetMessage?.(data.unloaded ? "Done. Gemma4 was unloaded." : "Done.");
+        hideGemma4Progress();
+        const action = await showGemma4ResultDialog({
+          title: `Gemma4 ${targetLabel} Result`,
+          text,
+        });
+        if (action === "retry") {
+          continue;
+        }
+        if (action === "use") {
+          textareas[targetKey].value = text;
+          syncNodeProperties();
+          app.graph?.setDirtyCanvas?.(true, true);
+          setStatus(data.unloaded ? `Gemma4 filled ${targetLabel} and unloaded the model.` : `Gemma4 filled ${targetLabel}.`);
+        } else {
+          setStatus(`Gemma4 ${targetLabel} result was not applied.`);
+        }
+        break;
+      } catch (error) {
+        const message = String(error?.message || error);
+        progress.__vrgdgSetMessage?.(`Failed:\n${message}`);
+        hideGemma4Progress();
+        setStatus(message, true);
+        const action = await showGemma4ResultDialog({
+          title: `Gemma4 ${targetLabel} Failed`,
+          text: message,
+          isError: true,
+        });
+        if (action === "retry") {
+          continue;
+        }
+        break;
+      }
+    }
+  }
+
   async function ensureConfigLoaded() {
     if (state.config) return state.config;
     state.config = await fetchConfig();
@@ -1222,6 +2242,83 @@ function ensureModal() {
     }
   }
 
+  async function handleAceStepSongCreation() {
+    aceStepButton.disabled = true;
+    let stopAceStepPolling = null;
+    try {
+      let statusData = await fetchAceStepStatus();
+      if (!statusData.installed) {
+        const setupChoice = await requestAceStepInstall(statusData);
+        if (!setupChoice) {
+          setStatus("ACE-Step install was cancelled.");
+          return;
+        }
+        let installData = null;
+        if (setupChoice.action === "use_existing") {
+          const progress = showGemma4Progress(`Checking existing ACE-Step install...\n\nTarget:\n${setupChoice.installRoot}`, "ACE-Step");
+          stopAceStepPolling = startAceStepProgressPolling(progress);
+          installData = await useExistingAceStep(setupChoice.installRoot);
+          stopAceStepPolling?.();
+          stopAceStepPolling = null;
+        } else {
+          const progress = showGemma4Progress(`Installing ACE-Step...\nThis can take a while. ComfyUI can stay open.\n\nTarget:\n${setupChoice.installRoot}`, "ACE-Step");
+          stopAceStepPolling = startAceStepProgressPolling(progress);
+          installData = await installAceStep(setupChoice.installRoot);
+          stopAceStepPolling?.();
+          stopAceStepPolling = null;
+        }
+        hideGemma4Progress();
+        statusData = await fetchAceStepStatus();
+        setStatus(`ACE-Step ready at ${String(installData.install_root || statusData.install_root || "")}`);
+      }
+
+      const inputs = await requestAceStepSongInputs(
+        String(textareas.full_lyrics?.value || ""),
+        String(subgraphInputs.model_file?.value || "")
+      );
+      if (!inputs) {
+        setStatus("ACE-Step song creation was cancelled.");
+        return;
+      }
+      if (!inputs.lyrics) {
+        setStatus("Lyrics are required for ACE-Step song creation.", true);
+        return;
+      }
+      if (!inputs.prompt) {
+        setStatus("ACE-Step Tags are required for song creation.", true);
+        return;
+      }
+
+      const progress = showGemma4Progress("Starting ACE-Step and generating song...\nThe finished audio will be copied to the active audio folder and backed up.", "ACE-Step");
+      stopAceStepPolling = startAceStepProgressPolling(progress);
+      await startAceStep();
+      const data = await generateAceStepSong(inputs);
+      stopAceStepPolling?.();
+      stopAceStepPolling = null;
+      hideGemma4Progress();
+
+      if (state.node) {
+        state.node.properties = state.node.properties || {};
+        state.node.properties.vrgdg_test_popup_audio_filename = String(data.filename || "");
+      }
+      audioFileName.textContent = `Current generated ACE-Step audio: ${String(data.filename || "")}`;
+      setStatus(`ACE-Step song ready.\nActive audio: ${String(data.path || "")}\nBackup copy: ${String(data.backup_path || "")}`);
+      await showAceStepSongReadyDialog(data);
+    } catch (error) {
+      stopAceStepPolling?.();
+      hideGemma4Progress();
+      const message = String(error?.message || error);
+      setStatus(message, true);
+      await showAceStepInfoDialog({
+        title: "ACE-Step Failed",
+        text: message,
+        isError: true,
+      });
+    } finally {
+      aceStepButton.disabled = false;
+    }
+  }
+
   closeButton.addEventListener("click", closeModal);
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) closeModal();
@@ -1230,6 +2327,7 @@ function ensureModal() {
   topSaveButton.addEventListener("click", saveCurrentTexts);
   applySubgraphButton.addEventListener("click", applySubgraphSettings);
   chooseAudioButton.addEventListener("click", () => hiddenAudioInput.click());
+  aceStepButton.addEventListener("click", handleAceStepSongCreation);
   hiddenAudioInput.addEventListener("change", handleAudioSelection);
 
   for (const field of TEXT_FIELDS) {
@@ -3523,58 +4621,65 @@ function ensurePart2Modal() {
     }
   }
 
+  function stripJsonFence(text) {
+    return String(text || "")
+      .replace(/^\s*```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
+  }
 
   function extractPromptListForAdvancedGemma() {
-    const raw = String(controls.promptJson.value || "").trim();
-    if (!raw) return [];
+    const text = stripJsonFence(controls.promptJson.value);
+    if (!text) return [];
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(text);
       if (Array.isArray(parsed)) {
-        return parsed.map((item) => {
-          if (typeof item === "string") return item;
-          return item?.prompt || item?.text || item?.positive || JSON.stringify(item);
-        }).filter((line) => String(line || "").trim());
+        return parsed.map((item) => typeof item === "string" ? item : JSON.stringify(item)).map((item) => item.trim()).filter(Boolean);
       }
       if (parsed && typeof parsed === "object") {
-        const values = parsed.prompts || parsed.scenes || parsed.items || parsed.texts;
-        if (Array.isArray(values)) {
-          return values.map((item) => {
-            if (typeof item === "string") return item;
-            return item?.prompt || item?.text || item?.positive || JSON.stringify(item);
-          }).filter((line) => String(line || "").trim());
-        }
+        return Object.entries(parsed)
+          .sort(([a], [b]) => {
+            const an = Number(String(a).match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+            const bn = Number(String(b).match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+            return an - bn || String(a).localeCompare(String(b));
+          })
+          .map(([, value]) => typeof value === "string" ? value : JSON.stringify(value))
+          .map((item) => item.trim())
+          .filter(Boolean);
       }
-    } catch (error) {
-      // Plain text fallback below.
+    } catch {
+      // Fall through to line mode.
     }
-    return raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+    return text.split(/\r?\n+/).map((line) => line.trim()).filter(Boolean);
   }
 
   function cleanGemmaAdvancedList(text, expectedCount) {
     const lines = String(text || "")
+      .replace(/^\s*```(?:text)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
       .split(/\r?\n/)
-      .map((line) => line.replace(/^\s*(?:[-*]+|\d+[.)])\s*/, "").trim())
+      .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
       .filter(Boolean);
     return lines.slice(0, expectedCount).join("\n");
   }
 
   async function runGemma4ForAdvancedLists() {
+    const modelFile = String(controls.modelSelects.llm?.value || "").trim();
+    if (!modelFile) {
+      setStatus("Choose a SuperGemma model in the Part 2 LLM dropdown first.", true);
+      return;
+    }
     const prompts = extractPromptListForAdvancedGemma();
     if (!prompts.length) {
-      setStatus("Paste or enter Prompt JSON before asking Gemma4 to create advanced lists.", true);
+      setStatus("Paste or load Prompt JSON from Part 1 before using Gemma4 advanced lists.", true);
       return;
     }
-
-    const activeCount = Math.max(0, Math.min(12, Number(controls.advanced.count.value || 0)));
-    const activePickers = controls.advanced.pickers.slice(0, activeCount);
-    if (!activePickers.length) {
-      setStatus("Turn on at least one Advanced Prompt Detail list first.", true);
-      return;
+    if (!controls.advanced.enabled.checked) {
+      controls.advanced.enabled.checked = true;
     }
-
-    const modelName = controls.modelSelects?.llm?.value || "";
-    if (!modelName) {
-      setStatus("Choose an LLM model before using Gemma4.", true);
+    const count = getAdvancedCount();
+    if (count <= 0) {
+      setStatus("Set Advanced Settings Count to at least 1 before using Gemma4.", true);
       return;
     }
 
@@ -3584,39 +4689,45 @@ function ensurePart2Modal() {
       return;
     }
 
+    const progress = showGemma4Progress(`Gemma4 is creating ${count} advanced list${count === 1 ? "" : "s"}...\nUsing ${prompts.length} prompts.`, "Gemma4");
     advancedGemmaButton.disabled = true;
-    showGemma4Progress("Gemma4 is creating advanced prompt detail lists...");
+    setStatus(`Gemma4 is creating ${count} advanced list${count === 1 ? "" : "s"}...`);
     try {
-      for (const [index, picker] of activePickers.entries()) {
-        const label = String(picker.label.value || picker.key || `Detail ${index + 1}`).trim();
-        showGemma4Progress(`Gemma4 is creating ${label} (${index + 1} of ${activePickers.length})...`);
-        const result = await generateGemma4Text("advanced_prompt_detail", {
-          model_name: modelName,
+      for (let i = 1; i <= count; i++) {
+        const picker = controls.advanced.pickers[i - 1];
+        if (!picker) continue;
+        const label = String(picker.label.value || picker.preset.value || `Setting ${i}`).trim();
+        progress.__vrgdgSetMessage?.(`Gemma4 is creating list ${i} of ${count}: ${label}\nUsing ${prompts.length} prompts.`);
+        const data = await generateGemma4Text({
+          target: "advanced_prompt_detail",
+          model_file: modelFile,
           label,
           prompts,
           notes: extraNotes,
-          count: prompts.length,
-          max_tokens: Math.min(2048, Math.max(512, prompts.length * 48)),
-          temperature: 0.85,
-          top_p: 0.92,
-          context_size: 13000,
-          gpu_layers: -1,
+          n_ctx: 13000,
+          max_new_tokens: Math.max(1024, prompts.length * 80),
+          unload_after: i === count,
         });
-        picker.items.value = cleanGemmaAdvancedList(result, prompts.length);
+        const listText = cleanGemmaAdvancedList(data.text, prompts.length);
+        if (!listText) throw new Error(`Gemma4 returned an empty list for ${label}.`);
+        picker.items.value = listText;
         picker.selectionMode.value = "index";
-        picker.items.dispatchEvent(new Event("input", { bubbles: true }));
-        picker.selectionMode.dispatchEvent(new Event("change", { bubbles: true }));
+        updateAdvancedPickerHeader(i);
       }
-      hideGemma4Progress();
+      updateAdvancedVisibility();
       savePart2Draft();
-      await showGemma4ResultDialog("Gemma4 Lists Created", "Gemma4 filled the active advanced prompt detail lists.", { allowRetry: false });
-      setStatus("Gemma4 created the advanced prompt detail lists.");
+      progress.__vrgdgSetMessage?.("Done. Gemma4 filled the advanced lists and unloaded the model.");
+      hideGemma4Progress();
+      setStatus(`Gemma4 filled ${count} advanced list${count === 1 ? "" : "s"}. Selection mode was set to Index-based.`);
     } catch (error) {
       hideGemma4Progress();
-      setStatus(error?.message || "Gemma4 could not create the advanced lists.", true);
-      await showGemma4ResultDialog("Gemma4 Failed", error?.message || "Gemma4 could not create the advanced lists.", { allowRetry: false });
+      setStatus(String(error?.message || error), true);
+      await showGemma4ResultDialog({
+        title: "Gemma4 Advanced Lists Failed",
+        text: String(error?.message || error),
+        isError: true,
+      });
     } finally {
-      await unloadGemma4Model();
       advancedGemmaButton.disabled = false;
     }
   }
@@ -3747,7 +4858,11 @@ function ensurePart2Modal() {
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
   controls.zImageLora.trigger.useTrigger.addEventListener("change", updateZImageLoraVisibility);
   pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
-  advancedGemmaButton.addEventListener("click", runGemma4ForAdvancedLists);
+  advancedGemmaButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runGemma4ForAdvancedLists();
+  });
   controls.advanced.enabled.addEventListener("change", () => {
     if (controls.advanced.enabled.checked && Number(controls.advanced.count.value || 0) <= 0) {
       controls.advanced.count.value = "1";
