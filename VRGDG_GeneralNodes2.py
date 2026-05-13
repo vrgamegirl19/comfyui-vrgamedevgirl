@@ -51,6 +51,8 @@ Rules:
 - Return exactly the requested number of lines.
 - Keep each line short and specific.
 - Match each line to the corresponding prompt in order.
+- Follow the optional user guidance if provided.
+- If optional guidance conflicts with the requested label, keep the label as the main category and use the guidance only for tone, speed, mood, intensity, or style.
 - Avoid camera, lens, framing, or composition terms unless the label asks for them.
 - Avoid duplicate lines unless the prompts clearly need repetition.
 """
@@ -255,6 +257,7 @@ def _build_gemma4_prompt(target, payload):
 
     if target == "advanced_prompt_detail":
         label = str(payload.get("label") or "prompt detail").strip() or "prompt detail"
+        notes = str(payload.get("notes") or "").strip()
         prompts = payload.get("prompts") or []
         if not isinstance(prompts, list):
             prompts = []
@@ -262,12 +265,15 @@ def _build_gemma4_prompt(target, payload):
         count = int(payload.get("count") or len(cleaned_prompts) or 0)
         count = max(1, min(200, count))
         prompt_lines = "\n".join(f"{index + 1}. {prompt}" for index, prompt in enumerate(cleaned_prompts[:count]))
-        return (
+        prompt = (
             f"{_VRGDG_GEMMA4_ADVANCED_PROMPT_DETAIL_INSTRUCTIONS}\n\n"
             f"Label name:\n{label}\n\n"
             f"Number of items needed:\n{count}\n\n"
-            f"Scene prompts:\n{prompt_lines}"
         )
+        if notes:
+            prompt += f"Optional user guidance for all lists:\n{notes}\n\n"
+        prompt += f"Scene prompts:\n{prompt_lines}"
+        return prompt
 
     raise ValueError(f"Unknown Gemma4 target: {target}")
 

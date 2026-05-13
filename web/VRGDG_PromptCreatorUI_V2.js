@@ -684,6 +684,58 @@ function showGemma4ResultDialog(title, text, options = {}) {
   });
 }
 
+function requestGemma4AdvancedListNotes() {
+  return new Promise((resolve) => {
+    const { overlay, modal } = createGemma4ModalShell("Gemma4 List Guidance");
+
+    const help = document.createElement("div");
+    help.textContent = "Optional: tell Gemma what kind of details you want in these lists, such as fast camera movement, fast character motion, harsher lighting, calmer expressions, or any style rules it should follow.";
+    help.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 7;
+    textarea.placeholder = "Example: Make the camera motion fast and energetic. Character movement should feel intense, with quick gestures and strong performance energy.";
+    textarea.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      background: #0d1217;
+      color: #f3f4f6;
+      padding: 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 12px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
+    const cancel = createButton("Cancel", "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px;");
+    const skip = createButton("Use No Extra Notes", "border: 1px solid #2563eb; background: #1d4ed8; color: white; padding: 8px 12px; font-weight: 700;");
+    const create = createButton("Create Lists", "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-weight: 800;");
+
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+
+    cancel.addEventListener("click", () => finish(null));
+    skip.addEventListener("click", () => finish(""));
+    create.addEventListener("click", () => finish(String(textarea.value || "").trim()));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish(null);
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) finish(String(textarea.value || "").trim());
+    });
+
+    actions.append(cancel, skip, create);
+    modal.append(help, textarea, actions);
+    setTimeout(() => textarea.focus(), 0);
+  });
+}
 async function generateGemma4Text(target, payload) {
   const response = await api.fetchApi("/vrgdg/gemma4/generate", {
     method: "POST",
@@ -3526,6 +3578,12 @@ function ensurePart2Modal() {
       return;
     }
 
+    const extraNotes = await requestGemma4AdvancedListNotes();
+    if (extraNotes === null) {
+      setStatus("Gemma4 advanced list creation was cancelled.");
+      return;
+    }
+
     advancedGemmaButton.disabled = true;
     showGemma4Progress("Gemma4 is creating advanced prompt detail lists...");
     try {
@@ -3536,6 +3594,7 @@ function ensurePart2Modal() {
           model_name: modelName,
           label,
           prompts,
+          notes: extraNotes,
           count: prompts.length,
           max_tokens: Math.min(2048, Math.max(512, prompts.length * 48)),
           temperature: 0.85,
