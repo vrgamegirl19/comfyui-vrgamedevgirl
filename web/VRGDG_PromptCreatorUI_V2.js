@@ -189,6 +189,187 @@ Peaceful`,
 };
 const PART2_ADVANCED_PRESETS = Object.keys(PART2_ADVANCED_PRESET_ITEMS);
 const PART2_ADVANCED_SELECTION_MODES = ["index", "random", "random no repeat"];
+const TEXT_FIELDS = [
+  {
+    key: "full_lyrics",
+    label: "Full Lyrics",
+    placeholder: "Enter full lyrics",
+    rows: 10,
+    defaultValue: "Full Lyrics\n\n",
+    helperText:
+      "Enter the full lyrics or audio transcript here. This box automatically keeps the file header as: Full Lyrics",
+  },
+  {
+    key: "style_theme",
+    label: "Style/theme",
+    placeholder: "Enter style/theme",
+    rows: 6,
+    defaultValue: `Surreal cinematic showroom aesthetic. Begin with sterile whites, cold grays, flat lighting, rigid symmetry, and polite stillness. Gradually shift toward harsh shadows, electric blues, defiant reds, cracked porcelain, broken symmetry, close-ups, Dutch angles, and low-angle heroic framing. Mood: controlled, eerie, then powerful and liberating.`,
+    helperText:
+      "Describe the overall visual language: art style, colors, mood, camera style, lighting, texture, and any rules that should apply to every scene.",
+  },
+  {
+    key: "story_idea",
+    label: "Story idea",
+    placeholder: "Enter short story idea",
+    rows: 6,
+    defaultValue: `A singer is the only real person in a sterile showroom world filled with silent porcelain mannequins. Her honest voice exposes the fake perfection around her: porcelain cracks, staged rooms lose symmetry, and sterile cream lighting shifts into deep shadows, blues, and reds. Keep the video focused on her, the mannequins, and the illusion of polite control breaking apart. By the end, she stands powerful and free in the shattered showroom.`,
+    helperText:
+      "Enter a short story concept, or simply write something like: create a story for me based off lyrics and style/theme.",
+  },
+  {
+    key: "subjects_and_scenes",
+    label: "Subject and Locations",
+    placeholder: "Enter subject and location details",
+    rows: 6,
+    defaultValue: "",
+    helperText:
+      "List the important characters, outfits, objects, recurring places, and locations. Include enough detail that later prompts can describe them consistently.",
+  },
+];
+
+const SUBGRAPH_TARGET_NODE_ID = 28;
+const SUBGRAPH_WIDGET_ORDER = [
+  "fps",
+  "output_filename",
+  "min_duration",
+  "max_duration",
+  "bias",
+  "seed",
+  "duration_preset",
+  "section_2_text",
+  "section_4_text",
+  "section_4_text_1",
+  "language",
+  "switch",
+  "scene_duration_seconds",
+  "model_file",
+];
+const SUBGRAPH_FIELDS = [
+  {
+    key: "model_file",
+    label: "LLM Model",
+    type: "combo",
+    defaultValue: "",
+    headerControl: true,
+    note: "Model used by the Part 1 prompt creator LLM.",
+  },
+  {
+    key: "fps",
+    label: "FPS",
+    type: "number",
+    step: "1",
+    defaultValue: "24",
+    note: "Frames per second used by the subgraph timing/video logic. Set this to the same FPS in the Part 2 workflow.",
+  },
+  {
+    key: "min_duration",
+    label: "Min Duration",
+    type: "number",
+    step: "0.1",
+    defaultValue: "3.0",
+    note: "Minimum length of scene.",
+  },
+  {
+    key: "max_duration",
+    label: "Max Duration",
+    type: "number",
+    step: "0.1",
+    defaultValue: "8.0",
+    note: "Maximum length of scene.",
+  },
+  {
+    key: "bias",
+    label: "Bias",
+    type: "number",
+    step: "0.01",
+    defaultValue: "0.60",
+    note: "Controls how strongly beat impact affects scene cuts. Lower values are more even/random; higher values favor stronger beats and downbeats more.",
+  },
+  {
+    key: "duration_preset",
+    label: "Duration Preset",
+    type: "select",
+    defaultValue: "varied_no_repeat",
+    options: ["impact_weighted", "varied_no_repeat", "clustered_no_repeat"],
+    note: "impact_weighted follows strongest beats. varied_no_repeat avoids similar scene lengths back-to-back. clustered_no_repeat keeps lengths closer together while still avoiding repeats.",
+  },
+  {
+    key: "language",
+    label: "Whisper Language",
+    type: "select",
+    defaultValue: "auto",
+    options: [
+      "auto",
+      "english",
+      "spanish",
+      "french",
+      "german",
+      "italian",
+      "portuguese",
+      "japanese",
+      "korean",
+      "chinese",
+    ],
+    note: "Language hint for Whisper transcription. Use auto to let Whisper detect it, or pick the song language for more consistent lyric timing.",
+  },
+  {
+    key: "switch",
+    label: "Use SRT Durations",
+    type: "boolean",
+    defaultValue: "true",
+    note: "ON uses the SRT/beat timing for scene lengths. OFF uses one fixed scene duration instead.",
+  },
+  {
+    key: "scene_duration_seconds",
+    label: "Fixed Scene Duration Seconds",
+    type: "number",
+    step: "0.1",
+    defaultValue: "4.0",
+    fixedDurationOnly: true,
+    note: "Only used when Use SRT Durations is OFF. Choose the fixed duration for each scene in seconds. Going over 20 seconds can cause OOM issues during video creation.",
+  },
+];
+
+function getStoredFieldValue(node, field) {
+  const propertyName = `vrgdg_test_popup_${field.key}`;
+  if (Object.prototype.hasOwnProperty.call(node.properties || {}, propertyName)) {
+    return String(node.properties[propertyName] || "");
+  }
+  return String(field.defaultValue || "");
+}
+
+function getStoredSubgraphValue(node, field) {
+  const propertyName = `vrgdg_test_popup_subgraph_${field.key}`;
+  if (Object.prototype.hasOwnProperty.call(node.properties || {}, propertyName)) {
+    return String(node.properties[propertyName] || "");
+  }
+  return String(field.defaultValue || "");
+}
+
+function hasStoredSubgraphValue(node, field) {
+  const propertyName = `vrgdg_test_popup_subgraph_${field.key}`;
+  return Object.prototype.hasOwnProperty.call(node.properties || {}, propertyName);
+}
+
+function formatFieldForDisplay(field, value) {
+  if (field.key !== "full_lyrics") {
+    return String(value || "");
+  }
+
+  const text = String(value || "").replace(/^\s+/, "");
+  if (!text) {
+    return "Full Lyrics\n\n";
+  }
+  if (/^Full Lyrics\b/i.test(text)) {
+    return text;
+  }
+  return `Full Lyrics\n\n${text}`;
+}
+
+function formatFieldForSave(field, value) {
+  return formatFieldForDisplay(field, value).trimEnd();
+}
 
 function createButton(label, styles = "") {
   const button = document.createElement("button");
