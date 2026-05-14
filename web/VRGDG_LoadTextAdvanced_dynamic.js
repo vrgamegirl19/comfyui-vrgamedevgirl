@@ -22,7 +22,22 @@ function getResolvedFolderName(node) {
 async function refreshFolders(node, keepSelection = true) {
   const folderWidget = getWidget(node, "folder_name");
   const overrideWidget = getWidget(node, "folder_name_override");
+  const useCustomWidget = getWidget(node, "use_custom_base_path");
   if (!folderWidget) return;
+
+  if (Boolean(useCustomWidget?.value)) {
+    const current = String(folderWidget.value || "");
+    const overrideValue = String(overrideWidget?.value || "").trim();
+    if (overrideValue) {
+      folderWidget.options = folderWidget.options || {};
+      folderWidget.options.values = [overrideValue];
+      folderWidget.value = overrideValue;
+    } else if (current) {
+      folderWidget.options = folderWidget.options || {};
+      folderWidget.options.values = [current];
+    }
+    return;
+  }
 
   let options = [EMPTY_FOLDER_OPTION];
   try {
@@ -57,10 +72,12 @@ async function refreshFiles(node, keepSelection = true) {
 
   const folder = encodeURIComponent(getResolvedFolderName(node));
   const useMostRecent = Boolean(mostRecentWidget.value);
+  const useCustomBasePath = Boolean(getWidget(node, "use_custom_base_path")?.value);
+  const customBasePath = encodeURIComponent(String(getWidget(node, "custom_base_path")?.value || "").trim());
 
   let options = [EMPTY_FILE_OPTION];
   try {
-    const url = `/vrgdg/text_files/files?folder=${folder}&use_most_recent=${useMostRecent ? "true" : "false"}`;
+    const url = `/vrgdg/text_files/files?folder=${folder}&use_most_recent=${useMostRecent ? "true" : "false"}&use_custom_base_path=${useCustomBasePath ? "true" : "false"}&custom_base_path=${customBasePath}`;
     const res = await api.fetchApi(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -91,6 +108,8 @@ function bindRefreshCallbacks(node) {
   const folderWidget = getWidget(node, "folder_name");
   const mostRecentWidget = getWidget(node, "use_most_recent");
   const overrideWidget = getWidget(node, "folder_name_override");
+  const useCustomWidget = getWidget(node, "use_custom_base_path");
+  const customPathWidget = getWidget(node, "custom_base_path");
 
   if (folderWidget) {
     const oldFolder = folderWidget.callback;
@@ -112,6 +131,24 @@ function bindRefreshCallbacks(node) {
     const oldOverride = overrideWidget.callback;
     overrideWidget.callback = function () {
       if (oldOverride) oldOverride.apply(this, arguments);
+      refreshFolders(node, true);
+      refreshFiles(node, false);
+    };
+  }
+
+  if (useCustomWidget) {
+    const oldUseCustom = useCustomWidget.callback;
+    useCustomWidget.callback = function () {
+      if (oldUseCustom) oldUseCustom.apply(this, arguments);
+      refreshFolders(node, true);
+      refreshFiles(node, false);
+    };
+  }
+
+  if (customPathWidget) {
+    const oldCustomPath = customPathWidget.callback;
+    customPathWidget.callback = function () {
+      if (oldCustomPath) oldCustomPath.apply(this, arguments);
       refreshFolders(node, true);
       refreshFiles(node, false);
     };

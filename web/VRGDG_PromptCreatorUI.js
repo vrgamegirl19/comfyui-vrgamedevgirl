@@ -604,18 +604,23 @@ function ensureModal() {
 }
 
 function attachButton(node) {
-  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Prompt Creator UI")) {
-    return;
-  }
-
-  node.addWidget("button", "Open Prompt Creator UI", null, () => {
+  const buttonName = "Open Prompt Creator UI";
+  const openUi = () => {
     const modal = ensureModal();
     modal.__vrgdgOpenForNode(node);
-  });
+  };
+  node.widgets = (node.widgets || []).filter((widget) => !(widget.type === "button" && widget.name === buttonName));
+
+  const button = node.addWidget("button", buttonName, null, openUi);
+  if (button) button.serialize = false;
 }
 
 app.registerExtension({
   name: "vrgdg." + NODE_NAME,
+
+  loadedGraphNode(node) {
+    if ((node?.comfyClass || node?.type) === NODE_NAME) attachButton(node);
+  },
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_NAME) return;

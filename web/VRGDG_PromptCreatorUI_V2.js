@@ -426,6 +426,314 @@ function createPathHint() {
   return hint;
 }
 
+function ensureGemma4ProgressOverlay() {
+  let overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "vrgdg-gemma4-progress-overlay";
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.62);
+  `;
+
+  const panel = document.createElement("div");
+  panel.style.cssText = `
+    width: min(420px, calc(100vw - 32px));
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #111827;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+    padding: 18px;
+    color: #f8fafc;
+  `;
+
+  const title = document.createElement("div");
+  title.textContent = "Gemma4";
+  title.style.cssText = "font-size: 16px; font-weight: 800; margin-bottom: 8px;";
+
+  const message = document.createElement("div");
+  message.textContent = "Starting...";
+  message.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; white-space: pre-wrap;";
+
+  const bar = document.createElement("div");
+  bar.style.cssText = `
+    height: 8px;
+    margin-top: 14px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #1f2937;
+  `;
+  const fill = document.createElement("div");
+  fill.style.cssText = `
+    width: 42%;
+    height: 100%;
+    border-radius: 999px;
+    background: #10b981;
+    animation: vrgdgGemma4Pulse 1.1s ease-in-out infinite alternate;
+  `;
+
+  if (!document.getElementById("vrgdg-gemma4-progress-style")) {
+    const style = document.createElement("style");
+    style.id = "vrgdg-gemma4-progress-style";
+    style.textContent = `
+      @keyframes vrgdgGemma4Pulse {
+        from { transform: translateX(-55%); opacity: 0.65; }
+        to { transform: translateX(145%); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  bar.appendChild(fill);
+  panel.append(title, message, bar);
+  overlay.appendChild(panel);
+  overlay.__vrgdgSetMessage = (text) => {
+    message.textContent = String(text || "");
+  };
+  overlay.__vrgdgSetTitle = (text) => {
+    title.textContent = String(text || "Gemma4");
+  };
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function showGemma4Progress(message, title = "Gemma4") {
+  const overlay = ensureGemma4ProgressOverlay();
+  overlay.__vrgdgSetTitle?.(title);
+  overlay.__vrgdgSetMessage?.(message);
+  overlay.style.display = "flex";
+  return overlay;
+}
+
+function hideGemma4Progress() {
+  const overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function createGemma4ModalShell(titleText) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(2, 6, 23, 0.66);
+  `;
+
+  const panel = document.createElement("div");
+  panel.style.cssText = `
+    width: min(680px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #111827;
+    box-shadow: 0 20px 70px rgba(0, 0, 0, 0.48);
+    padding: 18px;
+    color: #f8fafc;
+  `;
+
+  const title = document.createElement("div");
+  title.textContent = titleText;
+  title.style.cssText = "font-size: 16px; font-weight: 800; margin-bottom: 8px;";
+
+  panel.appendChild(title);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+  return { overlay, panel };
+}
+
+function requestGemma4Notes(targetLabel) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell(`Gemma4 ${targetLabel}`);
+
+    const body = document.createElement("div");
+    body.textContent = targetLabel === "Song Lyrics"
+      ? "Describe what the song should be about. You can include mood, genre, vocal type, story, phrases, or anything else."
+      : targetLabel === "Subject and Locations"
+        ? "Optional: add exact subject and location details. If you want a specific subject line, paste it here and say to use it verbatim."
+      : "Add optional notes like song style, genre, main character details, constraints, or anything else.";
+    body.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 7;
+    textarea.placeholder = targetLabel === "Subject and Locations"
+      ? "Example: Use this subject line verbatim: subject: a woman, with black hair, wearing a red leather jacket."
+      : "Optional notes...";
+    textarea.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #4b5563;
+      background: #0d1217;
+      color: #f3f4f6;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px;";
+
+    const noThanks = createButton(
+      "No thanks",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const ok = createButton(
+      "OK",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+
+    noThanks.addEventListener("click", () => finish(""));
+    ok.addEventListener("click", () => finish(String(textarea.value || "").trim()));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish("");
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish("");
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) finish(String(textarea.value || "").trim());
+    });
+
+    actions.append(noThanks, ok);
+    panel.append(body, textarea, actions);
+    setTimeout(() => textarea.focus(), 0);
+  });
+}
+
+function requestGemma4AdvancedListNotes() {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell("Gemma4 List Guidance");
+
+    const body = document.createElement("div");
+    body.textContent = "Optional: tell Gemma what kind of details you want in these lists, such as fast camera movement, fast character motion, harsher lighting, calmer expressions, or any style rules it should follow.";
+    body.style.cssText = "font-size: 13px; color: #cbd5e1; line-height: 1.45; margin-bottom: 10px;";
+
+    const textarea = document.createElement("textarea");
+    textarea.rows = 7;
+    textarea.placeholder = "Example: Make the camera motion fast and energetic. Character movement should feel intense, with quick gestures and strong performance energy.";
+    textarea.style.cssText = `
+      width: 100%;
+      box-sizing: border-box;
+      resize: vertical;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #4b5563;
+      background: #0d1217;
+      color: #f3f4f6;
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
+    const cancel = createButton(
+      "Cancel",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const skip = createButton(
+      "Use No Extra Notes",
+      "border: 1px solid #2563eb; background: #1d4ed8; color: white; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    const create = createButton(
+      "Create Lists",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+
+    function finish(value) {
+      overlay.remove();
+      resolve(value);
+    }
+
+    cancel.addEventListener("click", () => finish(null));
+    skip.addEventListener("click", () => finish(""));
+    create.addEventListener("click", () => finish(String(textarea.value || "").trim()));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish(null);
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        finish(String(textarea.value || "").trim());
+      }
+    });
+
+    actions.append(cancel, skip, create);
+    panel.append(body, textarea, actions);
+    setTimeout(() => textarea.focus(), 0);
+  });
+}
+
+function showGemma4ResultDialog({ title, text, isError = false }) {
+  return new Promise((resolve) => {
+    const { overlay, panel } = createGemma4ModalShell(title);
+
+    const message = document.createElement("div");
+    message.textContent = text;
+    message.style.cssText = `
+      max-height: min(48vh, 420px);
+      overflow: auto;
+      white-space: pre-wrap;
+      border: 1px solid ${isError ? "#7f1d1d" : "#334155"};
+      border-radius: 8px;
+      background: ${isError ? "#2b1215" : "#0d1217"};
+      color: ${isError ? "#fecaca" : "#f3f4f6"};
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      margin: 4px 0 14px;
+    `;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;";
+
+    const cancel = createButton(
+      isError ? "Close" : "Cancel",
+      "border: 1px solid #475569; background: #1f2937; color: #e5e7eb; padding: 8px 12px; font-size: 12px; font-weight: 700;"
+    );
+    const retry = createButton(
+      "Try Again",
+      "border: 1px solid #d97706; background: #f59e0b; color: #111827; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    const use = createButton(
+      "Use This",
+      "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+    );
+    use.style.display = isError ? "none" : "";
+
+    function finish(action) {
+      overlay.remove();
+      resolve(action);
+    }
+
+    cancel.addEventListener("click", () => finish("cancel"));
+    retry.addEventListener("click", () => finish("retry"));
+    use.addEventListener("click", () => finish("use"));
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish("cancel");
+    });
+
+    actions.append(cancel, retry, use);
+    panel.append(message, actions);
+  });
+}
+
 function createSubgraphInput(field) {
   const input = field.type === "select" || field.type === "boolean" || field.type === "combo" ? document.createElement("select") : document.createElement("input");
   if (field.type === "select" || field.type === "boolean" || field.type === "combo") {
@@ -566,6 +874,32 @@ async function saveText(payload) {
   return data;
 }
 
+async function generateGemma4Text(payload) {
+  const response = await api.fetchApi("/vrgdg/gemma4/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `Gemma4 generation failed (${response.status})`));
+  }
+  return data;
+}
+
+async function unloadGemma4Model(payload) {
+  const response = await api.fetchApi("/vrgdg/gemma4/unload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) {
+    throw new Error(String(data?.error || `Gemma4 unload failed (${response.status})`));
+  }
+  return data;
+}
+
 async function loadPart2ConceptPrompts() {
   const response = await api.fetchApi("/vrgdg/part2/load_concept_prompts", { cache: "no-store" });
   const data = await response.json().catch(() => ({}));
@@ -671,6 +1005,7 @@ function ensureModal() {
     "Choose and Upload Audio",
     "border: 1px solid #0f766e; background: #0f766e; color: white;"
   );
+
 
   const topSaveButton = createButton(
     "Save Text Files",
@@ -850,6 +1185,16 @@ function ensureModal() {
         window.open(LYRIC_CREATOR_GPT_URL, "_blank", "noopener,noreferrer");
       });
       labelRow.appendChild(lyricsHelp);
+
+      const gemmaLyricsButton = createButton(
+        "Gemma4 Lyrics",
+        "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+      );
+      gemmaLyricsButton.type = "button";
+      gemmaLyricsButton.addEventListener("click", () => {
+        runGemma4ForField(field.key);
+      });
+      labelRow.appendChild(gemmaLyricsButton);
     }
 
     const gptUrlByField = {
@@ -859,6 +1204,16 @@ function ensureModal() {
     };
     const gptUrl = gptUrlByField[field.key];
     if (gptUrl) {
+      const gemma4Button = createButton(
+        "Gemma4",
+        "border: 1px solid #059669; background: #10b981; color: #052e1b; padding: 8px 12px; font-size: 12px; font-weight: 800;"
+      );
+      gemma4Button.type = "button";
+      gemma4Button.addEventListener("click", () => {
+        runGemma4ForField(field.key);
+      });
+      labelRow.appendChild(gemma4Button);
+
       const useGptButton = createButton(
         "Use GPT",
         "border: 1px solid #7c3aed; background: #8b5cf6; color: white; padding: 8px 12px; font-size: 12px; font-weight: 700;"
@@ -974,6 +1329,102 @@ function ensureModal() {
       return;
     }
     setStatus(`Updated ${updated} fields on ${targetName}.`);
+  }
+
+  async function runGemma4ForField(targetKey) {
+    const labelByTarget = {
+      full_lyrics: "Song Lyrics",
+      style_theme: "Style/theme",
+      story_idea: "Story idea",
+      subjects_and_scenes: "Subject and Locations",
+    };
+    const targetLabel = labelByTarget[targetKey] || targetKey;
+    const extraNotes = await requestGemma4Notes(targetLabel);
+    const modelFile = String(subgraphInputs.model_file?.value || "").trim();
+      if (!modelFile) {
+        setStatus("Choose a Gemma4 model in the LLM Model dropdown first.", true);
+        return;
+      }
+      const requestedDuration = targetKey === "full_lyrics"
+        ? window.prompt("Song duration in seconds for Gemma4 lyrics? Use the same duration you plan to use.", "120")
+        : "";
+      if (targetKey === "full_lyrics" && requestedDuration === null) {
+        setStatus("Gemma4 lyrics generation was cancelled.");
+        return;
+      }
+
+      const lyrics = String(textareas.full_lyrics?.value || "").trim();
+    const lyricsBody = lyrics.replace(/^Full Lyrics\b/i, "").trim();
+    const styleTheme = String(textareas.style_theme?.value || "").trim();
+    const storyIdea = String(textareas.story_idea?.value || "").trim();
+    if ((targetKey === "style_theme" || targetKey === "story_idea") && !lyricsBody) {
+      setStatus("Add full lyrics before running Gemma4 for this field.", true);
+      return;
+    }
+    if (targetKey === "subjects_and_scenes" && !storyIdea) {
+      setStatus("Add or generate a story idea before running Gemma4 for Subject and Locations.", true);
+      return;
+    }
+
+    while (true) {
+      const progress = showGemma4Progress(
+        targetKey === "subjects_and_scenes"
+          ? "Generating Subject and Locations...\nThe model will unload after this finishes."
+          : `Generating ${targetLabel}...`
+      );
+      setStatus(`Gemma4 is generating ${targetLabel}...`);
+
+      try {
+        const data = await generateGemma4Text({
+          target: targetKey === "full_lyrics" ? "song_lyrics" : targetKey,
+          model_file: modelFile,
+          lyrics,
+          style_theme: styleTheme,
+          story_idea: storyIdea,
+          notes: extraNotes,
+          unload_after: targetKey === "subjects_and_scenes",
+          n_ctx: 13000,
+          max_new_tokens: 32000,
+          duration: targetKey === "full_lyrics" ? String(requestedDuration || "120") : "",
+        });
+        const text = String(data.text || "").trim();
+        if (!text) {
+          throw new Error("Gemma4 returned an empty response.");
+        }
+        progress.__vrgdgSetMessage?.(data.unloaded ? "Done. Gemma4 was unloaded." : "Done.");
+        hideGemma4Progress();
+        const action = await showGemma4ResultDialog({
+          title: `Gemma4 ${targetLabel} Result`,
+          text,
+        });
+        if (action === "retry") {
+          continue;
+        }
+        if (action === "use") {
+          textareas[targetKey].value = text;
+          syncNodeProperties();
+          app.graph?.setDirtyCanvas?.(true, true);
+          setStatus(data.unloaded ? `Gemma4 filled ${targetLabel} and unloaded the model.` : `Gemma4 filled ${targetLabel}.`);
+        } else {
+          setStatus(`Gemma4 ${targetLabel} result was not applied.`);
+        }
+        break;
+      } catch (error) {
+        const message = String(error?.message || error);
+        progress.__vrgdgSetMessage?.(`Failed:\n${message}`);
+        hideGemma4Progress();
+        setStatus(message, true);
+        const action = await showGemma4ResultDialog({
+          title: `Gemma4 ${targetLabel} Failed`,
+          text: message,
+          isError: true,
+        });
+        if (action === "retry") {
+          continue;
+        }
+        break;
+      }
+    }
   }
 
   async function ensureConfigLoaded() {
@@ -1916,7 +2367,16 @@ function ensurePart2Modal() {
     window.open(ADVANCED_PROMPT_DETAILS_GPT_URL, "_blank", "noopener,noreferrer");
   });
 
-  advancedGptRow.append(advancedGptNote, advancedGptButton);
+  const advancedGemmaButton = createButton(
+    "Gemma4 Create Lists",
+    "border: 1px solid #059669; background: #10b981; color: #052e1b; font-weight: 800;"
+  );
+
+  const advancedHelperButtons = document.createElement("div");
+  advancedHelperButtons.style.cssText = "display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;";
+  advancedHelperButtons.append(advancedGemmaButton, advancedGptButton);
+
+  advancedGptRow.append(advancedGptNote, advancedHelperButtons);
   advancedSection.appendChild(advancedGptRow);
 
   const advancedCountRow = document.createElement("div");
@@ -3323,6 +3783,117 @@ function ensurePart2Modal() {
     }
   }
 
+  function stripJsonFence(text) {
+    return String(text || "")
+      .replace(/^\s*```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
+  }
+
+  function extractPromptListForAdvancedGemma() {
+    const text = stripJsonFence(controls.promptJson.value);
+    if (!text) return [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => typeof item === "string" ? item : JSON.stringify(item)).map((item) => item.trim()).filter(Boolean);
+      }
+      if (parsed && typeof parsed === "object") {
+        return Object.entries(parsed)
+          .sort(([a], [b]) => {
+            const an = Number(String(a).match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+            const bn = Number(String(b).match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+            return an - bn || String(a).localeCompare(String(b));
+          })
+          .map(([, value]) => typeof value === "string" ? value : JSON.stringify(value))
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+    } catch {
+      // Fall through to line mode.
+    }
+    return text.split(/\r?\n+/).map((line) => line.trim()).filter(Boolean);
+  }
+
+  function cleanGemmaAdvancedList(text, expectedCount) {
+    const lines = String(text || "")
+      .replace(/^\s*```(?:text)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
+      .filter(Boolean);
+    return lines.slice(0, expectedCount).join("\n");
+  }
+
+  async function runGemma4ForAdvancedLists() {
+    const modelFile = String(controls.modelSelects.llm?.value || "").trim();
+    if (!modelFile) {
+      setStatus("Choose a SuperGemma model in the Part 2 LLM dropdown first.", true);
+      return;
+    }
+    const prompts = extractPromptListForAdvancedGemma();
+    if (!prompts.length) {
+      setStatus("Paste or load Prompt JSON from Part 1 before using Gemma4 advanced lists.", true);
+      return;
+    }
+    if (!controls.advanced.enabled.checked) {
+      controls.advanced.enabled.checked = true;
+    }
+    const count = getAdvancedCount();
+    if (count <= 0) {
+      setStatus("Set Advanced Settings Count to at least 1 before using Gemma4.", true);
+      return;
+    }
+
+    const extraNotes = await requestGemma4AdvancedListNotes();
+    if (extraNotes === null) {
+      setStatus("Gemma4 advanced list creation was cancelled.");
+      return;
+    }
+
+    const progress = showGemma4Progress(`Gemma4 is creating ${count} advanced list${count === 1 ? "" : "s"}...\nUsing ${prompts.length} prompts.`, "Gemma4");
+    advancedGemmaButton.disabled = true;
+    setStatus(`Gemma4 is creating ${count} advanced list${count === 1 ? "" : "s"}...`);
+    try {
+      for (let i = 1; i <= count; i++) {
+        const picker = controls.advanced.pickers[i - 1];
+        if (!picker) continue;
+        const label = String(picker.label.value || picker.preset.value || `Setting ${i}`).trim();
+        progress.__vrgdgSetMessage?.(`Gemma4 is creating list ${i} of ${count}: ${label}\nUsing ${prompts.length} prompts.`);
+        const data = await generateGemma4Text({
+          target: "advanced_prompt_detail",
+          model_file: modelFile,
+          label,
+          prompts,
+          notes: extraNotes,
+          n_ctx: 13000,
+          max_new_tokens: Math.max(1024, prompts.length * 80),
+          unload_after: i === count,
+        });
+        const listText = cleanGemmaAdvancedList(data.text, prompts.length);
+        if (!listText) throw new Error(`Gemma4 returned an empty list for ${label}.`);
+        picker.items.value = listText;
+        picker.selectionMode.value = "index";
+        updateAdvancedPickerHeader(i);
+      }
+      updateAdvancedVisibility();
+      savePart2Draft();
+      progress.__vrgdgSetMessage?.("Done. Gemma4 filled the advanced lists and unloaded the model.");
+      hideGemma4Progress();
+      setStatus(`Gemma4 filled ${count} advanced list${count === 1 ? "" : "s"}. Selection mode was set to Index-based.`);
+    } catch (error) {
+      hideGemma4Progress();
+      setStatus(String(error?.message || error), true);
+      await showGemma4ResultDialog({
+        title: "Gemma4 Advanced Lists Failed",
+        text: String(error?.message || error),
+        isError: true,
+      });
+    } finally {
+      advancedGemmaButton.disabled = false;
+    }
+  }
+
   function refreshPart2Controls() {
     const missing = [];
     suppressDraftSave = true;
@@ -3449,6 +4020,11 @@ function ensurePart2Modal() {
   controls.zImageLora.count.addEventListener("change", updateZImageLoraVisibility);
   controls.zImageLora.trigger.useTrigger.addEventListener("change", updateZImageLoraVisibility);
   pasteFromStep1Button.addEventListener("click", pastePromptJsonFromStep1);
+  advancedGemmaButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    runGemma4ForAdvancedLists();
+  });
   controls.advanced.enabled.addEventListener("change", () => {
     if (controls.advanced.enabled.checked && Number(controls.advanced.count.value || 0) <= 0) {
       controls.advanced.count.value = "1";
@@ -3537,30 +4113,43 @@ function ensurePart2Modal() {
 }
 
 function attachButton(node) {
-  if (!(node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Prompt Creator UI V2")) {
-    node.addWidget("button", "Open Prompt Creator UI V2", null, () => {
-      const modal = ensureModal();
-      modal.__vrgdgOpenForNode(node);
-    });
-  }
+  const buttonName = "Open Prompt Creator UI V2";
+  const openUi = () => {
+    const modal = ensureModal();
+    modal.__vrgdgOpenForNode(node);
+  };
+  node.widgets = (node.widgets || []).filter((widget) => !(widget.type === "button" && widget.name === buttonName));
 
+  const button = node.addWidget("button", buttonName, null, openUi);
+  if (button) button.serialize = false;
 }
 
 function attachWorkflowButton(node, workflowKind) {
   const isPart3 = workflowKind === "part3";
   const buttonName = isPart3 ? "Open Workflow 3 UI" : "Open Part 2 Workflow UI";
-  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === buttonName)) {
-    return;
-  }
-
-  node.addWidget("button", buttonName, null, () => {
+  const openUi = () => {
     const modal = ensurePart2Modal();
     modal.__vrgdgOpenPart2(workflowKind, node);
-  });
+  };
+  node.widgets = (node.widgets || []).filter((widget) => !(widget.type === "button" && widget.name === buttonName));
+
+  const button = node.addWidget("button", buttonName, null, openUi);
+  if (button) button.serialize = false;
+}
+
+function attachUiForNode(node) {
+  const nodeTypeName = node?.comfyClass || node?.type;
+  if (nodeTypeName === PART2_NODE_NAME) attachWorkflowButton(node, "part2");
+  else if (nodeTypeName === PART3_NODE_NAME) attachWorkflowButton(node, "part3");
+  else if (nodeTypeName === NODE_NAME) attachButton(node);
 }
 
 app.registerExtension({
   name: "vrgdg." + NODE_NAME,
+
+  loadedGraphNode(node) {
+    attachUiForNode(node);
+  },
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_NAME && nodeData.name !== PART2_NODE_NAME && nodeData.name !== PART3_NODE_NAME) return;
@@ -3572,18 +4161,14 @@ app.registerExtension({
       const result = onNodeCreated?.apply(this, arguments);
       this.serialize_widgets = true;
       this.properties = this.properties || {};
-      if (nodeData.name === PART2_NODE_NAME) attachWorkflowButton(this, "part2");
-      else if (nodeData.name === PART3_NODE_NAME) attachWorkflowButton(this, "part3");
-      else attachButton(this);
+      attachUiForNode(this);
       return result;
     };
 
     nodeType.prototype.onConfigure = function () {
       const result = onConfigure?.apply(this, arguments);
       this.properties = this.properties || {};
-      if (nodeData.name === PART2_NODE_NAME) attachWorkflowButton(this, "part2");
-      else if (nodeData.name === PART3_NODE_NAME) attachWorkflowButton(this, "part3");
-      else attachButton(this);
+      attachUiForNode(this);
       return result;
     };
   },

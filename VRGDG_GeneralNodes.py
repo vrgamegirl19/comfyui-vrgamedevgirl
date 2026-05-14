@@ -1701,6 +1701,32 @@ def _get_text_files_manual_folder(folder_name):
     return os.path.normpath(os.path.join(_get_text_files_root(), safe_folder)), safe_folder
 
 
+def _normalize_custom_text_files_root(custom_base_path):
+    raw_path = str(custom_base_path or "").strip().strip("\"'")
+    if not raw_path:
+        return ""
+    expanded = os.path.abspath(os.path.expandvars(os.path.expanduser(raw_path)))
+    path = os.path.normpath(expanded)
+    base_name = os.path.basename(path).lower()
+    parent_name = os.path.basename(os.path.dirname(path)).lower()
+    grandparent_name = os.path.basename(os.path.dirname(os.path.dirname(path))).lower()
+
+    if base_name == TEXT_FILES_SUBFOLDER.lower() and parent_name == TEXT_FILES_ROOT_FOLDER.lower():
+        return path
+    if base_name == TEXT_FILES_ROOT_FOLDER.lower():
+        return os.path.normpath(os.path.join(path, TEXT_FILES_SUBFOLDER))
+    if parent_name == TEXT_FILES_SUBFOLDER.lower() and grandparent_name == TEXT_FILES_ROOT_FOLDER.lower():
+        return os.path.dirname(path)
+    return os.path.normpath(os.path.join(path, TEXT_FILES_ROOT_FOLDER, TEXT_FILES_SUBFOLDER))
+
+
+def _get_text_files_root_candidates_for_custom(use_custom_base_path=False, custom_base_path=""):
+    if use_custom_base_path:
+        custom_root = _normalize_custom_text_files_root(custom_base_path)
+        return [custom_root] if custom_root else []
+    return _get_text_files_root_candidates()
+
+
 def _list_text_files_for_category(category):
     category = _normalize_text_file_category(category)
     first_folder = None
@@ -1739,12 +1765,12 @@ def _list_text_folder_names():
     return sorted(folders, key=str.lower)
 
 
-def _list_text_files_for_folder(folder_name, use_most_recent=False):
+def _list_text_files_for_folder(folder_name, use_most_recent=False, use_custom_base_path=False, custom_base_path=""):
     safe_folder = _sanitize_text_segment(folder_name, "default")
     first_folder_path = None
     selected_folder_path = None
     rows_by_name = {}
-    for root in _get_text_files_root_candidates():
+    for root in _get_text_files_root_candidates_for_custom(use_custom_base_path, custom_base_path):
         folder_path = os.path.normpath(os.path.join(root, safe_folder))
         if first_folder_path is None:
             first_folder_path = folder_path
@@ -1769,7 +1795,9 @@ def _list_text_files_for_folder(folder_name, use_most_recent=False):
                 selected_folder_path = folder_path
 
     if not rows_by_name:
-        return [], first_folder_path or _get_text_files_manual_folder(folder_name)[0], safe_folder
+        if first_folder_path:
+            return [], first_folder_path, safe_folder
+        return [], _get_text_files_manual_folder(folder_name)[0], safe_folder
 
     rows = list(rows_by_name.values())
     rows.sort(key=lambda x: (-x[1], x[0].lower()))
@@ -1797,7 +1825,7 @@ def _list_all_text_file_names():
     return sorted(names, key=str.lower)
 
 
-def _resolve_text_file_path(folder_name, file_name):
+def _resolve_text_file_path(folder_name, file_name, use_custom_base_path=False, custom_base_path=""):
     safe_folder = _sanitize_text_segment(folder_name, "default")
     selected_name = os.path.basename(str(file_name or "").strip())
     if not selected_name or selected_name != str(file_name or "").strip():
@@ -1806,7 +1834,7 @@ def _resolve_text_file_path(folder_name, file_name):
         return ""
 
     fallback = ""
-    for root in _get_text_files_root_candidates():
+    for root in _get_text_files_root_candidates_for_custom(use_custom_base_path, custom_base_path):
         file_path = os.path.normpath(os.path.join(root, safe_folder, selected_name))
         if not fallback:
             fallback = file_path
@@ -1866,15 +1894,21 @@ def _ensure_text_files_route_registered():
     async def vrgdg_list_text_files_for_folder(request):
         folder_name = request.query.get("folder", "")
         use_most_recent = _normalize_bool(request.query.get("use_most_recent", "false"))
+        use_custom_base_path = _normalize_bool(request.query.get("use_custom_base_path", "false"))
+        custom_base_path = request.query.get("custom_base_path", "")
         files, folder_path, safe_folder = _list_text_files_for_folder(
             folder_name,
             use_most_recent,
+            use_custom_base_path,
+            custom_base_path,
         )
         return web.json_response(
             {
                 "folder": safe_folder,
                 "folder_path": folder_path,
                 "use_most_recent": bool(use_most_recent),
+                "use_custom_base_path": bool(use_custom_base_path),
+                "custom_text_files_root": _normalize_custom_text_files_root(custom_base_path) if use_custom_base_path else "",
                 "files": files,
             }
         )
@@ -1945,6 +1979,8 @@ class VRGDG_LoadTextAdvanced:
                 "use_most_recent": ("BOOLEAN", {"default": True}),
                 "text_file": (file_choices,),
                 "folder_name_override": ("STRING", {"default": "", "multiline": False}),
+                "use_custom_base_path": ("BOOLEAN", {"default": False}),
+                "custom_base_path": ("STRING", {"default": "", "multiline": False}),
             }
         }
 
@@ -1956,7 +1992,7 @@ class VRGDG_LoadTextAdvanced:
         return str(folder_name or "").strip()
 
     @classmethod
-    def IS_CHANGED(cls, folder_name, use_most_recent, text_file, folder_name_override=""):
+    def IS_CHANGED(cls, folder_name, use_most_recent, text_file, folder_name_override="", use_custom_base_path=False, custom_base_path=""):
         selected_folder = cls._resolve_folder_name(folder_name, folder_name_override)
         if not selected_folder or selected_folder == EMPTY_TEXT_FOLDER_OPTION:
             return "empty-folder"
@@ -1964,6 +2000,8 @@ class VRGDG_LoadTextAdvanced:
         files, folder_path, _ = _list_text_files_for_folder(
             selected_folder,
             bool(use_most_recent),
+            bool(use_custom_base_path),
+            custom_base_path,
         )
         if not files:
             return f"{selected_folder}|no-files"
@@ -1977,7 +2015,7 @@ class VRGDG_LoadTextAdvanced:
             else:
                 return f"{selected_folder}|missing-selection|{selected_name}"
 
-        file_path = _resolve_text_file_path(selected_folder, chosen_name)
+        file_path = _resolve_text_file_path(selected_folder, chosen_name, bool(use_custom_base_path), custom_base_path)
         if not file_path:
             file_path = os.path.normpath(os.path.join(folder_path, chosen_name))
         try:
@@ -1989,7 +2027,7 @@ class VRGDG_LoadTextAdvanced:
         except OSError:
             return f"{file_path}|missing"
 
-    def run(self, folder_name, use_most_recent, text_file, folder_name_override=""):
+    def run(self, folder_name, use_most_recent, text_file, folder_name_override="", use_custom_base_path=False, custom_base_path=""):
         selected_folder = self._resolve_folder_name(folder_name, folder_name_override)
         if not selected_folder or selected_folder == EMPTY_TEXT_FOLDER_OPTION:
             return ("", "")
@@ -1997,6 +2035,8 @@ class VRGDG_LoadTextAdvanced:
         files, folder_path, _ = _list_text_files_for_folder(
             selected_folder,
             bool(use_most_recent),
+            bool(use_custom_base_path),
+            custom_base_path,
         )
         if not files:
             return ("", "")
@@ -2010,7 +2050,7 @@ class VRGDG_LoadTextAdvanced:
             else:
                 return ("", "")
 
-        file_path = _resolve_text_file_path(selected_folder, chosen_name)
+        file_path = _resolve_text_file_path(selected_folder, chosen_name, bool(use_custom_base_path), custom_base_path)
         if not os.path.isfile(file_path):
             return ("", "")
 

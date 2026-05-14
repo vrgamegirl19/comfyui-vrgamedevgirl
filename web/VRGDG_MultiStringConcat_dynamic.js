@@ -2,6 +2,7 @@ import { app } from "../../../scripts/app.js";
 
 const NODE_NAME = "VRGDG_MultiStringConcat";
 const MAX_STRING_SLOTS = 20;
+const STRING_WIDGET_HEIGHT = 58;
 
 function getWidget(node, name) {
   return (node.widgets || []).find((w) => w.name === name);
@@ -14,15 +15,20 @@ function setWidgetVisible(widget, visible) {
     widget.__vrgdgOriginalComputeSize = widget.computeSize;
   }
 
+  widget.hidden = !visible;
+  widget.serialize = true;
+
   if (visible) {
     widget.type = widget.__vrgdgOriginalType;
-    if (widget.__vrgdgOriginalComputeSize) {
+    if (String(widget.name || "").startsWith("string_")) {
+      widget.computeSize = () => [0, STRING_WIDGET_HEIGHT];
+    } else if (widget.__vrgdgOriginalComputeSize) {
       widget.computeSize = widget.__vrgdgOriginalComputeSize;
     } else {
       delete widget.computeSize;
     }
   } else {
-    widget.type = "hidden";
+    widget.type = widget.__vrgdgOriginalType;
     widget.computeSize = () => [0, -4];
   }
 }
@@ -36,7 +42,7 @@ function refreshWidgets(node) {
     setWidgetVisible(getWidget(node, `string_${i}`), i <= count);
   }
 
-  node.setSize([node.size[0], node.computeSize()[1]]);
+  node.setSize([Math.max(220, node.size?.[0] || 220), node.computeSize()[1]]);
   app.graph.setDirtyCanvas(true, true);
 }
 
@@ -72,7 +78,7 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const r = origOnConfigure?.apply(this, arguments);
       bindCountChange(this);
-      refreshWidgets(this);
+      setTimeout(() => refreshWidgets(this), 0);
       return r;
     };
   },
