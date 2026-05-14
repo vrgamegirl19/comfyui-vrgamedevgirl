@@ -190,6 +190,61 @@ Peaceful`,
 const PART2_ADVANCED_PRESETS = Object.keys(PART2_ADVANCED_PRESET_ITEMS);
 const PART2_ADVANCED_SELECTION_MODES = ["index", "random", "random no repeat"];
 
+function createButton(label, styles = "") {
+  const button = document.createElement("button");
+  button.textContent = label;
+  button.style.cssText = `
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    ${styles}
+  `;
+  return button;
+}
+
+function createLlmDownloadButtons() {
+  const buttons = document.createElement("div");
+  buttons.style.cssText = "display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;";
+
+  for (const item of PART2_LLM_DOWNLOADS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label;
+    button.style.cssText = `
+      border: 1px solid #2563eb;
+      background: #1d4ed8;
+      color: white;
+      border-radius: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    `;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.open(item.url, "_blank", "noopener,noreferrer");
+    });
+    buttons.appendChild(button);
+  }
+
+  return buttons;
+}
+
+function createPathHint() {
+  const hint = document.createElement("div");
+  hint.style.cssText = `
+    font-size: 12px;
+    line-height: 1.4;
+    color: #94a3b8;
+    margin-top: 6px;
+    word-break: break-all;
+  `;
+  return hint;
+}
+
 function ensureGemma4ProgressOverlay() {
   let overlay = document.getElementById("vrgdg-gemma4-progress-overlay");
   if (overlay) return overlay;
@@ -3877,30 +3932,43 @@ function ensurePart2Modal() {
 }
 
 function attachButton(node) {
-  if (!(node.widgets || []).some((widget) => widget.type === "button" && widget.name === "Open Prompt Creator UI V2")) {
-    node.addWidget("button", "Open Prompt Creator UI V2", null, () => {
-      const modal = ensureModal();
-      modal.__vrgdgOpenForNode(node);
-    });
-  }
+  const buttonName = "Open Prompt Creator UI V2";
+  const openUi = () => {
+    const modal = ensureModal();
+    modal.__vrgdgOpenForNode(node);
+  };
+  node.widgets = (node.widgets || []).filter((widget) => !(widget.type === "button" && widget.name === buttonName));
 
+  const button = node.addWidget("button", buttonName, null, openUi);
+  if (button) button.serialize = false;
 }
 
 function attachWorkflowButton(node, workflowKind) {
   const isPart3 = workflowKind === "part3";
   const buttonName = isPart3 ? "Open Workflow 3 UI" : "Open Part 2 Workflow UI";
-  if ((node.widgets || []).some((widget) => widget.type === "button" && widget.name === buttonName)) {
-    return;
-  }
-
-  node.addWidget("button", buttonName, null, () => {
+  const openUi = () => {
     const modal = ensurePart2Modal();
     modal.__vrgdgOpenPart2(workflowKind, node);
-  });
+  };
+  node.widgets = (node.widgets || []).filter((widget) => !(widget.type === "button" && widget.name === buttonName));
+
+  const button = node.addWidget("button", buttonName, null, openUi);
+  if (button) button.serialize = false;
+}
+
+function attachUiForNode(node) {
+  const nodeTypeName = node?.comfyClass || node?.type;
+  if (nodeTypeName === PART2_NODE_NAME) attachWorkflowButton(node, "part2");
+  else if (nodeTypeName === PART3_NODE_NAME) attachWorkflowButton(node, "part3");
+  else if (nodeTypeName === NODE_NAME) attachButton(node);
 }
 
 app.registerExtension({
   name: "vrgdg." + NODE_NAME,
+
+  loadedGraphNode(node) {
+    attachUiForNode(node);
+  },
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_NAME && nodeData.name !== PART2_NODE_NAME && nodeData.name !== PART3_NODE_NAME) return;
@@ -3912,18 +3980,14 @@ app.registerExtension({
       const result = onNodeCreated?.apply(this, arguments);
       this.serialize_widgets = true;
       this.properties = this.properties || {};
-      if (nodeData.name === PART2_NODE_NAME) attachWorkflowButton(this, "part2");
-      else if (nodeData.name === PART3_NODE_NAME) attachWorkflowButton(this, "part3");
-      else attachButton(this);
+      attachUiForNode(this);
       return result;
     };
 
     nodeType.prototype.onConfigure = function () {
       const result = onConfigure?.apply(this, arguments);
       this.properties = this.properties || {};
-      if (nodeData.name === PART2_NODE_NAME) attachWorkflowButton(this, "part2");
-      else if (nodeData.name === PART3_NODE_NAME) attachWorkflowButton(this, "part3");
-      else attachButton(this);
+      attachUiForNode(this);
       return result;
     };
   },

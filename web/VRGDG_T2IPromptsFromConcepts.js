@@ -290,15 +290,20 @@ async function createT2IPrompts(node) {
 }
 
 function ensureButton(node) {
-  if ((node.widgets || []).some((widget) => widget?.type === "button" && widget?.name === "Create T2I Prompts")) {
-    return;
-  }
+  const buttonName = "Create T2I Prompts";
+  const runButton = () => createT2IPrompts(node);
+  node.widgets = (node.widgets || []).filter((widget) => !(widget?.type === "button" && widget?.name === buttonName));
 
-  node.addWidget("button", "Create T2I Prompts", null, () => createT2IPrompts(node));
+  const button = node.addWidget("button", buttonName, null, runButton);
+  if (button) button.serialize = false;
 }
 
 app.registerExtension({
   name: "vrgdg.T2IPromptsFromConcepts",
+
+  loadedGraphNode(node) {
+    if ((node?.comfyClass || node?.type) === NODE_NAME) ensureButton(node);
+  },
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_NAME) return;
