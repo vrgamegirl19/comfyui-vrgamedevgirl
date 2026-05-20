@@ -252,8 +252,9 @@ def _save_builder_project_as(payload):
         segments = []
     audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
     audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
-    audio_path, session = _snapshot_project_assets(target, session, audio_path)
+    audio_path, session = _snapshot_project_assets(target, session, audio_path, source)
     session = _copy_session_assets_to_project(target, session)
+    session = _rebase_project_owned_paths(target, source, session)
     session = {
         **session,
         "audio_path": audio_path,
@@ -364,7 +365,21 @@ def _copy_file_into_folder(source_path, target_folder, target_name=None):
     return target
 
 
-def _snapshot_project_assets(project_folder, session, audio_path):
+def _project_rebased_path(project_folder, old_project_folder, raw_path):
+    text = str(raw_path or "").strip().strip('"')
+    if not text or not old_project_folder:
+        return ""
+    try:
+        old_abs = os.path.abspath(old_project_folder)
+        raw_abs = os.path.abspath(text)
+        if _is_inside_folder(raw_abs, old_abs):
+            return os.path.abspath(os.path.join(project_folder, os.path.relpath(raw_abs, old_abs)))
+    except Exception:
+        return ""
+    return ""
+
+
+def _snapshot_project_assets(project_folder, session, audio_path, old_project_folder=""):
     project_folder = os.path.abspath(project_folder)
     if audio_path and os.path.isfile(audio_path):
         copied_audio = _copy_file_into_folder(
@@ -374,6 +389,10 @@ def _snapshot_project_assets(project_folder, session, audio_path):
         )
         if copied_audio:
             audio_path = copied_audio
+    elif old_project_folder:
+        rebased_audio = _project_rebased_path(project_folder, old_project_folder, audio_path)
+        if rebased_audio:
+            audio_path = rebased_audio
 
     context_map = {
         "prompt_json_path": "ConceptPrompts.txt",
@@ -387,6 +406,10 @@ def _snapshot_project_assets(project_folder, session, audio_path):
             copied_path = _copy_file_into_folder(raw_path, _context_folder(project_folder), filename)
             if copied_path:
                 session[key] = copied_path
+        else:
+            rebased_path = _project_rebased_path(project_folder, old_project_folder, raw_path)
+            if rebased_path:
+                session[key] = rebased_path
 
     return audio_path, session
 
@@ -483,6 +506,40 @@ def _copy_session_assets_to_project(project_folder, session):
             if copied:
                 segment[key] = copied
 
+    return session
+
+
+def _rebase_project_owned_paths(project_folder, old_project_folder, session):
+    if not old_project_folder:
+        return session
+    for key in ("audio_path", "prompt_json_path", "theme_style_path", "story_idea_path", "subject_scene_path"):
+        rebased = _project_rebased_path(project_folder, old_project_folder, session.get(key, ""))
+        if rebased:
+            session[key] = rebased
+
+    segments = session.get("segments", [])
+    if not isinstance(segments, list):
+        return session
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        for key in (
+            "approved_image_path",
+            "custom_image_path",
+            "ref_image_path",
+            "flux_subject_image_path",
+            "flux_location_image_path",
+            "video_path",
+            "custom_audio_path",
+        ):
+            rebased = _project_rebased_path(project_folder, old_project_folder, segment.get(key, ""))
+            if rebased:
+                segment[key] = rebased
+        if isinstance(segment.get("image_history"), list):
+            segment["image_history"] = [
+                _project_rebased_path(project_folder, old_project_folder, item) or item
+                for item in segment["image_history"]
+            ]
     return session
 
 
