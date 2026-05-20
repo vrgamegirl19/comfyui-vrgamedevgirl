@@ -228,18 +228,45 @@ def _save_builder_project_as(payload):
     source = os.path.abspath(str(payload.get("source_project_folder", "") or "").strip().strip('"'))
     if not source:
         source = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
-    if not source or not os.path.isdir(source):
-        raise FileNotFoundError(f"Source project folder was not found: {source}")
 
     target = _project_target_from_payload(payload, "target_project_folder")
     target = _unique_folder_path(target)
-    try:
-        common = os.path.commonpath([source, target])
-    except ValueError:
+    if source and os.path.isdir(source):
+        try:
+            common = os.path.commonpath([source, target])
+        except ValueError:
+            common = ""
+    else:
         common = ""
-    if common == source:
+    if source and common == source:
         raise ValueError("Save Project As target cannot be inside the current project folder.")
-    shutil.copytree(source, target)
+
+    os.makedirs(target, exist_ok=True)
+    os.makedirs(_images_folder(target), exist_ok=True)
+    os.makedirs(_prompts_folder(target), exist_ok=True)
+    os.makedirs(_context_folder(target), exist_ok=True)
+
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    segments = session.get("segments", [])
+    if not isinstance(segments, list):
+        segments = []
+    audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
+    audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
+    audio_path, session = _snapshot_project_assets(target, session, audio_path)
+    session = _copy_session_assets_to_project(target, session)
+    session = {
+        **session,
+        "audio_path": audio_path,
+        "project_folder": target,
+        "updated": time.time(),
+        "segments": segments,
+    }
+
+    with open(_session_path(target), "w", encoding="utf-8") as handle:
+        json.dump(session, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    with open(_srt_path(target), "w", encoding="utf-8") as handle:
+        handle.write(_segments_to_srt(segments))
     return {
         "project_folder": target,
         "session_path": _session_path(target),
@@ -247,6 +274,7 @@ def _save_builder_project_as(payload):
         "images_folder": _images_folder(target),
         "prompts_folder": _prompts_folder(target),
         "context_folder": _context_folder(target),
+        "session": session,
     }
 
 
@@ -361,6 +389,101 @@ def _snapshot_project_assets(project_folder, session, audio_path):
                 session[key] = copied_path
 
     return audio_path, session
+
+
+def _copy_file_if_exists(source_path, target_path):
+    source = str(source_path or "").strip().strip('"')
+    if not source or not os.path.isfile(source):
+        return ""
+    source = os.path.abspath(source)
+    target = os.path.abspath(target_path)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    if os.path.normcase(source) == os.path.normcase(target):
+        return target
+    shutil.copy2(source, target)
+    return target
+
+
+def _copy_reference_asset(project_folder, scene_number, key, source_path):
+    source = str(source_path or "").strip().strip('"')
+    if not source or not os.path.isfile(source):
+        return ""
+    ext = os.path.splitext(source)[1].lower() or ".png"
+    if ext not in {".png", ".jpg", ".jpeg", ".webp", ".wav", ".mp3", ".flac", ".m4a", ".ogg"}:
+        ext = ".bin"
+    safe_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(key or "asset")).strip("_") or "asset"
+    folder = os.path.join(_context_folder(project_folder), f"scene_{max(1, int(scene_number or 1)):04d}")
+    return _copy_file_if_exists(source, os.path.join(folder, f"{safe_key}{ext}"))
+
+
+def _copy_session_assets_to_project(project_folder, session):
+    project_folder = os.path.abspath(project_folder)
+    segments = session.get("segments", [])
+    if not isinstance(segments, list):
+        session["segments"] = []
+        return session
+
+    for scene_number, segment in enumerate(segments, start=1):
+        if not isinstance(segment, dict):
+            continue
+
+        approved = str(segment.get("approved_image_path", "") or "").strip()
+        if approved and os.path.isfile(approved):
+            ext = os.path.splitext(approved)[1] or ".png"
+            segment["approved_image_path"] = _copy_file_if_exists(
+                approved,
+                _scene_image_path(project_folder, scene_number, ext),
+            )
+
+        history = segment.get("image_history", [])
+        new_history = []
+        if isinstance(history, list):
+            for item in history:
+                item_path = str(item or "").strip()
+                if not item_path or not os.path.isfile(item_path):
+                    continue
+                ext = os.path.splitext(item_path)[1] or ".png"
+                copied = _copy_file_if_exists(item_path, _unique_preview_path(project_folder, scene_number, ext))
+                if copied and copied not in new_history:
+                    new_history.append(copied)
+        if segment.get("approved_image_path") and segment["approved_image_path"] not in new_history:
+            new_history.append(segment["approved_image_path"])
+        segment["image_history"] = new_history
+        if new_history:
+            try:
+                current_index = int(segment.get("image_history_index", len(new_history) - 1) or 0)
+            except (TypeError, ValueError):
+                current_index = len(new_history) - 1
+            segment["image_history_index"] = max(0, min(len(new_history) - 1, current_index))
+        else:
+            segment["image_history_index"] = -1
+
+        video_path = str(segment.get("video_path", "") or "").strip()
+        if video_path and os.path.isfile(video_path):
+            target_video = os.path.join(project_folder, "rendered_scene_videos", f"video_{scene_number:04d}-audio.mp4")
+            segment["video_path"] = _copy_file_if_exists(video_path, target_video)
+            segment["video_folder"] = os.path.dirname(segment["video_path"])
+            segment["video_status"] = "done"
+
+        custom_audio = str(segment.get("custom_audio_path", "") or "").strip()
+        if custom_audio and os.path.isfile(custom_audio):
+            ext = os.path.splitext(custom_audio)[1] or ".wav"
+            segment["custom_audio_path"] = _copy_file_if_exists(
+                custom_audio,
+                _scene_audio_path(project_folder, scene_number, ext),
+            )
+
+        for key in (
+            "custom_image_path",
+            "ref_image_path",
+            "flux_subject_image_path",
+            "flux_location_image_path",
+        ):
+            copied = _copy_reference_asset(project_folder, scene_number, key, segment.get(key, ""))
+            if copied:
+                segment[key] = copied
+
+    return session
 
 
 def _project_path_candidates(project_folder, old_project_folder, raw_path, scene_number=None):

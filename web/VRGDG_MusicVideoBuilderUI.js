@@ -3611,6 +3611,31 @@ function openBuilder(node) {
     progress?.set(`Memory cleanup finished after ${label}.\nPrompt ID: ${promptId}\n\n${text.join("\n\n")}`, percent);
   }
 
+  function currentSessionData() {
+    return {
+      segments: state.segments,
+      timing_frozen: state.timingFrozen,
+      srt_mode: state.srtMode,
+      prompt_json_path: state.promptJsonPath,
+      use_vrgdg_text_context: state.useVrgdgTextContext,
+      theme_style_path: state.themeStylePath,
+      story_idea_path: state.storyIdeaPath,
+      subject_scene_path: state.subjectScenePath,
+      waveform_mode: state.waveformMode,
+      snap_to_beats: state.snapToBeats,
+      show_beat_markers: state.showBeatMarkers,
+      left_panel_width: state.leftPanelWidth,
+      right_panel_width: state.rightPanelWidth,
+      timeline_panel_height: state.timelinePanelHeight,
+      timeline_zoom: state.timelineZoom,
+      auto_save_enabled: state.autoSaveEnabled,
+      zimage_settings: state.zimageSettings,
+      flux_klein_settings: state.fluxKleinSettings,
+      z_enhance_settings: state.zEnhanceSettings,
+      i2v_video_settings: state.i2vVideoSettings,
+    };
+  }
+
   async function stopCurrentWorkflow() {
     state.batchCancelled = true;
     pauseAllAudio();
@@ -3642,28 +3667,7 @@ function openBuilder(node) {
       const data = await postJson("/vrgdg/music_builder/save_session", {
         audio_path: audioInput.value,
         project_folder: projectInput.value,
-        session: {
-          segments: state.segments,
-          timing_frozen: state.timingFrozen,
-          srt_mode: state.srtMode,
-          prompt_json_path: state.promptJsonPath,
-          use_vrgdg_text_context: state.useVrgdgTextContext,
-          theme_style_path: state.themeStylePath,
-          story_idea_path: state.storyIdeaPath,
-          subject_scene_path: state.subjectScenePath,
-          waveform_mode: state.waveformMode,
-          snap_to_beats: state.snapToBeats,
-          show_beat_markers: state.showBeatMarkers,
-          left_panel_width: state.leftPanelWidth,
-          right_panel_width: state.rightPanelWidth,
-          timeline_panel_height: state.timelinePanelHeight,
-          timeline_zoom: state.timelineZoom,
-          auto_save_enabled: state.autoSaveEnabled,
-      zimage_settings: state.zimageSettings,
-      flux_klein_settings: state.fluxKleinSettings,
-      z_enhance_settings: state.zEnhanceSettings,
-      i2v_video_settings: state.i2vVideoSettings,
-        },
+        session: currentSessionData(),
       }, 60000);
       state.projectFolder = data.project_folder || "";
       state.sessionPath = data.session_path || "";
@@ -3719,28 +3723,7 @@ function openBuilder(node) {
     const data = await postJson("/vrgdg/music_builder/save_session", {
       audio_path: audioInput.value,
       project_folder: projectInput.value,
-      session: {
-        segments: state.segments,
-        timing_frozen: state.timingFrozen,
-        srt_mode: state.srtMode,
-        prompt_json_path: state.promptJsonPath,
-        use_vrgdg_text_context: state.useVrgdgTextContext,
-        theme_style_path: state.themeStylePath,
-        story_idea_path: state.storyIdeaPath,
-        subject_scene_path: state.subjectScenePath,
-        waveform_mode: state.waveformMode,
-        snap_to_beats: state.snapToBeats,
-        show_beat_markers: state.showBeatMarkers,
-        left_panel_width: state.leftPanelWidth,
-        right_panel_width: state.rightPanelWidth,
-        timeline_panel_height: state.timelinePanelHeight,
-        timeline_zoom: state.timelineZoom,
-        auto_save_enabled: state.autoSaveEnabled,
-        zimage_settings: state.zimageSettings,
-        flux_klein_settings: state.fluxKleinSettings,
-        z_enhance_settings: state.zEnhanceSettings,
-        i2v_video_settings: state.i2vVideoSettings,
-      },
+      session: currentSessionData(),
     }, 60000);
     state.projectFolder = data.project_folder || state.projectFolder;
     state.sessionPath = data.session_path || state.sessionPath;
@@ -5051,21 +5034,15 @@ function openBuilder(node) {
     const targetProject = await showSaveProjectAsModal(`${currentName}_${timestampForProjectName()}`);
     if (targetProject === null) return;
     try {
-      await saveSession({ quiet: true, throwOnError: true });
+      updateActiveFromInputs();
+      saveI2VVideoSettingsFromPanel();
       const data = await postJson("/vrgdg/music_builder/save_project_as", {
         source_project_folder: currentProject,
         target_project_folder: targetProject,
+        audio_path: audioInput.value,
+        session: currentSessionData(),
       }, 120000);
-      state.projectFolder = data.project_folder || "";
-      state.sessionPath = data.session_path || "";
-      state.srtPath = data.srt_path || "";
-      projectInput.value = state.projectFolder;
-      srtInput.value = state.srtPath;
-      setWidgetValue(node, "project_folder", state.projectFolder);
-      setWidgetValue(node, "session_path", state.sessionPath);
-      setWidgetValue(node, "srt_path", state.srtPath);
-      rememberLastProject(state.projectFolder);
-      await saveSession({ quiet: true });
+      await loadSessionFromProject(data.project_folder || targetProject);
       toast(`Project saved as.\n${state.projectFolder}`);
     } catch (error) {
       toast(String(error?.message || error), true);
