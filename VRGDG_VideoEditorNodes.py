@@ -232,33 +232,67 @@ def _list_clips(folder_path, raw_extensions):
     extensions = _parse_extensions(raw_extensions)
     clips = []
 
-    for filename in os.listdir(folder):
-        full_path = os.path.join(folder, filename)
-        if not os.path.isfile(full_path):
-            continue
+    def add_clip(full_path, clip_number=0):
+        filename = os.path.basename(full_path)
         lower = filename.lower()
         if not lower.endswith(extensions):
-            continue
+            return
         if lower.startswith("final_video") or lower == "00001.mp4":
-            continue
+            return
         try:
             stat = os.stat(full_path)
         except OSError:
-            continue
+            return
         clips.append(
             {
                 "name": filename,
                 "path": full_path,
                 "size": int(stat.st_size),
                 "mtime": float(stat.st_mtime),
-                "clip_number": 0,
+                "clip_number": int(clip_number or 0),
                 "url": f"/vrgdg/video_editor/video?path={quote(full_path)}&v={int(stat.st_mtime)}_{int(stat.st_size)}",
             }
         )
 
+    for filename in os.listdir(folder):
+        full_path = os.path.join(folder, filename)
+        if not os.path.isfile(full_path):
+            continue
+        add_clip(full_path)
+
+    visible_paths = {os.path.normcase(os.path.abspath(item["path"])) for item in clips}
+    session_path = _session_path(folder)
+    if os.path.isfile(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                session = json.load(handle)
+            session_clips = session.get("clips", {}) if isinstance(session, dict) else {}
+            if isinstance(session_clips, dict):
+                for item in session_clips.values():
+                    if not isinstance(item, dict) or not item.get("selected_for_remake"):
+                        continue
+                    raw_path = str(item.get("path", "") or "").strip()
+                    basename = os.path.basename(raw_path) if raw_path else str(item.get("name", "") or "").strip()
+                    candidates = []
+                    if raw_path:
+                        candidates.append(raw_path)
+                    if basename:
+                        candidates.append(os.path.join(folder, "remake", basename))
+                    for candidate in candidates:
+                        candidate_path = os.path.abspath(candidate)
+                        key = os.path.normcase(candidate_path)
+                        if key in visible_paths or not os.path.isfile(candidate_path):
+                            continue
+                        add_clip(candidate_path, item.get("clip_number", 0))
+                        visible_paths.add(key)
+                        break
+        except Exception as exc:
+            print(f"[VRGDG VideoEditor] Failed to include staged remake clips: {exc}")
+
     clips.sort(key=lambda item: _natural_key(item["name"]))
     for index, item in enumerate(clips, start=1):
-        item["clip_number"] = _guess_clip_number(item["name"], index)
+        if not item.get("clip_number"):
+            item["clip_number"] = _guess_clip_number(item["name"], index)
 
     return {
         "folder_path": folder,
@@ -382,6 +416,9 @@ def _clean_visual_gemma_text(text):
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
     cleaned = re.sub(r"^(?:Assistant|Answer|Final prompt)\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()
     control_patterns = [
+        r"^\s*_?(?:start_of_)?turn\s*",
+        r"^\s*<\|?start_of_turn\|?>\s*(?:model|assistant)?\s*",
+        r"\s*<\|?end_of_turn\|?>\s*",
         r"_?\s*<\|channel>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*",
@@ -402,7 +439,7 @@ def _clean_gemma_prompt_text(text):
 
 
 def _generate_visual_t2i_prompt(payload):
-    from .LLM import VRGDG_SuperGemmaGGUFChat
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
@@ -436,7 +473,7 @@ def _generate_visual_t2i_prompt(payload):
     temperature = float(payload.get("temperature") or 0.6)
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 1200)
-    unload_after = bool(payload.get("unload_after"))
+    unload_after = True
 
     try:
         model = llm._load_gguf_model(
@@ -485,10 +522,11 @@ def _generate_visual_t2i_prompt(payload):
                 chat_format=chat_format,
                 mmproj_path=mmproj_path,
             )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
 def _generate_i2v_prompt(payload):
-    from .LLM import VRGDG_SuperGemmaGGUFChat
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
     model_file = str(payload.get("model_file", "") or "").strip()
     t2i_prompt = str(payload.get("t2i_prompt", "") or "").strip()
@@ -518,7 +556,7 @@ def _generate_i2v_prompt(payload):
     temperature = float(payload.get("temperature") or 0.7)
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 1200)
-    unload_after = bool(payload.get("unload_after"))
+    unload_after = True
 
     try:
         model = llm._load_gguf_model(
@@ -554,6 +592,7 @@ def _generate_i2v_prompt(payload):
                 chat_format=chat_format,
                 mmproj_path="",
             )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
 def _ensure_video_editor_routes():
@@ -646,6 +685,16 @@ def _ensure_video_editor_routes():
         if not os.path.isfile(video_path):
             return web.json_response({"ok": False, "error": "Video file was not found."}, status=404)
         return web.FileResponse(video_path)
+
+    @server_instance.routes.get("/vrgdg/video_editor/image")
+    async def vrgdg_video_editor_image(request):
+        raw_path = str(request.query.get("path", "") or "").strip()
+        image_path = os.path.normpath(os.path.abspath(raw_path))
+        if not os.path.isfile(image_path):
+            return web.json_response({"ok": False, "error": "Image file was not found."}, status=404)
+        if os.path.splitext(image_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+            return web.json_response({"ok": False, "error": "Unsupported image file type."}, status=400)
+        return web.FileResponse(image_path)
 
     _VRGDG_VIDEO_EDITOR_ROUTES_REGISTERED = True
 

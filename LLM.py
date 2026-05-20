@@ -22,6 +22,58 @@ _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
 _GGUF_MODEL_CACHE: dict[tuple, object] = {}
 
 
+def _clear_vrgdg_llm_caches(clear_cuda_cache: bool = True, clear_hf_pipeline_cache: bool = False) -> dict:
+    gguf_count = len(_GGUF_MODEL_CACHE)
+    hf_count = len(_HF_PIPELINE_CACHE) if clear_hf_pipeline_cache else 0
+
+    for model in list(_GGUF_MODEL_CACHE.values()):
+        close_fn = getattr(model, "close", None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception:
+                pass
+        try:
+            del model
+        except Exception:
+            pass
+    _GGUF_MODEL_CACHE.clear()
+
+    if clear_hf_pipeline_cache:
+        for cached in list(_HF_PIPELINE_CACHE.values()):
+            if isinstance(cached, tuple):
+                for item in cached:
+                    try:
+                        del item
+                    except Exception:
+                        pass
+            else:
+                try:
+                    del cached
+                except Exception:
+                    pass
+        _HF_PIPELINE_CACHE.clear()
+
+    gc.collect()
+    cuda_cleared = False
+    if clear_cuda_cache:
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+                if callable(ipc_collect):
+                    ipc_collect()
+                cuda_cleared = True
+        except Exception:
+            pass
+
+    return {
+        "gguf_models_unloaded": gguf_count,
+        "hf_pipelines_unloaded": hf_count,
+        "cuda_cache_cleared": cuda_cleared,
+    }
+
+
 @lru_cache(maxsize=1)
 def _load_google_genai_client():
     try:
@@ -3156,6 +3208,12 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         )
         model = _GGUF_MODEL_CACHE.pop(key, None)
         if model is not None:
+            close_fn = getattr(model, "close", None)
+            if callable(close_fn):
+                try:
+                    close_fn()
+                except Exception:
+                    pass
             try:
                 del model
             except Exception:
@@ -4046,6 +4104,47 @@ class VRGDG_LlamaCppDoctor:
 
         return (status, "\n".join(lines), support_bundle, install_hint, python_exe)
 
+
+class VRGDG_UnloadGemmaModels:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clear_cuda_cache": ("BOOLEAN", {"default": True}),
+                "clear_hf_pipeline_cache": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": "Usually leave this off. Turn it on only if you also want to clear non-GGUF local LLM pipeline caches.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("status",)
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/LLM"
+    DESCRIPTION = "Unloads cached VRGDG GGUF/Gemma llama.cpp models and optionally clears CUDA cache."
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+    def run(self, clear_cuda_cache: bool = True, clear_hf_pipeline_cache: bool = False):
+        result = _clear_vrgdg_llm_caches(
+            clear_cuda_cache=bool(clear_cuda_cache),
+            clear_hf_pipeline_cache=bool(clear_hf_pipeline_cache),
+        )
+        status = (
+            "VRGDG Gemma/GGUF cleanup complete.\n"
+            f"GGUF models unloaded: {result['gguf_models_unloaded']}\n"
+            f"HF pipelines unloaded: {result['hf_pipelines_unloaded']}\n"
+            f"CUDA cache cleared: {'yes' if result['cuda_cache_cleared'] else 'no'}"
+        )
+        print("[VRGDG] " + status.replace("\n", " | "))
+        return (status,)
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_NanoBananaPro": VRGDG_NanoBananaPro,
     "VRGDG_LLM_Multi": VRGDG_LLM_Multi,
@@ -4056,6 +4155,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_GeneralGGUF": VRGDG_GeneralGGUF,    
     "VRGDG_SuperGemmaGGUFChat": VRGDG_SuperGemmaGGUFChat,    
     "VRGDG_LlamaCppDoctor": VRGDG_LlamaCppDoctor,
+    "VRGDG_UnloadGemmaModels": VRGDG_UnloadGemmaModels,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -4068,4 +4168,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_GeneralGGUF": "🧠 VRGDG General GGUF 🧠",    
     "VRGDG_SuperGemmaGGUFChat": "🧠 VRGDG SuperGemma GGUF Chat 🧠",    
     "VRGDG_LlamaCppDoctor": "🩺 VRGDG Llama CPP Doctor 🩺",
+    "VRGDG_UnloadGemmaModels": "VRGDG Unload Gemma/GGUF Models",
 }

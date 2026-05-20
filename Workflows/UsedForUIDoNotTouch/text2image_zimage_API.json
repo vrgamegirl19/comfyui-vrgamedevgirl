@@ -1,0 +1,409 @@
+{
+  "960": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "961": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "962": {
+    "inputs": {
+      "sampler_name": "dpmpp_sde"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "963": {
+    "inputs": {
+      "samples": [
+        "966",
+        0
+      ],
+      "vae": [
+        "961",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "964": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 1,
+      "cfg": 1,
+      "model": [
+        "974",
+        0
+      ],
+      "positive": [
+        "971",
+        0
+      ],
+      "negative": [
+        "970",
+        0
+      ],
+      "sampler": [
+        "962",
+        0
+      ],
+      "sigmas": [
+        "968",
+        0
+      ],
+      "latent_image": [
+        "978",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "SamplerCustom"
+    }
+  },
+  "965": {
+    "inputs": {
+      "width": 1280,
+      "height": 720,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "966": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 1,
+      "cfg": 1,
+      "model": [
+        "974",
+        0
+      ],
+      "positive": [
+        "971",
+        0
+      ],
+      "negative": [
+        "970",
+        0
+      ],
+      "sampler": [
+        "962",
+        0
+      ],
+      "sigmas": [
+        "969",
+        0
+      ],
+      "latent_image": [
+        "967",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "SamplerCustom"
+    }
+  },
+  "967": {
+    "inputs": {
+      "upscale_method": "area",
+      "width": 1920,
+      "height": 1080,
+      "crop": "disabled",
+      "samples": [
+        "964",
+        0
+      ]
+    },
+    "class_type": "LatentUpscale",
+    "_meta": {
+      "title": "Upscale Latent"
+    }
+  },
+  "968": {
+    "inputs": {
+      "steps": 10,
+      "start_at_step": [
+        "981",
+        0
+      ],
+      "end_at_step": 10,
+      "base_image_seq_len": 256,
+      "base_shift": 0.5,
+      "invert_sigmas": "disable",
+      "max_image_seq_len": 8192,
+      "max_shift": 1.15,
+      "num_train_timesteps": 1000,
+      "shift": 3,
+      "shift_terminal": 0,
+      "stochastic_sampling": "disable",
+      "time_shift_type": "exponential",
+      "use_beta_sigmas": "disable",
+      "use_dynamic_shifting": "disable",
+      "use_exponential_sigmas": "disable",
+      "use_karras_sigmas": "disable",
+      "device": "cuda"
+    },
+    "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
+    "_meta": {
+      "title": "FlowMatch Euler Discrete Scheduler (Custom)"
+    }
+  },
+  "969": {
+    "inputs": {
+      "steps": 10,
+      "start_at_step": 5,
+      "end_at_step": 10,
+      "base_image_seq_len": 256,
+      "base_shift": 0.5,
+      "invert_sigmas": "disable",
+      "max_image_seq_len": 8192,
+      "max_shift": 1.15,
+      "num_train_timesteps": 1000,
+      "shift": 3,
+      "shift_terminal": 0,
+      "stochastic_sampling": "disable",
+      "time_shift_type": "exponential",
+      "use_beta_sigmas": "disable",
+      "use_dynamic_shifting": "disable",
+      "use_exponential_sigmas": "disable",
+      "use_karras_sigmas": "disable",
+      "device": "cuda"
+    },
+    "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
+    "_meta": {
+      "title": "FlowMatch Euler Discrete Scheduler (Custom)"
+    }
+  },
+  "970": {
+    "inputs": {
+      "text": "bad hands, extra fingers, missing fingers, fused fingers, broken hands, mutant hands, twisted limbs, extra limbs, missing limbs, dimple ",
+      "clip": [
+        "960",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "971": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "960",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "972": {
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "974": {
+    "inputs": {
+      "use_custom_loras": false,
+      "lora_count": 1,
+      "ltx_two_pass_mode": false,
+      "lora_1": "[none]",
+      "strength_1": 1,
+      "lora_2": "[none]",
+      "strength_2": 1,
+      "lora_3": "[none]",
+      "strength_3": 1,
+      "lora_4": "[none]",
+      "strength_4": 1,
+      "lora_5": "[none]",
+      "strength_5": 1,
+      "lora_6": "[none]",
+      "strength_6": 1,
+      "lora_7": "[none]",
+      "strength_7": 1,
+      "lora_8": "[none]",
+      "strength_8": 1,
+      "lora_9": "[none]",
+      "strength_9": 1,
+      "lora_10": "[none]",
+      "strength_10": 1,
+      "lora_11": "[none]",
+      "strength_11": 1,
+      "lora_12": "[none]",
+      "strength_12": 1,
+      "lora_13": "[none]",
+      "strength_13": 1,
+      "lora_14": "[none]",
+      "strength_14": 1,
+      "lora_15": "[none]",
+      "strength_15": 1,
+      "lora_16": "[none]",
+      "strength_16": 1,
+      "lora_17": "[none]",
+      "strength_17": 1,
+      "lora_18": "[none]",
+      "strength_18": 1,
+      "lora_19": "[none]",
+      "strength_19": 1,
+      "lora_20": "[none]",
+      "strength_20": 1,
+      "model": [
+        "972",
+        0
+      ]
+    },
+    "class_type": "VRGDG_OptionalMultiLoraModelOnly",
+    "_meta": {
+      "title": "VRGDG Optional Multi LoRA Model Only"
+    }
+  },
+  "975": {
+    "inputs": {
+      "images": [
+        "963",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "976": {
+    "inputs": {
+      "clean_file_cache": true,
+      "clean_processes": true,
+      "clean_dlls": true,
+      "retry_times": 3,
+      "anything": [
+        "963",
+        0
+      ]
+    },
+    "class_type": "RAMCleanup",
+    "_meta": {
+      "title": "🎈RAM-Cleanup"
+    }
+  },
+  "977": {
+    "inputs": {
+      "offload_model": false,
+      "offload_cache": true,
+      "anything": [
+        "976",
+        0
+      ]
+    },
+    "class_type": "VRAMCleanup",
+    "_meta": {
+      "title": "🎈VRAM-Cleanup"
+    }
+  },
+  "978": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "965",
+        0
+      ],
+      "on_true": [
+        "980",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "image to image?"
+    }
+  },
+  "979": {
+    "inputs": {
+      "image": "3c90836b-12eb-4459-acc8-7aa2e16c8cc7.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "980": {
+    "inputs": {
+      "pixels": [
+        "979",
+        0
+      ],
+      "vae": [
+        "961",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "981": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "982",
+        0
+      ],
+      "on_true": [
+        "983",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "image to image?"
+    }
+  },
+  "982": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int -on false must be 0"
+    }
+  },
+  "983": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int - on true can be 1-8"
+    }
+  }
+}

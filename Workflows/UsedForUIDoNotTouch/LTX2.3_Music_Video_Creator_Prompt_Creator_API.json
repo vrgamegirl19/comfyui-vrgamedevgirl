@@ -1,0 +1,646 @@
+{
+  "804": {
+    "inputs": {
+      "text_0": "{\n  \"lyricSegment1_duration_5.572\": \"Don't look at me like that\",\n  \"lyricSegment2_duration_6.502\": \"You say it\",\n  \"lyricSegment3_duration_8.998\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n  \"lyricSegment4_duration_4.504\": \"You play innocent so well I can hear it when you sell\",\n  \"lyricSegment5_duration_8\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n  \"lyricSegment6_duration_5.398\": \"In the silence you left You don't even have to\",\n  \"lyricSegment7_duration_4.099\": \"try I hear it every time it gets quiet when you\",\n  \"lyricSegment8_duration_7\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n  \"lyricSegment9_duration_4.006\": \"I've ever heard\",\n  \"lyricSegment10_duration_7.5\": \"It gets quiet when you lie\",\n  \"lyricSegment11_duration_4.481\": \"Like the air is paper-thin\",\n  \"lyricSegment12_duration_5.48\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n  \"lyricSegment13_duration_7.535\": \"I see it in your eyes\",\n  \"lyricSegment14_duration_8.998\": \"try It gets quiet when you lie\",\n  \"lyricSegment15_duration_4.005\": \"Don't look at me like that\",\n  \"lyricSegment16_duration_5.492\": \"The silence lingers deep\",\n  \"lyricSegment17_duration_9.683\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n  \"lyricSegment18_duration_1.927\": \"When you lie\"\n}",
+      "text": [
+        "28:887",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText -Fixed Lyrics"
+    }
+  },
+  "911": {
+    "inputs": {
+      "text_0": "{\n  \"Prompt1\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. small-town radio station: A tense, heavy gaze is exchanged across a vintage microphone in a dimly lit studio, the air thick with unspoken tension.\",\n  \"Prompt2\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. small-town radio station: A single, whispered word hangs in the air as the studio lights flicker slightly with the weight of a spoken secret.\",\n  \"Prompt3\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. dimly lit kitchen: Warm candlelight flickers on a table while sharp, jagged shadows stretch across the walls like hidden teeth.\",\n  \"Prompt4\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. dimly lit kitchen: A deceptive, innocent smile is cast through the soft glow of a kitchen lamp, masking a cold truth.\",\n  \"Prompt5\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: The streetlights hum as the entire world seems to freeze in a sudden, unnatural vacuum of sound.\",\n  \"Prompt6\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: An empty, desolate street stretches out under a pale moon, the stillness feeling heavy and suffocating.\",\n  \"Prompt7\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. empty suburban street at night: The wind stops mid-gust, leaving the suburban trees frozen in a silent, eerie tableau.\",\n  \"Prompt8\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: Long, cavernous shadows stretch between the pillars as the vast, hollow silence of the hall grows overwhelming.\",\n  \"Prompt9\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The sound of a distant, echoing footstep fades into a profound and terrifying stillness.\",\n  \"Prompt10\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The shadows deepen as the atmosphere becomes thick with the weight of a hidden truth.\",\n  \"Prompt11\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The air becomes visually thin and translucent, like fragile paper stretched between the ancient walls.\",\n  \"Prompt12\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: A ghostly, hollow expression reflects the feeling of a stranger's presence in a familiar space.\",\n  \"Prompt13\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: A piercing, searching gaze cuts through the dim light, looking for the truth behind a mask.\",\n  \"Prompt14\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. old county courthouse hallway: The silence expands, threatening to swallow the architecture as the truth remains buried.\",\n  \"Prompt15\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: A sharp, questioning look is directed toward the viewer in the soft, dim light of a living room.\",\n  \"Prompt16\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: Dust motes hang motionless in the air as the silence settles like a heavy shroud.\",\n  \"Prompt17\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: The room becomes an abyss of soft shadows where the silence feels loud and all-consuming.\",\n  \"Prompt18\": \"A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots. quiet residential living room: A final, sudden moment of absolute stillness as the truth is finally laid bare.\"\n}",
+      "text": [
+        "28:947",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - Concept Prompt for image to video or text to video"
+    }
+  },
+  "917": {
+    "inputs": {
+      "text_0": "ok",
+      "text": [
+        "28:892",
+        2
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "first gemma 4 node status"
+    }
+  },
+  "918": {
+    "inputs": {
+      "text_0": "ok",
+      "text": [
+        "28:909",
+        2
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "2nd gemma 4 node status"
+    }
+  },
+  "954": {
+    "inputs": {
+      "audio": "Punkgirl_step_250_00001-audio.mp4",
+      "start_time": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudioUpload",
+    "_meta": {
+      "title": "Load Audio (Upload)🎥🅥🅗🅢"
+    }
+  },
+  "955": {
+    "inputs": {
+      "text": "",
+      "output_mode": "string"
+    },
+    "class_type": "VRGDG_TextBox",
+    "_meta": {
+      "title": "VRGDG_TextBox - full lyrics"
+    }
+  },
+  "957": {
+    "inputs": {
+      "text": "",
+      "output_mode": "string"
+    },
+    "class_type": "VRGDG_TextBox",
+    "_meta": {
+      "title": "VRGDG_TextBox - story concept"
+    }
+  },
+  "958": {
+    "inputs": {
+      "text": "",
+      "output_mode": "string"
+    },
+    "class_type": "VRGDG_TextBox",
+    "_meta": {
+      "title": "VRGDG_TextBox - style/theme"
+    }
+  },
+  "959": {
+    "inputs": {
+      "text": "",
+      "output_mode": "string"
+    },
+    "class_type": "VRGDG_TextBox",
+    "_meta": {
+      "title": "VRGDG_TextBox - subject and scenes"
+    }
+  },
+  "28:114": {
+    "inputs": {
+      "model_name": "htdemucs_ft",
+      "device": "auto",
+      "audio_file_path": "",
+      "audio": [
+        "954",
+        0
+      ]
+    },
+    "class_type": "VRGDG_GetStems",
+    "_meta": {
+      "title": "VRGDG_GetStems"
+    }
+  },
+  "28:816": {
+    "inputs": {
+      "text_0": "A late-night radio host famous for exposing small-town corruption begins noticing a terrifying pattern in her own marriage: every time her husband lies, the world around her falls unnervingly silent. Clocks stop ticking, traffic noise disappears, even dogs freeze mid-bark. At first she dismisses it as stress, until anonymous callers start warning her that her husband has been hiding the disappearance of a woman connected to the town’s most powerful family. As the unnatural silences grow longer and more dangerous, she realizes the quiet isn’t just a feeling—it’s something consuming reality itself whenever the truth is buried. To survive, she must force a confession from the man she still loves before the silence swallows her completely.",
+      "text": [
+        "957",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - Preview story Idea"
+    }
+  },
+  "28:818": {
+    "inputs": {
+      "text_0": "STYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood.",
+      "text": [
+        "958",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - preview style/theme"
+    }
+  },
+  "28:888": {
+    "inputs": {
+      "text_0": "{\n  \"lyricSegment1_duration_5.572\": \"Don't look at me like that\",\n  \"lyricSegment2_duration_6.502\": \"You say it\",\n  \"lyricSegment3_duration_8.998\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n  \"lyricSegment4_duration_4.504\": \"You play innocent so well I can hear it when you sell\",\n  \"lyricSegment5_duration_8\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n  \"lyricSegment6_duration_5.398\": \"In the silence you left You don't even have to\",\n  \"lyricSegment7_duration_4.099\": \"try I hear it every time it gets quiet when you\",\n  \"lyricSegment8_duration_7\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n  \"lyricSegment9_duration_4.006\": \"I've ever heard\",\n  \"lyricSegment10_duration_7.5\": \"It gets quiet when you lie\",\n  \"lyricSegment11_duration_4.481\": \"Like the air is paper-thin\",\n  \"lyricSegment12_duration_5.48\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n  \"lyricSegment13_duration_7.535\": \"I see it in your eyes\",\n  \"lyricSegment14_duration_8.998\": \"try It gets quiet when you lie\",\n  \"lyricSegment15_duration_4.005\": \"Don't look at me like that\",\n  \"lyricSegment16_duration_5.492\": \"The silence lingers deep\",\n  \"lyricSegment17_duration_9.683\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n  \"lyricSegment18_duration_1.927\": \"When you lie\"\n}",
+      "text": [
+        "28:887",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:886": {
+    "inputs": {
+      "text_0": "true",
+      "value": [
+        "28:890",
+        2
+      ]
+    },
+    "class_type": "VRGDG_ShowAny",
+    "_meta": {
+      "title": "VRGDG_ShowAny"
+    }
+  },
+  "28:885": {
+    "inputs": {
+      "text_0": "normalized formatting",
+      "text": [
+        "28:890",
+        3
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:946": {
+    "inputs": {
+      "text_0": "A woman with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots.",
+      "text": [
+        "28:945",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:890": {
+    "inputs": {
+      "text": [
+        "28:892",
+        0
+      ]
+    },
+    "class_type": "VRGDG_LyricSegmentJsonFixer",
+    "_meta": {
+      "title": "VRGDG_LyricSegmentJsonFixer"
+    }
+  },
+  "28:910": {
+    "inputs": {
+      "section_1_type": "Lyric Segment",
+      "section_1_text": [
+        "28:887",
+        0
+      ],
+      "section_2_type": "Story",
+      "section_2_text": [
+        "957",
+        0
+      ],
+      "section_3_type": "Theme / Style",
+      "section_3_text": [
+        "958",
+        0
+      ],
+      "section_4_type": "Other Notes",
+      "section_4_text": [
+        "959",
+        0
+      ],
+      "section_5_type": "Other Notes",
+      "section_5_text": ""
+    },
+    "class_type": "VRGDG_PromptTemplateBuilder",
+    "_meta": {
+      "title": "VRGDG_PromptTemplateBuilder"
+    }
+  },
+  "28:920": {
+    "inputs": {
+      "text": [
+        "28:909",
+        0
+      ],
+      "use_srt_file": true,
+      "srt_file": [
+        "28:80",
+        1
+      ]
+    },
+    "class_type": "VRGDG_PromptMapJsonFixer",
+    "_meta": {
+      "title": "VRGDG_PromptMapJsonFixer"
+    }
+  },
+  "28:940": {
+    "inputs": {
+      "string_count": 2,
+      "delimiter": "\\n\\n",
+      "string_1": "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every prompt must use one location from that list as the primary setting.\nUse the location wording exactly or nearly exactly as provided.\nYou may reuse a location only when the story beat clearly continues there or intentionally echoes an earlier moment.\nYou may add environmental details around the selected location, but do not replace it with a different setting.\nIf LOCATIONS is not provided, create a location from STORY and THEME_STYLE.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n",
+      "string_2": [
+        "28:910",
+        0
+      ],
+      "string_3": "",
+      "string_4": "",
+      "string_5": "",
+      "string_6": "",
+      "string_7": "",
+      "string_8": "",
+      "string_9": "",
+      "string_10": "",
+      "string_11": "",
+      "string_12": "",
+      "string_13": "",
+      "string_14": "",
+      "string_15": "",
+      "string_16": "",
+      "string_17": "",
+      "string_18": "",
+      "string_19": "",
+      "string_20": ""
+    },
+    "class_type": "VRGDG_MultiStringConcat",
+    "_meta": {
+      "title": "VRGDG_MultiStringConcat"
+    }
+  },
+  "28:915": {
+    "inputs": {
+      "text_0": "{\n\"segment1\": \"Don't look at me like that\",\n\"segment2\": \"You say it\",\n\"segment3\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n\"segment4\": \"You play innocent so well I can hear it when you sell\",\n\"segment5\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n\"segment6\": \"In the silence you left You don't even have to\",\n\"segment7\": \"try I hear it every time it gets quiet when you\",\n\"segment8\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n\"segment9\": \"I've ever heard\",\n\"segment10\": \"It gets quiet when you lie\",\n\"segment11\": \"Like the air is paper-thin\",\n\"segment12\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n\"segment13\": \"I see it in your eyes\",\n\"segment14\": \"try It gets quiet when you lie\",\n\"segment15\": \"Don't look at me like that\",\n\"segment16\": \"The silence lingers deep\",\n\"segment17\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n\"segment18\": \"When you lie\"\n}",
+      "text": [
+        "28:892",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:945": {
+    "inputs": {
+      "model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+      "mmproj_file": "mmproj-BF16.gguf",
+      "task_preset": "custom",
+      "custom_instructions": "Extract only the subject from the user input.\n\nReturn one clean sentence in this format:\nA/An [subject].\n\nRules:\n- Ignore locations and all other fields.\n- Preserve the subject details.\n- Add commas only where they improve readability.\n- End with a period.\n- Do not add extra text.\n\nExample input:\nsubject: female with blond hair wearing a red dress\nlocations:\nwoods\nkitchen\nvan\nbeach\n\nExample output:\nA female with blond hair, wearing a red dress.\n\nuser input:\n",
+      "user_input": [
+        "959",
+        0
+      ],
+      "trigger_word": "",
+      "image_count": 0,
+      "advanced": true,
+      "unload_after_run": true,
+      "n_ctx": 14848,
+      "n_gpu_layers": 99,
+      "n_threads": 8,
+      "chat_format": "",
+      "temperature": 0.3,
+      "top_p": 0.8,
+      "max_new_tokens": 32000
+    },
+    "class_type": "VRGDG_SuperGemmaGGUFChat",
+    "_meta": {
+      "title": "🧠 VRGDG SuperGemma GGUF Chat 🧠"
+    }
+  },
+  "28:817": {
+    "inputs": {
+      "text_0": "Full Lyrics\n\n[Intro]\nDon’t look at me like that\n\n[Verse 1]\nYou say it soft, almost sweet\nLike sugar hiding razor teeth\nYour hands are warm against my skin\nBut your eyes don’t let me in\nYou play innocent so well\nI can hear it when you sell\n\n[Chorus]\nIt gets quiet when you lie\nLike the whole room holds its breath\nI can feel it in the night\nIn the silence you left\nYou don’t even have to try\nI hear it every time\nIt gets quiet\nWhen you lie\n\n[Verse 2]\nYou think I don’t notice\nThe space between your words\nBut silence is the loudest thing\nI’ve ever heard\n\n[Chorus]\nIt gets quiet when you lie\nLike the air is paper-thin\nEvery “love you” sounds rehearsed\nLike a stranger wearing skin\nYou don’t even have to try\nI see it in your eyes\nIt gets quiet\nWhen you lie\n\n[Outro Hook]\nDon’t look at me like that\nIt gets quiet when you lie\nSo quiet\nWhen you lie",
+      "text": [
+        "955",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - Preview full lyrics"
+    }
+  },
+  "28:927": {
+    "inputs": {
+      "text_0": "subject: a woman, with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots.\n\nLocations:\nsmall-town radio station\ndimly lit kitchen\nempty suburban street at night\nbedroom with silent clocks\ntown diner after closing\nold county courthouse hallway\nquiet residential living room\ndeserted gas station parking lot",
+      "text": [
+        "959",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - Preview subject"
+    }
+  },
+  "28:909": {
+    "inputs": {
+      "model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+      "mmproj_file": "mmproj-BF16.gguf",
+      "task_preset": "custom",
+      "custom_instructions": "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every Prompt value must begin with one exact location phrase copied from the LOCATIONS list, followed by a colon.\nDo not use a location unless it appears in LOCATIONS.\nDo not shorten, rename, paraphrase, or replace the location.\nIf the story needs to stay in the same place, reuse the same exact location phrase.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n",
+      "user_input": [
+        "28:910",
+        0
+      ],
+      "trigger_word": "",
+      "image_count": 0,
+      "advanced": true,
+      "unload_after_run": true,
+      "n_ctx": 14848,
+      "n_gpu_layers": 99,
+      "n_threads": 8,
+      "chat_format": "",
+      "temperature": 0.3,
+      "top_p": 0.8,
+      "max_new_tokens": 32000
+    },
+    "class_type": "VRGDG_SuperGemmaGGUFChat",
+    "_meta": {
+      "title": "🧠 VRGDG SuperGemma GGUF Chat 🧠"
+    }
+  },
+  "28:887": {
+    "inputs": {
+      "srt_text": [
+        "28:80",
+        0
+      ],
+      "segments_json": [
+        "28:890",
+        0
+      ],
+      "strict_count_match": true,
+      "decimal_places": 3,
+      "use_srt_durations": true
+    },
+    "class_type": "VRGDG_LyricSegmentDurationMerger",
+    "_meta": {
+      "title": "VRGDG_LyricSegmentDurationMerger"
+    }
+  },
+  "28:849": {
+    "inputs": {
+      "section_1_type": "Instructions",
+      "section_1_text": "Whisper Segment Repair Prompt\n\nINPUTS\nYou will receive exactly:\n1. WHISPER_TRANSCRIPTION: numbered Whisper segments.\n2. MAIN_LYRICS: the correct full lyrics.\n3. STYLE_THEME: style/theme for filler replacements only.\n\nTASK\nRepair each Whisper segment in place.\n\nMOST IMPORTANT RULE\nDo not create a clean lyric sheet.\nDo not copy MAIN_LYRICS line by line into the JSON.\nDo not make segment1 the first lyric line, segment2 the second lyric line, segment3 the third lyric line, etc.\n\nHOW TO WORK\nFor each input segment number:\n1. Start with the text from that exact same Whisper segment.\n2. Find the matching words in MAIN_LYRICS.\n3. Fix only misheard words inside that same segment.\n4. Write the fixed text to the same output number.\n\nThe output for segmentN must be a corrected version of lyricSegmentN.\nsegmentN must not be based on lyricSegmentN+1.\nsegmentN must not be based on lyricSegmentN-1.\nsegmentN must not be based on the next clean line in MAIN_LYRICS.\n\nKEEP WHISPER CHUNKS\nIf lyricSegmentN contains parts of two or three lyric lines, segmentN must also contain those parts.\nIf lyricSegmentN starts in the middle of a lyric line, segmentN should also start in the middle.\nIf lyricSegmentN ends before the lyric line is finished, segmentN should also end before that lyric line is finished.\nDo not move leftover words to the next segment unless Whisper already put them there.\n\nFILLER SEGMENTS\nWhisper often writes \"Thank you.\" when it detects silence or non-lyric audio.\nIf lyricSegmentN is filler such as \"Thank you.\" and does not match sung lyrics at that time, replace it with a short new lyric phrase.\nThe phrase should feel like it happens right after the nearest previous real lyric segment.\nUse STYLE_THEME for the phrase.\nUse 3 to 8 words.\nDo not use an empty string.\nDo not use the next real lyric line from MAIN_LYRICS.\n\nKEY CHECK\nReturn exactly one key for every input segment.\nKeys must be exactly \"segment1\", \"segment2\", \"segment3\", and so on.\nNever write \"segments14\".\nNever write \"lyricSegment14\".\nNever skip a number.\n\nFINAL SELF-CHECK BEFORE ANSWERING\nCheck segment2 against lyricSegment2.\nCheck segment11 against lyricSegment11.\nCheck segment16 against lyricSegment16.\nIf any output is just the next clean lyric line instead of the same Whisper chunk, fix it before answering.\n\nOUTPUT\nReturn JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"segment1\": \"corrected version of lyricSegment1\",\n  \"segment2\": \"corrected version of lyricSegment2\",\n  \"segment3\": \"corrected version of lyricSegment3\"\n}\n",
+      "section_2_type": "Other Notes",
+      "section_2_text": [
+        "955",
+        0
+      ],
+      "section_3_type": "Lyric Segment",
+      "section_3_text": [
+        "28:949",
+        0
+      ],
+      "section_4_type": "Other Notes",
+      "section_4_text": "",
+      "section_5_type": "Theme / Style",
+      "section_5_text": [
+        "958",
+        0
+      ]
+    },
+    "class_type": "VRGDG_PromptTemplateBuilder",
+    "_meta": {
+      "title": "VRGDG_PromptTemplateBuilder"
+    }
+  },
+  "28:82": {
+    "inputs": {
+      "final_mix": [
+        "954",
+        0
+      ],
+      "drums": [
+        "28:114",
+        1
+      ],
+      "bass": [
+        "28:114",
+        2
+      ],
+      "vocals": [
+        "28:114",
+        0
+      ],
+      "other": [
+        "28:114",
+        3
+      ]
+    },
+    "class_type": "BeatImpactAnalysisNode",
+    "_meta": {
+      "title": "BeatImpactAnalysisNode"
+    }
+  },
+  "28:934": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveString",
+    "_meta": {
+      "title": "String"
+    }
+  },
+  "28:854": {
+    "inputs": {
+      "text_0": "### Instructions\nWhisper Segment Repair Prompt\n\nINPUTS\nYou will receive exactly:\n1. WHISPER_TRANSCRIPTION: numbered Whisper segments.\n2. MAIN_LYRICS: the correct full lyrics.\n3. STYLE_THEME: style/theme for filler replacements only.\n\nTASK\nRepair each Whisper segment in place.\n\nMOST IMPORTANT RULE\nDo not create a clean lyric sheet.\nDo not copy MAIN_LYRICS line by line into the JSON.\nDo not make segment1 the first lyric line, segment2 the second lyric line, segment3 the third lyric line, etc.\n\nHOW TO WORK\nFor each input segment number:\n1. Start with the text from that exact same Whisper segment.\n2. Find the matching words in MAIN_LYRICS.\n3. Fix only misheard words inside that same segment.\n4. Write the fixed text to the same output number.\n\nThe output for segmentN must be a corrected version of lyricSegmentN.\nsegmentN must not be based on lyricSegmentN+1.\nsegmentN must not be based on lyricSegmentN-1.\nsegmentN must not be based on the next clean line in MAIN_LYRICS.\n\nKEEP WHISPER CHUNKS\nIf lyricSegmentN contains parts of two or three lyric lines, segmentN must also contain those parts.\nIf lyricSegmentN starts in the middle of a lyric line, segmentN should also start in the middle.\nIf lyricSegmentN ends before the lyric line is finished, segmentN should also end before that lyric line is finished.\nDo not move leftover words to the next segment unless Whisper already put them there.\n\nFILLER SEGMENTS\nWhisper often writes \"Thank you.\" when it detects silence or non-lyric audio.\nIf lyricSegmentN is filler such as \"Thank you.\" and does not match sung lyrics at that time, replace it with a short new lyric phrase.\nThe phrase should feel like it happens right after the nearest previous real lyric segment.\nUse STYLE_THEME for the phrase.\nUse 3 to 8 words.\nDo not use an empty string.\nDo not use the next real lyric line from MAIN_LYRICS.\n\nKEY CHECK\nReturn exactly one key for every input segment.\nKeys must be exactly \"segment1\", \"segment2\", \"segment3\", and so on.\nNever write \"segments14\".\nNever write \"lyricSegment14\".\nNever skip a number.\n\nFINAL SELF-CHECK BEFORE ANSWERING\nCheck segment2 against lyricSegment2.\nCheck segment11 against lyricSegment11.\nCheck segment16 against lyricSegment16.\nIf any output is just the next clean lyric line instead of the same Whisper chunk, fix it before answering.\n\nOUTPUT\nReturn JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"segment1\": \"corrected version of lyricSegment1\",\n  \"segment2\": \"corrected version of lyricSegment2\",\n  \"segment3\": \"corrected version of lyricSegment3\"\n}\n\n### Other Notes\nFull Lyrics\n\n[Intro]\nDon’t look at me like that\n\n[Verse 1]\nYou say it soft, almost sweet\nLike sugar hiding razor teeth\nYour hands are warm against my skin\nBut your eyes don’t let me in\nYou play innocent so well\nI can hear it when you sell\n\n[Chorus]\nIt gets quiet when you lie\nLike the whole room holds its breath\nI can feel it in the night\nIn the silence you left\nYou don’t even have to try\nI hear it every time\nIt gets quiet\nWhen you lie\n\n[Verse 2]\nYou think I don’t notice\nThe space between your words\nBut silence is the loudest thing\nI’ve ever heard\n\n[Chorus]\nIt gets quiet when you lie\nLike the air is paper-thin\nEvery “love you” sounds rehearsed\nLike a stranger wearing skin\nYou don’t even have to try\nI see it in your eyes\nIt gets quiet\nWhen you lie\n\n[Outro Hook]\nDon’t look at me like that\nIt gets quiet when you lie\nSo quiet\nWhen you lie\n\n### Lyric Segment\n# Lyrics to fix: (18 segments)\n\nlyricSegment1=Don't look at me like that\nlyricSegment2=You say it's\nlyricSegment3=Soft  almost sweet  like sugar hiding razor teeth. Your hands are warm against my skin. But your eyes don't let me.\nlyricSegment4=You play innocent so well I can hear it when you sell\nlyricSegment5=It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\nlyricSegment6=In the silence you live You don't even have to\nlyricSegment7=I hear it every time it gets quiet when you\nlyricSegment8=I think I don't notice the space between your words  but silence is the loudest thing\nlyricSegment9=I've never heard\nlyricSegment10=It gets quiet when you lie\nlyricSegment11=Like the heiress pick person\nlyricSegment12=Every love you sound rehearsed like a stranger worries can't you don't even\nlyricSegment13=I see it in your eyes.\nlyricSegment14=to get caught when you lie\nlyricSegment15=Oh, Oh, Oh.\nlyricSegment16=Thank you.\nlyricSegment17=Don't look at me like that. It gets quiet when you lie. So quiet.\nlyricSegment18=Only white.\n\n### Theme / Style\nSTYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood.",
+      "text": [
+        "28:849",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:947": {
+    "inputs": {
+      "subject": [
+        "28:945",
+        0
+      ],
+      "separator": " ",
+      "skip_if_already_starts_with_subject": "",
+      "prompt_json": [
+        "28:920",
+        0
+      ]
+    },
+    "class_type": "VRGDG_PromptJsonSubjectPrepender",
+    "_meta": {
+      "title": "VRGDG Prompt JSON Subject Prepender"
+    }
+  },
+  "28:869": {
+    "inputs": {
+      "text_0": "1\n00:00:00,000 --> 00:00:05,572\nSCENE 1\n\n2\n00:00:05,572 --> 00:00:12,074\nSCENE 2\n\n3\n00:00:12,074 --> 00:00:21,072\nSCENE 3\n\n4\n00:00:21,072 --> 00:00:25,576\nSCENE 4\n\n5\n00:00:25,576 --> 00:00:33,576\nSCENE 5\n\n6\n00:00:33,576 --> 00:00:38,974\nSCENE 6\n\n7\n00:00:38,974 --> 00:00:43,073\nSCENE 7\n\n8\n00:00:43,073 --> 00:00:50,073\nSCENE 8\n\n9\n00:00:50,073 --> 00:00:54,079\nSCENE 9\n\n10\n00:00:54,079 --> 00:01:01,579\nSCENE 10\n\n11\n00:01:01,579 --> 00:01:06,060\nSCENE 11\n\n12\n00:01:06,060 --> 00:01:11,540\nSCENE 12\n\n13\n00:01:11,540 --> 00:01:19,075\nSCENE 13\n\n14\n00:01:19,075 --> 00:01:28,073\nSCENE 14\n\n15\n00:01:28,073 --> 00:01:32,078\nSCENE 15\n\n16\n00:01:32,078 --> 00:01:37,570\nSCENE 16\n\n17\n00:01:37,570 --> 00:01:47,253\nSCENE 17\n\n18\n00:01:47,253 --> 00:01:49,180\nSCENE 18\n",
+      "text": [
+        "28:80",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText -SRT"
+    }
+  },
+  "28:79": {
+    "inputs": {
+      "srt_path": [
+        "28:933",
+        0
+      ],
+      "fps": 24,
+      "scene_duration_seconds": 15,
+      "use_ltx2": false,
+      "language": "english",
+      "audio": [
+        "28:114",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ManualLyricsExtractor_SRT",
+    "_meta": {
+      "title": "Manual Lyrics Extractor (SRT Segments)"
+    }
+  },
+  "28:80": {
+    "inputs": {
+      "beat_data": [
+        "28:82",
+        0
+      ],
+      "min_duration": 4,
+      "max_duration": 10,
+      "bias": 0.7,
+      "duration_preset": "varied_no_repeat",
+      "seed": 9,
+      "output_filename": "filenamegoeshere"
+    },
+    "class_type": "BeatSceneDurationNode",
+    "_meta": {
+      "title": "Beat-Aligned Scene Durations"
+    }
+  },
+  "28:933": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "28:934",
+        0
+      ],
+      "on_true": [
+        "28:80",
+        1
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "use SRT duration file"
+    }
+  },
+  "28:892": {
+    "inputs": {
+      "model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
+      "mmproj_file": "mmproj-BF16.gguf",
+      "task_preset": "custom",
+      "custom_instructions": [
+        "28:849",
+        0
+      ],
+      "user_input": "",
+      "trigger_word": "",
+      "image_count": 0,
+      "advanced": true,
+      "unload_after_run": true,
+      "n_ctx": 13056,
+      "n_gpu_layers": 99,
+      "n_threads": 8,
+      "chat_format": "",
+      "temperature": 0.3,
+      "top_p": 0.8,
+      "max_new_tokens": 32000
+    },
+    "class_type": "VRGDG_SuperGemmaGGUFChat",
+    "_meta": {
+      "title": "🧠 VRGDG SuperGemma GGUF Chat 🧠"
+    }
+  },
+  "28:949": {
+    "inputs": {
+      "lyrics_text": [
+        "28:79",
+        0
+      ],
+      "repeat_output_count": 3,
+      "min_repeats_to_collapse": 4,
+      "bridge_single_word_segments": true
+    },
+    "class_type": "VRGDG_LyricSegmentTextCleaner",
+    "_meta": {
+      "title": "VRGDG Lyric Segment Text Cleaner"
+    }
+  },
+  "28:923": {
+    "inputs": {
+      "text_0": "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every prompt must use one location from that list as the primary setting.\nUse the location wording exactly or nearly exactly as provided.\nYou may reuse a location only when the story beat clearly continues there or intentionally echoes an earlier moment.\nYou may add environmental details around the selected location, but do not replace it with a different setting.\nIf LOCATIONS is not provided, create a location from STORY and THEME_STYLE.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n\n\n### Lyric Segment\n{\n  \"lyricSegment1_duration_5.572\": \"Don't look at me like that\",\n  \"lyricSegment2_duration_6.502\": \"You say it\",\n  \"lyricSegment3_duration_8.998\": \"soft almost sweet like sugar hiding razor teeth Your hands are warm against my skin But your eyes don't let me in\",\n  \"lyricSegment4_duration_4.504\": \"You play innocent so well I can hear it when you sell\",\n  \"lyricSegment5_duration_8\": \"It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\",\n  \"lyricSegment6_duration_5.398\": \"In the silence you left You don't even have to\",\n  \"lyricSegment7_duration_4.099\": \"try I hear it every time it gets quiet when you\",\n  \"lyricSegment8_duration_7\": \"You think I don't notice the space between your words but silence is the loudest thing\",\n  \"lyricSegment9_duration_4.006\": \"I've ever heard\",\n  \"lyricSegment10_duration_7.5\": \"It gets quiet when you lie\",\n  \"lyricSegment11_duration_4.481\": \"Like the air is paper-thin\",\n  \"lyricSegment12_duration_5.48\": \"Every love you sounds rehearsed like a stranger wearing skin you don't even\",\n  \"lyricSegment13_duration_7.535\": \"I see it in your eyes\",\n  \"lyricSegment14_duration_8.998\": \"try It gets quiet when you lie\",\n  \"lyricSegment15_duration_4.005\": \"Don't look at me like that\",\n  \"lyricSegment16_duration_5.492\": \"The silence lingers deep\",\n  \"lyricSegment17_duration_9.683\": \"Don't look at me like that It gets quiet when you lie So quiet\",\n  \"lyricSegment18_duration_1.927\": \"When you lie\"\n}\n\n### Story\nA late-night radio host famous for exposing small-town corruption begins noticing a terrifying pattern in her own marriage: every time her husband lies, the world around her falls unnervingly silent. Clocks stop ticking, traffic noise disappears, even dogs freeze mid-bark. At first she dismisses it as stress, until anonymous callers start warning her that her husband has been hiding the disappearance of a woman connected to the town’s most powerful family. As the unnatural silences grow longer and more dangerous, she realizes the quiet isn’t just a feeling—it’s something consuming reality itself whenever the truth is buried. To survive, she must force a confession from the man she still loves before the silence swallows her completely.\n\n### Theme / Style\nSTYLE / THEME\nDark emotional pop ballad with tense relationship drama, intimate feelings, and a clean cinematic look.\n\nCOLOR PALETTE\nSoft whites, pale blue, muted silver, and warm skin tones with deep red accents and cool gray shadows.\n\nLIGHTING / MOOD\nLow bright lighting with soft contrast, gentle shadows, quiet atmosphere, and a cold emotional mood.\n\n### Other Notes\nsubject: a woman, with dark brown hair, wearing a black leather jacket over a dark turtleneck with fitted jeans and boots.\n\nLocations:\nsmall-town radio station\ndimly lit kitchen\nempty suburban street at night\nbedroom with silent clocks\ntown diner after closing\nold county courthouse hallway\nquiet residential living room\ndeserted gas station parking lot",
+      "text": [
+        "28:940",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:948": {
+    "inputs": {
+      "text_0": "{\n\"Prompt1\": \"small-town radio station: A tense, heavy gaze is exchanged across a vintage microphone in a dimly lit studio, the air thick with unspoken tension.\",\n\"Prompt2\": \"small-town radio station: A single, whispered word hangs in the air as the studio lights flicker slightly with the weight of a spoken secret.\",\n\"Prompt3\": \"dimly lit kitchen: Warm candlelight flickers on a table while sharp, jagged shadows stretch across the walls like hidden teeth.\",\n\"Prompts4\": \"dimly lit kitchen: A deceptive, innocent smile is cast through the soft glow of a kitchen lamp, masking a cold truth.\",\n\"Prompt5\": \"empty suburban street at night: The streetlights hum as the entire world seems to freeze in a sudden, unnatural vacuum of sound.\",\n\"Prompt6\": \"empty suburban street at night: An empty, desolate street stretches out under a pale moon, the stillness feeling heavy and suffocating.\",\n\"Prompt7\": \"empty suburban street at night: The wind stops mid-gust, leaving the suburban trees frozen in a silent, eerie tableau.\",\n\"Prompt8\": \"old county courthouse hallway: Long, cavernous shadows stretch between the pillars as the vast, hollow silence of the hall grows overwhelming.\",\n\"Prompt9\": \"old county courthouse hallway: The sound of a distant, echoing footstep fades into a profound and terrifying stillness.\",\n\"Prompt10\": \"old county courthouse hallway: The shadows deepen as the atmosphere becomes thick with the weight of a hidden truth.\",\n\"Prompt11\": \"old county courthouse hallway: The air becomes visually thin and translucent, like fragile paper stretched between the ancient walls.\",\n\"Prompt12\": \"old county courthouse hallway: A ghostly, hollow expression reflects the feeling of a stranger's presence in a familiar space.\",\n\"Prompt13\": \"old county courthouse hallway: A piercing, searching gaze cuts through the dim light, looking for the truth behind a mask.\",\n\"Prompt14\": \"old county courthouse hallway: The silence expands, threatening to swallow the architecture as the truth remains buried.\",\n\"Prompt15\": \"quiet residential living room: A sharp, questioning look is directed toward the viewer in the soft, dim light of a living room.\",\n\"Prompt16\": \"quiet residential living room: Dust motes hang motionless in the air as the silence settles like a heavy shroud.\",\n\"Prompt17\": \"quiet residential living room: The room becomes an abyss of soft shadows where the silence feels loud and all-consuming.\",\n\"Prompt18\": \"quiet residential living room: A final, sudden moment of absolute stillness as the truth is finally laid bare.\"\n}",
+      "text": [
+        "28:909",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:870": {
+    "inputs": {
+      "text_0": "# Lyrics to fix: (18 segments)\n\nlyricSegment1=Don't look at me like that\nlyricSegment2=You say it's\nlyricSegment3=Soft  almost sweet  like sugar hiding razor teeth. Your hands are warm against my skin. But your eyes don't let me.\nlyricSegment4=You play innocent so well I can hear it when you sell\nlyricSegment5=It gets quiet when you lie Like the whole room holds its breath I can feel it in the night\nlyricSegment6=In the silence you live You don't even have to\nlyricSegment7=I hear it every time it gets quiet when you\nlyricSegment8=I think I don't notice the space between your words  but silence is the loudest thing\nlyricSegment9=I've never heard\nlyricSegment10=It gets quiet when you lie\nlyricSegment11=Like the heiress pick person\nlyricSegment12=Every love you sound rehearsed like a stranger worries can't you don't even\nlyricSegment13=I see it in your eyes.\nlyricSegment14=to get caught when you lie\nlyricSegment15=Oh, Oh, Oh.\nlyricSegment16=Thank you.\nlyricSegment17=Don't look at me like that. It gets quiet when you lie. So quiet.\nlyricSegment18=Only white.",
+      "text": [
+        "28:949",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText(whisper transcription)"
+    }
+  }
+}

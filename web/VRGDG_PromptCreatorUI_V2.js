@@ -3838,6 +3838,10 @@ function ensurePart2Modal() {
     }
     if (!controls.advanced.enabled.checked) {
       controls.advanced.enabled.checked = true;
+      if (Number(controls.advanced.count.value || 0) <= 0) {
+        controls.advanced.count.value = "1";
+      }
+      updateAdvancedVisibility();
     }
     const count = getAdvancedCount();
     if (count <= 0) {
@@ -3877,10 +3881,16 @@ function ensurePart2Modal() {
         updateAdvancedPickerHeader(i);
       }
       updateAdvancedVisibility();
-      savePart2Draft();
-      progress.__vrgdgSetMessage?.("Done. Gemma4 filled the advanced lists and unloaded the model.");
+      const missing = [];
+      const updated = applyAdvancedControls(missing);
+      clearPart2Draft();
+      progress.__vrgdgSetMessage?.("Done. Gemma4 filled the advanced lists, applied them to the workflow, and unloaded the model.");
       hideGemma4Progress();
-      setStatus(`Gemma4 filled ${count} advanced list${count === 1 ? "" : "s"}. Selection mode was set to Index-based.`);
+      setStatus(
+        missing.length
+          ? `Gemma4 filled ${count} advanced list${count === 1 ? "" : "s"} and applied ${updated} setting${updated === 1 ? "" : "s"}.\nMissing:\n${missing.join("\n")}`
+          : `Gemma4 filled ${count} advanced list${count === 1 ? "" : "s"} and applied them to the workflow. Selection mode was set to Index-based.`
+      );
     } catch (error) {
       hideGemma4Progress();
       setStatus(String(error?.message || error), true);

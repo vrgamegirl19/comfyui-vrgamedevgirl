@@ -20,6 +20,9 @@ _VRGDG_SUBMODULES = (
     ".LTXLoraTrain",
     ".VRGDG_VoxCPM2Node",
     ".VRGDG_VideoEditorNodes",
+    ".VRGDG_WorkflowRunnerNodes",
+    ".VRGDG_MusicVideoBuilderNodes",
+    ".VRGDG_ImageCompareNode",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (

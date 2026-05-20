@@ -91,6 +91,29 @@ function makeField(label, control) {
   return wrapper;
 }
 
+function makeCheckbox(label, checked = false) {
+  const wrapper = document.createElement("label");
+  wrapper.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;color:#f4f4f5;font-weight:800;";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = Boolean(checked);
+  wrapper.append(input, document.createTextNode(label));
+  return { wrapper, input };
+}
+
+function makeSelect(options = [], value = "") {
+  const select = document.createElement("select");
+  select.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:8px;font-size:12px;";
+  for (const optionValue of options) {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    select.append(option);
+  }
+  select.value = value;
+  return select;
+}
+
 function toast(message, isError = false) {
   const element = document.createElement("div");
   element.textContent = message;
@@ -122,6 +145,66 @@ async function postJson(url, payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Request failed (${response.status})`));
+  return data;
+}
+
+async function getJson(url) {
+  const response = await api.fetchApi(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Request failed (${response.status})`));
+  return data;
+}
+
+function makeImageViewUrl(image) {
+  const params = new URLSearchParams();
+  params.set("filename", image.filename || "");
+  params.set("type", image.type || "output");
+  if (image.subfolder) params.set("subfolder", image.subfolder);
+  params.set("rand", String(Date.now()));
+  return `/view?${params.toString()}`;
+}
+
+function makeEditorImageUrl(path) {
+  return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
+}
+
+function extractImagesFromHistory(historyPayload, promptId) {
+  const root = historyPayload?.[promptId] || historyPayload;
+  const outputs = root?.outputs || {};
+  const images = [];
+  for (const output of Object.values(outputs)) {
+    if (Array.isArray(output?.images)) {
+      for (const image of output.images) images.push(image);
+    }
+  }
+  return images;
+}
+
+async function waitForImages(promptId, onStatus) {
+  const started = Date.now();
+  while (Date.now() - started < 20 * 60 * 1000) {
+    const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(`History request failed (${response.status})`);
+    const images = extractImagesFromHistory(data, promptId);
+    if (images.length) return images;
+    onStatus?.("Waiting for ZImage preview...");
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error("Timed out waiting for the ZImage preview.");
+}
+
+async function queueWorkflowPrompt(prompt) {
+  const clientId = api.clientId || app?.clientId || crypto.randomUUID();
+  const response = await api.fetchApi("/prompt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, client_id: clientId }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.error) {
+    throw new Error(data?.error?.message || data?.error || `Queue failed (${response.status})`);
+  }
   return data;
 }
 
@@ -223,6 +306,7 @@ function defaultClipState(clip) {
     t2i_prompt: "",
     i2v_prompt: "",
     captured_frame_path: "",
+    t2i_preview_image: null,
   };
 }
 
@@ -255,7 +339,7 @@ function openEditor(node) {
     width: min(1920px, calc(100vw - 24px));
     height: min(860px, calc(100vh - 24px));
     display: grid;
-    grid-template-rows: auto 1fr 170px;
+    grid-template-rows: auto minmax(0, 1fr) 170px;
     background: #18181b;
     color: #fafafa;
     border: 1px solid #3f3f46;
@@ -280,15 +364,24 @@ function openEditor(node) {
   clipList.style.cssText = "overflow:auto;padding:10px;border-right:1px solid #27272a;background:#202024;";
 
   const previewArea = document.createElement("div");
-  previewArea.style.cssText = "display:grid;grid-template-rows:1fr auto auto;min-width:0;background:#111113;";
+  previewArea.style.cssText = "display:grid;grid-template-rows:minmax(0,1fr) 40px 38px;min-width:0;min-height:0;background:#111113;";
   const videoWrap = document.createElement("div");
-  videoWrap.style.cssText = "display:flex;align-items:center;justify-content:center;min-height:0;background:#09090b;";
+  videoWrap.style.cssText = "display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden;background:#09090b;";
   const video = document.createElement("video");
   video.controls = true;
   video.style.cssText = "max-width:100%;max-height:100%;background:#000;";
-  videoWrap.appendChild(video);
+  const zimageLargeWrap = document.createElement("div");
+  zimageLargeWrap.style.cssText = "display:none;align-items:center;justify-content:center;width:100%;height:100%;padding:14px;box-sizing:border-box;background:#09090b;";
+  const zimageLargeEmpty = document.createElement("div");
+  zimageLargeEmpty.textContent = "Create a ZImage preview from the T2I tab to view it here.";
+  zimageLargeEmpty.style.cssText = "max-width:520px;text-align:center;color:#71717a;font-size:13px;line-height:1.45;";
+  const zimageLargeImage = document.createElement("img");
+  zimageLargeImage.alt = "";
+  zimageLargeImage.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;border-radius:6px;";
+  zimageLargeWrap.append(zimageLargeEmpty, zimageLargeImage);
+  videoWrap.append(video, zimageLargeWrap);
   const globalScrubWrap = document.createElement("div");
-  globalScrubWrap.style.cssText = "display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:8px 12px;border-top:1px solid #27272a;background:#111113;";
+  globalScrubWrap.style.cssText = "display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:7px 12px;border-top:1px solid #27272a;background:#111113;min-height:0;";
   const globalScrubLabel = document.createElement("div");
   globalScrubLabel.textContent = "Global scrub";
   globalScrubLabel.style.cssText = "font-size:11px;font-weight:800;color:#d4d4d8;white-space:nowrap;";
@@ -306,7 +399,7 @@ function openEditor(node) {
   globalScrubWrap.append(globalScrubLabel, globalScrub, globalScrubTime);
   const activeInfo = document.createElement("div");
   activeInfo.textContent = "No clip selected";
-  activeInfo.style.cssText = "padding:10px 12px;border-top:1px solid #27272a;font-size:12px;color:#d4d4d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  activeInfo.style.cssText = "padding:9px 12px;border-top:1px solid #27272a;font-size:12px;color:#d4d4d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
   previewArea.append(videoWrap, globalScrubWrap, activeInfo);
 
   const inspector = document.createElement("div");
@@ -342,7 +435,44 @@ function openEditor(node) {
   const promptBox = createEditablePromptBox("Gemma prompt will appear here, or type your own...");
   const promptActions = document.createElement("div");
   promptActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:8px;";
-  promptActions.append(frameButton, promptButton);
+  const zimagePreviewButton = makeButton("Preview ZImage", "primary");
+  promptActions.append(frameButton, promptButton, zimagePreviewButton);
+  const zimageSettings = document.createElement("div");
+  zimageSettings.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
+  const firstPassTitle = document.createElement("div");
+  firstPassTitle.textContent = "First pass (low res)";
+  firstPassTitle.style.cssText = "font-size:12px;color:#f4f4f5;font-weight:900;";
+  const firstPassGrid = document.createElement("div");
+  firstPassGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  const firstPassWidth = makeInput("1280", "number");
+  const firstPassHeight = makeInput("720", "number");
+  firstPassGrid.append(makeField("Width", firstPassWidth), makeField("Height", firstPassHeight));
+  const secondPassTitle = document.createElement("div");
+  secondPassTitle.textContent = "2nd pass (upscale enhance)";
+  secondPassTitle.style.cssText = "font-size:12px;color:#f4f4f5;font-weight:900;margin-top:4px;";
+  const secondPassGrid = document.createElement("div");
+  secondPassGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  const secondPassWidth = makeInput("1920", "number");
+  const secondPassHeight = makeInput("1080", "number");
+  secondPassGrid.append(makeField("Width", secondPassWidth), makeField("Height", secondPassHeight));
+  const seedInput = makeInput("1", "number");
+  const useLoraControl = makeCheckbox("Use LoRA?", false);
+  const loraSelect = makeSelect(["[none]"], "[none]");
+  const loraStrength = makeInput("1", "number");
+  loraStrength.step = "0.01";
+  const loraGrid = document.createElement("div");
+  loraGrid.style.cssText = "display:none;grid-template-columns:1fr 88px;gap:8px;";
+  loraGrid.append(makeField("LoRA", loraSelect), makeField("Strength", loraStrength));
+  zimageSettings.append(firstPassTitle, firstPassGrid, secondPassTitle, secondPassGrid, makeField("Seed", seedInput), useLoraControl.wrapper, loraGrid);
+  const zimagePreviewPanel = document.createElement("div");
+  zimagePreviewPanel.style.cssText = "display:flex;flex-direction:column;gap:7px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
+  const zimagePreviewStatus = document.createElement("div");
+  zimagePreviewStatus.textContent = "No ZImage preview yet.";
+  zimagePreviewStatus.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;word-break:break-word;";
+  const zimagePreviewImage = document.createElement("img");
+  zimagePreviewImage.alt = "";
+  zimagePreviewImage.style.cssText = "display:none;width:100%;max-height:260px;object-fit:contain;background:#050505;border-radius:5px;";
+  zimagePreviewPanel.append(zimagePreviewStatus, zimagePreviewImage);
   const i2vNote = document.createElement("div");
   i2vNote.textContent = "I2V uses the T2I prompt as visual reference. Pick a text Gemma model on the node; no mmproj is needed.";
   i2vNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
@@ -359,7 +489,7 @@ function openEditor(node) {
   sessionActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   sessionActions.append(saveButton, clearButton);
   reviewPanel.append(selectedWrap, selectedCount);
-  t2iPanel.append(makeField("Generation notes", notes), t2iNote, promptActions, makeField("Captured frame", framePath), makeField("T2I prompt", promptBox));
+  t2iPanel.append(makeField("Generation notes", notes), t2iNote, promptActions, makeField("Captured frame", framePath), makeField("T2I prompt", promptBox), makeField("ZImage settings", zimageSettings), makeField("ZImage preview", zimagePreviewPanel));
   i2vPanel.append(i2vNote, makeField("I2V motion notes", i2vNotes), i2vButton, makeField("I2V prompt", i2vPromptBox));
   inspector.append(
     tabBar,
@@ -398,9 +528,23 @@ function openEditor(node) {
   overlay.appendChild(shell);
   document.body.appendChild(overlay);
 
+  getJson("/vrgdg/workflow_runner/lora_list").then((data) => {
+    const current = loraSelect.value || "[none]";
+    loraSelect.textContent = "";
+    for (const name of data.loras || ["[none]"]) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      loraSelect.append(option);
+    }
+    loraSelect.value = [...loraSelect.options].some((option) => option.value === current) ? current : "[none]";
+  }).catch((error) => {
+    console.warn("[VRGDG] Failed to load LoRA list:", error);
+  });
+
   const state = {
     clips: [],
-    session: { clips: {} },
+    session: { clips: {}, zimage_settings: {} },
     activeId: "",
     sessionPath: "",
     totalDuration: 0,
@@ -408,6 +552,7 @@ function openEditor(node) {
     isScrubbing: false,
     isGlobalScrubbing: false,
     activeTab: "review",
+    zimageMainClipIds: new Set(),
   };
 
   function setTab(name) {
@@ -420,6 +565,9 @@ function openEditor(node) {
     reviewTab.style.cssText += name === "review" ? activeStyle : inactiveStyle;
     t2iTab.style.cssText += name === "t2i" ? activeStyle : inactiveStyle;
     i2vTab.style.cssText += name === "i2v" ? activeStyle : inactiveStyle;
+    updateMainPreviewMode();
+    const clip = activeClip();
+    syncZImagePreview(clip ? clipState(clip) : null);
   }
 
   function activeClip() {
@@ -428,13 +576,113 @@ function openEditor(node) {
 
   function clipState(clip) {
     const id = clipId(clip);
-    if (!state.session.clips[id]) state.session.clips[id] = defaultClipState(clip);
+    if (!state.session.clips[id]) {
+      const clips = state.session.clips || {};
+      const matchingKey = Object.keys(clips).find((key) => {
+        const item = clips[key] || {};
+        return (
+          Number(item.clip_number || 0) === Number(clip.clip_number || -1) ||
+          String(item.name || "") === String(clip.name || "")
+        );
+      });
+      if (matchingKey) {
+        state.session.clips[id] = {
+          ...defaultClipState(clip),
+          ...clips[matchingKey],
+          path: clip.path,
+          name: clip.name,
+          clip_number: clip.clip_number,
+        };
+        if (matchingKey !== id) delete state.session.clips[matchingKey];
+      } else {
+        state.session.clips[id] = defaultClipState(clip);
+      }
+    }
     return state.session.clips[id];
   }
 
   function updateSelectedCount() {
-    const count = Object.values(state.session.clips || {}).filter((item) => item?.selected_for_remake).length;
+    const count = state.clips.filter((clip) => clipState(clip)?.selected_for_remake).length;
     selectedCount.textContent = `${count} clip${count === 1 ? "" : "s"} selected for remake`;
+  }
+
+  function updateMainPreviewMode() {
+    const clip = activeClip();
+    const showZImageArea = state.activeTab === "t2i" && clip && state.zimageMainClipIds.has(clipId(clip));
+    video.style.display = showZImageArea ? "none" : "block";
+    zimageLargeWrap.style.display = showZImageArea ? "flex" : "none";
+  }
+
+  function zimageSettingsFromSession() {
+    const settings = state.session?.zimage_settings || {};
+    return {
+      first_pass_width: Number(settings.first_pass_width || 1280),
+      first_pass_height: Number(settings.first_pass_height || 720),
+      second_pass_width: Number(settings.second_pass_width || 1920),
+      second_pass_height: Number(settings.second_pass_height || 1080),
+      seed: Number(settings.seed || 1),
+      use_lora: Boolean(settings.use_lora),
+      lora: String(settings.lora || "[none]"),
+      lora_strength: Number(settings.lora_strength || 1),
+    };
+  }
+
+  function syncZImageSettings() {
+    const settings = zimageSettingsFromSession();
+    firstPassWidth.value = settings.first_pass_width;
+    firstPassHeight.value = settings.first_pass_height;
+    secondPassWidth.value = settings.second_pass_width;
+    secondPassHeight.value = settings.second_pass_height;
+    seedInput.value = settings.seed;
+    useLoraControl.input.checked = settings.use_lora;
+    loraSelect.value = settings.lora;
+    loraStrength.value = settings.lora_strength;
+    loraGrid.style.display = settings.use_lora ? "grid" : "none";
+  }
+
+  function saveZImageSettingsToSession() {
+    state.session.zimage_settings = {
+      first_pass_width: Number(firstPassWidth.value || 1280),
+      first_pass_height: Number(firstPassHeight.value || 720),
+      second_pass_width: Number(secondPassWidth.value || 1920),
+      second_pass_height: Number(secondPassHeight.value || 1080),
+      seed: Number(seedInput.value || 1),
+      use_lora: Boolean(useLoraControl.input.checked),
+      lora: String(loraSelect.value || "[none]"),
+      lora_strength: Number(loraStrength.value || 1),
+    };
+    loraGrid.style.display = state.session.zimage_settings.use_lora ? "grid" : "none";
+    return state.session.zimage_settings;
+  }
+
+  function syncZImagePreview(item) {
+    const image = item?.t2i_preview_image || null;
+    if (image?.filename) {
+      const imageUrl = makeImageViewUrl(image);
+      zimagePreviewImage.src = imageUrl;
+      zimagePreviewImage.style.display = "block";
+      zimageLargeImage.src = imageUrl;
+      zimageLargeImage.style.display = "block";
+      zimageLargeEmpty.style.display = "none";
+      zimagePreviewStatus.textContent = "Last ZImage preview for this clip.";
+      return;
+    }
+    if (item?.captured_frame_path) {
+      const imageUrl = makeEditorImageUrl(item.captured_frame_path);
+      zimagePreviewImage.src = imageUrl;
+      zimagePreviewImage.style.display = "block";
+      zimageLargeImage.src = imageUrl;
+      zimageLargeImage.style.display = "block";
+      zimageLargeEmpty.style.display = "none";
+      zimagePreviewStatus.textContent = "Captured frame ready. Preview ZImage to replace it here.";
+      return;
+    }
+    zimagePreviewImage.removeAttribute("src");
+    zimagePreviewImage.style.display = "none";
+    zimageLargeImage.removeAttribute("src");
+    zimageLargeImage.style.display = "none";
+    zimageLargeEmpty.style.display = "block";
+    zimagePreviewStatus.textContent = "No ZImage preview yet.";
   }
 
   function syncInspector() {
@@ -446,6 +694,8 @@ function openEditor(node) {
       framePath.textContent = "No frame captured";
       promptBox.value = "";
       i2vPromptBox.value = "";
+      syncZImageSettings();
+      syncZImagePreview(null);
       activeInfo.textContent = "No clip selected";
       return;
     }
@@ -456,6 +706,9 @@ function openEditor(node) {
     framePath.textContent = item.captured_frame_path || "No frame captured";
     promptBox.value = item.t2i_prompt || "";
     i2vPromptBox.value = item.i2v_prompt || "";
+    syncZImageSettings();
+    syncZImagePreview(item);
+    updateMainPreviewMode();
     activeInfo.textContent = `${clip.name} | clip ${clip.clip_number} | ${formatBytes(clip.size)}`;
     setWidgetValue(node, "selected_clip_path", clip.path || "");
     setWidgetValue(node, "captured_frame_path", item.captured_frame_path || "");
@@ -547,9 +800,9 @@ function openEditor(node) {
     row.style.cssText = `
       width: 100%;
       text-align: left;
-      border: 1px solid ${clipId(clip) === state.activeId ? "#06b6d4" : item.selected_for_remake ? "#0e7490" : "#3f3f46"};
+      border: 1px solid ${clipId(clip) === state.activeId ? "#06b6d4" : item.selected_for_remake ? "#ef4444" : "#3f3f46"};
       border-radius: 7px;
-      background: ${clipId(clip) === state.activeId ? "#164e63" : item.selected_for_remake ? "#083344" : "#27272a"};
+      background: ${item.selected_for_remake ? "#7f1d1d" : clipId(clip) === state.activeId ? "#164e63" : "#27272a"};
       color: #fafafa;
       padding: 8px;
       margin-bottom: 8px;
@@ -574,9 +827,9 @@ function openEditor(node) {
     const width = Math.max(92, Math.round((clip.duration || 8) * state.pxPerSecond));
     block.style.cssText = `
       flex: 0 0 ${width}px;
-      border: 1px solid ${clipId(clip) === state.activeId ? "#67e8f9" : item.selected_for_remake ? "#06b6d4" : "#3f3f46"};
+      border: 1px solid ${clipId(clip) === state.activeId ? "#67e8f9" : item.selected_for_remake ? "#ef4444" : "#3f3f46"};
       border-radius: 5px;
-      background: ${item.selected_for_remake ? "#0e7490" : "#27272a"};
+      background: ${item.selected_for_remake ? "#7f1d1d" : "#27272a"};
       color: #fafafa;
       padding: 7px;
       font-size: 11px;
@@ -695,6 +948,13 @@ function openEditor(node) {
     setWidgetValue(node, "generated_t2i_prompt", value);
   });
 
+  for (const control of [firstPassWidth, firstPassHeight, secondPassWidth, secondPassHeight, seedInput, loraSelect, loraStrength]) {
+    control.addEventListener("input", saveZImageSettingsToSession);
+    control.addEventListener("change", saveZImageSettingsToSession);
+  }
+
+  useLoraControl.input.addEventListener("change", saveZImageSettingsToSession);
+
   i2vPromptBox.addEventListener("input", () => {
     const clip = activeClip();
     if (!clip) return;
@@ -728,8 +988,12 @@ function openEditor(node) {
     });
     const item = clipState(clip);
     item.captured_frame_path = data.frame_path || "";
+    item.t2i_preview_image = null;
     framePath.textContent = item.captured_frame_path || "No frame captured";
     setWidgetValue(node, "captured_frame_path", item.captured_frame_path || "");
+    state.zimageMainClipIds.add(clipId(clip));
+    syncZImagePreview(item);
+    updateMainPreviewMode();
     toast(`Frame saved:\n${item.captured_frame_path}`);
     return item.captured_frame_path;
   }
@@ -770,6 +1034,63 @@ function openEditor(node) {
       frameButton.disabled = false;
       promptButton.disabled = false;
       promptButton.textContent = "Create T2I Prompt";
+    }
+  }
+
+  async function previewZImage() {
+    const clip = activeClip();
+    if (!clip) {
+      toast("Select a clip first.", true);
+      return;
+    }
+    const item = clipState(clip);
+    const t2iPrompt = String(promptBox.value || item.t2i_prompt || "").trim();
+    if (!t2iPrompt) {
+      toast("Create or type a T2I prompt first.", true);
+      setTab("t2i");
+      return;
+    }
+    item.t2i_prompt = t2iPrompt;
+    setWidgetValue(node, "generated_t2i_prompt", item.t2i_prompt || "");
+    try {
+      zimagePreviewButton.disabled = true;
+      zimagePreviewButton.textContent = "Previewing...";
+      zimagePreviewStatus.textContent = "Building hidden ZImage workflow...";
+      zimagePreviewImage.style.display = "none";
+      const settings = saveZImageSettingsToSession();
+      const useLora = Boolean(settings.use_lora && settings.lora && settings.lora !== "[none]");
+      const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", {
+        prompt: t2iPrompt,
+        first_pass_width: settings.first_pass_width,
+        first_pass_height: settings.first_pass_height,
+        second_pass_width: settings.second_pass_width,
+        second_pass_height: settings.second_pass_height,
+        seed: settings.seed,
+        batch_size: 1,
+        use_custom_loras: useLora,
+        lora_count: useLora ? 1 : 0,
+        ltx_two_pass_mode: false,
+        lora_1: useLora ? settings.lora : "[none]",
+        strength_1: settings.lora_strength,
+      });
+      zimagePreviewStatus.textContent = "Queueing hidden ZImage workflow...";
+      const queued = await queueWorkflowPrompt(built.prompt);
+      const promptId = queued?.prompt_id;
+      if (!promptId) throw new Error("ComfyUI queued the preview but did not return a prompt_id.");
+      const images = await waitForImages(promptId, (message) => {
+        zimagePreviewStatus.textContent = `${message}\nPrompt ID: ${promptId}`;
+      });
+      item.t2i_preview_image = images[images.length - 1] || null;
+      state.zimageMainClipIds.add(clipId(clip));
+      syncZImagePreview(item);
+      zimagePreviewStatus.textContent = `ZImage preview ready.\nPrompt ID: ${promptId}`;
+      toast("ZImage preview is ready.");
+    } catch (error) {
+      zimagePreviewStatus.textContent = String(error?.message || error);
+      toast(String(error?.message || error), true);
+    } finally {
+      zimagePreviewButton.disabled = false;
+      zimagePreviewButton.textContent = "Preview ZImage";
     }
   }
 
@@ -824,11 +1145,12 @@ function openEditor(node) {
         }),
         postJson("/vrgdg/video_editor/load_session", {
           folder_path: folderInput.value,
-        }).catch(() => ({ session: { clips: {} } })),
+        }).catch(() => ({ session: { clips: {}, zimage_settings: {} } })),
       ]);
       state.clips = clipsData.clips || [];
-      state.session = sessionData.session || { clips: {} };
+      state.session = sessionData.session || { clips: {}, zimage_settings: {} };
       state.session.clips = state.session.clips || {};
+      state.session.zimage_settings = state.session.zimage_settings || {};
       state.sessionPath = clipsData.session_path || "";
       folderInput.value = clipsData.folder_path || folderInput.value;
       setWidgetValue(node, "output_folder", folderInput.value);
@@ -852,6 +1174,7 @@ function openEditor(node) {
       const session = {
         ...state.session,
         clips: state.session.clips || {},
+        zimage_settings: state.session.zimage_settings || {},
       };
       const data = await postJson("/vrgdg/video_editor/save_session", {
         folder_path: folderInput.value,
@@ -872,7 +1195,7 @@ function openEditor(node) {
 
   async function clearSession() {
     try {
-      state.session = { clips: {} };
+      state.session = { clips: {}, zimage_settings: {} };
       for (const clip of state.clips) {
         state.session.clips[clipId(clip)] = defaultClipState(clip);
       }
@@ -900,6 +1223,7 @@ function openEditor(node) {
     captureCurrentFrame().catch((error) => toast(String(error?.message || error), true));
   });
   promptButton.addEventListener("click", createVisualT2IPrompt);
+  zimagePreviewButton.addEventListener("click", previewZImage);
   i2vButton.addEventListener("click", createI2VPrompt);
   saveButton.addEventListener("click", saveSession);
   clearButton.addEventListener("click", clearSession);
