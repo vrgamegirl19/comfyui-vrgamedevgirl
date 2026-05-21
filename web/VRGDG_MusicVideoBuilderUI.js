@@ -667,7 +667,10 @@ function newSegment(start = 0, end = 4) {
     image: null,
     image_history: [],
     image_history_index: -1,
+    preview_mode: "image",
     video_path: "",
+    video_history: [],
+    video_history_index: -1,
     video_output: null,
     video_status: "none",
     custom_audio_path: "",
@@ -1604,6 +1607,11 @@ function openBuilder(node) {
     return Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
   }
 
+  function timelineSegmentDuration(segment) {
+    if (!segment) return 0;
+    return Math.max(0, Number(segment.end || 0) - Number(segment.start || 0));
+  }
+
   function audioTimelineEnd(segment) {
     return audioTimelineStart(segment) + audioChunkDuration(segment);
   }
@@ -1727,12 +1735,25 @@ function openBuilder(node) {
     if (segment.flux_location_image_name == null) segment.flux_location_image_name = "";
     if (segment.flux_notes == null) segment.flux_notes = "";
     if (segment.flux_prompt == null) segment.flux_prompt = "";
+    if (!["image", "video"].includes(segment.preview_mode)) segment.preview_mode = segment.video_path ? "video" : "image";
     if (segment.video_path == null) segment.video_path = "";
     if (segment.video_folder == null) segment.video_folder = "";
+    if (!Array.isArray(segment.video_history)) segment.video_history = [];
     if (segment.video_output == null) segment.video_output = null;
     if (segment.video_status == null) segment.video_status = segment.video_path ? "done" : "none";
     if (!segment.video_path && segment.video_output && typeof segment.video_output === "object") {
       segment.video_path = segment.video_output.path || segment.video_output.filename || "";
+    }
+    if (segment.video_path && !segment.video_history.includes(segment.video_path)) {
+      segment.video_history.push(segment.video_path);
+    }
+    if (!Number.isFinite(Number(segment.video_history_index))) {
+      segment.video_history_index = segment.video_history.length ? segment.video_history.length - 1 : -1;
+    }
+    if (segment.video_history.length) {
+      segment.video_history_index = Math.max(0, Math.min(segment.video_history.length - 1, Number(segment.video_history_index || 0)));
+    } else {
+      segment.video_history_index = -1;
     }
     return segment;
   }
@@ -1901,11 +1922,20 @@ function openBuilder(node) {
     return Boolean(segment?.video_path);
   }
 
+  function selectedSegmentVideoPath(segment) {
+    ensureSegmentRuntimeFields(segment);
+    const history = Array.isArray(segment?.video_history) ? segment.video_history : [];
+    const index = Math.max(0, Math.min(history.length - 1, Number(segment?.video_history_index || 0)));
+    return history[index] || segment?.video_path || "";
+  }
+
   function syncPreview(segment) {
-    if (segment?.video_path) {
-      if (previewVideo.dataset.path !== segment.video_path) {
-        previewVideo.src = makeEditorVideoUrl(segment.video_path);
-        previewVideo.dataset.path = segment.video_path;
+    ensureSegmentRuntimeFields(segment);
+    const videoPath = selectedSegmentVideoPath(segment);
+    if (segment?.preview_mode !== "image" && videoPath) {
+      if (previewVideo.dataset.path !== videoPath) {
+        previewVideo.src = makeEditorVideoUrl(videoPath);
+        previewVideo.dataset.path = videoPath;
       }
       previewVideo.muted = true;
       previewVideo.style.display = "block";
@@ -2652,19 +2682,35 @@ function openBuilder(node) {
           event.dataTransfer.effectAllowed = "copy";
         };
       }
-      if (segment.image_history.length) {
+      const hasPreviewImage = Boolean(segmentImageSource(segment));
+      const hasPreviewVideo = Boolean(selectedSegmentVideoPath(segment));
+      if ((segment.preview_mode === "video" && segment.video_history.length) || (segment.preview_mode !== "video" && segment.image_history.length)) {
         const historyButton = document.createElement("span");
-        historyButton.textContent = `${Math.max(1, Number(segment.image_history_index || 0) + 1)}/${segment.image_history.length}`;
-        historyButton.title = "Cycle generated image previews for this scene.";
-        historyButton.style.cssText = "position:absolute;right:13px;top:5px;min-width:34px;height:20px;display:flex;align-items:center;justify-content:center;border:1px solid #67e8f9;border-radius:4px;background:rgba(8,47,73,.92);color:#e0f2fe;font-size:10px;font-weight:900;z-index:3;";
-        historyButton.onpointerdown = (event) => {
-          event.stopPropagation();
-        };
+        const isVideoMode = segment.preview_mode === "video";
+        const count = isVideoMode ? segment.video_history.length : segment.image_history.length;
+        const index = isVideoMode ? Number(segment.video_history_index || 0) : Number(segment.image_history_index || 0);
+        historyButton.textContent = `${Math.max(1, index + 1)}/${count}`;
+        historyButton.title = isVideoMode ? "Cycle generated video previews for this scene." : "Cycle generated image previews for this scene.";
+        historyButton.style.cssText = `position:absolute;right:13px;top:5px;min-width:34px;height:20px;display:flex;align-items:center;justify-content:center;border:1px solid ${isVideoMode ? "#a78bfa" : "#67e8f9"};border-radius:4px;background:${isVideoMode ? "rgba(59,7,100,.92)" : "rgba(8,47,73,.92)"};color:${isVideoMode ? "#f3e8ff" : "#e0f2fe"};font-size:10px;font-weight:900;z-index:3;`;
+        historyButton.onpointerdown = (event) => event.stopPropagation();
         historyButton.onclick = (event) => {
           event.stopPropagation();
-          cycleSegmentImageHistory(segment);
+          if (isVideoMode) cycleSegmentVideoHistory(segment);
+          else cycleSegmentImageHistory(segment);
         };
         block.append(historyButton);
+      }
+      if (hasPreviewImage && hasPreviewVideo) {
+        const modeButton = document.createElement("span");
+        modeButton.textContent = segment.preview_mode === "image" ? "I" : "V";
+        modeButton.title = "Switch preview between image and video.";
+        modeButton.style.cssText = "position:absolute;right:13px;top:29px;min-width:34px;height:20px;display:flex;align-items:center;justify-content:center;border:1px solid #a3e635;border-radius:4px;background:rgba(20,83,45,.92);color:#ecfccb;font-size:10px;font-weight:900;z-index:3;";
+        modeButton.onpointerdown = (event) => event.stopPropagation();
+        modeButton.onclick = (event) => {
+          event.stopPropagation();
+          toggleSegmentPreviewMode(segment);
+        };
+        block.append(modeButton);
       }
       const leftHandle = document.createElement("div");
       leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;";
@@ -3136,6 +3182,7 @@ function openBuilder(node) {
         segment.image = null;
       }
       segment.approved_image_path = "";
+      segment.preview_mode = "image";
       setActiveSegment(segment);
       syncPreview(segment);
       render();
@@ -3612,10 +3659,13 @@ function openBuilder(node) {
       segment.image_history = [];
       segment.image_history_index = -1;
       segment.video_path = "";
+      segment.video_history = [];
+      segment.video_history_index = -1;
       segment.video_source_path = "";
       segment.video_folder = "";
       segment.video_output = null;
       segment.video_status = "none";
+      segment.preview_mode = "image";
       segment.flux_prompt = "";
       segment.flux_subject_image_path = "";
       segment.flux_subject_image_data = "";
@@ -4047,6 +4097,7 @@ function openBuilder(node) {
         segment.image_history.push(data.saved_path);
         segment.image_history_index = segment.image_history.length - 1;
       }
+      if (data.saved_path) segment.preview_mode = "image";
       return data.saved_path || null;
     } catch (error) {
       console.warn("[VRGDG Music Builder] Failed to archive preview image:", error);
@@ -4061,6 +4112,7 @@ function openBuilder(node) {
       segment.image_history.push(imagePath);
       segment.image_history_index = segment.image_history.length - 1;
     }
+    segment.preview_mode = "image";
   }
 
   function cycleSegmentImageHistory(segment) {
@@ -4075,6 +4127,41 @@ function openBuilder(node) {
     segment.custom_image_name = "";
     segment.image = null;
     segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    setActiveSegment(segment);
+    syncPreview(segment);
+    render();
+  }
+
+  function addSegmentVideoHistoryPath(segment, videoPath) {
+    ensureSegmentRuntimeFields(segment);
+    if (!segment || !videoPath) return;
+    if (!segment.video_history.includes(videoPath)) {
+      segment.video_history.push(videoPath);
+    }
+    segment.video_history_index = segment.video_history.indexOf(videoPath);
+  }
+
+  function cycleSegmentVideoHistory(segment) {
+    ensureSegmentRuntimeFields(segment);
+    if (!segment?.video_history.length) return;
+    pushHistory();
+    const nextIndex = (Math.max(-1, Number(segment.video_history_index ?? -1)) + 1) % segment.video_history.length;
+    segment.video_history_index = nextIndex;
+    segment.preview_mode = "video";
+    setActiveSegment(segment);
+    syncPreview(segment);
+    render();
+  }
+
+  function toggleSegmentPreviewMode(segment) {
+    ensureSegmentRuntimeFields(segment);
+    if (!segment) return;
+    const hasImage = Boolean(segmentImageSource(segment));
+    const hasVideo = Boolean(selectedSegmentVideoPath(segment));
+    if (!hasImage || !hasVideo) return;
+    pushHistory();
+    segment.preview_mode = segment.preview_mode === "image" ? "video" : "image";
     setActiveSegment(segment);
     syncPreview(segment);
     render();
@@ -4188,6 +4275,7 @@ function openBuilder(node) {
     segment.custom_image_data = "";
     segment.custom_image_name = "";
     segment.approved_image_path = "";
+    segment.preview_mode = "image";
     syncPreview(segment);
     render();
     advanceZImageSeedAfterRun(zSettings);
@@ -4323,6 +4411,7 @@ function openBuilder(node) {
       segment.custom_image_data = "";
       segment.custom_image_name = "";
       segment.approved_image_path = "";
+      segment.preview_mode = "image";
       t2iPrompt.value = prompt;
       zEnhancePromptPreview.value = prompt;
       syncPreview(segment);
@@ -4416,6 +4505,7 @@ function openBuilder(node) {
       segment.custom_image_data = "";
       segment.custom_image_name = "";
       segment.approved_image_path = "";
+      segment.preview_mode = "image";
       syncPreview(segment);
       render();
       advanceZEnhanceSeedAfterRun(settings);
@@ -4673,6 +4763,51 @@ function openBuilder(node) {
     return missing;
   }
 
+  async function validateSrtTimingForSceneVideo({ segment, sceneIndex, srtPath, promptNumber, expectedDuration }) {
+    const promptIndex = Math.max(0, Number(promptNumber || 1) - 1);
+    const uiDuration = Number(expectedDuration ?? timelineSegmentDuration(segment));
+    const data = await postJson("/vrgdg/music_builder/load_srt", { srt_path: srtPath }, 60000);
+    const srtSegment = Array.isArray(data.segments) ? data.segments[promptIndex] : null;
+    if (!srtSegment) {
+      throw new Error(
+        `SRT timing check failed before creating video.\n\n` +
+        `${sceneDisplayName(segment, sceneIndex)} is using prompt #${promptNumber}, but that prompt was not found in:\n${srtPath}`
+      );
+    }
+    const srtDuration = Math.max(0, Number(srtSegment.end || 0) - Number(srtSegment.start || 0));
+    const diff = Math.abs(srtDuration - uiDuration);
+    console.log("[VRGDG Music Builder] SRT timing check", {
+      scene: sceneIndex + 1,
+      promptNumber,
+      srtPath,
+      uiStart: Number(segment.start || 0),
+      uiEnd: Number(segment.end || 0),
+      uiDuration,
+      srtStart: Number(srtSegment.start || 0),
+      srtEnd: Number(srtSegment.end || 0),
+      srtDuration,
+      diff,
+    });
+    if (!Number.isFinite(uiDuration) || uiDuration <= 0) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} has an invalid UI duration: ${uiDuration}`);
+    }
+    if (!Number.isFinite(srtDuration) || srtDuration <= 0) {
+      throw new Error(`SRT prompt #${promptNumber} has an invalid duration in:\n${srtPath}`);
+    }
+    if (diff > 0.25) {
+      throw new Error(
+        `SRT timing mismatch before creating video.\n\n` +
+        `${sceneDisplayName(segment, sceneIndex)} UI duration: ${uiDuration.toFixed(3)}s\n` +
+        `SRT prompt #${promptNumber} duration: ${srtDuration.toFixed(3)}s\n\n` +
+        `UI timing: ${Number(segment.start || 0).toFixed(3)} -> ${Number(segment.end || 0).toFixed(3)}\n` +
+        `SRT timing: ${Number(srtSegment.start || 0).toFixed(3)} -> ${Number(srtSegment.end || 0).toFixed(3)}\n\n` +
+        `SRT path being sent to hidden workflow:\n${srtPath}\n\n` +
+        `Stopping before LTX runs so it cannot accidentally render the wrong/huge clip.`
+      );
+    }
+    return { srt_segment: srtSegment, srt_duration: srtDuration, ui_duration: uiDuration, srt_path: data.srt_path || srtPath };
+  }
+
   async function ensureSelectedImageForSceneVideo(segment, sceneIndex) {
     const source = segmentImageSource(segment);
     if (!source) throw new Error(`${sceneDisplayName(segment, sceneIndex)}: selected scene image is missing.`);
@@ -4812,6 +4947,17 @@ function openBuilder(node) {
       srtPath = singleSrt.srt_path || srtPath;
       promptNumberForScene = 1;
     }
+    progress?.set(`${batchLabel}Checking SRT timing before hidden I2V...`, pct(14));
+    const expectedDurationForScene = segment.custom_audio_path && !options.audioPathOverride
+      ? Math.max(0.1, audioChunkDuration(segment) || timelineSegmentDuration(segment) || 4)
+      : timelineSegmentDuration(segment);
+    const timingCheck = await validateSrtTimingForSceneVideo({
+      segment,
+      sceneIndex,
+      srtPath,
+      promptNumber: promptNumberForScene,
+      expectedDuration: expectedDurationForScene,
+    });
     const payload = {
       ...i2vVideoSettingsPayload(),
       i2v_prompt: segment.i2v_prompt,
@@ -4822,7 +4968,7 @@ function openBuilder(node) {
       srt_path: srtPath,
       project_folder: projectInput.value,
     };
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, i2vVideoOutputFolder(), `${batchLabel}Preparing hidden I2V workflow...`), pct(15));
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, i2vVideoOutputFolder(), `${batchLabel}Preparing hidden I2V workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`), pct(15));
     const built = await postJson("/vrgdg/workflow_runner/build_i2v_prompt", payload);
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queueing hidden I2V workflow...`), pct(40));
     const queued = await queueWorkflowPrompt(built.prompt);
@@ -4841,10 +4987,13 @@ function openBuilder(node) {
       existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
     pushHistory();
+    if (collected.backup_path) addSegmentVideoHistoryPath(segment, collected.backup_path);
     segment.video_output = video;
     segment.video_source_path = videoPath;
     segment.video_path = collected.video_path || videoPath;
     segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
+    addSegmentVideoHistoryPath(segment, segment.video_path);
+    segment.preview_mode = "video";
     segment.video_status = "done";
     syncPreview(segment);
     render();

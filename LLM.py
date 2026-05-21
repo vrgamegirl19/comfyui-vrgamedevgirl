@@ -3226,9 +3226,19 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             pass
 
     def _pil_to_data_url(self, img: Image.Image) -> str:
+        image = img.convert("RGB")
+        longest_side = max(image.size)
+        if longest_side > 768:
+            scale = 768 / float(longest_side)
+            new_size = (
+                max(1, int(image.size[0] * scale)),
+                max(1, int(image.size[1] * scale)),
+            )
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+            image = image.resize(new_size, resample)
         buf = BytesIO()
-        img.convert("RGB").save(buf, format="PNG")
-        return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('ascii')}"
+        image.save(buf, format="JPEG", quality=86, optimize=True)
+        return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('ascii')}"
 
     def _extract_gguf_text(self, response) -> str:
         if isinstance(response, dict):

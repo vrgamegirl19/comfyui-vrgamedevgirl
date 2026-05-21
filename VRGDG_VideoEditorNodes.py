@@ -411,6 +411,62 @@ def _save_editor_frame(payload):
     }
 
 
+def _looks_like_gemma_repeat_failure(text):
+    sample = re.sub(r"\s+", " ", str(text or "").lower()).strip()
+    if not sample:
+        return False
+    compact = re.sub(r"[^a-z0-9_<>\-|]+", "", sample)
+    for marker in (
+        "completion-completion-completion",
+        "thought-thought-thought",
+        "de-facto-de-facto-de-facto",
+        "cast-cast-cast",
+        "prompt-cast-cast",
+        "thoughtthoughtthought",
+        "ownnessownnessownness",
+        "thought_turn",
+        "turn_turn",
+        "<|channel>",
+        "<channel|>",
+    ):
+        if marker in compact or marker in sample:
+            return True
+    if re.search(r"\b([a-zA-Z_]{3,})(?:[-\s]+\1){5,}\b", sample):
+        return True
+    words = re.findall(r"[a-zA-Z_][a-zA-Z_']{2,}", sample)
+    if len(words) < 18:
+        return False
+    counts = {}
+    for word in words:
+        counts[word] = counts.get(word, 0) + 1
+    common_words = {"the", "and", "with", "that", "this", "from", "into", "while", "during"}
+    repeated_words = [
+        count
+        for word, count in counts.items()
+        if word not in common_words
+    ]
+    if repeated_words and max(repeated_words) >= 10 and max(repeated_words) / float(len(words)) >= 0.25:
+        return True
+    phrases = [" ".join(words[index:index + 2]) for index in range(len(words) - 1)]
+    if len(phrases) >= 12:
+        phrase_counts = {}
+        for phrase in phrases:
+            phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
+        if max(phrase_counts.values()) >= 6:
+            return True
+    return False
+
+
+def _validate_gemma_prompt_text(text, label):
+    if not str(text or "").strip():
+        raise ValueError(f"Gemma returned an empty {label} prompt.")
+    if _looks_like_gemma_repeat_failure(text):
+        raise ValueError(
+            f"Gemma returned repeated/thought text for the {label} prompt. "
+            "Try again, shorten the notes, or turn off image reference."
+        )
+
+
 def _clean_visual_gemma_text(text):
     cleaned = str(text or "").strip()
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
@@ -422,6 +478,7 @@ def _clean_visual_gemma_text(text):
         r"_?\s*<\|channel>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*",
+        r"^\s*[-_]*\s*(?:thought|analysis|reasoning)\s*",
         r"^\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
     ]
     previous = None
@@ -470,9 +527,9 @@ def _generate_visual_t2i_prompt(payload):
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()
-    temperature = float(payload.get("temperature") or 0.6)
+    temperature = float(payload.get("temperature") or (0.25 if has_frame else 0.6))
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    max_new_tokens = int(payload.get("max_new_tokens") or (8000 if has_frame else 1200))
     unload_after = True
 
     try:
@@ -500,10 +557,9 @@ def _generate_visual_t2i_prompt(payload):
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
-            )
+        )
         text = _clean_visual_gemma_text(text)
-        if not text:
-            raise ValueError("Gemma returned an empty prompt.")
+        _validate_gemma_prompt_text(text, "T2I")
         return {
             "prompt": text,
             "frame_path": frame_path,
@@ -575,8 +631,7 @@ def _generate_i2v_prompt(payload):
             max_new_tokens=max_new_tokens,
         )
         text = _clean_gemma_prompt_text(text)
-        if not text:
-            raise ValueError("Gemma returned an empty I2V prompt.")
+        _validate_gemma_prompt_text(text, "I2V")
         return {
             "prompt": text,
             "used_model": model_path,
