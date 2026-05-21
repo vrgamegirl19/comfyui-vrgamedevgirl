@@ -1,3 +1,9 @@
+## License
+
+This ComfyUI custom node is licensed under AGPL-3.0.
+
+You may not use this code in a closed-source paid app, private hosted service, SaaS product, or commercial wrapper unless you comply with the AGPL-3.0 license and provide the complete corresponding source code under the same license.
+
 # 🎮 VRGameDevGirl’s Video / Image & HUMO Workflow Nodes for ComfyUI
 
 Custom ComfyUI nodes for **music video workflows** and **high-quality video/image enhancement**.  
