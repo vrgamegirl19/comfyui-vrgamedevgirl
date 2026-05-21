@@ -1058,6 +1058,9 @@ def _collect_scene_video(payload):
         raise FileNotFoundError(f"Scene video was not found: {source_path}")
     project_folder, target_dir = _safe_project_subfolder(payload.get("project_folder", ""), "rendered_scene_videos")
     scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    existing_action = str(payload.get("existing_action", "overwrite") or "overwrite").strip().lower()
+    if existing_action not in {"overwrite", "backup"}:
+        existing_action = "overwrite"
 
     source_dir = os.path.abspath(os.path.dirname(source_path))
     if not source_path.lower().endswith("-audio.mp4"):
@@ -1072,9 +1075,21 @@ def _collect_scene_video(payload):
             source_dir = os.path.abspath(os.path.dirname(source_path))
 
     target_path = os.path.join(target_dir, f"video_{scene_number:04d}-audio.mp4")
+    backup_path = ""
     if os.path.abspath(source_path) != os.path.abspath(target_path):
         if os.path.exists(target_path):
-            os.remove(target_path)
+            if existing_action == "backup":
+                backup_dir = os.path.join(project_folder, "rendered_scene_videos_backup", f"scene_{scene_number:04d}")
+                os.makedirs(backup_dir, exist_ok=True)
+                stamp = time.strftime("%Y%m%d_%H%M%S")
+                backup_path = os.path.join(backup_dir, f"video_{scene_number:04d}-audio_{stamp}.mp4")
+                index = 2
+                while os.path.exists(backup_path):
+                    backup_path = os.path.join(backup_dir, f"video_{scene_number:04d}-audio_{stamp}_{index:02d}.mp4")
+                    index += 1
+                shutil.move(target_path, backup_path)
+            else:
+                os.remove(target_path)
         shutil.move(source_path, target_path)
 
     removed_files = []
@@ -1100,6 +1115,8 @@ def _collect_scene_video(payload):
     return {
         "video_path": target_path,
         "video_folder": target_dir,
+        "backup_path": backup_path,
+        "existing_action": existing_action,
         "source_path": source_path,
         "removed_files": removed_files,
         "removed_folder": removed_folder,

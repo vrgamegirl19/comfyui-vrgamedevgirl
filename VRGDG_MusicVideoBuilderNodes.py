@@ -1522,6 +1522,168 @@ def _trim_scene_audio(payload):
     return {"audio_path": target_path, "scene_number": scene_number, "start": start, "duration": duration}
 
 
+def _find_ffmpeg_path():
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+        return "ffmpeg"
+    except Exception:
+        try:
+            import imageio_ffmpeg
+            return imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception as exc:
+            raise RuntimeError("ffmpeg was not found. Install ffmpeg or imageio-ffmpeg to mix scene audio.") from exc
+
+
+def _concat_file_path(path):
+    return os.path.abspath(path).replace("\\", "/").replace("'", "'\\''")
+
+
+def _scene_audio_mix_folder(project_folder):
+    return os.path.join(project_folder, "project_audio")
+
+
+def _prepare_scene_audio_mix(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    segments = payload.get("segments", [])
+    if not isinstance(segments, list) or not segments:
+        raise ValueError("No scenes were provided for scene audio mix.")
+
+    ffmpeg_path = _find_ffmpeg_path()
+    folder = _scene_audio_mix_folder(project_folder)
+    os.makedirs(folder, exist_ok=True)
+    parts_folder = os.path.join(folder, "_scene_audio_mix_parts")
+    if os.path.isdir(parts_folder):
+        shutil.rmtree(parts_folder, ignore_errors=True)
+    os.makedirs(parts_folder, exist_ok=True)
+
+    timeline_items = []
+    missing = []
+    for index, segment in enumerate(segments, start=1):
+        if not isinstance(segment, dict):
+            missing.append(f"Scene {index}: invalid scene data.")
+            continue
+        path = str(segment.get("custom_audio_path", "") or "").strip().strip('"')
+        if not path:
+            missing.append(f"Scene {index}: custom audio is missing.")
+            continue
+        path = os.path.abspath(path)
+        if not os.path.isfile(path):
+            missing.append(f"Scene {index}: custom audio file was not found: {path}")
+            continue
+        start = max(0.0, float(segment.get("start", 0) or 0))
+        end = max(start + 0.05, float(segment.get("end", start + 4) or start + 4))
+        duration = float(segment.get("custom_audio_duration", 0) or 0)
+        if duration <= 0:
+            duration = end - start
+        duration = max(0.05, min(duration, max(0.05, end - start)))
+        source_start = max(0.0, float(segment.get("custom_audio_source_start", 0) or 0))
+        timeline_items.append({
+            "index": index,
+            "path": path,
+            "start": start,
+            "end": start + duration,
+            "duration": duration,
+            "source_start": source_start,
+        })
+    if missing:
+        raise ValueError("\n".join(missing))
+
+    timeline_items.sort(key=lambda item: (item["start"], item["index"]))
+    concat_file = os.path.join(parts_folder, "scene_audio_mix_list.txt")
+    part_paths = []
+    cursor = 0.0
+    part_index = 1
+    for item in timeline_items:
+        gap = max(0.0, item["start"] - cursor)
+        if gap > 0.01:
+            silence_path = os.path.join(parts_folder, f"part_{part_index:04d}_silence.wav")
+            part_index += 1
+            silence_cmd = [
+                ffmpeg_path,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=stereo",
+                "-t",
+                f"{gap:.6f}",
+                "-c:a",
+                "pcm_s16le",
+                silence_path,
+            ]
+            result = subprocess.run(silence_cmd, capture_output=True, text=True, check=False)
+            if result.returncode != 0:
+                raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to create silence.").strip())
+            part_paths.append(silence_path)
+
+        clip_path = os.path.join(parts_folder, f"part_{part_index:04d}_scene_{item['index']:04d}.wav")
+        part_index += 1
+        clip_cmd = [
+            ffmpeg_path,
+            "-y",
+            "-ss",
+            f"{item['source_start']:.6f}",
+            "-i",
+            item["path"],
+            "-t",
+            f"{item['duration']:.6f}",
+            "-ac",
+            "2",
+            "-ar",
+            "44100",
+            "-c:a",
+            "pcm_s16le",
+            clip_path,
+        ]
+        result = subprocess.run(clip_cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or f"ffmpeg failed to prepare scene {item['index']} audio.").strip())
+        part_paths.append(clip_path)
+        cursor = max(cursor, item["start"] + item["duration"])
+
+    if not part_paths:
+        raise ValueError("No scene audio parts were created.")
+
+    mix_path = os.path.join(folder, "scene_audio_mix.wav")
+    with open(concat_file, "w", encoding="utf-8") as handle:
+        for path in part_paths:
+            handle.write(f"file '{_concat_file_path(path)}'\n")
+    mix_cmd = [
+        ffmpeg_path,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        concat_file,
+        "-c:a",
+        "pcm_s16le",
+        mix_path,
+    ]
+    result = subprocess.run(mix_cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to create scene audio mix.").strip())
+
+    srt_path = _srt_path(project_folder)
+    with open(srt_path, "w", encoding="utf-8") as handle:
+        handle.write(_segments_to_srt(segments))
+
+    shutil.rmtree(parts_folder, ignore_errors=True)
+    audio_info = _read_audio_peaks(mix_path, 1600)
+    return {
+        "audio_path": mix_path,
+        "srt_path": srt_path,
+        "duration": audio_info.get("duration", cursor),
+        "peaks": audio_info.get("peaks", []),
+        "beats": _estimate_beats_from_peaks(audio_info.get("peaks", []), audio_info.get("duration", cursor)),
+        "scene_count": len(timeline_items),
+        "used_scene_audio": True,
+    }
+
+
 def _load_builder_session(project_folder):
     folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
     if not folder:
@@ -1535,6 +1697,41 @@ def _load_builder_session(project_folder):
         raise ValueError("Builder session is not a JSON object.")
     session = _rehydrate_builder_session(folder, session)
     return {"project_folder": folder, "session_path": path, "srt_path": _srt_path(folder), "session": session}
+
+
+def _list_builder_projects():
+    output_dir = os.path.abspath(folder_paths.get_output_directory())
+    projects = []
+    if not os.path.isdir(output_dir):
+        return {"projects": projects, "output_dir": output_dir}
+    for name in os.listdir(output_dir):
+        folder = os.path.join(output_dir, name)
+        if not os.path.isdir(folder):
+            continue
+        session_path = _session_path(folder)
+        if not os.path.isfile(session_path):
+            continue
+        try:
+            mtime = os.path.getmtime(session_path)
+        except OSError:
+            mtime = 0
+        scene_count = 0
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                session = json.load(handle)
+            segments = session.get("segments", []) if isinstance(session, dict) else []
+            scene_count = len(segments) if isinstance(segments, list) else 0
+        except Exception:
+            scene_count = 0
+        projects.append({
+            "name": name,
+            "project_folder": os.path.abspath(folder),
+            "session_path": os.path.abspath(session_path),
+            "updated": mtime,
+            "scene_count": scene_count,
+        })
+    projects.sort(key=lambda item: item.get("updated", 0), reverse=True)
+    return {"projects": projects, "output_dir": output_dir}
 
 
 def _scan_builder_scene_videos(project_folder):
@@ -1665,11 +1862,28 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/prepare_scene_audio_mix")
+    async def vrgdg_music_builder_prepare_scene_audio_mix(request):
+        try:
+            payload = await request.json()
+            result = _prepare_scene_audio_mix(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/music_builder/load_session")
     async def vrgdg_music_builder_load_session(request):
         try:
             payload = await request.json()
             result = _load_builder_session(payload.get("project_folder", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.get("/vrgdg/music_builder/list_projects")
+    async def vrgdg_music_builder_list_projects(request):
+        try:
+            result = _list_builder_projects()
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

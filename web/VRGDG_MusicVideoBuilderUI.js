@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
+const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
@@ -406,6 +407,78 @@ function showSaveProjectAsModal(defaultName = "") {
   });
 }
 
+function showWelcomeProjectModal(projects = []) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(760px,calc(100vw - 40px));max-height:min(780px,calc(100vh - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Welcome to Video Creator";
+    heading.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+    const note = document.createElement("div");
+    note.textContent = "Create a new project or open an existing one to get started.";
+    note.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const create = makeButton("Create New Project", "primary");
+    const close = makeButton("Close");
+    actions.append(create, close);
+
+    const listTitle = document.createElement("div");
+    listTitle.textContent = "Existing projects";
+    listTitle.style.cssText = "font-size:12px;font-weight:900;color:#bae6fd;margin-top:4px;";
+    const list = document.createElement("div");
+    list.style.cssText = "display:flex;flex-direction:column;gap:7px;overflow:auto;max-height:min(420px,46vh);padding-right:3px;";
+
+    const finish = (result) => {
+      backdrop.remove();
+      resolve(result);
+    };
+    create.onclick = () => finish({ action: "new" });
+    close.onclick = () => finish(null);
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+    });
+
+    if (!projects.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No existing projects were found in the ComfyUI output folder.";
+      empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:14px;color:#a1a1aa;font-size:12px;text-align:center;";
+      list.append(empty);
+    } else {
+      for (const project of projects) {
+        const button = makeButton("");
+        button.style.textAlign = "left";
+        button.style.display = "flex";
+        button.style.flexDirection = "column";
+        button.style.alignItems = "stretch";
+        button.style.gap = "4px";
+        button.style.padding = "10px";
+        const name = document.createElement("div");
+        name.textContent = project.name || "Unnamed project";
+        name.style.cssText = "font-size:13px;font-weight:900;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        const meta = document.createElement("div");
+        const updated = project.updated ? new Date(project.updated * 1000).toLocaleString() : "unknown date";
+        meta.textContent = `${project.scene_count || 0} scene${Number(project.scene_count || 0) === 1 ? "" : "s"} | ${updated}`;
+        meta.style.cssText = "font-size:11px;color:#a1a1aa;";
+        const path = document.createElement("div");
+        path.textContent = project.project_folder || "";
+        path.style.cssText = "font-size:11px;color:#67e8f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        button.append(name, meta, path);
+        button.onclick = () => finish({ action: "load", project_folder: project.project_folder || "" });
+        list.append(button);
+      }
+    }
+
+    box.append(heading, note, actions, listTitle, list);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    backdrop.tabIndex = -1;
+    backdrop.focus();
+  });
+}
+
 async function postJson(url, payload, timeoutMs = 120000) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -624,6 +697,7 @@ function sortSegments(segments) {
 }
 
 function openBuilder(node) {
+  console.log(`[VRGDG Music Builder] UI version ${BUILDER_UI_VERSION}`);
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;";
   const shell = document.createElement("div");
@@ -1360,12 +1434,88 @@ function openBuilder(node) {
   shell.append(topbar, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
+  setTimeout(() => {
+    showStartupWelcome().catch((error) => {
+      console.warn("[VRGDG Music Builder] Startup welcome failed:", error);
+      toast(`Video Creator startup failed:\n${String(error?.message || error)}`, true);
+    });
+  }, 250);
   for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
     overlay.addEventListener(eventName, (event) => {
       if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
       event.preventDefault();
       event.stopPropagation();
     });
+  }
+
+  function defaultZImageSettings() {
+    return {
+      unet_name: "z_image_turbo_bf16.safetensors",
+      clip_name: "qwen_3_4b.safetensors",
+      vae_name: "ae.safetensors",
+      first_pass_width: 1280,
+      first_pass_height: 720,
+      second_pass_width: 1920,
+      second_pass_height: 1080,
+      seed: 1,
+      seed_mode: "fixed",
+      batch_size: 1,
+      use_loras: false,
+      lora_count: 0,
+      loras: [],
+      use_image_to_image: false,
+      image_to_image_start_at_step: 5,
+      image_to_image_path: "",
+      image_to_image_data: "",
+      image_to_image_name: "",
+    };
+  }
+
+  function defaultFluxKleinSettings() {
+    return {
+      enabled: false,
+      image_model_mode: "",
+      unet_name: "flux\\flux-2-klein-4b-fp8.safetensors",
+      clip_name: "qwen_3_4b.safetensors",
+      vae_name: "flux\\flux2-vae.safetensors",
+      width: 1024,
+      height: 576,
+      seed: 100,
+    };
+  }
+
+  function defaultZEnhanceSettings() {
+    return {
+      unet_name: "z_image_turbo_bf16.safetensors",
+      clip_name: "qwen_3_4b.safetensors",
+      vae_name: "ae.safetensors",
+      width: 1920,
+      height: 1080,
+      seed: 1,
+      seed_mode: "randomize",
+      enhance_amount: 8,
+      use_loras: false,
+      lora_count: 0,
+      loras: [],
+    };
+  }
+
+  function defaultI2VVideoSettings() {
+    return {
+      unet_name: DEFAULT_I2V_UNET,
+      vae_name: "LTX23_video_vae_bf16.safetensors",
+      clip_name1: "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
+      clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
+      upscale_model_name: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+      audio_vae_name: "LTX23_audio_vae_bf16.safetensors",
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      seed: 69,
+      use_loras: false,
+      lora_count: 0,
+      loras: [],
+    };
   }
 
   const state = {
@@ -1398,64 +1548,10 @@ function openBuilder(node) {
     themeStylePath: "",
     storyIdeaPath: "",
     subjectScenePath: "",
-    zimageSettings: {
-      unet_name: "z_image_turbo_bf16.safetensors",
-      clip_name: "qwen_3_4b.safetensors",
-      vae_name: "ae.safetensors",
-      first_pass_width: 1280,
-      first_pass_height: 720,
-      second_pass_width: 1920,
-      second_pass_height: 1080,
-      seed: 1,
-      seed_mode: "fixed",
-      batch_size: 1,
-      use_loras: false,
-      lora_count: 0,
-      loras: [],
-      use_image_to_image: false,
-      image_to_image_start_at_step: 5,
-      image_to_image_path: "",
-      image_to_image_data: "",
-      image_to_image_name: "",
-    },
-    fluxKleinSettings: {
-      enabled: false,
-      image_model_mode: "",
-      unet_name: "flux\\flux-2-klein-4b-fp8.safetensors",
-      clip_name: "qwen_3_4b.safetensors",
-      vae_name: "flux\\flux2-vae.safetensors",
-      width: 1024,
-      height: 576,
-      seed: 100,
-    },
-    zEnhanceSettings: {
-      unet_name: "z_image_turbo_bf16.safetensors",
-      clip_name: "qwen_3_4b.safetensors",
-      vae_name: "ae.safetensors",
-      width: 1920,
-      height: 1080,
-      seed: 1,
-      seed_mode: "randomize",
-      enhance_amount: 8,
-      use_loras: false,
-      lora_count: 0,
-      loras: [],
-    },
-    i2vVideoSettings: {
-      unet_name: DEFAULT_I2V_UNET,
-      vae_name: "LTX23_video_vae_bf16.safetensors",
-      clip_name1: "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
-      clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
-      upscale_model_name: "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
-      audio_vae_name: "LTX23_audio_vae_bf16.safetensors",
-      fps: 24,
-      width: 1920,
-      height: 1080,
-      seed: 69,
-      use_loras: false,
-      lora_count: 0,
-      loras: [],
-    },
+    zimageSettings: defaultZImageSettings(),
+    fluxKleinSettings: defaultFluxKleinSettings(),
+    zEnhanceSettings: defaultZEnhanceSettings(),
+    i2vVideoSettings: defaultI2VVideoSettings(),
     undoStack: [],
     redoStack: [],
     isRestoringHistory: false,
@@ -3636,6 +3732,15 @@ function openBuilder(node) {
     };
   }
 
+  function activeProjectFolderForSave() {
+    const folder = String(state.projectFolder || "").trim();
+    if (folder) {
+      projectInput.value = folder;
+      setWidgetValue(node, "project_folder", folder);
+    }
+    return folder;
+  }
+
   async function stopCurrentWorkflow() {
     state.batchCancelled = true;
     pauseAllAudio();
@@ -3664,9 +3769,16 @@ function openBuilder(node) {
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      const projectFolder = activeProjectFolderForSave();
+      if (!projectFolder) {
+        const message = "Create a new project, load a project, or use Save Project As before Quick Save.";
+        if (options.throwOnError) throw new Error(message);
+        if (!options.quiet) toast(message, true);
+        return null;
+      }
       const data = await postJson("/vrgdg/music_builder/save_session", {
         audio_path: audioInput.value,
-        project_folder: projectInput.value,
+        project_folder: projectFolder,
         session: currentSessionData(),
       }, 60000);
       state.projectFolder = data.project_folder || "";
@@ -3720,9 +3832,11 @@ function openBuilder(node) {
   async function saveSessionForSceneVideo() {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) throw new Error("Create or load a project before rendering scene videos.");
     const data = await postJson("/vrgdg/music_builder/save_session", {
       audio_path: audioInput.value,
-      project_folder: projectInput.value,
+      project_folder: projectFolder,
       session: currentSessionData(),
     }, 60000);
     state.projectFolder = data.project_folder || state.projectFolder;
@@ -3742,31 +3856,15 @@ function openBuilder(node) {
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      const projectFolder = activeProjectFolderForSave();
+      if (!projectFolder) {
+        console.warn(`[VRGDG Music Builder] Autosave skipped before ${reason || "action"} because no active project is set.`);
+        return false;
+      }
       const data = await postJson("/vrgdg/music_builder/save_session", {
         audio_path: audioInput.value,
-        project_folder: projectInput.value || state.projectFolder || "",
-        session: {
-          segments: state.segments,
-          timing_frozen: state.timingFrozen,
-          srt_mode: state.srtMode,
-          prompt_json_path: state.promptJsonPath,
-          use_vrgdg_text_context: state.useVrgdgTextContext,
-          theme_style_path: state.themeStylePath,
-          story_idea_path: state.storyIdeaPath,
-          subject_scene_path: state.subjectScenePath,
-          waveform_mode: state.waveformMode,
-          snap_to_beats: state.snapToBeats,
-          show_beat_markers: state.showBeatMarkers,
-          left_panel_width: state.leftPanelWidth,
-          right_panel_width: state.rightPanelWidth,
-          timeline_panel_height: state.timelinePanelHeight,
-          timeline_zoom: state.timelineZoom,
-          auto_save_enabled: state.autoSaveEnabled,
-          zimage_settings: state.zimageSettings,
-          flux_klein_settings: state.fluxKleinSettings,
-          z_enhance_settings: state.zEnhanceSettings,
-          i2v_video_settings: state.i2vVideoSettings,
-        },
+        project_folder: projectFolder,
+        session: currentSessionData(),
       }, 60000);
       state.projectFolder = data.project_folder || state.projectFolder;
       state.sessionPath = data.session_path || state.sessionPath;
@@ -3791,7 +3889,7 @@ function openBuilder(node) {
       const folder = String(projectFolder || "").trim();
       if (!folder) {
         toast("Choose a project folder that contains vrgdg_builder_session.json.", true);
-        return;
+        return false;
       }
       const data = await postJson("/vrgdg/music_builder/load_session", {
         project_folder: folder,
@@ -3877,9 +3975,41 @@ function openBuilder(node) {
       syncInspector();
       render();
       toast(`Loaded builder session.\n${state.sessionPath}`);
+      return true;
     } catch (error) {
       toast(String(error?.message || error), true);
+      return false;
     }
+  }
+
+  async function showStartupWelcome() {
+    try {
+      resetProjectState("", "", "");
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Fresh startup reset failed:", error);
+      state.projectFolder = "";
+      state.sessionPath = "";
+      state.srtPath = "";
+      state.segments = [newSegment(0, 4)];
+      state.activeId = state.segments[0]?.id || "";
+    }
+    let projects = [];
+    try {
+      const data = await getJson("/vrgdg/music_builder/list_projects");
+      projects = Array.isArray(data.projects) ? data.projects : [];
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Could not list existing projects:", error);
+    }
+    const choice = await showWelcomeProjectModal(projects);
+    if (!choice) return false;
+    if (choice.action === "new") {
+      await newProject();
+      return true;
+    }
+    if (choice.action === "load" && choice.project_folder) {
+      return await loadSessionFromProject(choice.project_folder);
+    }
+    return false;
   }
 
   async function loadSession() {
@@ -4606,6 +4736,42 @@ function openBuilder(node) {
     return missing;
   }
 
+  async function prepareSceneAudioMix(progress, label = "Preparing scene audio mix") {
+    const sceneAudioMode = usingSceneAudioMode();
+    if (!sceneAudioMode) {
+      return {
+        audioPath: audioInput.value,
+        srtPath: state.srtPath || srtInput.value,
+        usedSceneAudio: false,
+      };
+    }
+    progress?.set(`${label}...`, 6);
+    const data = await postJson("/vrgdg/music_builder/prepare_scene_audio_mix", {
+      project_folder: projectInput.value,
+      segments: state.segments,
+    }, 180000);
+    if (data.audio_path) {
+      audioInput.value = data.audio_path;
+      setWidgetValue(node, "audio_path", data.audio_path);
+      audio.src = audioUrl(data.audio_path);
+      audio.load();
+      state.duration = Math.max(state.duration || 0, Number(data.duration || 0));
+      state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
+      state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
+    }
+    if (data.srt_path) {
+      state.srtPath = data.srt_path;
+      srtInput.value = data.srt_path;
+      setWidgetValue(node, "srt_path", data.srt_path);
+    }
+    render();
+    return {
+      audioPath: data.audio_path || audioInput.value,
+      srtPath: data.srt_path || state.srtPath || srtInput.value,
+      usedSceneAudio: true,
+    };
+  }
+
   async function renderSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
     const progressBase = Number(options.progressBase ?? 0);
     const progressSpan = Number(options.progressSpan ?? 100);
@@ -4623,9 +4789,12 @@ function openBuilder(node) {
     if (!srtPath) throw new Error("The builder SRT path was not created.");
     progress?.set(`${batchLabel}Preparing selected scene image for I2V...`, pct(12));
     await ensureSelectedImageForSceneVideo(segment, sceneIndex);
-    let audioPathForScene = audioInput.value;
+    let audioPathForScene = options.audioPathOverride || audioInput.value;
     let promptNumberForScene = sceneIndex + 1;
-    if (segment.custom_audio_path) {
+    if (options.srtPathOverride) {
+      srtPath = options.srtPathOverride;
+    }
+    if (segment.custom_audio_path && !options.audioPathOverride) {
       const trimmedAudio = await postJson("/vrgdg/music_builder/trim_scene_audio", {
         project_folder: projectInput.value,
         scene_number: sceneIndex + 1,
@@ -4669,6 +4838,7 @@ function openBuilder(node) {
       source_path: videoPath,
       project_folder: projectInput.value,
       scene_number: sceneIndex + 1,
+      existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
     pushHistory();
     segment.video_output = video;
@@ -4681,7 +4851,8 @@ function openBuilder(node) {
     if (options.autoSaveAfter !== false) {
       await autoSaveSessionQuiet(options.autoSaveReason || "scene video complete");
     }
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, segment.video_folder || collectedSceneVideoFolder(), `${batchLabel}Scene video ready.\n${segment.video_path}`), pct(100));
+    const backupNote = collected.backup_path ? `\n\nPrevious video backed up to:\n${collected.backup_path}` : "";
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, segment.video_folder || collectedSceneVideoFolder(), `${batchLabel}Scene video ready.\n${segment.video_path}${backupNote}`), pct(100));
     return segment.video_path;
   }
 
@@ -4726,12 +4897,19 @@ function openBuilder(node) {
       toast(missing.join("\n"), true);
       return;
     }
+    let existingVideoAction = "overwrite";
+    if (String(segment.video_path || "").trim()) {
+      existingVideoAction = await askExistingSceneVideoAction(segment, sceneIndex);
+      if (existingVideoAction === "cancel") return;
+    }
     let progress = null;
     try {
       createSceneVideoButton.disabled = true;
       createSceneVideoButton.textContent = "Creating...";
       progress = createProgressWindow("Creating scene video");
-      const videoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress);
+      const videoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+        existingVideoAction,
+      });
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
@@ -4762,6 +4940,7 @@ function openBuilder(node) {
       createSceneVideoButton.disabled = true;
       progress.set("Autosaving session/SRT before Render All...", 3);
       await saveSessionForSceneVideo();
+      const preparedAudio = await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
       const scenes = state.segments
         .map((segment, index) => ({ segment, index }))
         .filter(({ segment }) => !String(segment?.video_path || "").trim());
@@ -4780,6 +4959,8 @@ function openBuilder(node) {
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
+          audioPathOverride: preparedAudio.audioPath,
+          srtPathOverride: preparedAudio.srtPath,
         });
         assertBatchNotStopped();
         await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
@@ -4985,6 +5166,10 @@ function openBuilder(node) {
     state.sceneAudioMode = false;
     state.sceneAudioSegmentId = "";
     state.sceneAudioGlobalTime = 0;
+    state.zimageSettings = defaultZImageSettings();
+    state.fluxKleinSettings = defaultFluxKleinSettings();
+    state.zEnhanceSettings = defaultZEnhanceSettings();
+    state.i2vVideoSettings = defaultI2VVideoSettings();
     projectInput.value = state.projectFolder;
     srtInput.value = state.srtPath;
     setWidgetValue(node, "audio_path", "");
@@ -5105,6 +5290,50 @@ function openBuilder(node) {
     });
   }
 
+  function askExistingSceneVideoAction(segment, sceneIndex) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = "This scene already has a video";
+      heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+      const body = document.createElement("div");
+      body.style.cssText = "display:flex;flex-direction:column;gap:8px;font-size:13px;color:#d4d4d8;line-height:1.45;";
+      const scene = document.createElement("div");
+      scene.textContent = `${sceneDisplayName(segment, sceneIndex)} already has a rendered clip.`;
+      const path = document.createElement("div");
+      path.textContent = String(segment?.video_path || "");
+      path.style.cssText = "border:1px solid #303038;border-radius:6px;background:#18181b;padding:8px;color:#a5f3fc;overflow-wrap:anywhere;font-size:12px;";
+      const note = document.createElement("div");
+      note.textContent = "Choose Backup and replace to keep the old clip, or Overwrite to replace it without saving a backup.";
+      note.style.cssText = "color:#fde68a;";
+      body.append(scene, path, note);
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const overwrite = makeButton("Overwrite");
+      const backup = makeButton("Backup and replace", "primary");
+      cancel.onclick = () => {
+        backdrop.remove();
+        resolve("cancel");
+      };
+      overwrite.onclick = () => {
+        backdrop.remove();
+        resolve("overwrite");
+      };
+      backup.onclick = () => {
+        backdrop.remove();
+        resolve("backup");
+      };
+      actions.append(cancel, overwrite, backup);
+      box.append(heading, body, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
   async function confirmAndRunZImageAll() {
     const ok = await confirmLongBatchAction({
       title: "Run Z-Image All?",
@@ -5217,7 +5446,7 @@ function openBuilder(node) {
   saveProjectAsButton.onclick = saveProjectAs;
   autoSaveControl.input.addEventListener("change", () => {
     state.autoSaveEnabled = Boolean(autoSaveControl.input.checked);
-    if (state.projectFolder || projectInput.value) {
+    if (state.projectFolder) {
       saveSession({ quiet: true });
     }
   });
