@@ -20,6 +20,10 @@ _NONE_LORA = "[none]"
 _I2V_UNET_ALIASES = {
     "LTX-2.3-22B-distilled-11-Q6_K.gguf": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
 }
+_PLACEHOLDER_I2I_IMAGE_NAME = "vrgdg_placeholder_i2i.png"
+_PLACEHOLDER_I2I_IMAGE_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
 
 
 def _workflow_template_path():
@@ -284,6 +288,26 @@ def _prepare_load_image_name(path="", data="", name="image.png"):
     return ""
 
 
+def _ensure_placeholder_load_image():
+    input_dir = folder_paths.get_input_directory()
+    os.makedirs(input_dir, exist_ok=True)
+    target_path = os.path.join(input_dir, _PLACEHOLDER_I2I_IMAGE_NAME)
+    if os.path.isfile(target_path) and os.path.getsize(target_path) > 0:
+        return _PLACEHOLDER_I2I_IMAGE_NAME
+
+    source_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "images",
+        _PLACEHOLDER_I2I_IMAGE_NAME,
+    )
+    if os.path.isfile(source_path) and os.path.getsize(source_path) > 0:
+        shutil.copy2(source_path, target_path)
+    else:
+        with open(target_path, "wb") as handle:
+            handle.write(base64.b64decode(_PLACEHOLDER_I2I_IMAGE_BASE64))
+    return _PLACEHOLDER_I2I_IMAGE_NAME
+
+
 def _patch_zimage_api_prompt(prompt, payload):
     prompt = copy.deepcopy(prompt)
     prompt_text = str(payload.get("prompt", "") or "").strip()
@@ -317,6 +341,7 @@ def _patch_zimage_api_prompt(prompt, payload):
     _set_api_input(prompt, "978", "switch", use_i2i)
     _set_api_input(prompt, "981", "switch", use_i2i)
     _set_api_input(prompt, "983", "value", start_at_step)
+    _set_api_input(prompt, "979", "image", _ensure_placeholder_load_image())
     if use_i2i:
         image_name = _prepare_load_image_name(
             payload.get("image_to_image_path", ""),
@@ -1301,6 +1326,11 @@ def _ensure_workflow_runner_routes():
     server_instance = getattr(PromptServer, "instance", None)
     if server_instance is None:
         return
+
+    try:
+        _ensure_placeholder_load_image()
+    except Exception as exc:
+        print(f"[VRGDG] Could not prepare placeholder image for LoadImage validation: {exc}")
 
     @server_instance.routes.get("/vrgdg/workflow_runner/lora_list")
     async def vrgdg_workflow_runner_lora_list(request):
