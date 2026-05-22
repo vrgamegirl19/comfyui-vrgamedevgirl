@@ -327,6 +327,41 @@ function showTextInputModal({ title, label, value = "", placeholder = "", confir
   });
 }
 
+function showAddSegmentPositionModal(sceneLabel = "selected scene") {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(460px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Add Segment";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const body = document.createElement("div");
+    body.textContent = `Add a new segment before or after ${sceneLabel}?`;
+    body.style.cssText = "font-size:13px;line-height:1.45;color:#d4d4d8;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+    const before = makeButton("Before", "primary");
+    const after = makeButton("After", "primary");
+    const cancel = makeButton("Cancel");
+    const finish = (result) => {
+      backdrop.remove();
+      resolve(result);
+    };
+    before.onclick = () => finish("before");
+    after.onclick = () => finish("after");
+    cancel.onclick = () => finish(null);
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+    });
+    actions.append(before, after, cancel);
+    box.append(heading, body, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    before.focus();
+  });
+}
+
 function pickProjectSessionFile() {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
@@ -5469,21 +5504,22 @@ function openBuilder(node) {
     customImageFileInput.click();
   }
 
-  function addSegment() {
+  async function addSegment() {
     const active = activeSegment();
     let insertIndex = state.segments.length;
     let start = state.segments[state.segments.length - 1]?.end || 0;
-    if (state.srtMode && active) {
-      const choice = window.prompt("Add segment before or after the selected scene? Type before or after.", "after");
-      if (choice === null) return;
-      const normalized = String(choice || "").trim().toLowerCase();
+    if (active) {
       const activeIndex = state.segments.findIndex((segment) => segment.id === active.id);
-      if (normalized.startsWith("before")) {
-        insertIndex = Math.max(0, activeIndex);
-        start = active.start;
-      } else {
-        insertIndex = activeIndex + 1;
-        start = active.end;
+      if (activeIndex >= 0) {
+        const choice = await showAddSegmentPositionModal(active.label || `Scene ${activeIndex + 1}`);
+        if (!choice) return;
+        if (choice === "before") {
+          insertIndex = Math.max(0, activeIndex);
+          start = active.start;
+        } else {
+          insertIndex = activeIndex + 1;
+          start = active.end;
+        }
       }
     }
     const end = Math.min(state.duration || start + 4, start + 4);

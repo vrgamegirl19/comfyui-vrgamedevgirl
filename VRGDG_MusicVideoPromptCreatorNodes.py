@@ -288,17 +288,75 @@ def _clean_llm_json_text(text):
     return cleaned.strip()
 
 
+def _repair_json_like_text(text):
+    repaired = str(text or "").strip()
+    repaired = repaired.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    repaired = re.sub(r"//.*?$", "", repaired, flags=re.MULTILINE)
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    repaired = re.sub(
+        r'([{\[,]\s*)([A-Za-z_]*(?:Prompt|prompt|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\d+)\s*:',
+        r'\1"\2":',
+        repaired,
+    )
+    repaired = re.sub(
+        r'(^\s*)([A-Za-z_]*(?:Prompt|prompt|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\d+)\s*:',
+        r'\1"\2":',
+        repaired,
+        flags=re.MULTILINE,
+    )
+    return repaired
+
+
+def _parse_json_like_key_value_lines(text):
+    values = {}
+    current_key = None
+    current_parts = []
+    key_pattern = re.compile(
+        r'^\s*"?([A-Za-z_]*(?:Prompt|prompt|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\s*\d+)"?\s*[:=]\s*(.*?)(?:,\s*)?$'
+    )
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        if not line or line in ("{", "}", "[", "]"):
+            continue
+        match = key_pattern.match(line)
+        if match:
+            if current_key:
+                values[current_key] = "\n".join(current_parts).strip().strip('"')
+            current_key = match.group(1)
+            value = match.group(2).strip().rstrip(",").strip()
+            current_parts = [value.strip('"')]
+            continue
+        if current_key:
+            current_parts.append(line.rstrip(",").strip('"'))
+    if current_key:
+        values[current_key] = "\n".join(current_parts).strip().strip('"')
+    if not values:
+        raise ValueError("Gemma did not return a JSON object.")
+    return values
+
+
 def _extract_json_object(text):
     cleaned = _clean_llm_json_text(text)
-    try:
-        return json.loads(cleaned)
-    except Exception:
-        pass
+    candidates = [cleaned, _repair_json_like_text(cleaned)]
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start >= 0 and end > start:
-        return json.loads(cleaned[start:end + 1])
-    raise ValueError("Gemma did not return a JSON object.")
+        sliced = cleaned[start:end + 1]
+        candidates.extend([sliced, _repair_json_like_text(sliced)])
+    last_error = None
+    for candidate in candidates:
+        if not str(candidate or "").strip():
+            continue
+        try:
+            return json.loads(candidate)
+        except Exception as error:
+            last_error = error
+    try:
+        return _parse_json_like_key_value_lines(cleaned)
+    except Exception:
+        if last_error:
+            raise last_error
+        raise ValueError("Gemma did not return a JSON object.")
 
 
 def _parse_whisper_segments(text):
@@ -317,18 +375,37 @@ def _parse_whisper_segments(text):
 
 
 def _segment_count_from_mapping(mapping):
-    return len([key for key in mapping if re.match(r"^(?:lyricSegment|segment)\d+$", str(key))])
+    return len([key for key in mapping if re.match(r"^(?:lyricSegment|segment|segments)\s*\d+$", str(key), flags=re.IGNORECASE)])
+
+
+def _canonical_segment_mapping(value):
+    fixed = {}
+    for raw_key, raw_value in (value or {}).items():
+        match = re.match(r"^(?:lyricSegment|segment|segments)\s*(\d+)$", str(raw_key), flags=re.IGNORECASE)
+        if match:
+            fixed[f"segment{int(match.group(1))}"] = str(raw_value or "").strip()
+    return {key: fixed[key] for key in sorted(fixed, key=lambda item: int(re.search(r"\d+", item).group(0)))}
+
+
+def _canonical_prompt_mapping(value):
+    fixed = {}
+    for raw_key, raw_value in (value or {}).items():
+        match = re.match(r"^Prompt\s*(\d+)$", str(raw_key), flags=re.IGNORECASE)
+        if match:
+            fixed[f"Prompt{int(match.group(1))}"] = str(raw_value or "").strip()
+    return {key: fixed[key] for key in sorted(fixed, key=lambda item: int(re.search(r"\d+", item).group(0)))}
 
 
 def _validate_segment_json(value, expected_count):
     if not isinstance(value, dict):
         raise ValueError("Segment output is not a JSON object.")
+    indexed = {int(re.search(r"\d+", key).group(0)): raw_value for key, raw_value in _canonical_segment_mapping(value).items()}
     fixed = {}
     for index in range(1, int(expected_count) + 1):
         key = f"segment{index}"
-        if key not in value:
+        if index not in indexed:
             raise ValueError(f"Segment output is missing {key}.")
-        text = str(value.get(key, "") or "").strip()
+        text = str(indexed.get(index, "") or "").strip()
         if not text:
             raise ValueError(f"{key} is empty.")
         fixed[key] = text
@@ -338,12 +415,13 @@ def _validate_segment_json(value, expected_count):
 def _validate_prompt_json(value, expected_count):
     if not isinstance(value, dict):
         raise ValueError("Prompt output is not a JSON object.")
+    indexed = {int(re.search(r"\d+", key).group(0)): raw_value for key, raw_value in _canonical_prompt_mapping(value).items()}
     fixed = {}
     for index in range(1, int(expected_count) + 1):
         key = f"Prompt{index}"
-        if key not in value:
+        if index not in indexed:
             raise ValueError(f"Prompt output is missing {key}.")
-        text = str(value.get(key, "") or "").strip()
+        text = str(indexed.get(index, "") or "").strip()
         if not text:
             raise ValueError(f"{key} is empty.")
         fixed[key] = text
@@ -488,6 +566,10 @@ def _save_prompt_creator_outputs(payload):
         corrected_segments = _extract_json_object(corrected_segments)
     if isinstance(concept_prompts, str) and concept_prompts.strip():
         concept_prompts = _extract_json_object(concept_prompts)
+    if corrected_segments:
+        corrected_segments = _canonical_segment_mapping(corrected_segments)
+    if concept_prompts:
+        concept_prompts = _canonical_prompt_mapping(concept_prompts)
 
     files = {}
     values = {
