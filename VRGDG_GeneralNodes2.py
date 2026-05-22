@@ -663,6 +663,42 @@ def _build_gemma4_prompt(target, payload):
     style_theme = str(payload.get("style_theme", "") or "").strip()
     story_idea = str(payload.get("story_idea", "") or "").strip()
 
+    if target == "builder_style_theme":
+        idea = notes or lyrics or style_theme or story_idea
+        prompt = (
+            f"{_VRGDG_GEMMA4_STYLE_INSTRUCTIONS}\n\n"
+            "Create the style/theme block from normal user ideas instead of lyrics.\n"
+            "Use the user's rough idea as the full creative direction.\n"
+            "If the idea is short, infer a useful cinematic visual style without adding extra sections.\n\n"
+            f"User idea:\n{idea}"
+        )
+        return prompt
+
+    if target == "builder_story_idea":
+        idea = notes or story_idea or lyrics
+        prompt = (
+            f"{_VRGDG_GEMMA4_STORY_INSTRUCTIONS}\n\n"
+            "Create the story idea from normal user ideas instead of lyrics.\n"
+            "Treat the user idea as the full creative foundation.\n"
+            "Do not ask for lyrics. Output only the story concept.\n\n"
+            f"User idea:\n{idea}"
+        )
+        if style_theme:
+            prompt += f"\n\nStyle/theme:\n{style_theme}"
+        return prompt
+
+    if target == "builder_subjects_and_scenes":
+        idea = notes or story_idea or lyrics
+        prompt = (
+            f"{_VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS}\n\n"
+            "Create the subject and location list from normal user ideas instead of lyrics.\n"
+            "Use the user idea as the highest priority creative direction.\n"
+        )
+        if style_theme:
+            prompt += f"\n\nStyle/theme:\n{style_theme}"
+        prompt += f"\n\nStory or user idea:\n{idea}"
+        return prompt
+
     if target == "style_theme":
         prompt = f"{_VRGDG_GEMMA4_STYLE_INSTRUCTIONS}\n\nfull lyrics:\n{lyrics}"
         if notes:

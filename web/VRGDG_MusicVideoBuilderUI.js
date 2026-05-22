@@ -448,13 +448,10 @@ function showWelcomeProjectModal(projects = []) {
       list.append(empty);
     } else {
       for (const project of projects) {
-        const button = makeButton("");
-        button.style.textAlign = "left";
-        button.style.display = "flex";
-        button.style.flexDirection = "column";
-        button.style.alignItems = "stretch";
-        button.style.gap = "4px";
-        button.style.padding = "10px";
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #3f3f46;border-radius:7px;background:#18181b;padding:10px;";
+        const info = document.createElement("div");
+        info.style.cssText = "display:flex;flex-direction:column;gap:4px;min-width:0;";
         const name = document.createElement("div");
         name.textContent = project.name || "Unnamed project";
         name.style.cssText = "font-size:13px;font-weight:900;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
@@ -465,9 +462,36 @@ function showWelcomeProjectModal(projects = []) {
         const path = document.createElement("div");
         path.textContent = project.project_folder || "";
         path.style.cssText = "font-size:11px;color:#67e8f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-        button.append(name, meta, path);
-        button.onclick = () => finish({ action: "load", project_folder: project.project_folder || "" });
-        list.append(button);
+        info.append(name, meta, path);
+        const open = makeButton("Open", "primary");
+        const del = makeButton("Delete");
+        del.style.borderColor = "#7f1d1d";
+        del.style.color = "#fecaca";
+        open.onclick = () => finish({ action: "load", project_folder: project.project_folder || "" });
+        del.onclick = async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const ok = await showDeleteProjectConfirm(project);
+          if (!ok) return;
+          try {
+            del.disabled = true;
+            del.textContent = "Deleting...";
+            await postJson("/vrgdg/music_builder/delete_project", { project_folder: project.project_folder }, 120000);
+            row.remove();
+            if (!list.children.length) {
+              const empty = document.createElement("div");
+              empty.textContent = "No existing projects were found in the ComfyUI output folder.";
+              empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:14px;color:#a1a1aa;font-size:12px;text-align:center;";
+              list.append(empty);
+            }
+          } catch (error) {
+            del.disabled = false;
+            del.textContent = "Delete";
+            toast(String(error?.message || error), true);
+          }
+        };
+        row.append(info, open, del);
+        list.append(row);
       }
     }
 
@@ -476,6 +500,44 @@ function showWelcomeProjectModal(projects = []) {
     document.body.append(backdrop);
     backdrop.tabIndex = -1;
     backdrop.focus();
+  });
+}
+
+function showDeleteProjectConfirm(project) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #7f1d1d;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Delete Project?";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#fecaca;";
+    const body = document.createElement("div");
+    body.textContent = "This deletes the full project folder from disk. This cannot be undone.";
+    body.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+    const name = document.createElement("div");
+    name.textContent = project?.name || "Unnamed project";
+    name.style.cssText = "font-size:13px;font-weight:900;color:#f8fafc;";
+    const path = document.createElement("div");
+    path.textContent = project?.project_folder || "";
+    path.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const confirm = makeButton("Delete Project");
+    confirm.style.borderColor = "#7f1d1d";
+    confirm.style.background = "#991b1b";
+    confirm.style.color = "#fee2e2";
+    const finish = (value) => {
+      backdrop.remove();
+      resolve(value);
+    };
+    cancel.onclick = () => finish(false);
+    confirm.onclick = () => finish(true);
+    actions.append(cancel, confirm);
+    box.append(heading, body, name, path, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
   });
 }
 
@@ -573,9 +635,10 @@ function extractVideosFromHistory(historyPayload, promptId) {
   return videos;
 }
 
-async function waitForVideos(promptId, onStatus) {
+async function waitForVideos(promptId, onStatus, shouldCancel) {
   const started = Date.now();
   while (Date.now() - started < 40 * 60 * 1000) {
+    if (shouldCancel?.()) throw new Error("Stopped by user.");
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
@@ -587,9 +650,10 @@ async function waitForVideos(promptId, onStatus) {
   throw new Error("Timed out waiting for the scene video.");
 }
 
-async function waitForImages(promptId, onStatus) {
+async function waitForImages(promptId, onStatus, shouldCancel) {
   const started = Date.now();
   while (Date.now() - started < 20 * 60 * 1000) {
+    if (shouldCancel?.()) throw new Error("Stopped by user.");
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
@@ -601,9 +665,10 @@ async function waitForImages(promptId, onStatus) {
   throw new Error("Timed out waiting for the ZImage preview.");
 }
 
-async function waitForText(promptId, onStatus) {
+async function waitForText(promptId, onStatus, shouldCancel) {
   const started = Date.now();
   while (Date.now() - started < 5 * 60 * 1000) {
+    if (shouldCancel?.()) throw new Error("Stopped by user.");
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
@@ -1092,8 +1157,6 @@ function openBuilder(node) {
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
-  const i2vVideoPanel = document.createElement("div");
-  i2vVideoPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
   const i2vUnetPicker = makeSearchableLoraPicker("");
   const i2vVaePicker = makeSearchableLoraPicker("");
   const i2vClip1Picker = makeSearchableLoraPicker("");
@@ -1128,19 +1191,31 @@ function openBuilder(node) {
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   i2vSettingsGrid.append(makeField("FPS", i2vFpsInput), makeField("Seed", i2vSeedInput), makeField("Width", i2vWidthInput), makeField("Height", i2vHeightInput));
   const createSceneVideoButton = makeButton("Create Scene Video", "primary");
-  i2vVideoPanel.append(
-    makeField("Unet model", i2vUnetPicker.wrapper),
-    makeField("Video VAE", i2vVaePicker.wrapper),
-    makeField("Clip model 1", i2vClip1Picker.wrapper),
-    makeField("Clip model 2", i2vClip2Picker.wrapper),
-    makeField("Latent upscaler", i2vUpscalePicker.wrapper),
-    makeField("Audio VAE", i2vAudioVaePicker.wrapper),
-    i2vSettingsGrid,
-    i2vUseLora.wrapper,
-    i2vLoraPanel,
-    createSceneVideoButton,
-  );
-  const previewButton = makeButton("Create Image", "primary");
+  const createSceneVideoButtons = [createSceneVideoButton];
+  function makeCreateSceneVideoButton() {
+    const button = makeButton("Create Scene Video", "primary");
+    createSceneVideoButtons.push(button);
+    return button;
+  }
+  const previewButton = makeButton("Create Z-Image", "primary");
+  const zCreateButtons = [previewButton];
+  function makeZCreateButton() {
+    const button = makeButton("Create Z-Image", "primary");
+    zCreateButtons.push(button);
+    return button;
+  }
+  const fluxCreateButtons = [previewFluxButton];
+  function makeFluxCreateButton() {
+    const button = makeButton("Create with Flux/Klein", "primary");
+    fluxCreateButtons.push(button);
+    return button;
+  }
+  function setButtonGroupState(buttons, { disabled = false, text = "" } = {}) {
+    for (const button of buttons) {
+      button.disabled = disabled;
+      if (text) button.textContent = text;
+    }
+  }
   const inspectorActions = document.createElement("div");
   inspectorActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;";
   inspectorActions.append(previewButton);
@@ -1200,6 +1275,7 @@ function openBuilder(node) {
     makeField("Vision mmproj", mmprojSelect),
     zUseLora.wrapper,
     zLoraPanel,
+    makeZCreateButton(),
   ]);
   const zImageSettingsSection = makeSettingsPanel([
     useSceneZImageSettings.wrapper,
@@ -1220,6 +1296,7 @@ function openBuilder(node) {
     createT2IButton,
     makeField("T2I prompt", t2iPrompt),
     sendT2IPromptToEnhanceButton,
+    makeZCreateButton(),
   ]);
   const zImageSubTabs = makeSubTabs([
     { label: "Models", value: "models", content: zImageModelsSection },
@@ -1239,6 +1316,7 @@ function openBuilder(node) {
         makeField("Flux model", fluxUnetPicker.wrapper),
         makeField("Flux CLIP", fluxClipPicker.wrapper),
         makeField("Flux VAE", fluxVaePicker.wrapper),
+        makeFluxCreateButton(),
       ]),
     },
     {
@@ -1258,6 +1336,7 @@ function openBuilder(node) {
         createFluxPromptButton,
         makeField("Flux/Klein prompt", fluxPrompt),
         sendFluxPromptToEnhanceButton,
+        makeFluxCreateButton(),
       ]),
     },
   ]);
@@ -1318,22 +1397,46 @@ function openBuilder(node) {
     zEnhancePanel,
     inspectorActions,
   );
-  videoPanel.append(
-    makeSettingsSection("Models", [
-      makeField("I2V Gemma model", i2vGemmaModelSelect),
-      makeField("I2V vision mmproj", i2vMmprojSelect),
-    ]),
-    makeSettingsSection("LLM Prompting", [
-      makeField("I2V motion notes", i2vNotesInput),
-      useI2VVisionReference.wrapper,
-      i2vReferenceNote,
-      createI2VButton,
-      makeField("I2V prompt", i2vPrompt),
-    ]),
-    makeSettingsSection("Video Render Settings", [
-      i2vVideoPanel,
-    ]),
-  );
+  const videoSubTabs = makeSubTabs([
+    {
+      label: "Models",
+      value: "models",
+      content: makeSettingsPanel([
+        makeField("I2V Gemma model", i2vGemmaModelSelect),
+        makeField("I2V vision mmproj", i2vMmprojSelect),
+        makeField("Unet model", i2vUnetPicker.wrapper),
+        makeField("Video VAE", i2vVaePicker.wrapper),
+        makeField("Clip model 1", i2vClip1Picker.wrapper),
+        makeField("Clip model 2", i2vClip2Picker.wrapper),
+        makeField("Latent upscaler", i2vUpscalePicker.wrapper),
+        makeField("Audio VAE", i2vAudioVaePicker.wrapper),
+        i2vUseLora.wrapper,
+        i2vLoraPanel,
+        createSceneVideoButton,
+      ]),
+    },
+    {
+      label: "Video Settings",
+      value: "settings",
+      content: makeSettingsPanel([
+        i2vSettingsGrid,
+        makeCreateSceneVideoButton(),
+      ]),
+    },
+    {
+      label: "LLM Prompting",
+      value: "prompting",
+      content: makeSettingsPanel([
+        makeField("I2V motion notes", i2vNotesInput),
+        useI2VVisionReference.wrapper,
+        i2vReferenceNote,
+        createI2VButton,
+        makeField("I2V prompt", i2vPrompt),
+        makeCreateSceneVideoButton(),
+      ]),
+    },
+  ]);
+  videoPanel.append(videoSubTabs.wrapper);
   audioPanel.append(
     makeSettingsSection("Scene Audio", [
       audioSummary,
@@ -1414,10 +1517,20 @@ function openBuilder(node) {
   const timelineInfo = document.createElement("div");
   timelineInfo.textContent = "No audio loaded";
   timelineInfo.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;";
+  const selectedMediaTools = document.createElement("div");
+  selectedMediaTools.style.cssText = "margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:6px 8px;";
+  const selectedMediaLabel = document.createElement("span");
+  selectedMediaLabel.textContent = "Selected media: none";
+  selectedMediaLabel.style.cssText = "font-size:12px;color:#a1a1aa;white-space:nowrap;";
+  const deleteSelectedMediaButton = makeButton("Delete Image/Video");
+  deleteSelectedMediaButton.style.padding = "6px 10px";
+  deleteSelectedMediaButton.style.borderColor = "#7f1d1d";
+  deleteSelectedMediaButton.style.color = "#fecaca";
+  selectedMediaTools.append(selectedMediaLabel, deleteSelectedMediaButton);
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(addSegmentButton, undoButton, redoButton, deleteSegmentButton, playButton, stopButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo);
+  timelineHeader.append(addSegmentButton, undoButton, redoButton, deleteSegmentButton, playButton, stopButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -1927,6 +2040,31 @@ function openBuilder(node) {
     const history = Array.isArray(segment?.video_history) ? segment.video_history : [];
     const index = Math.max(0, Math.min(history.length - 1, Number(segment?.video_history_index || 0)));
     return history[index] || segment?.video_path || "";
+  }
+
+  function selectedSegmentImagePath(segment) {
+    ensureSegmentRuntimeFields(segment);
+    const history = Array.isArray(segment?.image_history) ? segment.image_history : [];
+    const index = Math.max(0, Math.min(history.length - 1, Number(segment?.image_history_index || 0)));
+    return history[index] || segment?.approved_image_path || segment?.custom_image_path || "";
+  }
+
+  function selectedMediaForDelete() {
+    const segment = activeSegment();
+    if (!segment) return { segment: null, type: "", path: "" };
+    if (segment.preview_mode === "video") {
+      return { segment, type: "video", path: selectedSegmentVideoPath(segment) };
+    }
+    return { segment, type: "image", path: selectedSegmentImagePath(segment) };
+  }
+
+  function updateSelectedMediaTools() {
+    const media = selectedMediaForDelete();
+    const label = media.type ? `Selected media: ${media.type}` : "Selected media: none";
+    selectedMediaLabel.textContent = media.path ? label : `${label} missing`;
+    deleteSelectedMediaButton.textContent = media.type === "video" ? "Delete Video" : "Delete Image";
+    deleteSelectedMediaButton.disabled = !media.path;
+    deleteSelectedMediaButton.style.opacity = media.path ? "1" : ".55";
   }
 
   function syncPreview(segment) {
@@ -3348,18 +3486,45 @@ function openBuilder(node) {
     });
   }
 
-  async function editContextTextFile(input, title) {
-    const path = String(input.value || "").trim();
+  function projectContextPath(filename) {
+    const folder = String(projectInput.value || state.projectFolder || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") ? "\\" : "/";
+    return `${folder}${separator}project_context${separator}${filename}`;
+  }
+
+  async function loadContextTextQuiet(path) {
+    const filePath = String(path || "").trim();
+    if (!filePath) return "";
+    try {
+      const data = await postJson("/vrgdg/music_builder/load_text_file", { path: filePath });
+      return String(data.content || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  async function editContextTextFile(input, title, filename, gemmaTarget) {
+    let path = String(input.value || "").trim();
     if (!path) {
-      toast("Set the text file path first.", true);
-      return;
+      path = projectContextPath(filename);
+      if (!path) {
+        toast("Create or choose a project folder first, then this editor can create the text file.", true);
+        return;
+      }
+      input.value = path;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     }
     let data;
     try {
       data = await postJson("/vrgdg/music_builder/load_text_file", { path });
     } catch (error) {
-      toast(String(error?.message || error), true);
-      return;
+      const message = String(error?.message || error);
+      if (!/not found|was not found|cannot find/i.test(message)) {
+        toast(message, true);
+        return;
+      }
+      data = { path, content: "" };
     }
 
     const box = document.createElement("div");
@@ -3381,20 +3546,76 @@ function openBuilder(node) {
     const pathText = document.createElement("div");
     pathText.textContent = data.path || path;
     pathText.style.cssText = "padding:8px 12px;border-bottom:1px solid #1f2937;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
+    const gemmaHelp = document.createElement("div");
+    const helperByTarget = {
+      builder_style_theme: "Gemma uses only the text in this box as the user idea. It unloads the model after the draft is created.",
+      builder_story_idea: "Gemma uses the text in this box plus the current theme/style file if one exists. It unloads the model after the draft is created.",
+      builder_subjects_and_scenes: "Gemma uses the text in this box plus the current theme/style and story idea files if they exist. It unloads the model after the draft is created.",
+    };
+    gemmaHelp.textContent = helperByTarget[gemmaTarget] || "Gemma uses the text in this box as user input and unloads the model after the draft is created.";
+    gemmaHelp.style.cssText = "padding:8px 12px;border-bottom:1px solid #1f2937;color:#a1a1aa;font-size:11px;line-height:1.35;background:#0b1120;";
     const textarea = document.createElement("textarea");
     textarea.value = data.content || "";
     textarea.spellcheck = false;
     textarea.style.cssText = "width:100%;height:100%;box-sizing:border-box;border:0;resize:none;background:#020617;color:#fafafa;padding:12px;font-size:12px;line-height:1.45;outline:none;font-family:monospace;";
     const actions = document.createElement("div");
     actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;padding:10px 12px;border-top:1px solid #155e75;background:#111827;";
+    const gemma = makeButton("Gemma4 Draft", "primary");
     const save = makeButton("Save", "primary");
     const cancel = makeButton("Cancel");
-    actions.append(cancel, save);
-    box.append(header, pathText, textarea, actions);
+    actions.append(gemma, cancel, save);
+    box.append(header, pathText, gemmaHelp, textarea, actions);
     document.body.append(box);
     textarea.focus();
     close.onclick = () => box.remove();
     cancel.onclick = () => box.remove();
+    gemma.onclick = async () => {
+      const idea = String(textarea.value || "").trim();
+      const modelFile = String(gemmaModelSelect.value || i2vGemmaModelSelect.value || fluxGemmaModelSelect.value || "").trim();
+      if (!modelFile) {
+        toast("Choose a Gemma4 model first in the Image tab model settings.", true);
+        return;
+      }
+      if (!idea) {
+        toast("Type a rough idea in this box first, then Gemma4 can clean it up.", true);
+        return;
+      }
+      let progress = null;
+      try {
+        gemma.disabled = true;
+        gemma.textContent = "Gemma...";
+        progress = createProgressWindow(title.replace(/^Edit\s+/i, "Gemma4 "));
+        progress.set("Creating draft from your notes...", 25);
+        const styleTheme = gemmaTarget === "builder_story_idea" || gemmaTarget === "builder_subjects_and_scenes"
+          ? await loadContextTextQuiet(themeStyleInput.value)
+          : "";
+        const storyIdea = gemmaTarget === "builder_subjects_and_scenes"
+          ? await loadContextTextQuiet(storyIdeaInput.value)
+          : "";
+        const data = await postJson("/vrgdg/gemma4/generate", {
+          target: gemmaTarget,
+          model_file: modelFile,
+          notes: idea,
+          style_theme: styleTheme,
+          story_idea: storyIdea || idea,
+          unload_after: true,
+          n_ctx: 13000,
+          max_new_tokens: 8000,
+        }, 10 * 60 * 1000);
+        const text = String(data.text || "").trim();
+        if (!text) throw new Error("Gemma4 returned an empty draft.");
+        textarea.value = text;
+        progress.set(data.unloaded ? "Draft ready. Gemma4 was unloaded." : "Draft ready.", 100);
+        progress.close(900);
+        toast("Gemma4 draft is ready. Review it, then click Save.");
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        gemma.disabled = false;
+        gemma.textContent = "Gemma4 Draft";
+      }
+    };
     save.onclick = async () => {
       try {
         save.disabled = true;
@@ -3417,6 +3638,7 @@ function openBuilder(node) {
     drawWaveform();
     renderSegments();
     renderList();
+    updateSelectedMediaTools();
     timelineInfo.textContent = `${state.segments.length} segment${state.segments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
   }
 
@@ -4293,8 +4515,7 @@ function openBuilder(node) {
     }
     let progress = null;
     try {
-      previewButton.disabled = true;
-      previewButton.textContent = "Creating...";
+      setButtonGroupState(zCreateButtons, { disabled: true, text: "Creating..." });
       progress = createProgressWindow("Creating ZImage preview");
       progress.set("Autosaving session/SRT before ZImage...", 8);
       await autoSaveSessionQuiet("ZImage preview");
@@ -4307,8 +4528,7 @@ function openBuilder(node) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
-      previewButton.disabled = false;
-      previewButton.textContent = "Create Image";
+      setButtonGroupState(zCreateButtons, { disabled: false, text: "Create Z-Image" });
     }
   }
 
@@ -4374,8 +4594,7 @@ function openBuilder(node) {
     }
     let progress = null;
     try {
-      previewFluxButton.disabled = true;
-      previewFluxButton.textContent = "Creating...";
+      setButtonGroupState(fluxCreateButtons, { disabled: true, text: "Creating..." });
       progress = createProgressWindow("Creating Flux/Klein image");
       progress.set("Autosaving session/SRT before Flux/Klein image...", 8);
       await autoSaveSessionQuiet("Flux/Klein image");
@@ -4424,8 +4643,7 @@ function openBuilder(node) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
-      previewFluxButton.disabled = false;
-      previewFluxButton.textContent = "Create with Flux/Klein";
+      setButtonGroupState(fluxCreateButtons, { disabled: false, text: "Create with Flux/Klein" });
     }
   }
 
@@ -4975,7 +5193,11 @@ function openBuilder(node) {
     const promptId = queued?.prompt_id;
     if (!promptId) throw new Error("ComfyUI queued the video but did not return a prompt_id.");
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queued prompt ID: ${promptId}\nWaiting for video...`), pct(60));
-    const videos = await waitForVideos(promptId, (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}${message}\nPrompt ID: ${promptId}`), pct(80)));
+    const videos = await waitForVideos(
+      promptId,
+      (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}${message}\nPrompt ID: ${promptId}`), pct(80)),
+      () => state.batchCancelled
+    );
     const video = videos[videos.length - 1] || null;
     const videoPath = resolveComfyVideoPath(video);
     if (!videoPath) throw new Error("The I2V workflow finished, but no video path was found in history.");
@@ -5053,8 +5275,8 @@ function openBuilder(node) {
     }
     let progress = null;
     try {
-      createSceneVideoButton.disabled = true;
-      createSceneVideoButton.textContent = "Creating...";
+      state.batchCancelled = false;
+      setButtonGroupState(createSceneVideoButtons, { disabled: true, text: "Creating..." });
       progress = createProgressWindow("Creating scene video");
       const videoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
         existingVideoAction,
@@ -5062,13 +5284,13 @@ function openBuilder(node) {
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
-      segment.video_status = "error";
-      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
-      toast(String(error?.message || error), true);
+      const stopped = /stopped by user/i.test(String(error?.message || error));
+      segment.video_status = stopped ? "none" : "error";
+      progress?.set(stopped ? "Scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
+      toast(stopped ? "Scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
     } finally {
-      createSceneVideoButton.disabled = false;
-      createSceneVideoButton.textContent = "Create Scene Video";
+      setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
     }
   }
 
@@ -5086,7 +5308,7 @@ function openBuilder(node) {
       state.batchCancelled = false;
       renderAllButton.disabled = true;
       renderAllButton.textContent = "Rendering...";
-      createSceneVideoButton.disabled = true;
+      setButtonGroupState(createSceneVideoButtons, { disabled: true });
       progress.set("Autosaving session/SRT before Render All...", 3);
       await saveSessionForSceneVideo();
       const preparedAudio = await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
@@ -5126,7 +5348,7 @@ function openBuilder(node) {
     } finally {
       renderAllButton.disabled = false;
       renderAllButton.textContent = "Render All";
-      createSceneVideoButton.disabled = false;
+      setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       state.batchCancelled = false;
       syncInspector();
       render();
@@ -5153,7 +5375,7 @@ function openBuilder(node) {
       state.batchCancelled = false;
       zImageAllButton.disabled = true;
       zImageAllButton.textContent = "Z-Imaging...";
-      previewButton.disabled = true;
+      setButtonGroupState(zCreateButtons, { disabled: true });
       createT2IButton.disabled = true;
       progress.set("Autosaving session/SRT before Z-Image All...", 3);
       await saveSessionForSceneVideo();
@@ -5199,7 +5421,7 @@ function openBuilder(node) {
     } finally {
       zImageAllButton.disabled = false;
       zImageAllButton.textContent = "Z-Image All";
-      previewButton.disabled = false;
+      setButtonGroupState(zCreateButtons, { disabled: false, text: "Create Z-Image" });
       createT2IButton.disabled = false;
       state.batchCancelled = false;
       syncInspector();
@@ -5273,6 +5495,53 @@ function openBuilder(node) {
     syncInspector();
     render();
     autoSaveSessionQuiet("segment deleted");
+  }
+
+  async function deleteSelectedMedia() {
+    const media = selectedMediaForDelete();
+    if (!media.segment || !media.path) {
+      toast("No selected image or video to delete.", true);
+      return;
+    }
+    const ok = await confirmDeleteMediaAction(media.type, media.path);
+    if (!ok) return;
+    try {
+      deleteSelectedMediaButton.disabled = true;
+      deleteSelectedMediaButton.textContent = "Deleting...";
+      await postJson("/vrgdg/music_builder/delete_project_media", {
+        project_folder: projectInput.value,
+        path: media.path,
+      });
+      pushHistory();
+      if (media.type === "video") {
+        media.segment.video_history = (media.segment.video_history || []).filter((item) => item !== media.path);
+        media.segment.video_history_index = Math.min(Math.max(0, Number(media.segment.video_history_index || 0)), media.segment.video_history.length - 1);
+        if (media.segment.video_history_index < 0) media.segment.video_history_index = -1;
+        if (media.segment.video_path === media.path) {
+          media.segment.video_path = media.segment.video_history[media.segment.video_history_index] || "";
+          media.segment.video_source_path = "";
+          media.segment.video_output = null;
+        }
+        if (!media.segment.video_path) media.segment.video_status = "none";
+        media.segment.preview_mode = media.segment.image_history?.length ? "image" : "video";
+      } else {
+        media.segment.image_history = (media.segment.image_history || []).filter((item) => item !== media.path);
+        media.segment.image_history_index = Math.min(Math.max(0, Number(media.segment.image_history_index || 0)), media.segment.image_history.length - 1);
+        if (media.segment.image_history_index < 0) media.segment.image_history_index = -1;
+        if (media.segment.approved_image_path === media.path) media.segment.approved_image_path = media.segment.image_history[media.segment.image_history_index] || "";
+        if (media.segment.custom_image_path === media.path) media.segment.custom_image_path = "";
+        media.segment.preview_mode = "image";
+      }
+      syncPreview(media.segment);
+      render();
+      await autoSaveSessionQuiet(`${media.type} deleted`);
+      toast(`Deleted ${media.type} from project.`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      deleteSelectedMediaButton.disabled = false;
+      updateSelectedMediaTools();
+    }
   }
 
   function sendPromptToEnhance(sourceLabel, promptText) {
@@ -5439,6 +5708,43 @@ function openBuilder(node) {
     });
   }
 
+  function confirmDeleteMediaAction(type, path) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #7f1d1d;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = `Delete selected ${type}?`;
+      heading.style.cssText = "font-size:16px;font-weight:900;color:#fecaca;";
+      const body = document.createElement("div");
+      body.textContent = `This deletes the file from the current project folder and removes it from this scene history.`;
+      body.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+      const pathBox = document.createElement("div");
+      pathBox.textContent = path;
+      pathBox.style.cssText = "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const confirm = makeButton(`Delete ${type}`, "danger");
+      confirm.style.borderColor = "#7f1d1d";
+      confirm.style.background = "#991b1b";
+      confirm.style.color = "#fee2e2";
+      cancel.onclick = () => {
+        backdrop.remove();
+        resolve(false);
+      };
+      confirm.onclick = () => {
+        backdrop.remove();
+        resolve(true);
+      };
+      actions.append(cancel, confirm);
+      box.append(heading, body, pathBox, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
   function askExistingSceneVideoAction(segment, sceneIndex) {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
@@ -5554,9 +5860,9 @@ function openBuilder(node) {
     pushHistory();
     state.subjectScenePath = subjectSceneInput.value || "";
   });
-  editThemeStyleButton.onclick = () => editContextTextFile(themeStyleInput, "Edit Theme/Style Text");
-  editStoryIdeaButton.onclick = () => editContextTextFile(storyIdeaInput, "Edit Story Idea Text");
-  editSubjectSceneButton.onclick = () => editContextTextFile(subjectSceneInput, "Edit Subject/Scene Text");
+  editThemeStyleButton.onclick = () => editContextTextFile(themeStyleInput, "Edit Theme/Style Text", "themestyle.txt", "builder_style_theme");
+  editStoryIdeaButton.onclick = () => editContextTextFile(storyIdeaInput, "Edit Story Idea Text", "storyconcept.txt", "builder_story_idea");
+  editSubjectSceneButton.onclick = () => editContextTextFile(subjectSceneInput, "Edit Subject/Scene Text", "subjectsandscenes.txt", "builder_subjects_and_scenes");
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useSceneZImageSettings.input.addEventListener("change", () => {
@@ -5632,11 +5938,11 @@ function openBuilder(node) {
   createI2VButton.onclick = createI2VPromptWithGemma;
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   sendFluxPromptToEnhanceButton.onclick = () => sendPromptToEnhance("Flux/Klein", fluxPrompt.value);
-  previewButton.onclick = previewZImage;
   createFluxPromptButton.onclick = createFluxKleinPromptWithGemma;
-  previewFluxButton.onclick = previewFluxKleinImage;
-  createSceneVideoButton.onclick = createSceneVideo;
+  for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
+  for (const button of zCreateButtons) button.onclick = previewZImage;
+  for (const button of fluxCreateButtons) button.onclick = previewFluxKleinImage;
   customImageFileInput.addEventListener("change", () => {
     const file = customImageFileInput.files?.[0];
     if (file) loadCustomImageFile(file);
@@ -5734,6 +6040,7 @@ function openBuilder(node) {
     loadVisionReferenceFile(file);
   });
   deleteSegmentButton.onclick = deleteSegment;
+  deleteSelectedMediaButton.onclick = deleteSelectedMedia;
   playButton.onclick = () => {
     if (isTimelinePlaying()) {
       pauseAllAudio();

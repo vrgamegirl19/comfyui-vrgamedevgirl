@@ -1429,6 +1429,25 @@ def _save_scene_image(payload):
     }
 
 
+def _delete_project_media(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    media_path = os.path.abspath(str(payload.get("path", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    if not media_path:
+        raise ValueError("Media path is empty.")
+    if not os.path.isfile(media_path):
+        return {"deleted": False, "path": media_path, "reason": "File was already missing."}
+    try:
+        common = os.path.commonpath([project_folder, media_path])
+    except ValueError:
+        common = ""
+    if common != project_folder:
+        raise ValueError("This file is outside the current project folder, so it was not deleted.")
+    os.remove(media_path)
+    return {"deleted": True, "path": media_path}
+
+
 def _archive_scene_image(payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
@@ -1795,6 +1814,25 @@ def _list_builder_projects():
     return {"projects": projects, "output_dir": output_dir}
 
 
+def _delete_builder_project(payload):
+    output_dir = os.path.abspath(folder_paths.get_output_directory())
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    try:
+        common = os.path.commonpath([output_dir, project_folder])
+    except ValueError:
+        common = ""
+    if common != output_dir:
+        raise ValueError("Project is outside the ComfyUI output folder, so it was not deleted.")
+    if not os.path.isdir(project_folder):
+        return {"deleted": False, "project_folder": project_folder, "reason": "Project folder was already missing."}
+    if not os.path.isfile(_session_path(project_folder)):
+        raise ValueError("This folder does not look like a Music Video Builder project.")
+    shutil.rmtree(project_folder)
+    return {"deleted": True, "project_folder": project_folder}
+
+
 def _scan_builder_scene_videos(project_folder):
     folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
     if not folder:
@@ -1865,6 +1903,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _save_scene_image(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/delete_project_media")
+    async def vrgdg_music_builder_delete_project_media(request):
+        try:
+            payload = await request.json()
+            result = _delete_project_media(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -1945,6 +1992,15 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_list_projects(request):
         try:
             result = _list_builder_projects()
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/delete_project")
+    async def vrgdg_music_builder_delete_project(request):
+        try:
+            payload = await request.json()
+            result = _delete_builder_project(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
