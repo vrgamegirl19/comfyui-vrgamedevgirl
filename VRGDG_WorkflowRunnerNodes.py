@@ -1077,6 +1077,82 @@ def _cleanup_i2v_scratch_folders(project_folder, keep_folders=None):
     return removed_folders
 
 
+def _retry_file_op(operation, description, attempts=30, delay=0.25):
+    last_exc = None
+    for attempt in range(max(1, attempts)):
+        try:
+            return operation()
+        except PermissionError as exc:
+            last_exc = exc
+        except OSError as exc:
+            if getattr(exc, "winerror", None) != 32:
+                raise
+            last_exc = exc
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    raise RuntimeError(f"{description} failed because the file stayed locked: {last_exc}") from last_exc
+
+
+def _wait_for_stable_readable_file(path, timeout=20.0, interval=0.25):
+    deadline = time.time() + max(0.5, float(timeout or 0))
+    last_size = -1
+    stable_reads = 0
+    last_exc = None
+    while time.time() < deadline:
+        try:
+            size = os.path.getsize(path)
+            with open(path, "rb") as handle:
+                handle.read(1)
+            if size > 0 and size == last_size:
+                stable_reads += 1
+                if stable_reads >= 2:
+                    return
+            else:
+                stable_reads = 0
+                last_size = size
+        except (OSError, PermissionError) as exc:
+            last_exc = exc
+            stable_reads = 0
+        time.sleep(interval)
+    if last_exc:
+        raise RuntimeError(f"Scene video is still locked and cannot be read: {path}") from last_exc
+
+
+def _replace_file_with_retry(source_path, target_path):
+    _wait_for_stable_readable_file(source_path)
+    temp_target = f"{target_path}.copying"
+    index = 2
+    while os.path.exists(temp_target):
+        temp_target = f"{target_path}.copying_{index:02d}"
+        index += 1
+
+    try:
+        _retry_file_op(
+            lambda: shutil.copy2(source_path, temp_target),
+            f"Copying scene video to temporary file '{temp_target}'",
+        )
+        _retry_file_op(
+            lambda: os.replace(temp_target, target_path),
+            f"Replacing scene video '{target_path}'",
+        )
+    finally:
+        if os.path.exists(temp_target):
+            try:
+                os.remove(temp_target)
+            except Exception:
+                pass
+
+    try:
+        _retry_file_op(
+            lambda: os.remove(source_path),
+            f"Removing scratch scene video '{source_path}'",
+            attempts=8,
+            delay=0.25,
+        )
+    except Exception as exc:
+        print(f"[VRGDG WorkflowRunner] Copied scene video but could not remove scratch source '{source_path}': {exc}")
+
+
 def _collect_scene_video(payload):
     source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
     if not os.path.isfile(source_path):
@@ -1112,10 +1188,16 @@ def _collect_scene_video(payload):
                 while os.path.exists(backup_path):
                     backup_path = os.path.join(backup_dir, f"video_{scene_number:04d}-audio_{stamp}_{index:02d}.mp4")
                     index += 1
-                shutil.move(target_path, backup_path)
+                _retry_file_op(
+                    lambda: shutil.move(target_path, backup_path),
+                    f"Backing up existing scene video '{target_path}'",
+                )
             else:
-                os.remove(target_path)
-        shutil.move(source_path, target_path)
+                _retry_file_op(
+                    lambda: os.remove(target_path),
+                    f"Removing existing scene video '{target_path}'",
+                )
+        _replace_file_with_retry(source_path, target_path)
 
     removed_files = []
     removed_folder = ""
@@ -1126,8 +1208,16 @@ def _collect_scene_video(payload):
                 for name in os.listdir(source_dir):
                     path = os.path.join(source_dir, name)
                     if os.path.isfile(path) and os.path.splitext(name)[1].lower() in {".png", ".mp4"}:
-                        os.remove(path)
-                        removed_files.append(path)
+                        try:
+                            _retry_file_op(
+                                lambda path=path: os.remove(path),
+                                f"Removing I2V scratch file '{path}'",
+                                attempts=8,
+                                delay=0.25,
+                            )
+                            removed_files.append(path)
+                        except Exception as exc:
+                            print(f"[VRGDG WorkflowRunner] Could not delete I2V scratch file '{path}': {exc}")
                 if not os.listdir(source_dir):
                     os.rmdir(source_dir)
                     removed_folder = source_dir

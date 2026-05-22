@@ -1,0 +1,174 @@
+{
+  "954": {
+    "inputs": {
+      "audioUI": "/api/view?filename=ComfyUI_temp_oxwwb_00001_.flac&type=temp&subfolder=&rand=0.43057047930321857",
+      "audio": [
+        "955",
+        0
+      ]
+    },
+    "class_type": "PreviewAudio",
+    "_meta": {
+      "title": "Preview Audio"
+    }
+  },
+  "955": {
+    "inputs": {
+      "model_name": "htdemucs_ft",
+      "device": "auto",
+      "audio_file_path": "",
+      "audio": [
+        "964",
+        0
+      ]
+    },
+    "class_type": "VRGDG_GetStems",
+    "_meta": {
+      "title": "VRGDG_GetStems"
+    }
+  },
+  "956": {
+    "inputs": {
+      "final_mix": [
+        "964",
+        0
+      ],
+      "drums": [
+        "955",
+        1
+      ],
+      "bass": [
+        "955",
+        2
+      ],
+      "vocals": [
+        "955",
+        0
+      ],
+      "other": [
+        "955",
+        3
+      ]
+    },
+    "class_type": "BeatImpactAnalysisNode",
+    "_meta": {
+      "title": "BeatImpactAnalysisNode"
+    }
+  },
+  "957": {
+    "inputs": {
+      "value": ""
+    },
+    "class_type": "PrimitiveString",
+    "_meta": {
+      "title": "String"
+    }
+  },
+  "958": {
+    "inputs": {
+      "srt_path": [
+        "959",
+        0
+      ],
+      "fps": 24,
+      "scene_duration_seconds": 15,
+      "use_ltx2": false,
+      "language": "english",
+      "audio": [
+        "955",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ManualLyricsExtractor_SRT",
+    "_meta": {
+      "title": "Manual Lyrics Extractor (SRT Segments)"
+    }
+  },
+  "959": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "957",
+        0
+      ],
+      "on_true": [
+        "963",
+        1
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "use SRT duration file"
+    }
+  },
+  "960": {
+    "inputs": {
+      "lyrics_text": [
+        "958",
+        0
+      ],
+      "repeat_output_count": 3,
+      "min_repeats_to_collapse": 4,
+      "bridge_single_word_segments": true
+    },
+    "class_type": "VRGDG_LyricSegmentTextCleaner",
+    "_meta": {
+      "title": "VRGDG Lyric Segment Text Cleaner"
+    }
+  },
+  "961": {
+    "inputs": {
+      "text_0": "# Lyrics to fix: (40 segments)\n\nlyricSegment1=Thank you.\nlyricSegment2=Like anyone would be I\nlyricSegment3=I am flattered by your fascination with me.\nlyricSegment4=Like any hot blooded woman\nlyricSegment5=I have simply wanted an object to crave\nlyricSegment6=But you  you're not alone. You're a...\nlyricSegment7=I'm not invited on unfortunate\nlyricSegment8=Unfortunate, slight, sweet.\nlyricSegment9=Sweet  strangely\nlyricSegment10=Exciting to watch the stoic\nlyricSegment11=Stoic, femme, must.\nlyricSegment12=Must be somewhat heart telling to watch him burn me.\nlyricSegment13=Yeah  I've heard But you  you're not a\nlyricSegment14=You're on in my\nlyricSegment15=An unfortunate slide\nlyricSegment16=Thank you.\nlyricSegment17=Thank you.\nlyricSegment18=Like a young child in territory\nlyricSegment19=I'll see you greatly in training.\nlyricSegment20=you speak of my love like you have\nlyricSegment21=I've never experienced love like mine before.\nlyricSegment22=This is not allowed. You're not.\nlyricSegment23=Not, unfortunately, slides.\nlyricSegment24=unfortunately, slides, thank.\nlyricSegment25=Thank you.\nlyricSegment26=I don't think you\nlyricSegment27=I need a moment to\nlyricSegment28=To, bye, thank.\nlyricSegment29=Thank you.\nlyricSegment30=Thank you.\nlyricSegment31=Thank you.\nlyricSegment32=Thank you.\nlyricSegment33=Thank you.\nlyricSegment34=Oh, Oh, Oh.\nlyricSegment35=Oh, Oh, Oh.\nlyricSegment36=Thank you.\nlyricSegment37=Thank you.\nlyricSegment38=Thank you.\nlyricSegment39=Thank you.\nlyricSegment40=Oh, Oh, Oh.",
+      "text": [
+        "960",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText(whisper transcription)"
+    }
+  },
+  "962": {
+    "inputs": {
+      "text_0": "1\n00:00:00,000 --> 00:00:08,073\nSCENE 1\n\n2\n00:00:08,073 --> 00:00:13,759\nSCENE 2\n\n3\n00:00:13,759 --> 00:00:22,239\nSCENE 3\n\n4\n00:00:22,239 --> 00:00:27,454\nSCENE 4\n\n5\n00:00:27,454 --> 00:00:36,896\nSCENE 5\n\n6\n00:00:36,896 --> 00:00:44,457\nSCENE 6\n\n7\n00:00:44,457 --> 00:00:50,601\nSCENE 7\n\n8\n00:00:50,601 --> 00:00:56,286\nSCENE 8\n\n9\n00:00:56,286 --> 00:01:03,850\nSCENE 9\n\n10\n00:01:03,850 --> 00:01:09,962\nSCENE 10\n\n11\n00:01:09,962 --> 00:01:15,188\nSCENE 11\n\n12\n00:01:15,188 --> 00:01:25,120\nSCENE 12\n\n13\n00:01:25,120 --> 00:01:34,569\nSCENE 13\n\n14\n00:01:34,569 --> 00:01:38,825\nSCENE 14\n\n15\n00:01:38,825 --> 00:01:48,245\nSCENE 15\n\n16\n00:01:48,245 --> 00:01:54,697\nSCENE 16\n\n17\n00:01:54,697 --> 00:02:00,713\nSCENE 17\n\n18\n00:02:00,713 --> 00:02:08,105\nSCENE 18\n\n19\n00:02:08,105 --> 00:02:15,028\nSCENE 19\n\n20\n00:02:15,028 --> 00:02:22,409\nSCENE 20\n\n21\n00:02:22,409 --> 00:02:30,709\nSCENE 21\n\n22\n00:02:30,709 --> 00:02:37,193\nSCENE 22\n\n23\n00:02:37,193 --> 00:02:41,801\nSCENE 23\n\n24\n00:02:41,801 --> 00:02:50,592\nSCENE 24\n\n25\n00:02:50,592 --> 00:03:00,234\nSCENE 25\n\n26\n00:03:00,234 --> 00:03:10,186\nSCENE 26\n\n27\n00:03:10,186 --> 00:03:17,225\nSCENE 27\n\n28\n00:03:17,225 --> 00:03:21,556\nSCENE 28\n\n29\n00:03:21,556 --> 00:03:26,229\nSCENE 29\n\n30\n00:03:26,229 --> 00:03:32,201\nSCENE 30\n\n31\n00:03:32,201 --> 00:03:41,897\nSCENE 31\n\n32\n00:03:41,897 --> 00:03:46,965\nSCENE 32\n\n33\n00:03:46,965 --> 00:03:54,346\nSCENE 33\n\n34\n00:03:54,346 --> 00:04:03,604\nSCENE 34\n\n35\n00:04:03,604 --> 00:04:09,129\nSCENE 35\n\n36\n00:04:09,129 --> 00:04:17,439\nSCENE 36\n\n37\n00:04:17,439 --> 00:04:22,516\nSCENE 37\n\n38\n00:04:22,516 --> 00:04:27,168\nSCENE 38\n\n39\n00:04:27,168 --> 00:04:34,932\nSCENE 39\n\n40\n00:04:34,932 --> 00:04:35,468\nSCENE 40\n",
+      "text": [
+        "963",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText -SRT"
+    }
+  },
+  "963": {
+    "inputs": {
+      "beat_data": [
+        "956",
+        0
+      ],
+      "min_duration": 4,
+      "max_duration": 10,
+      "bias": 0.7,
+      "duration_preset": "varied_no_repeat",
+      "seed": 11,
+      "output_filename": 0.5
+    },
+    "class_type": "BeatSceneDurationNode",
+    "_meta": {
+      "title": "Beat-Aligned Scene Durations"
+    }
+  },
+  "964": {
+    "inputs": {
+      "audio": "Alanis Morissette - Uninvited (Lyrics).wav",
+      "start_time": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudioUpload",
+    "_meta": {
+      "title": "Load Audio (Upload)🎥🅥🅗🅢"
+    }
+  }
+}

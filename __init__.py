@@ -22,6 +22,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_VideoEditorNodes",
     ".VRGDG_WorkflowRunnerNodes",
     ".VRGDG_MusicVideoBuilderNodes",
+    ".VRGDG_MusicVideoPromptCreatorNodes",
     ".VRGDG_ImageCompareNode",
 )
 

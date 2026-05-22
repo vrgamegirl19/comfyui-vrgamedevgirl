@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import "./VRGDG_MusicVideoPromptCreatorUI.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -804,6 +805,7 @@ function openBuilder(node) {
   autoSaveControl.wrapper.style.cssText += "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px 10px;";
   const closeButton = makeButton("Close");
   closeButton.onclick = () => overlay.remove();
+  const promptCreatorButton = makeButton("Prompt Creator");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
@@ -821,7 +823,7 @@ function openBuilder(node) {
     button.style.textAlign = "left";
     button.style.justifyContent = "flex-start";
   };
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, autoLoadAllButton, zImageAllButton, renderAllButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, zImageAllButton, renderAllButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -3907,16 +3909,21 @@ function openBuilder(node) {
       autoLoadAllButton.disabled = true;
       autoLoadAllButton.textContent = "Importing...";
       pushHistory();
-      const [paths, contextPaths] = await Promise.all([
-        getJson("/vrgdg/music_builder/default_audio_srt_paths"),
-        getJson("/vrgdg/music_builder/default_context_paths"),
-      ]);
+      const paths = await postJson("/vrgdg/music_builder/project_prompt_creator_paths", {
+        project_folder: projectInput.value || state.projectFolder || "",
+      });
+      const exists = paths.exists || {};
+      if (!exists.srt_path || !exists.concept_prompts_path) {
+        throw new Error(
+          "No saved Prompt Creator outputs were found in this project yet. Run Prompt Creator first, then come back and import."
+        );
+      }
       if (paths.audio_path) audioInput.value = paths.audio_path;
       if (paths.srt_path) srtInput.value = paths.srt_path;
-      promptJsonInput.value = contextPaths.concept_prompts_path || "";
-      themeStyleInput.value = contextPaths.theme_style_path || "";
-      storyIdeaInput.value = contextPaths.story_idea_path || "";
-      subjectSceneInput.value = contextPaths.subject_scene_path || "";
+      promptJsonInput.value = paths.concept_prompts_path || "";
+      themeStyleInput.value = exists.theme_style_path ? paths.theme_style_path || "" : "";
+      storyIdeaInput.value = exists.story_idea_path ? paths.story_idea_path || "" : "";
+      subjectSceneInput.value = exists.subject_scene_path ? paths.subject_scene_path || "" : "";
       state.promptJsonPath = promptJsonInput.value;
       state.themeStylePath = themeStyleInput.value;
       state.storyIdeaPath = storyIdeaInput.value;
@@ -3924,13 +3931,13 @@ function openBuilder(node) {
       state.useVrgdgTextContext = true;
       useVrgdgTextContext.input.checked = true;
       if (paths.audio_path) await loadAudio();
-      if (paths.srt_path) await loadSrt();
+      await loadSrt();
       if (promptJsonInput.value) await importPromptJson();
       clearGeneratedSceneOutputsForImport();
       syncInspector();
       render();
       await autoSaveSessionQuiet("prompt creator import");
-      toast("Imported audio, SRT, prompt JSON, and default text context paths. Previous generated images/videos were cleared from this project session.");
+      toast("Imported this project's Prompt Creator audio, SRT, prompt JSON, and context files. Previous generated images/videos were cleared from this project session.");
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
@@ -4275,8 +4282,11 @@ function openBuilder(node) {
     const choice = await showWelcomeProjectModal(projects);
     if (!choice) return false;
     if (choice.action === "new") {
-      await newProject();
-      return true;
+      const mode = await window.VRGDGMusicVideoPromptCreator?.chooseNewProjectMode?.();
+      if (!mode) return false;
+      const created = await newProject();
+      if (created && mode === "prompt_creator") openPromptCreatorPanel();
+      return Boolean(created);
     }
     if (choice.action === "load" && choice.project_folder) {
       return await loadSessionFromProject(choice.project_folder);
@@ -5613,7 +5623,7 @@ function openBuilder(node) {
       value: defaultName,
       confirmLabel: "Create Project",
     });
-    if (projectName === null) return;
+    if (projectName === null) return false;
     try {
       const data = await postJson("/vrgdg/music_builder/new_project", {
         project_folder: projectName,
@@ -5622,9 +5632,44 @@ function openBuilder(node) {
       rememberLastProject(state.projectFolder);
       await saveSession({ quiet: true });
       toast(`New project created.\n${state.projectFolder}`);
+      return true;
     } catch (error) {
       toast(String(error?.message || error), true);
+      return false;
     }
+  }
+
+  function openPromptCreatorPanel() {
+    const creator = window.VRGDGMusicVideoPromptCreator;
+    if (!creator?.open) {
+      toast("Prompt Creator UI is not loaded yet. Refresh ComfyUI and try again.", true);
+      return;
+    }
+    creator.open({
+      projectFolder: projectInput.value || state.projectFolder || "",
+      onSaved: (result) => {
+        if (result?.project_folder) {
+          projectInput.value = result.project_folder;
+          state.projectFolder = result.project_folder;
+          setWidgetValue(node, "project_folder", state.projectFolder);
+        }
+        if (result?.srt_path) {
+          srtInput.value = result.srt_path;
+          state.srtPath = result.srt_path;
+          setWidgetValue(node, "srt_path", state.srtPath);
+        }
+        if (result?.files) {
+          promptJsonInput.value = result.files["ConceptPrompts.txt"] || promptJsonInput.value;
+          themeStyleInput.value = result.files["themestyle.txt"] || themeStyleInput.value;
+          storyIdeaInput.value = result.files["storyconcept.txt"] || storyIdeaInput.value;
+          subjectSceneInput.value = result.files["subjectsandscenes.txt"] || subjectSceneInput.value;
+          state.promptJsonPath = promptJsonInput.value;
+          state.themeStylePath = themeStyleInput.value;
+          state.storyIdeaPath = storyIdeaInput.value;
+          state.subjectScenePath = subjectSceneInput.value;
+        }
+      },
+    });
   }
 
   async function saveProjectAs() {
@@ -5897,7 +5942,12 @@ function openBuilder(node) {
     loadAudio();
   };
   settingsButton.onclick = openSettingsModal;
-  newProjectButton.onclick = newProject;
+  newProjectButton.onclick = async () => {
+    const mode = await window.VRGDGMusicVideoPromptCreator?.chooseNewProjectMode?.();
+    if (!mode) return;
+    const created = await newProject();
+    if (created && mode === "prompt_creator") openPromptCreatorPanel();
+  };
   saveProjectAsButton.onclick = saveProjectAs;
   autoSaveControl.input.addEventListener("change", () => {
     state.autoSaveEnabled = Boolean(autoSaveControl.input.checked);
@@ -5910,6 +5960,7 @@ function openBuilder(node) {
   loadSrtButton.onclick = loadSrt;
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
+  promptCreatorButton.onclick = openPromptCreatorPanel;
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;

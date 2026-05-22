@@ -46,6 +46,28 @@ def _default_context_paths():
     }
 
 
+def _project_prompt_creator_paths(project_folder):
+    folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
+    if not folder:
+        raise ValueError("Create or load a project before importing Prompt Creator data.")
+
+    context = _context_folder(folder)
+    audio_folder = os.path.join(folder, "audio")
+    paths = {
+        "project_folder": folder,
+        "audio_path": _newest_file(audio_folder, (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".mp4")),
+        "srt_path": _srt_path(folder),
+        "concept_prompts_path": os.path.join(context, "ConceptPrompts.txt"),
+        "theme_style_path": os.path.join(context, "themestyle.txt"),
+        "story_idea_path": os.path.join(context, "storyconcept.txt"),
+        "subject_scene_path": os.path.join(context, "subjectsandscenes.txt"),
+    }
+    exists = {key: bool(value and os.path.isfile(value)) for key, value in paths.items() if key.endswith("_path")}
+    paths["exists"] = exists
+    paths["ready"] = bool(exists.get("srt_path") and exists.get("concept_prompts_path"))
+    return paths
+
+
 def _newest_file(folder, extensions):
     if not os.path.isdir(folder):
         return ""
@@ -2053,6 +2075,15 @@ def _ensure_music_builder_routes():
     @server_instance.routes.get("/vrgdg/music_builder/default_context_paths")
     async def vrgdg_music_builder_default_context_paths(request):
         return web.json_response({"ok": True, **_default_context_paths()})
+
+    @server_instance.routes.post("/vrgdg/music_builder/project_prompt_creator_paths")
+    async def vrgdg_music_builder_project_prompt_creator_paths(request):
+        try:
+            payload = await request.json()
+            result = _project_prompt_creator_paths(payload.get("project_folder", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.get("/vrgdg/music_builder/default_audio_srt_paths")
     async def vrgdg_music_builder_default_audio_srt_paths(request):
