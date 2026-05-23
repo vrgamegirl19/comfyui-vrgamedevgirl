@@ -236,6 +236,11 @@ def _new_builder_project(payload):
     os.makedirs(_images_folder(target), exist_ok=True)
     os.makedirs(_prompts_folder(target), exist_ok=True)
     os.makedirs(_context_folder(target), exist_ok=True)
+    for filename in ("ConceptPrompts.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt"):
+        path = os.path.join(_context_folder(target), filename)
+        if not os.path.exists(path):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("")
     return {
         "project_folder": target,
         "session_path": _session_path(target),
@@ -243,6 +248,10 @@ def _new_builder_project(payload):
         "images_folder": _images_folder(target),
         "prompts_folder": _prompts_folder(target),
         "context_folder": _context_folder(target),
+        "concept_prompts_path": os.path.join(_context_folder(target), "ConceptPrompts.txt"),
+        "theme_style_path": os.path.join(_context_folder(target), "themestyle.txt"),
+        "story_idea_path": os.path.join(_context_folder(target), "storyconcept.txt"),
+        "subject_scene_path": os.path.join(_context_folder(target), "subjectsandscenes.txt"),
     }
 
 
@@ -327,6 +336,11 @@ def _scene_image_path(project_folder, scene_number, extension=".png"):
     if ext not in {".png", ".jpg", ".jpeg", ".webp"}:
         ext = ".png"
     return os.path.join(_images_folder(project_folder), f"image_{scene:04d}{ext}")
+
+
+def _is_internal_approved_image_path(path):
+    parts = os.path.normpath(str(path or "")).split(os.sep)
+    return "zimage_approved" in {part.lower() for part in parts}
 
 
 def _scene_preview_folder(project_folder, scene_number):
@@ -487,12 +501,12 @@ def _copy_session_assets_to_project(project_folder, session):
                 item_path = str(item or "").strip()
                 if not item_path or not os.path.isfile(item_path):
                     continue
+                if item_path == approved or _is_internal_approved_image_path(item_path):
+                    continue
                 ext = os.path.splitext(item_path)[1] or ".png"
                 copied = _copy_file_if_exists(item_path, _unique_preview_path(project_folder, scene_number, ext))
                 if copied and copied not in new_history:
                     new_history.append(copied)
-        if segment.get("approved_image_path") and segment["approved_image_path"] not in new_history:
-            new_history.append(segment["approved_image_path"])
         segment["image_history"] = new_history
         if new_history:
             try:
@@ -721,8 +735,10 @@ def _rehydrate_builder_session(project_folder, session):
                     break
         if approved and os.path.isfile(approved):
             segment["approved_image_path"] = approved
-            if approved not in segment["image_history"]:
-                segment["image_history"].append(approved)
+            segment["image_history"] = [
+                item for item in segment["image_history"]
+                if item != approved and not _is_internal_approved_image_path(item)
+            ]
         for preview_path in _scene_preview_paths(project_folder, index):
             if preview_path not in segment["image_history"]:
                 segment["image_history"].append(preview_path)
@@ -1604,7 +1620,7 @@ def _trim_scene_audio(payload):
     duration = max(0.05, float(payload.get("duration") or 0))
     folder = os.path.join(project_folder, "scene_audio_trimmed")
     os.makedirs(folder, exist_ok=True)
-    target_path = os.path.join(folder, f"scene_audio_{scene_number:04d}.m4a")
+    target_path = os.path.join(folder, f"scene_audio_{scene_number:04d}.wav")
     cmd = [
         "ffmpeg",
         "-y",
@@ -1614,14 +1630,19 @@ def _trim_scene_audio(payload):
         source_path,
         "-t",
         str(duration),
+        "-vn",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
         "-c:a",
-        "aac",
+        "pcm_s16le",
         target_path,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to trim scene audio.").strip())
-    return {"audio_path": target_path, "scene_number": scene_number, "start": start, "duration": duration}
+    return {"audio_path": target_path, "scene_number": scene_number, "start": start, "duration": duration, "format": "pcm_s16le_wav"}
 
 
 def _find_ffmpeg_path():
@@ -1651,6 +1672,7 @@ def _prepare_scene_audio_mix(payload):
     segments = payload.get("segments", [])
     if not isinstance(segments, list) or not segments:
         raise ValueError("No scenes were provided for scene audio mix.")
+    allow_missing_scene_audio = bool(payload.get("allow_missing_scene_audio", False))
 
     ffmpeg_path = _find_ffmpeg_path()
     folder = _scene_audio_mix_folder(project_folder)
@@ -1668,18 +1690,33 @@ def _prepare_scene_audio_mix(payload):
             continue
         path = str(segment.get("custom_audio_path", "") or "").strip().strip('"')
         if not path:
+            if allow_missing_scene_audio:
+                start = max(0.0, float(segment.get("start", 0) or 0))
+                end = max(start + 0.05, float(segment.get("end", start + 4) or start + 4))
+                duration = max(0.05, end - start)
+                timeline_items.append({
+                    "index": index,
+                    "path": "",
+                    "start": start,
+                    "end": end,
+                    "duration": duration,
+                    "source_start": 0.0,
+                    "silent": True,
+                })
+                continue
             missing.append(f"Scene {index}: custom audio is missing.")
             continue
         path = os.path.abspath(path)
         if not os.path.isfile(path):
             missing.append(f"Scene {index}: custom audio file was not found: {path}")
             continue
-        start = max(0.0, float(segment.get("start", 0) or 0))
-        end = max(start + 0.05, float(segment.get("end", start + 4) or start + 4))
+        segment_start = max(0.0, float(segment.get("start", 0) or 0))
+        segment_end = max(segment_start + 0.05, float(segment.get("end", segment_start + 4) or segment_start + 4))
+        start = max(0.0, float(segment.get("custom_audio_timeline_start", segment_start) or segment_start))
         duration = float(segment.get("custom_audio_duration", 0) or 0)
         if duration <= 0:
-            duration = end - start
-        duration = max(0.05, min(duration, max(0.05, end - start)))
+            duration = segment_end - segment_start
+        duration = max(0.05, duration)
         source_start = max(0.0, float(segment.get("custom_audio_source_start", 0) or 0))
         timeline_items.append({
             "index": index,
@@ -1688,6 +1725,7 @@ def _prepare_scene_audio_mix(payload):
             "end": start + duration,
             "duration": duration,
             "source_start": source_start,
+            "silent": False,
         })
     if missing:
         raise ValueError("\n".join(missing))
@@ -1722,23 +1760,38 @@ def _prepare_scene_audio_mix(payload):
 
         clip_path = os.path.join(parts_folder, f"part_{part_index:04d}_scene_{item['index']:04d}.wav")
         part_index += 1
-        clip_cmd = [
-            ffmpeg_path,
-            "-y",
-            "-ss",
-            f"{item['source_start']:.6f}",
-            "-i",
-            item["path"],
-            "-t",
-            f"{item['duration']:.6f}",
-            "-ac",
-            "2",
-            "-ar",
-            "44100",
-            "-c:a",
-            "pcm_s16le",
-            clip_path,
-        ]
+        if item.get("silent"):
+            clip_cmd = [
+                ffmpeg_path,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=stereo",
+                "-t",
+                f"{item['duration']:.6f}",
+                "-c:a",
+                "pcm_s16le",
+                clip_path,
+            ]
+        else:
+            clip_cmd = [
+                ffmpeg_path,
+                "-y",
+                "-ss",
+                f"{item['source_start']:.6f}",
+                "-i",
+                item["path"],
+                "-t",
+                f"{item['duration']:.6f}",
+                "-ac",
+                "2",
+                "-ar",
+                "44100",
+                "-c:a",
+                "pcm_s16le",
+                clip_path,
+            ]
         result = subprocess.run(clip_cmd, capture_output=True, text=True, check=False)
         if result.returncode != 0:
             raise RuntimeError((result.stderr or result.stdout or f"ffmpeg failed to prepare scene {item['index']} audio.").strip())

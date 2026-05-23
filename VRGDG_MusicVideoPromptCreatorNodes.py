@@ -16,6 +16,10 @@ from .VRGDG_MusicVideoBuilderNodes import (
     _session_path,
     _srt_path,
 )
+from .VRGDG_GeneralNodes2 import (
+    VRGDG_LyricSegmentJsonFixer,
+    VRGDG_PromptMapJsonFixer,
+)
 from .VRGDG_VideoEditorNodes import _clean_gemma_prompt_text
 
 
@@ -359,6 +363,29 @@ def _extract_json_object(text):
         raise ValueError("Gemma did not return a JSON object.")
 
 
+def _fix_lyric_segment_json_like_old_workflow(text):
+    fixer = VRGDG_LyricSegmentJsonFixer()
+    fixed_text, json_output, was_fixed, notes = fixer.fix_json(text)
+    return {
+        "fixed_text": fixed_text,
+        "json_output": json_output,
+        "was_fixed": was_fixed,
+        "notes": notes,
+    }
+
+
+def _fix_prompt_map_json_like_old_workflow(text):
+    fixer = VRGDG_PromptMapJsonFixer()
+    fixed_text, json_output, was_fixed, notes, prompt_count = fixer.fix_json(text, False, "")
+    return {
+        "fixed_text": fixed_text,
+        "json_output": json_output,
+        "was_fixed": was_fixed,
+        "notes": notes,
+        "prompt_count": prompt_count,
+    }
+
+
 def _parse_whisper_segments(text):
     segments = []
     for raw_line in str(text or "").splitlines():
@@ -496,11 +523,15 @@ def _repair_segments(payload):
         f"STYLE_THEME:\n{str(payload.get('style_theme', '') or '').strip()}"
     )
     result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
-    data = _validate_segment_json(_extract_json_object(result["text"]), expected_count)
+    fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
+    data = _validate_segment_json(fixed["json_output"], expected_count)
     return {
         "segments": data,
         "segment_count": expected_count,
         "raw_text": result["text"],
+        "fixed_text": fixed["fixed_text"],
+        "fixer_notes": fixed["notes"],
+        "was_fixed": fixed["was_fixed"],
         "used_model": result["used_model"],
         "unloaded": True,
     }
@@ -525,11 +556,15 @@ def _create_concepts(payload):
         f"LOCATIONS:\n{locations_text}"
     )
     result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
-    data = _validate_prompt_json(_extract_json_object(result["text"]), expected_count)
+    fixed = _fix_prompt_map_json_like_old_workflow(result["text"])
+    data = _validate_prompt_json(fixed["json_output"], expected_count)
     return {
         "prompts": data,
         "prompt_count": expected_count,
         "raw_text": result["text"],
+        "fixed_text": fixed["fixed_text"],
+        "fixer_notes": fixed["notes"],
+        "was_fixed": fixed["was_fixed"],
         "used_model": result["used_model"],
         "unloaded": True,
     }

@@ -1859,6 +1859,10 @@ function openBuilder(node) {
     });
   }
 
+  function isInternalApprovedImagePath(path) {
+    return /(^|[\\/])zimage_approved([\\/]|$)/i.test(String(path || ""));
+  }
+
   function ensureSegmentRuntimeFields(segment) {
     if (!segment) return segment;
     if (!Number.isFinite(Number(segment.start))) segment.start = 0;
@@ -1867,7 +1871,15 @@ function openBuilder(node) {
     if (segment.label == null) segment.label = "New scene";
     if (segment.id == null || !String(segment.id).trim()) segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
+    const approvedImagePath = String(segment.approved_image_path || "");
+    segment.image_history = segment.image_history.filter((item, index, list) => {
+      const path = String(item || "");
+      return path && path !== approvedImagePath && !isInternalApprovedImagePath(path) && list.indexOf(item) === index;
+    });
     if (!Number.isFinite(Number(segment.image_history_index))) segment.image_history_index = segment.image_history.length ? segment.image_history.length - 1 : -1;
+    segment.image_history_index = segment.image_history.length
+      ? Math.max(0, Math.min(segment.image_history.length - 1, Number(segment.image_history_index || 0)))
+      : -1;
     if (segment.enhance_prompt == null) segment.enhance_prompt = "";
     if (segment.custom_audio_path == null) segment.custom_audio_path = "";
     if (segment.custom_audio_name == null) segment.custom_audio_name = "";
@@ -2950,7 +2962,7 @@ function openBuilder(node) {
     const saveOptions = makeButton("Save", "primary");
     const closeOptions = makeButton("Close");
     const note = document.createElement("div");
-    note.textContent = "Drop or load an audio file for this scene. It will be copied into the project folder and saved with the scene. Final stitching still uses the main full audio track until we wire scene-audio rendering.";
+    note.textContent = "Drop or load an audio file for this scene. It will be copied into the project folder, sent to LTX for this scene, and used for final stitching when scene-audio mode is active.";
     note.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
@@ -4960,12 +4972,14 @@ function openBuilder(node) {
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\rendered_scene_videos`;
   }
 
-  function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden I2V workflow...") {
-    const promptNumber = sceneIndex + 1;
+  function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden I2V workflow...", details = {}) {
+    const promptNumber = Number(details.promptNumber || sceneIndex + 1);
     const imageIndex = sceneIndex;
     const imageSource = segmentImageSource(segment);
     const imagePath = imageSource?.path || "";
     const imageSrc = imagePath ? makeEditorImageUrl(imagePath) : imageSource?.data || "";
+    const audioPath = String(details.audioPath || audioInput.value || "");
+    const audioMode = String(details.audioMode || (segment.custom_audio_path ? "Custom scene audio" : "Global/project audio"));
     return `
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-weight:900;color:#cffafe;">${escapeHtml(statusText)}</div>
@@ -4974,9 +4988,10 @@ function openBuilder(node) {
           <div style="color:#67e8f9;font-weight:900;">Scene</div><div>${escapeHtml(segment.label || `Scene ${promptNumber}`)}</div>
           <div style="color:#67e8f9;font-weight:900;">Image index</div><div>${imageIndex} (0 based)</div>
           <div style="color:#67e8f9;font-weight:900;">SRT prompt #</div><div>${promptNumber} (1 based)</div>
+          <div style="color:#67e8f9;font-weight:900;">Audio mode</div><div>${escapeHtml(audioMode)}</div>
           <div style="color:#67e8f9;font-weight:900;">Image folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(i2vImagesFolder())}</div>
           <div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>
-          <div style="color:#67e8f9;font-weight:900;">Audio path</div><div style="overflow-wrap:anywhere;">${escapeHtml(audioInput.value || "")}</div>
+          <div style="color:#67e8f9;font-weight:900;">Audio sent to LTX</div><div style="overflow-wrap:anywhere;">${escapeHtml(audioPath)}</div>
           <div style="color:#67e8f9;font-weight:900;">SRT path</div><div style="overflow-wrap:anywhere;">${escapeHtml(srtPath || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Save folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(outputFolder || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Collected clips</div><div style="overflow-wrap:anywhere;">${escapeHtml(collectedSceneVideoFolder())}</div>
@@ -5083,10 +5098,7 @@ function openBuilder(node) {
       scene_number: sceneIndex + 1,
     });
     segment.approved_image_path = data.saved_path || "";
-    if (segment.approved_image_path && !segment.image_history.includes(segment.approved_image_path)) {
-      segment.image_history.push(segment.approved_image_path);
-      segment.image_history_index = segment.image_history.length - 1;
-    }
+    ensureSegmentRuntimeFields(segment);
     return segment.approved_image_path;
   }
 
@@ -5134,7 +5146,7 @@ function openBuilder(node) {
     return missing;
   }
 
-  async function prepareSceneAudioMix(progress, label = "Preparing scene audio mix") {
+  async function prepareSceneAudioMix(progress, label = "Preparing scene audio mix", options = {}) {
     const sceneAudioMode = usingSceneAudioMode();
     if (!sceneAudioMode) {
       return {
@@ -5147,6 +5159,7 @@ function openBuilder(node) {
     const data = await postJson("/vrgdg/music_builder/prepare_scene_audio_mix", {
       project_folder: projectInput.value,
       segments: state.segments,
+      allow_missing_scene_audio: !!options.allowMissingSceneAudio,
     }, 180000);
     if (data.audio_path) {
       audioInput.value = data.audio_path;
@@ -5189,30 +5202,41 @@ function openBuilder(node) {
     await ensureSelectedImageForSceneVideo(segment, sceneIndex);
     let audioPathForScene = options.audioPathOverride || audioInput.value;
     let promptNumberForScene = sceneIndex + 1;
+    let audioModeForScene = options.audioPathOverride ? "Combined scene-audio track" : "Global/project audio trimmed for this scene";
     if (options.srtPathOverride) {
       srtPath = options.srtPathOverride;
     }
-    if (segment.custom_audio_path && !options.audioPathOverride) {
+    if (!options.audioPathOverride) {
+      const sourceAudioPath = segment.custom_audio_path || audioInput.value;
+      const sceneDuration = Math.max(0.1, timelineSegmentDuration(segment) || 4);
+      const sourceStart = segment.custom_audio_path ? audioSourceStart(segment) : Number(segment.start || 0);
+      if (!String(sourceAudioPath || "").trim()) {
+        throw new Error(`${sceneDisplayName(segment, sceneIndex)}: no audio path is being sent to LTX. Add custom scene audio or load project/global audio before creating the video.`);
+      }
       const trimmedAudio = await postJson("/vrgdg/music_builder/trim_scene_audio", {
         project_folder: projectInput.value,
         scene_number: sceneIndex + 1,
-        source_path: segment.custom_audio_path,
-        start: audioSourceStart(segment),
-        duration: audioChunkDuration(segment),
+        source_path: sourceAudioPath,
+        start: sourceStart,
+        duration: sceneDuration,
       }, 120000);
-      audioPathForScene = trimmedAudio.audio_path || segment.custom_audio_path;
+      audioPathForScene = trimmedAudio.audio_path || sourceAudioPath;
       const singleSrt = await postJson("/vrgdg/music_builder/save_single_scene_srt", {
         project_folder: projectInput.value,
         scene_number: sceneIndex + 1,
-        duration: Math.max(0.1, audioChunkDuration(segment) || Number(segment.end - segment.start) || 4),
+        duration: sceneDuration,
         label: segment.label || `Scene ${sceneIndex + 1}`,
       }, 60000);
       srtPath = singleSrt.srt_path || srtPath;
       promptNumberForScene = 1;
+      audioModeForScene = segment.custom_audio_path ? "Custom scene audio trimmed for this scene" : "Global/project audio trimmed for this scene";
+    }
+    if (!String(audioPathForScene || "").trim()) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)}: no audio path is being sent to LTX. Add custom scene audio or load project/global audio before creating the video.`);
     }
     progress?.set(`${batchLabel}Checking SRT timing before hidden I2V...`, pct(14));
-    const expectedDurationForScene = segment.custom_audio_path && !options.audioPathOverride
-      ? Math.max(0.1, audioChunkDuration(segment) || timelineSegmentDuration(segment) || 4)
+    const expectedDurationForScene = !options.audioPathOverride
+      ? Math.max(0.1, timelineSegmentDuration(segment) || 4)
       : timelineSegmentDuration(segment);
     const timingCheck = await validateSrtTimingForSceneVideo({
       segment,
@@ -5231,22 +5255,27 @@ function openBuilder(node) {
       srt_path: srtPath,
       project_folder: projectInput.value,
     };
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, i2vVideoOutputFolder(), `${batchLabel}Preparing hidden I2V workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`), pct(15));
+    const workflowDetails = {
+      audioPath: audioPathForScene,
+      promptNumber: promptNumberForScene,
+      audioMode: audioModeForScene,
+    };
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, i2vVideoOutputFolder(), `${batchLabel}Preparing hidden I2V workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`, workflowDetails), pct(15));
     const built = await postJson("/vrgdg/workflow_runner/build_i2v_prompt", payload);
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queueing hidden I2V workflow...`), pct(40));
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queueing hidden I2V workflow...`, workflowDetails), pct(40));
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
     if (!promptId) throw new Error("ComfyUI queued the video but did not return a prompt_id.");
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queued prompt ID: ${promptId}\nWaiting for video...`), pct(60));
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queued prompt ID: ${promptId}\nWaiting for video...`, workflowDetails), pct(60));
     const videos = await waitForVideos(
       promptId,
-      (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}${message}\nPrompt ID: ${promptId}`), pct(80)),
+      (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}${message}\nPrompt ID: ${promptId}`, workflowDetails), pct(80)),
       () => state.batchCancelled
     );
     const video = videos[videos.length - 1] || null;
     const videoPath = resolveComfyVideoPath(video);
     if (!videoPath) throw new Error("The I2V workflow finished, but no video path was found in history.");
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Collecting scene video into builder folder...`), pct(90));
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Collecting scene video into builder folder...`, workflowDetails), pct(90));
     const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
       source_path: videoPath,
       project_folder: projectInput.value,
@@ -5268,7 +5297,7 @@ function openBuilder(node) {
       await autoSaveSessionQuiet(options.autoSaveReason || "scene video complete");
     }
     const backupNote = collected.backup_path ? `\n\nPrevious video backed up to:\n${collected.backup_path}` : "";
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, segment.video_folder || collectedSceneVideoFolder(), `${batchLabel}Scene video ready.\n${segment.video_path}${backupNote}`), pct(100));
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, segment.video_folder || collectedSceneVideoFolder(), `${batchLabel}Scene video ready.\n${segment.video_path}${backupNote}`, workflowDetails), pct(100));
     return segment.video_path;
   }
 
@@ -5615,14 +5644,25 @@ function openBuilder(node) {
     pauseAllAudio();
     audio.removeAttribute("src");
     sceneAudio.removeAttribute("src");
+    const cleanProjectFolder = String(projectFolder || "").trim();
+    const contextPath = (filename) => {
+      const folder = cleanProjectFolder.replace(/[\\/]+$/, "");
+      if (!folder) return "";
+      const separator = folder.includes("\\") ? "\\" : "/";
+      return `${folder}${separator}project_context${separator}${filename}`;
+    };
     state.duration = 0;
     state.peaks = [];
     state.beats = [];
     state.showBeatMarkers = false;
     state.srtMode = false;
     state.timingFrozen = false;
-    state.promptJsonPath = "";
-    state.projectFolder = projectFolder || "";
+    state.promptJsonPath = contextPath("ConceptPrompts.txt");
+    state.themeStylePath = contextPath("themestyle.txt");
+    state.storyIdeaPath = contextPath("storyconcept.txt");
+    state.subjectScenePath = contextPath("subjectsandscenes.txt");
+    state.useVrgdgTextContext = true;
+    state.projectFolder = cleanProjectFolder;
     state.sessionPath = sessionPath || "";
     state.srtPath = srtPath || "";
     state.segments = [newSegment(0, 4)];
@@ -5641,6 +5681,11 @@ function openBuilder(node) {
     setWidgetValue(node, "session_path", state.sessionPath);
     setWidgetValue(node, "srt_path", state.srtPath);
     audioInput.value = "";
+    promptJsonInput.value = state.promptJsonPath;
+    themeStyleInput.value = state.themeStylePath;
+    storyIdeaInput.value = state.storyIdeaPath;
+    subjectSceneInput.value = state.subjectScenePath;
+    useVrgdgTextContext.input.checked = true;
     state.undoStack = [];
     state.redoStack = [];
     syncZImageSettingsPanel();
@@ -5665,6 +5710,22 @@ function openBuilder(node) {
         project_folder: projectName,
       }, 60000);
       resetProjectState(data.project_folder || "", data.session_path || "", data.srt_path || "");
+      if (data.concept_prompts_path) {
+        promptJsonInput.value = data.concept_prompts_path;
+        state.promptJsonPath = data.concept_prompts_path;
+      }
+      if (data.theme_style_path) {
+        themeStyleInput.value = data.theme_style_path;
+        state.themeStylePath = data.theme_style_path;
+      }
+      if (data.story_idea_path) {
+        storyIdeaInput.value = data.story_idea_path;
+        state.storyIdeaPath = data.story_idea_path;
+      }
+      if (data.subject_scene_path) {
+        subjectSceneInput.value = data.subject_scene_path;
+        state.subjectScenePath = data.subject_scene_path;
+      }
       rememberLastProject(state.projectFolder);
       await saveSession({ quiet: true });
       toast(`New project created.\n${state.projectFolder}`);
