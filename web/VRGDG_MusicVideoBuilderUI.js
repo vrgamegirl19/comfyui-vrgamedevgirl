@@ -4019,8 +4019,11 @@ function openBuilder(node) {
       pushHistory();
       state.promptJsonPath = data.prompt_json_path || promptJsonInput.value;
       for (let index = 0; index < state.segments.length && index < prompts.length; index++) {
+        const segment = state.segments[index];
+        const previousNotes = String(segment.notes || "").trim();
+        const previousFluxNotes = String(segment.flux_notes || "").trim();
         state.segments[index].notes = prompts[index];
-        if (!String(state.segments[index].flux_notes || "").trim()) {
+        if (!previousFluxNotes || previousFluxNotes === previousNotes) {
           state.segments[index].flux_notes = prompts[index];
         }
         if (!state.segments[index].label || /^Prompt\s+\d+$/i.test(state.segments[index].label)) {
@@ -6302,15 +6305,31 @@ function openBuilder(node) {
     pushHistory();
     state.subjectScenePath = subjectSceneInput.value || "";
   });
-  editThemeStyleButton.onclick = () => editContextTextFile(themeStyleInput, "Edit Theme/Style Text", "themestyle.txt", "builder_style_theme");
-  editStoryIdeaButton.onclick = () => editContextTextFile(storyIdeaInput, "Edit Story Idea Text", "storyconcept.txt", "builder_story_idea");
-  editSubjectSceneButton.onclick = () => editContextTextFile(subjectSceneInput, "Edit Subject/Scene Text", "subjectsandscenes.txt", "builder_subjects_and_scenes");
+  editThemeStyleButton.onclick = () => editContextTextFile(themeStyleInput, "Edit Theme/Style Text", "themestyle.txt", "builder_style_theme", {
+    afterSave: async () => {
+      state.themeStylePath = themeStyleInput.value || "";
+      await autoSaveSessionQuiet("theme/style text edited");
+    },
+  });
+  editStoryIdeaButton.onclick = () => editContextTextFile(storyIdeaInput, "Edit Story Idea Text", "storyconcept.txt", "builder_story_idea", {
+    afterSave: async () => {
+      state.storyIdeaPath = storyIdeaInput.value || "";
+      await autoSaveSessionQuiet("story idea text edited");
+    },
+  });
+  editSubjectSceneButton.onclick = () => editContextTextFile(subjectSceneInput, "Edit Subject/Scene Text", "subjectsandscenes.txt", "builder_subjects_and_scenes", {
+    afterSave: async () => {
+      state.subjectScenePath = subjectSceneInput.value || "";
+      await autoSaveSessionQuiet("subject/scene text edited");
+    },
+  });
   editPromptJsonButton.onclick = () => editContextTextFile(promptJsonInput, "Edit Prompt JSON", "ConceptPrompts.txt", null, {
     showGemma: false,
     helpText: "Save this file to re-import the updated concept prompts into the scene notes.",
     afterSave: async () => {
       state.promptJsonPath = promptJsonInput.value || "";
       await importPromptJson();
+      await autoSaveSessionQuiet("prompt JSON edited");
     },
   });
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
