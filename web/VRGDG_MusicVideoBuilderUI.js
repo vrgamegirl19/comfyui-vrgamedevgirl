@@ -4191,7 +4191,9 @@ function openBuilder(node) {
     const text = await waitForText(promptId, (message) => {
       progress?.set(`${message}\nPrompt ID: ${promptId}`, percent);
     });
-    progress?.set(`Memory cleanup finished after ${label}.\nPrompt ID: ${promptId}\n\n${text.join("\n\n")}`, percent);
+    const output = `Memory cleanup finished after ${label}.\nPrompt ID: ${promptId}\n\n${text.join("\n\n")}`;
+    progress?.set(output, percent);
+    return output;
   }
 
   function currentSessionData() {
@@ -5734,12 +5736,17 @@ function openBuilder(node) {
       progress.close(4500);
       toast("Z-Image All complete.");
     } catch (error) {
-      progress.set(`Stopped/Error:\n${String(error?.message || error)}`, 100);
-      toast(String(error?.message || error), true);
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
       try {
-        await runClearMemoryWorkflowQuiet(progress, "stopped Z-Image All", 100);
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped Z-Image All" : "Z-Image All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
       } catch (cleanupError) {
         console.warn("[VRGDG Music Builder] Cleanup after Z-Image All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
       }
       if (options.throwOnError) throw error;
     } finally {
@@ -5800,12 +5807,17 @@ function openBuilder(node) {
       progress.close(4500);
       toast("Flux/Klein All complete.");
     } catch (error) {
-      progress.set(`Stopped/Error:\n${String(error?.message || error)}`, 100);
-      toast(String(error?.message || error), true);
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
       try {
-        await runClearMemoryWorkflowQuiet(progress, "stopped Flux/Klein All", 100);
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped Flux/Klein All" : "Flux/Klein All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
       } catch (cleanupError) {
         console.warn("[VRGDG Music Builder] Cleanup after Flux/Klein All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
       }
       if (options.throwOnError) throw error;
     } finally {
