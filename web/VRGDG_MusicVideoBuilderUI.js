@@ -909,7 +909,7 @@ function openBuilder(node) {
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
-  const zImageAllButton = makeButton("Z-Image All");
+  const zImageAllButton = makeButton("Image All");
   const fullBuildButton = makeButton("Build Full Video");
   const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
@@ -5820,7 +5820,7 @@ function openBuilder(node) {
       if (options.throwOnError) throw error;
     } finally {
       zImageAllButton.disabled = false;
-      zImageAllButton.textContent = "Z-Image All";
+      zImageAllButton.textContent = "Image All";
       setButtonGroupState(zCreateButtons, { disabled: false, text: "Create Z-Image" });
       createT2IButton.disabled = false;
       state.batchCancelled = false;
@@ -5895,7 +5895,7 @@ function openBuilder(node) {
       if (options.throwOnError) throw error;
     } finally {
       zImageAllButton.disabled = false;
-      zImageAllButton.textContent = "Z-Image All";
+      zImageAllButton.textContent = "Image All";
       setButtonGroupState(fluxCreateButtons, { disabled: false, text: "Create with Flux/Klein" });
       createFluxPromptButton.disabled = false;
       state.batchCancelled = false;
@@ -6359,16 +6359,24 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunZImageAll() {
+    const useFluxKleinMode = (state.fluxKleinSettings?.image_model_mode || "") === "flux_klein";
     const ok = await confirmLongBatchAction({
-      title: "Run Z-Image All?",
-      lines: [
+      title: useFluxKleinMode ? "Run Flux/Klein Image All?" : "Run Z-Image All?",
+      lines: useFluxKleinMode ? [
+        "This will create missing Flux/Klein prompts with Gemma vision, then create missing scene images with Flux/Klein.",
+        "Scenes that already have images will be skipped.",
+        "Global Flux/Klein image ingredients are included for every scene when enabled.",
+        "Memory cleanup runs between scenes.",
+      ] : [
         "This will create missing T2I prompts with Gemma, then create missing scene images with ZImage.",
         "Scenes that already have images will be skipped.",
         "Memory cleanup runs between scenes.",
       ],
-      confirmLabel: "Run Z-Image All",
+      confirmLabel: useFluxKleinMode ? "Run Flux/Klein Image All" : "Run Z-Image All",
     });
-    if (ok) await zImageAllScenes();
+    if (!ok) return;
+    if (useFluxKleinMode) await fluxKleinAllScenes();
+    else await zImageAllScenes();
   }
 
   async function confirmAndRunRenderAll() {
