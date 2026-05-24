@@ -5832,23 +5832,33 @@ function openBuilder(node) {
   }
 
   async function buildFullVideoPipeline() {
+    let progress = null;
     try {
       fullBuildButton.disabled = true;
       fullBuildButton.textContent = "Building...";
       renderAllButton.disabled = true;
       zImageAllButton.disabled = true;
       state.batchCancelled = false;
+      progress = createProgressWindow("Build Full Video");
+      const imageStage = (state.fluxKleinSettings?.image_model_mode || "") === "flux_klein" ? "Flux/Klein image pass" : "Z-Image pass";
+      progress.set(`Stage 1/3: ${imageStage}...`, 5);
       if ((state.fluxKleinSettings?.image_model_mode || "") === "flux_klein") {
         await fluxKleinAllScenes({ throwOnError: true });
       } else {
         await zImageAllScenes({ throwOnError: true });
       }
       assertBatchNotStopped();
+      progress.set("Stage 2/3: creating I2V prompts...", 38);
       await i2vAllTextOnlyScenes({ throwOnError: true });
       assertBatchNotStopped();
+      progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
       await renderAllScenes();
+      progress.set("Build Full Video complete.", 100);
+      progress.close(4500);
     } catch (error) {
-      toast(`Full video build stopped:\n${String(error?.message || error)}`, true);
+      const errorMessage = String(error?.message || error);
+      progress?.set(`Build Full Video stopped:\n${errorMessage}`, 100);
+      toast(`Full video build stopped:\n${errorMessage}`, true);
     } finally {
       fullBuildButton.disabled = false;
       fullBuildButton.textContent = "Build Full Video";
