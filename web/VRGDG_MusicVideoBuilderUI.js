@@ -2458,7 +2458,8 @@ function openBuilder(node) {
   }
 
   function selectedSegmentVideoPath(segment) {
-    ensureSegmentRuntimeFields(segment);
+    if (!segment) return "";
+    if (!Array.isArray(segment.video_history)) normalizeSegmentVideoHistory(segment);
     const history = Array.isArray(segment?.video_history) ? segment.video_history : [];
     const index = Math.max(0, Math.min(history.length - 1, Number(segment?.video_history_index || 0)));
     return history[index] || segment?.video_path || "";
@@ -5025,6 +5026,8 @@ function openBuilder(node) {
     pushHistory();
     const nextIndex = (Math.max(-1, Number(segment.video_history_index ?? -1)) + 1) % segment.video_history.length;
     segment.video_history_index = nextIndex;
+    const selectedPath = selectedSegmentVideoPath(segment);
+    if (selectedPath) segment.video_path = selectedPath;
     segment.preview_mode = "video";
     setActiveSegment(segment);
     syncPreview(segment);
