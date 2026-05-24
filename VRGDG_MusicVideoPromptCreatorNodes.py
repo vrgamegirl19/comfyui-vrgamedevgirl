@@ -231,6 +231,51 @@ FORMAT
 }"""
 
 
+_I2V_MOTION_NOTES_INSTRUCTIONS = r"""You are an image-to-video motion note writer.
+
+INPUTS
+You will receive:
+1. CONCEPT_PROMPT_JSON: one visual concept per scene.
+2. STORY: the overall story arc.
+3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.
+4. SUBJECT: the main subject details, for character movement and performance only.
+
+TASK
+Create one short image-to-video motion note for each concept prompt.
+These notes will be placed into per-scene I2V motion notes in the video builder.
+
+RULES
+- Write camera motion, character/performance motion, environmental motion, and mood pacing.
+- Use the concept prompt as the main source for each scene.
+- Use SUBJECT only for broad performance or body motion when useful.
+- Do not rewrite the image prompt.
+- Do not mention text, captions, lyrics, prompts, JSON, source images, or reference images.
+- Keep each note practical for image-to-video generation.
+- Keep each value one sentence, under 45 words.
+- Avoid impossible object transformations unless the concept already implies surreal motion.
+- If a scene is quiet or instrumental, use subtle camera/environment movement.
+
+OUTPUT KEYS
+Return one key for every input prompt.
+Use keys named "Motion1", "Motion2", "Motion3", etc.
+Never use Prompt keys.
+Never skip, merge, split, or reorder notes.
+
+OUTPUT
+Return valid JSON only.
+No markdown.
+No explanation.
+Use double quotes.
+No trailing commas.
+No line breaks inside string values.
+
+FORMAT
+{
+  "Motion1": "Slow dolly toward the subject as background light drifts and small environmental details move gently.",
+  "Motion2": "Wide lateral camera drift through the setting with subtle character movement and atmospheric motion."
+}"""
+
+
 _CONCEPT_MATCH_PRESETS = {
     "super_tight_literal": r"""LYRIC MATCH PRESET: SUPER TIGHT AND LITERAL
 Every non-instrumental Prompt must visibly represent the exact lyric segment.
@@ -541,6 +586,11 @@ def _canonical_prompt_mapping(value):
         if match:
             fixed[f"Prompt{int(match.group(1))}"] = str(raw_value or "").strip()
     return {key: fixed[key] for key in sorted(fixed, key=lambda item: int(re.search(r"\d+", item).group(0)))}
+
+
+def _prompt_map_key_number(key):
+    match = re.search(r"(\d+)", str(key or ""))
+    return int(match.group(1)) if match else 999999
 
 
 def _normalize_inline_text(value):
@@ -927,6 +977,53 @@ def _create_concepts(payload):
     }
 
 
+def _create_i2v_motion_notes(payload):
+    prompt_data = payload.get("prompts") or payload.get("concept_prompts")
+    if isinstance(prompt_data, str):
+        prompt_data = _extract_json_object(prompt_data)
+    if not isinstance(prompt_data, dict):
+        raise ValueError("ConceptPrompts JSON is required.")
+    prompt_data = _canonical_prompt_mapping(prompt_data)
+    expected_count = _segment_count_from_mapping({f"segment{_prompt_map_key_number(key)}": value for key, value in prompt_data.items()})
+    if expected_count <= 0:
+        raise ValueError("ConceptPrompts JSON did not contain any prompts.")
+    user_input = (
+        f"{_I2V_MOTION_NOTES_INSTRUCTIONS}\n\n"
+        f"CONCEPT_PROMPT_JSON:\n{json.dumps(prompt_data, ensure_ascii=False, indent=2)}\n\n"
+        f"STORY:\n{str(payload.get('story_idea', '') or '').strip()}\n\n"
+        f"THEME_STYLE:\n{str(payload.get('style_theme', '') or '').strip()}\n\n"
+        f"SUBJECT:\n{str(payload.get('subject', '') or '').strip()}"
+    )
+    result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
+    try:
+        raw = _extract_json_object(result["text"])
+        fixed_notes = "Parsed I2V motion notes JSON."
+    except Exception:
+        fixed = _fix_prompt_map_json_like_old_workflow(result["text"])
+        raw = fixed.get("json_output") if isinstance(fixed.get("json_output"), dict) else {}
+        fixed_notes = fixed.get("notes", "")
+    data = {}
+    for index in range(1, expected_count + 1):
+        value = ""
+        for key, item in raw.items():
+            if _prompt_map_key_number(key) == index:
+                value = str(item or "").strip()
+                break
+        if not value:
+            value = "Subtle cinematic camera movement with gentle environmental motion that fits the scene."
+        data[f"Motion{index}"] = value
+    return {
+        "motion_notes": data,
+        "motion_count": expected_count,
+        "raw_text": result["text"],
+        "fixed_text": json.dumps(data, indent=2, ensure_ascii=False),
+        "fixer_notes": fixed_notes,
+        "was_fixed": True,
+        "used_model": result["used_model"],
+        "unloaded": True,
+    }
+
+
 def _extract_subject(payload):
     subject_locations = str(payload.get("subject_locations", "") or "").strip()
     result = _run_text_gemma(
@@ -954,10 +1051,13 @@ def _save_prompt_creator_outputs(payload):
 
     corrected_segments = payload.get("segments") or {}
     concept_prompts = payload.get("prompts") or {}
+    i2v_motion_notes = payload.get("i2v_motion_notes") or {}
     if isinstance(corrected_segments, str) and corrected_segments.strip():
         corrected_segments = _extract_json_object(corrected_segments)
     if isinstance(concept_prompts, str) and concept_prompts.strip():
         concept_prompts = _extract_json_object(concept_prompts)
+    if isinstance(i2v_motion_notes, str) and i2v_motion_notes.strip():
+        i2v_motion_notes = _extract_json_object(i2v_motion_notes)
     if corrected_segments:
         corrected_segments = _canonical_segment_mapping(corrected_segments)
     if concept_prompts:
@@ -994,6 +1094,12 @@ def _save_prompt_creator_outputs(payload):
             json.dump(concept_prompts, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
         files["ConceptPrompts.txt"] = path
+    if i2v_motion_notes:
+        path = os.path.join(context, "I2VMotionNotes.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(i2v_motion_notes, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+        files["I2VMotionNotes.txt"] = path
 
     srt_text = str(payload.get("srt_text", "") or "")
     if srt_text.strip():
@@ -1037,6 +1143,7 @@ def _save_prompt_creator_draft(payload):
         "srt_text": str(payload.get("srt_text", "") or ""),
         "corrected_segments_text": str(payload.get("corrected_segments_text", "") or ""),
         "concept_prompts_text": str(payload.get("concept_prompts_text", "") or ""),
+        "i2v_motion_notes_text": str(payload.get("i2v_motion_notes_text", "") or ""),
         "subject": str(payload.get("subject", "") or ""),
         "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
@@ -1231,6 +1338,13 @@ def _register_routes():
     async def vrgdg_music_prompt_creator_extract_subject(request):
         try:
             return _json_response(_extract_subject(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/create_i2v_motion_notes")
+    async def vrgdg_music_prompt_creator_create_i2v_motion_notes(request):
+        try:
+            return _json_response(_create_i2v_motion_notes(await request.json()))
         except Exception as exc:
             return _json_response(error=exc, status=400)
 

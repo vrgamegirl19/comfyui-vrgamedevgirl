@@ -572,6 +572,7 @@ function openPromptCreator(options = {}) {
   const state = {
     repairedSegments: {},
     conceptPrompts: {},
+    i2vMotionNotes: {},
     extractedSubject: "",
   };
 
@@ -758,6 +759,7 @@ function openPromptCreator(options = {}) {
   const outputsPanel = makePanel("Generated Outputs");
   const repairedOutput = makeCompactPreviewBox("", 3);
   const conceptOutput = makeTextarea("", 14);
+  const i2vMotionOutput = makeTextarea("", 10);
   const subjectOutput = makeTextarea("", 5);
   const previewNote = document.createElement("div");
   previewNote.textContent = "Pipeline preview only. These lyric segments are used to create ConceptPrompts, then ConceptPrompts are used downstream by the video builder.";
@@ -770,6 +772,7 @@ function openPromptCreator(options = {}) {
   finalOutputGroup.append(
     outputNote,
     makeField("ConceptPrompts JSON", conceptOutput),
+    makeField("I2V Motion Notes JSON", i2vMotionOutput),
     makeField("Extracted subject", subjectOutput),
     saveEditedOutputsButton,
   );
@@ -878,9 +881,11 @@ function openPromptCreator(options = {}) {
     srtText.value = draft.srt_text || "";
     repairedOutput.value = draft.corrected_segments_text || "";
     conceptOutput.value = draft.concept_prompts_text || "";
+    i2vMotionOutput.value = draft.i2v_motion_notes_text || "";
     subjectOutput.value = draft.subject || "";
     state.repairedSegments = parseJsonSafe(repairedOutput.value, {});
     state.conceptPrompts = parseJsonSafe(conceptOutput.value, {});
+    state.i2vMotionNotes = parseJsonSafe(i2vMotionOutput.value, {});
     state.extractedSubject = subjectOutput.value || "";
   }
 
@@ -1042,7 +1047,7 @@ function openPromptCreator(options = {}) {
 
   async function runWhisperWorkflow(progress = null) {
     setStatus(status, "Running hidden Whisper/SRT workflow...", true);
-    progress?.set("Step 1/5: Building hidden Whisper/SRT workflow...", 8);
+    progress?.set("Step 1/6: Building hidden Whisper/SRT workflow...", 8);
     const built = await postJson("/vrgdg/music_prompt_creator/build_whisper_prompt", {
       project_folder: projectFolder.value,
       audio_path: audioPath.value,
@@ -1055,11 +1060,11 @@ function openPromptCreator(options = {}) {
       empty_segment_text: emptySegmentText.value,
       full_lyrics: fullLyrics.value,
     });
-    progress?.set("Step 1/5: Queuing hidden Whisper/SRT workflow...", 14);
+    progress?.set("Step 1/6: Queuing hidden Whisper/SRT workflow...", 14);
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
     if (!promptId) throw new Error("ComfyUI queued the hidden Whisper workflow but did not return a prompt_id.");
-    progress?.set(`Step 1/5: Waiting for Whisper/SRT output...\nPrompt ID: ${promptId}`, 20);
+    progress?.set(`Step 1/6: Waiting for Whisper/SRT output...\nPrompt ID: ${promptId}`, 20);
     const text = await waitForPromptCreatorText(promptId, (message) => {
       progress?.set(`${message}\nPrompt ID: ${promptId}`, 28);
     });
@@ -1077,7 +1082,7 @@ function openPromptCreator(options = {}) {
 
   async function prepareSegments(progress = null) {
     setStatus(status, "Preparing lyric segments...", true);
-    progress?.set("Step 2/5: Preparing lyric segment JSON...", 38);
+    progress?.set("Step 2/6: Preparing lyric segment JSON...", 38);
     state.repairedSegments = parseLyricSegmentsToJson(whisperSegments.value);
     const segmentCount = Object.keys(state.repairedSegments).length;
     if (!segmentCount) {
@@ -1097,7 +1102,7 @@ function openPromptCreator(options = {}) {
       ? state.repairedSegments
       : parseJsonSafe(repairedOutput.value, {});
     setStatus(status, "Creating visual concept prompts with Gemma...", true);
-    progress?.set("Step 3/5: Creating ConceptPrompts JSON with Gemma...", 58);
+    progress?.set("Step 3/6: Creating ConceptPrompts JSON with Gemma...", 58);
     const result = await postJson("/vrgdg/music_prompt_creator/create_concepts", payload);
     state.conceptPrompts = result.prompts || {};
     conceptOutput.value = prettyJson(state.conceptPrompts);
@@ -1105,9 +1110,24 @@ function openPromptCreator(options = {}) {
     return result;
   }
 
+  async function createI2VMotionNotes(progress = null) {
+    const payload = buildPayload(controls, modelSelect);
+    payload.prompts = state.conceptPrompts && Object.keys(state.conceptPrompts).length
+      ? state.conceptPrompts
+      : parseJsonSafe(conceptOutput.value, {});
+    payload.subject = subjectOutput.value || state.extractedSubject || "";
+    setStatus(status, "Creating I2V motion notes with Gemma...", true);
+    progress?.set("Step 5/6: Creating I2V motion notes JSON with Gemma...", 84);
+    const result = await postJson("/vrgdg/music_prompt_creator/create_i2v_motion_notes", payload);
+    state.i2vMotionNotes = result.motion_notes || {};
+    i2vMotionOutput.value = prettyJson(state.i2vMotionNotes);
+    setStatus(status, `Created ${result.motion_count || 0} I2V motion note(s). Gemma unloaded.`);
+    return result;
+  }
+
   async function extractSubject(progress = null) {
     setStatus(status, "Extracting subject line with Gemma...", true);
-    progress?.set("Step 4/5: Extracting the subject line with Gemma...", 76);
+    progress?.set("Step 4/6: Extracting the subject line with Gemma...", 76);
     const result = await postJson("/vrgdg/music_prompt_creator/extract_subject", buildPayload(controls, modelSelect));
     state.extractedSubject = result.subject || "";
     subjectOutput.value = state.extractedSubject;
@@ -1121,7 +1141,9 @@ function openPromptCreator(options = {}) {
 
   async function saveOutputs(progress = null) {
     setStatus(status, "Saving prompt creator outputs into the project folder...", true);
-    progress?.set("Step 5/5: Saving prompt creator files into the project folder...", 90);
+    progress?.set("Step 6/6: Saving prompt creator files into the project folder...", 92);
+    state.conceptPrompts = parseJsonSafe(conceptOutput.value, state.conceptPrompts || {});
+    state.i2vMotionNotes = parseJsonSafe(i2vMotionOutput.value, state.i2vMotionNotes || {});
     const payload = buildPayload(controls, modelSelect);
     payload.segments = state.repairedSegments && Object.keys(state.repairedSegments).length
       ? state.repairedSegments
@@ -1129,6 +1151,9 @@ function openPromptCreator(options = {}) {
     payload.prompts = state.conceptPrompts && Object.keys(state.conceptPrompts).length
       ? state.conceptPrompts
       : parseJsonSafe(conceptOutput.value, {});
+    payload.i2v_motion_notes = state.i2vMotionNotes && Object.keys(state.i2vMotionNotes).length
+      ? state.i2vMotionNotes
+      : parseJsonSafe(i2vMotionOutput.value, {});
     payload.subject = subjectOutput.value || state.extractedSubject || "";
     if (appendSubjectToPrompts.checked && payload.subject && payload.prompts && Object.keys(payload.prompts).length) {
       payload.prompts = prependSubjectToPrompts(payload.prompts, payload.subject);
@@ -1151,6 +1176,7 @@ function openPromptCreator(options = {}) {
     const payload = buildPayload(controls, modelSelect);
     payload.corrected_segments_text = repairedOutput.value || "";
     payload.concept_prompts_text = conceptOutput.value || "";
+    payload.i2v_motion_notes_text = i2vMotionOutput.value || "";
     payload.subject = subjectOutput.value || "";
     const result = await postJson("/vrgdg/music_prompt_creator/save_draft", payload);
     projectFolder.value = result.project_folder || projectFolder.value;
@@ -1172,6 +1198,7 @@ function openPromptCreator(options = {}) {
       await prepareSegments(progress);
       await createConcepts(progress);
       await extractSubject(progress);
+      await createI2VMotionNotes(progress);
       await saveOutputs(progress);
       progress.set("Prompt Creator finished. Files were saved into this project.", 100);
       progress.close(1200);
@@ -1199,6 +1226,7 @@ function openPromptCreator(options = {}) {
       await prepareSegments(progress);
       await createConcepts(progress);
       await extractSubject(progress);
+      await createI2VMotionNotes(progress);
       await saveOutputs(progress);
       progress.set("Prompt Creator finished from saved Whisper/SRT data. Files were saved into this project.", 100);
       progress.close(1200);

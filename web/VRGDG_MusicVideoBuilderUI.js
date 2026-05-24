@@ -1007,6 +1007,9 @@ function openBuilder(node) {
   const promptJsonInput = makeInput("");
   const importPromptJsonButton = makeButton("Import Prompt JSON", "primary");
   const editPromptJsonButton = makeButton("Edit");
+  const i2vMotionJsonInput = makeInput("");
+  const importI2VMotionJsonButton = makeButton("Import I2V Motion Notes", "primary");
+  const editI2VMotionJsonButton = makeButton("Edit");
   const useVrgdgTextContext = makeCheckbox("Use VRGDG text context files", true);
   const loadVrgdgContextButton = makeButton("Use Default TextFiles Paths", "primary");
   const themeStyleInput = makeInput("");
@@ -1516,6 +1519,8 @@ function openBuilder(node) {
     timingGrid,
     makeEditField("Prompt JSON path", promptJsonInput, editPromptJsonButton),
     importPromptJsonButton,
+    makeEditField("I2V motion notes JSON path", i2vMotionJsonInput, editI2VMotionJsonButton),
+    importI2VMotionJsonButton,
     useVrgdgTextContext.wrapper,
     loadVrgdgContextButton,
     makeEditField("Global theme/style text file", themeStyleInput, editThemeStyleButton),
@@ -1793,6 +1798,7 @@ function openBuilder(node) {
     timingFrozen: false,
     srtMode: false,
     promptJsonPath: "",
+    i2vMotionJsonPath: "",
     useVrgdgTextContext: true,
     themeStylePath: "",
     storyIdeaPath: "",
@@ -2078,6 +2084,7 @@ function openBuilder(node) {
       timingFrozen: state.timingFrozen,
       srtMode: state.srtMode,
       promptJsonPath: state.promptJsonPath,
+      i2vMotionJsonPath: state.i2vMotionJsonPath,
       useVrgdgTextContext: state.useVrgdgTextContext,
       themeStylePath: state.themeStylePath,
       storyIdeaPath: state.storyIdeaPath,
@@ -2108,6 +2115,7 @@ function openBuilder(node) {
     state.timingFrozen = Boolean(data.timingFrozen);
     state.srtMode = Boolean(data.srtMode);
     state.promptJsonPath = data.promptJsonPath || "";
+    state.i2vMotionJsonPath = data.i2vMotionJsonPath || "";
     state.useVrgdgTextContext = data.useVrgdgTextContext ?? true;
     state.themeStylePath = data.themeStylePath || "";
     state.storyIdeaPath = data.storyIdeaPath || "";
@@ -2160,6 +2168,7 @@ function openBuilder(node) {
     if (state.redoStack.length > 50) state.redoStack.shift();
     restoreHistorySnapshot(previous);
     syncPromptJsonFromSegments("undo");
+    syncI2VMotionJsonFromSegments("undo");
   }
 
   function redo() {
@@ -2170,6 +2179,7 @@ function openBuilder(node) {
     if (state.undoStack.length > 50) state.undoStack.shift();
     restoreHistorySnapshot(next);
     syncPromptJsonFromSegments("redo");
+    syncI2VMotionJsonFromSegments("redo");
   }
 
   function updateHistoryButtons() {
@@ -2187,6 +2197,14 @@ function openBuilder(node) {
     return JSON.stringify(prompts, null, 2);
   }
 
+  function i2vMotionNotesTextFromSegments() {
+    const notes = {};
+    state.segments.forEach((segment, index) => {
+      notes[`Motion${index + 1}`] = String(segment?.i2v_notes || "");
+    });
+    return JSON.stringify(notes, null, 2);
+  }
+
   async function syncPromptJsonFromSegments(reason = "") {
     const path = String(promptJsonInput.value || state.promptJsonPath || "").trim();
     if (!path) return false;
@@ -2201,6 +2219,24 @@ function openBuilder(node) {
     } catch (error) {
       console.warn(`[VRGDG Music Builder] Could not sync ConceptPrompts after ${reason || "segment change"}:`, error);
       toast(`Could not update ConceptPrompts.txt:\n${String(error?.message || error)}`, true);
+      return false;
+    }
+  }
+
+  async function syncI2VMotionJsonFromSegments(reason = "") {
+    const path = String(i2vMotionJsonInput.value || state.i2vMotionJsonPath || "").trim();
+    if (!path) return false;
+    try {
+      const result = await postJson("/vrgdg/music_builder/save_text_file", {
+        path,
+        content: i2vMotionNotesTextFromSegments(),
+      });
+      i2vMotionJsonInput.value = result.path || path;
+      state.i2vMotionJsonPath = i2vMotionJsonInput.value;
+      return true;
+    } catch (error) {
+      console.warn(`[VRGDG Music Builder] Could not sync I2VMotionNotes after ${reason || "segment change"}:`, error);
+      toast(`Could not update I2VMotionNotes.txt:\n${String(error?.message || error)}`, true);
       return false;
     }
   }
@@ -2335,6 +2371,7 @@ function openBuilder(node) {
     endInput.disabled = disabled || state.timingFrozen || lockedByVideo;
     freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     promptJsonInput.value = state.promptJsonPath || "";
+    i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
     storyIdeaInput.value = state.storyIdeaPath || "";
@@ -4135,10 +4172,12 @@ function openBuilder(node) {
     try {
       const data = await getJson("/vrgdg/music_builder/default_context_paths");
       promptJsonInput.value = data.concept_prompts_path || "";
+      i2vMotionJsonInput.value = data.i2v_motion_notes_path || "";
       themeStyleInput.value = data.theme_style_path || "";
       storyIdeaInput.value = data.story_idea_path || "";
       subjectSceneInput.value = data.subject_scene_path || "";
       state.promptJsonPath = promptJsonInput.value;
+      state.i2vMotionJsonPath = i2vMotionJsonInput.value;
       state.themeStylePath = themeStyleInput.value;
       state.storyIdeaPath = storyIdeaInput.value;
       state.subjectScenePath = subjectSceneInput.value;
@@ -4198,10 +4237,12 @@ function openBuilder(node) {
       if (paths.audio_path) audioInput.value = paths.audio_path;
       if (paths.srt_path) srtInput.value = paths.srt_path;
       promptJsonInput.value = paths.concept_prompts_path || "";
+      i2vMotionJsonInput.value = exists.i2v_motion_notes_path ? paths.i2v_motion_notes_path || "" : "";
       themeStyleInput.value = exists.theme_style_path ? paths.theme_style_path || "" : "";
       storyIdeaInput.value = exists.story_idea_path ? paths.story_idea_path || "" : "";
       subjectSceneInput.value = exists.subject_scene_path ? paths.subject_scene_path || "" : "";
       state.promptJsonPath = promptJsonInput.value;
+      state.i2vMotionJsonPath = i2vMotionJsonInput.value;
       state.themeStylePath = themeStyleInput.value;
       state.storyIdeaPath = storyIdeaInput.value;
       state.subjectScenePath = subjectSceneInput.value;
@@ -4210,6 +4251,7 @@ function openBuilder(node) {
       if (paths.audio_path) await loadAudio();
       await loadSrt();
       if (promptJsonInput.value) await importPromptJson();
+      if (i2vMotionJsonInput.value) await importI2VMotionJson();
       clearGeneratedSceneOutputsForImport();
       syncInspector();
       render();
@@ -4265,12 +4307,37 @@ function openBuilder(node) {
     return output;
   }
 
+  async function importI2VMotionJson() {
+    try {
+      if (!i2vMotionJsonInput.value.trim()) {
+        const paths = await getJson("/vrgdg/music_builder/default_context_paths");
+        i2vMotionJsonInput.value = paths.i2v_motion_notes_path || "";
+        state.i2vMotionJsonPath = i2vMotionJsonInput.value;
+      }
+      const data = await postJson("/vrgdg/music_builder/load_prompt_json", {
+        prompt_json_path: i2vMotionJsonInput.value,
+      });
+      const notes = data.prompts || [];
+      pushHistory();
+      state.i2vMotionJsonPath = data.prompt_json_path || i2vMotionJsonInput.value;
+      for (let index = 0; index < state.segments.length && index < notes.length; index++) {
+        state.segments[index].i2v_notes = notes[index];
+      }
+      syncInspector();
+      render();
+      toast(`Imported ${notes.length} I2V motion note${notes.length === 1 ? "" : "s"} into scenes.`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  }
+
   function currentSessionData() {
     return {
       segments: state.segments,
       timing_frozen: state.timingFrozen,
       srt_mode: state.srtMode,
       prompt_json_path: state.promptJsonPath,
+      i2v_motion_json_path: state.i2vMotionJsonPath,
       use_vrgdg_text_context: state.useVrgdgTextContext,
       theme_style_path: state.themeStylePath,
       story_idea_path: state.storyIdeaPath,
@@ -4342,6 +4409,7 @@ function openBuilder(node) {
         session: currentSessionData(),
       }, 60000);
       await syncPromptJsonFromSegments("session save");
+      await syncI2VMotionJsonFromSegments("session save");
       state.projectFolder = data.project_folder || "";
       state.sessionPath = data.session_path || "";
       state.srtPath = data.srt_path || "";
@@ -4349,6 +4417,7 @@ function openBuilder(node) {
         state.timingFrozen = Boolean(data.session.timing_frozen);
         state.srtMode = Boolean(data.session.srt_mode);
         state.promptJsonPath = data.session.prompt_json_path || state.promptJsonPath;
+        state.i2vMotionJsonPath = data.session.i2v_motion_json_path || state.i2vMotionJsonPath;
         state.useVrgdgTextContext = data.session.use_vrgdg_text_context ?? state.useVrgdgTextContext;
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
         state.storyIdeaPath = data.session.story_idea_path || state.storyIdeaPath;
@@ -4403,6 +4472,7 @@ function openBuilder(node) {
       session: currentSessionData(),
     }, 60000);
     await syncPromptJsonFromSegments("scene video save");
+    await syncI2VMotionJsonFromSegments("scene video save");
     state.projectFolder = data.project_folder || state.projectFolder;
     state.sessionPath = data.session_path || state.sessionPath;
     state.srtPath = data.srt_path || state.srtPath;
@@ -4440,6 +4510,7 @@ function openBuilder(node) {
       setWidgetValue(node, "srt_path", state.srtPath);
       rememberLastProject(state.projectFolder);
       await syncPromptJsonFromSegments(`autosave ${reason || "session"}`);
+      await syncI2VMotionJsonFromSegments(`autosave ${reason || "session"}`);
       if (reason) console.log(`[VRGDG Music Builder] Autosaved session/SRT: ${reason}`, state.sessionPath || "");
       return true;
     } catch (error) {
@@ -4469,6 +4540,7 @@ function openBuilder(node) {
       state.timingFrozen = Boolean(session.timing_frozen);
       state.srtMode = Boolean(session.srt_mode);
       state.promptJsonPath = session.prompt_json_path || "";
+      state.i2vMotionJsonPath = session.i2v_motion_json_path || "";
       state.useVrgdgTextContext = session.use_vrgdg_text_context ?? true;
       state.themeStylePath = session.theme_style_path || "";
       state.storyIdeaPath = session.story_idea_path || "";
@@ -4884,7 +4956,7 @@ function openBuilder(node) {
     };
   }
 
-  async function generateFluxKleinPromptForSegment(segment, progress = null, percent = 25, label = "Flux/Klein Gemma") {
+  async function generateFluxKleinPromptForSegment(segment, progress = null, percent = 25, label = "Flux/Klein Gemma", options = {}) {
     state.activeId = segment.id;
     syncInspector();
     render();
@@ -4898,7 +4970,8 @@ function openBuilder(node) {
       mmproj_file: fluxMmprojSelect.value,
       image_ingredients: settings.image_ingredients || [],
       user_notes: settings.notes || segment.notes || "",
-      unload_after: true,
+      clear_before_load: options.clearBeforeLoad !== false,
+      unload_after: options.unloadAfter !== false,
     }, FLUX_GEMMA_TIMEOUT_MS);
     pushHistory();
     segment.flux_prompt = String(data.prompt || "").trim();
@@ -5233,6 +5306,40 @@ function openBuilder(node) {
     return data;
   }
 
+  async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V") {
+    if (!segment) throw new Error("Scene is missing.");
+    const useImageReference = segment.use_i2v_vision_reference !== false;
+    const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+    const t2iText = String(segment.t2i_prompt || "").trim();
+    if (useImageReference && !imageReference.path && !imageReference.data) {
+      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: I2V image reference is enabled, but no scene image was found.`);
+    }
+    if (!useImageReference && !t2iText) {
+      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: T2I prompt is missing.`);
+    }
+    progress?.set(useImageReference
+      ? `${label}: creating I2V prompt from scene image and motion notes...`
+      : `${label}: converting T2I prompt to I2V prompt without vision...`, percent);
+    const data = await postJson("/vrgdg/music_builder/generate_i2v", {
+      model_file: i2vGemmaModelSelect.value,
+      mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
+      t2i_prompt: useImageReference ? "" : t2iText,
+      image_reference_path: imageReference.path,
+      image_reference_data: imageReference.data,
+      user_notes: segment.i2v_notes || "",
+      theme_style_path: useImageReference ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+      story_idea_path: useImageReference ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+      subject_scene_path: useImageReference ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+      unload_after: true,
+    });
+    pushHistory();
+    segment.i2v_prompt = String(data.prompt || "").trim();
+    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Gemma returned an empty I2V prompt.`);
+    if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
+    render();
+    return data;
+  }
+
   async function i2vAllTextOnlyScenes(options = {}) {
     const progress = options.progress || createProgressWindow("Gemma I2V All Scenes");
     const closeProgress = !options.progress;
@@ -5240,7 +5347,14 @@ function openBuilder(node) {
     const missing = [];
     if (!scenes.length) missing.push("No scenes found. Add or load scenes first.");
     scenes.forEach((segment, index) => {
-      if (!String(segment.t2i_prompt || "").trim()) missing.push(`${sceneDisplayName(segment, index)}: T2I prompt is missing.`);
+      const useImageReference = segment.use_i2v_vision_reference !== false;
+      const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+      if (useImageReference && !imageReference.path && !imageReference.data) {
+        missing.push(`${sceneDisplayName(segment, index)}: I2V image reference is enabled, but no scene image was found.`);
+      }
+      if (!useImageReference && !String(segment.t2i_prompt || "").trim()) {
+        missing.push(`${sceneDisplayName(segment, index)}: T2I prompt is missing.`);
+      }
     });
     if (missing.length) {
       progress.setHtml(`
@@ -5264,8 +5378,9 @@ function openBuilder(node) {
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * 100);
-        progress.set(`Gemma I2V All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\nUsing T2I prompt text only.`, base);
-        await generateTextOnlyI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma I2V All ${index + 1}/${scenes.length}`);
+        const useImageReference = segment.use_i2v_vision_reference !== false;
+        progress.set(`Gemma I2V All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${useImageReference ? "Using scene image reference." : "Using T2I prompt text only."}`, base);
+        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma I2V All ${index + 1}/${scenes.length}`);
         await autoSaveSessionQuiet(`Gemma I2V All scene ${index + 1}`);
         await runClearMemoryWorkflowQuiet(progress, sceneDisplayName(segment, index), Math.min(98, base + 70));
       }
@@ -5857,22 +5972,43 @@ function openBuilder(node) {
         toast("All scenes already have images. Flux/Klein All skipped.");
         return;
       }
+      progress.set(`Flux/Klein All: creating ${scenes.length} image prompt${scenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
-        const base = Math.floor((index / scenes.length) * 100);
-        const span = Math.max(1, Math.floor(88 / scenes.length));
+        const base = 6 + Math.floor((index / scenes.length) * 32);
         try {
-          progress.set(`Flux/Klein All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating prompt with Gemma vision...`, base);
-          await generateFluxKleinPromptForSegment(segment, progress, base + span * 0.2, `Flux/Klein All ${index + 1}/${scenes.length}: Gemma`);
+          progress.set(`Flux/Klein prompt pass ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+          await generateFluxKleinPromptForSegment(
+            segment,
+            progress,
+            Math.min(38, base + 3),
+            `Flux/Klein prompt pass ${index + 1}/${scenes.length}: Gemma`,
+            { clearBeforeLoad: index === 0, unloadAfter: false },
+          );
           assertBatchNotStopped();
+          await autoSaveSessionQuiet(`Flux/Klein prompt pass scene ${sceneIndex + 1}`);
+        } catch (error) {
+          throw new Error(`Flux/Klein prompt pass stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+        }
+      }
+      await runClearMemoryWorkflowQuiet(progress, "Flux/Klein prompt pass", 42);
+      progress.set(`Flux/Klein All: Gemma prompt pass complete. Creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 45 + Math.floor((index / scenes.length) * 45);
+        const span = Math.max(1, Math.floor(40 / scenes.length));
+        try {
+          progress.set(`Flux/Klein image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved Flux/Klein prompt...`, base);
           await createFluxKleinImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Flux/Klein All ${index + 1}/${scenes.length}: Image`);
           assertBatchNotStopped();
           await autoSaveSessionQuiet(`Flux/Klein All scene ${sceneIndex + 1}`);
           await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
         } catch (error) {
-          throw new Error(`Flux/Klein All stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+          throw new Error(`Flux/Klein image pass stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
         }
       }
       await autoSaveSessionQuiet("Flux/Klein All complete");
@@ -5982,6 +6118,7 @@ function openBuilder(node) {
     sortSegments(state.segments);
     setActiveSegment(segment);
     await syncPromptJsonFromSegments("segment added");
+    await syncI2VMotionJsonFromSegments("segment added");
     autoSaveSessionQuiet("segment added");
   }
 
@@ -5994,6 +6131,7 @@ function openBuilder(node) {
     syncInspector();
     render();
     await syncPromptJsonFromSegments("segment deleted");
+    await syncI2VMotionJsonFromSegments("segment deleted");
     autoSaveSessionQuiet("segment deleted");
   }
 
@@ -6083,6 +6221,7 @@ function openBuilder(node) {
     state.srtMode = false;
     state.timingFrozen = false;
     state.promptJsonPath = contextPath("ConceptPrompts.txt");
+    state.i2vMotionJsonPath = contextPath("I2VMotionNotes.txt");
     state.themeStylePath = contextPath("themestyle.txt");
     state.storyIdeaPath = contextPath("storyconcept.txt");
     state.subjectScenePath = contextPath("subjectsandscenes.txt");
@@ -6109,6 +6248,7 @@ function openBuilder(node) {
     setWidgetValue(node, "srt_path", state.srtPath);
     audioInput.value = "";
     promptJsonInput.value = state.promptJsonPath;
+    i2vMotionJsonInput.value = state.i2vMotionJsonPath;
     themeStyleInput.value = state.themeStylePath;
     storyIdeaInput.value = state.storyIdeaPath;
     subjectSceneInput.value = state.subjectScenePath;
@@ -6140,6 +6280,10 @@ function openBuilder(node) {
       if (data.concept_prompts_path) {
         promptJsonInput.value = data.concept_prompts_path;
         state.promptJsonPath = data.concept_prompts_path;
+      }
+      if (data.i2v_motion_notes_path) {
+        i2vMotionJsonInput.value = data.i2v_motion_notes_path;
+        state.i2vMotionJsonPath = data.i2v_motion_notes_path;
       }
       if (data.theme_style_path) {
         themeStyleInput.value = data.theme_style_path;
@@ -6184,10 +6328,12 @@ function openBuilder(node) {
         }
         if (result?.files) {
           promptJsonInput.value = result.files["ConceptPrompts.txt"] || promptJsonInput.value;
+          i2vMotionJsonInput.value = result.files["I2VMotionNotes.txt"] || i2vMotionJsonInput.value;
           themeStyleInput.value = result.files["themestyle.txt"] || themeStyleInput.value;
           storyIdeaInput.value = result.files["storyconcept.txt"] || storyIdeaInput.value;
           subjectSceneInput.value = result.files["subjectsandscenes.txt"] || subjectSceneInput.value;
           state.promptJsonPath = promptJsonInput.value;
+          state.i2vMotionJsonPath = i2vMotionJsonInput.value;
           state.themeStylePath = themeStyleInput.value;
           state.storyIdeaPath = storyIdeaInput.value;
           state.subjectScenePath = subjectSceneInput.value;
@@ -6420,6 +6566,10 @@ function openBuilder(node) {
     pushHistory();
     state.promptJsonPath = promptJsonInput.value || "";
   });
+  i2vMotionJsonInput.addEventListener("input", () => {
+    pushHistory();
+    state.i2vMotionJsonPath = i2vMotionJsonInput.value || "";
+  });
   useVrgdgTextContext.input.addEventListener("change", () => {
     pushHistory();
     state.useVrgdgTextContext = Boolean(useVrgdgTextContext.input.checked);
@@ -6462,6 +6612,15 @@ function openBuilder(node) {
       state.promptJsonPath = promptJsonInput.value || "";
       await importPromptJson();
       await autoSaveSessionQuiet("prompt JSON edited");
+    },
+  });
+  editI2VMotionJsonButton.onclick = () => editContextTextFile(i2vMotionJsonInput, "Edit I2V Motion Notes JSON", "I2VMotionNotes.txt", null, {
+    showGemma: false,
+    helpText: "Save this file to re-import the updated I2V motion notes into the scene motion boxes.",
+    afterSave: async () => {
+      state.i2vMotionJsonPath = i2vMotionJsonInput.value || "";
+      await importI2VMotionJson();
+      await autoSaveSessionQuiet("I2V motion notes edited");
     },
   });
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
@@ -6540,6 +6699,7 @@ function openBuilder(node) {
   };
   saveButton.onclick = saveSession;
   importPromptJsonButton.onclick = importPromptJson;
+  importI2VMotionJsonButton.onclick = importI2VMotionJson;
   addSegmentButton.onclick = addSegment;
   createT2IButton.onclick = createT2IPromptWithGemma;
   createI2VButton.onclick = createI2VPromptWithGemma;

@@ -41,6 +41,7 @@ def _vrgdg_textfile_path(folder_name, file_name):
 def _default_context_paths():
     return {
         "concept_prompts_path": _vrgdg_textfile_path("ConceptPrompts", "ConceptPrompts.txt"),
+        "i2v_motion_notes_path": _vrgdg_textfile_path("I2VMotionNotes", "I2VMotionNotes.txt"),
         "theme_style_path": _vrgdg_textfile_path("themestyle", "themestyle.txt"),
         "story_idea_path": _vrgdg_textfile_path("storyconcept", "storyconcept.txt"),
         "subject_scene_path": _vrgdg_textfile_path("subjectandscenes", "subjectsandscenes.txt"),
@@ -59,6 +60,7 @@ def _project_prompt_creator_paths(project_folder):
         "audio_path": _newest_file(audio_folder, (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".mp4")),
         "srt_path": _srt_path(folder),
         "concept_prompts_path": os.path.join(context, "ConceptPrompts.txt"),
+        "i2v_motion_notes_path": os.path.join(context, "I2VMotionNotes.txt"),
         "theme_style_path": os.path.join(context, "themestyle.txt"),
         "story_idea_path": os.path.join(context, "storyconcept.txt"),
         "subject_scene_path": os.path.join(context, "subjectsandscenes.txt"),
@@ -237,7 +239,7 @@ def _new_builder_project(payload):
     os.makedirs(_images_folder(target), exist_ok=True)
     os.makedirs(_prompts_folder(target), exist_ok=True)
     os.makedirs(_context_folder(target), exist_ok=True)
-    for filename in ("ConceptPrompts.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt"):
+    for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt"):
         path = os.path.join(_context_folder(target), filename)
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as handle:
@@ -250,6 +252,7 @@ def _new_builder_project(payload):
         "prompts_folder": _prompts_folder(target),
         "context_folder": _context_folder(target),
         "concept_prompts_path": os.path.join(_context_folder(target), "ConceptPrompts.txt"),
+        "i2v_motion_notes_path": os.path.join(_context_folder(target), "I2VMotionNotes.txt"),
         "theme_style_path": os.path.join(_context_folder(target), "themestyle.txt"),
         "story_idea_path": os.path.join(_context_folder(target), "storyconcept.txt"),
         "subject_scene_path": os.path.join(_context_folder(target), "subjectsandscenes.txt"),
@@ -1155,7 +1158,7 @@ def _generate_builder_t2i_prompt(payload):
     else:
         prompt = f"{_TEXT_ONLY_T2I_INSTRUCTIONS}\n\nUser notes:\n{user_notes}"
 
-    n_ctx = int(payload.get("n_ctx") or 13000)
+    n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()
@@ -1276,7 +1279,7 @@ def _generate_builder_i2v_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or (0.25 if has_image_reference else 0.7))
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or (8000 if has_image_reference else 1200))
+    max_new_tokens = int(payload.get("max_new_tokens") or 4000)
     unload_after = True
 
     try:
@@ -1448,11 +1451,13 @@ def _generate_flux_klein_prompt(payload):
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 350)
-    unload_after = True
+    clear_before_load = bool(payload.get("clear_before_load", True))
+    unload_after = bool(payload.get("unload_after", True))
 
     try:
-        _clear_comfy_model_memory()
-        _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+        if clear_before_load:
+            _clear_comfy_model_memory()
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
         model = llm._load_gguf_model(
             model_path=model_path,
             n_ctx=n_ctx,
