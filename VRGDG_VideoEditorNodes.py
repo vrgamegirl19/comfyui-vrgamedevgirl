@@ -478,6 +478,7 @@ def _clean_visual_gemma_text(text):
         r"_?\s*<\|channel>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*",
+        r"^\s*\d+\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
         r"^\s*[-_]*\s*(?:thought|analysis|reasoning)\s*",
         r"^\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
     ]

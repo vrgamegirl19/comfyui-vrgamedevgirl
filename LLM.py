@@ -3314,6 +3314,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             r"^\s*_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
             r"^\s*_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*",
             r"^\s*_?\s*(?:thought|analysis|reasoning)\s*<channel\|>\s*",
+            r"^\s*\d+\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
             r"^\s*_?\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
             r"^\s*_?\s*(?:end|start)_of_turn\s*",
             r"^\s*_?\s*(?:end|start)_turn\s*",

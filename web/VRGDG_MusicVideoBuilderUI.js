@@ -2295,8 +2295,28 @@ function openBuilder(node) {
     }
   }
 
+  function cleanGeneratedPromptText(prompt) {
+    let text = String(prompt || "").trim();
+    text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+    text = text.replace(/<\/?thought>/gi, "").trim();
+    const controlPatterns = [
+      /^\s*\d+\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*/i,
+      /^\s*_?\s*(?:thought|analysis|reasoning)\s*<channel\|>\s*/i,
+      /^\s*_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*/i,
+      /^\s*_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*/i,
+      /^\s*_?\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*/i,
+      /^(?:Assistant|Answer|Final prompt)\s*:\s*/i,
+    ];
+    let previous = "";
+    while (text && previous !== text) {
+      previous = text;
+      for (const pattern of controlPatterns) text = text.replace(pattern, "").trim();
+    }
+    return text;
+  }
+
   function applyTriggerPhrase(prompt, trigger) {
-    const promptText = String(prompt || "").trim();
+    const promptText = cleanGeneratedPromptText(prompt);
     const triggerText = String(trigger || "").trim().replace(/\s+/g, " ");
     if (!triggerText) return promptText;
     if (!promptText) return triggerText;
