@@ -16,6 +16,7 @@ import urllib.request
 import urllib.error
 import folder_paths
 import gc
+import time
 
 
 _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
@@ -3140,6 +3141,10 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         if cached is not None:
             return cached
 
+        normalized_model_path = os.path.normpath(str(model_path or ""))
+        if not os.path.isfile(normalized_model_path):
+            raise Exception(f"GGUF model file was not found: {normalized_model_path}")
+
         try:
             from llama_cpp import Llama
             from llama_cpp.llama_chat_format import Llava15ChatHandler
@@ -3198,7 +3203,31 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                 verbose=False,
             )
 
-        model = Llama(**kwargs)
+        def load_once():
+            return Llama(**kwargs)
+
+        try:
+            model = load_once()
+        except Exception as first_error:
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            time.sleep(0.25)
+            try:
+                model = load_once()
+            except Exception as second_error:
+                size_gb = 0.0
+                try:
+                    size_gb = os.path.getsize(normalized_model_path) / (1024 ** 3)
+                except Exception:
+                    pass
+                raise Exception(
+                    "Failed to load GGUF model after cleanup retry.\n"
+                    f"Model file exists: {normalized_model_path}\n"
+                    f"Size: {size_gb:.2f} GB\n"
+                    f"n_ctx: {int(n_ctx)}, n_gpu_layers: {int(n_gpu_layers)}, n_threads: {int(n_threads)}\n"
+                    "This usually means llama-cpp could not mmap/load the file because of memory pressure, a locked/stale model handle, or an incompatible/corrupt GGUF.\n"
+                    f"First error: {first_error}\n"
+                    f"Retry error: {second_error}"
+                ) from second_error
         _GGUF_MODEL_CACHE[key] = model
         return model
 
@@ -3575,6 +3604,9 @@ class VRGDG_SuperGemmaGGUFChat(VRGDG_GeneralGGUF):
             raise Exception(
                 f"{missing_value}. Place the file under models/{cls.MODELS_SUBDIR} and restart ComfyUI."
             )
+
+        if os.path.isfile(os.path.normpath(selected)):
+            return os.path.normpath(selected)
 
         roots = cls._supergemma_models_root()
 
