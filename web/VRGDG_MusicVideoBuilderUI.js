@@ -3169,7 +3169,7 @@ function openBuilder(node) {
     for (let sec = 0; sec <= timelineDuration(); sec += 10) {
       const x = sec * state.pxPerSecond;
       ctx.fillRect(x, 0, 1, timelineCanvas.height);
-      ctx.fillText(formatTime(sec), x + 3, 14);
+      ctx.fillText(formatTime(sec), x + 3, 12);
     }
   }
 
@@ -3216,10 +3216,10 @@ function openBuilder(node) {
     ensureAllSegmentRuntimeFields();
     const overlayLabel = document.createElement("div");
     overlayLabel.textContent = "INSERTS";
-    overlayLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_OVERLAY_TOP - 17}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;`;
+    overlayLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_OVERLAY_TOP - 11}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
     const baseLabel = document.createElement("div");
     baseLabel.textContent = "BASE";
-    baseLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_SEGMENT_TOP - 17}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;`;
+    baseLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_SEGMENT_TOP - 14}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
     segmentLayer.append(overlayLabel, baseLabel);
     for (const segment of [...state.overlaySegments, ...state.segments]) {
       const isOverlay = segmentTrack(segment) === "overlay";
