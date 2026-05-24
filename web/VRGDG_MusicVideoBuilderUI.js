@@ -937,6 +937,7 @@ function openBuilder(node) {
   const freezeTimingControl = makeCheckbox("Freeze SRT timing", false);
   const promptJsonInput = makeInput("");
   const importPromptJsonButton = makeButton("Import Prompt JSON", "primary");
+  const editPromptJsonButton = makeButton("Edit");
   const useVrgdgTextContext = makeCheckbox("Use VRGDG text context files", true);
   const loadVrgdgContextButton = makeButton("Use Default TextFiles Paths", "primary");
   const themeStyleInput = makeInput("");
@@ -1444,7 +1445,7 @@ function openBuilder(node) {
     makeField("Scene label", labelInput),
     freezeTimingControl.wrapper,
     timingGrid,
-    makeField("Prompt JSON path", promptJsonInput),
+    makeEditField("Prompt JSON path", promptJsonInput, editPromptJsonButton),
     importPromptJsonButton,
     useVrgdgTextContext.wrapper,
     loadVrgdgContextButton,
@@ -3684,7 +3685,7 @@ function openBuilder(node) {
     }
   }
 
-  async function editContextTextFile(input, title, filename, gemmaTarget) {
+  async function editContextTextFile(input, title, filename, gemmaTarget, options = {}) {
     let path = String(input.value || "").trim();
     if (!path) {
       path = projectContextPath(filename);
@@ -3732,7 +3733,7 @@ function openBuilder(node) {
       builder_story_idea: "Gemma uses the text in this box plus the current theme/style file if one exists. It unloads the model after the draft is created.",
       builder_subjects_and_scenes: "Gemma uses the text in this box plus the current theme/style and story idea files if they exist. It unloads the model after the draft is created.",
     };
-    gemmaHelp.textContent = helperByTarget[gemmaTarget] || "Gemma uses the text in this box as user input and unloads the model after the draft is created.";
+    gemmaHelp.textContent = options.helpText || helperByTarget[gemmaTarget] || "Edit this text file, then save it back to the current project.";
     gemmaHelp.style.cssText = "padding:8px 12px;border-bottom:1px solid #1f2937;color:#a1a1aa;font-size:11px;line-height:1.35;background:#0b1120;";
     const textarea = document.createElement("textarea");
     textarea.value = data.content || "";
@@ -3743,7 +3744,8 @@ function openBuilder(node) {
     const gemma = makeButton("Gemma4 Draft", "primary");
     const save = makeButton("Save", "primary");
     const cancel = makeButton("Cancel");
-    actions.append(gemma, cancel, save);
+    if (options.showGemma !== false) actions.append(gemma);
+    actions.append(cancel, save);
     box.append(header, pathText, gemmaHelp, textarea, actions);
     document.body.append(box);
     textarea.focus();
@@ -3805,6 +3807,9 @@ function openBuilder(node) {
         input.dispatchEvent(new Event("input", { bubbles: true }));
         toast(`Saved text file:\n${result.path || data.path || path}`);
         box.remove();
+        if (typeof options.afterSave === "function") {
+          await options.afterSave(result, textarea.value);
+        }
       } catch (error) {
         toast(String(error?.message || error), true);
       } finally {
@@ -6300,6 +6305,14 @@ function openBuilder(node) {
   editThemeStyleButton.onclick = () => editContextTextFile(themeStyleInput, "Edit Theme/Style Text", "themestyle.txt", "builder_style_theme");
   editStoryIdeaButton.onclick = () => editContextTextFile(storyIdeaInput, "Edit Story Idea Text", "storyconcept.txt", "builder_story_idea");
   editSubjectSceneButton.onclick = () => editContextTextFile(subjectSceneInput, "Edit Subject/Scene Text", "subjectsandscenes.txt", "builder_subjects_and_scenes");
+  editPromptJsonButton.onclick = () => editContextTextFile(promptJsonInput, "Edit Prompt JSON", "ConceptPrompts.txt", null, {
+    showGemma: false,
+    helpText: "Save this file to re-import the updated concept prompts into the scene notes.",
+    afterSave: async () => {
+      state.promptJsonPath = promptJsonInput.value || "";
+      await importPromptJson();
+    },
+  });
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useSceneZImageSettings.input.addEventListener("change", () => {
