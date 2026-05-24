@@ -635,6 +635,48 @@ function extractImagesFromHistory(historyPayload, promptId) {
   return images;
 }
 
+function extractPromptErrorFromHistory(historyPayload, promptId) {
+  const root = historyPayload?.[promptId] || historyPayload;
+  const messages = [];
+  const status = root?.status || {};
+  if (status.status_str && !/success|completed/i.test(String(status.status_str))) {
+    messages.push(`status: ${status.status_str}`);
+  }
+  const candidates = [
+    root?.error,
+    status?.error,
+    status?.exception_message,
+    status?.message,
+    ...(Array.isArray(status?.messages) ? status.messages : []),
+  ];
+  const visit = (value) => {
+    if (value == null) return;
+    if (typeof value === "string") {
+      if (value.trim() && !/execution_(start|cached|success)/i.test(value)) messages.push(value.trim());
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value === "object") {
+      for (const key of ["exception_message", "error", "message", "node_id", "node_type", "class_type"]) {
+        if (value[key] != null) visit(value[key]);
+      }
+    }
+  };
+  candidates.forEach(visit);
+  return [...new Set(messages)].join("\n");
+}
+
+function promptHistoryFinished(historyPayload, promptId) {
+  const root = historyPayload?.[promptId] || historyPayload;
+  if (!root || !Object.keys(root || {}).length) return false;
+  const status = String(root?.status?.status_str || "").toLowerCase();
+  if (status) return /success|completed|error|failed/i.test(status);
+  return Boolean(root?.outputs);
+}
+
 function extractTextFromHistory(historyPayload, promptId) {
   const root = historyPayload?.[promptId] || historyPayload;
   const outputs = root?.outputs || {};
@@ -679,8 +721,13 @@ async function waitForVideos(promptId, onStatus, shouldCancel) {
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
+    const promptError = extractPromptErrorFromHistory(data, promptId);
+    if (promptError) throw new Error(`Scene video workflow failed:\n${promptError}`);
     const videos = extractVideosFromHistory(data, promptId);
     if (videos.length) return videos;
+    if (promptHistoryFinished(data, promptId)) {
+      throw new Error("Scene video workflow finished, but no video output was found in history.");
+    }
     onStatus?.("Waiting for scene video...");
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
@@ -694,9 +741,14 @@ async function waitForImages(promptId, onStatus, shouldCancel) {
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
+    const promptError = extractPromptErrorFromHistory(data, promptId);
+    if (promptError) throw new Error(`Image workflow failed:\n${promptError}`);
     const images = extractImagesFromHistory(data, promptId);
     if (images.length) return images;
-    onStatus?.("Waiting for ZImage preview...");
+    if (promptHistoryFinished(data, promptId)) {
+      throw new Error("Image workflow finished, but no image output was found in history.");
+    }
+    onStatus?.("Waiting for image output...");
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
   throw new Error("Timed out waiting for the ZImage preview.");
@@ -709,8 +761,13 @@ async function waitForText(promptId, onStatus, shouldCancel) {
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
+    const promptError = extractPromptErrorFromHistory(data, promptId);
+    if (promptError) throw new Error(`Text workflow failed:\n${promptError}`);
     const text = extractTextFromHistory(data, promptId);
     if (text.length) return text;
+    if (promptHistoryFinished(data, promptId)) {
+      throw new Error("Text workflow finished, but no text output was found in history.");
+    }
     onStatus?.("Waiting for cleanup result...");
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
@@ -727,6 +784,18 @@ async function queueWorkflowPrompt(prompt) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {
     throw new Error(data?.error?.message || data?.error || `Queue failed (${response.status})`);
+  }
+  if (data?.node_errors && Object.keys(data.node_errors).length) {
+    const details = Object.entries(data.node_errors).map(([nodeId, error]) => {
+      const messages = [error?.class_type, error?.exception_message, error?.message]
+        .filter(Boolean)
+        .map((value) => String(value));
+      const inputErrors = Array.isArray(error?.errors)
+        ? error.errors.map((item) => item?.message || item).filter(Boolean).map((value) => String(value))
+        : [];
+      return `Node ${nodeId}: ${[...messages, ...inputErrors].join(" | ") || JSON.stringify(error)}`;
+    }).join("\n");
+    throw new Error(`Workflow validation failed:\n${details}`);
   }
   return data;
 }
@@ -5794,13 +5863,17 @@ function openBuilder(node) {
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(88 / scenes.length));
-        progress.set(`Flux/Klein All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating prompt with Gemma vision...`, base);
-        await generateFluxKleinPromptForSegment(segment, progress, base + span * 0.2, `Flux/Klein All ${index + 1}/${scenes.length}: Gemma`);
-        assertBatchNotStopped();
-        await createFluxKleinImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Flux/Klein All ${index + 1}/${scenes.length}: Image`);
-        assertBatchNotStopped();
-        await autoSaveSessionQuiet(`Flux/Klein All scene ${sceneIndex + 1}`);
-        await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+        try {
+          progress.set(`Flux/Klein All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating prompt with Gemma vision...`, base);
+          await generateFluxKleinPromptForSegment(segment, progress, base + span * 0.2, `Flux/Klein All ${index + 1}/${scenes.length}: Gemma`);
+          assertBatchNotStopped();
+          await createFluxKleinImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Flux/Klein All ${index + 1}/${scenes.length}: Image`);
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`Flux/Klein All scene ${sceneIndex + 1}`);
+          await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+        } catch (error) {
+          throw new Error(`Flux/Klein All stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+        }
       }
       await autoSaveSessionQuiet("Flux/Klein All complete");
       progress.set("Flux/Klein All complete. You can review the generated images and re-do any scenes you do not like.", 100);
