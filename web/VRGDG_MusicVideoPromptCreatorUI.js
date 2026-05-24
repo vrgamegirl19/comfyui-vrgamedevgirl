@@ -418,6 +418,26 @@ function parseLyricSegmentsToJson(text) {
   return segments;
 }
 
+function normalizeInlineText(value) {
+  return String(value || "").replace(/\r|\n/g, " ").split(/\s+/).filter(Boolean).join(" ");
+}
+
+function prependSubjectToPrompts(prompts, subject, separator = ", ") {
+  const subjectText = normalizeInlineText(subject);
+  if (!subjectText || !prompts || typeof prompts !== "object" || Array.isArray(prompts)) return prompts || {};
+  const output = {};
+  for (const [key, value] of Object.entries(prompts)) {
+    let promptText = normalizeInlineText(value);
+    if (promptText && !promptText.toLowerCase().startsWith(subjectText.toLowerCase())) {
+      promptText = `${subjectText}${separator}${promptText}`;
+    } else if (!promptText) {
+      promptText = subjectText;
+    }
+    output[key] = promptText;
+  }
+  return output;
+}
+
 function buildPayload(controls, modelSelect) {
   return {
     project_folder: controls.projectFolder.value,
@@ -1071,6 +1091,10 @@ function openPromptCreator(options = {}) {
     const result = await postJson("/vrgdg/music_prompt_creator/extract_subject", buildPayload(controls, modelSelect));
     state.extractedSubject = result.subject || "";
     subjectOutput.value = state.extractedSubject;
+    if (state.extractedSubject && state.conceptPrompts && Object.keys(state.conceptPrompts).length) {
+      state.conceptPrompts = prependSubjectToPrompts(state.conceptPrompts, state.extractedSubject);
+      conceptOutput.value = prettyJson(state.conceptPrompts);
+    }
     setStatus(status, "Subject extracted. Gemma unloaded.");
     return result;
   }
@@ -1086,6 +1110,11 @@ function openPromptCreator(options = {}) {
       ? state.conceptPrompts
       : parseJsonSafe(conceptOutput.value, {});
     payload.subject = subjectOutput.value || state.extractedSubject || "";
+    if (payload.subject && payload.prompts && Object.keys(payload.prompts).length) {
+      payload.prompts = prependSubjectToPrompts(payload.prompts, payload.subject);
+      state.conceptPrompts = payload.prompts;
+      conceptOutput.value = prettyJson(payload.prompts);
+    }
     const result = await postJson("/vrgdg/music_prompt_creator/save_outputs", payload);
     projectFolder.value = result.project_folder || projectFolder.value;
     projectFolderNote.textContent = projectFolder.value

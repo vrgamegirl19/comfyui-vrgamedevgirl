@@ -543,6 +543,26 @@ def _canonical_prompt_mapping(value):
     return {key: fixed[key] for key in sorted(fixed, key=lambda item: int(re.search(r"\d+", item).group(0)))}
 
 
+def _normalize_inline_text(value):
+    return " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
+
+
+def _prepend_subject_to_prompts(prompts, subject, separator=", "):
+    subject_text = _normalize_inline_text(subject)
+    if not subject_text or not isinstance(prompts, dict):
+        return prompts
+
+    output = {}
+    for key, value in prompts.items():
+        prompt_text = _normalize_inline_text(value)
+        if prompt_text and not prompt_text.lower().startswith(subject_text.lower()):
+            prompt_text = f"{subject_text}{separator}{prompt_text}"
+        elif not prompt_text:
+            prompt_text = subject_text
+        output[str(key)] = prompt_text
+    return output
+
+
 def _validate_segment_json(value, expected_count):
     if not isinstance(value, dict):
         raise ValueError("Segment output is not a JSON object.")
@@ -942,6 +962,11 @@ def _save_prompt_creator_outputs(payload):
         corrected_segments = _canonical_segment_mapping(corrected_segments)
     if concept_prompts:
         concept_prompts = _canonical_prompt_mapping(concept_prompts)
+        concept_prompts = _prepend_subject_to_prompts(
+            concept_prompts,
+            str(payload.get("subject", "") or ""),
+            separator=", ",
+        )
 
     files = {}
     values = {
