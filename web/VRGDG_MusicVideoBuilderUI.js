@@ -1645,9 +1645,9 @@ function openBuilder(node) {
   }
   const snapToBeatsControl = makeCheckbox("Snap beats", true);
   snapToBeatsControl.wrapper.style.margin = "0";
-  const beatMarkersButton = makeButton("Beats");
+  const beatMarkersButton = makeButton("^");
   beatMarkersButton.title = "Show or hide beat markers";
-  beatMarkersButton.style.minWidth = "54px";
+  beatMarkersButton.style.width = "34px";
   beatMarkersButton.style.padding = "7px 10px";
   const globalScrub = document.createElement("input");
   globalScrub.type = "range";
@@ -2263,6 +2263,35 @@ function openBuilder(node) {
   function showBeatMarkersIfAvailable() {
     if (Array.isArray(state.beats) && state.beats.length) {
       setBeatMarkersVisible(true);
+    }
+  }
+
+  async function reloadBeatMarkersFromAudio() {
+    const audioPath = String(audioInput.value || getWidget(node, "audio_path")?.value || "").trim();
+    if (!audioPath) {
+      toast("No audio path is loaded, so beat markers cannot be analyzed.", true);
+      return false;
+    }
+    try {
+      const data = await postJson("/vrgdg/music_builder/analyze_audio", {
+        audio_path: audioPath,
+        target_peaks: 1800,
+      }, 90000);
+      state.duration = Math.max(Number(state.duration || 0), Number(data.duration || 0));
+      state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
+      state.beats = Array.isArray(data.beats) ? data.beats : [];
+      setBeatMarkersVisible(Boolean(state.beats.length));
+      if (!state.beats.length) {
+        toast("Audio analysis finished, but no beat markers were detected.", true);
+        return false;
+      }
+      render();
+      toast(`Loaded ${state.beats.length} beat marker${state.beats.length === 1 ? "" : "s"}.`);
+      await autoSaveSessionQuiet("beat markers refreshed");
+      return true;
+    } catch (error) {
+      toast(`Could not reload beat markers:\n${String(error?.message || error)}`, true);
+      return false;
     }
   }
 
@@ -3133,9 +3162,16 @@ function openBuilder(node) {
       ctx.lineTo(x, mid + amp * (waveHeight / 2));
     }
     ctx.stroke();
-    ctx.fillStyle = "rgba(250, 250, 250, .94)";
-    for (const beatTime of state.showBeatMarkers ? state.beats || [] : []) {
+    const visibleBeats = state.showBeatMarkers && Array.isArray(state.beats) ? state.beats : [];
+    ctx.strokeStyle = "rgba(250, 204, 21, .72)";
+    ctx.fillStyle = "rgba(250, 204, 21, .96)";
+    ctx.lineWidth = 1;
+    for (const beatTime of visibleBeats) {
       const x = Number(beatTime || 0) * state.pxPerSecond;
+      ctx.beginPath();
+      ctx.moveTo(x, 4);
+      ctx.lineTo(x, timelineCanvas.height - 4);
+      ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(x, 18);
       ctx.lineTo(x - 5, 6);
@@ -7118,10 +7154,12 @@ function openBuilder(node) {
   };
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);
-  beatMarkersButton.onclick = () => {
-    setBeatMarkersVisible(!state.showBeatMarkers);
+  beatMarkersButton.onclick = async () => {
+    const shouldShow = !state.showBeatMarkers;
+    setBeatMarkersVisible(shouldShow);
     if (state.showBeatMarkers && (!state.beats || !state.beats.length)) {
-      toast("No beat markers found yet. Load or reload audio first.", true);
+      const loaded = await reloadBeatMarkersFromAudio();
+      if (!loaded) setBeatMarkersVisible(false);
     }
     render();
   };
