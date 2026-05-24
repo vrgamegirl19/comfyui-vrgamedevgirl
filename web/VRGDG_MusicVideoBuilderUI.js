@@ -14,6 +14,39 @@ const TIMELINE_SCENE_AUDIO_TOP = TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT 
 const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
 const TIMELINE_WAVE_TOP = 98;
 const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
+const LTX_MODEL_DOWNLOADS = [
+  { label: "LTX GGUF", url: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
+  { label: "Video VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
+  { label: "Gemma Clip", url: "https://huggingface.co/Sikaworld1990/gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition-Ltx-2/resolve/main/gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors" },
+  { label: "Text Projection", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/text_encoders" },
+  { label: "Latent Upscaler", url: "https://huggingface.co/prince-canuma/LTX-2.3-distilled/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" },
+  { label: "Audio VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
+];
+const ZIMAGE_MODEL_DOWNLOADS = [
+  { label: "Z-Image Turbo", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
+  { label: "Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
+  { label: "Z-Image VAE", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" },
+];
+const FLUX_KLEIN_9B_MODEL_DOWNLOADS = [
+  { label: "9B diffusion model", url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors" },
+  { label: "9B Qwen CLIP", url: "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors" },
+  { label: "9B VAE", url: "https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors" },
+];
+const FLUX_KLEIN_4B_MODEL_DOWNLOADS = [
+  { label: "4B diffusion model", url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors" },
+  { label: "4B Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
+  { label: "4B VAE", url: "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors" },
+];
+const ERNIE_MODEL_DOWNLOADS = [
+  { label: "Ernie diffusion model", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/diffusion_models/ernie-image-turbo.safetensors" },
+  { label: "Ministral text encoder", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors" },
+  { label: "Ernie VAE", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/vae/flux2-vae.safetensors" },
+];
+const LLM_MODEL_DOWNLOADS = [
+  { label: "SuperGemma GGUF", url: "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf" },
+  { label: "Gemma Vision GGUF", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf" },
+  { label: "Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+];
 const WAVEFORM_MODES = {
   small: { label: "Small wave", height: 150, gain: 1 },
   medium: { label: "Medium wave", height: 190, gain: 1.35 },
@@ -289,6 +322,69 @@ function createProgressWindow(title) {
       setTimeout(() => box.remove(), delay);
     },
   };
+}
+
+function showModelDownloadModal() {
+  const groups = [
+    { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
+    { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
+    { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
+    { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
+    { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },
+    { title: "LTX 2.3", note: "High-quality image and video generation model.", downloads: LTX_MODEL_DOWNLOADS },
+  ];
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(1320px,calc(100vw - 56px));max-height:calc(100vh - 56px);overflow:auto;border:1px solid #155e75;border-radius:10px;background:#0f172a;color:#e4e4e7;box-shadow:0 22px 80px rgba(0,0,0,.6);";
+  const header = document.createElement("div");
+  header.style.cssText = "position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;border-bottom:1px solid #155e75;background:#083344;z-index:1;";
+  const title = document.createElement("div");
+  title.textContent = "Download Models";
+  title.style.cssText = "font-size:24px;font-weight:900;color:#e0f2fe;";
+  const close = makeButton("Close");
+  close.style.padding = "12px 16px";
+  close.style.fontSize = "18px";
+  header.append(title, close);
+  const body = document.createElement("div");
+  body.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;padding:18px 20px 20px;";
+  for (const group of groups) {
+    const card = document.createElement("div");
+    card.style.cssText = "display:flex;flex-direction:column;gap:14px;border:1px solid #334155;border-radius:10px;background:#111827;padding:18px;";
+    const groupTitle = document.createElement("div");
+    groupTitle.textContent = group.title;
+    groupTitle.style.cssText = "font-size:22px;font-weight:900;color:#f8fafc;";
+    const note = document.createElement("div");
+    note.textContent = group.note;
+    note.style.cssText = "font-size:17px;line-height:1.35;color:#c7d2fe;";
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;";
+    for (const item of group.downloads) {
+      const button = makeMiniButton(item.label);
+      button.style.borderColor = "#2563eb";
+      button.style.background = "#1d4ed8";
+      button.style.color = "#eff6ff";
+      button.style.fontWeight = "900";
+      button.style.fontSize = "16px";
+      button.style.padding = "12px 16px";
+      button.style.borderRadius = "7px";
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(item.url, "_blank", "noopener,noreferrer");
+      });
+      buttons.append(button);
+    }
+    card.append(groupTitle, note, buttons);
+    body.append(card);
+  }
+  box.append(header, body);
+  backdrop.append(box);
+  document.body.append(backdrop);
+  close.onclick = () => backdrop.remove();
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
 }
 
 function showTextInputModal({ title, label, value = "", placeholder = "", confirmLabel = "Continue" } = {}) {
@@ -913,6 +1009,7 @@ function openBuilder(node) {
   const fullBuildButton = makeButton("Build Full Video");
   const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
+  const downloadModelsButton = makeButton("Download Models");
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
@@ -939,7 +1036,7 @@ function openBuilder(node) {
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  utilityActions.append(stopWorkflowButton, clearMemoryButton, closeButton);
+  utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, closeButton);
   topbar.append(projectActions, importActions, batchActions, utilityActions, menuDropdown);
 
   const main = document.createElement("div");
@@ -2850,9 +2947,17 @@ function openBuilder(node) {
     renderFluxIngredientList(segment);
     fluxNotes.value = segment?.flux_notes || "";
     fluxPrompt.value = segment?.flux_prompt || "";
-    fluxUnetPicker.input.value = settings.unet_name || "flux\\flux-2-klein-4b-fp8.safetensors";
+    fluxUnetPicker.input.value = chooseModelValue(
+      fluxUnetPicker.options || [],
+      settings.unet_name || "flux\\flux-2-klein-4b-fp8.safetensors",
+      ["flux\\flux-2-klein-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors"],
+    ) || settings.unet_name || "";
     fluxClipPicker.input.value = settings.clip_name || "qwen_3_4b.safetensors";
-    fluxVaePicker.input.value = settings.vae_name || "flux\\flux2-vae.safetensors";
+    fluxVaePicker.input.value = chooseModelValue(
+      fluxVaePicker.options || [],
+      settings.vae_name || "flux\\flux2-vae.safetensors",
+      ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"],
+    ) || settings.vae_name || "";
     fluxWidth.value = settings.width || 1024;
     fluxHeight.value = settings.height || 576;
     fluxSeed.value = settings.seed || 100;
@@ -6802,6 +6907,7 @@ function openBuilder(node) {
   fullBuildButton.onclick = confirmAndRunFullBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
+  downloadModelsButton.onclick = showModelDownloadModal;
   openSceneAudioOptionsButton.onclick = () => {
     const segment = requireActiveSegment();
     if (segment) openSceneOptions(segment);
@@ -7154,6 +7260,35 @@ function openBuilder(node) {
     });
   }
 
+  function basenameOnly(value) {
+    return String(value || "").replaceAll("\\", "/").split("/").pop();
+  }
+
+  function chooseModelValue(options = [], current = "", preferred = []) {
+    const values = (options || []).filter((item) => String(item || "").trim());
+    if (!values.length) return "";
+    const exact = values.find((item) => item === current);
+    if (exact) return exact;
+    const currentBase = basenameOnly(current);
+    if (currentBase) {
+      const sameBase = values.find((item) => basenameOnly(item) === currentBase);
+      if (sameBase) return sameBase;
+    }
+    for (const item of preferred) {
+      const direct = values.find((value) => value === item);
+      if (direct) return direct;
+      const base = basenameOnly(item);
+      const sameBase = values.find((value) => basenameOnly(value) === base);
+      if (sameBase) return sameBase;
+    }
+    for (const item of preferred) {
+      const needle = basenameOnly(item).toLowerCase().replace(/\.(safetensors|gguf|ckpt)$/i, "");
+      const partial = values.find((value) => String(value || "").toLowerCase().includes(needle));
+      if (partial) return partial;
+    }
+    return values[0] || "";
+  }
+
   getJson("/vrgdg/workflow_runner/lora_list").then((data) => {
     const loras = data.loras || ["[none]"];
     for (const slot of [...zLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
@@ -7166,10 +7301,12 @@ function openBuilder(node) {
   });
 
   getJson("/vrgdg/workflow_runner/i2v_choices").then((data) => {
-    const setOptions = (picker, options, fallback) => {
-      const values = Array.from(new Set([fallback, ...(options || [])].filter((item) => String(item || "").trim())));
+    const setOptions = (picker, options, preferred = []) => {
+      const preferredList = Array.isArray(preferred) ? preferred : [preferred];
+      const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
       picker.options = values;
-      if (!picker.input.value || BAD_I2V_UNET_ALIASES.has(picker.input.value) || !values.includes(picker.input.value)) picker.input.value = values[0] || "";
+      const current = BAD_I2V_UNET_ALIASES.has(picker.input.value) ? "" : picker.input.value;
+      picker.input.value = chooseModelValue(values, current, preferredList);
     };
     setOptions(i2vUnetPicker, data.unets, DEFAULT_I2V_UNET);
     setOptions(i2vVaePicker, data.vae, "LTX23_video_vae_bf16.safetensors");
@@ -7177,9 +7314,9 @@ function openBuilder(node) {
     setOptions(i2vClip2Picker, data.clip, "ltx-2.3_text_projection_bf16.safetensors");
     setOptions(i2vUpscalePicker, data.upscale_models, "ltx-2.3-spatial-upscaler-x2-1.1.safetensors");
     setOptions(i2vAudioVaePicker, data.vae, "LTX23_audio_vae_bf16.safetensors");
-    setOptions(fluxUnetPicker, data.unets, "flux\\flux-2-klein-4b-fp8.safetensors");
-    setOptions(fluxClipPicker, data.clip, "qwen_3_4b.safetensors");
-    setOptions(fluxVaePicker, data.vae, "flux\\flux2-vae.safetensors");
+    setOptions(fluxUnetPicker, data.unets, ["flux\\flux-2-klein-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors"]);
+    setOptions(fluxClipPicker, data.clip, ["qwen_3_4b.safetensors", "flux\\qwen_3_4b.safetensors"]);
+    setOptions(fluxVaePicker, data.vae, ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"]);
     setOptions(zUnetPicker, data.unets, "z_image_turbo_bf16.safetensors");
     setOptions(zClipPicker, data.clip, "qwen_3_4b.safetensors");
     setOptions(zVaePicker, data.vae, "ae.safetensors");
