@@ -4020,12 +4020,8 @@ function openBuilder(node) {
       state.promptJsonPath = data.prompt_json_path || promptJsonInput.value;
       for (let index = 0; index < state.segments.length && index < prompts.length; index++) {
         const segment = state.segments[index];
-        const previousNotes = String(segment.notes || "").trim();
-        const previousFluxNotes = String(segment.flux_notes || "").trim();
-        state.segments[index].notes = prompts[index];
-        if (!previousFluxNotes || previousFluxNotes === previousNotes) {
-          state.segments[index].flux_notes = prompts[index];
-        }
+        segment.notes = prompts[index];
+        segment.flux_notes = prompts[index];
         if (!state.segments[index].label || /^Prompt\s+\d+$/i.test(state.segments[index].label)) {
           state.segments[index].label = `Scene ${index + 1}`;
         }
