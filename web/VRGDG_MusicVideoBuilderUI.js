@@ -970,7 +970,12 @@ function openBuilder(node) {
   previewVideo.playsInline = true;
   previewVideo.muted = true;
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
-  previewStage.append(previewEmpty, previewImage, previewVideo);
+  const previewPreloadVideo = document.createElement("video");
+  previewPreloadVideo.preload = "auto";
+  previewPreloadVideo.playsInline = true;
+  previewPreloadVideo.muted = true;
+  previewPreloadVideo.style.display = "none";
+  previewStage.append(previewEmpty, previewImage, previewVideo, previewPreloadVideo);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -1812,6 +1817,7 @@ function openBuilder(node) {
     sceneAudioMode: false,
     sceneAudioSegmentId: "",
     sceneAudioGlobalTime: 0,
+    previewPlaybackSegmentId: "",
     timingFrozen: false,
     srtMode: false,
     promptJsonPath: "",
@@ -2400,6 +2406,32 @@ function openBuilder(node) {
     }) || null;
   }
 
+  function playbackSegmentAtTime(time) {
+    const current = Number(time || 0);
+    const overlay = state.overlaySegments
+      .slice()
+      .sort((a, b) => Number(b.start || 0) - Number(a.start || 0))
+      .find((segment) => {
+        const start = Number(segment.start || 0);
+        const end = Number(segment.end || 0);
+        return current >= start && current < end;
+      });
+    return overlay || segmentAtTime(current);
+  }
+
+  function nextPlaybackSegmentAfter(time) {
+    const current = Number(time || 0);
+    return [...state.overlaySegments, ...state.segments]
+      .filter((segment) => Number(segment.start || 0) > current + 0.03 && selectedSegmentVideoPath(segment))
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0))[0] || null;
+  }
+
+  function localPlaybackTime(segment, globalTime) {
+    if (!segment) return 0;
+    const duration = Math.max(0.1, Number(segment.end || 0) - Number(segment.start || 0));
+    return Math.max(0, Math.min(duration, Number(globalTime || 0) - Number(segment.start || 0)));
+  }
+
   function hasLockedVideo(segment) {
     return Boolean(segment?.video_path);
   }
@@ -2444,6 +2476,7 @@ function openBuilder(node) {
         previewVideo.src = makeEditorVideoUrl(videoPath);
         previewVideo.dataset.path = videoPath;
       }
+      state.previewPlaybackSegmentId = segment.id || "";
       previewVideo.muted = true;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
@@ -2453,6 +2486,7 @@ function openBuilder(node) {
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.dataset.path = "";
+    state.previewPlaybackSegmentId = "";
     previewVideo.style.display = "none";
     if (segment?.custom_image_data) {
       previewImage.src = segment.custom_image_data;
@@ -2568,13 +2602,23 @@ function openBuilder(node) {
   }
 
   function syncPreviewPlayback(current) {
-    const segment = activeSegment();
-    if (!segment || !segment.video_path || previewVideo.style.display === "none") {
+    const playing = isTimelinePlaying();
+    const segment = playing ? playbackSegmentAtTime(current) : activeSegment();
+    const videoPath = selectedSegmentVideoPath(segment);
+    if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
       return;
     }
-    const duration = Math.max(0.1, Number(segment.end || 0) - Number(segment.start || 0));
-    const local = Math.max(0, Math.min(duration, Number(current || 0) - Number(segment.start || 0)));
+    if (previewVideo.dataset.path !== videoPath) {
+      previewVideo.src = makeEditorVideoUrl(videoPath);
+      previewVideo.dataset.path = videoPath;
+      state.previewPlaybackSegmentId = segment.id || "";
+      previewVideo.muted = true;
+      previewVideo.style.display = "block";
+      previewImage.style.display = "none";
+      previewEmpty.style.display = "none";
+    }
+    const local = localPlaybackTime(segment, current);
     if (Number.isFinite(local) && Math.abs(Number(previewVideo.currentTime || 0) - local) > 0.2) {
       try {
         previewVideo.currentTime = local;
@@ -2582,11 +2626,23 @@ function openBuilder(node) {
         // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
       }
     }
-    if (audio.src && !audio.paused) {
+    if (isTimelinePlaying()) {
       previewVideo.play().catch(() => {});
+      preloadUpcomingPreviewVideo(current);
     } else if (!previewVideo.paused) {
       previewVideo.pause();
     }
+  }
+
+  function preloadUpcomingPreviewVideo(current) {
+    const next = nextPlaybackSegmentAfter(current);
+    const nextPath = selectedSegmentVideoPath(next);
+    if (!nextPath) return;
+    const url = makeEditorVideoUrl(nextPath);
+    if (previewPreloadVideo.dataset.path === nextPath) return;
+    previewPreloadVideo.src = url;
+    previewPreloadVideo.dataset.path = nextPath;
+    previewPreloadVideo.load();
   }
 
   function updateAudioScrubbers() {
@@ -2594,7 +2650,7 @@ function openBuilder(node) {
     const maxTime = timelineDuration();
     const followPlayback = Boolean((audio.src && !audio.paused) || (sceneAudio.src && !sceneAudio.paused) || state.isScrubbing);
     if (followPlayback) {
-      const playbackSegment = segmentAtTime(current);
+      const playbackSegment = playbackSegmentAtTime(current);
       if (playbackSegment && playbackSegment.id !== state.activeId) {
         state.activeId = playbackSegment.id;
         syncInspector();
@@ -2624,7 +2680,7 @@ function openBuilder(node) {
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
     if (usingSceneAudioMode()) {
-      const segment = audioSegmentAtTime(time) || segmentAtTime(time) || state.segments[state.segments.length - 1] || null;
+      const segment = audioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments[state.segments.length - 1] || null;
       if (segment) state.activeId = segment.id;
       if (segment?.custom_audio_path) {
         const local = Math.max(0, Math.min(audioChunkDuration(segment), time - audioTimelineStart(segment))) + audioSourceStart(segment);
@@ -2650,7 +2706,7 @@ function openBuilder(node) {
 
   function playSceneAudioFrom(time = currentGlobalTime()) {
     const maxTime = timelineDuration();
-    const segment = audioSegmentAtTime(time) || segmentAtTime(time) || state.segments.find((item) => audioTimelineEnd(item) > time && item.custom_audio_path) || state.segments[0] || null;
+    const segment = audioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments.find((item) => audioTimelineEnd(item) > time && item.custom_audio_path) || state.segments[0] || null;
     if (!segment) return;
     state.activeId = segment.id;
     state.sceneAudioGlobalTime = Math.max(audioTimelineStart(segment), Math.min(maxTime, Number(time || 0)));
