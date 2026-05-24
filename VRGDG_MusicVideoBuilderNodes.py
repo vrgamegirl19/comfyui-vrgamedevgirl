@@ -2114,9 +2114,11 @@ def _scan_builder_scene_videos(project_folder):
     if not folder:
         raise ValueError("Project folder is empty.")
     video_folder = os.path.join(folder, "rendered_scene_videos")
+    backup_root = os.path.join(folder, "rendered_scene_videos_backup")
     videos = {}
+    video_backups = {}
     if not os.path.isdir(video_folder):
-        return {"project_folder": folder, "video_folder": video_folder, "videos": videos}
+        return {"project_folder": folder, "video_folder": video_folder, "videos": videos, "video_backups": video_backups}
     pattern = re.compile(r"^video_(\d+)-audio\.mp4$", re.IGNORECASE)
     for name in os.listdir(video_folder):
         match = pattern.match(name)
@@ -2125,7 +2127,21 @@ def _scan_builder_scene_videos(project_folder):
         path = os.path.join(video_folder, name)
         if os.path.isfile(path):
             videos[str(int(match.group(1)))] = path
-    return {"project_folder": folder, "video_folder": video_folder, "videos": videos}
+    if os.path.isdir(backup_root):
+        backup_pattern = re.compile(r"^video_(\d+)-audio_.*\.mp4$", re.IGNORECASE)
+        for root, _, names in os.walk(backup_root):
+            for name in names:
+                match = backup_pattern.match(name)
+                if not match:
+                    continue
+                path = os.path.join(root, name)
+                if not os.path.isfile(path):
+                    continue
+                key = str(int(match.group(1)))
+                video_backups.setdefault(key, []).append(path)
+        for paths in video_backups.values():
+            paths.sort(key=lambda item: os.path.getmtime(item))
+    return {"project_folder": folder, "video_folder": video_folder, "videos": videos, "video_backups": video_backups}
 
 
 def _ensure_music_builder_routes():

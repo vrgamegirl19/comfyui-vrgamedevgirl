@@ -1937,9 +1937,26 @@ function openBuilder(node) {
     if (!segment) return [];
     const currentPath = String(segment.video_path || "").trim();
     const currentKey = mediaPathKey(currentPath);
-    const cleaned = currentPath && currentKey && !isBackupSceneVideoPath(currentPath) ? [currentPath] : [];
+    const seen = new Set();
+    const cleaned = [];
+    const backupCandidates = [
+      ...(Array.isArray(segment.video_backup_paths) ? segment.video_backup_paths : []),
+      ...(Array.isArray(segment.video_history) ? segment.video_history.filter(isBackupSceneVideoPath) : []),
+    ];
+    for (const item of backupCandidates) {
+      const path = String(item || "").trim();
+      const key = mediaPathKey(path);
+      if (!path || !key || seen.has(key) || !isBackupSceneVideoPath(path)) continue;
+      seen.add(key);
+      cleaned.push(path);
+    }
+    segment.video_backup_paths = cleaned.slice();
+    if (currentPath && currentKey && !seen.has(currentKey)) {
+      seen.add(currentKey);
+      cleaned.push(currentPath);
+    }
     segment.video_history = cleaned;
-    segment.video_history_index = cleaned.length ? 0 : -1;
+    segment.video_history_index = cleaned.length ? cleaned.length - 1 : -1;
     return cleaned;
   }
 
@@ -4840,21 +4857,28 @@ function openBuilder(node) {
           project_folder: state.projectFolder,
         });
         const videos = scan.videos || {};
+        const videoBackups = scan.video_backups || {};
         let restored = 0;
         for (const [index, segment] of state.segments.entries()) {
-          const videoPath = videos[String(index + 1)] || "";
+          const sceneKey = String(index + 1);
+          const videoPath = videos[sceneKey] || "";
+          segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
           if (!videoPath) continue;
           segment.video_path = videoPath;
           segment.video_folder = scan.video_folder || segment.video_folder || "";
           segment.video_status = "done";
+          normalizeSegmentVideoHistory(segment);
           restored += 1;
         }
         for (const [index, segment] of state.overlaySegments.entries()) {
-          const videoPath = videos[String(10000 + index + 1)] || "";
+          const sceneKey = String(10000 + index + 1);
+          const videoPath = videos[sceneKey] || "";
+          segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
           if (!videoPath) continue;
           segment.video_path = videoPath;
           segment.video_folder = scan.video_folder || segment.video_folder || "";
           segment.video_status = "done";
+          normalizeSegmentVideoHistory(segment);
           restored += 1;
         }
         if (restored) console.log(`[VRGDG Music Builder] Restored ${restored} scene video path(s) from project folder.`);
@@ -5998,6 +6022,12 @@ function openBuilder(node) {
       existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
     pushHistory();
+    if (collected.backup_path) {
+      if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+      if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_path))) {
+        segment.video_backup_paths.push(collected.backup_path);
+      }
+    }
     segment.video_output = video;
     segment.video_source_path = videoPath;
     segment.video_path = collected.video_path || videoPath;
