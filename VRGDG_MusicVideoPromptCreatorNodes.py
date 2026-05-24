@@ -1,5 +1,6 @@
 import json
 import copy
+import math
 import os
 import re
 import shutil
@@ -108,6 +109,43 @@ FORMAT
 }"""
 
 
+_WHISPER_BATCH_REPAIR_INSTRUCTIONS = r"""Repair a small batch of Whisper lyric segments by aligning them to a nearby real lyric window.
+
+INPUTS
+You will receive:
+1. TARGET_WHISPER_SEGMENTS: the exact segment keys to repair.
+2. REAL_LYRIC_WINDOW: nearby real lyrics in song order. Use only these lyric words for corrections.
+3. PREVIOUS_REPAIRED_CONTEXT: already repaired segments just before this batch, for continuity only.
+
+TASK
+Return one corrected value for each TARGET_WHISPER_SEGMENTS key.
+
+STRICT RULES
+- Use only words from REAL_LYRIC_WINDOW for sung lyrics.
+- You may fix punctuation, capitalization, spacing, and obvious partial-word breaks.
+- Do not invent new lyrics.
+- Do not use visual story, style/theme, mood, color, or setting words.
+- If a Whisper segment is filler such as "Thank you." and no lyric from REAL_LYRIC_WINDOW belongs there, output "[instrumental]".
+- If a filler segment clearly sits where a lyric from REAL_LYRIC_WINDOW belongs, use the matching real lyric words.
+- Keep the segment count and key names exactly the same as TARGET_WHISPER_SEGMENTS.
+- Keep the batch in song order. Do not jump backward to earlier lyrics outside REAL_LYRIC_WINDOW.
+- Do not copy the whole lyric window into every segment.
+
+OUTPUT
+Return valid JSON only.
+No markdown.
+No explanation.
+Use double quotes.
+No trailing commas.
+No line breaks inside string values.
+
+FORMAT
+{
+  "segment10": "corrected lyric chunk",
+  "segment11": "corrected lyric chunk"
+}"""
+
+
 _CONCEPT_PROMPT_INSTRUCTIONS = r"""You are a lyric-to-visual-concept converter.
 
 INPUTS
@@ -152,6 +190,20 @@ Do not mention camera moves unless the lyric clearly needs motion.
 Do not quote the lyric directly unless it is necessary.
 Do not explain anything.
 
+LYRIC ANCHOR RULES
+Before writing each Prompt, silently identify the concrete anchors in that exact lyric segment:
+- objects and places: window, rain, name, silence, flowers, table, thorns, room, heart, glass roses, floor, sugar, kiss, shoulder, bruise, door, shadow, mirror, monster, hands, petals, etc.
+- actions and interactions: spelling, talking, answering, breathing, holding, trying not to bleed, cutting, falling, kissing, bruising, asking, whispering, walking out, etc.
+- visible states: broken, sharp, poisonous, trembling, damaged, half out of mind, freedom, pain, etc.
+
+Every non-instrumental Prompt must include at least one concrete object or action from its matching lyric segment.
+If the lyric segment contains a specific object, that object must appear in the Prompt unless it is impossible to visualize.
+If the lyric segment contains an action or interaction, the Prompt must show that action or a clear visual equivalent.
+Do not replace lyric anchors with generic mood, glow, color, haze, landscape, or abstract atmosphere.
+Do not write a concept that only describes lighting or scenery when the lyric contains an object or action.
+Use THEME_STYLE to transform the lyric anchors visually, but never erase them.
+For "Instrumental section." or other no-vocal placeholders, create a visual transition that follows STORY and THEME_STYLE; do not invent fake lyric objects.
+
 LOCATION RULES
 If LOCATIONS is provided, every Prompt value must begin with one exact location phrase copied from the LOCATIONS list, followed by a colon.
 Do not use a location unless it appears in LOCATIONS.
@@ -174,9 +226,38 @@ No line breaks inside string values.
 
 FORMAT
 {
-  "Prompt1": "A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.",
-  "Prompt2": "The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details."
+  "Prompt1": "Exact provided location: a short visual story beat that includes a concrete object or action from segment1, shaped by the story and theme, without describing the subject.",
+  "Prompt2": "Exact provided location: the next connected visual story beat that includes a concrete object or action from segment2, continuing the story without repeating subject details."
 }"""
+
+
+_CONCEPT_MATCH_PRESETS = {
+    "super_tight_literal": r"""LYRIC MATCH PRESET: SUPER TIGHT AND LITERAL
+Every non-instrumental Prompt must visibly represent the exact lyric segment.
+Use the lyric's concrete nouns and actions directly.
+If the lyric says window, rain, flowers, thorns, glass roses, floor, kiss, shoulder, bruise, door, shadow, mirror, hands, petals, or walking out, those exact things must appear.
+Do not substitute a different symbol when the lyric gives a concrete object.
+Keep theme/style as surface treatment only; it must not override the lyric event.""",
+    "medium": r"""LYRIC MATCH PRESET: MEDIUM
+Each non-instrumental Prompt must include at least one concrete object or action from the lyric segment.
+You may adapt the lyric into a cinematic visual metaphor, but the original lyric anchor must still be recognizable.
+Balance the lyric event with STORY and THEME_STYLE.""",
+    "loose": r"""LYRIC MATCH PRESET: LOOSE
+Each Prompt should be inspired by the lyric segment's emotional intent, with at least one concrete lyric anchor when the segment gives a strong object or action.
+You may prioritize STORY flow and THEME_STYLE over literal depiction when needed.
+Avoid generic scenery; keep a visible connection to the lyric whenever possible.""",
+    "super_light": r"""LYRIC MATCH PRESET: SUPER LIGHT
+Use the lyric segment mostly as emotional timing.
+Prioritize STORY flow, THEME_STYLE, and visual continuity.
+Only include concrete lyric objects/actions when they naturally fit the visual sequence.
+Instrumental and sparse lyric segments may become pure visual transitions.""",
+}
+
+
+def _concept_match_instructions(mode):
+    key = str(mode or "medium").strip().lower()
+    key = re.sub(r"[\s-]+", "_", key)
+    return _CONCEPT_MATCH_PRESETS.get(key, _CONCEPT_MATCH_PRESETS["medium"])
 
 
 _SUBJECT_EXTRACT_INSTRUCTIONS = r"""Extract only the subject from the user input.
@@ -210,7 +291,7 @@ def _workflow_template_path():
         os.path.dirname(os.path.abspath(__file__)),
         "Workflows",
         "UsedForUIDoNotTouch",
-        "whipsterandbeatonly_API.json",
+        "LTX2.3_Music_Video_Creator_Prompt_Creator_API.json",
     )
 
 
@@ -401,6 +482,45 @@ def _parse_whisper_segments(text):
     return {f"lyricSegment{index}": value for index, value in segments}
 
 
+def _whisper_segments_to_legacy_text(mapping):
+    lines = []
+    for key in sorted(mapping, key=lambda item: int(re.search(r"\d+", item).group(0))):
+        lines.append(f"{key}={str(mapping.get(key, '') or '').strip()}")
+    return "\n".join(lines)
+
+
+def _split_real_lyric_lines(text):
+    lines = []
+    for raw_line in str(text or "").splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+        if re.match(r"^\s*(?:verse|chorus|bridge|intro|outro|pre[-\s]?chorus)\b", line, flags=re.IGNORECASE):
+            continue
+        lines.append(line)
+    if not lines:
+        compact = re.sub(r"\s+", " ", str(text or "")).strip()
+        if compact:
+            lines.append(compact)
+    return lines
+
+
+def _lyric_window_for_segment_batch(lyric_lines, start_index, end_index, total_segments, overlap=4):
+    if not lyric_lines:
+        return []
+    total_lines = len(lyric_lines)
+    start_ratio = max(0.0, (start_index - 1) / max(1, total_segments))
+    end_ratio = min(1.0, end_index / max(1, total_segments))
+    start_line = max(0, int(math.floor(start_ratio * total_lines)) - overlap)
+    end_line = min(total_lines, int(math.ceil(end_ratio * total_lines)) + overlap)
+    if end_line <= start_line:
+        end_line = min(total_lines, start_line + 1)
+    return [
+        f"line{line_number + 1}={lyric_lines[line_number]}"
+        for line_number in range(start_line, end_line)
+    ]
+
+
 def _segment_count_from_mapping(mapping):
     return len([key for key in mapping if re.match(r"^(?:lyricSegment|segment|segments)\s*\d+$", str(key), flags=re.IGNORECASE)])
 
@@ -439,6 +559,33 @@ def _validate_segment_json(value, expected_count):
     return fixed
 
 
+def _validate_segment_subset(value, expected_keys):
+    if not isinstance(value, dict):
+        raise ValueError("Segment batch output is not a JSON object.")
+    canonical = _canonical_segment_mapping(value)
+    fixed = {}
+    for key in expected_keys:
+        text = str(canonical.get(key, "") or "").strip()
+        if not text:
+            raise ValueError(f"Segment batch output is missing {key}.")
+        fixed[key] = text
+    return fixed
+
+
+def _segment_subset_with_fallback(value, expected_keys, target_segments):
+    canonical = _canonical_segment_mapping(value) if isinstance(value, dict) else {}
+    fixed = {}
+    for key in expected_keys:
+        text = str(canonical.get(key, "") or "").strip()
+        if not text:
+            original = str(target_segments.get(key, "") or "").strip()
+            text = "[instrumental]" if re.fullmatch(r"(?:thank you\.?|thanks\.?|oh[,\s.]*)+", original, flags=re.IGNORECASE) else original
+        if not text:
+            text = "[instrumental]"
+        fixed[key] = text
+    return fixed
+
+
 def _validate_prompt_json(value, expected_count):
     if not isinstance(value, dict):
         raise ValueError("Prompt output is not a JSON object.")
@@ -453,6 +600,21 @@ def _validate_prompt_json(value, expected_count):
             raise ValueError(f"{key} is empty.")
         fixed[key] = text
     return fixed
+
+
+def _missing_prompt_indices(value, expected_count):
+    if not isinstance(value, dict):
+        return list(range(1, int(expected_count) + 1))
+    indexed = {}
+    for key, raw_value in _canonical_prompt_mapping(value).items():
+        match = re.search(r"\d+", key)
+        if match:
+            indexed[int(match.group(0))] = str(raw_value or "").strip()
+    missing = []
+    for index in range(1, int(expected_count) + 1):
+        if not indexed.get(index):
+            missing.append(index)
+    return missing
 
 
 def _split_subject_locations(value):
@@ -513,25 +675,129 @@ def _run_text_gemma(model_file, prompt, overrides=None):
         _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
+def _run_text_gemma_custom(model_file, custom_instructions, user_input, overrides=None):
+    from .LLM import VRGDG_SuperGemmaGGUFChat
+
+    if not str(model_file or "").strip():
+        raise ValueError("Choose a Gemma4 text model first.")
+
+    settings = dict(_LLM_SETTINGS)
+    if isinstance(overrides, dict):
+        settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
+
+    llm = VRGDG_SuperGemmaGGUFChat()
+    text, used_model, status = llm.generate_prompt(
+        model_file=str(model_file),
+        mmproj_file=llm.MISSING_MMPROJ_OPTION,
+        task_preset="custom",
+        user_input=str(user_input or ""),
+        custom_instructions=str(custom_instructions or ""),
+        trigger_word="",
+        image_count=0,
+        advanced=True,
+        unload_after_run=True,
+        n_ctx=int(settings["n_ctx"]),
+        n_gpu_layers=int(settings["n_gpu_layers"]),
+        n_threads=int(settings["n_threads"]),
+        chat_format=str(settings["chat_format"] or ""),
+        temperature=float(settings["temperature"]),
+        top_p=float(settings["top_p"]),
+        max_new_tokens=int(settings["max_new_tokens"]),
+    )
+    if str(status or "").strip().lower() != "ok":
+        raise ValueError(str(status or "Gemma failed to run."))
+    text = _clean_llm_json_text(text)
+    if not text:
+        raise ValueError("Gemma returned an empty response.")
+    return {"text": text, "used_model": used_model}
+
+
 def _repair_segments(payload):
     whisper_map = _parse_whisper_segments(payload.get("whisper_segments", ""))
     expected_count = len(whisper_map)
-    user_input = (
-        f"{_WHISPER_REPAIR_INSTRUCTIONS}\n\n"
-        f"WHISPER_TRANSCRIPTION:\n{json.dumps(whisper_map, ensure_ascii=False, indent=2)}\n\n"
-        f"MAIN_LYRICS:\n{str(payload.get('full_lyrics', '') or '').strip()}\n\n"
-        f"STYLE_THEME:\n{str(payload.get('style_theme', '') or '').strip()}"
-    )
-    result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
-    fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
+    lyric_lines = _split_real_lyric_lines(payload.get("full_lyrics", ""))
+    batch_size = 8
+    repaired_segments = {}
+    raw_outputs = []
+    fixer_notes = []
+    repair_settings = dict(payload.get("llm_settings") or {})
+    repair_settings.update({
+        "temperature": 0.08,
+        "top_p": 0.70,
+        "max_new_tokens": min(6000, int(repair_settings.get("max_new_tokens") or _LLM_SETTINGS["max_new_tokens"])),
+    })
+
+    for batch_start in range(1, expected_count + 1, batch_size):
+        batch_end = min(expected_count, batch_start + batch_size - 1)
+        batch_keys = [f"segment{index}" for index in range(batch_start, batch_end + 1)]
+        target_segments = {
+            f"segment{index}": whisper_map.get(f"lyricSegment{index}", "")
+            for index in range(batch_start, batch_end + 1)
+        }
+        previous_context = {
+            f"segment{index}": repaired_segments.get(f"segment{index}", "")
+            for index in range(max(1, batch_start - 3), batch_start)
+            if repaired_segments.get(f"segment{index}")
+        }
+        lyric_window = _lyric_window_for_segment_batch(lyric_lines, batch_start, batch_end, expected_count)
+        batch_input = (
+            f"TARGET_WHISPER_SEGMENTS:\n{json.dumps(target_segments, ensure_ascii=False, indent=2)}\n\n"
+            f"REAL_LYRIC_WINDOW:\n" + "\n".join(lyric_window) + "\n\n"
+            f"PREVIOUS_REPAIRED_CONTEXT:\n{json.dumps(previous_context, ensure_ascii=False, indent=2)}"
+        )
+        result = _run_text_gemma_custom(payload.get("model_file", ""), _WHISPER_BATCH_REPAIR_INSTRUCTIONS, batch_input, repair_settings)
+        raw_outputs.append(result["text"])
+        fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
+        try:
+            repaired_segments.update(_validate_segment_subset(fixed["json_output"], batch_keys))
+        except Exception:
+            retry_input = (
+                f"{batch_input}\n\n"
+                f"PREVIOUS_INVALID_ANSWER:\n{result['text']}\n\n"
+                f"Return only these exact keys: {', '.join(batch_keys)}"
+            )
+            result = _run_text_gemma_custom(payload.get("model_file", ""), _WHISPER_BATCH_REPAIR_INSTRUCTIONS, retry_input, repair_settings)
+            raw_outputs.append(result["text"])
+            fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
+            repaired_segments.update(_segment_subset_with_fallback(fixed.get("json_output"), batch_keys, target_segments))
+        if fixed.get("notes"):
+            fixer_notes.append(str(fixed["notes"]))
+
+    fixed = {
+        "fixed_text": json.dumps(repaired_segments, indent=2, ensure_ascii=False),
+        "json_output": repaired_segments,
+        "was_fixed": True,
+        "notes": "; ".join(fixer_notes) or "Batched lyric-window repair.",
+    }
+    retry_used = False
+    if not isinstance(fixed.get("json_output"), dict):
+        retry_used = True
+        user_input = (
+            f"WHISPER_TRANSCRIPTION:\n{_whisper_segments_to_legacy_text(whisper_map)}\n\n"
+            f"MAIN_LYRICS:\n{str(payload.get('full_lyrics', '') or '').strip()}"
+        )
+        retry_instructions = (
+            "Your previous answer was not valid JSON. Redo the task now.\n"
+            "Return valid JSON only. No markdown. No explanation. No intro sentence.\n"
+            f"Return exactly {expected_count} keys named segment1 through segment{expected_count}.\n"
+            "Each value must be a corrected version of the matching WHISPER_TRANSCRIPTION chunk.\n"
+            "Use double quotes and no trailing commas."
+        )
+        retry_input = (
+            f"{user_input}\n\n"
+            f"PREVIOUS_INVALID_ANSWER:\n{result['text']}"
+        )
+        result = _run_text_gemma_custom(payload.get("model_file", ""), retry_instructions, retry_input, payload.get("llm_settings"))
+        fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
     data = _validate_segment_json(fixed["json_output"], expected_count)
     return {
         "segments": data,
         "segment_count": expected_count,
-        "raw_text": result["text"],
+        "raw_text": "\n\n--- BATCH ---\n\n".join(raw_outputs),
         "fixed_text": fixed["fixed_text"],
         "fixer_notes": fixed["notes"],
         "was_fixed": fixed["was_fixed"],
+        "retry_used": retry_used,
         "used_model": result["used_model"],
         "unloaded": True,
     }
@@ -542,13 +808,15 @@ def _create_concepts(payload):
     if isinstance(segment_data, str):
         segment_data = _extract_json_object(segment_data)
     if not isinstance(segment_data, dict):
-        raise ValueError("Corrected lyric segment JSON is required.")
+        raise ValueError("Lyric segment JSON is required.")
     expected_count = _segment_count_from_mapping(segment_data)
     if expected_count <= 0:
-        raise ValueError("Corrected lyric segment JSON did not contain any segments.")
+        raise ValueError("Lyric segment JSON did not contain any segments.")
     subject_text, locations_text = _split_subject_locations(payload.get("subject_locations", ""))
+    concept_match_mode = str(payload.get("concept_match_mode", "medium") or "medium")
     user_input = (
         f"{_CONCEPT_PROMPT_INSTRUCTIONS}\n\n"
+        f"{_concept_match_instructions(concept_match_mode)}\n\n"
         f"LYRIC_SEGMENT_JSON:\n{json.dumps(segment_data, ensure_ascii=False, indent=2)}\n\n"
         f"STORY:\n{str(payload.get('story_idea', '') or '').strip()}\n\n"
         f"THEME_STYLE:\n{str(payload.get('style_theme', '') or '').strip()}\n\n"
@@ -557,7 +825,75 @@ def _create_concepts(payload):
     )
     result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
     fixed = _fix_prompt_map_json_like_old_workflow(result["text"])
-    data = _validate_prompt_json(fixed["json_output"], expected_count)
+    retry_used = False
+    try:
+        data = _validate_prompt_json(fixed["json_output"], expected_count)
+    except Exception:
+        retry_used = True
+        base_prompts = _canonical_prompt_mapping(fixed.get("json_output") if isinstance(fixed.get("json_output"), dict) else {})
+        missing = _missing_prompt_indices(base_prompts, expected_count)
+        repaired = dict(base_prompts)
+        for missing_index in missing:
+            context_start = max(1, missing_index - 3)
+            context_end = min(expected_count, missing_index + 3)
+            nearby_segments = {
+                f"segment{index}": segment_data.get(f"segment{index}", "")
+                for index in range(context_start, context_end + 1)
+            }
+            nearby_existing_prompts = {
+                f"Prompt{index}": repaired.get(f"Prompt{index}", "")
+                for index in range(context_start, context_end + 1)
+                if repaired.get(f"Prompt{index}")
+            }
+            target_key = f"Prompt{missing_index}"
+            repair_prompt = (
+                "Create one missing visual concept prompt.\n"
+                "Return valid JSON only. No markdown. No explanation. No intro sentence.\n"
+                f"Return exactly one key named {target_key}.\n"
+                "Do not return any other Prompt keys.\n"
+                "The value must be one visual concept sentence for the matching lyric segment.\n"
+                "Use nearby segments and existing prompts only for story continuity.\n"
+                "Use double quotes and no trailing commas.\n\n"
+                f"TARGET_SEGMENT_NUMBER:\n{missing_index}\n\n"
+                f"TARGET_CORRECTED_LYRIC:\n{segment_data.get(f'segment{missing_index}', '')}\n\n"
+                f"NEARBY_CORRECTED_LYRICS:\n{json.dumps(nearby_segments, ensure_ascii=False, indent=2)}\n\n"
+                f"NEARBY_EXISTING_PROMPTS:\n{json.dumps(nearby_existing_prompts, ensure_ascii=False, indent=2)}\n\n"
+                f"STORY:\n{str(payload.get('story_idea', '') or '').strip()}\n\n"
+                f"THEME_STYLE:\n{str(payload.get('style_theme', '') or '').strip()}\n\n"
+                f"SUBJECT:\n{subject_text}\n\n"
+                f"LOCATIONS:\n{locations_text}"
+            )
+            repair_result = _run_text_gemma(payload.get("model_file", ""), repair_prompt, payload.get("llm_settings"))
+            repair_fixed = _fix_prompt_map_json_like_old_workflow(repair_result["text"])
+            repair_map = _canonical_prompt_mapping(repair_fixed.get("json_output") if isinstance(repair_fixed.get("json_output"), dict) else {})
+            repaired_text = str(repair_map.get(target_key, "") or "").strip()
+            if not repaired_text:
+                raise ValueError(f"Targeted repair did not return {target_key}.")
+            repaired[target_key] = repaired_text
+        try:
+            data = _validate_prompt_json(repaired, expected_count)
+            fixed["json_output"] = data
+            fixed["fixed_text"] = json.dumps(data, indent=2, ensure_ascii=False)
+            fixed["was_fixed"] = True
+            fixed["notes"] = f"Targeted repair filled missing prompt(s): {', '.join(f'Prompt{i}' for i in missing)}"
+        except Exception:
+            retry_prompt = (
+                "Your previous answer was not valid for the required prompt map. Redo the task now.\n"
+                "Return valid JSON only. No markdown. No explanation. No intro sentence.\n"
+                f"Return exactly {expected_count} keys named Prompt1 through Prompt{expected_count}.\n"
+                "Do not skip any number. Do not add extra keys.\n"
+                "Each value must be one visual concept sentence for the matching lyric segment.\n"
+                "Use double quotes and no trailing commas.\n\n"
+                f"LYRIC_SEGMENT_JSON:\n{json.dumps(segment_data, ensure_ascii=False, indent=2)}\n\n"
+                f"STORY:\n{str(payload.get('story_idea', '') or '').strip()}\n\n"
+                f"THEME_STYLE:\n{str(payload.get('style_theme', '') or '').strip()}\n\n"
+                f"SUBJECT:\n{subject_text}\n\n"
+                f"LOCATIONS:\n{locations_text}\n\n"
+                f"PREVIOUS_INVALID_ANSWER:\n{result['text']}"
+            )
+            result = _run_text_gemma(payload.get("model_file", ""), retry_prompt, payload.get("llm_settings"))
+            fixed = _fix_prompt_map_json_like_old_workflow(result["text"])
+            data = _validate_prompt_json(fixed["json_output"], expected_count)
     return {
         "prompts": data,
         "prompt_count": expected_count,
@@ -565,6 +901,7 @@ def _create_concepts(payload):
         "fixed_text": fixed["fixed_text"],
         "fixer_notes": fixed["notes"],
         "was_fixed": fixed["was_fixed"],
+        "retry_used": retry_used,
         "used_model": result["used_model"],
         "unloaded": True,
     }
@@ -661,6 +998,10 @@ def _save_prompt_creator_draft(payload):
         "max_duration": payload.get("max_duration", 10),
         "bias": payload.get("bias", 0.7),
         "duration_preset": str(payload.get("duration_preset", "varied_no_repeat") or "varied_no_repeat"),
+        "use_srt_durations": bool(payload.get("use_srt_durations", True)),
+        "fixed_scene_duration": payload.get("fixed_scene_duration", 4),
+        "empty_segment_text": str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section."),
+        "concept_match_mode": str(payload.get("concept_match_mode", "medium") or "medium"),
         "full_lyrics": str(payload.get("full_lyrics", "") or ""),
         "style_theme": str(payload.get("style_theme", "") or ""),
         "story_idea": str(payload.get("story_idea", "") or ""),
@@ -719,6 +1060,10 @@ def _build_whisper_workflow_prompt(payload):
     max_duration = float(payload.get("max_duration", 10) or 10)
     bias = float(payload.get("bias", 0.7) or 0.7)
     duration_preset = str(payload.get("duration_preset", "varied_no_repeat") or "varied_no_repeat")
+    use_srt_durations = bool(payload.get("use_srt_durations", True))
+    fixed_scene_duration = float(payload.get("fixed_scene_duration", 4) or 4)
+    empty_segment_text = str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section.").strip() or "Instrumental section."
+    full_lyrics = str(payload.get("full_lyrics", "") or "")
     output_filename = f"builder_segments_{time.strftime('%Y%m%d_%H%M%S')}.srt"
 
     def node(node_id):
@@ -727,9 +1072,38 @@ def _build_whisper_workflow_prompt(payload):
             raise KeyError(f"Hidden Whisper workflow node {key} was not found.")
         return prompt[key]
 
-    node(964).setdefault("inputs", {})["audio"] = audio_upload_name
-    node(955).setdefault("inputs", {})["audio_file_path"] = staged_audio_path
-    duration_inputs = node(963).setdefault("inputs", {})
+    if "954" in prompt:
+        node(954).setdefault("inputs", {})["audio"] = audio_upload_name
+    elif "964" in prompt:
+        node(964).setdefault("inputs", {})["audio"] = audio_upload_name
+
+    if "28:114" in prompt:
+        node("28:114").setdefault("inputs", {})["audio_file_path"] = staged_audio_path
+    elif "955" in prompt and "audio_file_path" in node(955).setdefault("inputs", {}):
+        node(955).setdefault("inputs", {})["audio_file_path"] = staged_audio_path
+
+    if "955" in prompt and prompt["955"].get("class_type") == "VRGDG_TextBox":
+        node(955).setdefault("inputs", {})["text"] = full_lyrics
+
+    if "960" in prompt:
+        extractor_inputs = node(960).setdefault("inputs", {})
+        extractor_inputs["scene_duration_seconds"] = fixed_scene_duration
+        extractor_inputs["reference_lyrics"] = full_lyrics
+
+    if "28:933" in prompt:
+        node("28:933").setdefault("inputs", {})["switch"] = use_srt_durations
+
+    if "28:887" in prompt:
+        node("28:887").setdefault("inputs", {})["use_srt_durations"] = use_srt_durations
+
+    if "28:920" in prompt:
+        node("28:920").setdefault("inputs", {})["use_srt_file"] = use_srt_durations
+
+    if "28:949" in prompt:
+        node("28:949").setdefault("inputs", {})["empty_segment_text"] = empty_segment_text
+
+    duration_node_id = "28:80" if "28:80" in prompt else "963"
+    duration_inputs = node(duration_node_id).setdefault("inputs", {})
     duration_inputs["min_duration"] = min_duration
     duration_inputs["max_duration"] = max_duration
     duration_inputs["bias"] = bias

@@ -49,7 +49,7 @@ def _flux_klein_api_template_path():
         os.path.dirname(os.path.abspath(__file__)),
         "Workflows",
         "UsedForUIDoNotTouch",
-        "fluxKleinSubjectLocation.json",
+        "fluxKleinMultiImage_API.json",
     )
 
 
@@ -288,6 +288,39 @@ def _prepare_load_image_name(path="", data="", name="image.png"):
     return ""
 
 
+def _resolve_existing_file(raw_path, label="file"):
+    text = str(raw_path or "").strip().strip('"').strip("'")
+    if not text:
+        raise ValueError(f"{label} path is empty.")
+
+    candidates = []
+    if os.path.isabs(text):
+        candidates.append(text)
+    else:
+        candidates.extend(
+            [
+                text,
+                os.path.abspath(text),
+                os.path.join(folder_paths.get_input_directory(), text),
+                os.path.join(folder_paths.get_output_directory(), text),
+            ]
+        )
+        get_temp_directory = getattr(folder_paths, "get_temp_directory", None)
+        if callable(get_temp_directory):
+            candidates.append(os.path.join(get_temp_directory(), text))
+
+    seen = set()
+    for candidate in candidates:
+        path = os.path.normpath(os.path.abspath(candidate))
+        if path in seen:
+            continue
+        seen.add(path)
+        if os.path.isfile(path):
+            return path
+
+    raise FileNotFoundError(f"{label} was not found: {text}")
+
+
 def _ensure_placeholder_load_image():
     input_dir = folder_paths.get_input_directory()
     os.makedirs(input_dir, exist_ok=True)
@@ -370,34 +403,54 @@ def _patch_flux_klein_api_prompt(prompt, payload):
     if not prompt_text:
         raise ValueError("Flux/Klein prompt text is empty.")
 
-    subject_image_name = _prepare_load_image_name(
-        payload.get("subject_image_path", ""),
-        payload.get("subject_image_data", ""),
-        payload.get("subject_image_name", "subject.png"),
-    )
-    location_image_name = _prepare_load_image_name(
-        payload.get("location_image_path", ""),
-        payload.get("location_image_data", ""),
-        payload.get("location_image_name", "location.png"),
-    )
-    if not subject_image_name:
-        raise ValueError("Subject image is required.")
-    if not location_image_name:
-        raise ValueError("Location image is required.")
+    ingredients = payload.get("image_ingredients") or payload.get("images") or []
+    if isinstance(ingredients, str):
+        try:
+            ingredients = json.loads(ingredients)
+        except Exception:
+            ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
+    if not isinstance(ingredients, list):
+        raise ValueError("Flux/Klein image ingredients must be a list.")
+
+    image_paths = []
+    input_dir = folder_paths.get_input_directory()
+    for index, item in enumerate(ingredients, start=1):
+        if isinstance(item, str):
+            item = {"path": item}
+        if not isinstance(item, dict):
+            continue
+        raw_path = str(item.get("path", "") or "").strip()
+        raw_data = str(item.get("data", "") or "").strip()
+        raw_name = str(item.get("name", "") or f"ingredient_{index}.png").strip() or f"ingredient_{index}.png"
+        if raw_data:
+            load_image_name = _prepare_load_image_name("", raw_data, raw_name)
+            image_paths.append(os.path.abspath(os.path.join(input_dir, load_image_name)))
+        elif raw_path:
+            image_paths.append(os.path.abspath(_resolve_existing_file(raw_path, f"Flux/Klein ingredient image {index}")))
+
+    if not image_paths:
+        raise ValueError("Flux/Klein needs at least one image ingredient.")
 
     width = _int_payload(payload, "width", 1024, 64, 4096)
     height = _int_payload(payload, "height", 576, 64, 4096)
     seed = _int_payload(payload, "seed", 100, 0, 0xFFFFFFFFFFFFFFFF)
 
     _set_api_input(prompt, "1067", "text", prompt_text)
-    _set_api_input(prompt, "1065", "width", width)
-    _set_api_input(prompt, "1065", "height", height)
+    if "1065" in prompt:
+        _set_api_input(prompt, "1065", "width", width)
+        _set_api_input(prompt, "1065", "height", height)
+    if "1052" in prompt:
+        _set_api_input(prompt, "1052", "width", width)
+        _set_api_input(prompt, "1052", "height", height)
+    if "1057" in prompt:
+        _set_api_input(prompt, "1057", "width", width)
+        _set_api_input(prompt, "1057", "height", height)
+        _set_api_input(prompt, "1057", "batch_size", 1)
     _set_api_input(prompt, "1056", "noise_seed", seed)
     _set_api_input(prompt, "1068", "unet_name", str(payload.get("unet_name", "") or ""))
     _set_api_input(prompt, "1066", "clip_name", str(payload.get("clip_name", "") or ""))
     _set_api_input(prompt, "1064", "vae_name", str(payload.get("vae_name", "") or ""))
-    _set_api_input(prompt, "1070", "image", subject_image_name)
-    _set_api_input(prompt, "1071", "image", location_image_name)
+    _set_api_input(prompt, "1072", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     return prompt
 
 

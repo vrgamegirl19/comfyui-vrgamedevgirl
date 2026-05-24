@@ -1,6 +1,6 @@
 import { api } from "../../scripts/api.js";
 
-const PROMPT_CREATOR_VERSION = "prompt-creator-2026-05-21";
+const PROMPT_CREATOR_VERSION = "prompt-creator-2026-05-23-direct-lyrics";
 const LYRIC_CREATOR_GPT_URL = "https://chatgpt.com/g/g-69979b391cc88191ae4fe298b59c236e-ai-lyric-creator";
 const STYLE_THEME_GPT_URL = "https://chatgpt.com/g/g-69fb415a964c8191b4a737f84f37227f-ltx-2-3-style-theme-guide/c/69fb427d-4518-8331-bfd7-505c0f55d2cc";
 const STORY_IDEA_GPT_URL = "https://chatgpt.com/g/g-69fb3cb767448191a6caa88be94940d5-ltx-2-3-story-concept-helper/c/69fb3e25-7e74-8326-abd6-7df9cf847a5b";
@@ -109,6 +109,32 @@ function makeSelect(options = [], value = "") {
   return select;
 }
 
+function makeCheckbox(checked = false) {
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = Boolean(checked);
+  input.style.cssText = "width:16px;height:16px;accent-color:#06b6d4;";
+  return input;
+}
+
+function makeCheckboxField(label, input, hint = "") {
+  const wrapper = document.createElement("label");
+  wrapper.style.cssText = "display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#d4d4d8;font-weight:800;";
+  const textWrap = document.createElement("span");
+  textWrap.style.cssText = "display:flex;flex-direction:column;gap:4px;line-height:1.35;";
+  const text = document.createElement("span");
+  text.textContent = label;
+  textWrap.append(text);
+  if (hint) {
+    const small = document.createElement("span");
+    small.textContent = hint;
+    small.style.cssText = "color:#a1a1aa;font-size:11px;font-weight:500;line-height:1.35;";
+    textWrap.append(small);
+  }
+  wrapper.append(input, textWrap);
+  return wrapper;
+}
+
 function makeField(label, control, hint = "") {
   const wrapper = document.createElement("label");
   wrapper.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:12px;color:#d4d4d8;font-weight:800;";
@@ -129,6 +155,37 @@ function makePickerField(label, input, button, hint = "") {
   row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
   row.append(input, button);
   return makeField(label, row, hint);
+}
+
+function showInfoPopup(title, lines = []) {
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100070;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;padding:18px;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(560px,calc(100vw - 36px));border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#e0f2fe;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden;";
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid #155e75;background:#083344;";
+  const heading = document.createElement("div");
+  heading.textContent = title;
+  heading.style.cssText = "font-size:14px;font-weight:900;";
+  const close = makeButton("Close");
+  close.style.padding = "5px 8px";
+  header.append(heading, close);
+  const body = document.createElement("div");
+  body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:9px;font-size:12px;line-height:1.45;color:#d4f3ff;";
+  for (const line of lines) {
+    const item = document.createElement("div");
+    item.textContent = line;
+    item.style.cssText = "border:1px solid #164e63;border-radius:7px;background:#111827;padding:9px;";
+    body.append(item);
+  }
+  box.append(header, body);
+  backdrop.append(box);
+  document.body.append(backdrop);
+  const finish = () => backdrop.remove();
+  close.onclick = finish;
+  backdrop.onclick = (event) => {
+    if (event.target === backdrop) finish();
+  };
 }
 
 function makePromptTextSection(label, textarea, buttons = [], hint = "") {
@@ -269,8 +326,8 @@ function extractPromptCreatorText(historyPayload, promptId) {
     }
   }
   return {
-    whisper: readText(961) || allText.find((value) => /lyricSegment\s*\d+/i.test(value)) || "",
-    srt: readText(962) || allText.find((value) => /-->\s*\d{2}:/i.test(value)) || "",
+    whisper: readText(804) || readText("28:870") || readText(961) || allText.find((value) => /lyricSegment\s*\d+/i.test(value)) || "",
+    srt: readText("28:869") || readText(962) || allText.find((value) => /-->\s*\d{2}:/i.test(value)) || "",
   };
 }
 
@@ -339,6 +396,28 @@ function prettyJson(value) {
   }
 }
 
+function parseLyricSegmentsToJson(text) {
+  const parsedJson = parseJsonSafe(text, null);
+  if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
+    const normalized = {};
+    for (const [key, value] of Object.entries(parsedJson)) {
+      const match = String(key).match(/^(?:lyricSegment|segment)\s*(\d+)$/i);
+      if (match) normalized[`segment${Number(match[1])}`] = String(value ?? "").trim() || "Instrumental section.";
+    }
+    if (Object.keys(normalized).length) return normalized;
+  }
+
+  const segments = {};
+  for (const line of String(text || "").split(/\r?\n/)) {
+    const match = line.match(/^\s*lyricSegment\s*(\d+)\s*=\s*(.*)$/i);
+    if (!match) continue;
+    const index = Number(match[1]);
+    if (!Number.isFinite(index) || index <= 0) continue;
+    segments[`segment${index}`] = String(match[2] ?? "").trim() || "Instrumental section.";
+  }
+  return segments;
+}
+
 function buildPayload(controls, modelSelect) {
   return {
     project_folder: controls.projectFolder.value,
@@ -347,6 +426,10 @@ function buildPayload(controls, modelSelect) {
     max_duration: controls.maxDuration.value,
     bias: controls.bias.value,
     duration_preset: controls.durationPreset.value,
+    use_srt_durations: controls.useSrtDurations.checked,
+    fixed_scene_duration: controls.fixedSceneDuration.value,
+    empty_segment_text: controls.emptySegmentText.value,
+    concept_match_mode: controls.conceptMatchMode.value,
     model_file: modelSelect.value,
     whisper_segments: controls.whisperSegments.value,
     full_lyrics: controls.fullLyrics.value,
@@ -389,6 +472,70 @@ function createModeChoiceModal() {
   });
 }
 
+function showPromptCreatorDraftProjectModal(projects = []) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(760px,calc(100vw - 40px));max-height:min(780px,calc(100vh - 40px));border:1px solid #155e75;border-radius:9px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Load Prompt Creator Draft";
+    heading.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+    const note = document.createElement("div");
+    note.textContent = "Choose a recent project. Prompt Creator will load that project's saved draft if one exists.";
+    note.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+    const list = document.createElement("div");
+    list.style.cssText = "display:flex;flex-direction:column;gap:7px;overflow:auto;max-height:min(480px,52vh);padding-right:3px;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr;gap:8px;";
+    const close = makeButton("Close");
+    const finish = (result) => {
+      backdrop.remove();
+      resolve(result);
+    };
+    close.onclick = () => finish(null);
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+    });
+
+    if (!projects.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No existing projects were found in the ComfyUI output folder.";
+      empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:14px;color:#a1a1aa;font-size:12px;text-align:center;";
+      list.append(empty);
+    } else {
+      for (const project of projects) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #3f3f46;border-radius:7px;background:#18181b;padding:10px;";
+        const info = document.createElement("div");
+        info.style.cssText = "display:flex;flex-direction:column;gap:4px;min-width:0;";
+        const name = document.createElement("div");
+        name.textContent = project.name || "Unnamed project";
+        name.style.cssText = "font-size:13px;font-weight:900;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        const updated = project.updated ? new Date(project.updated * 1000).toLocaleString() : "unknown date";
+        const meta = document.createElement("div");
+        meta.textContent = `${project.scene_count || 0} scene${Number(project.scene_count || 0) === 1 ? "" : "s"} | ${updated}`;
+        meta.style.cssText = "font-size:11px;color:#a1a1aa;";
+        const path = document.createElement("div");
+        path.textContent = project.project_folder || "";
+        path.style.cssText = "font-size:11px;color:#67e8f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        info.append(name, meta, path);
+        const open = makeButton("Load Draft", "primary");
+        open.onclick = () => finish({ project_folder: project.project_folder || "" });
+        row.append(info, open);
+        list.append(row);
+      }
+    }
+
+    actions.append(close);
+    box.append(heading, note, list, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    backdrop.tabIndex = -1;
+    backdrop.focus();
+  });
+}
+
 function openPromptCreator(options = {}) {
   const existing = document.querySelector(".vrgdg-music-prompt-creator");
   if (existing) existing.remove();
@@ -410,10 +557,11 @@ function openPromptCreator(options = {}) {
   title.textContent = "Prompt Creator";
   title.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;margin-right:auto;";
   const backButton = makeButton("Back To Video Creator");
+  const loadDraftButton = makeButton("Load Project Draft");
   const saveDraftButton = makeButton("Save Project Draft", "primary");
   const closeButton = makeButton("Close");
   closeButton.onclick = () => overlay.remove();
-  topbar.append(title, backButton, saveDraftButton, closeButton);
+  topbar.append(title, backButton, loadDraftButton, saveDraftButton, closeButton);
 
   const body = document.createElement("div");
   body.style.cssText = "min-height:0;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px;background:#1f2328;";
@@ -433,6 +581,9 @@ function openPromptCreator(options = {}) {
   const maxDuration = makeInput("10", "number");
   const bias = makeInput("0.7", "number");
   const durationPreset = makeSelect(["varied_no_repeat", "impact_weighted", "clustered_no_repeat"], "varied_no_repeat");
+  const useSrtDurations = makeCheckbox(true);
+  const fixedSceneDuration = makeInput("4", "number");
+  const emptySegmentText = makeInput("Instrumental section.");
   const srtOutput = makeInput("");
   srtOutput.style.display = "none";
   const srtText = makeTextarea("", 6);
@@ -442,6 +593,9 @@ function openPromptCreator(options = {}) {
   setupPanel.append(
     projectFolderNote,
     makePickerField("Audio file", audioPath, chooseAudioButton, "Choose the song/audio file used for Whisper and beat-aligned scene timing."),
+    makeCheckboxField("Use SRT duration file", useSrtDurations, "When enabled, scene timing comes from the beat/SRT duration workflow. When disabled, the extractor uses fixed scene duration."),
+    makeField("Fixed scene duration", fixedSceneDuration, "Used when Use SRT duration file is off."),
+    makeField("Empty lyric segment text", emptySegmentText, "Used by VRGDG Lyric Segment Text Cleaner for no-vocal or blank segments."),
     makeField("Min duration", minDuration),
     makeField("Max duration", maxDuration),
     makeField("Bias", bias),
@@ -483,8 +637,7 @@ function openPromptCreator(options = {}) {
       [
         makeGemmaInputButton("Gemma4 Lyrics", "full_lyrics", fullLyrics),
         makeGptButton(LYRIC_CREATOR_GPT_URL),
-      ],
-      "Type a song idea or rough lyrics, then Gemma4 or GPT can help turn it into full lyrics."
+      ]
     ),
     makePromptTextSection(
       "Style/theme",
@@ -492,8 +645,7 @@ function openPromptCreator(options = {}) {
       [
         makeGemmaInputButton("Gemma4", "style_theme", styleTheme),
         makeGptButton(STYLE_THEME_GPT_URL),
-      ],
-      "Gemma uses the text in this box as the user idea and unloads after the draft is created."
+      ]
     ),
     makePromptTextSection(
       "Story idea",
@@ -501,8 +653,7 @@ function openPromptCreator(options = {}) {
       [
         makeGemmaInputButton("Gemma4", "story_idea", storyIdea),
         makeGptButton(STORY_IDEA_GPT_URL),
-      ],
-      "Gemma uses the full lyrics, current style/theme, and your extra input to create a story idea."
+      ]
     ),
     makePromptTextSection(
       "Subject and locations",
@@ -510,8 +661,7 @@ function openPromptCreator(options = {}) {
       [
         makeGemmaInputButton("Gemma4", "subject_locations", subjectLocations),
         makeGptButton(SUBJECT_LOCATION_GPT_URL),
-      ],
-      "Gemma uses the current story idea plus your extra input. Your extra subject/location details take priority."
+      ]
     ),
   );
   const inputSections = Array.from(inputPanel.children).slice(1);
@@ -528,17 +678,51 @@ function openPromptCreator(options = {}) {
 
   const modelPanel = makePanel("Gemma Settings");
   const modelSelect = makeSelect(["Loading models..."]);
+  const conceptMatchDescriptions = {
+    super_tight_literal: "Super tight and literal: use the lyric's exact visible objects and actions whenever possible.",
+    medium: "Medium: keep at least one recognizable lyric object or action while still following story and style.",
+    loose: "Loose: use the lyric as inspiration, but allow the story and visual theme to lead.",
+    super_light: "Super light: mostly mood and timing; best for abstract visual sequences.",
+  };
+  const conceptMatchMode = makeSelect(
+    ["super_tight_literal", "medium", "loose", "super_light"],
+    "medium"
+  );
+  const conceptMatchInfoButton = makeButton("?");
+  conceptMatchInfoButton.style.width = "34px";
+  conceptMatchInfoButton.style.padding = "8px 0";
+  const conceptMatchRow = document.createElement("div");
+  conceptMatchRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start;";
+  conceptMatchRow.append(conceptMatchMode, conceptMatchInfoButton);
+  const conceptMatchHint = document.createElement("div");
+  conceptMatchHint.textContent = conceptMatchDescriptions[conceptMatchMode.value];
+  conceptMatchHint.style.cssText = "color:#a1a1aa;font-size:11px;line-height:1.35;";
+  conceptMatchMode.onchange = () => {
+    conceptMatchHint.textContent = conceptMatchDescriptions[conceptMatchMode.value] || "";
+  };
+  conceptMatchInfoButton.onclick = () => showInfoPopup("Concept Lyric Match", [
+    conceptMatchDescriptions.super_tight_literal,
+    conceptMatchDescriptions.medium,
+    conceptMatchDescriptions.loose,
+    conceptMatchDescriptions.super_light,
+  ]);
+  const conceptMatchField = makeField("Concept lyric match", conceptMatchRow);
+  conceptMatchField.append(conceptMatchHint);
   const settingsNote = document.createElement("div");
   settingsNote.textContent = "Uses non-vision Gemma. unload_after_run=true, n_ctx=14848, max_new_tokens=32000, temperature=0.30, top_p=0.80.";
   settingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
-  modelPanel.append(makeField("Gemma4 text model", modelSelect), settingsNote);
+  modelPanel.append(
+    makeField("Gemma4 text model", modelSelect),
+    conceptMatchField,
+    settingsNote,
+  );
 
   const outputsPanel = makePanel("Generated Outputs");
   const repairedOutput = makeCompactPreviewBox("", 3);
   const conceptOutput = makeTextarea("", 14);
   const subjectOutput = makeTextarea("", 5);
   const previewNote = document.createElement("div");
-  previewNote.textContent = "Pipeline preview only. These repaired lyric segments are not used downstream by the video builder.";
+  previewNote.textContent = "Pipeline preview only. These lyric segments are used to create ConceptPrompts, then ConceptPrompts are used downstream by the video builder.";
   previewNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   const finalOutputGroup = makePanel("Editable Final Outputs");
   const outputNote = document.createElement("div");
@@ -553,18 +737,19 @@ function openPromptCreator(options = {}) {
   );
   outputsPanel.append(
     previewNote,
-    makeField("Corrected lyric segment JSON", repairedOutput),
+    makeField("Lyric segment JSON", repairedOutput),
     finalOutputGroup,
   );
 
   const taskPanel = makePanel("Run Tasks");
   const runAllButton = makeButton("Run", "primary");
+  const runSkipWhisperButton = makeButton("Run: Skip Whisper/SRT", "primary");
   const status = document.createElement("div");
   status.style.cssText = "min-height:44px;border:1px solid #27272a;border-radius:7px;background:#09090b;color:#d4d4d8;padding:10px;font-size:12px;line-height:1.45;white-space:pre-wrap;";
   const runNote = document.createElement("div");
   runNote.textContent = "Runs the full prompt creator pipeline in order and auto-saves the generated files into this project. Use Save Manual Edits only if you change the final outputs afterward.";
   runNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
-  taskPanel.append(runAllButton, runNote, status);
+  taskPanel.append(runAllButton, runSkipWhisperButton, runNote, status);
 
   const controls = {
     projectFolder,
@@ -573,6 +758,10 @@ function openPromptCreator(options = {}) {
     maxDuration,
     bias,
     durationPreset,
+    useSrtDurations,
+    fixedSceneDuration,
+    emptySegmentText,
+    conceptMatchMode,
     srtOutput,
     fullLyrics,
     styleTheme,
@@ -581,6 +770,22 @@ function openPromptCreator(options = {}) {
     whisperSegments,
     srtText,
   };
+
+  function updateDurationModeUi() {
+    const usingSrt = useSrtDurations.checked;
+    fixedSceneDuration.disabled = usingSrt;
+    minDuration.disabled = !usingSrt;
+    maxDuration.disabled = !usingSrt;
+    bias.disabled = !usingSrt;
+    durationPreset.disabled = !usingSrt;
+    fixedSceneDuration.style.opacity = usingSrt ? "0.55" : "1";
+    minDuration.style.opacity = usingSrt ? "1" : "0.55";
+    maxDuration.style.opacity = usingSrt ? "1" : "0.55";
+    bias.style.opacity = usingSrt ? "1" : "0.55";
+    durationPreset.style.opacity = usingSrt ? "1" : "0.55";
+  }
+  useSrtDurations.addEventListener("change", updateDurationModeUi);
+  updateDurationModeUi();
 
   async function loadConfig() {
     try {
@@ -619,6 +824,12 @@ function openPromptCreator(options = {}) {
     maxDuration.value = draft.max_duration ?? maxDuration.value;
     bias.value = draft.bias ?? bias.value;
     durationPreset.value = draft.duration_preset || durationPreset.value;
+    useSrtDurations.checked = draft.use_srt_durations ?? useSrtDurations.checked;
+    fixedSceneDuration.value = draft.fixed_scene_duration ?? fixedSceneDuration.value;
+    emptySegmentText.value = draft.empty_segment_text || emptySegmentText.value;
+    conceptMatchMode.value = draft.concept_match_mode || conceptMatchMode.value;
+    conceptMatchHint.textContent = conceptMatchDescriptions[conceptMatchMode.value] || "";
+    updateDurationModeUi();
     fullLyrics.value = draft.full_lyrics || "";
     styleTheme.value = draft.style_theme || "";
     storyIdea.value = draft.story_idea || "";
@@ -645,6 +856,39 @@ function openPromptCreator(options = {}) {
       }
     } catch (error) {
       setStatus(status, `Could not load prompt creator draft:\n${error.message}`);
+    }
+  }
+
+  async function chooseAndLoadDraft() {
+    let progress = null;
+    try {
+      loadDraftButton.disabled = true;
+      loadDraftButton.textContent = "Loading...";
+      const projectData = await getJson("/vrgdg/music_builder/list_projects");
+      const choice = await showPromptCreatorDraftProjectModal(projectData.projects || []);
+      if (!choice?.project_folder) {
+        return;
+      }
+      progress = createProgressWindow("Loading Prompt Creator Draft");
+      projectFolder.value = choice.project_folder;
+      projectFolderNote.textContent = `Prompt Creator files will be saved into: ${projectFolder.value}`;
+      progress.set("Loading selected project draft...", 65);
+      const result = await postJson("/vrgdg/music_prompt_creator/load_draft", {
+        project_folder: projectFolder.value,
+      });
+      if (!result.found) {
+        throw new Error(`No prompt creator draft was found for this project.\n${result.draft_path}`);
+      }
+      applyDraft(result.draft || {});
+      setStatus(status, `Loaded prompt creator draft.\n${result.draft_path}`);
+      progress.set("Prompt Creator draft loaded.", 100);
+      progress.close(900);
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      setStatus(status, String(error?.message || error), true);
+    } finally {
+      loadDraftButton.disabled = false;
+      loadDraftButton.textContent = "Load Project Draft";
     }
   }
 
@@ -766,6 +1010,10 @@ function openPromptCreator(options = {}) {
       max_duration: maxDuration.value,
       bias: bias.value,
       duration_preset: durationPreset.value,
+      use_srt_durations: useSrtDurations.checked,
+      fixed_scene_duration: fixedSceneDuration.value,
+      empty_segment_text: emptySegmentText.value,
+      full_lyrics: fullLyrics.value,
     });
     progress?.set("Step 1/5: Queuing hidden Whisper/SRT workflow...", 14);
     const queued = await queueWorkflowPrompt(built.prompt);
@@ -787,14 +1035,20 @@ function openPromptCreator(options = {}) {
     return text;
   }
 
-  async function repairSegments(progress = null) {
-    setStatus(status, "Repairing Whisper segments with Gemma...", true);
-    progress?.set("Step 2/5: Repairing Whisper segments with Gemma...", 38);
-    const result = await postJson("/vrgdg/music_prompt_creator/repair_segments", buildPayload(controls, modelSelect));
-    state.repairedSegments = result.segments || {};
+  async function prepareSegments(progress = null) {
+    setStatus(status, "Preparing lyric segments...", true);
+    progress?.set("Step 2/5: Preparing lyric segment JSON...", 38);
+    state.repairedSegments = parseLyricSegmentsToJson(whisperSegments.value);
+    const segmentCount = Object.keys(state.repairedSegments).length;
+    if (!segmentCount) {
+      throw new Error("No lyricSegment lines were found in the extractor output.");
+    }
     repairedOutput.value = prettyJson(state.repairedSegments);
-    setStatus(status, `Repaired ${result.segment_count || 0} segment(s). Gemma unloaded.`);
-    return result;
+    setStatus(status, `Prepared ${segmentCount} lyric segment(s).`);
+    return {
+      segments: state.repairedSegments,
+      segment_count: segmentCount,
+    };
   }
 
   async function createConcepts(progress = null) {
@@ -862,10 +1116,11 @@ function openPromptCreator(options = {}) {
     let progress = null;
     try {
       runAllButton.disabled = true;
+      runSkipWhisperButton.disabled = true;
       runAllButton.textContent = "Running...";
       progress = createProgressWindow("Running Prompt Creator");
       await runWhisperWorkflow(progress);
-      await repairSegments(progress);
+      await prepareSegments(progress);
       await createConcepts(progress);
       await extractSubject(progress);
       await saveOutputs(progress);
@@ -876,7 +1131,35 @@ function openPromptCreator(options = {}) {
       progress?.set(`Error:\n${error.message}`, 100);
     } finally {
       runAllButton.disabled = false;
+      runSkipWhisperButton.disabled = false;
       runAllButton.textContent = "Run";
+    }
+  };
+
+  runSkipWhisperButton.onclick = async () => {
+    let progress = null;
+    try {
+      if (!String(whisperSegments.value || "").trim()) {
+        throw new Error("No Whisper segments are loaded yet. Run the full pipeline once or load a saved project draft first.");
+      }
+      runAllButton.disabled = true;
+      runSkipWhisperButton.disabled = true;
+      runSkipWhisperButton.textContent = "Running...";
+      progress = createProgressWindow("Running Prompt Creator");
+      progress.set("Skipping Whisper/SRT setup and using the loaded Whisper segments.", 28);
+      await prepareSegments(progress);
+      await createConcepts(progress);
+      await extractSubject(progress);
+      await saveOutputs(progress);
+      progress.set("Prompt Creator finished from saved Whisper/SRT data. Files were saved into this project.", 100);
+      progress.close(1200);
+    } catch (error) {
+      setStatus(status, `Error:\n${error.message}`);
+      progress?.set(`Error:\n${error.message}`, 100);
+    } finally {
+      runAllButton.disabled = false;
+      runSkipWhisperButton.disabled = false;
+      runSkipWhisperButton.textContent = "Run: Skip Whisper/SRT";
     }
   };
   saveEditedOutputsButton.onclick = async () => {
@@ -908,6 +1191,7 @@ function openPromptCreator(options = {}) {
       saveDraftButton.textContent = "Save Project Draft";
     }
   };
+  loadDraftButton.onclick = chooseAndLoadDraft;
   chooseAudioButton.onclick = chooseAudioFile;
   backButton.onclick = () => {
     overlay.remove();

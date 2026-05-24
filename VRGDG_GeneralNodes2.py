@@ -1,4 +1,5 @@
 import json
+import math
 import numbers
 import os
 import re
@@ -6,11 +7,15 @@ import threading
 import torch
 import time
 import asyncio
+from typing import List
 
 import comfy
 import folder_paths
+import node_helpers
+import numpy as np
 from aiohttp import web
 from nodes import PreviewImage
+from PIL import Image, ImageOps
 from server import PromptServer
 
 
@@ -2537,6 +2542,14 @@ class VRGDG_LyricSegmentTextCleaner:
                         "tooltip": "When a segment has one non-filler word, blend it with neighboring lyric words.",
                     },
                 ),
+                "fill_empty_segments": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Replace blank lyricSegmentN lines with a short instrumental placeholder so downstream prompt nodes do not receive empty lyrics.",
+                    },
+                ),
+                "empty_segment_text": ("STRING", {"default": "Instrumental section."}),
             }
         }
 
@@ -2544,7 +2557,7 @@ class VRGDG_LyricSegmentTextCleaner:
     RETURN_NAMES = ("cleaned_lyrics_text", "changed_count", "notes")
     FUNCTION = "clean"
     CATEGORY = "VRGDG/General"
-    DESCRIPTION = "Cleans extracted lyricSegmentN text by shortening repeated filler lyrics and smoothing one-word fragments."
+    DESCRIPTION = "Cleans extracted lyricSegmentN text by filling blanks, shortening repeated filler lyrics, and smoothing one-word fragments."
 
     @staticmethod
     def _parse_segment_line(line):
@@ -2640,7 +2653,15 @@ class VRGDG_LyricSegmentTextCleaner:
             return None
         return ", ".join(parts) + "."
 
-    def clean(self, lyrics_text, repeat_output_count=3, min_repeats_to_collapse=4, bridge_single_word_segments=True):
+    def clean(
+        self,
+        lyrics_text,
+        repeat_output_count=3,
+        min_repeats_to_collapse=4,
+        bridge_single_word_segments=True,
+        fill_empty_segments=True,
+        empty_segment_text="Instrumental section.",
+    ):
         lines = str(lyrics_text or "").splitlines()
         parsed_by_line = {}
         segments = []
@@ -2659,11 +2680,15 @@ class VRGDG_LyricSegmentTextCleaner:
 
         for segment_index, segment in enumerate(segments):
             original_text = segment["text"]
-            replacement = self._collapse_repeated_words(
-                original_text,
-                repeat_output_count,
-                min_repeats_to_collapse,
-            )
+            replacement = None
+            if not original_text and bool(fill_empty_segments):
+                replacement = str(empty_segment_text or "Instrumental section.").strip() or "Instrumental section."
+            if replacement is None:
+                replacement = self._collapse_repeated_words(
+                    original_text,
+                    repeat_output_count,
+                    min_repeats_to_collapse,
+                )
             if replacement is None and self._is_filler_word(original_text):
                 replacement = ", ".join(["Oh"] * int(repeat_output_count)) + "."
             if replacement is None and bool(bridge_single_word_segments):
@@ -3532,6 +3557,290 @@ class VRGDG_StoryGroupJsonFixer:
         note_text = "; ".join(notes) if notes else ("normalized formatting" if was_fixed else "")
         return (fixed_text, normalized, was_fixed, note_text)
 
+
+class VRGDG_MultiReferenceConditioning:
+    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "lanczos"]
+    MAX_IMAGES = 50
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional = {
+            f"image{i}": ("IMAGE", {"tooltip": f"Optional reference image {i}."})
+            for i in range(1, cls.MAX_IMAGES + 1)
+        }
+        return {
+            "required": {
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "vae": ("VAE",),
+                "image_count": (
+                    "INT",
+                    {
+                        "default": 4,
+                        "min": 1,
+                        "max": cls.MAX_IMAGES,
+                        "step": 1,
+                        "tooltip": "How many image inputs to show and process.",
+                    },
+                ),
+                "upscale_method": (cls.upscale_methods, {"default": "nearest-exact"}),
+                "megapixels": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.01,
+                        "max": 16.0,
+                        "step": 0.01,
+                    },
+                ),
+                "resolution_steps": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 256,
+                        "step": 1,
+                    },
+                ),
+            },
+            "optional": optional,
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "IMAGE")
+    RETURN_NAMES = ("positive", "negative", "IMAGE")
+    FUNCTION = "apply"
+    CATEGORY = "VRGDG/Conditioning"
+    DESCRIPTION = (
+        "Dynamically scales each connected reference image, VAE encodes it, "
+        "and appends the resulting reference latent to positive and negative conditioning."
+    )
+
+    @classmethod
+    def _scale_to_total_pixels(cls, image, upscale_method, megapixels, resolution_steps):
+        samples = image.movedim(-1, 1)
+        total = float(megapixels) * 1024 * 1024
+        scale_by = math.sqrt(total / (samples.shape[3] * samples.shape[2]))
+        steps = max(1, int(resolution_steps))
+        width = max(1, round(samples.shape[3] * scale_by / steps) * steps)
+        height = max(1, round(samples.shape[2] * scale_by / steps) * steps)
+        scaled = comfy.utils.common_upscale(
+            samples,
+            int(width),
+            int(height),
+            upscale_method,
+            "disabled",
+        )
+        return scaled.movedim(1, -1)
+
+    @staticmethod
+    def _append_reference_latent(conditioning, latent):
+        return node_helpers.conditioning_set_values(
+            conditioning,
+            {"reference_latents": [latent["samples"]]},
+            append=True,
+        )
+
+    @staticmethod
+    def _batch_for_image_output(images: List[torch.Tensor]):
+        if not images:
+            raise ValueError("VRGDG Multi Reference Conditioning needs at least one connected image input.")
+        if len(images) == 1:
+            return images[0]
+
+        base = images[0]
+        batched = [base]
+        for image in images[1:]:
+            next_image = image
+            if next_image.shape[-1] != base.shape[-1]:
+                max_channels = max(next_image.shape[-1], base.shape[-1])
+                if base.shape[-1] < max_channels:
+                    base = torch.nn.functional.pad(base, (0, max_channels - base.shape[-1]), value=1.0)
+                    batched[0] = base
+                if next_image.shape[-1] < max_channels:
+                    next_image = torch.nn.functional.pad(next_image, (0, max_channels - next_image.shape[-1]), value=1.0)
+            if next_image.shape[1:] != base.shape[1:]:
+                next_image = comfy.utils.common_upscale(
+                    next_image.movedim(-1, 1),
+                    base.shape[2],
+                    base.shape[1],
+                    "bilinear",
+                    "center",
+                ).movedim(1, -1)
+            batched.append(next_image)
+        return torch.cat(batched, dim=0)
+
+    def apply(self, positive, negative, vae, image_count, upscale_method, megapixels, resolution_steps, **kwargs):
+        count = max(1, min(self.MAX_IMAGES, int(image_count)))
+        positive_out = positive
+        negative_out = negative
+        scaled_images = []
+
+        for index in range(1, count + 1):
+            image = kwargs.get(f"image{index}")
+            if image is None:
+                continue
+
+            scaled_image = self._scale_to_total_pixels(image, upscale_method, megapixels, resolution_steps)
+            latent = {"samples": vae.encode(scaled_image)}
+            positive_out = self._append_reference_latent(positive_out, latent)
+            negative_out = self._append_reference_latent(negative_out, latent)
+            scaled_images.append(scaled_image)
+
+        return (positive_out, negative_out, self._batch_for_image_output(scaled_images))
+
+
+class VRGDG_MultiReferenceConditioningFromPaths:
+    upscale_methods = VRGDG_MultiReferenceConditioning.upscale_methods
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "vae": ("VAE",),
+                "image_paths": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "tooltip": "Reference image paths from the UI. Use one path per line, or a JSON list of paths.",
+                    },
+                ),
+                "upscale_method": (cls.upscale_methods, {"default": "nearest-exact"}),
+                "megapixels": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.01,
+                        "max": 16.0,
+                        "step": 0.01,
+                    },
+                ),
+                "resolution_steps": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 256,
+                        "step": 1,
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "IMAGE")
+    RETURN_NAMES = ("positive", "negative", "IMAGE")
+    FUNCTION = "apply"
+    CATEGORY = "VRGDG/Conditioning"
+    DESCRIPTION = (
+        "UI-friendly multi-reference conditioning node. Takes image file paths, "
+        "loads and scales each image, VAE encodes it, and appends reference latents."
+    )
+
+    @staticmethod
+    def _parse_image_paths(raw):
+        text = str(raw or "").strip()
+        if not text:
+            return []
+
+        parsed = None
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            pass
+
+        if isinstance(parsed, list):
+            values = parsed
+        elif isinstance(parsed, dict):
+            if isinstance(parsed.get("image_paths"), list):
+                values = parsed["image_paths"]
+            elif isinstance(parsed.get("images"), list):
+                values = parsed["images"]
+            else:
+                values = list(parsed.values())
+        else:
+            values = re.split(r"[\r\n]+", text)
+
+        paths = []
+        for item in values:
+            if isinstance(item, dict):
+                item = item.get("path") or item.get("file") or item.get("image") or ""
+            path = str(item or "").strip().strip('"').strip("'")
+            if path:
+                paths.append(path)
+        return paths
+
+    @staticmethod
+    def _resolve_image_path(raw_path):
+        path_text = str(raw_path or "").strip().strip('"').strip("'")
+        if not path_text:
+            raise FileNotFoundError("Reference image path was empty.")
+
+        candidates = []
+        if os.path.isabs(path_text):
+            candidates.append(path_text)
+        else:
+            candidates.extend(
+                [
+                    path_text,
+                    os.path.abspath(path_text),
+                    os.path.join(folder_paths.get_input_directory(), path_text),
+                    os.path.join(folder_paths.get_output_directory(), path_text),
+                ]
+            )
+            get_temp_directory = getattr(folder_paths, "get_temp_directory", None)
+            if callable(get_temp_directory):
+                candidates.append(os.path.join(get_temp_directory(), path_text))
+
+        seen = set()
+        for candidate in candidates:
+            normalized = os.path.normpath(os.path.abspath(candidate))
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            if os.path.isfile(normalized):
+                return normalized
+
+        raise FileNotFoundError(f"Reference image was not found: {path_text}")
+
+    @classmethod
+    def _load_image_tensor(cls, raw_path):
+        resolved = cls._resolve_image_path(raw_path)
+        with Image.open(resolved) as image:
+            image = ImageOps.exif_transpose(image).convert("RGB")
+            array = np.asarray(image).astype(np.float32) / 255.0
+        return torch.from_numpy(array).unsqueeze(0)
+
+    def apply(self, positive, negative, vae, image_paths, upscale_method, megapixels, resolution_steps):
+        paths = self._parse_image_paths(image_paths)
+        if not paths:
+            raise ValueError("VRGDG UI Multi Reference Conditioning needs at least one image path.")
+
+        positive_out = positive
+        negative_out = negative
+        scaled_images = []
+
+        for path in paths:
+            image = self._load_image_tensor(path)
+            scaled_image = VRGDG_MultiReferenceConditioning._scale_to_total_pixels(
+                image,
+                upscale_method,
+                megapixels,
+                resolution_steps,
+            )
+            latent = {"samples": vae.encode(scaled_image)}
+            positive_out = VRGDG_MultiReferenceConditioning._append_reference_latent(positive_out, latent)
+            negative_out = VRGDG_MultiReferenceConditioning._append_reference_latent(negative_out, latent)
+            scaled_images.append(scaled_image)
+
+        return (
+            positive_out,
+            negative_out,
+            VRGDG_MultiReferenceConditioning._batch_for_image_output(scaled_images),
+        )
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_ShowText": VRGDG_ShowText,
     "VRGDG_ShowAny": VRGDG_ShowAny,
@@ -3562,6 +3871,8 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_Part3WorkflowUI": VRGDG_Part3WorkflowUI,
     "VRGDG_T2IPromptsFromConcepts": VRGDG_T2IPromptsFromConcepts,
     "VRGDG_T2VPromptsFromConcepts": VRGDG_T2VPromptsFromConcepts,
+    "VRGDG_MultiReferenceConditioning": VRGDG_MultiReferenceConditioning,
+    "VRGDG_MultiReferenceConditioningFromPaths": VRGDG_MultiReferenceConditioningFromPaths,
     
 }
 
@@ -3595,5 +3906,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_Part3WorkflowUI": "VRGDG Workflow 3 UI",
     "VRGDG_T2IPromptsFromConcepts": "Text to image prompts from concepts",
     "VRGDG_T2VPromptsFromConcepts": "Text to video prompts from concepts",
+    "VRGDG_MultiReferenceConditioning": "VRGDG Multi Reference Conditioning",
+    "VRGDG_MultiReferenceConditioningFromPaths": "VRGDG UI Multi Reference Conditioning",
     
 }

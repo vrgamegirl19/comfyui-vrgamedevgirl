@@ -2544,6 +2544,19 @@ class VRGDG_GeneralVLM(VRGDG_Qwen25):
         )
 
 class VRGDG_GeneralGGUF(VRGDG_Qwen25):
+    _GEMMA_STOP_SEQUENCES = (
+        "<end_of_turn>",
+        "<start_of_turn>",
+        "<|end_of_turn|>",
+        "<|start_of_turn|>",
+        "|end_of_turn|",
+        "|start_of_turn|",
+        "_end_turn",
+        "_start_turn",
+        "_end_of_turn",
+        "_start_of_turn",
+    )
+
     MODEL_PRESETS = [
         "unsloth/gemma-4-26B-A4B-it-GGUF",
         "Jiunsong/supergemma4-26b-uncensored-gguf-v2",
@@ -3248,8 +3261,40 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                 text = message.get("content", "")
                 if isinstance(text, list):
                     text = "".join(str(part.get("text", "")) for part in text if isinstance(part, dict))
-                return str(text or "").strip()
-        return str(response or "").strip()
+                return self._clean_gguf_control_text(text)
+        return self._clean_gguf_control_text(response)
+
+    def _clean_gguf_control_text(self, text) -> str:
+        cleaned = str(text or "").strip()
+        if not cleaned:
+            return ""
+
+        cutoff_match = re.search(
+            r"<\|?(?:end|start)_of_turn\|?>|<\|?(?:end|start)_turn\|?>|\|(?:end|start)_of_turn\||_?(?:end|start)_of_turn|_?(?:end|start)_turn",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        if cutoff_match:
+            cleaned = cleaned[:cutoff_match.start()].strip()
+
+        cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+        cleaned = re.sub(r"</?thought>", "", cleaned, flags=re.IGNORECASE).strip()
+
+        control_patterns = [
+            r"^\s*_?\s*<\|channel>\s*(?:thought|analysis|reasoning)?\s*",
+            r"^\s*_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
+            r"^\s*_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*",
+            r"^\s*_?\s*(?:thought|analysis|reasoning)\s*<channel\|>\s*",
+            r"^\s*_?\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
+            r"^\s*_?\s*(?:end|start)_of_turn\s*",
+            r"^\s*_?\s*(?:end|start)_turn\s*",
+        ]
+        previous = None
+        while cleaned and previous != cleaned:
+            previous = cleaned
+            for pattern in control_patterns:
+                cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+        return cleaned
 
     def _build_gguf_messages(
         self,
@@ -3279,6 +3324,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             temperature=float(temperature),
             top_p=float(top_p),
             max_tokens=int(max_new_tokens),
+            stop=list(self._GEMMA_STOP_SEQUENCES),
         )
         return self._extract_gguf_text(response)
 
@@ -3301,6 +3347,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             temperature=float(temperature),
             top_p=float(top_p),
             max_tokens=int(max_new_tokens),
+            stop=list(self._GEMMA_STOP_SEQUENCES),
         )
         return self._extract_gguf_text(response)
 

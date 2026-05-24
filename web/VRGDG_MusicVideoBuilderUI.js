@@ -13,6 +13,7 @@ const TIMELINE_SEGMENT_HEIGHT = 62;
 const TIMELINE_SCENE_AUDIO_TOP = TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT + 10;
 const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
 const TIMELINE_WAVE_TOP = 98;
+const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
 const WAVEFORM_MODES = {
   small: { label: "Small wave", height: 150, gain: 1 },
   medium: { label: "Medium wave", height: 190, gain: 1.35 },
@@ -782,12 +783,7 @@ function newSegment(start = 0, end = 4) {
     custom_audio_source_start: 0,
     custom_audio_peaks: [],
     custom_audio_beats: [],
-    flux_subject_image_path: "",
-    flux_subject_image_data: "",
-    flux_subject_image_name: "",
-    flux_location_image_path: "",
-    flux_location_image_data: "",
-    flux_location_image_name: "",
+    flux_image_ingredients: [],
     flux_notes: "",
     flux_prompt: "",
     use_scene_zimage_settings: false,
@@ -1031,28 +1027,46 @@ function openBuilder(node) {
   const fluxKleinPanel = document.createElement("div");
   fluxKleinPanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
   const useFluxKlein = makeCheckbox("Build image using Flux/Klein?", false);
-  const fluxSubjectFileInput = document.createElement("input");
-  fluxSubjectFileInput.type = "file";
-  fluxSubjectFileInput.accept = "image/png,image/jpeg,image/webp";
-  fluxSubjectFileInput.style.display = "none";
-  shell.append(fluxSubjectFileInput);
-  const fluxLocationFileInput = document.createElement("input");
-  fluxLocationFileInput.type = "file";
-  fluxLocationFileInput.accept = "image/png,image/jpeg,image/webp";
-  fluxLocationFileInput.style.display = "none";
-  shell.append(fluxLocationFileInput);
-  const fluxSubjectPath = makeInput("");
-  fluxSubjectPath.placeholder = "Subject image path...";
-  const fluxLocationPath = makeInput("");
-  fluxLocationPath.placeholder = "Location image path...";
-  const fluxSubjectDrop = document.createElement("div");
-  fluxSubjectDrop.textContent = "Drop subject image here";
-  fluxSubjectDrop.style.cssText = zI2IDrop.style.cssText;
-  const fluxLocationDrop = document.createElement("div");
-  fluxLocationDrop.textContent = "Drop location image here";
-  fluxLocationDrop.style.cssText = zI2IDrop.style.cssText;
-  const fluxSubjectButton = makeButton("Load Subject", "primary");
-  const fluxLocationButton = makeButton("Load Location", "primary");
+  const fluxIngredientFileInput = document.createElement("input");
+  fluxIngredientFileInput.type = "file";
+  fluxIngredientFileInput.accept = "image/png,image/jpeg,image/webp";
+  fluxIngredientFileInput.multiple = true;
+  fluxIngredientFileInput.style.display = "none";
+  shell.append(fluxIngredientFileInput);
+  const fluxGlobalIngredientFileInput = document.createElement("input");
+  fluxGlobalIngredientFileInput.type = "file";
+  fluxGlobalIngredientFileInput.accept = "image/png,image/jpeg,image/webp";
+  fluxGlobalIngredientFileInput.multiple = true;
+  fluxGlobalIngredientFileInput.style.display = "none";
+  shell.append(fluxGlobalIngredientFileInput);
+  const useFluxGlobalIngredients = makeCheckbox("Use global image ingredients", false);
+  const fluxGlobalIngredientPanel = document.createElement("div");
+  fluxGlobalIngredientPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const fluxGlobalIngredientDrop = document.createElement("div");
+  fluxGlobalIngredientDrop.innerHTML = `<b>Global image ingredients</b><br><span>Drop character, face, costume, or style references here to use them in every Flux/Klein scene.</span>`;
+  fluxGlobalIngredientDrop.style.cssText = "border:1px dashed #7c3aed;border-radius:6px;background:#12091f;color:#ddd6fe;padding:12px;text-align:center;font-size:12px;line-height:1.45;";
+  const fluxGlobalIngredientList = document.createElement("div");
+  fluxGlobalIngredientList.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  const fluxGlobalIngredientActions = document.createElement("div");
+  fluxGlobalIngredientActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  const fluxGlobalIngredientButton = makeButton("Upload Global Images", "primary");
+  const fluxGlobalIngredientClearButton = makeButton("Clear Globals");
+  fluxGlobalIngredientActions.append(fluxGlobalIngredientButton, fluxGlobalIngredientClearButton);
+  fluxGlobalIngredientPanel.append(
+    fluxGlobalIngredientDrop,
+    fluxGlobalIngredientActions,
+    fluxGlobalIngredientList,
+  );
+  const fluxIngredientDrop = document.createElement("div");
+  fluxIngredientDrop.innerHTML = `<b>Image ingredients</b><br><span>Drop images here: character, background, props, style references, or anything else Flux/Klein should use.</span>`;
+  fluxIngredientDrop.style.cssText = "border:1px dashed #155e75;border-radius:6px;background:#020617;color:#bae6fd;padding:12px;text-align:center;font-size:12px;line-height:1.45;";
+  const fluxIngredientList = document.createElement("div");
+  fluxIngredientList.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  const fluxIngredientActions = document.createElement("div");
+  fluxIngredientActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  const fluxIngredientButton = makeButton("Upload Images", "primary");
+  const fluxIngredientClearButton = makeButton("Clear Images");
+  fluxIngredientActions.append(fluxIngredientButton, fluxIngredientClearButton);
   const fluxNotes = document.createElement("textarea");
   fluxNotes.placeholder = "Optional pose, camera, wardrobe, lighting, or mood notes...";
   fluxNotes.style.cssText = "width:100%;box-sizing:border-box;min-height:72px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.45;";
@@ -1076,12 +1090,11 @@ function openBuilder(node) {
   const fluxImageRefsPanel = document.createElement("div");
   fluxImageRefsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   fluxImageRefsPanel.append(
-    makeField("Subject image", fluxSubjectPath),
-    fluxSubjectDrop,
-    fluxSubjectButton,
-    makeField("Location image", fluxLocationPath),
-    fluxLocationDrop,
-    fluxLocationButton,
+    useFluxGlobalIngredients.wrapper,
+    fluxGlobalIngredientPanel,
+    fluxIngredientDrop,
+    fluxIngredientActions,
+    fluxIngredientList,
   );
   const zEnhancePanel = document.createElement("div");
   zEnhancePanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
@@ -1279,16 +1292,28 @@ function openBuilder(node) {
   const imagePanel = document.createElement("div");
   const videoPanel = document.createElement("div");
   const audioPanel = document.createElement("div");
+  const noSceneNotice = document.createElement("div");
+  noSceneNotice.style.cssText = "display:none;min-height:220px;align-items:center;justify-content:center;text-align:center;border:1px dashed #3f3f46;border-radius:8px;background:#18181b;color:#a1a1aa;padding:24px;font-size:13px;line-height:1.5;";
+  noSceneNotice.innerHTML = `<div><div style="color:#e4e4e7;font-weight:900;font-size:15px;margin-bottom:6px;">Select a scene</div><div>Choose a scene from the list or timeline to edit its prompts, images, video, audio, and timing.</div></div>`;
   for (const panel of [scenePanel, imagePanel, videoPanel, audioPanel]) {
     panel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+  }
+  function syncInspectorPanels() {
+    const hasScene = Boolean(activeSegment());
+    const tabName = state.inspectorTab || "scene";
+    noSceneNotice.style.display = hasScene ? "none" : "flex";
+    inspectorTabs.style.opacity = hasScene ? "1" : ".45";
+    inspectorTabs.style.pointerEvents = hasScene ? "auto" : "none";
+    scenePanel.style.display = hasScene && tabName === "scene" ? "flex" : "none";
+    imagePanel.style.display = hasScene && tabName === "image" ? "flex" : "none";
+    videoPanel.style.display = hasScene && tabName === "video" ? "flex" : "none";
+    audioPanel.style.display = hasScene && tabName === "audio" ? "flex" : "none";
   }
   function setInspectorTab(tabName) {
     const activeColor = "#06b6d4";
     const inactiveColor = "#27272a";
-    scenePanel.style.display = tabName === "scene" ? "flex" : "none";
-    imagePanel.style.display = tabName === "image" ? "flex" : "none";
-    videoPanel.style.display = tabName === "video" ? "flex" : "none";
-    audioPanel.style.display = tabName === "audio" ? "flex" : "none";
+    state.inspectorTab = tabName;
+    syncInspectorPanels();
     if (tabName === "image" || tabName === "video" || tabName === "audio") {
       state.rightPanelWidth = Math.max(state.rightPanelWidth || 360, 460);
     }
@@ -1483,7 +1508,7 @@ function openBuilder(node) {
       globalAudioSummary,
     ], false),
   );
-  inspector.append(inspectorTabs, scenePanel, imagePanel, videoPanel, audioPanel);
+  inspector.append(inspectorTabs, noSceneNotice, scenePanel, imagePanel, videoPanel, audioPanel);
 
   const timeline = document.createElement("div");
   timeline.style.cssText = "display:grid;grid-template-rows:7px auto 1fr;border-top:1px solid #27272a;background:#111113;min-height:0;";
@@ -1677,6 +1702,7 @@ function openBuilder(node) {
     beats: [],
     segments: [],
     activeId: "",
+    inspectorTab: "scene",
     pxPerSecond: 45,
     timelineZoom: 45,
     waveformMode: "medium",
@@ -1703,6 +1729,8 @@ function openBuilder(node) {
     subjectScenePath: "",
     zimageSettings: defaultZImageSettings(),
     fluxKleinSettings: defaultFluxKleinSettings(),
+    useFluxGlobalImageIngredients: false,
+    fluxGlobalImageIngredients: [],
     zEnhanceSettings: defaultZEnhanceSettings(),
     i2vVideoSettings: defaultI2VVideoSettings(),
     undoStack: [],
@@ -1889,12 +1917,23 @@ function openBuilder(node) {
     if (!Number.isFinite(Number(segment.custom_audio_source_start))) segment.custom_audio_source_start = 0;
     if (!Array.isArray(segment.custom_audio_peaks)) segment.custom_audio_peaks = [];
     if (!Array.isArray(segment.custom_audio_beats)) segment.custom_audio_beats = [];
-    if (segment.flux_subject_image_path == null) segment.flux_subject_image_path = "";
-    if (segment.flux_subject_image_data == null) segment.flux_subject_image_data = "";
-    if (segment.flux_subject_image_name == null) segment.flux_subject_image_name = "";
-    if (segment.flux_location_image_path == null) segment.flux_location_image_path = "";
-    if (segment.flux_location_image_data == null) segment.flux_location_image_data = "";
-    if (segment.flux_location_image_name == null) segment.flux_location_image_name = "";
+    if (!Array.isArray(segment.flux_image_ingredients)) {
+      segment.flux_image_ingredients = [];
+      if (segment.flux_subject_image_path || segment.flux_subject_image_data || segment.flux_subject_image_name) {
+        segment.flux_image_ingredients.push({
+          path: segment.flux_subject_image_path || "",
+          data: segment.flux_subject_image_data || "",
+          name: segment.flux_subject_image_name || "subject.png",
+        });
+      }
+      if (segment.flux_location_image_path || segment.flux_location_image_data || segment.flux_location_image_name) {
+        segment.flux_image_ingredients.push({
+          path: segment.flux_location_image_path || "",
+          data: segment.flux_location_image_data || "",
+          name: segment.flux_location_image_name || "location.png",
+        });
+      }
+    }
     if (segment.flux_notes == null) segment.flux_notes = "";
     if (segment.flux_prompt == null) segment.flux_prompt = "";
     if (!["image", "video"].includes(segment.preview_mode)) segment.preview_mode = segment.video_path ? "video" : "image";
@@ -1983,6 +2022,8 @@ function openBuilder(node) {
       autoSaveEnabled: state.autoSaveEnabled,
       zimageSettings: state.zimageSettings,
       fluxKleinSettings: state.fluxKleinSettings,
+      useFluxGlobalImageIngredients: state.useFluxGlobalImageIngredients,
+      fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
       zEnhanceSettings: state.zEnhanceSettings,
       i2vVideoSettings: state.i2vVideoSettings,
     });
@@ -2017,6 +2058,8 @@ function openBuilder(node) {
     applyLayoutSizes();
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
+    state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
+    state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.i2vVideoSettings = data.i2vVideoSettings || state.i2vVideoSettings;
     syncZImageSettingsPanel();
@@ -2066,6 +2109,13 @@ function openBuilder(node) {
 
   function setActiveSegment(segment) {
     state.activeId = segment?.id || "";
+    syncInspector();
+    render();
+  }
+
+  function clearActiveSegment() {
+    if (!state.activeId) return;
+    state.activeId = "";
     syncInspector();
     render();
   }
@@ -2196,6 +2246,7 @@ function openBuilder(node) {
       <div style="margin-top:6px;"><strong>SRT:</strong> ${escapeHtml(srtInput.value || "Not loaded")}</div>
       <div style="margin-top:6px;color:#a1a1aa;">Use the Settings button to load or change these files.</div>
     `;
+    syncInspectorPanels();
     if (!segment) {
       labelInput.value = "";
       startInput.value = "0";
@@ -2489,6 +2540,64 @@ function openBuilder(node) {
     state.zEnhanceSettings = settings;
   }
 
+  function renderFluxIngredientRows(listElement, ingredients, emptyText, onRemove) {
+    listElement.innerHTML = "";
+    if (!ingredients.length) {
+      const empty = document.createElement("div");
+      empty.textContent = emptyText;
+      empty.style.cssText = "border:1px solid #27272a;border-radius:6px;background:#18181b;color:#a1a1aa;padding:8px;font-size:12px;";
+      listElement.append(empty);
+      return;
+    }
+    ingredients.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#18181b;padding:8px;";
+      const label = document.createElement("div");
+      label.textContent = `${index + 1}. ${item?.name || item?.path || "image ingredient"}`;
+      label.title = item?.path || item?.name || "";
+      label.style.cssText = "font-size:12px;color:#e4e4e7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      const remove = makeMiniButton("Remove");
+      remove.onclick = () => {
+        onRemove(index);
+      };
+      row.append(label, remove);
+      listElement.append(row);
+    });
+  }
+
+  function renderFluxIngredientList(segment = activeSegment()) {
+    const ingredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
+    renderFluxIngredientRows(fluxIngredientList, ingredients, "No scene-specific image ingredients loaded for this scene.", (index) => {
+      const active = activeSegment();
+      if (!active || !Array.isArray(active.flux_image_ingredients)) return;
+      pushHistory();
+      active.flux_image_ingredients.splice(index, 1);
+      renderFluxIngredientList(active);
+      render();
+    });
+  }
+
+  function renderFluxGlobalIngredientList() {
+    const ingredients = Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [];
+    renderFluxIngredientRows(fluxGlobalIngredientList, ingredients, "No global Flux/Klein image ingredients loaded.", (index) => {
+      pushHistory();
+      state.fluxGlobalImageIngredients.splice(index, 1);
+      renderFluxGlobalIngredientList();
+      render();
+    });
+  }
+
+  function syncFluxGlobalIngredientPanel() {
+    useFluxGlobalIngredients.input.checked = Boolean(state.useFluxGlobalImageIngredients);
+    fluxGlobalIngredientPanel.style.display = state.useFluxGlobalImageIngredients ? "flex" : "none";
+  }
+
+  function mergedFluxImageIngredients(segment = activeSegment()) {
+    const globalIngredients = state.useFluxGlobalImageIngredients && Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [];
+    const sceneIngredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
+    return [...globalIngredients, ...sceneIngredients];
+  }
+
   function syncFluxKleinPanel() {
     const settings = state.fluxKleinSettings || {};
     const segment = activeSegment();
@@ -2512,8 +2621,9 @@ function openBuilder(node) {
     loadCustomImageButton.style.background = "#27272a";
     loadCustomImageButton.style.color = "#f4f4f5";
     loadCustomImageButton.style.boxShadow = "none";
-    fluxSubjectPath.value = segment?.flux_subject_image_path || segment?.flux_subject_image_name || "";
-    fluxLocationPath.value = segment?.flux_location_image_path || segment?.flux_location_image_name || "";
+    syncFluxGlobalIngredientPanel();
+    renderFluxGlobalIngredientList();
+    renderFluxIngredientList(segment);
     fluxNotes.value = segment?.flux_notes || "";
     fluxPrompt.value = segment?.flux_prompt || "";
     fluxUnetPicker.input.value = settings.unet_name || "flux\\flux-2-klein-4b-fp8.safetensors";
@@ -2528,17 +2638,8 @@ function openBuilder(node) {
     pushHistory();
     const current = state.fluxKleinSettings || {};
     const segment = activeSegment();
-    const subjectPathValue = fluxSubjectPath.value || "";
-    const locationPathValue = fluxLocationPath.value || "";
-    const keepSubjectData = Boolean(segment?.flux_subject_image_data && subjectPathValue === segment.flux_subject_image_name);
-    const keepLocationData = Boolean(segment?.flux_location_image_data && locationPathValue === segment.flux_location_image_name);
     if (segment) {
-      segment.flux_subject_image_path = keepSubjectData ? "" : subjectPathValue;
-      segment.flux_subject_image_data = keepSubjectData ? segment.flux_subject_image_data || "" : "";
-      segment.flux_subject_image_name = keepSubjectData ? segment.flux_subject_image_name || "" : "";
-      segment.flux_location_image_path = keepLocationData ? "" : locationPathValue;
-      segment.flux_location_image_data = keepLocationData ? segment.flux_location_image_data || "" : "";
-      segment.flux_location_image_name = keepLocationData ? segment.flux_location_image_name || "" : "";
+      if (!Array.isArray(segment.flux_image_ingredients)) segment.flux_image_ingredients = [];
       segment.flux_notes = fluxNotes.value || "";
       segment.flux_prompt = fluxPrompt.value || "";
     }
@@ -2555,12 +2656,10 @@ function openBuilder(node) {
     syncFluxKleinPanel();
     return {
       ...state.fluxKleinSettings,
-      subject_image_path: segment?.flux_subject_image_path || "",
-      subject_image_data: segment?.flux_subject_image_data || "",
-      subject_image_name: segment?.flux_subject_image_name || "",
-      location_image_path: segment?.flux_location_image_path || "",
-      location_image_data: segment?.flux_location_image_data || "",
-      location_image_name: segment?.flux_location_image_name || "",
+      image_ingredients: mergedFluxImageIngredients(segment),
+      use_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
+      global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
+      scene_image_ingredients: Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [],
       notes: segment?.flux_notes || "",
       prompt: segment?.flux_prompt || "",
     };
@@ -2744,6 +2843,16 @@ function openBuilder(node) {
     sortSegments(state.segments);
   }
 
+  function shiftSegmentTiming(segment, delta) {
+    const amount = Number(delta || 0);
+    if (!segment || !amount) return;
+    segment.start = Number(segment.start || 0) + amount;
+    segment.end = Number(segment.end || 0) + amount;
+    if (Number.isFinite(Number(segment.custom_audio_timeline_start))) {
+      segment.custom_audio_timeline_start = Number(segment.custom_audio_timeline_start || 0) + amount;
+    }
+  }
+
   function timelineHeight() {
     return WAVEFORM_MODES[state.waveformMode]?.height || WAVEFORM_MODES.medium.height;
   }
@@ -2853,11 +2962,13 @@ function openBuilder(node) {
       const thumb = previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
       const inserted = state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
+      const isActive = Boolean(state.activeId) && segment.id === state.activeId;
       block.style.cssText = `
         position:absolute;left:${left}px;top:${TIMELINE_SEGMENT_TOP}px;width:${width}px;height:${TIMELINE_SEGMENT_HEIGHT}px;
-        border:1px solid ${segment.id === state.activeId ? "#67e8f9" : lockedByVideo ? "#a3e635" : inserted ? "#f59e0b" : "#0891b2"};
+        border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : lockedByVideo ? "#a3e635" : inserted ? "#f59e0b" : "#0891b2"};
         border-radius:5px;background:${thumb ? `linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)), url("${thumb}") center / auto 100% repeat-x` : inserted ? "#92400e" : segment.image ? "#166534" : "#164e63"};
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
+        box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.55)" : "none"};
       `;
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
       const dragImageSource = segmentImageSource(segment);
@@ -3290,7 +3401,8 @@ function openBuilder(node) {
           ${audioStatus}
         </div>
       `;
-      row.style.cssText = `width:100%;text-align:left;border:1px solid ${segment.id === state.activeId ? "#67e8f9" : inserted ? "#f59e0b" : "#3f3f46"};border-radius:7px;background:${segment.id === state.activeId ? "#164e63" : inserted ? "#451a03" : "#27272a"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;`;
+      const isActive = Boolean(state.activeId) && segment.id === state.activeId;
+      row.style.cssText = `width:100%;text-align:left;border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : inserted ? "#f59e0b" : "#3f3f46"};border-radius:7px;background:${isActive ? "#3f1d24" : inserted ? "#451a03" : "#27272a"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
       row.innerHTML = `<div style="font-weight:800;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${escapeHtml(segment.label || "Scene")}</div><div style="font-size:11px;color:#a1a1aa;margin-top:4px;">Duration in seconds: ${formatDurationSeconds(segment.start, segment.end)}</div><div style="font-size:11px;color:#71717a;margin-top:2px;">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>${status}${thumb}`;
       row.onclick = () => setActiveSegment(segment);
       row.onkeydown = (event) => {
@@ -3463,40 +3575,50 @@ function openBuilder(node) {
     return segment ? segmentImageSource(segment) : null;
   }
 
-  function setFluxImage(kind, { path = "", data = "", name = "" } = {}) {
+  function addFluxIngredient({ path = "", data = "", name = "", global = false } = {}) {
     pushHistory();
+    if (global) {
+      if (!Array.isArray(state.fluxGlobalImageIngredients)) state.fluxGlobalImageIngredients = [];
+      state.fluxGlobalImageIngredients.push({
+        path: path || "",
+        data: data || "",
+        name: name || path?.split?.(/[\\/]/)?.pop?.() || "image.png",
+      });
+      renderFluxGlobalIngredientList();
+      render();
+      toast(`Global image ingredient added${path || name ? `:\n${path || name}` : "."}`);
+      return;
+    }
     const segment = activeSegment();
     if (!segment) {
       toast("Add or select a scene first.", true);
       return;
     }
+    if (!Array.isArray(segment.flux_image_ingredients)) segment.flux_image_ingredients = [];
+    segment.flux_image_ingredients.push({
+      path: path || "",
+      data: data || "",
+      name: name || path?.split?.(/[\\/]/)?.pop?.() || "image.png",
+    });
     const settings = state.fluxKleinSettings || {};
-    if (kind === "subject") {
-      segment.flux_subject_image_path = path || "";
-      segment.flux_subject_image_data = data || "";
-      segment.flux_subject_image_name = name || "";
-    } else {
-      segment.flux_location_image_path = path || "";
-      segment.flux_location_image_data = data || "";
-      segment.flux_location_image_name = name || "";
-    }
     settings.enabled = true;
     state.fluxKleinSettings = settings;
     syncFluxKleinPanel();
-    toast(`${kind === "subject" ? "Subject" : "Location"} image set${path || name ? `:\n${path || name}` : "."}`);
+    toast(`Image ingredient added${path || name ? `:\n${path || name}` : "."}`);
   }
 
-  function loadFluxImageFile(kind, file) {
+  function loadFluxIngredientFile(file, { global = false } = {}) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setFluxImage(kind, { data: String(reader.result || ""), name: file.name || "image.png" });
-    reader.onerror = () => toast(`Failed to read the ${kind} image.`, true);
+    reader.onload = () => addFluxIngredient({ data: String(reader.result || ""), name: file.name || "image.png", global });
+    reader.onerror = () => toast("Failed to read the image ingredient.", true);
     reader.readAsDataURL(file);
   }
 
-  function enableFluxDrop(element, kind) {
+  function enableFluxIngredientDrop(element, { global = false } = {}) {
     element.addEventListener("dragover", (event) => {
-      if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
       event.preventDefault();
       event.stopPropagation();
       element.style.borderColor = "#a3e635";
@@ -3505,12 +3627,21 @@ function openBuilder(node) {
       element.style.borderColor = "#155e75";
     });
     element.addEventListener("drop", (event) => {
-      const file = imageFileFromDrop(event);
-      if (!file) return;
+      const sceneSource = droppedSceneImageSource(event);
+      const files = Array.from(event.dataTransfer?.files || []).filter((file) => file.type?.startsWith?.("image/"));
+      if (!sceneSource && !files.length) return;
       event.preventDefault();
       event.stopPropagation();
       element.style.borderColor = "#155e75";
-      loadFluxImageFile(kind, file);
+      if (sceneSource) {
+        addFluxIngredient({
+          path: sceneSource.path || "",
+          data: sceneSource.data || "",
+          name: sceneSource.name || "scene_image.png",
+          global,
+        });
+      }
+      for (const file of files) loadFluxIngredientFile(file, { global });
     });
   }
 
@@ -3884,6 +4015,9 @@ function openBuilder(node) {
       state.promptJsonPath = data.prompt_json_path || promptJsonInput.value;
       for (let index = 0; index < state.segments.length && index < prompts.length; index++) {
         state.segments[index].notes = prompts[index];
+        if (!String(state.segments[index].flux_notes || "").trim()) {
+          state.segments[index].flux_notes = prompts[index];
+        }
         if (!state.segments[index].label || /^Prompt\s+\d+$/i.test(state.segments[index].label)) {
           state.segments[index].label = `Scene ${index + 1}`;
         }
@@ -3938,12 +4072,7 @@ function openBuilder(node) {
       segment.video_status = "none";
       segment.preview_mode = "image";
       segment.flux_prompt = "";
-      segment.flux_subject_image_path = "";
-      segment.flux_subject_image_data = "";
-      segment.flux_subject_image_name = "";
-      segment.flux_location_image_path = "";
-      segment.flux_location_image_data = "";
-      segment.flux_location_image_name = "";
+      segment.flux_image_ingredients = [];
     }
     previewVideo.pause();
     previewVideo.removeAttribute("src");
@@ -4053,6 +4182,8 @@ function openBuilder(node) {
       auto_save_enabled: state.autoSaveEnabled,
       zimage_settings: state.zimageSettings,
       flux_klein_settings: state.fluxKleinSettings,
+      use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
+      flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
       z_enhance_settings: state.zEnhanceSettings,
       i2v_video_settings: state.i2vVideoSettings,
     };
@@ -4134,6 +4265,8 @@ function openBuilder(node) {
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
+        state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
+        state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
         state.i2vVideoSettings = data.session.i2v_video_settings || state.i2vVideoSettings;
         syncZImageSettingsPanel();
@@ -4250,6 +4383,8 @@ function openBuilder(node) {
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
+      state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
+      state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
       state.i2vVideoSettings = session.i2v_video_settings || state.i2vVideoSettings;
       if (session.audio_path) {
@@ -4593,8 +4728,8 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (!segment) return;
     const settings = saveFluxKleinSettingsFromPanel();
-    if ((!settings.subject_image_path && !settings.subject_image_data) || (!settings.location_image_path && !settings.location_image_data)) {
-      toast("Load both a subject image and a location image first.", true);
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      toast("Load at least one image ingredient first.", true);
       return;
     }
     let progress = null;
@@ -4604,17 +4739,14 @@ function openBuilder(node) {
       progress = createProgressWindow("Creating Flux/Klein prompt");
       progress.set("Autosaving session/SRT before Gemma Flux/Klein...", 8);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt");
-      progress.set("Combining subject and location references for Gemma vision...", 25);
+      progress.set("Combining image ingredients for Gemma vision...", 25);
       const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
         model_file: fluxGemmaModelSelect.value,
         mmproj_file: fluxMmprojSelect.value,
-        subject_image_path: settings.subject_image_path || "",
-        subject_image_data: settings.subject_image_data || "",
-        location_image_path: settings.location_image_path || "",
-        location_image_data: settings.location_image_data || "",
+        image_ingredients: settings.image_ingredients || [],
         user_notes: settings.notes || "",
         unload_after: true,
-      });
+      }, FLUX_GEMMA_TIMEOUT_MS);
       pushHistory();
       segment.flux_prompt = String(data.prompt || "").trim();
       fluxPrompt.value = segment.flux_prompt;
@@ -4636,6 +4768,94 @@ function openBuilder(node) {
     }
   }
 
+  function fluxKleinSettingsForSegment(segment = activeSegment()) {
+    const current = state.fluxKleinSettings || {};
+    return {
+      ...current,
+      image_ingredients: mergedFluxImageIngredients(segment),
+      notes: segment?.flux_notes || "",
+      prompt: segment?.flux_prompt || "",
+    };
+  }
+
+  async function generateFluxKleinPromptForSegment(segment, progress = null, percent = 25, label = "Flux/Klein Gemma") {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    const settings = fluxKleinSettingsForSegment(segment);
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: add at least one global or scene Flux/Klein image ingredient.`);
+    }
+    progress?.set(`${label}: combining global and scene image ingredients for Gemma vision...`, percent);
+    const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
+      model_file: fluxGemmaModelSelect.value,
+      mmproj_file: fluxMmprojSelect.value,
+      image_ingredients: settings.image_ingredients || [],
+      user_notes: settings.notes || segment.notes || "",
+      unload_after: true,
+    }, FLUX_GEMMA_TIMEOUT_MS);
+    pushHistory();
+    segment.flux_prompt = String(data.prompt || "").trim();
+    segment.t2i_prompt = segment.flux_prompt;
+    segment.enhance_prompt = segment.flux_prompt;
+    if (segment.id === activeSegment()?.id) {
+      fluxPrompt.value = segment.flux_prompt;
+      t2iPrompt.value = segment.t2i_prompt;
+      zEnhancePromptPreview.value = segment.enhance_prompt;
+    }
+    render();
+    return data;
+  }
+
+  async function createFluxKleinImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Flux/Klein") {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    const settings = fluxKleinSettingsForSegment(segment);
+    const prompt = String(settings.prompt || segment.flux_prompt || segment.t2i_prompt || "").trim();
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Flux/Klein prompt is missing.`);
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: add at least one global or scene Flux/Klein image ingredient.`);
+    }
+    progress?.set(`${label}: building hidden Flux/Klein workflow...`, percentBase + percentSpan * 0.25);
+    const built = await postJson("/vrgdg/workflow_runner/build_flux_klein_prompt", {
+      prompt,
+      image_ingredients: settings.image_ingredients || [],
+      unet_name: settings.unet_name || "",
+      clip_name: settings.clip_name || "",
+      vae_name: settings.vae_name || "",
+      width: settings.width || 1024,
+      height: settings.height || 576,
+      seed: settings.seed || 100,
+    });
+    progress?.set(`${label}: queueing Flux/Klein workflow...`, percentBase + percentSpan * 0.45);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the Flux/Klein image but did not return a prompt_id.");
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    });
+    pushHistory();
+    segment.image = images[images.length - 1] || null;
+    await archiveGeneratedSceneImage(segment, segment.image);
+    segment.t2i_prompt = prompt;
+    segment.enhance_prompt = prompt;
+    segment.flux_prompt = prompt;
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    if (segment.id === activeSegment()?.id) {
+      t2iPrompt.value = prompt;
+      fluxPrompt.value = prompt;
+      zEnhancePromptPreview.value = prompt;
+      syncPreview(segment);
+    }
+    render();
+    return images;
+  }
+
   async function previewFluxKleinImage() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -4645,8 +4865,8 @@ function openBuilder(node) {
       toast("Hey, you need a Flux/Klein prompt first. Click Gemma Flux Prompt or type one into the Flux/Klein prompt box.", true);
       return;
     }
-    if ((!settings.subject_image_path && !settings.subject_image_data) || (!settings.location_image_path && !settings.location_image_data)) {
-      toast("Hey, you need both images first. Load or drop one subject image and one location image.", true);
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      toast("Hey, you need at least one image ingredient first. Load or drop character, background, or reference images.", true);
       return;
     }
     let progress = null;
@@ -4658,12 +4878,7 @@ function openBuilder(node) {
       progress.set("Building hidden Flux/Klein workflow...", 30);
       const built = await postJson("/vrgdg/workflow_runner/build_flux_klein_prompt", {
         prompt,
-        subject_image_path: settings.subject_image_path || "",
-        subject_image_data: settings.subject_image_data || "",
-        subject_image_name: settings.subject_image_name || "",
-        location_image_path: settings.location_image_path || "",
-        location_image_data: settings.location_image_data || "",
-        location_image_name: settings.location_image_name || "",
+        image_ingredients: settings.image_ingredients || [],
         unet_name: settings.unet_name || "",
         clip_name: settings.clip_name || "",
         vae_name: settings.vae_name || "",
@@ -5503,6 +5718,72 @@ function openBuilder(node) {
     }
   }
 
+  async function fluxKleinAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const progress = createProgressWindow("Flux/Klein All Scenes");
+    const hasAnyGlobal = Array.isArray(state.fluxGlobalImageIngredients) && state.fluxGlobalImageIngredients.length > 0;
+    if (!hasAnyGlobal && !state.segments.some((segment) => Array.isArray(segment.flux_image_ingredients) && segment.flux_image_ingredients.length)) {
+      const message = "Flux/Klein All needs at least one global or scene image ingredient.";
+      progress.set(message, 100);
+      toast(message, true);
+      if (options.throwOnError) throw new Error(message);
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "Fluxing...";
+      setButtonGroupState(fluxCreateButtons, { disabled: true });
+      createFluxPromptButton.disabled = true;
+      progress.set("Autosaving session/SRT before Flux/Klein All...", 3);
+      await saveSessionForSceneVideo();
+      const scenes = state.segments
+        .map((segment, index) => ({ segment, index }))
+        .filter(({ segment }) => !segmentImageSource(segment));
+      if (!scenes.length) {
+        progress.set("All scenes already have images. Skipping Flux/Klein All.", 100);
+        progress.close(1800);
+        toast("All scenes already have images. Flux/Klein All skipped.");
+        return;
+      }
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = Math.floor((index / scenes.length) * 100);
+        const span = Math.max(1, Math.floor(88 / scenes.length));
+        progress.set(`Flux/Klein All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating prompt with Gemma vision...`, base);
+        await generateFluxKleinPromptForSegment(segment, progress, base + span * 0.2, `Flux/Klein All ${index + 1}/${scenes.length}: Gemma`);
+        assertBatchNotStopped();
+        await createFluxKleinImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Flux/Klein All ${index + 1}/${scenes.length}: Image`);
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Flux/Klein All scene ${sceneIndex + 1}`);
+        await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+      }
+      await autoSaveSessionQuiet("Flux/Klein All complete");
+      progress.set("Flux/Klein All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.close(4500);
+      toast("Flux/Klein All complete.");
+    } catch (error) {
+      progress.set(`Stopped/Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+      try {
+        await runClearMemoryWorkflowQuiet(progress, "stopped Flux/Klein All", 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after Flux/Klein All stop failed:", cleanupError);
+      }
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Z-Image All";
+      setButtonGroupState(fluxCreateButtons, { disabled: false, text: "Create with Flux/Klein" });
+      createFluxPromptButton.disabled = false;
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
   async function buildFullVideoPipeline() {
     try {
       fullBuildButton.disabled = true;
@@ -5510,7 +5791,11 @@ function openBuilder(node) {
       renderAllButton.disabled = true;
       zImageAllButton.disabled = true;
       state.batchCancelled = false;
-      await zImageAllScenes({ throwOnError: true });
+      if ((state.fluxKleinSettings?.image_model_mode || "") === "flux_klein") {
+        await fluxKleinAllScenes({ throwOnError: true });
+      } else {
+        await zImageAllScenes({ throwOnError: true });
+      }
       assertBatchNotStopped();
       await i2vAllTextOnlyScenes({ throwOnError: true });
       assertBatchNotStopped();
@@ -5535,6 +5820,7 @@ function openBuilder(node) {
 
   async function addSegment() {
     const active = activeSegment();
+    const duration = 4;
     let insertIndex = state.segments.length;
     let start = state.segments[state.segments.length - 1]?.end || 0;
     if (active) {
@@ -5545,18 +5831,25 @@ function openBuilder(node) {
         if (choice === "before") {
           insertIndex = Math.max(0, activeIndex);
           start = active.start;
+          for (let index = activeIndex; index < state.segments.length; index += 1) {
+            shiftSegmentTiming(state.segments[index], duration);
+          }
         } else {
           insertIndex = activeIndex + 1;
           start = active.end;
+          for (let index = activeIndex + 1; index < state.segments.length; index += 1) {
+            shiftSegmentTiming(state.segments[index], duration);
+          }
         }
       }
     }
-    const end = Math.min(state.duration || start + 4, start + 4);
-    const segment = newSegment(start, Math.max(start + 0.1, end));
+    const end = start + duration;
+    const segment = newSegment(start, end);
     segment.source = state.srtMode ? "inserted" : "manual";
     pushHistory();
     state.segments.splice(insertIndex, 0, segment);
-    if (!state.timingFrozen) normalizeSegments(segment);
+    state.duration = Math.max(Number(state.duration || 0), end, ...state.segments.map((item) => Number(item.end || 0)));
+    sortSegments(state.segments);
     setActiveSegment(segment);
     autoSaveSessionQuiet("segment added");
   }
@@ -5672,6 +5965,8 @@ function openBuilder(node) {
     state.sceneAudioGlobalTime = 0;
     state.zimageSettings = defaultZImageSettings();
     state.fluxKleinSettings = defaultFluxKleinSettings();
+    state.useFluxGlobalImageIngredients = false;
+    state.fluxGlobalImageIngredients = [];
     state.zEnhanceSettings = defaultZEnhanceSettings();
     state.i2vVideoSettings = defaultI2VVideoSettings();
     projectInput.value = state.projectFolder;
@@ -6119,20 +6414,42 @@ function openBuilder(node) {
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
   };
-  fluxSubjectFileInput.addEventListener("change", () => {
-    const file = fluxSubjectFileInput.files?.[0];
-    if (file) loadFluxImageFile("subject", file);
-    fluxSubjectFileInput.value = "";
+  fluxIngredientFileInput.addEventListener("change", () => {
+    const files = Array.from(fluxIngredientFileInput.files || []);
+    for (const file of files) loadFluxIngredientFile(file);
+    fluxIngredientFileInput.value = "";
   });
-  fluxLocationFileInput.addEventListener("change", () => {
-    const file = fluxLocationFileInput.files?.[0];
-    if (file) loadFluxImageFile("location", file);
-    fluxLocationFileInput.value = "";
+  fluxGlobalIngredientFileInput.addEventListener("change", () => {
+    const files = Array.from(fluxGlobalIngredientFileInput.files || []);
+    for (const file of files) loadFluxIngredientFile(file, { global: true });
+    fluxGlobalIngredientFileInput.value = "";
   });
-  fluxSubjectButton.onclick = () => fluxSubjectFileInput.click();
-  fluxLocationButton.onclick = () => fluxLocationFileInput.click();
-  enableFluxDrop(fluxSubjectDrop, "subject");
-  enableFluxDrop(fluxLocationDrop, "location");
+  fluxIngredientButton.onclick = () => fluxIngredientFileInput.click();
+  fluxGlobalIngredientButton.onclick = () => fluxGlobalIngredientFileInput.click();
+  fluxGlobalIngredientClearButton.onclick = () => {
+    pushHistory();
+    state.fluxGlobalImageIngredients = [];
+    renderFluxGlobalIngredientList();
+    render();
+    toast("Global Flux/Klein image ingredients cleared.");
+  };
+  useFluxGlobalIngredients.input.addEventListener("change", () => {
+    pushHistory();
+    state.useFluxGlobalImageIngredients = Boolean(useFluxGlobalIngredients.input.checked);
+    syncFluxGlobalIngredientPanel();
+    render();
+  });
+  fluxIngredientClearButton.onclick = () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.flux_image_ingredients = [];
+    renderFluxIngredientList(segment);
+    render();
+    toast("Flux/Klein image ingredients cleared for this scene.");
+  };
+  enableFluxIngredientDrop(fluxGlobalIngredientDrop, { global: true });
+  enableFluxIngredientDrop(fluxIngredientDrop);
   zI2IDrop.addEventListener("dragover", (event) => {
     const types = Array.from(event.dataTransfer?.types || []);
     if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
@@ -6218,6 +6535,15 @@ function openBuilder(node) {
   };
   timelineCanvas.addEventListener("pointerdown", beginGlobalTimelineScrub);
   playhead.addEventListener("pointerdown", beginGlobalTimelineScrub);
+  timelineViewport.addEventListener("click", (event) => {
+    if (event.target === timelineViewport || event.target === timelineCanvas) clearActiveSegment();
+  });
+  segmentList.addEventListener("click", (event) => {
+    if (event.target === segmentList) clearActiveSegment();
+  });
+  previewStage.addEventListener("click", (event) => {
+    if (event.target === previewStage || event.target === previewEmpty) clearActiveSegment();
+  });
   globalScrub.addEventListener("pointerdown", () => {
     state.isScrubbing = true;
   });
@@ -6465,7 +6791,7 @@ function openBuilder(node) {
     wireSearchablePicker(picker, saveFluxKleinSettingsFromPanel);
     picker.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
   }
-  for (const control of [fluxSubjectPath, fluxLocationPath, fluxNotes, fluxPrompt, fluxWidth, fluxHeight, fluxSeed]) {
+  for (const control of [fluxNotes, fluxPrompt, fluxWidth, fluxHeight, fluxSeed]) {
     control.addEventListener("input", saveFluxKleinSettingsFromPanel);
     control.addEventListener("change", saveFluxKleinSettingsFromPanel);
   }

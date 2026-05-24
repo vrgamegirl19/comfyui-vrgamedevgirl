@@ -2,6 +2,7 @@ import json
 import math
 import os
 import re
+import asyncio
 import subprocess
 import shutil
 import time
@@ -477,6 +478,18 @@ def _copy_reference_asset(project_folder, scene_number, key, source_path):
 
 def _copy_session_assets_to_project(project_folder, session):
     project_folder = os.path.abspath(project_folder)
+    if isinstance(session.get("flux_global_image_ingredients"), list):
+        global_folder = os.path.join(_context_folder(project_folder), "flux_global")
+        for ingredient_index, ingredient in enumerate(session["flux_global_image_ingredients"], start=1):
+            if not isinstance(ingredient, dict):
+                continue
+            source = str(ingredient.get("path", "") or "").strip().strip('"')
+            if not source or not os.path.isfile(source):
+                continue
+            ext = os.path.splitext(source)[1].lower() or ".png"
+            copied = _copy_file_if_exists(source, os.path.join(global_folder, f"global_ingredient_{ingredient_index}{ext}"))
+            if copied:
+                ingredient["path"] = copied
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         session["segments"] = []
@@ -541,6 +554,18 @@ def _copy_session_assets_to_project(project_folder, session):
             copied = _copy_reference_asset(project_folder, scene_number, key, segment.get(key, ""))
             if copied:
                 segment[key] = copied
+        if isinstance(segment.get("flux_image_ingredients"), list):
+            for ingredient_index, ingredient in enumerate(segment["flux_image_ingredients"], start=1):
+                if not isinstance(ingredient, dict):
+                    continue
+                copied = _copy_reference_asset(
+                    project_folder,
+                    scene_number,
+                    f"flux_ingredient_{ingredient_index}",
+                    ingredient.get("path", ""),
+                )
+                if copied:
+                    ingredient["path"] = copied
 
     return session
 
@@ -552,6 +577,13 @@ def _rebase_project_owned_paths(project_folder, old_project_folder, session):
         rebased = _project_rebased_path(project_folder, old_project_folder, session.get(key, ""))
         if rebased:
             session[key] = rebased
+    if isinstance(session.get("flux_global_image_ingredients"), list):
+        for ingredient in session["flux_global_image_ingredients"]:
+            if not isinstance(ingredient, dict):
+                continue
+            rebased = _project_rebased_path(project_folder, old_project_folder, ingredient.get("path", ""))
+            if rebased:
+                ingredient["path"] = rebased
 
     segments = session.get("segments", [])
     if not isinstance(segments, list):
@@ -576,6 +608,13 @@ def _rebase_project_owned_paths(project_folder, old_project_folder, session):
                 _project_rebased_path(project_folder, old_project_folder, item) or item
                 for item in segment["image_history"]
             ]
+        if isinstance(segment.get("flux_image_ingredients"), list):
+            for ingredient in segment["flux_image_ingredients"]:
+                if not isinstance(ingredient, dict):
+                    continue
+                rebased = _project_rebased_path(project_folder, old_project_folder, ingredient.get("path", ""))
+                if rebased:
+                    ingredient["path"] = rebased
     return session
 
 
@@ -684,6 +723,15 @@ def _rehydrate_builder_session(project_folder, session):
     session["audio_path"] = _resolve_project_asset_path(project_folder, old_project_folder, session.get("audio_path", ""))
     for key in ("prompt_json_path", "theme_style_path", "story_idea_path", "subject_scene_path"):
         session[key] = _resolve_project_asset_path(project_folder, old_project_folder, session.get(key, ""))
+    if isinstance(session.get("flux_global_image_ingredients"), list):
+        for ingredient in session["flux_global_image_ingredients"]:
+            if not isinstance(ingredient, dict):
+                continue
+            ingredient["path"] = _resolve_project_asset_path(
+                project_folder,
+                old_project_folder,
+                ingredient.get("path", ""),
+            )
 
     segments = session.get("segments", [])
     if not isinstance(segments, list):
@@ -726,6 +774,16 @@ def _rehydrate_builder_session(project_folder, session):
             segment["image_history"] = [item for item in segment["image_history"] if item]
         else:
             segment["image_history"] = []
+        if isinstance(segment.get("flux_image_ingredients"), list):
+            for ingredient in segment["flux_image_ingredients"]:
+                if not isinstance(ingredient, dict):
+                    continue
+                ingredient["path"] = _resolve_project_asset_path(
+                    project_folder,
+                    old_project_folder,
+                    ingredient.get("path", ""),
+                    index,
+                )
         approved = _resolve_project_asset_path(project_folder, old_project_folder, segment.get("approved_image_path", ""), index)
         if not approved:
             for ext in (".png", ".jpg", ".jpeg", ".webp"):
@@ -1293,6 +1351,51 @@ def _combine_subject_location_images(subject_image, location_image):
     return canvas
 
 
+def _combine_flux_ingredient_images(images):
+    if not images:
+        raise ValueError("At least one image ingredient is required.")
+    cell_size = 384 if len(images) <= 4 else 256
+    gap = 24
+    columns = 1 if len(images) == 1 else int(math.ceil(math.sqrt(len(images))))
+    rows = int(math.ceil(len(images) / columns))
+    resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+
+    canvas_width = (columns * cell_size) + (gap * (columns - 1))
+    canvas_height = (rows * cell_size) + (gap * (rows - 1))
+    canvas = Image.new("RGB", (canvas_width, canvas_height), (20, 20, 20))
+
+    resized = []
+    for image in images:
+        scale = min(1.0, cell_size / max(1, image.width), cell_size / max(1, image.height))
+        width = max(1, int(image.width * scale))
+        height = max(1, int(image.height * scale))
+        resized.append(image.resize((width, height), resample))
+
+    for index, image in enumerate(resized):
+        column = index % columns
+        row = index // columns
+        cell_x = column * (cell_size + gap)
+        cell_y = row * (cell_size + gap)
+        x = cell_x + ((cell_size - image.width) // 2)
+        y = cell_y + ((cell_size - image.height) // 2)
+        canvas.paste(image, (x, y))
+    return canvas
+
+
+def _clear_comfy_model_memory():
+    try:
+        import comfy.model_management as model_management
+
+        unload_all_models = getattr(model_management, "unload_all_models", None)
+        if callable(unload_all_models):
+            unload_all_models()
+        soft_empty_cache = getattr(model_management, "soft_empty_cache", None)
+        if callable(soft_empty_cache):
+            soft_empty_cache()
+    except Exception:
+        pass
+
+
 def _generate_flux_klein_prompt(payload):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -1304,22 +1407,34 @@ def _generate_flux_klein_prompt(payload):
     if not mmproj_file:
         raise ValueError("Choose an mmproj file for the vision model.")
 
-    subject_image = _image_from_prompt_payload(payload.get("subject_image_path", ""), payload.get("subject_image_data", ""), "Subject image")
-    location_image = _image_from_prompt_payload(payload.get("location_image_path", ""), payload.get("location_image_data", ""), "Location image")
-    combined_image = _combine_subject_location_images(subject_image, location_image)
+    ingredients = payload.get("image_ingredients") or []
+    if isinstance(ingredients, str):
+        try:
+            ingredients = json.loads(ingredients)
+        except Exception:
+            ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
+    if not isinstance(ingredients, list):
+        raise ValueError("Image ingredients must be a list.")
+    images = []
+    for index, item in enumerate(ingredients, start=1):
+        if isinstance(item, str):
+            item = {"path": item}
+        if not isinstance(item, dict):
+            continue
+        images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"Image ingredient {index}"))
+    combined_image = _combine_flux_ingredient_images(images)
     instruction = (
         "Create one polished text-to-image prompt for an image generation model.\n\n"
-        "The provided reference image is a side-by-side composite. The left side is the subject/character reference. "
-        "The right side is the location/environment reference.\n\n"
-        "Use the visible subject from the left side as the main subject. Use the visible location from the right side as the environment. "
-        "Blend them into one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n\n"
+        "The provided reference image is a composite of image ingredients. These may include a character, background, props, style references, or other visual ingredients.\n\n"
+        "Use the visible ingredients to create one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n\n"
         "Rules:\n"
         "- Output one normal text-to-image prompt, not an edit prompt.\n"
         "- Describe only visible concrete details.\n"
-        "- Do not mention left image, right image, reference image, composite, or source images.\n"
+        "- Do not mention reference image, composite, source images, ingredient images, or image grid.\n"
         "- Do not include labels, notes, quotes, markdown, or explanations.\n"
-        "- Keep it cinematic, detailed, and visually specific.\n\n"
-        f"User notes:\n{user_notes or 'Create a cinematic image using the subject and location.'}"
+        "- Keep it cinematic, detailed, and visually specific.\n"
+        "- Keep the prompt under 120 words.\n\n"
+        f"User notes:\n{user_notes or 'Create a cinematic image using the provided image ingredients.'}"
     )
 
     llm = VRGDG_SuperGemmaGGUFChat()
@@ -1327,16 +1442,18 @@ def _generate_flux_klein_prompt(payload):
     mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION)
     # Flux/Klein only needs one short prompt, and vision GGUF context is expensive.
     # Keep this lower than the broader Gemma prompt tools to reduce crash risk.
-    n_ctx = int(payload.get("n_ctx") or 4096)
+    n_ctx = int(payload.get("n_ctx") or 2048)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or 8000)
+    max_new_tokens = int(payload.get("max_new_tokens") or 350)
     unload_after = True
 
     try:
+        _clear_comfy_model_memory()
+        _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
         model = llm._load_gguf_model(
             model_path=model_path,
             n_ctx=n_ctx,
@@ -1367,6 +1484,7 @@ def _generate_flux_klein_prompt(payload):
                 mmproj_path=mmproj_path,
             )
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            _clear_comfy_model_memory()
 
 
 def _gemma_choices():
@@ -2189,7 +2307,7 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_generate_flux_klein_prompt(request):
         try:
             payload = await request.json()
-            result = _generate_flux_klein_prompt(payload)
+            result = await asyncio.to_thread(_generate_flux_klein_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
