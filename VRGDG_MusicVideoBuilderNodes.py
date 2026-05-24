@@ -1081,6 +1081,24 @@ def _looks_like_gemma_repeat_failure(text):
     if re.search(r"\b([a-zA-Z_]{3,})(?:[-\s]+\1){5,}\b", sample):
         return True
 
+    unicode_tokens = re.findall(r"[\w']+", sample, flags=re.UNICODE)
+    unicode_tokens = [token.strip("_'") for token in unicode_tokens if token.strip("_'")]
+    if len(unicode_tokens) >= 16:
+        token_counts = {}
+        for token in unicode_tokens:
+            token_counts[token] = token_counts.get(token, 0) + 1
+        if token_counts and max(token_counts.values()) >= 10 and max(token_counts.values()) / float(len(unicode_tokens)) >= 0.20:
+            return True
+        for size in (2, 3, 4):
+            if len(unicode_tokens) < size * 4:
+                continue
+            phrase_counts = {}
+            for index in range(len(unicode_tokens) - size + 1):
+                phrase = " ".join(unicode_tokens[index:index + size])
+                phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
+            if phrase_counts and max(phrase_counts.values()) >= 8:
+                return True
+
     words = re.findall(r"[a-zA-Z_][a-zA-Z_']{2,}", sample)
     if len(words) < 18:
         return False
