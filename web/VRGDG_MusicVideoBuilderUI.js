@@ -2090,6 +2090,7 @@ function openBuilder(node) {
     state.redoStack.push(current);
     if (state.redoStack.length > 50) state.redoStack.shift();
     restoreHistorySnapshot(previous);
+    syncPromptJsonFromSegments("undo");
   }
 
   function redo() {
@@ -2099,6 +2100,7 @@ function openBuilder(node) {
     state.undoStack.push(current);
     if (state.undoStack.length > 50) state.undoStack.shift();
     restoreHistorySnapshot(next);
+    syncPromptJsonFromSegments("redo");
   }
 
   function updateHistoryButtons() {
@@ -2106,6 +2108,32 @@ function openBuilder(node) {
     redoButton.disabled = !state.redoStack.length;
     undoButton.style.opacity = undoButton.disabled ? ".55" : "1";
     redoButton.style.opacity = redoButton.disabled ? ".55" : "1";
+  }
+
+  function conceptPromptsTextFromSegments() {
+    const prompts = {};
+    state.segments.forEach((segment, index) => {
+      prompts[`Prompt${index + 1}`] = String(segment?.notes || "");
+    });
+    return JSON.stringify(prompts, null, 2);
+  }
+
+  async function syncPromptJsonFromSegments(reason = "") {
+    const path = String(promptJsonInput.value || state.promptJsonPath || "").trim();
+    if (!path) return false;
+    try {
+      const result = await postJson("/vrgdg/music_builder/save_text_file", {
+        path,
+        content: conceptPromptsTextFromSegments(),
+      });
+      promptJsonInput.value = result.path || path;
+      state.promptJsonPath = promptJsonInput.value;
+      return true;
+    } catch (error) {
+      console.warn(`[VRGDG Music Builder] Could not sync ConceptPrompts after ${reason || "segment change"}:`, error);
+      toast(`Could not update ConceptPrompts.txt:\n${String(error?.message || error)}`, true);
+      return false;
+    }
   }
 
   function setActiveSegment(segment) {
@@ -4242,6 +4270,7 @@ function openBuilder(node) {
         project_folder: projectFolder,
         session: currentSessionData(),
       }, 60000);
+      await syncPromptJsonFromSegments("session save");
       state.projectFolder = data.project_folder || "";
       state.sessionPath = data.session_path || "";
       state.srtPath = data.srt_path || "";
@@ -4302,6 +4331,7 @@ function openBuilder(node) {
       project_folder: projectFolder,
       session: currentSessionData(),
     }, 60000);
+    await syncPromptJsonFromSegments("scene video save");
     state.projectFolder = data.project_folder || state.projectFolder;
     state.sessionPath = data.session_path || state.sessionPath;
     state.srtPath = data.srt_path || state.srtPath;
@@ -4338,6 +4368,7 @@ function openBuilder(node) {
       setWidgetValue(node, "session_path", state.sessionPath);
       setWidgetValue(node, "srt_path", state.srtPath);
       rememberLastProject(state.projectFolder);
+      await syncPromptJsonFromSegments(`autosave ${reason || "session"}`);
       if (reason) console.log(`[VRGDG Music Builder] Autosaved session/SRT: ${reason}`, state.sessionPath || "");
       return true;
     } catch (error) {
@@ -5855,10 +5886,11 @@ function openBuilder(node) {
     state.duration = Math.max(Number(state.duration || 0), end, ...state.segments.map((item) => Number(item.end || 0)));
     sortSegments(state.segments);
     setActiveSegment(segment);
+    await syncPromptJsonFromSegments("segment added");
     autoSaveSessionQuiet("segment added");
   }
 
-  function deleteSegment() {
+  async function deleteSegment() {
     const segment = activeSegment();
     if (!segment) return;
     pushHistory();
@@ -5866,6 +5898,7 @@ function openBuilder(node) {
     state.activeId = state.segments[0]?.id || "";
     syncInspector();
     render();
+    await syncPromptJsonFromSegments("segment deleted");
     autoSaveSessionQuiet("segment deleted");
   }
 

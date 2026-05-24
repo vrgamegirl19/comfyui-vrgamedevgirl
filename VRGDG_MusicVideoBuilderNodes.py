@@ -892,7 +892,6 @@ def _load_prompt_json(path):
                     prompts.append(str(item.get(key, "") or "").strip())
     else:
         raise ValueError("Prompt JSON must be an object or list.")
-    prompts = [prompt for prompt in prompts if prompt]
     if not prompts:
         raise ValueError("Prompt JSON did not contain any prompt text.")
     return {"prompt_json_path": json_path, "prompts": prompts}
