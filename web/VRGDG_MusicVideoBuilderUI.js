@@ -1645,9 +1645,9 @@ function openBuilder(node) {
   }
   const snapToBeatsControl = makeCheckbox("Snap beats", true);
   snapToBeatsControl.wrapper.style.margin = "0";
-  const beatMarkersButton = makeButton("⌃");
-  beatMarkersButton.title = "Beat markers";
-  beatMarkersButton.style.width = "34px";
+  const beatMarkersButton = makeButton("Beats");
+  beatMarkersButton.title = "Show or hide beat markers";
+  beatMarkersButton.style.minWidth = "54px";
   beatMarkersButton.style.padding = "7px 10px";
   const globalScrub = document.createElement("input");
   globalScrub.type = "range";
@@ -2250,6 +2250,19 @@ function openBuilder(node) {
     redoButton.disabled = !state.redoStack.length;
     undoButton.style.opacity = undoButton.disabled ? ".55" : "1";
     redoButton.style.opacity = redoButton.disabled ? ".55" : "1";
+  }
+
+  function setBeatMarkersVisible(visible) {
+    state.showBeatMarkers = Boolean(visible);
+    beatMarkersButton.style.background = state.showBeatMarkers ? "#164e63" : "#27272a";
+    beatMarkersButton.style.borderColor = state.showBeatMarkers ? "#0891b2" : "#3f3f46";
+    beatMarkersButton.style.color = state.showBeatMarkers ? "#cffafe" : "#fafafa";
+  }
+
+  function showBeatMarkersIfAvailable() {
+    if (Array.isArray(state.beats) && state.beats.length) {
+      setBeatMarkersVisible(true);
+    }
   }
 
   function applyTriggerPhrase(prompt, trigger) {
@@ -4098,6 +4111,7 @@ function openBuilder(node) {
       state.duration = Number(data.duration || 0);
       state.peaks = data.peaks || [];
       state.beats = data.beats || [];
+      showBeatMarkersIfAvailable();
       audio.src = audioUrl(data.audio_path || audioInput.value);
       audio.load();
       globalScrub.max = String(Math.max(0, state.duration));
@@ -4709,6 +4723,7 @@ function openBuilder(node) {
           state.duration = Number(audioData.duration || 0);
           state.peaks = audioData.peaks || [];
           state.beats = audioData.beats || [];
+          showBeatMarkersIfAvailable();
           audio.src = audioUrl(audioData.audio_path || session.audio_path);
           audio.load();
         } catch (error) {
@@ -5764,6 +5779,7 @@ function openBuilder(node) {
       state.duration = Math.max(state.duration || 0, Number(data.duration || 0));
       state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
       state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
+      showBeatMarkersIfAvailable();
     }
     if (data.srt_path) {
       state.srtPath = data.srt_path;
@@ -6409,7 +6425,7 @@ function openBuilder(node) {
     state.duration = 0;
     state.peaks = [];
     state.beats = [];
-    state.showBeatMarkers = false;
+    setBeatMarkersVisible(false);
     state.srtMode = false;
     state.timingFrozen = false;
     state.promptJsonPath = contextPath("ConceptPrompts.txt");
@@ -7098,8 +7114,7 @@ function openBuilder(node) {
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);
   beatMarkersButton.onclick = () => {
-    state.showBeatMarkers = !state.showBeatMarkers;
-    beatMarkersButton.style.background = state.showBeatMarkers ? "#164e63" : "#27272a";
+    setBeatMarkersVisible(!state.showBeatMarkers);
     if (state.showBeatMarkers && (!state.beats || !state.beats.length)) {
       toast("No beat markers found yet. Load or reload audio first.", true);
     }
