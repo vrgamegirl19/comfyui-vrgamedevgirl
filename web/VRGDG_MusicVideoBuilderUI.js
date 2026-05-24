@@ -2185,7 +2185,9 @@ function openBuilder(node) {
     state.subjectScenePath = data.subjectScenePath || "";
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
-    state.showBeatMarkers = data.showBeatMarkers ?? state.showBeatMarkers ?? false;
+    state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
+    state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
+    setBeatMarkersVisible(data.showBeatMarkers ?? state.showBeatMarkers ?? false);
     state.leftPanelWidth = data.leftPanelWidth || state.leftPanelWidth || 260;
     state.rightPanelWidth = data.rightPanelWidth || state.rightPanelWidth || 360;
     state.timelinePanelHeight = data.timelinePanelHeight || state.timelinePanelHeight || 300;
@@ -2195,7 +2197,6 @@ function openBuilder(node) {
     waveformModeSelect.value = state.waveformMode;
     snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
     autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
-    beatMarkersButton.style.background = state.showBeatMarkers ? "#164e63" : "#27272a";
     applyLayoutSizes();
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
@@ -4484,6 +4485,8 @@ function openBuilder(node) {
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
+      audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
+      beat_markers: Array.isArray(state.beats) ? state.beats : [],
       left_panel_width: state.leftPanelWidth,
       right_panel_width: state.rightPanelWidth,
       timeline_panel_height: state.timelinePanelHeight,
@@ -4568,7 +4571,9 @@ function openBuilder(node) {
         state.subjectScenePath = data.session.subject_scene_path || state.subjectScenePath;
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
-        state.showBeatMarkers = data.session.show_beat_markers ?? state.showBeatMarkers;
+        state.peaks = Array.isArray(data.session.audio_peaks) ? data.session.audio_peaks : state.peaks;
+        state.beats = Array.isArray(data.session.beat_markers) ? data.session.beat_markers : state.beats;
+        setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
         state.leftPanelWidth = data.session.left_panel_width || state.leftPanelWidth;
         state.rightPanelWidth = data.session.right_panel_width || state.rightPanelWidth;
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
@@ -4578,7 +4583,6 @@ function openBuilder(node) {
         waveformModeSelect.value = state.waveformMode;
         snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
         autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
-        beatMarkersButton.style.background = state.showBeatMarkers ? "#164e63" : "#27272a";
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
@@ -4694,7 +4698,9 @@ function openBuilder(node) {
       state.subjectScenePath = session.subject_scene_path || "";
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
-      state.showBeatMarkers = session.show_beat_markers ?? state.showBeatMarkers ?? false;
+      state.peaks = Array.isArray(session.audio_peaks) ? session.audio_peaks : state.peaks;
+      state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
+      setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
       state.leftPanelWidth = session.left_panel_width || state.leftPanelWidth || 260;
       state.rightPanelWidth = session.right_panel_width || state.rightPanelWidth || 360;
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
@@ -4704,7 +4710,6 @@ function openBuilder(node) {
       waveformModeSelect.value = state.waveformMode;
       snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
       autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
-      beatMarkersButton.style.background = state.showBeatMarkers ? "#164e63" : "#27272a";
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
@@ -4721,8 +4726,8 @@ function openBuilder(node) {
             target_peaks: 1800,
           });
           state.duration = Number(audioData.duration || 0);
-          state.peaks = audioData.peaks || [];
-          state.beats = audioData.beats || [];
+          state.peaks = Array.isArray(audioData.peaks) && audioData.peaks.length ? audioData.peaks : state.peaks;
+          state.beats = Array.isArray(audioData.beats) && audioData.beats.length ? audioData.beats : state.beats;
           showBeatMarkersIfAvailable();
           audio.src = audioUrl(audioData.audio_path || session.audio_path);
           audio.load();
