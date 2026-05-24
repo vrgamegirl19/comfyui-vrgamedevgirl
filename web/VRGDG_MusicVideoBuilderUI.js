@@ -2083,6 +2083,12 @@ function openBuilder(node) {
   function ensureAllSegmentRuntimeFields() {
     state.segments = (Array.isArray(state.segments) ? state.segments : [])
       .filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment))
+      .filter((segment, index) => {
+        const recoveredId = String(segment.id || "").match(/^recovered_scene_(\d+)$/i);
+        if (recoveredId && Number(recoveredId[1]) >= 10000) return false;
+        if (segment.track === "overlay") return false;
+        return index < 10000;
+      })
       .map((segment) => {
         segment.track = "base";
         return ensureSegmentRuntimeFields(segment);

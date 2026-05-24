@@ -784,7 +784,8 @@ def _rehydrate_builder_session(project_folder, session):
 
     existing_count = len(segments)
     asset_numbers = _project_scene_numbers(project_folder)
-    target_count = max(existing_count, max(asset_numbers) if asset_numbers else 0)
+    base_asset_numbers = [number for number in asset_numbers if number < 10000]
+    target_count = max(existing_count, max(base_asset_numbers) if base_asset_numbers else 0)
     for index in range(existing_count + 1, target_count + 1):
         start = float((index - 1) * 4)
         segments.append({
