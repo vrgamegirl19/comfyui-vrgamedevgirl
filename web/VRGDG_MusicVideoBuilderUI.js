@@ -3171,26 +3171,6 @@ function openBuilder(node) {
       ctx.fillRect(x, 0, 1, timelineCanvas.height);
       ctx.fillText(formatTime(sec), x + 3, 14);
     }
-    const visibleBeats = state.showBeatMarkers && Array.isArray(state.beats) ? state.beats : [];
-    ctx.strokeStyle = "rgba(250, 204, 21, .9)";
-    ctx.fillStyle = "rgba(250, 204, 21, .98)";
-    ctx.lineWidth = 1;
-    for (const beatTime of visibleBeats) {
-      const x = Number(beatTime || 0) * state.pxPerSecond;
-      ctx.beginPath();
-      ctx.moveTo(x, 4);
-      ctx.lineTo(x, timelineCanvas.height - 4);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(x, 18);
-      ctx.lineTo(x - 5, 6);
-      ctx.lineTo(x + 5, 6);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(x, 20, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
   }
 
   function drawSegmentAudioWaveform(canvas, peaks) {
@@ -3216,23 +3196,17 @@ function openBuilder(node) {
   function renderBeatMarkersOverlay() {
     const visibleBeats = state.showBeatMarkers && Array.isArray(state.beats) ? state.beats : [];
     if (!visibleBeats.length) return;
-    const height = timelineHeight();
+    const top = Math.max(2, TIMELINE_SEGMENT_TOP - 18);
     for (const beatTime of visibleBeats) {
       const x = Number(beatTime || 0) * state.pxPerSecond;
       if (!Number.isFinite(x)) continue;
       const marker = document.createElement("div");
       marker.title = `Beat ${formatTime(beatTime)}`;
       marker.style.cssText = `
-        position:absolute;left:${x}px;top:0;width:2px;height:${height}px;
-        z-index:4;pointer-events:none;background:rgba(250,204,21,.95);
-        box-shadow:0 0 8px rgba(250,204,21,.75);
+        position:absolute;left:${x}px;top:${top}px;width:2px;height:12px;
+        z-index:4;pointer-events:none;background:rgba(244,244,245,.9);
+        border-radius:2px;box-shadow:0 0 4px rgba(244,244,245,.35);
       `;
-      const cap = document.createElement("div");
-      cap.style.cssText = `
-        position:absolute;left:-4px;top:4px;width:10px;height:10px;
-        border-radius:50%;background:#fde047;box-shadow:0 0 8px rgba(250,204,21,.85);
-      `;
-      marker.append(cap);
       segmentLayer.append(marker);
     }
   }
