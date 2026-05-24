@@ -1594,6 +1594,10 @@ def _save_builder_session(payload):
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
+    overlay_segments = session.get("overlay_segments", [])
+    if not isinstance(overlay_segments, list):
+        overlay_segments = []
+        session["overlay_segments"] = overlay_segments
     audio_path, session = _snapshot_project_assets(project_folder, session, audio_path)
     session = {
         **session,
