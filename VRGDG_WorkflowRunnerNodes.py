@@ -1370,54 +1370,87 @@ def _stitch_scene_videos(payload):
     ]
     subprocess.run(concat_cmd, capture_output=True, text=True, check=True)
 
-    overlay_items = []
+    insert_items = []
     for index, item in enumerate(raw_overlay_items, start=1):
         if not isinstance(item, dict):
-            raise ValueError(f"Insert {index} overlay item is invalid.")
+            raise ValueError(f"Insert {index} item is invalid.")
         path = os.path.abspath(str(item.get("path", "") or "").strip().strip('"'))
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Insert {index} video was not found: {path}")
         start = max(0.0, float(item.get("start", 0) or 0))
         end = max(start + 0.05, float(item.get("end", start + 4) or start + 4))
-        overlay_items.append({"path": path, "start": start, "duration": end - start})
+        insert_items.append({"path": path, "start": start, "end": end, "duration": end - start})
 
-    if overlay_items:
-        overlayed_video = os.path.join(target_dir, "_temp_video_with_inserts.mp4")
-        overlay_cmd = [ffmpeg_path, "-y", "-i", temp_video]
-        for item in overlay_items:
-            overlay_cmd.extend(["-i", item["path"]])
-        filter_parts = ["[0:v]setpts=PTS-STARTPTS[base0]"]
-        previous = "base0"
-        for index, item in enumerate(overlay_items, start=1):
-            overlay_label = f"insert{index}"
-            output_label = f"base{index}"
-            filter_parts.append(
-                f"[{index}:v]trim=duration={item['duration']:.6f},setpts=PTS-STARTPTS+{item['start']:.6f}/TB[{overlay_label}]"
-            )
-            filter_parts.append(
-                f"[{previous}][{overlay_label}]overlay=0:0:eof_action=pass:enable='between(t,{item['start']:.6f},{(item['start'] + item['duration']):.6f})'[{output_label}]"
-            )
-            previous = output_label
-        overlay_cmd.extend([
-            "-filter_complex",
-            ";".join(filter_parts),
-            "-map",
-            f"[{previous}]",
+    if insert_items:
+        insert_items.sort(key=lambda item: (item["start"], item["end"]))
+        flattened_video = os.path.join(target_dir, "_temp_video_with_inserts.mp4")
+        flatten_list = os.path.join(target_dir, "flatten_concat_list.txt")
+        flatten_parts = []
+        cursor = 0.0
+        part_index = 1
+
+        def add_flatten_part(source_path, start=None, duration=None):
+            nonlocal part_index
+            part_path = os.path.join(target_dir, f"_temp_flatten_part_{part_index:04d}.mp4")
+            part_index += 1
+            cmd = [ffmpeg_path, "-y"]
+            if start is not None:
+                cmd.extend(["-ss", f"{max(0.0, float(start)):.6f}"])
+            cmd.extend(["-i", source_path])
+            if duration is not None:
+                cmd.extend(["-t", f"{max(0.05, float(duration)):.6f}"])
+            cmd.extend([
+                "-an",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-preset",
+                "veryfast",
+                part_path,
+            ])
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            flatten_parts.append(part_path)
+
+        for item in insert_items:
+            if item["start"] > cursor + 0.01:
+                add_flatten_part(temp_video, cursor, item["start"] - cursor)
+            add_flatten_part(item["path"], 0.0, item["duration"])
+            cursor = max(cursor, item["end"])
+
+        add_flatten_part(temp_video, cursor, None)
+        with open(flatten_list, "w", encoding="utf-8") as handle:
+            for path in flatten_parts:
+                handle.write(f"file '{_concat_file_path(path)}'\n")
+        flatten_cmd = [
+            ffmpeg_path,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            flatten_list,
             "-an",
             "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-preset",
-            "veryfast",
-            overlayed_video,
-        ])
-        subprocess.run(overlay_cmd, capture_output=True, text=True, check=True)
+            "copy",
+            flattened_video,
+        ]
+        subprocess.run(flatten_cmd, capture_output=True, text=True, check=True)
         try:
             os.remove(temp_video)
         except Exception:
             pass
-        temp_video = overlayed_video
+        try:
+            os.remove(flatten_list)
+        except Exception:
+            pass
+        for part_path in flatten_parts:
+            try:
+                os.remove(part_path)
+            except Exception:
+                pass
+        temp_video = flattened_video
 
     mux_audio_path = audio_path
     if scene_audio_paths:
@@ -1508,7 +1541,7 @@ def _stitch_scene_videos(payload):
         "video_folder": target_dir,
         "concat_file": "",
         "scene_count": len(scene_paths),
-        "insert_count": len(overlay_items),
+        "insert_count": len(insert_items),
         "used_scene_audio": bool(scene_audio_paths),
         "removed_scratch_folders": removed_scratch_folders,
     }
