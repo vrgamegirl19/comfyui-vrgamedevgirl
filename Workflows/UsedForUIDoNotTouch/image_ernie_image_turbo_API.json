@@ -1,0 +1,312 @@
+{
+  "104": {
+    "inputs": {
+      "width": 1280,
+      "height": 720,
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux 2 Latent"
+    }
+  },
+  "105": {
+    "inputs": {
+      "unet_name": "ernie\\ernie-image-turbo.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "106": {
+    "inputs": {
+      "samples": [
+        "121",
+        0
+      ],
+      "vae": [
+        "109",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "108": {
+    "inputs": {
+      "clip_name": "ministral-3-3b.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "109": {
+    "inputs": {
+      "vae_name": "flux\\flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "110": {
+    "inputs": {
+      "conditioning": [
+        "111",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "111": {
+    "inputs": {
+      "text": "A cinematic shot of a woman with long dark hair featuring blunt bangs and vibrant pink ends, wearing a black lace corset top and black distressed pants. She stands in the center of a mystical, glowing blue forest. The atmosphere is ethereal, with golden particles drifting through the air as the environment pulses with soft, rhythmic light. The scene is captured with a shallow depth of field, emphasizing the woman against the magical, bioluminescent foliage. High-detail textures, soft moonlight filtering through the canopy, and a dreamy, enchanted mood.",
+      "clip": [
+        "108",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "112": {
+    "inputs": {
+      "images": [
+        "106",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "113": {
+    "inputs": {
+      "use_custom_loras": true,
+      "lora_count": 0,
+      "ltx_two_pass_mode": false,
+      "lora_1": "[none]",
+      "strength_1": 1,
+      "lora_2": "[none]",
+      "strength_2": 1,
+      "lora_3": "[none]",
+      "strength_3": 1,
+      "lora_4": "[none]",
+      "strength_4": 1,
+      "lora_5": "[none]",
+      "strength_5": 1,
+      "lora_6": "[none]",
+      "strength_6": 1,
+      "lora_7": "[none]",
+      "strength_7": 1,
+      "lora_8": "[none]",
+      "strength_8": 1,
+      "lora_9": "[none]",
+      "strength_9": 1,
+      "lora_10": "[none]",
+      "strength_10": 1,
+      "lora_11": "[none]",
+      "strength_11": 1,
+      "lora_12": "[none]",
+      "strength_12": 1,
+      "lora_13": "[none]",
+      "strength_13": 1,
+      "lora_14": "[none]",
+      "strength_14": 1,
+      "lora_15": "[none]",
+      "strength_15": 1,
+      "lora_16": "[none]",
+      "strength_16": 1,
+      "lora_17": "[none]",
+      "strength_17": 1,
+      "lora_18": "[none]",
+      "strength_18": 1,
+      "lora_19": "[none]",
+      "strength_19": 1,
+      "lora_20": "[none]",
+      "strength_20": 1,
+      "model": [
+        "105",
+        0
+      ]
+    },
+    "class_type": "VRGDG_OptionalMultiLoraModelOnly",
+    "_meta": {
+      "title": "VRGDG Optional Multi LoRA Model Only"
+    }
+  },
+  "114": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "116",
+        0
+      ],
+      "on_true": [
+        "115",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "image to image?"
+    }
+  },
+  "115": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int - on true can be 1-8"
+    }
+  },
+  "116": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int -on false must be 0"
+    }
+  },
+  "117": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "120",
+        0
+      ],
+      "on_true": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "image to image?"
+    }
+  },
+  "118": {
+    "inputs": {
+      "image": "vrgdg_placeholder_i2i.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "119": {
+    "inputs": {
+      "pixels": [
+        "118",
+        0
+      ],
+      "vae": [
+        "109",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "120": {
+    "inputs": {
+      "width": 1280,
+      "height": 720,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "121": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 1010115837491198,
+      "cfg": 1,
+      "model": [
+        "113",
+        0
+      ],
+      "positive": [
+        "111",
+        0
+      ],
+      "negative": [
+        "110",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "122",
+        0
+      ],
+      "latent_image": [
+        "117",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "SamplerCustom"
+    }
+  },
+  "122": {
+    "inputs": {
+      "steps": 10,
+      "start_at_step": [
+        "114",
+        0
+      ],
+      "end_at_step": 10,
+      "base_image_seq_len": 256,
+      "base_shift": 0.5,
+      "invert_sigmas": "disable",
+      "max_image_seq_len": 8192,
+      "max_shift": 1.15,
+      "num_train_timesteps": 1000,
+      "shift": 3,
+      "shift_terminal": 0,
+      "stochastic_sampling": "disable",
+      "time_shift_type": "exponential",
+      "use_beta_sigmas": "disable",
+      "use_dynamic_shifting": "disable",
+      "use_exponential_sigmas": "disable",
+      "use_karras_sigmas": "disable",
+      "device": "cuda"
+    },
+    "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
+    "_meta": {
+      "title": "FlowMatch Euler Discrete Scheduler (Custom)"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  }
+}

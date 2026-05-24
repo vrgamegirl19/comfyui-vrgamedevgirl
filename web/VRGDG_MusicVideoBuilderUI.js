@@ -16,6 +16,39 @@ const TIMELINE_SCENE_AUDIO_TOP = TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT 
 const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
 const TIMELINE_WAVE_TOP = 98;
 const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
+const LTX_MODEL_DOWNLOADS = [
+  { label: "LTX GGUF", url: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
+  { label: "Video VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
+  { label: "Gemma Clip", url: "https://huggingface.co/Sikaworld1990/gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition-Ltx-2/resolve/main/gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors" },
+  { label: "Text Projection", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/text_encoders" },
+  { label: "Latent Upscaler", url: "https://huggingface.co/prince-canuma/LTX-2.3-distilled/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" },
+  { label: "Audio VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
+];
+const ZIMAGE_MODEL_DOWNLOADS = [
+  { label: "Z-Image Turbo", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
+  { label: "Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
+  { label: "Z-Image VAE", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" },
+];
+const FLUX_KLEIN_9B_MODEL_DOWNLOADS = [
+  { label: "9B diffusion model", url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors" },
+  { label: "9B Qwen CLIP", url: "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors" },
+  { label: "9B VAE", url: "https://huggingface.co/black-forest-labs/FLUX.2-small-decoder/resolve/main/full_encoder_small_decoder.safetensors" },
+];
+const FLUX_KLEIN_4B_MODEL_DOWNLOADS = [
+  { label: "4B diffusion model", url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8/resolve/main/flux-2-klein-4b-fp8.safetensors" },
+  { label: "4B Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
+  { label: "4B VAE", url: "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors" },
+];
+const ERNIE_MODEL_DOWNLOADS = [
+  { label: "Ernie diffusion model", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/diffusion_models/ernie-image-turbo.safetensors" },
+  { label: "Ministral text encoder", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/text_encoders/ministral-3-3b.safetensors" },
+  { label: "Ernie VAE", url: "https://huggingface.co/Comfy-Org/ERNIE-Image/resolve/main/vae/flux2-vae.safetensors" },
+];
+const LLM_MODEL_DOWNLOADS = [
+  { label: "SuperGemma GGUF", url: "https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/resolve/main/supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf" },
+  { label: "Gemma Vision GGUF", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf" },
+  { label: "Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
+];
 const WAVEFORM_MODES = {
   small: { label: "Small wave", height: 150, gain: 1 },
   medium: { label: "Medium wave", height: 190, gain: 1.35 },
@@ -291,6 +324,69 @@ function createProgressWindow(title) {
       setTimeout(() => box.remove(), delay);
     },
   };
+}
+
+function showModelDownloadModal() {
+  const groups = [
+    { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
+    { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
+    { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
+    { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
+    { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },
+    { title: "LTX 2.3", note: "High-quality image and video generation model.", downloads: LTX_MODEL_DOWNLOADS },
+  ];
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(1320px,calc(100vw - 56px));max-height:calc(100vh - 56px);overflow:auto;border:1px solid #155e75;border-radius:10px;background:#0f172a;color:#e4e4e7;box-shadow:0 22px 80px rgba(0,0,0,.6);";
+  const header = document.createElement("div");
+  header.style.cssText = "position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;border-bottom:1px solid #155e75;background:#083344;z-index:1;";
+  const title = document.createElement("div");
+  title.textContent = "Download Models";
+  title.style.cssText = "font-size:24px;font-weight:900;color:#e0f2fe;";
+  const close = makeButton("Close");
+  close.style.padding = "12px 16px";
+  close.style.fontSize = "18px";
+  header.append(title, close);
+  const body = document.createElement("div");
+  body.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;padding:18px 20px 20px;";
+  for (const group of groups) {
+    const card = document.createElement("div");
+    card.style.cssText = "display:flex;flex-direction:column;gap:14px;border:1px solid #334155;border-radius:10px;background:#111827;padding:18px;";
+    const groupTitle = document.createElement("div");
+    groupTitle.textContent = group.title;
+    groupTitle.style.cssText = "font-size:22px;font-weight:900;color:#f8fafc;";
+    const note = document.createElement("div");
+    note.textContent = group.note;
+    note.style.cssText = "font-size:17px;line-height:1.35;color:#c7d2fe;";
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;";
+    for (const item of group.downloads) {
+      const button = makeMiniButton(item.label);
+      button.style.borderColor = "#2563eb";
+      button.style.background = "#1d4ed8";
+      button.style.color = "#eff6ff";
+      button.style.fontWeight = "900";
+      button.style.fontSize = "16px";
+      button.style.padding = "12px 16px";
+      button.style.borderRadius = "7px";
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(item.url, "_blank", "noopener,noreferrer");
+      });
+      buttons.append(button);
+    }
+    card.append(groupTitle, note, buttons);
+    body.append(card);
+  }
+  box.append(header, body);
+  backdrop.append(box);
+  document.body.append(backdrop);
+  close.onclick = () => backdrop.remove();
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) backdrop.remove();
+  });
 }
 
 function showTextInputModal({ title, label, value = "", placeholder = "", confirmLabel = "Continue" } = {}) {
@@ -916,6 +1012,7 @@ function openBuilder(node) {
   const fullBuildButton = makeButton("Build Full Video");
   const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
+  const downloadModelsButton = makeButton("Download Models");
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
@@ -942,7 +1039,7 @@ function openBuilder(node) {
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  utilityActions.append(stopWorkflowButton, clearMemoryButton, closeButton);
+  utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, closeButton);
   topbar.append(projectActions, importActions, batchActions, utilityActions, menuDropdown);
 
   const main = document.createElement("div");
@@ -1015,6 +1112,8 @@ function openBuilder(node) {
   const editI2VMotionJsonButton = makeButton("Edit");
   const imageTriggerInput = makeInput("");
   imageTriggerInput.placeholder = "Optional image trigger word or phrase...";
+  const ernieImageTriggerInput = makeInput("");
+  ernieImageTriggerInput.placeholder = imageTriggerInput.placeholder;
   const fluxImageTriggerInput = makeInput("");
   fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
   const videoTriggerInput = makeInput("");
@@ -1106,6 +1205,70 @@ function openBuilder(node) {
   zI2IActions.append(zI2ILoadButton);
   zLoraPanel.append(makeField("LoRA count", zLoraCount), zLoraRows);
   zI2IPanel.append(makeField("I2I similarity", zI2ISlider), zI2IHint, makeField("I2I start step", zI2IStartStep), zI2IPath, zI2IDrop, zI2IActions);
+  const ernieImagePanel = document.createElement("div");
+  ernieImagePanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
+  const ernieUnetPicker = makeSearchableLoraPicker("ernie\\ernie-image-turbo.safetensors");
+  const ernieClipPicker = makeSearchableLoraPicker("ministral-3-3b.safetensors");
+  const ernieVaePicker = makeSearchableLoraPicker("flux\\flux2-vae.safetensors");
+  const ernieWidth = makeInput("1280", "number");
+  const ernieHeight = makeInput("720", "number");
+  const ernieSeed = makeInput("1", "number");
+  const ernieSeedMode = makeSelect(["fixed", "randomize", "increment", "decrement"], "fixed");
+  const ernieBatchSize = makeInput("1", "number");
+  ernieBatchSize.min = "1";
+  ernieBatchSize.max = "16";
+  ernieBatchSize.step = "1";
+  const ernieGrid = document.createElement("div");
+  ernieGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  ernieGrid.append(makeField("Width", ernieWidth), makeField("Height", ernieHeight), makeField("Seed", ernieSeed), makeField("Seed mode", ernieSeedMode));
+  const ernieUseLora = makeCheckbox("Use LoRAs?", false);
+  const ernieLoraPanel = document.createElement("div");
+  ernieLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const ernieLoraCount = makeInput("0", "number");
+  ernieLoraCount.min = "0";
+  ernieLoraCount.max = "4";
+  const ernieLoraRows = document.createElement("div");
+  ernieLoraRows.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const ernieLoraSlots = [];
+  for (let slot = 1; slot <= 4; slot++) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
+    const picker = makeSearchableLoraPicker("[none]");
+    const strength = makeInput("1", "number");
+    strength.step = "0.01";
+    row.append(makeField(`LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    ernieLoraRows.append(row);
+    ernieLoraSlots.push({ row, picker, strength });
+  }
+  ernieLoraPanel.append(makeField("LoRA count", ernieLoraCount), ernieLoraRows);
+  const ernieUseImageToImage = makeCheckbox("Use image-to-image?", false);
+  const ernieI2IPanel = document.createElement("div");
+  ernieI2IPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const ernieI2ISlider = document.createElement("input");
+  ernieI2ISlider.type = "range";
+  ernieI2ISlider.min = "1";
+  ernieI2ISlider.max = "8";
+  ernieI2ISlider.step = "1";
+  ernieI2ISlider.value = "5";
+  ernieI2ISlider.style.cssText = "width:100%;accent-color:#22d3ee;";
+  const ernieI2IHint = document.createElement("div");
+  ernieI2IHint.textContent = "1 = more creative, 8 = more like original";
+  ernieI2IHint.style.cssText = "font-size:11px;color:#a1a1aa;";
+  const ernieI2IStartStep = makeInput("5", "number");
+  ernieI2IStartStep.min = "1";
+  ernieI2IStartStep.max = "8";
+  ernieI2IStartStep.step = "1";
+  const ernieI2IPath = makeInput("");
+  ernieI2IPath.placeholder = "Image-to-image source path...";
+  ernieI2IPath.style.display = "none";
+  const ernieI2IDrop = document.createElement("div");
+  ernieI2IDrop.textContent = "Drop an image here, or drag a scene image from the timeline.";
+  ernieI2IDrop.style.cssText = zI2IDrop.style.cssText;
+  const ernieI2IActions = document.createElement("div");
+  ernieI2IActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:8px;";
+  const ernieI2ILoadButton = makeButton("Load I2I Image", "primary");
+  ernieI2IActions.append(ernieI2ILoadButton);
+  ernieI2IPanel.append(makeField("I2I similarity", ernieI2ISlider), ernieI2IHint, makeField("I2I start step", ernieI2IStartStep), ernieI2IPath, ernieI2IDrop, ernieI2IActions);
   const fluxKleinPanel = document.createElement("div");
   fluxKleinPanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
   const useFluxKlein = makeCheckbox("Build image using Flux/Klein?", false);
@@ -1230,7 +1393,7 @@ function openBuilder(node) {
   zEnhanceLoraPanel.append(makeField("LoRA count", zEnhanceLoraCount), zEnhanceLoraRows);
   const zEnhanceButton = makeButton("Upscale / Enhance Image", "primary");
   const imageModelChooser = document.createElement("div");
-  imageModelChooser.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;";
+  imageModelChooser.style.cssText = "display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;";
   function makeImageModelCard(label, value) {
     const card = document.createElement("button");
     card.type = "button";
@@ -1241,14 +1404,17 @@ function openBuilder(node) {
   }
   const zImageCard = makeImageModelCard("ZImage", "zimage");
   const fluxKleinCard = makeImageModelCard("Flux Klein", "flux_klein");
+  const ernieImageCard = makeImageModelCard("Ernie", "ernie_image");
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
   const loadCustomImageButton = makeImageModelCard("Load Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
-  imageModelChooser.append(zImageCard, fluxKleinCard, zEnhanceCard, loadCustomImageButton);
+  imageModelChooser.append(zImageCard, fluxKleinCard, ernieImageCard, zEnhanceCard, loadCustomImageButton);
   const zImageModePanel = document.createElement("div");
   zImageModePanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   const fluxKleinModePanel = document.createElement("div");
   fluxKleinModePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
+  const ernieImageModePanel = document.createElement("div");
+  ernieImageModePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
   const startInput = makeInput("0", "number");
   startInput.step = "0.01";
   const endInput = makeInput("4", "number");
@@ -1259,8 +1425,13 @@ function openBuilder(node) {
   const i2vNotesInput = document.createElement("textarea");
   i2vNotesInput.placeholder = "Extra video motion notes, camera movement, character movement...";
   i2vNotesInput.style.cssText = notesInput.style.cssText;
+  const t2iTextGemmaModelSelect = makeSelect([""], "");
   const gemmaModelSelect = makeSelect([""], "");
   const mmprojSelect = makeSelect([""], "");
+  const ernieTextGemmaModelSelect = makeSelect([""], "");
+  const ernieGemmaModelSelect = makeSelect([""], "");
+  const ernieMmprojSelect = makeSelect([""], "");
+  const i2vTextGemmaModelSelect = makeSelect([""], "");
   const i2vGemmaModelSelect = makeSelect([""], "");
   const i2vMmprojSelect = makeSelect([""], "");
   const useVisionReference = makeCheckbox("Use vision reference image?", false);
@@ -1286,6 +1457,15 @@ function openBuilder(node) {
   const t2iPrompt = document.createElement("textarea");
   t2iPrompt.placeholder = "Text-to-image prompt...";
   t2iPrompt.style.cssText = notesInput.style.cssText;
+  const ernieNotesInput = document.createElement("textarea");
+  ernieNotesInput.placeholder = notesInput.placeholder;
+  ernieNotesInput.style.cssText = notesInput.style.cssText;
+  const ernieT2IPrompt = document.createElement("textarea");
+  ernieT2IPrompt.placeholder = t2iPrompt.placeholder;
+  ernieT2IPrompt.style.cssText = t2iPrompt.style.cssText;
+  const ernieUseVisionReference = makeCheckbox("Use vision reference image?", false);
+  const ernieCreateT2IButton = makeButton("Gemma T2I", "primary");
+  const ernieSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
@@ -1336,6 +1516,13 @@ function openBuilder(node) {
     zCreateButtons.push(button);
     return button;
   }
+  const ernieCreateButton = makeButton("Create with Ernie", "primary");
+  const ernieCreateButtons = [ernieCreateButton];
+  function makeErnieCreateButton() {
+    const button = makeButton("Create with Ernie", "primary");
+    ernieCreateButtons.push(button);
+    return button;
+  }
   const fluxCreateButtons = [previewFluxButton];
   function makeFluxCreateButton() {
     const button = makeButton("Create with Flux/Klein", "primary");
@@ -1350,7 +1537,6 @@ function openBuilder(node) {
   }
   const inspectorActions = document.createElement("div");
   inspectorActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;";
-  inspectorActions.append(previewButton);
   for (const button of [previewButton]) {
     button.style.padding = "7px 8px";
     button.style.fontSize = "11px";
@@ -1412,11 +1598,16 @@ function openBuilder(node) {
   videoTabButton.onclick = () => setInspectorTab("video");
   audioTabButton.onclick = () => setInspectorTab("audio");
   const zImageModelsSection = makeSettingsPanel([
-    makeField("ZImage model", zUnetPicker.wrapper),
-    makeField("CLIP", zClipPicker.wrapper),
-    makeField("VAE", zVaePicker.wrapper),
-    makeField("T2I Gemma model", gemmaModelSelect),
-    makeField("Vision mmproj", mmprojSelect),
+    makeSettingsSection("ZImage Models", [
+      makeField("ZImage model", zUnetPicker.wrapper),
+      makeField("CLIP", zClipPicker.wrapper),
+      makeField("VAE", zVaePicker.wrapper),
+    ]),
+    makeSettingsSection("LLM Models", [
+      makeField("Non-Vision text Gemma model", t2iTextGemmaModelSelect),
+      makeField("Vision Gemma model", gemmaModelSelect),
+      makeField("Vision mmproj", mmprojSelect),
+    ]),
     zUseLora.wrapper,
     zLoraPanel,
     makeZCreateButton(),
@@ -1451,16 +1642,67 @@ function openBuilder(node) {
   zimageSettingsPanel.append(zImageSubTabs.wrapper);
   zImageModePanel.append(zimageSettingsPanel);
   fluxKleinModePanel.append(fluxKleinPanel);
+  ernieImageModePanel.append(ernieImagePanel);
+  const ernieImageSubTabs = makeSubTabs([
+    {
+      label: "Models",
+      value: "models",
+      content: makeSettingsPanel([
+        makeSettingsSection("Ernie Models", [
+          makeField("Ernie model", ernieUnetPicker.wrapper),
+          makeField("CLIP", ernieClipPicker.wrapper),
+          makeField("VAE", ernieVaePicker.wrapper),
+        ]),
+        makeSettingsSection("LLM Models", [
+          makeField("Non-Vision text Gemma model", ernieTextGemmaModelSelect),
+          makeField("Vision Gemma model", ernieGemmaModelSelect),
+          makeField("Vision mmproj", ernieMmprojSelect),
+        ]),
+        ernieUseLora.wrapper,
+        ernieLoraPanel,
+        makeErnieCreateButton(),
+      ]),
+    },
+    {
+      label: "Image Settings",
+      value: "settings",
+      content: makeSettingsPanel([
+        makeField("Image trigger phrase", ernieImageTriggerInput),
+        ernieGrid,
+        makeField("Batch size", ernieBatchSize),
+        ernieUseImageToImage.wrapper,
+        ernieI2IPanel,
+        ernieCreateButton,
+      ]),
+    },
+    {
+      label: "LLM Prompting",
+      value: "prompting",
+      content: makeSettingsPanel([
+        makeField("Notes", ernieNotesInput),
+        ernieUseVisionReference.wrapper,
+        ernieCreateT2IButton,
+        makeField("T2I prompt", ernieT2IPrompt),
+        ernieSendT2IPromptToEnhanceButton,
+        makeErnieCreateButton(),
+      ]),
+    },
+  ]);
+  ernieImagePanel.append(ernieImageSubTabs.wrapper);
   const fluxKleinSubTabs = makeSubTabs([
     {
       label: "Models",
       value: "models",
       content: makeSettingsPanel([
-        makeField("Gemma vision model", fluxGemmaModelSelect),
-        makeField("Vision mmproj", fluxMmprojSelect),
-        makeField("Flux model", fluxUnetPicker.wrapper),
-        makeField("Flux CLIP", fluxClipPicker.wrapper),
-        makeField("Flux VAE", fluxVaePicker.wrapper),
+        makeSettingsSection("Flux/Klein Models", [
+          makeField("Flux model", fluxUnetPicker.wrapper),
+          makeField("Flux CLIP", fluxClipPicker.wrapper),
+          makeField("Flux VAE", fluxVaePicker.wrapper),
+        ]),
+        makeSettingsSection("Vision LLM Models", [
+          makeField("Gemma vision model", fluxGemmaModelSelect),
+          makeField("Vision mmproj", fluxMmprojSelect),
+        ]),
         makeFluxCreateButton(),
       ]),
     },
@@ -1542,6 +1784,7 @@ function openBuilder(node) {
     imageModelChooser,
     zImageModePanel,
     fluxKleinModePanel,
+    ernieImageModePanel,
     zEnhancePanel,
     inspectorActions,
   );
@@ -1550,14 +1793,21 @@ function openBuilder(node) {
       label: "Models",
       value: "models",
       content: makeSettingsPanel([
-        makeField("I2V Gemma model", i2vGemmaModelSelect),
-        makeField("I2V vision mmproj", i2vMmprojSelect),
-        makeField("Unet model", i2vUnetPicker.wrapper),
-        makeField("Video VAE", i2vVaePicker.wrapper),
-        makeField("Clip model 1", i2vClip1Picker.wrapper),
-        makeField("Clip model 2", i2vClip2Picker.wrapper),
-        makeField("Latent upscaler", i2vUpscalePicker.wrapper),
-        makeField("Audio VAE", i2vAudioVaePicker.wrapper),
+        makeSettingsSection("Video Models", [
+          makeField("Unet model", i2vUnetPicker.wrapper),
+          makeField("Video VAE", i2vVaePicker.wrapper),
+          makeField("Clip model 1", i2vClip1Picker.wrapper),
+          makeField("Clip model 2", i2vClip2Picker.wrapper),
+          makeField("Latent upscaler", i2vUpscalePicker.wrapper),
+          makeField("Audio VAE", i2vAudioVaePicker.wrapper),
+        ]),
+        makeSettingsSection("Non-Vision LLM Models", [
+          makeField("Non-Vision text Gemma model", i2vTextGemmaModelSelect),
+        ]),
+        makeSettingsSection("Vision LLM Models", [
+          makeField("Vision Gemma model", i2vGemmaModelSelect),
+          makeField("Vision mmproj", i2vMmprojSelect),
+        ]),
         i2vUseLora.wrapper,
         i2vLoraPanel,
         createSceneVideoButton,
@@ -1752,6 +2002,27 @@ function openBuilder(node) {
     };
   }
 
+  function defaultErnieImageSettings() {
+    return {
+      unet_name: "ernie\\ernie-image-turbo.safetensors",
+      clip_name: "ministral-3-3b.safetensors",
+      vae_name: "flux\\flux2-vae.safetensors",
+      width: 1280,
+      height: 720,
+      seed: 1,
+      seed_mode: "fixed",
+      batch_size: 1,
+      use_loras: false,
+      lora_count: 0,
+      loras: [],
+      use_image_to_image: false,
+      image_to_image_start_at_step: 5,
+      image_to_image_path: "",
+      image_to_image_data: "",
+      image_to_image_name: "",
+    };
+  }
+
   function defaultZEnhanceSettings() {
     return {
       unet_name: "z_image_turbo_bf16.safetensors",
@@ -1824,6 +2095,7 @@ function openBuilder(node) {
     subjectScenePath: "",
     zimageSettings: defaultZImageSettings(),
     fluxKleinSettings: defaultFluxKleinSettings(),
+    ernieImageSettings: defaultErnieImageSettings(),
     useFluxGlobalImageIngredients: false,
     fluxGlobalImageIngredients: [],
     zEnhanceSettings: defaultZEnhanceSettings(),
@@ -2192,6 +2464,7 @@ function openBuilder(node) {
       autoSaveEnabled: state.autoSaveEnabled,
       zimageSettings: state.zimageSettings,
       fluxKleinSettings: state.fluxKleinSettings,
+      ernieImageSettings: state.ernieImageSettings,
       useFluxGlobalImageIngredients: state.useFluxGlobalImageIngredients,
       fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
       zEnhanceSettings: state.zEnhanceSettings,
@@ -2234,12 +2507,14 @@ function openBuilder(node) {
     applyLayoutSizes();
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
+    state.ernieImageSettings = data.ernieImageSettings || state.ernieImageSettings;
     state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.i2vVideoSettings = data.i2vVideoSettings || state.i2vVideoSettings;
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
+    syncErnieImagePanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
     syncInspector();
@@ -2590,12 +2865,12 @@ function openBuilder(node) {
   function syncInspector() {
     const segment = activeSegment();
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, i2vNotesInput, t2iPrompt, i2vPrompt, previewButton, deleteSegmentButton, createSceneVideoButton]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, previewButton, ernieCreateButton, deleteSegmentButton, createSceneVideoButton]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [gemmaModelSelect, mmprojSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, refImageInput, createT2IButton, createI2VButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -2606,6 +2881,7 @@ function openBuilder(node) {
     promptJsonInput.value = state.promptJsonPath || "";
     i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
     imageTriggerInput.value = state.imageTriggerPhrase || "";
+    ernieImageTriggerInput.value = state.imageTriggerPhrase || "";
     fluxImageTriggerInput.value = state.imageTriggerPhrase || "";
     videoTriggerInput.value = state.videoTriggerPhrase || "";
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
@@ -2623,10 +2899,13 @@ function openBuilder(node) {
       startInput.value = "0";
       endInput.value = "4";
       notesInput.value = "";
+      ernieNotesInput.value = "";
       i2vNotesInput.value = "";
       t2iPrompt.value = "";
+      ernieT2IPrompt.value = "";
       i2vPrompt.value = "";
       useVisionReference.input.checked = false;
+      ernieUseVisionReference.input.checked = false;
       useI2VVisionReference.input.checked = true;
       useSceneZImageSettings.input.checked = false;
       refImageInput.value = "";
@@ -2634,6 +2913,7 @@ function openBuilder(node) {
       audioSummary.textContent = "Select a scene to view or edit scene audio.";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
+      syncErnieImagePanel();
       syncPreview(null);
       return;
     }
@@ -2641,10 +2921,13 @@ function openBuilder(node) {
     startInput.value = segment.start;
     endInput.value = segment.end;
     notesInput.value = segment.notes || "";
+    ernieNotesInput.value = segment.notes || "";
     i2vNotesInput.value = segment.i2v_notes || "";
     t2iPrompt.value = segment.t2i_prompt || "";
+    ernieT2IPrompt.value = segment.t2i_prompt || "";
     i2vPrompt.value = segment.i2v_prompt || "";
     useVisionReference.input.checked = Boolean(segment.use_vision_reference);
+    ernieUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
     useI2VVisionReference.input.checked = segment.use_i2v_vision_reference !== false;
     useSceneZImageSettings.input.checked = Boolean(segment.use_scene_zimage_settings);
     refImageInput.value = segment.ref_image_path || "";
@@ -2659,6 +2942,7 @@ function openBuilder(node) {
       : "No custom scene audio selected. Use Scene Audio Options to drop or load audio for this scene.";
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
+    syncErnieImagePanel();
     syncPreview(segment);
     updateAudioScrubbers();
   }
@@ -2907,6 +3191,95 @@ function openBuilder(node) {
     }
   }
 
+  function syncErnieImagePanel() {
+    const settings = state.ernieImageSettings || {};
+    ernieUnetPicker.input.value = chooseModelValue(
+      ernieUnetPicker.options || [],
+      settings.unet_name || "ernie\\ernie-image-turbo.safetensors",
+      ["ernie\\ernie-image-turbo.safetensors", "ernie-image-turbo.safetensors"],
+    ) || settings.unet_name || "";
+    ernieClipPicker.input.value = settings.clip_name || "ministral-3-3b.safetensors";
+    ernieVaePicker.input.value = chooseModelValue(
+      ernieVaePicker.options || [],
+      settings.vae_name || "flux\\flux2-vae.safetensors",
+      ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"],
+    ) || settings.vae_name || "";
+    ernieWidth.value = settings.width || 1280;
+    ernieHeight.value = settings.height || 720;
+    ernieSeed.value = settings.seed || 1;
+    ernieSeedMode.value = settings.seed_mode || "fixed";
+    ernieBatchSize.value = Math.max(1, Math.min(16, Number(settings.batch_size || 1)));
+    ernieUseLora.input.checked = Boolean(settings.use_loras);
+    ernieLoraCount.value = Number(settings.lora_count || 0);
+    updateErnieLoraVisibility();
+    ernieLoraSlots.forEach((slot, index) => {
+      const config = settings.loras?.[index] || {};
+      slot.picker.input.value = config.name || "[none]";
+      slot.strength.value = config.strength ?? 1;
+    });
+    ernieUseImageToImage.input.checked = Boolean(settings.use_image_to_image);
+    updateErnieImageToImageVisibility();
+    const startStep = Math.max(1, Math.min(8, Number(settings.image_to_image_start_at_step || 5)));
+    ernieI2ISlider.value = String(startStep);
+    ernieI2IStartStep.value = String(startStep);
+    ernieI2IPath.value = settings.image_to_image_path || settings.image_to_image_name || "";
+  }
+
+  function updateErnieLoraVisibility() {
+    const count = Math.max(0, Math.min(4, Number(ernieLoraCount.value || 0)));
+    ernieLoraPanel.style.display = ernieUseLora.input.checked ? "flex" : "none";
+    ernieLoraRows.style.display = ernieUseLora.input.checked && count > 0 ? "flex" : "none";
+    ernieLoraSlots.forEach((slot, index) => {
+      slot.row.style.display = index < count ? "grid" : "none";
+    });
+  }
+
+  function updateErnieImageToImageVisibility() {
+    ernieI2IPanel.style.display = ernieUseImageToImage.input.checked ? "flex" : "none";
+  }
+
+  function saveErnieImageSettingsFromPanel() {
+    pushHistory();
+    const count = Math.max(0, Math.min(4, Number(ernieLoraCount.value || 0)));
+    const currentSettings = state.ernieImageSettings || {};
+    const i2iPathValue = ernieI2IPath.value || "";
+    const keepDataSource = Boolean(currentSettings.image_to_image_data && i2iPathValue === currentSettings.image_to_image_name);
+    state.ernieImageSettings = {
+      unet_name: ernieUnetPicker.input.value || "ernie\\ernie-image-turbo.safetensors",
+      clip_name: ernieClipPicker.input.value || "ministral-3-3b.safetensors",
+      vae_name: ernieVaePicker.input.value || "flux\\flux2-vae.safetensors",
+      width: Number(ernieWidth.value || 1280),
+      height: Number(ernieHeight.value || 720),
+      seed: Number(ernieSeed.value || 1),
+      seed_mode: ernieSeedMode.value || "fixed",
+      batch_size: Math.max(1, Math.min(16, Number(ernieBatchSize.value || 1))),
+      use_loras: Boolean(ernieUseLora.input.checked),
+      lora_count: count,
+      loras: ernieLoraSlots.map((slot) => ({ name: slot.picker.input.value || "[none]", strength: Number(slot.strength.value || 1) })),
+      use_image_to_image: Boolean(ernieUseImageToImage.input.checked),
+      image_to_image_start_at_step: Math.max(1, Math.min(8, Number(ernieI2IStartStep.value || ernieI2ISlider.value || 5))),
+      image_to_image_path: keepDataSource ? "" : i2iPathValue,
+      image_to_image_data: keepDataSource ? currentSettings.image_to_image_data || "" : "",
+      image_to_image_name: keepDataSource ? currentSettings.image_to_image_name || "" : "",
+    };
+    updateErnieLoraVisibility();
+    updateErnieImageToImageVisibility();
+    return state.ernieImageSettings;
+  }
+
+  function advanceErnieSeedAfterRun(settings) {
+    const mode = String(settings?.seed_mode || "fixed").toLowerCase();
+    if (mode === "increment") {
+      settings.seed = Math.min(Number.MAX_SAFE_INTEGER, Number(settings.seed || 0) + 1);
+    } else if (mode === "decrement") {
+      settings.seed = Math.max(0, Number(settings.seed || 0) - 1);
+    } else {
+      return;
+    }
+    ernieSeed.value = String(settings.seed);
+    state.ernieImageSettings = settings;
+  }
+
   function advanceZEnhanceSeedAfterRun(settings) {
     const mode = String(settings?.seed_mode || "fixed").toLowerCase();
     if (mode === "increment") {
@@ -2986,11 +3359,14 @@ function openBuilder(node) {
     settings.enabled = mode === "flux_klein";
     zImageModePanel.style.display = mode === "zimage" ? "flex" : "none";
     fluxKleinModePanel.style.display = mode === "flux_klein" ? "flex" : "none";
+    ernieImageModePanel.style.display = mode === "ernie_image" ? "flex" : "none";
     zEnhancePanel.style.display = mode === "z_enhance" ? "flex" : "none";
     previewButton.style.display = mode === "zimage" ? "" : "none";
+    ernieCreateButton.style.display = mode === "ernie_image" ? "" : "none";
     useFluxKlein.input.checked = mode === "flux_klein";
     fluxKleinPanel.style.display = mode === "flux_klein" ? "flex" : "none";
-    for (const card of [zImageCard, fluxKleinCard, zEnhanceCard]) {
+    ernieImagePanel.style.display = mode === "ernie_image" ? "flex" : "none";
+    for (const card of [zImageCard, fluxKleinCard, ernieImageCard, zEnhanceCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#71717a" : "#3f3f46";
       card.style.background = active ? "#52525b" : "#27272a";
@@ -3006,12 +3382,21 @@ function openBuilder(node) {
     renderFluxIngredientList(segment);
     fluxNotes.value = segment?.flux_notes || "";
     fluxPrompt.value = segment?.flux_prompt || "";
-    fluxUnetPicker.input.value = settings.unet_name || "flux\\flux-2-klein-4b-fp8.safetensors";
+    fluxUnetPicker.input.value = chooseModelValue(
+      fluxUnetPicker.options || [],
+      settings.unet_name || "flux\\flux-2-klein-4b-fp8.safetensors",
+      ["flux\\flux-2-klein-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors"],
+    ) || settings.unet_name || "";
     fluxClipPicker.input.value = settings.clip_name || "qwen_3_4b.safetensors";
-    fluxVaePicker.input.value = settings.vae_name || "flux\\flux2-vae.safetensors";
+    fluxVaePicker.input.value = chooseModelValue(
+      fluxVaePicker.options || [],
+      settings.vae_name || "flux\\flux2-vae.safetensors",
+      ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"],
+    ) || settings.vae_name || "";
     fluxWidth.value = settings.width || 1024;
     fluxHeight.value = settings.height || 576;
     fluxSeed.value = settings.seed || 100;
+    syncErnieImagePanel();
   }
 
   function saveFluxKleinSettingsFromPanel() {
@@ -3161,11 +3546,20 @@ function openBuilder(node) {
       segment.end = Math.max(segment.start + 0.1, Number(endInput.value || segment.start + 4));
     }
     segment.notes = notesInput.value || "";
+    if (state.fluxKleinSettings?.image_model_mode === "ernie_image") {
+      segment.notes = ernieNotesInput.value || "";
+    }
     segment.i2v_notes = i2vNotesInput.value || "";
     segment.t2i_prompt = t2iPrompt.value || "";
+    if (state.fluxKleinSettings?.image_model_mode === "ernie_image") {
+      segment.t2i_prompt = ernieT2IPrompt.value || "";
+    }
     segment.i2v_prompt = i2vPrompt.value || "";
     segment.enhance_prompt = zEnhancePromptPreview.value || segment.enhance_prompt || "";
     segment.use_vision_reference = Boolean(useVisionReference.input.checked);
+    if (state.fluxKleinSettings?.image_model_mode === "ernie_image") {
+      segment.use_vision_reference = Boolean(ernieUseVisionReference.input.checked);
+    }
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
@@ -3921,14 +4315,22 @@ function openBuilder(node) {
   }
 
   function setImageToImageSource({ path = "", data = "", name = "" } = {}) {
-    const settings = activeZImageSettings();
+    const useErnie = (state.fluxKleinSettings?.image_model_mode || "") === "ernie_image";
+    const settings = useErnie ? (state.ernieImageSettings || defaultErnieImageSettings()) : activeZImageSettings();
     pushHistory();
     settings.use_image_to_image = true;
     settings.image_to_image_path = path || "";
     settings.image_to_image_data = data || "";
     settings.image_to_image_name = name || "";
-    settings.image_to_image_start_at_step = Math.max(1, Math.min(8, Number(zI2IStartStep.value || zI2ISlider.value || settings.image_to_image_start_at_step || 5)));
-    syncZImageSettingsPanel();
+    settings.image_to_image_start_at_step = Math.max(1, Math.min(8, Number(
+      useErnie ? (ernieI2IStartStep.value || ernieI2ISlider.value || settings.image_to_image_start_at_step || 5) : (zI2IStartStep.value || zI2ISlider.value || settings.image_to_image_start_at_step || 5)
+    )));
+    if (useErnie) {
+      state.ernieImageSettings = settings;
+      syncErnieImagePanel();
+    } else {
+      syncZImageSettingsPanel();
+    }
     renderList();
     toast(`Image-to-image source set${path || name ? `:\n${path || name}` : "."}`);
   }
@@ -4180,7 +4582,7 @@ function openBuilder(node) {
     cancel.onclick = () => box.remove();
     gemma.onclick = async () => {
       const idea = String(textarea.value || "").trim();
-      const modelFile = String(gemmaModelSelect.value || i2vGemmaModelSelect.value || fluxGemmaModelSelect.value || "").trim();
+      const modelFile = String(t2iTextGemmaModelSelect.value || gemmaModelSelect.value || ernieTextGemmaModelSelect.value || ernieGemmaModelSelect.value || i2vTextGemmaModelSelect.value || i2vGemmaModelSelect.value || fluxGemmaModelSelect.value || "").trim();
       if (!modelFile) {
         toast("Choose a Gemma4 model first in the Image tab model settings.", true);
         return;
@@ -4654,6 +5056,7 @@ function openBuilder(node) {
       auto_save_enabled: state.autoSaveEnabled,
       zimage_settings: state.zimageSettings,
       flux_klein_settings: state.fluxKleinSettings,
+      ernie_image_settings: state.ernieImageSettings,
       use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
       z_enhance_settings: state.zEnhanceSettings,
@@ -4746,12 +5149,14 @@ function openBuilder(node) {
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
+        state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
         state.i2vVideoSettings = data.session.i2v_video_settings || state.i2vVideoSettings;
         syncZImageSettingsPanel();
         syncFluxKleinPanel();
+        syncErnieImagePanel();
         syncI2VVideoSettingsPanel();
         syncInspector();
       }
@@ -4873,6 +5278,7 @@ function openBuilder(node) {
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
+      state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
@@ -5121,10 +5527,15 @@ function openBuilder(node) {
     state.activeId = segment.id;
     syncInspector();
     progress?.set(`${label}: preparing Gemma input...`, percent);
+    const useVision = Boolean(segment.use_vision_reference);
+    const gemmaSelect = state.imageModelMode === "ernie_image"
+      ? (useVision ? ernieGemmaModelSelect : ernieTextGemmaModelSelect)
+      : (useVision ? gemmaModelSelect : t2iTextGemmaModelSelect);
+    const mmprojSelectForMode = state.imageModelMode === "ernie_image" ? ernieMmprojSelect : mmprojSelect;
     const data = await postJson("/vrgdg/music_builder/generate_t2i", {
-      model_file: gemmaModelSelect.value,
-      mmproj_file: mmprojSelect.value,
-      use_vision: Boolean(segment.use_vision_reference),
+      model_file: gemmaSelect.value,
+      mmproj_file: useVision ? mmprojSelectForMode.value : "",
+      use_vision: useVision,
       ref_image_path: segment.ref_image_path || "",
       user_notes: segment.notes || "",
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
@@ -5136,6 +5547,7 @@ function openBuilder(node) {
     segment.t2i_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
     segment.enhance_prompt = segment.t2i_prompt;
     t2iPrompt.value = segment.t2i_prompt;
+    ernieT2IPrompt.value = segment.t2i_prompt;
     zEnhancePromptPreview.value = segment.enhance_prompt;
     render();
     return data;
@@ -5232,6 +5644,102 @@ function openBuilder(node) {
     }
   }
 
+  async function createErnieImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Ernie") {
+    state.activeId = segment.id;
+    syncInspector();
+    const prompt = String(segment.t2i_prompt || segment.notes || "").trim();
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
+    progress?.set(`${label}: preparing Ernie settings...`, percentBase);
+    const settings = saveErnieImageSettingsFromPanel();
+    const useLoras = Boolean(settings.use_loras && settings.lora_count > 0);
+    const payload = {
+      prompt,
+      unet_name: settings.unet_name || "",
+      clip_name: settings.clip_name || "",
+      vae_name: settings.vae_name || "",
+      width: settings.width,
+      height: settings.height,
+      seed: settings.seed,
+      seed_mode: settings.seed_mode || "fixed",
+      batch_size: settings.batch_size || 1,
+      use_custom_loras: useLoras,
+      lora_count: useLoras ? settings.lora_count : 0,
+      use_image_to_image: Boolean(settings.use_image_to_image),
+      image_to_image_start_at_step: settings.image_to_image_start_at_step || 5,
+      image_to_image_path: settings.image_to_image_path || "",
+      image_to_image_data: settings.image_to_image_data || "",
+      image_to_image_name: settings.image_to_image_name || "",
+    };
+    ernieLoraSlots.forEach((slot, index) => {
+      payload[`lora_${index + 1}`] = useLoras && index < settings.lora_count ? slot.picker.input.value : "[none]";
+      payload[`strength_${index + 1}`] = Number(slot.strength.value || 1);
+    });
+    progress?.set(`${label}: building hidden Ernie workflow...`, percentBase + percentSpan * 0.25);
+    let built;
+    try {
+      built = await postJson("/vrgdg/workflow_runner/build_ernie_image_prompt", payload);
+    } catch (error) {
+      if (/\b405\b/.test(String(error?.message || error))) {
+        throw new Error("Ernie backend route is not loaded yet. Fully restart ComfyUI so the new Ernie workflow route is registered, then refresh the browser.");
+      }
+      throw error;
+    }
+    if (Number.isFinite(Number(built.used_seed))) {
+      settings.seed = Number(built.used_seed);
+      ernieSeed.value = String(settings.seed);
+    }
+    progress?.set(`${label}: queueing Ernie workflow...`, percentBase + percentSpan * 0.45);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the Ernie image but did not return a prompt_id.");
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    });
+    for (const image of images) {
+      await archiveGeneratedSceneImage(segment, image);
+    }
+    segment.enhance_prompt = prompt;
+    zEnhancePromptPreview.value = prompt;
+    segment.image = images[images.length - 1] || null;
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    syncPreview(segment);
+    render();
+    advanceErnieSeedAfterRun(settings);
+    return images;
+  }
+
+  async function previewErnieImage() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const prompt = String(segment.t2i_prompt || segment.notes || "").trim();
+    if (!prompt) {
+      toast("Hey, you need a T2I prompt first. Create one with Gemma T2I, type one into the T2I prompt box, or add scene notes.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      setButtonGroupState(ernieCreateButtons, { disabled: true, text: "Creating..." });
+      progress = createProgressWindow("Creating Ernie image");
+      progress.set("Autosaving session/SRT before Ernie...", 8);
+      await autoSaveSessionQuiet("Ernie image");
+      await createErnieImageForSegment(segment, progress, 15, 75, "Ernie image");
+      await autoSaveSessionQuiet("Ernie image complete");
+      progress.set("Ernie image ready.", 100);
+      progress.close(900);
+      toast("Ernie image ready.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      setButtonGroupState(ernieCreateButtons, { disabled: false, text: "Create with Ernie" });
+    }
+  }
+
   async function createFluxKleinPromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -5261,6 +5769,7 @@ function openBuilder(node) {
       segment.t2i_prompt = segment.flux_prompt;
       segment.enhance_prompt = segment.flux_prompt;
       t2iPrompt.value = segment.t2i_prompt;
+      ernieT2IPrompt.value = segment.t2i_prompt;
       zEnhancePromptPreview.value = segment.enhance_prompt;
       progress.set("Flux/Klein prompt ready.", 100);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt complete");
@@ -5310,6 +5819,7 @@ function openBuilder(node) {
     if (segment.id === activeSegment()?.id) {
       fluxPrompt.value = segment.flux_prompt;
       t2iPrompt.value = segment.t2i_prompt;
+      ernieT2IPrompt.value = segment.t2i_prompt;
       zEnhancePromptPreview.value = segment.enhance_prompt;
     }
     render();
@@ -5357,6 +5867,7 @@ function openBuilder(node) {
     segment.preview_mode = "image";
     if (segment.id === activeSegment()?.id) {
       t2iPrompt.value = prompt;
+      ernieT2IPrompt.value = prompt;
       fluxPrompt.value = prompt;
       zEnhancePromptPreview.value = prompt;
       syncPreview(segment);
@@ -5413,6 +5924,7 @@ function openBuilder(node) {
       segment.approved_image_path = "";
       segment.preview_mode = "image";
       t2iPrompt.value = prompt;
+      ernieT2IPrompt.value = prompt;
       zEnhancePromptPreview.value = prompt;
       syncPreview(segment);
       render();
@@ -5583,8 +6095,8 @@ function openBuilder(node) {
       progress.set(useImageReference ? "Preparing image reference and motion notes..." : "Preparing T2I prompt and motion notes...", 20);
       progress.set(useImageReference ? "Running Gemma vision I2V prompt generation..." : "Running Gemma text-only I2V prompt generation...", 50);
       const data = await postJson("/vrgdg/music_builder/generate_i2v", {
-        model_file: i2vGemmaModelSelect.value,
-        mmproj_file: i2vMmprojSelect.value,
+        model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
+        mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: useImageReference ? "" : segment.t2i_prompt,
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
@@ -5617,7 +6129,7 @@ function openBuilder(node) {
     if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     progress?.set(`${label}: converting T2I prompt to I2V prompt without vision...`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_i2v", {
-      model_file: i2vGemmaModelSelect.value,
+      model_file: i2vTextGemmaModelSelect.value,
       mmproj_file: "",
       t2i_prompt: t2iText,
       image_reference_path: "",
@@ -5651,7 +6163,7 @@ function openBuilder(node) {
       ? `${label}: creating I2V prompt from scene image and motion notes...`
       : `${label}: converting T2I prompt to I2V prompt without vision...`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_i2v", {
-      model_file: i2vGemmaModelSelect.value,
+      model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
       mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
       t2i_prompt: useImageReference ? "" : t2iText,
       image_reference_path: imageReference.path,
@@ -6307,6 +6819,87 @@ function openBuilder(node) {
     }
   }
 
+  async function ernieImageAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const missing = validateZImageAllReady();
+    const progress = createProgressWindow("Ernie Image All Scenes");
+    if (missing.length) {
+      progress.setHtml(`
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:900;color:#fecaca;">Ernie Image All cannot start yet.</div>
+          <div>Fix these first, then press Image All again:</div>
+          <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
+        </div>
+      `, 100);
+      toast("Ernie Image All needs scene notes first.", true);
+      if (options.throwOnError) throw new Error(missing.join("\n"));
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "Ernie...";
+      setButtonGroupState(ernieCreateButtons, { disabled: true });
+      createT2IButton.disabled = true;
+      ernieCreateT2IButton.disabled = true;
+      progress.set("Autosaving session/SRT before Ernie Image All...", 3);
+      await saveSessionForSceneVideo();
+      const scenes = allEditableSegments()
+        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
+        .filter(({ segment }) => !segmentImageSource(segment));
+      if (!scenes.length) {
+        progress.set("All scenes already have images. Skipping Ernie Image All.", 100);
+        progress.close(1800);
+        toast("All scenes already have images. Ernie Image All skipped.");
+        return;
+      }
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = Math.floor((index / scenes.length) * 100);
+        const span = Math.max(1, Math.floor(88 / scenes.length));
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        progress.set(`Ernie Image All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating T2I prompt with Gemma...`, base);
+        await generateT2IPromptForSegment(segment, progress, base + span * 0.2, `Ernie Image All ${index + 1}/${scenes.length}: Gemma`);
+        assertBatchNotStopped();
+        await createErnieImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Ernie Image All ${index + 1}/${scenes.length}: Ernie`);
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Ernie Image All scene ${sceneIndex + 1}`);
+        await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+      }
+      await autoSaveSessionQuiet("Ernie Image All complete");
+      progress.set("Ernie Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.close(4500);
+      toast("Ernie Image All complete.");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
+      try {
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped Ernie Image All" : "Ernie Image All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after Ernie Image All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
+      }
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
+      setButtonGroupState(ernieCreateButtons, { disabled: false, text: "Create with Ernie" });
+      createT2IButton.disabled = false;
+      ernieCreateT2IButton.disabled = false;
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
   async function fluxKleinAllScenes(options = {}) {
     updateActiveFromInputs();
     const progress = createProgressWindow("Flux/Klein All Scenes");
@@ -6414,8 +7007,11 @@ function openBuilder(node) {
       progress = createProgressWindow("Build Full Video");
       const imageStage = (state.fluxKleinSettings?.image_model_mode || "") === "flux_klein" ? "Flux/Klein image pass" : "Z-Image pass";
       progress.set(`Stage 1/3: ${imageStage}...`, 5);
-      if ((state.fluxKleinSettings?.image_model_mode || "") === "flux_klein") {
+      const imageMode = state.fluxKleinSettings?.image_model_mode || "";
+      if (imageMode === "flux_klein") {
         await fluxKleinAllScenes({ throwOnError: true });
+      } else if (imageMode === "ernie_image") {
+        await ernieImageAllScenes({ throwOnError: true });
       } else {
         await zImageAllScenes({ throwOnError: true });
       }
@@ -6625,6 +7221,7 @@ function openBuilder(node) {
     state.sceneAudioGlobalTime = 0;
     state.zimageSettings = defaultZImageSettings();
     state.fluxKleinSettings = defaultFluxKleinSettings();
+    state.ernieImageSettings = defaultErnieImageSettings();
     state.useFluxGlobalImageIngredients = false;
     state.fluxGlobalImageIngredients = [];
     state.zEnhanceSettings = defaultZEnhanceSettings();
@@ -6639,6 +7236,7 @@ function openBuilder(node) {
     promptJsonInput.value = state.promptJsonPath;
     i2vMotionJsonInput.value = state.i2vMotionJsonPath;
     imageTriggerInput.value = "";
+    ernieImageTriggerInput.value = "";
     fluxImageTriggerInput.value = "";
     videoTriggerInput.value = "";
     themeStyleInput.value = state.themeStylePath;
@@ -6649,6 +7247,7 @@ function openBuilder(node) {
     state.redoStack = [];
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
+    syncErnieImagePanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
     syncInspector();
@@ -6897,23 +7496,32 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunZImageAll() {
-    const useFluxKleinMode = (state.fluxKleinSettings?.image_model_mode || "") === "flux_klein";
+    const imageMode = state.fluxKleinSettings?.image_model_mode || "";
+    const useFluxKleinMode = imageMode === "flux_klein";
+    const useErnieMode = imageMode === "ernie_image";
+    const title = useFluxKleinMode ? "Run Flux/Klein Image All?" : useErnieMode ? "Run Ernie Image All?" : "Run Z-Image All?";
+    const lines = useFluxKleinMode ? [
+      "This will create missing Flux/Klein prompts with Gemma vision, then create missing scene images with Flux/Klein.",
+      "Scenes that already have images will be skipped.",
+      "Global Flux/Klein image ingredients are included for every scene when enabled.",
+      "Memory cleanup runs between scenes.",
+    ] : useErnieMode ? [
+      "This will create missing T2I prompts with Gemma, then create missing scene images with Ernie.",
+      "Scenes that already have images will be skipped.",
+      "Memory cleanup runs between scenes.",
+    ] : [
+      "This will create missing T2I prompts with Gemma, then create missing scene images with ZImage.",
+      "Scenes that already have images will be skipped.",
+      "Memory cleanup runs between scenes.",
+    ];
     const ok = await confirmLongBatchAction({
-      title: useFluxKleinMode ? "Run Flux/Klein Image All?" : "Run Z-Image All?",
-      lines: useFluxKleinMode ? [
-        "This will create missing Flux/Klein prompts with Gemma vision, then create missing scene images with Flux/Klein.",
-        "Scenes that already have images will be skipped.",
-        "Global Flux/Klein image ingredients are included for every scene when enabled.",
-        "Memory cleanup runs between scenes.",
-      ] : [
-        "This will create missing T2I prompts with Gemma, then create missing scene images with ZImage.",
-        "Scenes that already have images will be skipped.",
-        "Memory cleanup runs between scenes.",
-      ],
-      confirmLabel: useFluxKleinMode ? "Run Flux/Klein Image All" : "Run Z-Image All",
+      title,
+      lines,
+      confirmLabel: useFluxKleinMode ? "Run Flux/Klein Image All" : useErnieMode ? "Run Ernie Image All" : "Run Z-Image All",
     });
     if (!ok) return;
     if (useFluxKleinMode) await fluxKleinAllScenes();
+    else if (useErnieMode) await ernieImageAllScenes();
     else await zImageAllScenes();
   }
 
@@ -6943,7 +7551,7 @@ function openBuilder(node) {
     if (ok) await buildFullVideoPipeline();
   }
 
-  for (const control of [labelInput, startInput, endInput, notesInput, i2vNotesInput, t2iPrompt, i2vPrompt, zEnhancePromptPreview]) {
+  for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhancePromptPreview]) {
     control.addEventListener("input", updateActiveFromInputs);
     control.addEventListener("change", updateActiveFromInputs);
   }
@@ -6966,9 +7574,11 @@ function openBuilder(node) {
     pushHistory();
     state.imageTriggerPhrase = value || "";
     if (source !== imageTriggerInput) imageTriggerInput.value = state.imageTriggerPhrase;
+    if (source !== ernieImageTriggerInput) ernieImageTriggerInput.value = state.imageTriggerPhrase;
     if (source !== fluxImageTriggerInput) fluxImageTriggerInput.value = state.imageTriggerPhrase;
   };
   imageTriggerInput.addEventListener("input", () => updateImageTriggerPhrase(imageTriggerInput.value, imageTriggerInput));
+  ernieImageTriggerInput.addEventListener("input", () => updateImageTriggerPhrase(ernieImageTriggerInput.value, ernieImageTriggerInput));
   fluxImageTriggerInput.addEventListener("input", () => updateImageTriggerPhrase(fluxImageTriggerInput.value, fluxImageTriggerInput));
   videoTriggerInput.addEventListener("input", () => {
     pushHistory();
@@ -7028,6 +7638,7 @@ function openBuilder(node) {
     },
   });
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
+  ernieUseVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useSceneZImageSettings.input.addEventListener("change", () => {
     const segment = activeSegment();
@@ -7087,6 +7698,7 @@ function openBuilder(node) {
   fullBuildButton.onclick = confirmAndRunFullBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
+  downloadModelsButton.onclick = showModelDownloadModal;
   openSceneAudioOptionsButton.onclick = () => {
     const segment = requireActiveSegment();
     if (segment) openSceneOptions(segment);
@@ -7107,13 +7719,16 @@ function openBuilder(node) {
   addSegmentButton.onclick = addSegment;
   addOverlaySegmentButton.onclick = addOverlaySegment;
   createT2IButton.onclick = createT2IPromptWithGemma;
+  ernieCreateT2IButton.onclick = createT2IPromptWithGemma;
   createI2VButton.onclick = createI2VPromptWithGemma;
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
+  ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
   sendFluxPromptToEnhanceButton.onclick = () => sendPromptToEnhance("Flux/Klein", fluxPrompt.value);
   createFluxPromptButton.onclick = createFluxKleinPromptWithGemma;
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
   for (const button of zCreateButtons) button.onclick = previewZImage;
+  for (const button of ernieCreateButtons) button.onclick = previewErnieImage;
   for (const button of fluxCreateButtons) button.onclick = previewFluxKleinImage;
   customImageFileInput.addEventListener("change", () => {
     const file = customImageFileInput.files?.[0];
@@ -7125,6 +7740,7 @@ function openBuilder(node) {
     i2iImageFileInput.value = "";
   });
   zI2ILoadButton.onclick = () => i2iImageFileInput.click();
+  ernieI2ILoadButton.onclick = () => i2iImageFileInput.click();
   zImageCard.onclick = () => {
     pushHistory();
     state.fluxKleinSettings.image_model_mode = "zimage";
@@ -7135,6 +7751,12 @@ function openBuilder(node) {
     pushHistory();
     state.fluxKleinSettings.image_model_mode = "flux_klein";
     state.fluxKleinSettings.enabled = true;
+    syncFluxKleinPanel();
+  };
+  ernieImageCard.onclick = () => {
+    pushHistory();
+    state.fluxKleinSettings.image_model_mode = "ernie_image";
+    state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
   };
   zEnhanceCard.onclick = () => {
@@ -7203,6 +7825,32 @@ function openBuilder(node) {
     event.preventDefault();
     event.stopPropagation();
     zI2IDrop.style.borderColor = "#155e75";
+    loadImageToImageFile(file);
+  });
+  ernieI2IDrop.addEventListener("dragover", (event) => {
+    const types = Array.from(event.dataTransfer?.types || []);
+    if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    ernieI2IDrop.style.borderColor = "#a3e635";
+  });
+  ernieI2IDrop.addEventListener("dragleave", () => {
+    ernieI2IDrop.style.borderColor = "#155e75";
+  });
+  ernieI2IDrop.addEventListener("drop", (event) => {
+    const sceneSource = droppedSceneImageSource(event);
+    if (sceneSource) {
+      event.preventDefault();
+      event.stopPropagation();
+      ernieI2IDrop.style.borderColor = "#155e75";
+      setImageToImageSource(sceneSource);
+      return;
+    }
+    const file = imageFileFromDrop(event);
+    if (!file) return;
+    event.preventDefault();
+    event.stopPropagation();
+    ernieI2IDrop.style.borderColor = "#155e75";
     loadImageToImageFile(file);
   });
   refImageLoadButton.onclick = () => visionRefFileInput.click();
@@ -7364,7 +8012,7 @@ function openBuilder(node) {
   getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
     const models = data.models || [];
     const mmproj = data.mmproj || [];
-    for (const select of [gemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect]) {
+    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect]) {
       select.textContent = "";
       for (const model of models) {
         const option = document.createElement("option");
@@ -7373,7 +8021,7 @@ function openBuilder(node) {
         select.append(option);
       }
     }
-    for (const select of [mmprojSelect, i2vMmprojSelect, fluxMmprojSelect]) {
+    for (const select of [mmprojSelect, ernieMmprojSelect, i2vMmprojSelect, fluxMmprojSelect]) {
       select.textContent = "";
       for (const item of mmproj) {
         const option = document.createElement("option");
@@ -7447,9 +8095,38 @@ function openBuilder(node) {
     });
   }
 
+  function basenameOnly(value) {
+    return String(value || "").replaceAll("\\", "/").split("/").pop();
+  }
+
+  function chooseModelValue(options = [], current = "", preferred = []) {
+    const values = (options || []).filter((item) => String(item || "").trim());
+    if (!values.length) return "";
+    const exact = values.find((item) => item === current);
+    if (exact) return exact;
+    const currentBase = basenameOnly(current);
+    if (currentBase) {
+      const sameBase = values.find((item) => basenameOnly(item) === currentBase);
+      if (sameBase) return sameBase;
+    }
+    for (const item of preferred) {
+      const direct = values.find((value) => value === item);
+      if (direct) return direct;
+      const base = basenameOnly(item);
+      const sameBase = values.find((value) => basenameOnly(value) === base);
+      if (sameBase) return sameBase;
+    }
+    for (const item of preferred) {
+      const needle = basenameOnly(item).toLowerCase().replace(/\.(safetensors|gguf|ckpt)$/i, "");
+      const partial = values.find((value) => String(value || "").toLowerCase().includes(needle));
+      if (partial) return partial;
+    }
+    return values[0] || "";
+  }
+
   getJson("/vrgdg/workflow_runner/lora_list").then((data) => {
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
@@ -7459,10 +8136,12 @@ function openBuilder(node) {
   });
 
   getJson("/vrgdg/workflow_runner/i2v_choices").then((data) => {
-    const setOptions = (picker, options, fallback) => {
-      const values = Array.from(new Set([fallback, ...(options || [])].filter((item) => String(item || "").trim())));
+    const setOptions = (picker, options, preferred = []) => {
+      const preferredList = Array.isArray(preferred) ? preferred : [preferred];
+      const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
       picker.options = values;
-      if (!picker.input.value || BAD_I2V_UNET_ALIASES.has(picker.input.value) || !values.includes(picker.input.value)) picker.input.value = values[0] || "";
+      const current = BAD_I2V_UNET_ALIASES.has(picker.input.value) ? "" : picker.input.value;
+      picker.input.value = chooseModelValue(values, current, preferredList);
     };
     setOptions(i2vUnetPicker, data.unets, DEFAULT_I2V_UNET);
     setOptions(i2vVaePicker, data.vae, "LTX23_video_vae_bf16.safetensors");
@@ -7470,15 +8149,18 @@ function openBuilder(node) {
     setOptions(i2vClip2Picker, data.clip, "ltx-2.3_text_projection_bf16.safetensors");
     setOptions(i2vUpscalePicker, data.upscale_models, "ltx-2.3-spatial-upscaler-x2-1.1.safetensors");
     setOptions(i2vAudioVaePicker, data.vae, "LTX23_audio_vae_bf16.safetensors");
-    setOptions(fluxUnetPicker, data.unets, "flux\\flux-2-klein-4b-fp8.safetensors");
-    setOptions(fluxClipPicker, data.clip, "qwen_3_4b.safetensors");
-    setOptions(fluxVaePicker, data.vae, "flux\\flux2-vae.safetensors");
+    setOptions(fluxUnetPicker, data.unets, ["flux\\flux-2-klein-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors"]);
+    setOptions(fluxClipPicker, data.clip, ["qwen_3_4b.safetensors", "flux\\qwen_3_4b.safetensors"]);
+    setOptions(fluxVaePicker, data.vae, ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"]);
     setOptions(zUnetPicker, data.unets, "z_image_turbo_bf16.safetensors");
     setOptions(zClipPicker, data.clip, "qwen_3_4b.safetensors");
     setOptions(zVaePicker, data.vae, "ae.safetensors");
     setOptions(zEnhanceUnetPicker, data.unets, "z_image_turbo_bf16.safetensors");
     setOptions(zEnhanceClipPicker, data.clip, "qwen_3_4b.safetensors");
     setOptions(zEnhanceVaePicker, data.vae, "ae.safetensors");
+    setOptions(ernieUnetPicker, data.unets, ["ernie\\ernie-image-turbo.safetensors", "ernie-image-turbo.safetensors"]);
+    setOptions(ernieClipPicker, data.clip, ["ministral-3-3b.safetensors", "ernie\\ministral-3-3b.safetensors"]);
+    setOptions(ernieVaePicker, data.vae, ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"]);
   }).catch((error) => {
     toast(`Could not load I2V model choices:\n${String(error?.message || error)}`, true);
   });
@@ -7487,9 +8169,17 @@ function openBuilder(node) {
     control.addEventListener("input", saveZImageSettingsFromPanel);
     control.addEventListener("change", saveZImageSettingsFromPanel);
   }
+  for (const control of [ernieWidth, ernieHeight, ernieSeed, ernieSeedMode, ernieBatchSize, ernieLoraCount, ernieI2IStartStep, ernieI2IPath]) {
+    control.addEventListener("input", saveErnieImageSettingsFromPanel);
+    control.addEventListener("change", saveErnieImageSettingsFromPanel);
+  }
   for (const picker of [zUnetPicker, zClipPicker, zVaePicker]) {
     wireSearchablePicker(picker, saveZImageSettingsFromPanel);
     picker.input.addEventListener("change", saveZImageSettingsFromPanel);
+  }
+  for (const picker of [ernieUnetPicker, ernieClipPicker, ernieVaePicker]) {
+    wireSearchablePicker(picker, saveErnieImageSettingsFromPanel);
+    picker.input.addEventListener("change", saveErnieImageSettingsFromPanel);
   }
   zI2ISlider.addEventListener("input", () => {
     zI2IStartStep.value = zI2ISlider.value;
@@ -7501,6 +8191,16 @@ function openBuilder(node) {
   });
   zUseLora.input.addEventListener("change", saveZImageSettingsFromPanel);
   zUseImageToImage.input.addEventListener("change", saveZImageSettingsFromPanel);
+  ernieI2ISlider.addEventListener("input", () => {
+    ernieI2IStartStep.value = ernieI2ISlider.value;
+    saveErnieImageSettingsFromPanel();
+  });
+  ernieI2IStartStep.addEventListener("input", () => {
+    const value = Math.max(1, Math.min(8, Number(ernieI2IStartStep.value || 5)));
+    ernieI2ISlider.value = String(value);
+  });
+  ernieUseLora.input.addEventListener("change", saveErnieImageSettingsFromPanel);
+  ernieUseImageToImage.input.addEventListener("change", saveErnieImageSettingsFromPanel);
   for (const slot of zLoraSlots) {
     slot.picker.input.addEventListener("focus", () => renderLoraSuggestions(slot));
     slot.picker.input.addEventListener("input", () => {
@@ -7512,6 +8212,18 @@ function openBuilder(node) {
     });
     slot.strength.addEventListener("input", saveZImageSettingsFromPanel);
     slot.strength.addEventListener("change", saveZImageSettingsFromPanel);
+  }
+  for (const slot of ernieLoraSlots) {
+    slot.picker.input.addEventListener("focus", () => renderLoraSuggestions(slot));
+    slot.picker.input.addEventListener("input", () => {
+      renderLoraSuggestions(slot);
+      saveErnieImageSettingsFromPanel();
+    });
+    slot.picker.input.addEventListener("blur", () => {
+      setTimeout(() => { slot.picker.list.style.display = "none"; }, 180);
+    });
+    slot.strength.addEventListener("input", saveErnieImageSettingsFromPanel);
+    slot.strength.addEventListener("change", saveErnieImageSettingsFromPanel);
   }
 
   for (const picker of [i2vUnetPicker, i2vVaePicker, i2vClip1Picker, i2vClip2Picker, i2vUpscalePicker, i2vAudioVaePicker]) {

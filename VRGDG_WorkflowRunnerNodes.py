@@ -53,6 +53,15 @@ def _flux_klein_api_template_path():
     )
 
 
+def _ernie_image_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "image_ernie_image_turbo_API.json",
+    )
+
+
 def _z_upscale_enhance_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -394,6 +403,57 @@ def _patch_zimage_api_prompt(prompt, payload):
     for slot in range(1, _MAX_LORA_SLOTS + 1):
         _set_api_input(prompt, "974", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
         _set_api_input(prompt, "974", f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
+    return prompt, seed
+
+
+def _patch_ernie_image_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("Prompt text is empty.")
+
+    width = _int_payload(payload, "width", 1280, 64, 4096)
+    height = _int_payload(payload, "height", 720, 64, 4096)
+    batch_size = _int_payload(payload, "batch_size", 1, 1, 16)
+    seed_mode = str(payload.get("seed_mode", "fixed") or "fixed").strip().lower()
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    if seed_mode in {"random", "randomize"}:
+        seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+    use_i2i = _bool_payload(payload, "use_image_to_image", False)
+    start_at_step = _int_payload(payload, "image_to_image_start_at_step", 5, 1, 8)
+
+    _set_api_input(prompt, "111", "text", prompt_text)
+    _set_api_input(prompt, "105", "unet_name", str(payload.get("unet_name", "") or ""))
+    _set_api_input(prompt, "108", "clip_name", str(payload.get("clip_name", "") or ""))
+    _set_api_input(prompt, "109", "vae_name", str(payload.get("vae_name", "") or ""))
+    for node_id in ("104", "120"):
+        _set_api_input(prompt, node_id, "width", width)
+        _set_api_input(prompt, node_id, "height", height)
+        _set_api_input(prompt, node_id, "batch_size", batch_size)
+    _set_api_input(prompt, "121", "noise_seed", seed)
+
+    _set_api_input(prompt, "114", "switch", use_i2i)
+    _set_api_input(prompt, "117", "switch", use_i2i)
+    _set_api_input(prompt, "115", "value", start_at_step)
+    _set_api_input(prompt, "118", "image", _ensure_placeholder_load_image())
+    if use_i2i:
+        image_name = _prepare_load_image_name(
+            payload.get("image_to_image_path", ""),
+            payload.get("image_to_image_data", ""),
+            payload.get("image_to_image_name", "image.png"),
+        )
+        if not image_name:
+            raise ValueError("Image-to-image is enabled, but no source image was provided.")
+        _set_api_input(prompt, "118", "image", image_name)
+
+    use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
+    lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
+    _set_api_input(prompt, "113", "use_custom_loras", use_custom_loras)
+    _set_api_input(prompt, "113", "lora_count", lora_count)
+    _set_api_input(prompt, "113", "ltx_two_pass_mode", False)
+    for slot in range(1, _MAX_LORA_SLOTS + 1):
+        _set_api_input(prompt, "113", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
+        _set_api_input(prompt, "113", f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
     return prompt, seed
 
 
@@ -942,6 +1002,16 @@ def _expand_subgraphs(workflow, depth=0):
 def _build_zimage_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_zimage_api_template_path())
     patched_prompt, used_seed = _patch_zimage_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "prompt": patched_prompt,
+        "used_seed": used_seed,
+    }
+
+
+def _build_ernie_image_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_ernie_image_api_template_path())
+    patched_prompt, used_seed = _patch_ernie_image_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "prompt": patched_prompt,
@@ -1583,6 +1653,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_zimage_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_ernie_image_prompt")
+    async def vrgdg_workflow_runner_build_ernie_image_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_ernie_image_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
