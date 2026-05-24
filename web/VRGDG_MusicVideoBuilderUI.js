@@ -1925,6 +1925,41 @@ function openBuilder(node) {
     }) || null;
   }
 
+  function mediaPathKey(path) {
+    return String(path || "").trim().replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
+  }
+
+  function isBackupSceneVideoPath(path) {
+    return mediaPathKey(path).includes("/rendered_scene_videos_backup/");
+  }
+
+  function normalizeSegmentVideoHistory(segment) {
+    if (!segment) return [];
+    const currentPath = String(segment.video_path || "").trim();
+    const currentKey = mediaPathKey(currentPath);
+    const seen = new Set();
+    const cleaned = [];
+    for (const item of Array.isArray(segment.video_history) ? segment.video_history : []) {
+      const path = String(item || "").trim();
+      const key = mediaPathKey(path);
+      if (!path || !key || seen.has(key) || isBackupSceneVideoPath(path)) continue;
+      seen.add(key);
+      cleaned.push(path);
+    }
+    if (currentPath && currentKey && !seen.has(currentKey)) {
+      cleaned.push(currentPath);
+    }
+    segment.video_history = cleaned;
+    if (cleaned.length) {
+      const selectedKey = mediaPathKey(currentPath) || mediaPathKey(cleaned[Math.max(0, Number(segment.video_history_index || 0))]);
+      const selectedIndex = cleaned.findIndex((item) => mediaPathKey(item) === selectedKey);
+      segment.video_history_index = selectedIndex >= 0 ? selectedIndex : cleaned.length - 1;
+    } else {
+      segment.video_history_index = -1;
+    }
+    return cleaned;
+  }
+
   function timelineDuration() {
     const segmentEnd = state.segments.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
     const overlayEnd = state.overlaySegments.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
@@ -2069,14 +2104,7 @@ function openBuilder(node) {
     if (segment.video_path && !segment.video_history.includes(segment.video_path)) {
       segment.video_history.push(segment.video_path);
     }
-    if (!Number.isFinite(Number(segment.video_history_index))) {
-      segment.video_history_index = segment.video_history.length ? segment.video_history.length - 1 : -1;
-    }
-    if (segment.video_history.length) {
-      segment.video_history_index = Math.max(0, Math.min(segment.video_history.length - 1, Number(segment.video_history_index || 0)));
-    } else {
-      segment.video_history_index = -1;
-    }
+    normalizeSegmentVideoHistory(segment);
     return segment;
   }
 
@@ -4979,11 +5007,12 @@ function openBuilder(node) {
 
   function addSegmentVideoHistoryPath(segment, videoPath) {
     ensureSegmentRuntimeFields(segment);
-    if (!segment || !videoPath) return;
-    if (!segment.video_history.includes(videoPath)) {
+    if (!segment || !videoPath || isBackupSceneVideoPath(videoPath)) return;
+    if (!segment.video_history.some((item) => mediaPathKey(item) === mediaPathKey(videoPath))) {
       segment.video_history.push(videoPath);
     }
-    segment.video_history_index = segment.video_history.indexOf(videoPath);
+    normalizeSegmentVideoHistory(segment);
+    segment.video_history_index = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(videoPath));
   }
 
   function cycleSegmentVideoHistory(segment) {
@@ -5989,7 +6018,6 @@ function openBuilder(node) {
       existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
     pushHistory();
-    if (collected.backup_path) addSegmentVideoHistoryPath(segment, collected.backup_path);
     segment.video_output = video;
     segment.video_source_path = videoPath;
     segment.video_path = collected.video_path || videoPath;
