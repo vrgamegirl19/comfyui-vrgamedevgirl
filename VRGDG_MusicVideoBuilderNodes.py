@@ -1141,10 +1141,13 @@ def _looks_like_gemma_repeat_failure(text):
         "completion-completion-completion",
         "thought-thought-thought",
         "de-facto-de-facto-de-facto",
+        "de-fleshed",
         "cast-cast-cast",
         "prompt-cast-cast",
         "thoughtthoughtthought",
         "ownnessownnessownness",
+        "nessnessnessness",
+        "end_anow",
         "thought_turn",
         "turn_turn",
         "<|channel>",
@@ -1152,6 +1155,9 @@ def _looks_like_gemma_repeat_failure(text):
     ):
         if marker in compact or marker in sample:
             return True
+
+    if re.search(r"([a-z]{2,16})\1{5,}", compact):
+        return True
 
     if re.search(r"\b([a-zA-Z_]{3,})(?:[-\s]+\1){5,}\b", sample):
         return True

@@ -420,10 +420,13 @@ def _looks_like_gemma_repeat_failure(text):
         "completion-completion-completion",
         "thought-thought-thought",
         "de-facto-de-facto-de-facto",
+        "de-fleshed",
         "cast-cast-cast",
         "prompt-cast-cast",
         "thoughtthoughtthought",
         "ownnessownnessownness",
+        "nessnessnessness",
+        "end_anow",
         "thought_turn",
         "turn_turn",
         "<|channel>",
@@ -431,6 +434,8 @@ def _looks_like_gemma_repeat_failure(text):
     ):
         if marker in compact or marker in sample:
             return True
+    if re.search(r"([a-z]{2,16})\1{5,}", compact):
+        return True
     if re.search(r"\b([a-zA-Z_]{3,})(?:[-\s]+\1){5,}\b", sample):
         return True
     unicode_tokens = re.findall(r"[\w']+", sample, flags=re.UNICODE)
@@ -495,6 +500,7 @@ def _clean_visual_gemma_text(text):
         r"_?\s*<\|channel>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*",
         r"_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*",
+        r"^\s*<?/?end[_\-][a-z0-9_\-]*>?\s*",
         r"^\s*_?name\s*[:=]\s*",
         r"^\s*\d+\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*",
         r"^\s*[-_]*\s*(?:thought|analysis|reasoning)\s*",

@@ -2334,6 +2334,8 @@ function openBuilder(node) {
     text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
     text = text.replace(/<\/?thought>/gi, "").trim();
     const controlPatterns = [
+      /^\s*<?\/?end[_\-][a-z0-9_\-]*>?\s*/i,
+      /^\s*_?name\s*[:=]\s*/i,
       /^\s*\d+\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*/i,
       /^\s*_?\s*(?:thought|analysis|reasoning)\s*<channel\|>\s*/i,
       /^\s*_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*/i,
@@ -2349,8 +2351,48 @@ function openBuilder(node) {
     return text;
   }
 
+  function looksLikeGeneratedPromptJunk(prompt) {
+    const text = String(prompt || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!text) return false;
+    const compact = text.replace(/[^a-z0-9_<>\-|]+/g, "");
+    const markers = [
+      "completion-completion-completion",
+      "thought-thought-thought",
+      "de-facto-de-facto-de-facto",
+      "de-fleshed",
+      "thoughtthoughtthought",
+      "ownnessownnessownness",
+      "nessnessnessness",
+      "end_anow",
+      "<|channel>",
+      "<channel|>",
+    ];
+    if (markers.some((marker) => compact.includes(marker) || text.includes(marker))) return true;
+    if (/([a-z]{2,16})\1{5,}/i.test(compact)) return true;
+    const tokens = text.match(/[\p{L}\p{N}_']+/gu) || [];
+    if (tokens.length >= 16) {
+      const counts = new Map();
+      for (const token of tokens) counts.set(token, (counts.get(token) || 0) + 1);
+      const maxCount = Math.max(...counts.values());
+      if (maxCount >= 10 && maxCount / tokens.length >= 0.20) return true;
+      for (const size of [2, 3, 4]) {
+        if (tokens.length < size * 4) continue;
+        const phraseCounts = new Map();
+        for (let index = 0; index <= tokens.length - size; index += 1) {
+          const phrase = tokens.slice(index, index + size).join(" ");
+          phraseCounts.set(phrase, (phraseCounts.get(phrase) || 0) + 1);
+        }
+        if (Math.max(...phraseCounts.values()) >= 8) return true;
+      }
+    }
+    return false;
+  }
+
   function applyTriggerPhrase(prompt, trigger) {
     const promptText = cleanGeneratedPromptText(prompt);
+    if (looksLikeGeneratedPromptJunk(promptText)) {
+      throw new Error("Gemma returned repeated/thought junk instead of a usable prompt. Try again or shorten the notes.");
+    }
     const triggerText = String(trigger || "").trim().replace(/\s+/g, " ");
     if (!triggerText) return promptText;
     if (!promptText) return triggerText;
