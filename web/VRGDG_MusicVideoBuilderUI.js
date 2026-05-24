@@ -7,8 +7,10 @@ const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
-const TIMELINE_HEIGHT = 150;
-const TIMELINE_SEGMENT_TOP = 24;
+const TIMELINE_HEIGHT = 210;
+const TIMELINE_OVERLAY_TOP = 24;
+const TIMELINE_OVERLAY_HEIGHT = 50;
+const TIMELINE_SEGMENT_TOP = 86;
 const TIMELINE_SEGMENT_HEIGHT = 62;
 const TIMELINE_SCENE_AUDIO_TOP = TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT + 10;
 const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
@@ -821,6 +823,7 @@ function newSegment(start = 0, end = 4) {
   const now = Date.now();
   return {
     id: `seg_${now}_${Math.floor(Math.random() * 10000)}`,
+    track: "base",
     start,
     end,
     label: "New scene",
@@ -1600,8 +1603,9 @@ function openBuilder(node) {
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
-  timelineHeader.style.cssText = "display:grid;grid-template-columns:auto auto auto auto auto auto auto auto auto minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
+  timelineHeader.style.cssText = "display:grid;grid-template-columns:auto auto auto auto auto auto auto auto auto auto minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
   const addSegmentButton = makeButton("Add Segment", "primary");
+  const addOverlaySegmentButton = makeButton("Add Insert", "primary");
   const undoButton = makeButton("Undo");
   const redoButton = makeButton("Redo");
   const playButton = makeButton("Play");
@@ -1610,6 +1614,7 @@ function openBuilder(node) {
   const zoomOutButton = makeButton("-");
   const zoomInButton = makeButton("+");
   addSegmentButton.title = "Add segment";
+  addOverlaySegmentButton.title = "Add an insert/overlay segment at the playhead without changing the base timeline.";
   undoButton.title = "Undo";
   redoButton.title = "Redo";
   playButton.title = "Play / Pause";
@@ -1618,6 +1623,7 @@ function openBuilder(node) {
   zoomOutButton.title = "Zoom out timeline";
   zoomInButton.title = "Zoom in timeline";
   addSegmentButton.textContent = "+ Segment";
+  addOverlaySegmentButton.textContent = "+ Insert";
   undoButton.textContent = "↶";
   redoButton.textContent = "↷";
   playButton.textContent = "▶";
@@ -1625,7 +1631,7 @@ function openBuilder(node) {
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [addSegmentButton, undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
   }
@@ -1676,7 +1682,7 @@ function openBuilder(node) {
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(addSegmentButton, undoButton, redoButton, playButton, stopButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -1785,7 +1791,9 @@ function openBuilder(node) {
     peaks: [],
     beats: [],
     segments: [],
+    overlaySegments: [],
     activeId: "",
+    activeTrack: "base",
     inspectorTab: "scene",
     pxPerSecond: 45,
     timelineZoom: 45,
@@ -1845,8 +1853,33 @@ function openBuilder(node) {
     }
   }
 
+  function allEditableSegments() {
+    return [...state.segments, ...state.overlaySegments];
+  }
+
+  function segmentTrack(segment) {
+    if (!segment) return "base";
+    if (state.overlaySegments.some((item) => item.id === segment.id)) return "overlay";
+    return "base";
+  }
+
+  function segmentIndexInfo(segment) {
+    if (!segment) return { track: "base", index: -1 };
+    const baseIndex = state.segments.findIndex((item) => item.id === segment.id);
+    if (baseIndex >= 0) return { track: "base", index: baseIndex };
+    const overlayIndex = state.overlaySegments.findIndex((item) => item.id === segment.id);
+    if (overlayIndex >= 0) return { track: "overlay", index: overlayIndex };
+    return { track: segment.track === "overlay" ? "overlay" : "base", index: -1 };
+  }
+
+  function sceneSlotNumber(segment) {
+    const info = segmentIndexInfo(segment);
+    if (info.track === "overlay") return 10000 + Math.max(0, info.index) + 1;
+    return Math.max(0, info.index) + 1;
+  }
+
   function activeSegment() {
-    return state.segments.find((segment) => segment.id === state.activeId) || null;
+    return allEditableSegments().find((segment) => segment.id === state.activeId) || null;
   }
 
   function usingSceneAudioMode() {
@@ -1894,8 +1927,9 @@ function openBuilder(node) {
 
   function timelineDuration() {
     const segmentEnd = state.segments.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
+    const overlayEnd = state.overlaySegments.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
     const sceneAudioEnd = state.segments.reduce((max, segment) => Math.max(max, segment.custom_audio_path ? audioTimelineEnd(segment) : 0), 0);
-    return Math.max(segmentEnd, sceneAudioEnd, Number(state.duration || 0), Number(audio.duration || 0));
+    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, Number(state.duration || 0), Number(audio.duration || 0));
   }
 
   function currentGlobalTime() {
@@ -2049,7 +2083,17 @@ function openBuilder(node) {
   function ensureAllSegmentRuntimeFields() {
     state.segments = (Array.isArray(state.segments) ? state.segments : [])
       .filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment))
-      .map((segment) => ensureSegmentRuntimeFields(segment));
+      .map((segment) => {
+        segment.track = "base";
+        return ensureSegmentRuntimeFields(segment);
+      });
+    state.overlaySegments = (Array.isArray(state.overlaySegments) ? state.overlaySegments : [])
+      .filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment))
+      .map((segment) => {
+        segment.track = "overlay";
+        return ensureSegmentRuntimeFields(segment);
+      });
+    sortSegments(state.overlaySegments);
   }
 
   function cloneZImageSettings(settings) {
@@ -2091,7 +2135,9 @@ function openBuilder(node) {
   function historySnapshot() {
     return JSON.stringify({
       segments: state.segments,
+      overlaySegments: state.overlaySegments,
       activeId: state.activeId,
+      activeTrack: state.activeTrack,
       timingFrozen: state.timingFrozen,
       srtMode: state.srtMode,
       promptJsonPath: state.promptJsonPath,
@@ -2123,8 +2169,10 @@ function openBuilder(node) {
     const data = JSON.parse(snapshot);
     state.isRestoringHistory = true;
     state.segments = data.segments || [];
+    state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
     ensureAllSegmentRuntimeFields();
     state.activeId = data.activeId || state.segments[0]?.id || "";
+    state.activeTrack = data.activeTrack || data.active_track || segmentTrack(activeSegment()) || "base";
     state.timingFrozen = Boolean(data.timingFrozen);
     state.srtMode = Boolean(data.srtMode);
     state.promptJsonPath = data.promptJsonPath || "";
@@ -2267,6 +2315,7 @@ function openBuilder(node) {
 
   function setActiveSegment(segment) {
     state.activeId = segment?.id || "";
+    state.activeTrack = segment ? segmentTrack(segment) : state.activeTrack || "base";
     syncInspector();
     render();
   }
@@ -2391,8 +2440,9 @@ function openBuilder(node) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
-    startInput.disabled = disabled || state.timingFrozen || lockedByVideo;
-    endInput.disabled = disabled || state.timingFrozen || lockedByVideo;
+    const isOverlay = segmentTrack(segment) === "overlay";
+    startInput.disabled = disabled || (!isOverlay && state.timingFrozen) || lockedByVideo;
+    endInput.disabled = disabled || (!isOverlay && state.timingFrozen) || lockedByVideo;
     freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     promptJsonInput.value = state.promptJsonPath || "";
     i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
@@ -2937,7 +2987,8 @@ function openBuilder(node) {
     if (!segment) return;
     pushHistory();
     segment.label = labelInput.value || "Scene";
-    if (!state.timingFrozen && !hasLockedVideo(segment)) {
+    const isOverlay = segmentTrack(segment) === "overlay";
+    if ((!state.timingFrozen || isOverlay) && !hasLockedVideo(segment)) {
       segment.start = Math.max(0, Number(startInput.value || 0));
       segment.end = Math.max(segment.start + 0.1, Number(endInput.value || segment.start + 4));
     }
@@ -2950,7 +3001,8 @@ function openBuilder(node) {
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
-    if (!state.timingFrozen && !hasLockedVideo(segment)) normalizeSegments(segment);
+    if (!state.timingFrozen && !hasLockedVideo(segment) && !isOverlay) normalizeSegments(segment);
+    if (isOverlay) sortSegments(state.overlaySegments);
     render();
   }
 
@@ -3114,21 +3166,31 @@ function openBuilder(node) {
   function renderSegments() {
     segmentLayer.textContent = "";
     ensureAllSegmentRuntimeFields();
-    for (const segment of state.segments) {
+    const overlayLabel = document.createElement("div");
+    overlayLabel.textContent = "INSERTS";
+    overlayLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_OVERLAY_TOP - 17}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;`;
+    const baseLabel = document.createElement("div");
+    baseLabel.textContent = "BASE";
+    baseLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_SEGMENT_TOP - 17}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;`;
+    segmentLayer.append(overlayLabel, baseLabel);
+    for (const segment of [...state.overlaySegments, ...state.segments]) {
+      const isOverlay = segmentTrack(segment) === "overlay";
+      const blockTop = isOverlay ? TIMELINE_OVERLAY_TOP : TIMELINE_SEGMENT_TOP;
+      const blockHeight = isOverlay ? TIMELINE_OVERLAY_HEIGHT : TIMELINE_SEGMENT_HEIGHT;
       const block = document.createElement("button");
       block.type = "button";
-      block.innerHTML = `<span style="display:block;font-weight:900;">${escapeHtml(segment.label || "Scene")}</span><span style="display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">Duration in seconds: ${formatDurationSeconds(segment.start, segment.end)}</span>`;
+      block.innerHTML = `<span style="display:block;font-weight:900;">${escapeHtml(segment.label || (isOverlay ? "Insert" : "Scene"))}</span><span style="display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
       const left = segment.start * state.pxPerSecond;
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
       const previewThumbPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || segment.custom_image_path || segment.approved_image_path || "";
       const thumb = previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
-      const inserted = state.srtMode && segment.source !== "srt";
+      const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
       block.style.cssText = `
-        position:absolute;left:${left}px;top:${TIMELINE_SEGMENT_TOP}px;width:${width}px;height:${TIMELINE_SEGMENT_HEIGHT}px;
-        border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : lockedByVideo ? "#a3e635" : inserted ? "#f59e0b" : "#0891b2"};
-        border-radius:5px;background:${thumb ? `linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)), url("${thumb}") center / auto 100% repeat-x` : inserted ? "#92400e" : segment.image ? "#166534" : "#164e63"};
+        position:absolute;left:${left}px;top:${blockTop}px;width:${width}px;height:${blockHeight}px;
+        border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2"};
+        border-radius:5px;background:${thumb ? `linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)), url("${thumb}") center / auto 100% repeat-x` : isOverlay ? "#7c2d12" : inserted ? "#92400e" : segment.image ? "#166534" : "#164e63"};
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
         box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.55)" : "none"};
       `;
@@ -3184,7 +3246,7 @@ function openBuilder(node) {
       makeDragHandle(leftHandle, segment, "start");
       makeDragHandle(rightHandle, segment, "end");
       segmentLayer.append(block);
-      if (segment.custom_audio_peaks?.length) {
+      if (!isOverlay && segment.custom_audio_peaks?.length) {
         const audioStart = audioTimelineStart(segment);
         const audioDuration = Math.max(0.1, audioChunkDuration(segment));
         const audioLeft = audioStart * state.pxPerSecond;
@@ -3250,7 +3312,7 @@ function openBuilder(node) {
         toast("Set a project folder first so the scene audio can be copied there.", true);
         return;
       }
-      const sceneNumber = state.segments.findIndex((item) => item.id === segment.id) + 1;
+      const sceneNumber = sceneSlotNumber(segment);
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -3458,7 +3520,8 @@ function openBuilder(node) {
     const rect = event.currentTarget?.getBoundingClientRect?.();
     const ratio = rect ? Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) : 0.5;
     const cutTime = Number(segment.start || 0) + ratio * Math.max(0.1, Number(segment.end || 0) - Number(segment.start || 0));
-    const locked = hasLockedVideo(segment) || state.timingFrozen;
+    const isOverlay = segmentTrack(segment) === "overlay";
+    const locked = hasLockedVideo(segment) || (state.timingFrozen && !isOverlay);
     addItem("Cut here", () => {
       if (locked) {
         toast("Timing is frozen or this scene has video, so it cannot be cut.", true);
@@ -3474,10 +3537,12 @@ function openBuilder(node) {
       const next = newSegment(cutTime, Number(segment.end || cutTime + 4));
       next.label = `${segment.label || "Scene"} copy`;
       next.notes = segment.notes || "";
-      next.source = state.srtMode ? "inserted" : "manual";
+      next.track = isOverlay ? "overlay" : "base";
+      next.source = isOverlay ? "overlay" : state.srtMode ? "inserted" : "manual";
       segment.end = cutTime;
-      const index = state.segments.findIndex((item) => item.id === segment.id);
-      state.segments.splice(index + 1, 0, next);
+      const collection = isOverlay ? state.overlaySegments : state.segments;
+      const index = collection.findIndex((item) => item.id === segment.id);
+      collection.splice(index + 1, 0, next);
       state.activeId = next.id;
       render();
     }, locked);
@@ -3495,7 +3560,8 @@ function openBuilder(node) {
 
   function makeDragHandle(element, segment, mode) {
     element.addEventListener("pointerdown", (event) => {
-      if (state.timingFrozen) {
+      const isOverlay = segmentTrack(segment) === "overlay";
+      if (state.timingFrozen && !isOverlay) {
         toast("Timing is frozen. Unfreeze timing before editing segment lengths.", true);
         return;
       }
@@ -3524,7 +3590,8 @@ function openBuilder(node) {
           segment.start = Math.max(0, Math.min((state.duration || 9999) - duration, snapTimeToBeat(start + delta)));
           segment.end = segment.start + duration;
         }
-        normalizeSegments(segment);
+        if (isOverlay) sortSegments(state.overlaySegments);
+        else normalizeSegments(segment);
         syncInspector();
         render();
       };
@@ -3595,6 +3662,31 @@ function openBuilder(node) {
       enableImageDrop(row, segment);
       segmentList.append(row);
     }
+    if (state.overlaySegments.length) {
+      const header = document.createElement("div");
+      header.textContent = "Insert timeline";
+      header.style.cssText = "margin:10px 0 8px;color:#fdba74;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;";
+      segmentList.append(header);
+    }
+    for (const [index, segment] of state.overlaySegments.entries()) {
+      const row = document.createElement("div");
+      row.role = "button";
+      row.tabIndex = 0;
+      const previewThumbPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || segment.custom_image_path || segment.approved_image_path || "";
+      const thumb = previewThumbPath ? `<img src="${makeEditorImageUrl(previewThumbPath)}" style="width:100%;height:50px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">` : "";
+      const isActive = Boolean(state.activeId) && segment.id === state.activeId;
+      row.style.cssText = `width:100%;text-align:left;border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : "#f97316"};border-radius:7px;background:${isActive ? "#3f1d24" : "#431407"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
+      row.innerHTML = `<div style="font-weight:800;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Insert ${index + 1}. ${escapeHtml(segment.label || "Insert")}</div><div style="font-size:11px;color:#fed7aa;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>${thumb}`;
+      row.onclick = () => setActiveSegment(segment);
+      row.onkeydown = (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setActiveSegment(segment);
+        }
+      };
+      enableImageDrop(row, segment);
+      segmentList.append(row);
+    }
   }
 
   function imageFileFromDrop(event) {
@@ -3616,7 +3708,7 @@ function openBuilder(node) {
       const projectFolder = projectInput.value || state.projectFolder;
       if (projectFolder) {
         try {
-          const sceneNumber = state.segments.findIndex((item) => item.id === segment.id) + 1;
+          const sceneNumber = sceneSlotNumber(segment);
           const saved = await postJson("/vrgdg/music_builder/archive_scene_image", {
             image_data: imageData,
             project_folder: projectFolder,
@@ -3700,7 +3792,7 @@ function openBuilder(node) {
     if (path) {
       segment.ref_image_path = path;
     } else if (data) {
-      const sceneNumber = state.segments.findIndex((item) => item.id === segment.id) + 1;
+      const sceneNumber = sceneSlotNumber(segment);
       const saved = await postJson("/vrgdg/music_builder/archive_scene_image", {
         image_data: data,
         project_folder: projectInput.value || state.projectFolder,
@@ -3985,7 +4077,7 @@ function openBuilder(node) {
     renderSegments();
     renderList();
     updateSelectedMediaTools();
-    timelineInfo.textContent = `${state.segments.length} segment${state.segments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
+    timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} insert${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
   }
 
   async function loadAudio() {
@@ -4039,6 +4131,7 @@ function openBuilder(node) {
       });
       pushHistory();
       state.segments = data.segments || [];
+      state.overlaySegments = [];
       state.srtPath = data.srt_path || "";
       state.activeId = state.segments[0]?.id || "";
       state.timingFrozen = true;
@@ -4117,6 +4210,7 @@ function openBuilder(node) {
         srtInput.value = data.srt_path || "";
         state.srtPath = srtInput.value;
         state.segments = data.segments || [];
+        state.overlaySegments = [];
         state.activeId = state.segments[0]?.id || "";
         state.timingFrozen = true;
         state.srtMode = true;
@@ -4218,7 +4312,7 @@ function openBuilder(node) {
   }
 
   function clearGeneratedSceneOutputsForImport() {
-    for (const segment of state.segments) {
+    for (const segment of allEditableSegments()) {
       ensureSegmentRuntimeFields(segment);
       segment.t2i_prompt = "";
       segment.i2v_prompt = "";
@@ -4361,6 +4455,8 @@ function openBuilder(node) {
   function currentSessionData() {
     return {
       segments: state.segments,
+      overlay_segments: state.overlaySegments,
+      active_track: state.activeTrack,
       timing_frozen: state.timingFrozen,
       srt_mode: state.srtMode,
       prompt_json_path: state.promptJsonPath,
@@ -4443,6 +4539,9 @@ function openBuilder(node) {
       state.sessionPath = data.session_path || "";
       state.srtPath = data.srt_path || "";
       if (data.session) {
+        state.overlaySegments = Array.isArray(data.session.overlay_segments) ? data.session.overlay_segments : state.overlaySegments;
+        ensureAllSegmentRuntimeFields();
+        state.activeTrack = data.session.active_track || state.activeTrack || "base";
         state.timingFrozen = Boolean(data.session.timing_frozen);
         state.srtMode = Boolean(data.session.srt_mode);
         state.promptJsonPath = data.session.prompt_json_path || state.promptJsonPath;
@@ -4564,6 +4663,7 @@ function openBuilder(node) {
       const session = data.session || {};
       pushHistory();
       state.segments = Array.isArray(session.segments) ? session.segments : [];
+      state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       ensureAllSegmentRuntimeFields();
       state.projectFolder = data.project_folder || folder;
       state.sessionPath = data.session_path || "";
@@ -4629,6 +4729,14 @@ function openBuilder(node) {
           segment.video_status = "done";
           restored += 1;
         }
+        for (const [index, segment] of state.overlaySegments.entries()) {
+          const videoPath = videos[String(10000 + index + 1)] || "";
+          if (!videoPath) continue;
+          segment.video_path = videoPath;
+          segment.video_folder = scan.video_folder || segment.video_folder || "";
+          segment.video_status = "done";
+          restored += 1;
+        }
         if (restored) console.log(`[VRGDG Music Builder] Restored ${restored} scene video path(s) from project folder.`);
       } catch (error) {
         console.warn("[VRGDG Music Builder] Scene video scan failed:", error);
@@ -4639,7 +4747,8 @@ function openBuilder(node) {
       setWidgetValue(node, "session_path", state.sessionPath);
       setWidgetValue(node, "srt_path", state.srtPath);
       rememberLastProject(state.projectFolder);
-      state.activeId = state.segments[0]?.id || "";
+      state.activeTrack = session.active_track || "base";
+      state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
       syncZEnhanceSettingsPanel();
@@ -4663,6 +4772,7 @@ function openBuilder(node) {
       state.sessionPath = "";
       state.srtPath = "";
       state.segments = [newSegment(0, 4)];
+      state.overlaySegments = [];
       state.activeId = state.segments[0]?.id || "";
     }
     let projects = [];
@@ -4712,7 +4822,7 @@ function openBuilder(node) {
     const projectFolder = projectInput.value || state.projectFolder;
     if (!projectFolder) return null;
     try {
-      const sceneNumber = state.segments.findIndex((item) => item.id === segment.id) + 1;
+      const sceneNumber = sceneSlotNumber(segment);
       const data = await postJson("/vrgdg/music_builder/archive_scene_image", {
         image: imageInfo,
         project_folder: projectFolder,
@@ -4820,7 +4930,7 @@ function openBuilder(node) {
 
   async function generateT2IPromptForSegment(segment, progress = null, percent = 30, label = "Gemma T2I") {
     const missing = t2iMissingReason(segment);
-    if (missing) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: ${missing}`);
+    if (missing) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${missing}`);
     state.activeId = segment.id;
     syncInspector();
     progress?.set(`${label}: preparing Gemma input...`, percent);
@@ -4848,7 +4958,7 @@ function openBuilder(node) {
     state.activeId = segment.id;
     syncInspector();
     const prompt = String(segment.t2i_prompt || segment.notes || "").trim();
-    if (!prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: T2I prompt is missing.`);
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     progress?.set(`${label}: preparing ZImage settings...`, percentBase);
     const zSettings = saveZImageSettingsFromPanel();
     const useLoras = Boolean(zSettings.use_loras && zSettings.lora_count > 0);
@@ -4995,7 +5105,7 @@ function openBuilder(node) {
     render();
     const settings = fluxKleinSettingsForSegment(segment);
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: add at least one global or scene Flux/Klein image ingredient.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
     }
     progress?.set(`${label}: combining global and scene image ingredients for Gemma vision...`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
@@ -5025,9 +5135,9 @@ function openBuilder(node) {
     render();
     const settings = fluxKleinSettingsForSegment(segment);
     const prompt = String(settings.prompt || segment.flux_prompt || segment.t2i_prompt || "").trim();
-    if (!prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Flux/Klein prompt is missing.`);
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flux/Klein prompt is missing.`);
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: add at least one global or scene Flux/Klein image ingredient.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
     }
     progress?.set(`${label}: building hidden Flux/Klein workflow...`, percentBase + percentSpan * 0.25);
     const built = await postJson("/vrgdg/workflow_runner/build_flux_klein_prompt", {
@@ -5317,7 +5427,7 @@ function openBuilder(node) {
   async function generateTextOnlyI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V") {
     if (!segment) throw new Error("Scene is missing.");
     const t2iText = String(segment.t2i_prompt || "").trim();
-    if (!t2iText) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: T2I prompt is missing.`);
+    if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     progress?.set(`${label}: converting T2I prompt to I2V prompt without vision...`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_i2v", {
       model_file: i2vGemmaModelSelect.value,
@@ -5333,7 +5443,7 @@ function openBuilder(node) {
     });
     pushHistory();
     segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
-    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Gemma returned an empty I2V prompt.`);
+    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
     return data;
@@ -5345,10 +5455,10 @@ function openBuilder(node) {
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = String(segment.t2i_prompt || "").trim();
     if (useImageReference && !imageReference.path && !imageReference.data) {
-      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: I2V image reference is enabled, but no scene image was found.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: I2V image reference is enabled, but no scene image was found.`);
     }
     if (!useImageReference && !t2iText) {
-      throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: T2I prompt is missing.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     }
     progress?.set(useImageReference
       ? `${label}: creating I2V prompt from scene image and motion notes...`
@@ -5367,7 +5477,7 @@ function openBuilder(node) {
     });
     pushHistory();
     segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
-    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Gemma returned an empty I2V prompt.`);
+    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
     return data;
@@ -5376,10 +5486,11 @@ function openBuilder(node) {
   async function i2vAllTextOnlyScenes(options = {}) {
     const progress = options.progress || createProgressWindow("Gemma I2V All Scenes");
     const closeProgress = !options.progress;
-    const scenes = [...state.segments];
+    const scenes = allEditableSegments();
     const missing = [];
     if (!scenes.length) missing.push("No scenes found. Add or load scenes first.");
-    scenes.forEach((segment, index) => {
+    scenes.forEach((segment) => {
+      const index = segmentIndexInfo(segment).index;
       const useImageReference = segment.use_i2v_vision_reference !== false;
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -5412,10 +5523,11 @@ function openBuilder(node) {
         render();
         const base = Math.floor((index / scenes.length) * 100);
         const useImageReference = segment.use_i2v_vision_reference !== false;
-        progress.set(`Gemma I2V All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, index)}\n${useImageReference ? "Using scene image reference." : "Using T2I prompt text only."}`, base);
+        const displayIndex = segmentIndexInfo(segment).index;
+        progress.set(`Gemma I2V All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\n${useImageReference ? "Using scene image reference." : "Using T2I prompt text only."}`, base);
         await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma I2V All ${index + 1}/${scenes.length}`);
-        await autoSaveSessionQuiet(`Gemma I2V All scene ${index + 1}`);
-        await runClearMemoryWorkflowQuiet(progress, sceneDisplayName(segment, index), Math.min(98, base + 70));
+        await autoSaveSessionQuiet(`Gemma I2V All ${sceneDisplayName(segment, displayIndex)}`);
+        await runClearMemoryWorkflowQuiet(progress, sceneDisplayName(segment, displayIndex), Math.min(98, base + 70));
       }
       await autoSaveSessionQuiet("Gemma I2V All complete");
       progress.set("Gemma I2V All complete.", 100);
@@ -5443,7 +5555,7 @@ function openBuilder(node) {
 
   function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden I2V workflow...", details = {}) {
     const promptNumber = Number(details.promptNumber || sceneIndex + 1);
-    const imageIndex = sceneIndex;
+    const imageIndex = sceneSlotNumber(segment) - 1;
     const imageSource = segmentImageSource(segment);
     const imagePath = imageSource?.path || "";
     const imageSrc = imagePath ? makeEditorImageUrl(imagePath) : imageSource?.data || "";
@@ -5499,7 +5611,13 @@ function openBuilder(node) {
   }
 
   function sceneDisplayName(segment, sceneIndex) {
-    return `${sceneIndex + 1}. ${segment?.label || `Scene ${sceneIndex + 1}`}`;
+    const info = segmentIndexInfo(segment);
+    if (info.track === "overlay") {
+      const index = info.index >= 0 ? info.index : sceneIndex;
+      return `Insert ${index + 1}. ${segment?.label || `Insert ${index + 1}`}`;
+    }
+    const index = sceneIndex >= 0 ? sceneIndex : info.index;
+    return `${index + 1}. ${segment?.label || `Scene ${index + 1}`}`;
   }
 
   function validateSceneReadyForVideo(segment, sceneIndex) {
@@ -5564,7 +5682,7 @@ function openBuilder(node) {
       source_path: source.path || "",
       image_data: source.data || "",
       project_folder: projectFolder,
-      scene_number: sceneIndex + 1,
+      scene_number: sceneSlotNumber(segment),
     });
     segment.approved_image_path = data.saved_path || "";
     ensureSegmentRuntimeFields(segment);
@@ -5573,8 +5691,9 @@ function openBuilder(node) {
 
   function validateRenderAllReady() {
     const missing = [];
-    if (!state.segments.length) missing.push("No scenes found. Add or load scenes first.");
-    const scenesToRender = state.segments
+    const allScenes = allEditableSegments();
+    if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
+    const scenesToRender = allScenes
       .map((segment, index) => ({ segment, index }))
       .filter(({ segment }) => !String(segment?.video_path || "").trim());
     const sceneAudioMode = usingSceneAudioMode();
@@ -5587,8 +5706,8 @@ function openBuilder(node) {
       });
     }
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
-    scenesToRender.forEach(({ segment, index }) => {
-      missing.push(...validateSceneReadyForVideo(segment, index));
+    scenesToRender.forEach(({ segment }) => {
+      missing.push(...validateSceneReadyForVideo(segment, segmentIndexInfo(segment).index));
     });
     return missing;
   }
@@ -5605,12 +5724,12 @@ function openBuilder(node) {
 
   function validateZImageAllReady() {
     const missing = [];
-    if (!state.segments.length) missing.push("No scenes found. Add or load scenes first.");
+    if (!allEditableSegments().length) missing.push("No scenes found. Add or load scenes first.");
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
-    state.segments.forEach((segment, index) => {
+    allEditableSegments().forEach((segment) => {
       if (segmentImageSource(segment)) return;
       const reason = t2iMissingReason(segment);
-      if (reason) missing.push(`${sceneDisplayName(segment, index)}: ${reason}`);
+      if (reason) missing.push(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${reason}`);
     });
     return missing;
   }
@@ -5657,6 +5776,7 @@ function openBuilder(node) {
     const progressSpan = Number(options.progressSpan ?? 100);
     const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
     const pct = (value) => Math.min(100, progressBase + (progressSpan * value / 100));
+    const slotNumber = sceneSlotNumber(segment);
     state.activeId = segment.id;
     syncInspector();
     updateActiveFromInputs();
@@ -5684,7 +5804,7 @@ function openBuilder(node) {
       }
       const trimmedAudio = await postJson("/vrgdg/music_builder/trim_scene_audio", {
         project_folder: projectInput.value,
-        scene_number: sceneIndex + 1,
+        scene_number: slotNumber,
         source_path: sourceAudioPath,
         start: sourceStart,
         duration: sceneDuration,
@@ -5692,7 +5812,7 @@ function openBuilder(node) {
       audioPathForScene = trimmedAudio.audio_path || sourceAudioPath;
       const singleSrt = await postJson("/vrgdg/music_builder/save_single_scene_srt", {
         project_folder: projectInput.value,
-        scene_number: sceneIndex + 1,
+        scene_number: slotNumber,
         duration: sceneDuration,
         label: segment.label || `Scene ${sceneIndex + 1}`,
       }, 60000);
@@ -5719,7 +5839,7 @@ function openBuilder(node) {
       i2v_prompt: segment.i2v_prompt,
       audio_path: audioPathForScene,
       image_folder: i2vImagesFolder(),
-      image_index_zero_based: sceneIndex,
+      image_index_zero_based: slotNumber - 1,
       prompt_number_one_based: promptNumberForScene,
       srt_path: srtPath,
       project_folder: projectInput.value,
@@ -5748,7 +5868,7 @@ function openBuilder(node) {
     const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
       source_path: videoPath,
       project_folder: projectInput.value,
-      scene_number: sceneIndex + 1,
+      scene_number: slotNumber,
       existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
     pushHistory();
@@ -5772,6 +5892,14 @@ function openBuilder(node) {
 
   async function stitchRenderedScenes(progress) {
     const paths = state.segments.map((segment) => String(segment.video_path || "").trim());
+    const overlayItems = state.overlaySegments
+      .filter((segment) => String(segment.video_path || "").trim())
+      .map((segment, index) => ({
+        path: String(segment.video_path || "").trim(),
+        start: Number(segment.start || 0),
+        end: Number(segment.end || 0),
+        label: segment.label || `Insert ${index + 1}`,
+      }));
     const sceneAudioMode = usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? state.segments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? state.segments.map((segment) => ({
@@ -5791,6 +5919,7 @@ function openBuilder(node) {
       audio_path: audioInput.value,
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
+      overlay_items: overlayItems,
       project_folder: projectInput.value,
     }, 20 * 60 * 1000);
     state.finalVideoPath = data.final_video_path || "";
@@ -5801,7 +5930,8 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
-    const sceneIndex = state.segments.findIndex((item) => item.id === segment.id);
+    const info = segmentIndexInfo(segment);
+    const sceneIndex = info.index;
     if (sceneIndex < 0) return;
     const missing = [
       ...validateSceneReadyForVideo(segment, sceneIndex),
@@ -5855,8 +5985,8 @@ function openBuilder(node) {
       progress.set("Autosaving session/SRT before Render All...", 3);
       await saveSessionForSceneVideo();
       const preparedAudio = await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
-      const scenes = state.segments
-        .map((segment, index) => ({ segment, index }))
+      const scenes = allEditableSegments()
+        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
         .filter(({ segment }) => !String(segment?.video_path || "").trim());
       if (!scenes.length) {
         progress.set("All scenes already have video. Stitching existing scene videos...", 80);
@@ -5873,8 +6003,8 @@ function openBuilder(node) {
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
-          audioPathOverride: preparedAudio.audioPath,
-          srtPathOverride: preparedAudio.srtPath,
+          audioPathOverride: segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
+          srtPathOverride: segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
         });
         assertBatchNotStopped();
         await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
@@ -5922,8 +6052,8 @@ function openBuilder(node) {
       createT2IButton.disabled = true;
       progress.set("Autosaving session/SRT before Z-Image All...", 3);
       await saveSessionForSceneVideo();
-      const scenes = state.segments
-        .map((segment, index) => ({ segment, index }))
+      const scenes = allEditableSegments()
+        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
         .filter(({ segment }) => !segmentImageSource(segment));
       if (!scenes.length) {
         progress.set("All scenes already have images. Skipping Z-Image All.", 100);
@@ -5981,7 +6111,7 @@ function openBuilder(node) {
     updateActiveFromInputs();
     const progress = createProgressWindow("Flux/Klein All Scenes");
     const hasAnyGlobal = Array.isArray(state.fluxGlobalImageIngredients) && state.fluxGlobalImageIngredients.length > 0;
-    if (!hasAnyGlobal && !state.segments.some((segment) => Array.isArray(segment.flux_image_ingredients) && segment.flux_image_ingredients.length)) {
+    if (!hasAnyGlobal && !allEditableSegments().some((segment) => Array.isArray(segment.flux_image_ingredients) && segment.flux_image_ingredients.length)) {
       const message = "Flux/Klein All needs at least one global or scene image ingredient.";
       progress.set(message, 100);
       toast(message, true);
@@ -5996,8 +6126,8 @@ function openBuilder(node) {
       createFluxPromptButton.disabled = true;
       progress.set("Autosaving session/SRT before Flux/Klein All...", 3);
       await saveSessionForSceneVideo();
-      const scenes = state.segments
-        .map((segment, index) => ({ segment, index }))
+      const scenes = allEditableSegments()
+        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
         .filter(({ segment }) => !segmentImageSource(segment));
       if (!scenes.length) {
         progress.set("All scenes already have images. Skipping Flux/Klein All.", 100);
@@ -6155,12 +6285,34 @@ function openBuilder(node) {
     autoSaveSessionQuiet("segment added");
   }
 
+  async function addOverlaySegment() {
+    const duration = 4;
+    const start = Math.max(0, snapTimeToBeat(currentGlobalTime()));
+    const end = Math.min(Math.max(start + duration, start + 0.1), Math.max(start + duration, timelineDuration() || start + duration));
+    const segment = newSegment(start, end);
+    segment.track = "overlay";
+    segment.source = "overlay";
+    segment.label = `Insert ${state.overlaySegments.length + 1}`;
+    pushHistory();
+    state.overlaySegments.push(segment);
+    sortSegments(state.overlaySegments);
+    state.duration = Math.max(Number(state.duration || 0), end);
+    setActiveSegment(segment);
+    await autoSaveSessionQuiet("insert segment added");
+  }
+
   async function deleteSegment() {
     const segment = activeSegment();
     if (!segment) return;
     pushHistory();
-    state.segments = state.segments.filter((item) => item.id !== segment.id);
-    state.activeId = state.segments[0]?.id || "";
+    if (segmentTrack(segment) === "overlay") {
+      state.overlaySegments = state.overlaySegments.filter((item) => item.id !== segment.id);
+      state.activeId = state.overlaySegments[0]?.id || state.segments[0]?.id || "";
+    } else {
+      state.segments = state.segments.filter((item) => item.id !== segment.id);
+      state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
+    }
+    state.activeTrack = segmentTrack(activeSegment());
     syncInspector();
     render();
     await syncPromptJsonFromSegments("segment deleted");
@@ -6265,6 +6417,8 @@ function openBuilder(node) {
     state.sessionPath = sessionPath || "";
     state.srtPath = srtPath || "";
     state.segments = [newSegment(0, 4)];
+    state.overlaySegments = [];
+    state.activeTrack = "base";
     state.activeId = state.segments[0]?.id || "";
     state.sceneAudioMode = false;
     state.sceneAudioSegmentId = "";
@@ -6751,6 +6905,7 @@ function openBuilder(node) {
   importPromptJsonButton.onclick = importPromptJson;
   importI2VMotionJsonButton.onclick = importI2VMotionJson;
   addSegmentButton.onclick = addSegment;
+  addOverlaySegmentButton.onclick = addOverlaySegment;
   createT2IButton.onclick = createT2IPromptWithGemma;
   createI2VButton.onclick = createI2VPromptWithGemma;
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);

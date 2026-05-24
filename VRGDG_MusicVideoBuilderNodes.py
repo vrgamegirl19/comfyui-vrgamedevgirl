@@ -285,6 +285,10 @@ def _save_builder_project_as(payload):
     segments = session.get("segments", [])
     if not isinstance(segments, list):
         segments = []
+    overlay_segments = session.get("overlay_segments", [])
+    if not isinstance(overlay_segments, list):
+        overlay_segments = []
+        session["overlay_segments"] = overlay_segments
     audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
     audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
     audio_path, session = _snapshot_project_assets(target, session, audio_path, source)
@@ -570,6 +574,36 @@ def _copy_session_assets_to_project(project_folder, session):
                 if copied:
                     ingredient["path"] = copied
 
+    overlay_segments = session.get("overlay_segments", [])
+    if isinstance(overlay_segments, list):
+        for overlay_index, segment in enumerate(overlay_segments, start=1):
+            if not isinstance(segment, dict):
+                continue
+            scene_number = 10000 + overlay_index
+            segment["track"] = "overlay"
+            approved = str(segment.get("approved_image_path", "") or "").strip()
+            if approved and os.path.isfile(approved):
+                ext = os.path.splitext(approved)[1] or ".png"
+                segment["approved_image_path"] = _copy_file_if_exists(
+                    approved,
+                    _scene_image_path(project_folder, scene_number, ext),
+                )
+            video_path = str(segment.get("video_path", "") or "").strip()
+            if video_path and os.path.isfile(video_path):
+                target_video = os.path.join(project_folder, "rendered_scene_videos", f"video_{scene_number:04d}-audio.mp4")
+                segment["video_path"] = _copy_file_if_exists(video_path, target_video)
+                segment["video_folder"] = os.path.dirname(segment["video_path"])
+                segment["video_status"] = "done"
+            for key in (
+                "custom_image_path",
+                "ref_image_path",
+                "flux_subject_image_path",
+                "flux_location_image_path",
+            ):
+                copied = _copy_reference_asset(project_folder, scene_number, key, segment.get(key, ""))
+                if copied:
+                    segment[key] = copied
+
     return session
 
 
@@ -589,9 +623,12 @@ def _rebase_project_owned_paths(project_folder, old_project_folder, session):
                 ingredient["path"] = rebased
 
     segments = session.get("segments", [])
+    overlay_segments = session.get("overlay_segments", [])
     if not isinstance(segments, list):
         return session
-    for segment in segments:
+    if not isinstance(overlay_segments, list):
+        overlay_segments = []
+    for segment in list(segments) + list(overlay_segments):
         if not isinstance(segment, dict):
             continue
         for key in (
@@ -740,6 +777,10 @@ def _rehydrate_builder_session(project_folder, session):
     if not isinstance(segments, list):
         session["segments"] = []
         segments = session["segments"]
+    overlay_segments = session.get("overlay_segments", [])
+    if not isinstance(overlay_segments, list):
+        session["overlay_segments"] = []
+        overlay_segments = session["overlay_segments"]
 
     existing_count = len(segments)
     asset_numbers = _project_scene_numbers(project_folder)
@@ -806,6 +847,39 @@ def _rehydrate_builder_session(project_folder, session):
         if segment["image_history"] and not isinstance(segment.get("image_history_index"), int):
             segment["image_history_index"] = len(segment["image_history"]) - 1
         video_path = os.path.join(project_folder, "rendered_scene_videos", f"video_{index:04d}-audio.mp4")
+        if os.path.isfile(video_path):
+            segment["video_path"] = os.path.abspath(video_path)
+            segment["video_folder"] = os.path.dirname(os.path.abspath(video_path))
+            segment["video_status"] = "done"
+    for index, segment in enumerate(overlay_segments, start=1):
+        if not isinstance(segment, dict):
+            continue
+        scene_number = 10000 + index
+        if not str(segment.get("label", "") or "").strip() or str(segment.get("label", "")).lower() == "new scene":
+            segment["label"] = f"Insert {index}"
+        segment["track"] = "overlay"
+        for key in (
+            "approved_image_path",
+            "custom_image_path",
+            "ref_image_path",
+            "flux_subject_image_path",
+            "flux_location_image_path",
+            "video_path",
+            "custom_audio_path",
+        ):
+            segment[key] = _resolve_project_asset_path(project_folder, old_project_folder, segment.get(key, ""), scene_number)
+        if isinstance(segment.get("image_history"), list):
+            segment["image_history"] = [
+                _resolve_project_asset_path(project_folder, old_project_folder, item, scene_number)
+                for item in segment["image_history"]
+            ]
+            segment["image_history"] = [item for item in segment["image_history"] if item]
+        else:
+            segment["image_history"] = []
+        for preview_path in _scene_preview_paths(project_folder, scene_number):
+            if preview_path not in segment["image_history"]:
+                segment["image_history"].append(preview_path)
+        video_path = os.path.join(project_folder, "rendered_scene_videos", f"video_{scene_number:04d}-audio.mp4")
         if os.path.isfile(video_path):
             segment["video_path"] = os.path.abspath(video_path)
             segment["video_folder"] = os.path.dirname(os.path.abspath(video_path))
@@ -1539,7 +1613,7 @@ def _save_builder_session(payload):
 
     t2i_lines = []
     i2v_lines = []
-    for segment in sorted(segments, key=lambda item: float(item.get("start", 0) or 0)):
+    for segment in sorted(list(segments) + list(overlay_segments), key=lambda item: float(item.get("start", 0) or 0)):
         if str(segment.get("t2i_prompt", "")).strip():
             t2i_lines.append(str(segment.get("t2i_prompt", "")).strip())
         if str(segment.get("i2v_prompt", "")).strip():

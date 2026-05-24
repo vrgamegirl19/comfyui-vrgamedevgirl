@@ -1303,6 +1303,9 @@ def _stitch_scene_videos(payload):
     raw_scene_audio_items = payload.get("scene_audio_items", [])
     if not isinstance(raw_scene_audio_items, list):
         raw_scene_audio_items = []
+    raw_overlay_items = payload.get("overlay_items", [])
+    if not isinstance(raw_overlay_items, list):
+        raw_overlay_items = []
     audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
 
     scene_paths = []
@@ -1366,6 +1369,55 @@ def _stitch_scene_videos(payload):
         temp_video,
     ]
     subprocess.run(concat_cmd, capture_output=True, text=True, check=True)
+
+    overlay_items = []
+    for index, item in enumerate(raw_overlay_items, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Insert {index} overlay item is invalid.")
+        path = os.path.abspath(str(item.get("path", "") or "").strip().strip('"'))
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Insert {index} video was not found: {path}")
+        start = max(0.0, float(item.get("start", 0) or 0))
+        end = max(start + 0.05, float(item.get("end", start + 4) or start + 4))
+        overlay_items.append({"path": path, "start": start, "duration": end - start})
+
+    if overlay_items:
+        overlayed_video = os.path.join(target_dir, "_temp_video_with_inserts.mp4")
+        overlay_cmd = [ffmpeg_path, "-y", "-i", temp_video]
+        for item in overlay_items:
+            overlay_cmd.extend(["-i", item["path"]])
+        filter_parts = ["[0:v]setpts=PTS-STARTPTS[base0]"]
+        previous = "base0"
+        for index, item in enumerate(overlay_items, start=1):
+            overlay_label = f"insert{index}"
+            output_label = f"base{index}"
+            filter_parts.append(
+                f"[{index}:v]trim=duration={item['duration']:.6f},setpts=PTS-STARTPTS+{item['start']:.6f}/TB[{overlay_label}]"
+            )
+            filter_parts.append(
+                f"[{previous}][{overlay_label}]overlay=0:0:eof_action=pass:enable='between(t,{item['start']:.6f},{(item['start'] + item['duration']):.6f})'[{output_label}]"
+            )
+            previous = output_label
+        overlay_cmd.extend([
+            "-filter_complex",
+            ";".join(filter_parts),
+            "-map",
+            f"[{previous}]",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "veryfast",
+            overlayed_video,
+        ])
+        subprocess.run(overlay_cmd, capture_output=True, text=True, check=True)
+        try:
+            os.remove(temp_video)
+        except Exception:
+            pass
+        temp_video = overlayed_video
 
     mux_audio_path = audio_path
     if scene_audio_paths:
@@ -1456,6 +1508,7 @@ def _stitch_scene_videos(payload):
         "video_folder": target_dir,
         "concat_file": "",
         "scene_count": len(scene_paths),
+        "insert_count": len(overlay_items),
         "used_scene_audio": bool(scene_audio_paths),
         "removed_scratch_folders": removed_scratch_folders,
     }
