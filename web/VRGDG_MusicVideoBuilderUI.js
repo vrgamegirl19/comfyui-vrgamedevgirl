@@ -3162,9 +3162,18 @@ function openBuilder(node) {
       ctx.lineTo(x, mid + amp * (waveHeight / 2));
     }
     ctx.stroke();
+    ctx.fillStyle = "rgba(103,232,249,.16)";
+    ctx.fillRect(0, waveTop - 1, width, 1);
+    ctx.fillStyle = "#67e8f9";
+    ctx.font = "11px sans-serif";
+    for (let sec = 0; sec <= timelineDuration(); sec += 10) {
+      const x = sec * state.pxPerSecond;
+      ctx.fillRect(x, 0, 1, timelineCanvas.height);
+      ctx.fillText(formatTime(sec), x + 3, 14);
+    }
     const visibleBeats = state.showBeatMarkers && Array.isArray(state.beats) ? state.beats : [];
-    ctx.strokeStyle = "rgba(250, 204, 21, .72)";
-    ctx.fillStyle = "rgba(250, 204, 21, .96)";
+    ctx.strokeStyle = "rgba(250, 204, 21, .9)";
+    ctx.fillStyle = "rgba(250, 204, 21, .98)";
     ctx.lineWidth = 1;
     for (const beatTime of visibleBeats) {
       const x = Number(beatTime || 0) * state.pxPerSecond;
@@ -3182,15 +3191,6 @@ function openBuilder(node) {
       ctx.arc(x, 20, 3, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = "#67e8f9";
-    ctx.font = "11px sans-serif";
-    for (let sec = 0; sec <= timelineDuration(); sec += 10) {
-      const x = sec * state.pxPerSecond;
-      ctx.fillRect(x, 0, 1, timelineCanvas.height);
-      ctx.fillText(formatTime(sec), x + 3, 14);
-    }
-    ctx.fillStyle = "rgba(103,232,249,.16)";
-    ctx.fillRect(0, waveTop - 1, width, 1);
   }
 
   function drawSegmentAudioWaveform(canvas, peaks) {
@@ -3211,6 +3211,30 @@ function openBuilder(node) {
       ctx.lineTo(x, mid + amp * (height / 2));
     }
     ctx.stroke();
+  }
+
+  function renderBeatMarkersOverlay() {
+    const visibleBeats = state.showBeatMarkers && Array.isArray(state.beats) ? state.beats : [];
+    if (!visibleBeats.length) return;
+    const height = timelineHeight();
+    for (const beatTime of visibleBeats) {
+      const x = Number(beatTime || 0) * state.pxPerSecond;
+      if (!Number.isFinite(x)) continue;
+      const marker = document.createElement("div");
+      marker.title = `Beat ${formatTime(beatTime)}`;
+      marker.style.cssText = `
+        position:absolute;left:${x}px;top:0;width:2px;height:${height}px;
+        z-index:4;pointer-events:none;background:rgba(250,204,21,.95);
+        box-shadow:0 0 8px rgba(250,204,21,.75);
+      `;
+      const cap = document.createElement("div");
+      cap.style.cssText = `
+        position:absolute;left:-4px;top:4px;width:10px;height:10px;
+        border-radius:50%;background:#fde047;box-shadow:0 0 8px rgba(250,204,21,.85);
+      `;
+      marker.append(cap);
+      segmentLayer.append(marker);
+    }
   }
 
   function renderSegments() {
@@ -3315,6 +3339,7 @@ function openBuilder(node) {
         drawSegmentAudioWaveform(audioWave, segment.custom_audio_peaks);
       }
     }
+    renderBeatMarkersOverlay();
   }
 
   function openSceneOptions(segment) {
@@ -7155,6 +7180,12 @@ function openBuilder(node) {
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);
   beatMarkersButton.onclick = async () => {
+    if (state.showBeatMarkers && (!state.beats || !state.beats.length)) {
+      const loaded = await reloadBeatMarkersFromAudio();
+      if (!loaded) setBeatMarkersVisible(false);
+      render();
+      return;
+    }
     const shouldShow = !state.showBeatMarkers;
     setBeatMarkersVisible(shouldShow);
     if (state.showBeatMarkers && (!state.beats || !state.beats.length)) {
