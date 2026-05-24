@@ -970,12 +970,7 @@ function openBuilder(node) {
   previewVideo.playsInline = true;
   previewVideo.muted = true;
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
-  const previewPreloadVideo = document.createElement("video");
-  previewPreloadVideo.preload = "auto";
-  previewPreloadVideo.playsInline = true;
-  previewPreloadVideo.muted = true;
-  previewPreloadVideo.style.display = "none";
-  previewStage.append(previewEmpty, previewImage, previewVideo, previewPreloadVideo);
+  previewStage.append(previewEmpty, previewImage, previewVideo);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -1817,7 +1812,6 @@ function openBuilder(node) {
     sceneAudioMode: false,
     sceneAudioSegmentId: "",
     sceneAudioGlobalTime: 0,
-    previewPlaybackSegmentId: "",
     timingFrozen: false,
     srtMode: false,
     promptJsonPath: "",
@@ -2419,13 +2413,6 @@ function openBuilder(node) {
     return overlay || segmentAtTime(current);
   }
 
-  function nextPlaybackSegmentAfter(time) {
-    const current = Number(time || 0);
-    return [...state.overlaySegments, ...state.segments]
-      .filter((segment) => Number(segment.start || 0) > current + 0.03 && selectedSegmentVideoPath(segment))
-      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0))[0] || null;
-  }
-
   function localPlaybackTime(segment, globalTime) {
     if (!segment) return 0;
     const duration = Math.max(0.1, Number(segment.end || 0) - Number(segment.start || 0));
@@ -2476,7 +2463,6 @@ function openBuilder(node) {
         previewVideo.src = makeEditorVideoUrl(videoPath);
         previewVideo.dataset.path = videoPath;
       }
-      state.previewPlaybackSegmentId = segment.id || "";
       previewVideo.muted = true;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
@@ -2486,7 +2472,6 @@ function openBuilder(node) {
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.dataset.path = "";
-    state.previewPlaybackSegmentId = "";
     previewVideo.style.display = "none";
     if (segment?.custom_image_data) {
       previewImage.src = segment.custom_image_data;
@@ -2612,7 +2597,6 @@ function openBuilder(node) {
     if (previewVideo.dataset.path !== videoPath) {
       previewVideo.src = makeEditorVideoUrl(videoPath);
       previewVideo.dataset.path = videoPath;
-      state.previewPlaybackSegmentId = segment.id || "";
       previewVideo.muted = true;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
@@ -2628,21 +2612,9 @@ function openBuilder(node) {
     }
     if (isTimelinePlaying()) {
       previewVideo.play().catch(() => {});
-      preloadUpcomingPreviewVideo(current);
     } else if (!previewVideo.paused) {
       previewVideo.pause();
     }
-  }
-
-  function preloadUpcomingPreviewVideo(current) {
-    const next = nextPlaybackSegmentAfter(current);
-    const nextPath = selectedSegmentVideoPath(next);
-    if (!nextPath) return;
-    const url = makeEditorVideoUrl(nextPath);
-    if (previewPreloadVideo.dataset.path === nextPath) return;
-    previewPreloadVideo.src = url;
-    previewPreloadVideo.dataset.path = nextPath;
-    previewPreloadVideo.load();
   }
 
   function updateAudioScrubbers() {
