@@ -1187,9 +1187,12 @@ def _validate_builder_gemma_prompt(text, label):
     if not str(text or "").strip():
         raise ValueError(f"Gemma returned an empty {label} prompt.")
     if _looks_like_gemma_repeat_failure(text):
+        hint = "Try again or shorten the notes."
+        if str(label or "").lower() != "flux/klein":
+            hint = "Try again, shorten the notes, or turn off image reference."
         raise ValueError(
             f"Gemma returned repeated/thought text for the {label} prompt. "
-            "Try again, shorten the notes, or turn off image reference."
+            f"{hint}"
         )
 
 
@@ -1550,6 +1553,21 @@ def _generate_flux_klein_prompt(payload):
             max_new_tokens=max_new_tokens,
         )
         text = _clean_visual_gemma_text(text)
+        if _looks_like_gemma_repeat_failure(text):
+            retry_instruction = (
+                f"{instruction}\n\n"
+                "Retry correction: your previous answer contained repeated control/thought text. "
+                "Now output only one clean final image prompt under 90 words."
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[combined_image],
+                instruction_text=retry_instruction,
+                temperature=min(temperature, 0.15),
+                top_p=min(top_p, 0.80),
+                max_new_tokens=min(max_new_tokens, 180),
+            )
+            text = _clean_visual_gemma_text(text)
         _validate_builder_gemma_prompt(text, "Flux/Klein")
         return {"prompt": text, "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after}
     finally:
