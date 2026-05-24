@@ -1,2 +1,16 @@
-MIT License 
-(You can replace this with a full license later) 
+GNU Affero General Public License v3.0
+
+Copyright (c) 2026 Jean Thompson
+
+This ComfyUI custom node is licensed under the GNU Affero General Public License v3.0.
+
+You may use, modify, and distribute this software only under the terms of the GNU Affero General Public License v3.0.
+
+Commercial use is allowed only if the user follows the AGPL-3.0 license terms.
+
+This means anyone who modifies, redistributes, hosts, or uses this code as part of a public app, paid service, or network-accessible tool must provide the complete corresponding source code under the same AGPL-3.0 license.
+
+You may not use this code in a closed-source paid app, private hosted service, SaaS product, or commercial wrapper without complying with AGPL-3.0.
+
+Full license text:
+https://www.gnu.org/licenses/agpl-3.0.en.html
