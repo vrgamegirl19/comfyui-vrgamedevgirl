@@ -962,11 +962,12 @@ def _save_prompt_creator_outputs(payload):
         corrected_segments = _canonical_segment_mapping(corrected_segments)
     if concept_prompts:
         concept_prompts = _canonical_prompt_mapping(concept_prompts)
-        concept_prompts = _prepend_subject_to_prompts(
-            concept_prompts,
-            str(payload.get("subject", "") or ""),
-            separator=", ",
-        )
+        if bool(payload.get("append_subject_to_prompts", True)):
+            concept_prompts = _prepend_subject_to_prompts(
+                concept_prompts,
+                str(payload.get("subject", "") or ""),
+                separator=", ",
+            )
 
     files = {}
     values = {
@@ -1027,6 +1028,7 @@ def _save_prompt_creator_draft(payload):
         "fixed_scene_duration": payload.get("fixed_scene_duration", 4),
         "empty_segment_text": str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section."),
         "concept_match_mode": str(payload.get("concept_match_mode", "medium") or "medium"),
+        "append_subject_to_prompts": bool(payload.get("append_subject_to_prompts", True)),
         "full_lyrics": str(payload.get("full_lyrics", "") or ""),
         "style_theme": str(payload.get("style_theme", "") or ""),
         "story_idea": str(payload.get("story_idea", "") or ""),

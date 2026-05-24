@@ -450,6 +450,7 @@ function buildPayload(controls, modelSelect) {
     fixed_scene_duration: controls.fixedSceneDuration.value,
     empty_segment_text: controls.emptySegmentText.value,
     concept_match_mode: controls.conceptMatchMode.value,
+    append_subject_to_prompts: controls.appendSubjectToPrompts.checked,
     model_file: modelSelect.value,
     whisper_segments: controls.whisperSegments.value,
     full_lyrics: controls.fullLyrics.value,
@@ -604,23 +605,22 @@ function openPromptCreator(options = {}) {
   const useSrtDurations = makeCheckbox(true);
   const fixedSceneDuration = makeInput("4", "number");
   const emptySegmentText = makeInput("Instrumental section.");
+  const appendSubjectToPrompts = makeCheckbox(true);
   const srtOutput = makeInput("");
   srtOutput.style.display = "none";
   const srtText = makeTextarea("", 6);
   srtText.style.display = "none";
-  const workflowInfo = document.createElement("div");
-  workflowInfo.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;word-break:break-word;";
   setupPanel.append(
     projectFolderNote,
     makePickerField("Audio file", audioPath, chooseAudioButton, "Choose the song/audio file used for Whisper and beat-aligned scene timing."),
     makeCheckboxField("Use SRT duration file", useSrtDurations, "When enabled, scene timing comes from the beat/SRT duration workflow. When disabled, the extractor uses fixed scene duration."),
     makeField("Fixed scene duration", fixedSceneDuration, "Used when Use SRT duration file is off."),
     makeField("Empty lyric segment text", emptySegmentText, "Used by VRGDG Lyric Segment Text Cleaner for no-vocal or blank segments."),
+    makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving."),
     makeField("Min duration", minDuration),
     makeField("Max duration", maxDuration),
     makeField("Bias", bias),
     makeField("Duration preset", durationPreset),
-    workflowInfo,
   );
   const setupControls = Array.from(setupPanel.children).slice(1);
   const setupGrid = document.createElement("div");
@@ -782,6 +782,7 @@ function openPromptCreator(options = {}) {
     fixedSceneDuration,
     emptySegmentText,
     conceptMatchMode,
+    appendSubjectToPrompts,
     srtOutput,
     fullLyrics,
     styleTheme,
@@ -810,11 +811,11 @@ function openPromptCreator(options = {}) {
   async function loadConfig() {
     try {
       const config = await getJson("/vrgdg/music_prompt_creator/config");
-      workflowInfo.textContent = config.workflow_template_exists
-        ? `Hidden Whisper workflow found: ${config.workflow_template_path}`
-        : `Hidden Whisper workflow is missing: ${config.workflow_template_path}`;
+      if (!config.workflow_template_exists) {
+        setStatus(status, `Hidden Whisper workflow is missing:\n${config.workflow_template_path}`);
+      }
     } catch (error) {
-      workflowInfo.textContent = `Could not read prompt creator config: ${error.message}`;
+      setStatus(status, `Could not read prompt creator config:\n${error.message}`);
     }
     try {
       const choices = await getJson("/vrgdg/music_builder/gemma_choices");
@@ -848,6 +849,7 @@ function openPromptCreator(options = {}) {
     fixedSceneDuration.value = draft.fixed_scene_duration ?? fixedSceneDuration.value;
     emptySegmentText.value = draft.empty_segment_text || emptySegmentText.value;
     conceptMatchMode.value = draft.concept_match_mode || conceptMatchMode.value;
+    appendSubjectToPrompts.checked = draft.append_subject_to_prompts ?? appendSubjectToPrompts.checked;
     conceptMatchHint.textContent = conceptMatchDescriptions[conceptMatchMode.value] || "";
     updateDurationModeUi();
     fullLyrics.value = draft.full_lyrics || "";
@@ -1091,7 +1093,7 @@ function openPromptCreator(options = {}) {
     const result = await postJson("/vrgdg/music_prompt_creator/extract_subject", buildPayload(controls, modelSelect));
     state.extractedSubject = result.subject || "";
     subjectOutput.value = state.extractedSubject;
-    if (state.extractedSubject && state.conceptPrompts && Object.keys(state.conceptPrompts).length) {
+    if (appendSubjectToPrompts.checked && state.extractedSubject && state.conceptPrompts && Object.keys(state.conceptPrompts).length) {
       state.conceptPrompts = prependSubjectToPrompts(state.conceptPrompts, state.extractedSubject);
       conceptOutput.value = prettyJson(state.conceptPrompts);
     }
@@ -1110,7 +1112,7 @@ function openPromptCreator(options = {}) {
       ? state.conceptPrompts
       : parseJsonSafe(conceptOutput.value, {});
     payload.subject = subjectOutput.value || state.extractedSubject || "";
-    if (payload.subject && payload.prompts && Object.keys(payload.prompts).length) {
+    if (appendSubjectToPrompts.checked && payload.subject && payload.prompts && Object.keys(payload.prompts).length) {
       payload.prompts = prependSubjectToPrompts(payload.prompts, payload.subject);
       state.conceptPrompts = payload.prompts;
       conceptOutput.value = prettyJson(payload.prompts);
