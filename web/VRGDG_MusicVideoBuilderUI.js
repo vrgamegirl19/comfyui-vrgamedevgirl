@@ -1010,6 +1010,12 @@ function openBuilder(node) {
   const i2vMotionJsonInput = makeInput("");
   const importI2VMotionJsonButton = makeButton("Import I2V Motion Notes", "primary");
   const editI2VMotionJsonButton = makeButton("Edit");
+  const imageTriggerInput = makeInput("");
+  imageTriggerInput.placeholder = "Optional image trigger word or phrase...";
+  const fluxImageTriggerInput = makeInput("");
+  fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
+  const videoTriggerInput = makeInput("");
+  videoTriggerInput.placeholder = "Optional video trigger word or phrase...";
   const useVrgdgTextContext = makeCheckbox("Use VRGDG text context files", true);
   const loadVrgdgContextButton = makeButton("Use Default TextFiles Paths", "primary");
   const themeStyleInput = makeInput("");
@@ -1413,6 +1419,7 @@ function openBuilder(node) {
     makeZCreateButton(),
   ]);
   const zImageSettingsSection = makeSettingsPanel([
+    makeField("Image trigger phrase", imageTriggerInput),
     useSceneZImageSettings.wrapper,
     zFirstTitle,
     zFirstGrid,
@@ -1458,6 +1465,7 @@ function openBuilder(node) {
       label: "Image Settings",
       value: "settings",
       content: makeSettingsPanel([
+        makeField("Image trigger phrase", fluxImageTriggerInput),
         fluxImageRefsPanel,
         fluxGrid,
         previewFluxButton,
@@ -1556,6 +1564,7 @@ function openBuilder(node) {
       label: "Video Settings",
       value: "settings",
       content: makeSettingsPanel([
+        makeField("Video trigger phrase", videoTriggerInput),
         i2vSettingsGrid,
         makeCreateSceneVideoButton(),
       ]),
@@ -1799,6 +1808,8 @@ function openBuilder(node) {
     srtMode: false,
     promptJsonPath: "",
     i2vMotionJsonPath: "",
+    imageTriggerPhrase: "",
+    videoTriggerPhrase: "",
     useVrgdgTextContext: true,
     themeStylePath: "",
     storyIdeaPath: "",
@@ -2085,6 +2096,8 @@ function openBuilder(node) {
       srtMode: state.srtMode,
       promptJsonPath: state.promptJsonPath,
       i2vMotionJsonPath: state.i2vMotionJsonPath,
+      imageTriggerPhrase: state.imageTriggerPhrase,
+      videoTriggerPhrase: state.videoTriggerPhrase,
       useVrgdgTextContext: state.useVrgdgTextContext,
       themeStylePath: state.themeStylePath,
       storyIdeaPath: state.storyIdeaPath,
@@ -2116,6 +2129,8 @@ function openBuilder(node) {
     state.srtMode = Boolean(data.srtMode);
     state.promptJsonPath = data.promptJsonPath || "";
     state.i2vMotionJsonPath = data.i2vMotionJsonPath || "";
+    state.imageTriggerPhrase = data.imageTriggerPhrase || "";
+    state.videoTriggerPhrase = data.videoTriggerPhrase || "";
     state.useVrgdgTextContext = data.useVrgdgTextContext ?? true;
     state.themeStylePath = data.themeStylePath || "";
     state.storyIdeaPath = data.storyIdeaPath || "";
@@ -2187,6 +2202,15 @@ function openBuilder(node) {
     redoButton.disabled = !state.redoStack.length;
     undoButton.style.opacity = undoButton.disabled ? ".55" : "1";
     redoButton.style.opacity = redoButton.disabled ? ".55" : "1";
+  }
+
+  function applyTriggerPhrase(prompt, trigger) {
+    const promptText = String(prompt || "").trim();
+    const triggerText = String(trigger || "").trim().replace(/\s+/g, " ");
+    if (!triggerText) return promptText;
+    if (!promptText) return triggerText;
+    if (promptText.toLowerCase().startsWith(triggerText.toLowerCase())) return promptText;
+    return `${triggerText}, ${promptText}`;
   }
 
   function conceptPromptsTextFromSegments() {
@@ -2372,6 +2396,9 @@ function openBuilder(node) {
     freezeTimingControl.input.checked = Boolean(state.timingFrozen);
     promptJsonInput.value = state.promptJsonPath || "";
     i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
+    imageTriggerInput.value = state.imageTriggerPhrase || "";
+    fluxImageTriggerInput.value = state.imageTriggerPhrase || "";
+    videoTriggerInput.value = state.videoTriggerPhrase || "";
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
     storyIdeaInput.value = state.storyIdeaPath || "";
@@ -4338,6 +4365,8 @@ function openBuilder(node) {
       srt_mode: state.srtMode,
       prompt_json_path: state.promptJsonPath,
       i2v_motion_json_path: state.i2vMotionJsonPath,
+      image_trigger_phrase: state.imageTriggerPhrase,
+      video_trigger_phrase: state.videoTriggerPhrase,
       use_vrgdg_text_context: state.useVrgdgTextContext,
       theme_style_path: state.themeStylePath,
       story_idea_path: state.storyIdeaPath,
@@ -4418,6 +4447,8 @@ function openBuilder(node) {
         state.srtMode = Boolean(data.session.srt_mode);
         state.promptJsonPath = data.session.prompt_json_path || state.promptJsonPath;
         state.i2vMotionJsonPath = data.session.i2v_motion_json_path || state.i2vMotionJsonPath;
+        state.imageTriggerPhrase = data.session.image_trigger_phrase || state.imageTriggerPhrase || "";
+        state.videoTriggerPhrase = data.session.video_trigger_phrase || state.videoTriggerPhrase || "";
         state.useVrgdgTextContext = data.session.use_vrgdg_text_context ?? state.useVrgdgTextContext;
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
         state.storyIdeaPath = data.session.story_idea_path || state.storyIdeaPath;
@@ -4541,6 +4572,8 @@ function openBuilder(node) {
       state.srtMode = Boolean(session.srt_mode);
       state.promptJsonPath = session.prompt_json_path || "";
       state.i2vMotionJsonPath = session.i2v_motion_json_path || "";
+      state.imageTriggerPhrase = session.image_trigger_phrase || "";
+      state.videoTriggerPhrase = session.video_trigger_phrase || "";
       state.useVrgdgTextContext = session.use_vrgdg_text_context ?? true;
       state.themeStylePath = session.theme_style_path || "";
       state.storyIdeaPath = session.story_idea_path || "";
@@ -4803,7 +4836,7 @@ function openBuilder(node) {
       unload_after: true,
     });
     pushHistory();
-    segment.t2i_prompt = String(data.prompt || "").trim();
+    segment.t2i_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
     segment.enhance_prompt = segment.t2i_prompt;
     t2iPrompt.value = segment.t2i_prompt;
     zEnhancePromptPreview.value = segment.enhance_prompt;
@@ -4926,7 +4959,7 @@ function openBuilder(node) {
         unload_after: true,
       }, FLUX_GEMMA_TIMEOUT_MS);
       pushHistory();
-      segment.flux_prompt = String(data.prompt || "").trim();
+      segment.flux_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
       fluxPrompt.value = segment.flux_prompt;
       segment.t2i_prompt = segment.flux_prompt;
       segment.enhance_prompt = segment.flux_prompt;
@@ -4974,7 +5007,7 @@ function openBuilder(node) {
       unload_after: options.unloadAfter !== false,
     }, FLUX_GEMMA_TIMEOUT_MS);
     pushHistory();
-    segment.flux_prompt = String(data.prompt || "").trim();
+    segment.flux_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
     segment.t2i_prompt = segment.flux_prompt;
     segment.enhance_prompt = segment.flux_prompt;
     if (segment.id === activeSegment()?.id) {
@@ -5265,7 +5298,7 @@ function openBuilder(node) {
         unload_after: true,
       });
       pushHistory();
-      segment.i2v_prompt = String(data.prompt || "").trim();
+      segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
       i2vPrompt.value = segment.i2v_prompt;
       render();
       await autoSaveSessionQuiet("Gemma I2V complete");
@@ -5299,7 +5332,7 @@ function openBuilder(node) {
       unload_after: true,
     });
     pushHistory();
-    segment.i2v_prompt = String(data.prompt || "").trim();
+    segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Gemma returned an empty I2V prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
@@ -5333,7 +5366,7 @@ function openBuilder(node) {
       unload_after: true,
     });
     pushHistory();
-    segment.i2v_prompt = String(data.prompt || "").trim();
+    segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, state.segments.indexOf(segment))}: Gemma returned an empty I2V prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
@@ -6222,6 +6255,8 @@ function openBuilder(node) {
     state.timingFrozen = false;
     state.promptJsonPath = contextPath("ConceptPrompts.txt");
     state.i2vMotionJsonPath = contextPath("I2VMotionNotes.txt");
+    state.imageTriggerPhrase = "";
+    state.videoTriggerPhrase = "";
     state.themeStylePath = contextPath("themestyle.txt");
     state.storyIdeaPath = contextPath("storyconcept.txt");
     state.subjectScenePath = contextPath("subjectsandscenes.txt");
@@ -6249,6 +6284,9 @@ function openBuilder(node) {
     audioInput.value = "";
     promptJsonInput.value = state.promptJsonPath;
     i2vMotionJsonInput.value = state.i2vMotionJsonPath;
+    imageTriggerInput.value = "";
+    fluxImageTriggerInput.value = "";
+    videoTriggerInput.value = "";
     themeStyleInput.value = state.themeStylePath;
     storyIdeaInput.value = state.storyIdeaPath;
     subjectSceneInput.value = state.subjectScenePath;
@@ -6569,6 +6607,18 @@ function openBuilder(node) {
   i2vMotionJsonInput.addEventListener("input", () => {
     pushHistory();
     state.i2vMotionJsonPath = i2vMotionJsonInput.value || "";
+  });
+  const updateImageTriggerPhrase = (value, source) => {
+    pushHistory();
+    state.imageTriggerPhrase = value || "";
+    if (source !== imageTriggerInput) imageTriggerInput.value = state.imageTriggerPhrase;
+    if (source !== fluxImageTriggerInput) fluxImageTriggerInput.value = state.imageTriggerPhrase;
+  };
+  imageTriggerInput.addEventListener("input", () => updateImageTriggerPhrase(imageTriggerInput.value, imageTriggerInput));
+  fluxImageTriggerInput.addEventListener("input", () => updateImageTriggerPhrase(fluxImageTriggerInput.value, fluxImageTriggerInput));
+  videoTriggerInput.addEventListener("input", () => {
+    pushHistory();
+    state.videoTriggerPhrase = videoTriggerInput.value || "";
   });
   useVrgdgTextContext.input.addEventListener("change", () => {
     pushHistory();
