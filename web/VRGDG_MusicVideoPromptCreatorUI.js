@@ -150,6 +150,14 @@ function makeField(label, control, hint = "") {
   return wrapper;
 }
 
+function makeCompactField(label, control, width = "110px", hint = "") {
+  const field = makeField(label, control, hint);
+  field.style.width = width;
+  field.style.flex = `0 0 ${width}`;
+  control.style.width = "100%";
+  return field;
+}
+
 function makePickerField(label, input, button, hint = "") {
   const row = document.createElement("div");
   row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
@@ -596,6 +604,7 @@ function openPromptCreator(options = {}) {
     ? `Prompt Creator files will be saved into: ${projectFolder.value}`
     : "Prompt Creator files will be saved into the current project folder.";
   projectFolderNote.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#bae6fd;padding:9px;font-size:11px;line-height:1.4;overflow-wrap:anywhere;";
+  projectFolderNote.style.flex = "1 1 260px";
   const audioPath = makeInput("");
   const chooseAudioButton = makeButton("Choose Audio", "primary");
   const minDuration = makeInput("4", "number");
@@ -610,21 +619,28 @@ function openPromptCreator(options = {}) {
   srtOutput.style.display = "none";
   const srtText = makeTextarea("", 6);
   srtText.style.display = "none";
-  setupPanel.append(
+  const audioField = makePickerField("Audio file", audioPath, chooseAudioButton, "Choose the song/audio file used for Whisper and beat-aligned scene timing.");
+  audioField.style.flex = "1 1 260px";
+  const useSrtField = makeCheckboxField("Use SRT duration file", useSrtDurations, "When enabled, scene timing comes from the beat/SRT duration workflow. When disabled, the extractor uses fixed scene duration.");
+  useSrtField.style.flex = "1 1 250px";
+  const emptySegmentField = makeField("Empty lyric segment text", emptySegmentText, "Used by VRGDG Lyric Segment Text Cleaner for no-vocal or blank segments.");
+  emptySegmentField.style.flex = "1 1 260px";
+  const appendSubjectField = makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving.");
+  appendSubjectField.style.flex = "1 1 260px";
+  const setupControls = [
     projectFolderNote,
-    makePickerField("Audio file", audioPath, chooseAudioButton, "Choose the song/audio file used for Whisper and beat-aligned scene timing."),
-    makeCheckboxField("Use SRT duration file", useSrtDurations, "When enabled, scene timing comes from the beat/SRT duration workflow. When disabled, the extractor uses fixed scene duration."),
-    makeField("Fixed scene duration", fixedSceneDuration, "Used when Use SRT duration file is off."),
-    makeField("Empty lyric segment text", emptySegmentText, "Used by VRGDG Lyric Segment Text Cleaner for no-vocal or blank segments."),
-    makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving."),
-    makeField("Min duration", minDuration),
-    makeField("Max duration", maxDuration),
-    makeField("Bias", bias),
-    makeField("Duration preset", durationPreset),
-  );
-  const setupControls = Array.from(setupPanel.children).slice(1);
+    audioField,
+    useSrtField,
+    makeCompactField("Fixed scene duration", fixedSceneDuration, "140px", "Used when SRT is off."),
+    emptySegmentField,
+    appendSubjectField,
+    makeCompactField("Min duration", minDuration, "110px"),
+    makeCompactField("Max duration", maxDuration, "110px"),
+    makeCompactField("Bias", bias, "80px"),
+    makeCompactField("Duration preset", durationPreset, "250px"),
+  ];
   const setupGrid = document.createElement("div");
-  setupGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;align-items:start;";
+  setupGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;";
   setupGrid.append(...setupControls);
   setupPanel.append(setupGrid);
 
@@ -731,9 +747,11 @@ function openPromptCreator(options = {}) {
   const settingsNote = document.createElement("div");
   settingsNote.textContent = "Uses non-vision Gemma. unload_after_run=true, n_ctx=14848, max_new_tokens=32000, temperature=0.30, top_p=0.80.";
   settingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  conceptMatchField.style.flex = "1 1 360px";
+  setupControls.push(conceptMatchField);
+  setupGrid.append(conceptMatchField);
   modelPanel.append(
     makeField("Gemma4 text model", modelSelect),
-    conceptMatchField,
     settingsNote,
   );
 
