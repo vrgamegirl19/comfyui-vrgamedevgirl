@@ -1937,26 +1937,9 @@ function openBuilder(node) {
     if (!segment) return [];
     const currentPath = String(segment.video_path || "").trim();
     const currentKey = mediaPathKey(currentPath);
-    const seen = new Set();
-    const cleaned = [];
-    for (const item of Array.isArray(segment.video_history) ? segment.video_history : []) {
-      const path = String(item || "").trim();
-      const key = mediaPathKey(path);
-      if (!path || !key || seen.has(key) || isBackupSceneVideoPath(path)) continue;
-      seen.add(key);
-      cleaned.push(path);
-    }
-    if (currentPath && currentKey && !seen.has(currentKey)) {
-      cleaned.push(currentPath);
-    }
+    const cleaned = currentPath && currentKey && !isBackupSceneVideoPath(currentPath) ? [currentPath] : [];
     segment.video_history = cleaned;
-    if (cleaned.length) {
-      const selectedKey = mediaPathKey(currentPath) || mediaPathKey(cleaned[Math.max(0, Number(segment.video_history_index || 0))]);
-      const selectedIndex = cleaned.findIndex((item) => mediaPathKey(item) === selectedKey);
-      segment.video_history_index = selectedIndex >= 0 ? selectedIndex : cleaned.length - 1;
-    } else {
-      segment.video_history_index = -1;
-    }
+    segment.video_history_index = cleaned.length ? 0 : -1;
     return cleaned;
   }
 
@@ -5008,11 +4991,8 @@ function openBuilder(node) {
   function addSegmentVideoHistoryPath(segment, videoPath) {
     ensureSegmentRuntimeFields(segment);
     if (!segment || !videoPath || isBackupSceneVideoPath(videoPath)) return;
-    if (!segment.video_history.some((item) => mediaPathKey(item) === mediaPathKey(videoPath))) {
-      segment.video_history.push(videoPath);
-    }
+    segment.video_path = videoPath;
     normalizeSegmentVideoHistory(segment);
-    segment.video_history_index = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(videoPath));
   }
 
   function cycleSegmentVideoHistory(segment) {
