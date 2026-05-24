@@ -6587,7 +6587,7 @@ function openBuilder(node) {
     const ok = await confirmLongBatchAction({
       title: "Build Full Video?",
       lines: [
-        "This will create missing images, create text-only I2V prompts, render missing scene videos, then stitch the final video.",
+        "This will create missing images, create missing I2V prompts using each scene's image-reference setting, render missing scene videos, then stitch the final video.",
         "Existing images and videos are skipped so this can resume an unfinished project.",
         "This is the longest batch process and is meant for unattended runs.",
       ],
