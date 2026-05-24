@@ -5486,9 +5486,10 @@ function openBuilder(node) {
   async function i2vAllTextOnlyScenes(options = {}) {
     const progress = options.progress || createProgressWindow("Gemma I2V All Scenes");
     const closeProgress = !options.progress;
-    const scenes = allEditableSegments();
+    const allScenes = allEditableSegments();
+    const scenes = allScenes.filter((segment) => !String(segment?.i2v_prompt || "").trim());
     const missing = [];
-    if (!scenes.length) missing.push("No scenes found. Add or load scenes first.");
+    if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
       const useImageReference = segment.use_i2v_vision_reference !== false;
@@ -5515,6 +5516,12 @@ function openBuilder(node) {
       createI2VButton.disabled = true;
       progress.set("Autosaving session/SRT before Gemma I2V All...", 3);
       await saveSessionForSceneVideo();
+      if (!scenes.length) {
+        progress.set("All scenes already have I2V prompts. Skipping Gemma I2V All.", 100);
+        if (closeProgress) progress.close(1800);
+        toast("All scenes already have I2V prompts. Gemma I2V skipped.");
+        return;
+      }
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const segment = scenes[index];
