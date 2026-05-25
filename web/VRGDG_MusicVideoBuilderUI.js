@@ -4014,6 +4014,15 @@ function openBuilder(node) {
     return `${folder}${separator}project_context${separator}${filename}`;
   }
 
+  function joinProjectPath(...parts) {
+    const folder = String(projectInput.value || state.projectFolder || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") && !folder.includes("/") ? "\\" : "/";
+    return [folder, ...parts.map((part) => String(part || "").replace(/^[\\/]+|[\\/]+$/g, ""))]
+      .filter(Boolean)
+      .join(separator);
+  }
+
   async function loadContextTextQuiet(path) {
     const filePath = String(path || "").trim();
     if (!filePath) return "";
@@ -5616,15 +5625,15 @@ function openBuilder(node) {
   }
 
   function i2vImagesFolder() {
-    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\zimage_approved`;
+    return joinProjectPath("zimage_approved");
   }
 
   function i2vVideoOutputFolder() {
-    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\image_to_video_clips`;
+    return joinProjectPath("image_to_video_clips");
   }
 
   function collectedSceneVideoFolder() {
-    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\rendered_scene_videos`;
+    return joinProjectPath("rendered_scene_videos");
   }
 
   function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden I2V workflow...", details = {}) {

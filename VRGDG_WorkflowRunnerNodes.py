@@ -205,6 +205,15 @@ def _bool_payload(payload, key, default=False):
     return bool(value)
 
 
+def _payload_fs_path(value):
+    text = str(value or "").strip().strip('"')
+    if not text:
+        return ""
+    if os.name != "nt":
+        text = text.replace("\\", "/")
+    return os.path.abspath(text)
+
+
 def _clean_lora_name(value):
     text = str(value or _NONE_LORA).strip()
     choices = set(_lora_choices())
@@ -547,17 +556,17 @@ def _patch_i2v_workflow(workflow, payload):
     if not i2v_prompt:
         raise ValueError("I2V prompt is empty.")
 
-    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    audio_path = _payload_fs_path(payload.get("audio_path", ""))
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio file was not found: {audio_path}")
-    image_folder = os.path.abspath(str(payload.get("image_folder", "") or "").strip().strip('"'))
+    image_folder = _payload_fs_path(payload.get("image_folder", ""))
     if not os.path.isdir(image_folder):
         raise FileNotFoundError(f"Image folder was not found: {image_folder}")
-    srt_path = os.path.abspath(str(payload.get("srt_path", "") or "").strip().strip('"'))
+    srt_path = _payload_fs_path(payload.get("srt_path", ""))
     if not os.path.isfile(srt_path):
         raise FileNotFoundError(f"SRT file was not found: {srt_path}")
 
-    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    project_folder = _payload_fs_path(payload.get("project_folder", ""))
     if not project_folder:
         raise ValueError("Project folder is empty.")
     output_folder = os.path.join(project_folder, "image_to_video_clips")
@@ -624,16 +633,16 @@ def _patch_i2v_api_prompt(prompt, payload):
     if not i2v_prompt:
         raise ValueError("I2V prompt is empty.")
 
-    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    audio_path = _payload_fs_path(payload.get("audio_path", ""))
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio file was not found: {audio_path}")
-    image_folder = os.path.abspath(str(payload.get("image_folder", "") or "").strip().strip('"'))
+    image_folder = _payload_fs_path(payload.get("image_folder", ""))
     if not os.path.isdir(image_folder):
         raise FileNotFoundError(f"Image folder was not found: {image_folder}")
-    srt_path = os.path.abspath(str(payload.get("srt_path", "") or "").strip().strip('"'))
+    srt_path = _payload_fs_path(payload.get("srt_path", ""))
     if not os.path.isfile(srt_path):
         raise FileNotFoundError(f"SRT file was not found: {srt_path}")
-    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    project_folder = _payload_fs_path(payload.get("project_folder", ""))
     if not project_folder:
         raise ValueError("Project folder is empty.")
     output_folder = os.path.join(project_folder, "image_to_video_clips")
@@ -1085,7 +1094,7 @@ def _find_ffmpeg_path():
 
 
 def _safe_project_subfolder(project_folder, folder_name):
-    project = os.path.abspath(str(project_folder or "").strip().strip('"'))
+    project = _payload_fs_path(project_folder)
     if not project:
         raise ValueError("Project folder is empty.")
     target = os.path.abspath(os.path.join(project, folder_name))
@@ -1112,7 +1121,7 @@ def _concat_file_path(path):
 
 
 def _cleanup_i2v_scratch_folders(project_folder, keep_folders=None):
-    project_folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
+    project_folder = _payload_fs_path(project_folder)
     keep = {os.path.abspath(path) for path in (keep_folders or []) if path}
     removed_folders = []
     if not os.path.isdir(project_folder):
@@ -1210,7 +1219,7 @@ def _replace_file_with_retry(source_path, target_path):
 
 
 def _collect_scene_video(payload):
-    source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
+    source_path = _payload_fs_path(payload.get("source_path", ""))
     if not os.path.isfile(source_path):
         raise FileNotFoundError(f"Scene video was not found: {source_path}")
     project_folder, target_dir = _safe_project_subfolder(payload.get("project_folder", ""), "rendered_scene_videos")
@@ -1306,11 +1315,11 @@ def _stitch_scene_videos(payload):
     raw_scene_audio_items = payload.get("scene_audio_items", [])
     if not isinstance(raw_scene_audio_items, list):
         raw_scene_audio_items = []
-    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    audio_path = _payload_fs_path(payload.get("audio_path", ""))
 
     scene_paths = []
     for index, raw_path in enumerate(raw_paths, start=1):
-        path = os.path.abspath(str(raw_path or "").strip().strip('"'))
+        path = _payload_fs_path(raw_path)
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Scene {index} video was not found: {path}")
         scene_paths.append(path)
@@ -1323,7 +1332,7 @@ def _stitch_scene_videos(payload):
         for index, item in enumerate(raw_scene_audio_items, start=1):
             if not isinstance(item, dict):
                 raise ValueError(f"Scene {index} audio item is invalid.")
-            path = os.path.abspath(str(item.get("path", "") or "").strip().strip('"'))
+            path = _payload_fs_path(item.get("path", ""))
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"Scene {index} audio was not found: {path}")
             start = max(0.0, float(item.get("start", 0) or 0))
@@ -1334,7 +1343,7 @@ def _stitch_scene_videos(payload):
         if len(raw_scene_audio_paths) != len(scene_paths):
             raise ValueError("Scene audio path count does not match scene video count.")
         for index, raw_path in enumerate(raw_scene_audio_paths, start=1):
-            path = os.path.abspath(str(raw_path or "").strip().strip('"'))
+            path = _payload_fs_path(raw_path)
             if not os.path.isfile(path):
                 raise FileNotFoundError(f"Scene {index} audio was not found: {path}")
             scene_audio_paths.append(path)
