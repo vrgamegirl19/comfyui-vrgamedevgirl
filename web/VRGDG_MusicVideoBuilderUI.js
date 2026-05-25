@@ -507,6 +507,37 @@ function showTextInputModal({ title, label, value = "", placeholder = "", confir
   });
 }
 
+function showInfoModal({ title, lines = [], confirmLabel = "Got it" } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = title || "Info";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const body = document.createElement("div");
+    body.style.cssText = "display:flex;flex-direction:column;gap:9px;font-size:13px;color:#d4d4d8;line-height:1.45;";
+    for (const line of lines) {
+      const item = document.createElement("div");
+      item.textContent = line;
+      body.append(item);
+    }
+    const confirm = makeButton(confirmLabel, "primary");
+    confirm.onclick = () => {
+      backdrop.remove();
+      resolve(true);
+    };
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) confirm.click();
+    });
+    box.append(heading, body, confirm);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    confirm.focus();
+  });
+}
+
 function showAddSegmentPositionModal(sceneLabel = "selected scene") {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
@@ -1580,6 +1611,12 @@ function openBuilder(node) {
   const i2vUseLora = makeCheckbox("Use video LoRAs?", false);
   const i2vLoraPanel = document.createElement("div");
   i2vLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const i2vLoraHintRow = document.createElement("div");
+  i2vLoraHintRow.style.cssText = "display:flex;justify-content:flex-end;";
+  const i2vLoraHintButton = makeButton("?", "neutral");
+  i2vLoraHintButton.title = "Why use different strengths per pass?";
+  i2vLoraHintButton.style.cssText += "width:34px;padding:7px 0;";
+  i2vLoraHintRow.append(i2vLoraHintButton);
   const i2vLoraCount = makeInput("0", "number");
   i2vLoraCount.min = "0";
   i2vLoraCount.max = "4";
@@ -1602,7 +1639,7 @@ function openBuilder(node) {
     i2vLoraRows.append(row);
     i2vLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength });
   }
-  i2vLoraPanel.append(makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
+  i2vLoraPanel.append(i2vLoraHintRow, makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   i2vSettingsGrid.append(makeField("FPS", i2vFpsInput), makeField("Seed", i2vSeedInput), makeField("Width", i2vWidthInput), makeField("Height", i2vHeightInput));
@@ -4685,6 +4722,7 @@ function openBuilder(node) {
           name: sceneSource.name || "scene_image.png",
           global,
         });
+        return;
       }
       for (const file of files) loadFluxIngredientFile(file, { global });
     });
@@ -8689,6 +8727,16 @@ function openBuilder(node) {
     control.addEventListener("change", saveFluxKleinSettingsFromPanel);
   }
   useFluxKlein.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
+  i2vLoraHintButton.addEventListener("click", () => {
+    showInfoModal({
+      title: "Two-Pass LoRA Strengths",
+      lines: [
+        "Some LoRAs can affect motion when they are too strong on the first pass. Using a lower Pass 1 value can help preserve motion, then a stronger Pass 2 value can bring back the LoRA details.",
+        "Style LoRAs trained on images often work better around 0.5 on Pass 1 and 1.0 on Pass 2.",
+      ],
+    });
+  });
+
   function updateI2VLoraVisibility() {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
     i2vLoraPanel.style.display = i2vUseLora.input.checked ? "flex" : "none";
