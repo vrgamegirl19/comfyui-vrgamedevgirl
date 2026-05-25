@@ -1588,13 +1588,19 @@ function openBuilder(node) {
   const i2vLoraSlots = [];
   for (let slot = 1; slot <= 4; slot++) {
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 84px 84px;gap:8px;";
     const picker = makeSearchableLoraPicker("[none]");
-    const strength = makeInput("1", "number");
-    strength.step = "0.01";
-    row.append(makeField(`Video LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    const firstPassStrength = makeInput("1", "number");
+    firstPassStrength.step = "0.01";
+    const secondPassStrength = makeInput("1", "number");
+    secondPassStrength.step = "0.01";
+    row.append(
+      makeField(`Video LoRA ${slot}`, picker.wrapper),
+      makeField("Pass 1", firstPassStrength),
+      makeField("Pass 2", secondPassStrength)
+    );
     i2vLoraRows.append(row);
-    i2vLoraSlots.push({ row, picker, strength });
+    i2vLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength });
   }
   i2vLoraPanel.append(makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
   const i2vSettingsGrid = document.createElement("div");
@@ -3700,7 +3706,9 @@ function openBuilder(node) {
     i2vLoraSlots.forEach((slot, index) => {
       const config = settings.loras?.[index] || {};
       slot.picker.input.value = config.name || "[none]";
-      slot.strength.value = config.strength ?? 1;
+      const legacyStrength = config.strength ?? 1;
+      slot.firstPassStrength.value = config.first_pass_strength ?? legacyStrength;
+      slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength;
     });
     updateI2VLoraVisibility();
   }
@@ -3720,7 +3728,11 @@ function openBuilder(node) {
       seed: Number(i2vSeedInput.value || 69),
       use_loras: Boolean(i2vUseLora.input.checked),
       lora_count: count,
-      loras: i2vLoraSlots.map((slot) => ({ name: slot.picker.input.value || "[none]", strength: Number(slot.strength.value || 1) })),
+      loras: i2vLoraSlots.map((slot) => ({
+        name: slot.picker.input.value || "[none]",
+        first_pass_strength: Number(slot.firstPassStrength.value || 1),
+        second_pass_strength: Number(slot.secondPassStrength.value || 1),
+      })),
     };
     updateI2VLoraVisibility();
     return state.i2vVideoSettings;
@@ -6643,7 +6655,8 @@ function openBuilder(node) {
     };
     i2vLoraSlots.forEach((slot, index) => {
       payload[`lora_${index + 1}`] = useLoras && index < count ? slot.picker.input.value : "[none]";
-      payload[`strength_${index + 1}`] = Number(slot.strength.value || 1);
+      payload[`first_pass_strength_${index + 1}`] = Number(slot.firstPassStrength.value || 1);
+      payload[`second_pass_strength_${index + 1}`] = Number(slot.secondPassStrength.value || 1);
     });
     return payload;
   }
@@ -8715,8 +8728,10 @@ function openBuilder(node) {
   i2vLoraCount.addEventListener("change", saveI2VVideoSettingsFromPanel);
   for (const slot of i2vLoraSlots) {
     wireSearchablePicker(slot.picker, saveI2VVideoSettingsFromPanel);
-    slot.strength.addEventListener("input", saveI2VVideoSettingsFromPanel);
-    slot.strength.addEventListener("change", saveI2VVideoSettingsFromPanel);
+    slot.firstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
+    slot.firstPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
+    slot.secondPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
+    slot.secondPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
   for (const control of [i2vFpsInput, i2vWidthInput, i2vHeightInput, i2vSeedInput]) {
     control.addEventListener("input", saveI2VVideoSettingsFromPanel);
