@@ -355,6 +355,58 @@ function createProgressWindow(title) {
   };
 }
 
+function showFinalVideoReadyModal(videoPath) {
+  const path = String(videoPath || "").trim();
+  if (!path) return;
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(680px,calc(100vw - 48px));border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cffafe;box-shadow:0 22px 70px rgba(0,0,0,.6);overflow:hidden;font-family:sans-serif;";
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #155e75;background:#083344;";
+  const title = document.createElement("div");
+  title.textContent = "Final Video Ready";
+  title.style.cssText = "font-size:14px;font-weight:900;";
+  const close = makeButton("Close");
+  close.style.padding = "6px 10px";
+  header.append(title, close);
+  const body = document.createElement("div");
+  body.style.cssText = "display:flex;flex-direction:column;gap:12px;padding:14px;";
+  const message = document.createElement("div");
+  message.textContent = "Your stitched final video is ready.";
+  message.style.cssText = "font-size:12px;color:#e0f2fe;";
+  const pathBox = document.createElement("div");
+  pathBox.textContent = path;
+  pathBox.style.cssText = "border:1px solid #334155;border-radius:6px;background:#020617;color:#bae6fd;padding:10px;font-size:11px;line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere;";
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  const open = makeButton("Open Video", "primary");
+  const dismiss = makeButton("Close");
+  actions.append(open, dismiss);
+  body.append(message, pathBox, actions);
+  box.append(header, body);
+  backdrop.append(box);
+  document.body.append(backdrop);
+  const finish = () => backdrop.remove();
+  close.onclick = finish;
+  dismiss.onclick = finish;
+  backdrop.addEventListener("pointerdown", (event) => {
+    if (event.target === backdrop) finish();
+  });
+  open.onclick = async () => {
+    open.disabled = true;
+    open.textContent = "Opening...";
+    try {
+      await postJson("/vrgdg/music_builder/open_local_file", { path }, 30000);
+      finish();
+    } catch (error) {
+      open.disabled = false;
+      open.textContent = "Open Video";
+      toast(String(error?.message || error), true);
+    }
+  };
+}
+
 function showModelDownloadModal() {
   const groups = [
     { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
@@ -7009,6 +7061,7 @@ function openBuilder(node) {
       progress.set(`Render All complete.\n\nFinal video:\n${stitched.final_video_path}\n\nScene clips:\n${stitched.video_folder}`, 100);
       progress.close(6500);
       toast(`Render All complete:\n${stitched.final_video_path}`);
+      showFinalVideoReadyModal(stitched.final_video_path);
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);

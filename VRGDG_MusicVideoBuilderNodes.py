@@ -5,6 +5,7 @@ import re
 import asyncio
 import subprocess
 import shutil
+import sys
 import time
 import wave
 import base64
@@ -546,6 +547,19 @@ def _copy_file_if_exists(source_path, target_path):
     if os.path.normcase(source) == os.path.normcase(target):
         return target
     shutil.copy2(source, target)
+    return target
+
+
+def _open_local_file(path):
+    target = os.path.abspath(str(path or "").strip().strip('"'))
+    if not target or not os.path.isfile(target):
+        raise ValueError("Video file was not found.")
+    if os.name == "nt":
+        os.startfile(target)  # pylint: disable=no-member
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", target])
+    else:
+        subprocess.Popen(["xdg-open", target])
     return target
 
 
@@ -2449,6 +2463,15 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/open_local_file")
+    async def vrgdg_music_builder_open_local_file(request):
+        try:
+            payload = await request.json()
+            path = _open_local_file(payload.get("path", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, "path": path})
 
     @server_instance.routes.get("/vrgdg/music_builder/default_context_paths")
     async def vrgdg_music_builder_default_context_paths(request):
