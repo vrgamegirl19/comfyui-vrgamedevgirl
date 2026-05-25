@@ -281,10 +281,11 @@ function createProgressWindow(title) {
   box.style.cssText = `
     position: fixed;
     left: 50%;
-    top: 16%;
+    top: 54px;
     transform: translateX(-50%);
     z-index: 100004;
-    width: min(720px, calc(100vw - 40px));
+    width: min(850px, calc(100vw - 560px));
+    min-width: 520px;
     border: 1px solid #155e75;
     border-radius: 8px;
     background: #0f172a;
@@ -298,9 +299,15 @@ function createProgressWindow(title) {
   const heading = document.createElement("div");
   heading.textContent = title;
   heading.style.cssText = "font-size:13px;font-weight:900;";
+  const headerActions = document.createElement("div");
+  headerActions.style.cssText = "display:flex;align-items:center;gap:8px;";
+  const minimize = makeButton("Min");
+  minimize.title = "Minimize progress window";
+  minimize.style.padding = "5px 8px";
   const close = makeButton("Close");
   close.style.padding = "5px 8px";
-  header.append(heading, close);
+  headerActions.append(minimize, close);
+  header.append(heading, headerActions);
   const body = document.createElement("div");
   body.style.cssText = "padding:12px;font-size:12px;line-height:1.45;white-space:pre-wrap;max-height:min(62vh,620px);overflow:auto;";
   body.textContent = "Starting...";
@@ -311,18 +318,39 @@ function createProgressWindow(title) {
   barOuter.append(barInner);
   box.append(header, body, barOuter);
   document.body.append(box);
-  close.onclick = () => box.remove();
+  const restore = document.createElement("button");
+  restore.type = "button";
+  restore.textContent = title;
+  restore.title = "Restore progress window";
+  restore.style.cssText = "position:fixed;left:50%;top:54px;transform:translateX(-50%);z-index:100004;display:none;max-width:min(850px,calc(100vw - 560px));min-width:260px;border:1px solid #155e75;border-radius:8px;background:#083344;color:#cffafe;padding:8px 12px;font-size:12px;font-weight:900;box-shadow:0 16px 48px rgba(0,0,0,.45);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  document.body.append(restore);
+  const removeAll = () => {
+    box.remove();
+    restore.remove();
+  };
+  minimize.onclick = () => {
+    box.style.display = "none";
+    restore.style.display = "block";
+  };
+  restore.onclick = () => {
+    restore.style.display = "none";
+    box.style.display = "block";
+  };
+  close.onclick = removeAll;
   return {
     set(message, percent = null) {
       body.textContent = message;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
+      const firstLine = String(message || title).split(/\r?\n/)[0] || title;
+      restore.textContent = `${title}: ${firstLine}`;
     },
     setHtml(html, percent = null) {
       body.innerHTML = html;
       if (percent !== null) barInner.style.width = `${Math.max(5, Math.min(100, percent))}%`;
+      restore.textContent = title;
     },
     close(delay = 0) {
-      setTimeout(() => box.remove(), delay);
+      setTimeout(removeAll, delay);
     },
   };
 }
@@ -2806,6 +2834,19 @@ function openBuilder(node) {
     state.activeTrack = segment ? segmentTrack(segment) : state.activeTrack || "base";
     syncInspector();
     render();
+  }
+
+  function moveActiveSceneSelection(direction) {
+    const track = state.activeTrack === "overlay" ? "overlay" : "base";
+    const list = track === "overlay" ? state.overlaySegments : state.segments;
+    if (!list.length) return false;
+    const currentIndex = list.findIndex((segment) => segment.id === state.activeId);
+    const fallbackIndex = direction > 0 ? -1 : list.length;
+    const nextIndex = Math.max(0, Math.min(list.length - 1, (currentIndex >= 0 ? currentIndex : fallbackIndex) + direction));
+    const next = list[nextIndex];
+    if (!next || next.id === state.activeId) return false;
+    setActiveSegment(next);
+    return true;
   }
 
   function clearActiveSegment() {
@@ -5698,7 +5739,7 @@ function openBuilder(node) {
     return "";
   }
 
-  async function generateT2IPromptForSegment(segment, progress = null, percent = 30, label = "Gemma T2I") {
+  async function generateT2IPromptForSegment(segment, progress = null, percent = 30, label = "Gemma T2I", options = {}) {
     const missing = t2iMissingReason(segment);
     if (missing) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${missing}`);
     state.activeId = segment.id;
@@ -5718,7 +5759,7 @@ function openBuilder(node) {
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
-      unload_after: true,
+      unload_after: options.unloadAfter !== false,
     }, useVision ? 10 * 60 * 1000 : 120000);
     pushHistory();
     segment.t2i_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
@@ -6362,7 +6403,7 @@ function openBuilder(node) {
     }
   }
 
-  async function generateTextOnlyI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V") {
+  async function generateTextOnlyI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
     if (!segment) throw new Error("Scene is missing.");
     const t2iText = String(segment.t2i_prompt || "").trim();
     if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
@@ -6377,7 +6418,7 @@ function openBuilder(node) {
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
-      unload_after: true,
+      unload_after: options.unloadAfter !== false,
     });
     pushHistory();
     segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
@@ -6387,7 +6428,7 @@ function openBuilder(node) {
     return data;
   }
 
-  async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V") {
+  async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
     if (!segment) throw new Error("Scene is missing.");
     const useImageReference = segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
@@ -6411,7 +6452,7 @@ function openBuilder(node) {
       theme_style_path: useImageReference ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: useImageReference ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: useImageReference ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
-      unload_after: true,
+      unload_after: options.unloadAfter !== false,
     });
     pushHistory();
     segment.i2v_prompt = applyTriggerPhrase(data.prompt, state.videoTriggerPhrase);
@@ -6470,10 +6511,10 @@ function openBuilder(node) {
         const useImageReference = segment.use_i2v_vision_reference !== false;
         const displayIndex = segmentIndexInfo(segment).index;
         progress.set(`Gemma I2V All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\n${useImageReference ? "Using scene image reference." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma I2V All ${index + 1}/${scenes.length}`);
+        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma I2V All ${index + 1}/${scenes.length}`, { unloadAfter: false });
         await autoSaveSessionQuiet(`Gemma I2V All ${sceneDisplayName(segment, displayIndex)}`);
-        await runClearMemoryWorkflowQuiet(progress, sceneDisplayName(segment, displayIndex), Math.min(98, base + 70));
       }
+      await runClearMemoryWorkflowQuiet(progress, "Gemma I2V prompt pass", 96);
       await autoSaveSessionQuiet("Gemma I2V All complete");
       progress.set("Gemma I2V All complete.", 100);
       if (closeProgress) progress.close(1800);
@@ -7014,18 +7055,32 @@ function openBuilder(node) {
         toast("All scenes already have images. Z-Image All skipped.");
         return;
       }
+      progress.set(`Z-Image All: creating ${scenes.length} T2I prompt${scenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
-        const base = Math.floor((index / scenes.length) * 100);
-        const span = Math.max(1, Math.floor(88 / scenes.length));
+        const base = 6 + Math.floor((index / scenes.length) * 32);
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Z-Image All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating T2I prompt with Gemma...`, base);
-        await generateT2IPromptForSegment(segment, progress, base + span * 0.2, `Z-Image All ${index + 1}/${scenes.length}: Gemma`);
+        progress.set(`Z-Image prompt pass ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Z-Image prompt pass ${index + 1}/${scenes.length}: Gemma`, { unloadAfter: false });
         assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Z-Image prompt pass scene ${sceneIndex + 1}`);
+      }
+      await runClearMemoryWorkflowQuiet(progress, "Z-Image prompt pass", 42);
+      progress.set(`Z-Image All: Gemma prompt pass complete. Creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 45 + Math.floor((index / scenes.length) * 45);
+        const span = Math.max(1, Math.floor(40 / scenes.length));
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        progress.set(`Z-Image image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createZImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Z-Image All ${index + 1}/${scenes.length}: ZImage`);
         assertBatchNotStopped();
         await autoSaveSessionQuiet(`Z-Image All scene ${sceneIndex + 1}`);
@@ -7094,18 +7149,32 @@ function openBuilder(node) {
         toast("All scenes already have images. Ernie Image All skipped.");
         return;
       }
+      progress.set(`Ernie Image All: creating ${scenes.length} T2I prompt${scenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
-        const base = Math.floor((index / scenes.length) * 100);
-        const span = Math.max(1, Math.floor(88 / scenes.length));
+        const base = 6 + Math.floor((index / scenes.length) * 32);
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Ernie Image All ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating T2I prompt with Gemma...`, base);
-        await generateT2IPromptForSegment(segment, progress, base + span * 0.2, `Ernie Image All ${index + 1}/${scenes.length}: Gemma`);
+        progress.set(`Ernie prompt pass ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Ernie prompt pass ${index + 1}/${scenes.length}: Gemma`, { unloadAfter: false });
         assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Ernie prompt pass scene ${sceneIndex + 1}`);
+      }
+      await runClearMemoryWorkflowQuiet(progress, "Ernie prompt pass", 42);
+      progress.set(`Ernie Image All: Gemma prompt pass complete. Creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 45 + Math.floor((index / scenes.length) * 45);
+        const span = Math.max(1, Math.floor(40 / scenes.length));
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        progress.set(`Ernie image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createErnieImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Ernie Image All ${index + 1}/${scenes.length}: Ernie`);
         assertBatchNotStopped();
         await autoSaveSessionQuiet(`Ernie Image All scene ${sceneIndex + 1}`);
@@ -8258,6 +8327,10 @@ function openBuilder(node) {
     } else if ((event.ctrlKey && event.key.toLowerCase() === "y") || (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "z")) {
       event.preventDefault();
       redo();
+    } else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "ArrowRight") {
+      if (moveActiveSceneSelection(1)) event.preventDefault();
+    } else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "ArrowLeft") {
+      if (moveActiveSceneSelection(-1)) event.preventDefault();
     }
   });
   overlay.tabIndex = -1;

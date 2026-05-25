@@ -1348,7 +1348,7 @@ def _generate_builder_t2i_prompt(payload):
     temperature = float(payload.get("temperature") or (0.25 if has_ref_image else 0.6))
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or (1000 if has_ref_image else 1200))
-    unload_after = True
+    unload_after = bool(payload.get("unload_after", True))
 
     try:
         model = llm._load_gguf_model(
@@ -1456,14 +1456,14 @@ def _generate_builder_i2v_prompt(payload):
         prompt = f"{_I2V_INSTRUCTIONS}\n\nText-to-image prompt:\n{t2i_prompt}\n\n"
     prompt += f"User motion/camera notes:\n{user_notes or 'Create fast cinematic performance motion that fits the scene.'}"
 
-    n_ctx = int(payload.get("n_ctx") or 13000)
+    n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or (0.25 if has_image_reference else 0.7))
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 4000)
-    unload_after = True
+    unload_after = bool(payload.get("unload_after", True))
 
     try:
         model = llm._load_gguf_model(
