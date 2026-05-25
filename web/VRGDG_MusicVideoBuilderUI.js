@@ -2772,10 +2772,12 @@ function openBuilder(node) {
     let text = String(prompt || "").trim();
     text = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
     text = text.replace(/<\/?thought>/gi, "").trim();
+    text = text.replace(/^[\s\-–—_=~.*#|:;,+/\\]{16,}(?=[\p{L}\p{N}])/u, "").trim();
     const controlPatterns = [
       /^\s*<?\/?end[_\-][a-z0-9_\-]*>?\s*/i,
       /^\s*_?name\s*[:=]\s*/i,
       /^\s*\d+\s*(?:thought|analysis|reasoning)\s*[:\-]?\s*/i,
+      /^\s*(?:0f|of)[_\-\s]*(?:thought|analysis|reasoning)\s*[:\-]?\s*/i,
       /^\s*_?\s*(?:thought|analysis|reasoning)\s*<channel\|>\s*/i,
       /^\s*_?\s*<\|?channel\|?>\s*(?:thought|analysis|reasoning)?\s*/i,
       /^\s*_?\s*<channel\|>\s*(?:thought|analysis|reasoning)?\s*/i,
@@ -5796,6 +5798,7 @@ function openBuilder(node) {
     pushHistory();
     const nextIndex = (Math.max(-1, Number(segment.video_history_index ?? -1)) + 1) % segment.video_history.length;
     segment.video_history_index = nextIndex;
+    segment.video_path = segment.video_history[nextIndex] || segment.video_path || "";
     segment.preview_mode = "video";
     setActiveSegment(segment);
     syncPreview(segment);
@@ -6988,11 +6991,11 @@ function openBuilder(node) {
   }
 
   async function stitchRenderedScenes(progress) {
-    const paths = state.segments.map((segment) => String(segment.video_path || "").trim());
+    const paths = state.segments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
     const overlayItems = state.overlaySegments
-      .filter((segment) => String(segment.video_path || "").trim())
+      .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
       .map((segment, index) => ({
-        path: String(segment.video_path || "").trim(),
+        path: String(selectedSegmentVideoPath(segment) || "").trim(),
         start: Number(segment.start || 0),
         end: Number(segment.end || 0),
         label: segment.label || `Insert ${index + 1}`,
