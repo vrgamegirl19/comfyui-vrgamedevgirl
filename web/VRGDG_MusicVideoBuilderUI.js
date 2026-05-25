@@ -750,6 +750,109 @@ function showWelcomeProjectModal(projects = []) {
   });
 }
 
+function showLoadProjectModal(projects = []) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(800px,calc(100vw - 40px));max-height:min(820px,calc(100vh - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Load Project";
+    heading.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const note = document.createElement("div");
+    note.textContent = "Open a recent project from the ComfyUI output folder, or enter a custom project folder path.";
+    note.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+    const customRow = document.createElement("div");
+    customRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;";
+    const customInput = makeInput("");
+    customInput.placeholder = "Custom project folder path...";
+    const customOpen = makeButton("Open Custom", "primary");
+    customRow.append(makeField("Custom path", customInput), customOpen);
+    const listTitle = document.createElement("div");
+    listTitle.textContent = "Existing projects";
+    listTitle.style.cssText = "font-size:12px;font-weight:900;color:#bae6fd;";
+    const list = document.createElement("div");
+    list.style.cssText = "display:flex;flex-direction:column;gap:8px;overflow:auto;max-height:min(470px,48vh);padding-right:3px;";
+    const finish = (result) => {
+      backdrop.remove();
+      resolve(result);
+    };
+    close.onclick = () => finish(null);
+    customOpen.onclick = () => {
+      const path = String(customInput.value || "").trim();
+      if (path) finish({ action: "load", project_folder: path });
+    };
+    customInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") customOpen.click();
+    });
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(null);
+    });
+    if (!projects.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No existing projects were found in the ComfyUI output folder.";
+      empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:14px;color:#a1a1aa;font-size:12px;text-align:center;";
+      list.append(empty);
+    } else {
+      for (const project of projects) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #3f3f46;border-radius:7px;background:#18181b;padding:10px;";
+        const info = document.createElement("div");
+        info.style.cssText = "display:flex;flex-direction:column;gap:4px;min-width:0;";
+        const name = document.createElement("div");
+        name.textContent = project.name || "Unnamed project";
+        name.style.cssText = "font-size:13px;font-weight:900;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        const meta = document.createElement("div");
+        const updated = project.updated ? new Date(project.updated * 1000).toLocaleString() : "unknown date";
+        meta.textContent = `${project.scene_count || 0} scene${Number(project.scene_count || 0) === 1 ? "" : "s"} | ${updated}`;
+        meta.style.cssText = "font-size:11px;color:#a1a1aa;";
+        const path = document.createElement("div");
+        path.textContent = project.project_folder || "";
+        path.style.cssText = "font-size:11px;color:#67e8f9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        info.append(name, meta, path);
+        const open = makeButton("Open", "primary");
+        const del = makeButton("Delete");
+        del.style.borderColor = "#7f1d1d";
+        del.style.color = "#fecaca";
+        open.onclick = () => finish({ action: "load", project_folder: project.project_folder || "" });
+        del.onclick = async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const ok = await showDeleteProjectConfirm(project);
+          if (!ok) return;
+          try {
+            del.disabled = true;
+            del.textContent = "Deleting...";
+            await postJson("/vrgdg/music_builder/delete_project", { project_folder: project.project_folder }, 120000);
+            row.remove();
+            if (!list.children.length) {
+              const empty = document.createElement("div");
+              empty.textContent = "No existing projects were found in the ComfyUI output folder.";
+              empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:14px;color:#a1a1aa;font-size:12px;text-align:center;";
+              list.append(empty);
+            }
+          } catch (error) {
+            del.disabled = false;
+            del.textContent = "Delete";
+            toast(String(error?.message || error), true);
+          }
+        };
+        row.append(info, open, del);
+        list.append(row);
+      }
+    }
+    box.append(header, note, customRow, listTitle, list);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    backdrop.tabIndex = -1;
+    backdrop.focus();
+  });
+}
+
 function showDeleteProjectConfirm(project) {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
@@ -3548,6 +3651,40 @@ function openBuilder(node) {
     });
   }
 
+  function randomSeedValue() {
+    return Math.floor(Math.random() * 2147483647) + 1;
+  }
+
+  function setImageSeedForCurrentMode(imageMode = state.imageModelMode || "zimage") {
+    const seed = randomSeedValue();
+    if (imageMode === "flux_klein") {
+      const settings = state.fluxKleinSettings || {};
+      settings.seed = seed;
+      state.fluxKleinSettings = settings;
+      fluxSeed.value = String(seed);
+    } else if (imageMode === "ernie_image") {
+      const settings = state.ernieImageSettings || {};
+      settings.seed = seed;
+      state.ernieImageSettings = settings;
+      ernieSeed.value = String(seed);
+    } else {
+      const settings = activeZImageSettings() || {};
+      settings.seed = seed;
+      if (activeSegment()?.use_scene_zimage_settings) activeSegment().zimage_settings = settings;
+      else state.zimageSettings = settings;
+      zSeed.value = String(seed);
+    }
+    return seed;
+  }
+
+  function setVideoSeedRandom() {
+    const settings = state.i2vVideoSettings || {};
+    settings.seed = randomSeedValue();
+    state.i2vVideoSettings = settings;
+    i2vSeedInput.value = String(settings.seed);
+    return settings.seed;
+  }
+
   function renderFluxIngredientList(segment = activeSegment()) {
     const ingredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
     renderFluxIngredientRows(fluxIngredientList, ingredients, "No scene-specific image ingredients loaded for this scene.", (index) => {
@@ -5714,9 +5851,16 @@ function openBuilder(node) {
 
   async function loadSession() {
     try {
-      const folder = await pickProjectSessionFile();
-      if (!folder) return;
-      await loadSessionFromProject(folder);
+      let projects = [];
+      try {
+        const data = await getJson("/vrgdg/music_builder/list_projects");
+        projects = Array.isArray(data.projects) ? data.projects : [];
+      } catch (error) {
+        console.warn("[VRGDG Music Builder] Could not list existing projects:", error);
+      }
+      const choice = await showLoadProjectModal(projects);
+      if (!choice?.project_folder) return;
+      await loadSessionFromProject(choice.project_folder);
     } catch (error) {
       toast(String(error?.message || error), true);
     }
@@ -6571,7 +6715,13 @@ function openBuilder(node) {
     const progress = options.progress || createProgressWindow("Gemma I2V All Scenes");
     const closeProgress = !options.progress;
     const allScenes = allEditableSegments();
-    const scenes = allScenes.filter((segment) => !String(segment?.i2v_prompt || "").trim());
+    const redoPrompts = options.i2vRunMode === "redo_prompts";
+    if (redoPrompts) {
+      allScenes.forEach((segment) => {
+        segment.i2v_prompt = "";
+      });
+    }
+    const scenes = allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
     const missing = [];
     if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
     scenes.forEach((segment) => {
@@ -6781,13 +6931,13 @@ function openBuilder(node) {
     return segment.approved_image_path;
   }
 
-  function validateRenderAllReady() {
+  function validateRenderAllReady(options = {}) {
     const missing = [];
     const allScenes = allEditableSegments();
     if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
     const scenesToRender = allScenes
       .map((segment, index) => ({ segment, index }))
-      .filter(({ segment }) => !String(segment?.video_path || "").trim());
+      .filter(({ segment }) => options.forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
     const sceneAudioMode = usingSceneAudioMode();
     if (!sceneAudioMode && !String(audioInput.value || "").trim()) missing.push("Audio file path is missing.");
     if (sceneAudioMode) {
@@ -6814,12 +6964,19 @@ function openBuilder(node) {
     `;
   }
 
-  function validateZImageAllReady() {
+  function imageAllSegmentsForMode(mode = "resume_missing", imageMode = state.imageModelMode || "zimage") {
+    const scenes = allEditableSegments().map((segment) => ({ segment, index: segmentIndexInfo(segment).index }));
+    if (mode === "redo_prompts_images" || mode === "keep_prompts_redo_images") return scenes;
+    return scenes.filter(({ segment }) => !segmentImageSource(segment));
+  }
+
+  function validateZImageAllReady(options = {}) {
+    const mode = options.imageRunMode || "resume_missing";
     const missing = [];
     if (!allEditableSegments().length) missing.push("No scenes found. Add or load scenes first.");
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
-    allEditableSegments().forEach((segment) => {
-      if (segmentImageSource(segment)) return;
+    imageAllSegmentsForMode(mode).forEach(({ segment }) => {
+      if (mode !== "redo_prompts_images" && String(segment.t2i_prompt || "").trim()) return;
       const reason = t2iMissingReason(segment);
       if (reason) missing.push(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${reason}`);
     });
@@ -7067,10 +7224,12 @@ function openBuilder(node) {
     }
   }
 
-  async function renderAllScenes() {
+  async function renderAllScenes(options = {}) {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
-    const missing = validateRenderAllReady();
+    const forceVideos = Boolean(options.forceVideos);
+    const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
+    const missing = validateRenderAllReady({ forceVideos });
     const progress = createProgressWindow("Render All Scenes");
     if (missing.length) {
       progress.setHtml(renderMissingListHtml(missing), 100);
@@ -7087,7 +7246,7 @@ function openBuilder(node) {
       const preparedAudio = await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
       const scenes = allEditableSegments()
         .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
-        .filter(({ segment }) => !String(segment?.video_path || "").trim());
+        .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
       if (!scenes.length) {
         progress.set("All scenes already have video. Stitching existing scene videos...", 80);
       }
@@ -7097,12 +7256,14 @@ function openBuilder(node) {
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
-        progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; existing videos skipped)...`, base);
+        if (randomizeVideoSeed) setVideoSeedRandom();
+        progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...`, base);
         await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
           progressBase: base,
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
+          existingVideoAction: forceVideos ? "backup" : "overwrite",
           audioPathOverride: segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
           srtPathOverride: segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
         });
@@ -7131,7 +7292,10 @@ function openBuilder(node) {
 
   async function zImageAllScenes(options = {}) {
     updateActiveFromInputs();
-    const missing = validateZImageAllReady();
+    const imageRunMode = options.imageRunMode || "resume_missing";
+    const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
+    const redoPrompts = imageRunMode === "redo_prompts_images";
+    const missing = validateZImageAllReady({ imageRunMode });
     const progress = createProgressWindow("Z-Image All Scenes");
     if (missing.length) {
       progress.setHtml(`
@@ -7153,31 +7317,43 @@ function openBuilder(node) {
       createT2IButton.disabled = true;
       progress.set("Autosaving session/SRT before Z-Image All...", 3);
       await saveSessionForSceneVideo();
-      const scenes = allEditableSegments()
-        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
-        .filter(({ segment }) => !segmentImageSource(segment));
+      const scenes = imageAllSegmentsForMode(imageRunMode, "zimage");
       if (!scenes.length) {
         progress.set("All scenes already have images. Skipping Z-Image All.", 100);
         progress.close(1800);
         toast("All scenes already have images. Z-Image All skipped.");
         return;
       }
-      progress.set(`Z-Image All: creating ${scenes.length} T2I prompt${scenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
-      for (let index = 0; index < scenes.length; index += 1) {
+      if (redoPrompts) {
+        scenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      const promptScenes = scenes.filter(({ segment }) => !String(segment.t2i_prompt || "").trim());
+      if (promptScenes.length) {
+        progress.set(`Image All: creating ${promptScenes.length} missing T2I prompt${promptScenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
+      } else {
+        progress.set("Image All: all missing images already have T2I prompts. Skipping Gemma prompt pass...", 12);
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
         assertBatchNotStopped();
-        const { segment, index: sceneIndex } = scenes[index];
+        const { segment, index: sceneIndex } = promptScenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
-        const base = 6 + Math.floor((index / scenes.length) * 32);
+        const base = 6 + Math.floor((index / promptScenes.length) * 32);
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Z-Image prompt pass ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
-        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Z-Image prompt pass ${index + 1}/${scenes.length}: Gemma`, { unloadAfter: false });
+        progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`, { unloadAfter: false });
         assertBatchNotStopped();
-        await autoSaveSessionQuiet(`Z-Image prompt pass scene ${sceneIndex + 1}`);
+        await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
       }
-      await runClearMemoryWorkflowQuiet(progress, "Z-Image prompt pass", 42);
-      progress.set(`Z-Image All: Gemma prompt pass complete. Creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      if (promptScenes.length) {
+        await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
+      }
+      progress.set(`Image All: creating ${scenes.length} ZImage image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
@@ -7187,6 +7363,7 @@ function openBuilder(node) {
         state.activeId = segment.id;
         syncInspector();
         render();
+        if (forceNewImages) setImageSeedForCurrentMode("zimage");
         progress.set(`Z-Image image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createZImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Z-Image All ${index + 1}/${scenes.length}: ZImage`);
         assertBatchNotStopped();
@@ -7194,7 +7371,7 @@ function openBuilder(node) {
         await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
       }
       await autoSaveSessionQuiet("Z-Image All complete");
-      progress.set("Z-Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.set("Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
       progress.close(4500);
       toast("Z-Image All complete.");
     } catch (error) {
@@ -7224,7 +7401,10 @@ function openBuilder(node) {
 
   async function ernieImageAllScenes(options = {}) {
     updateActiveFromInputs();
-    const missing = validateZImageAllReady();
+    const imageRunMode = options.imageRunMode || "resume_missing";
+    const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
+    const redoPrompts = imageRunMode === "redo_prompts_images";
+    const missing = validateZImageAllReady({ imageRunMode });
     const progress = createProgressWindow("Ernie Image All Scenes");
     if (missing.length) {
       progress.setHtml(`
@@ -7247,31 +7427,43 @@ function openBuilder(node) {
       ernieCreateT2IButton.disabled = true;
       progress.set("Autosaving session/SRT before Ernie Image All...", 3);
       await saveSessionForSceneVideo();
-      const scenes = allEditableSegments()
-        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
-        .filter(({ segment }) => !segmentImageSource(segment));
+      const scenes = imageAllSegmentsForMode(imageRunMode, "ernie_image");
       if (!scenes.length) {
         progress.set("All scenes already have images. Skipping Ernie Image All.", 100);
         progress.close(1800);
         toast("All scenes already have images. Ernie Image All skipped.");
         return;
       }
-      progress.set(`Ernie Image All: creating ${scenes.length} T2I prompt${scenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
-      for (let index = 0; index < scenes.length; index += 1) {
+      if (redoPrompts) {
+        scenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      const promptScenes = scenes.filter(({ segment }) => !String(segment.t2i_prompt || "").trim());
+      if (promptScenes.length) {
+        progress.set(`Image All: creating ${promptScenes.length} missing T2I prompt${promptScenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
+      } else {
+        progress.set("Image All: all missing images already have T2I prompts. Skipping Gemma prompt pass...", 12);
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
         assertBatchNotStopped();
-        const { segment, index: sceneIndex } = scenes[index];
+        const { segment, index: sceneIndex } = promptScenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
-        const base = 6 + Math.floor((index / scenes.length) * 32);
+        const base = 6 + Math.floor((index / promptScenes.length) * 32);
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Ernie prompt pass ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
-        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Ernie prompt pass ${index + 1}/${scenes.length}: Gemma`, { unloadAfter: false });
+        progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`, { unloadAfter: false });
         assertBatchNotStopped();
-        await autoSaveSessionQuiet(`Ernie prompt pass scene ${sceneIndex + 1}`);
+        await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
       }
-      await runClearMemoryWorkflowQuiet(progress, "Ernie prompt pass", 42);
-      progress.set(`Ernie Image All: Gemma prompt pass complete. Creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      if (promptScenes.length) {
+        await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
+      }
+      progress.set(`Image All: creating ${scenes.length} Ernie image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
@@ -7281,6 +7473,7 @@ function openBuilder(node) {
         state.activeId = segment.id;
         syncInspector();
         render();
+        if (forceNewImages) setImageSeedForCurrentMode("ernie_image");
         progress.set(`Ernie image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createErnieImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Ernie Image All ${index + 1}/${scenes.length}: Ernie`);
         assertBatchNotStopped();
@@ -7288,7 +7481,7 @@ function openBuilder(node) {
         await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
       }
       await autoSaveSessionQuiet("Ernie Image All complete");
-      progress.set("Ernie Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.set("Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
       progress.close(4500);
       toast("Ernie Image All complete.");
     } catch (error) {
@@ -7319,6 +7512,9 @@ function openBuilder(node) {
 
   async function fluxKleinAllScenes(options = {}) {
     updateActiveFromInputs();
+    const imageRunMode = options.imageRunMode || "resume_missing";
+    const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
+    const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("Flux/Klein All Scenes");
     const hasAnyGlobal = Array.isArray(state.fluxGlobalImageIngredients) && state.fluxGlobalImageIngredients.length > 0;
     if (!hasAnyGlobal && !allEditableSegments().some((segment) => Array.isArray(segment.flux_image_ingredients) && segment.flux_image_ingredients.length)) {
@@ -7336,38 +7532,50 @@ function openBuilder(node) {
       createFluxPromptButton.disabled = true;
       progress.set("Autosaving session/SRT before Flux/Klein All...", 3);
       await saveSessionForSceneVideo();
-      const scenes = allEditableSegments()
-        .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
-        .filter(({ segment }) => !segmentImageSource(segment));
+      const scenes = imageAllSegmentsForMode(imageRunMode, "flux_klein");
       if (!scenes.length) {
         progress.set("All scenes already have images. Skipping Flux/Klein All.", 100);
         progress.close(1800);
         toast("All scenes already have images. Flux/Klein All skipped.");
         return;
       }
-      progress.set(`Flux/Klein All: creating ${scenes.length} image prompt${scenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
-      for (let index = 0; index < scenes.length; index += 1) {
+      if (redoPrompts) {
+        scenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      const promptScenes = scenes.filter(({ segment }) => !String(segment.flux_prompt || segment.t2i_prompt || "").trim());
+      if (promptScenes.length) {
+        progress.set(`Image All: creating ${promptScenes.length} missing Flux/Klein prompt${promptScenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
+      } else {
+        progress.set("Image All: all missing images already have image prompts. Skipping Gemma prompt pass...", 12);
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
         assertBatchNotStopped();
-        const { segment, index: sceneIndex } = scenes[index];
+        const { segment, index: sceneIndex } = promptScenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
-        const base = 6 + Math.floor((index / scenes.length) * 32);
+        const base = 6 + Math.floor((index / promptScenes.length) * 32);
         try {
-          progress.set(`Flux/Klein prompt pass ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+          progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
           await generateFluxKleinPromptForSegment(
             segment,
             progress,
             Math.min(38, base + 3),
-            `Flux/Klein prompt pass ${index + 1}/${scenes.length}: Gemma`,
+            `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`,
             { clearBeforeLoad: index === 0, unloadAfter: false },
           );
           assertBatchNotStopped();
-          await autoSaveSessionQuiet(`Flux/Klein prompt pass scene ${sceneIndex + 1}`);
+          await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
         } catch (error) {
-          throw new Error(`Flux/Klein prompt pass stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+          throw new Error(`Image All prompt pass stopped at ${sceneLabel} (${index + 1}/${promptScenes.length}):\n${String(error?.message || error || "Unknown error")}`);
         }
       }
-      await runClearMemoryWorkflowQuiet(progress, "Flux/Klein prompt pass", 42);
-      progress.set(`Flux/Klein All: Gemma prompt pass complete. Creating ${scenes.length} image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      if (promptScenes.length) {
+        await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
+      }
+      progress.set(`Image All: creating ${scenes.length} Flux/Klein image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
@@ -7375,6 +7583,7 @@ function openBuilder(node) {
         const base = 45 + Math.floor((index / scenes.length) * 45);
         const span = Math.max(1, Math.floor(40 / scenes.length));
         try {
+          if (forceNewImages) setImageSeedForCurrentMode("flux_klein");
           progress.set(`Flux/Klein image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved Flux/Klein prompt...`, base);
           await createFluxKleinImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Flux/Klein All ${index + 1}/${scenes.length}: Image`);
           assertBatchNotStopped();
@@ -7385,7 +7594,7 @@ function openBuilder(node) {
         }
       }
       await autoSaveSessionQuiet("Flux/Klein All complete");
-      progress.set("Flux/Klein All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.set("Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
       progress.close(4500);
       toast("Flux/Klein All complete.");
     } catch (error) {
@@ -7413,7 +7622,8 @@ function openBuilder(node) {
     }
   }
 
-  async function buildFullVideoPipeline() {
+  async function buildFullVideoPipeline(options = {}) {
+    const buildMode = options.buildMode || "resume_missing";
     let progress = null;
     try {
       fullBuildButton.disabled = true;
@@ -7425,19 +7635,26 @@ function openBuilder(node) {
       const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
       progress.set(`Stage 1/3: ${imageStage}...`, 5);
       const imageMode = state.imageModelMode || "zimage";
+      const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
       if (imageMode === "flux_klein") {
-        await fluxKleinAllScenes({ throwOnError: true });
+        await fluxKleinAllScenes({ throwOnError: true, imageRunMode });
       } else if (imageMode === "ernie_image") {
-        await ernieImageAllScenes({ throwOnError: true });
+        await ernieImageAllScenes({ throwOnError: true, imageRunMode });
       } else {
-        await zImageAllScenes({ throwOnError: true });
+        await zImageAllScenes({ throwOnError: true, imageRunMode });
       }
       assertBatchNotStopped();
       progress.set("Stage 2/3: creating I2V prompts...", 38);
-      await i2vAllScenes({ throwOnError: true });
+      await i2vAllScenes({
+        throwOnError: true,
+        i2vRunMode: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" ? "redo_prompts" : "resume_missing",
+      });
       assertBatchNotStopped();
       progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
-      await renderAllScenes();
+      await renderAllScenes({
+        forceVideos: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
+        randomizeVideoSeed: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
+      });
       progress.set("Build Full Video complete.", 100);
       progress.close(4500);
     } catch (error) {
@@ -7831,6 +8048,70 @@ function openBuilder(node) {
     });
   }
 
+  function chooseBatchModeAction({ title, intro = "", choices = [], confirmLabel = "Continue" } = {}) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(680px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = title || "Choose Batch Mode";
+      heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+      const text = document.createElement("div");
+      text.textContent = intro || "";
+      text.style.cssText = `display:${intro ? "block" : "none"};font-size:13px;color:#d4d4d8;line-height:1.45;`;
+      let selected = choices[0]?.value || "";
+      const list = document.createElement("div");
+      list.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto;";
+      choices.forEach((choice, index) => {
+        const id = `vrgdg_batch_choice_${Date.now()}_${index}`;
+        const label = document.createElement("label");
+        label.htmlFor = id;
+        label.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;cursor:pointer;";
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "vrgdg_batch_choice";
+        input.id = id;
+        input.value = choice.value;
+        input.checked = index === 0;
+        input.style.marginTop = "3px";
+        input.onchange = () => {
+          if (input.checked) selected = choice.value;
+        };
+        const copy = document.createElement("div");
+        const name = document.createElement("div");
+        name.textContent = choice.label || choice.value;
+        name.style.cssText = "font-weight:900;color:#f8fafc;font-size:13px;";
+        const desc = document.createElement("div");
+        desc.textContent = choice.description || "";
+        desc.style.cssText = "margin-top:4px;color:#cbd5e1;font-size:12px;line-height:1.45;";
+        copy.append(name, desc);
+        label.append(input, copy);
+        label.onclick = () => {
+          input.checked = true;
+          selected = choice.value;
+        };
+        list.append(label);
+      });
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const confirm = makeButton(confirmLabel, "primary");
+      cancel.onclick = () => {
+        backdrop.remove();
+        resolve("");
+      };
+      confirm.onclick = () => {
+        backdrop.remove();
+        resolve(selected);
+      };
+      actions.append(cancel, confirm);
+      box.append(heading, text, list, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
   function confirmDeleteMediaAction(type, path) {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
@@ -7916,39 +8197,44 @@ function openBuilder(node) {
     const imageMode = state.imageModelMode || "zimage";
     const useFluxKleinMode = imageMode === "flux_klein";
     const useErnieMode = imageMode === "ernie_image";
-    const title = useFluxKleinMode ? "Run Flux/Klein Image All?" : useErnieMode ? "Run Ernie Image All?" : "Run Z-Image All?";
-    const lines = useFluxKleinMode ? [
-      "This will create missing Flux/Klein prompts with Gemma vision, then create missing scene images with Flux/Klein.",
-      "Scenes that already have images will be skipped.",
-      "Global Flux/Klein image ingredients are included for every scene when enabled.",
-      "Memory cleanup runs between scenes.",
-    ] : useErnieMode ? [
-      "This will create missing T2I prompts with Gemma, then create missing scene images with Ernie.",
-      "Scenes that already have images will be skipped.",
-      "Memory cleanup runs between scenes.",
-    ] : [
-      "This will create missing T2I prompts with Gemma, then create missing scene images with ZImage.",
-      "Scenes that already have images will be skipped.",
-      "Memory cleanup runs between scenes.",
-    ];
-    const ok = await confirmLongBatchAction({
-      title,
-      lines,
-      confirmLabel: useFluxKleinMode ? "Run Flux/Klein Image All" : useErnieMode ? "Run Ernie Image All" : "Run Z-Image All",
+    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useErnieMode ? "Ernie" : "ZImage";
+    const mode = await chooseBatchModeAction({
+      title: "Run Image All?",
+      intro: `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
+      confirmLabel: "Run Image All",
+      choices: [
+        {
+          value: "resume_missing",
+          label: "Resume missing images",
+          description: "Safe resume mode. Keep existing image prompts and selected images. Only run Gemma/create images for scenes that do not already have an image.",
+        },
+        {
+          value: "keep_prompts_redo_images",
+          label: "Keep prompts, redo images",
+          description: "Keep saved ZImage/Ernie/Flux prompts, randomize image seeds, and create a new image version for every scene.",
+        },
+        {
+          value: "redo_prompts_images",
+          label: "Redo image prompts and images",
+          description: "Regenerate image prompts with Gemma, randomize image seeds, and create a new image version for every scene.",
+        },
+      ],
     });
-    if (!ok) return;
-    if (useFluxKleinMode) await fluxKleinAllScenes();
-    else if (useErnieMode) await ernieImageAllScenes();
-    else await zImageAllScenes();
+    if (!mode) return;
+    if (useFluxKleinMode) await fluxKleinAllScenes({ imageRunMode: mode });
+    else if (useErnieMode) await ernieImageAllScenes({ imageRunMode: mode });
+    else await zImageAllScenes({ imageRunMode: mode });
   }
 
   async function confirmAndRunRenderAll() {
     const ok = await confirmLongBatchAction({
       title: "Run Render All?",
       lines: [
-        "This will render videos for scenes that do not already have video.",
-        "Scenes that already have video will be skipped.",
-        "When all scene videos exist, it will stitch the final video.",
+        "Render All only works on the video/render stage.",
+        "It uses the current selected images and existing I2V prompts.",
+        "Scenes that already have a selected video are skipped.",
+        "Scenes missing video are rendered, then the final video is stitched.",
+        "If every scene already has video, this only stitches the final video.",
       ],
       confirmLabel: "Run Render All",
     });
@@ -7956,16 +8242,34 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunFullBuild() {
-    const ok = await confirmLongBatchAction({
+    const mode = await chooseBatchModeAction({
       title: "Build Full Video?",
-      lines: [
-        "This will create missing images, create I2V prompts using each scene's image-reference setting, render missing scene videos, then stitch the final video.",
-        "Existing images and videos are skipped so this can resume an unfinished project.",
-        "This is the longest batch process and is meant for unattended runs.",
-      ],
+      intro: "Build Full Video can run the whole pipeline: image prompts, images, I2V prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.",
       confirmLabel: "Build Full Video",
+      choices: [
+        {
+          value: "resume_missing",
+          label: "Resume missing only",
+          description: "Safest resume mode. Keep existing prompts, selected images, and selected videos. Only create whatever is missing, then stitch the final video.",
+        },
+        {
+          value: "fresh_rebuild",
+          label: "Fresh full rebuild",
+          description: "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image and video seeds are randomized.",
+        },
+        {
+          value: "redo_i2v_prompts_videos",
+          label: "Keep images, redo I2V prompts and videos",
+          description: "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions with randomized video seeds.",
+        },
+        {
+          value: "redo_videos",
+          label: "Keep images and prompts, redo videos",
+          description: "Use the current selected images and existing I2V prompts. Only create new video versions with randomized video seeds, then stitch.",
+        },
+      ],
     });
-    if (ok) await buildFullVideoPipeline();
+    if (mode) await buildFullVideoPipeline({ buildMode: mode });
   }
 
   for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview]) {
