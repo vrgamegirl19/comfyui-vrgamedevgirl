@@ -3270,8 +3270,8 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
     def _pil_to_data_url(self, img: Image.Image) -> str:
         image = img.convert("RGB")
         longest_side = max(image.size)
-        if longest_side > 768:
-            scale = 768 / float(longest_side)
+        if longest_side > 512:
+            scale = 512 / float(longest_side)
             new_size = (
                 max(1, int(image.size[0] * scale)),
                 max(1, int(image.size[1] * scale)),

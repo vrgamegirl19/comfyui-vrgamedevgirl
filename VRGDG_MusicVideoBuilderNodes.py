@@ -1266,7 +1266,7 @@ def _generate_builder_t2i_prompt(payload):
     chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or (0.25 if has_ref_image else 0.6))
     top_p = float(payload.get("top_p") or 0.95)
-    max_new_tokens = int(payload.get("max_new_tokens") or (8000 if has_ref_image else 1200))
+    max_new_tokens = int(payload.get("max_new_tokens") or (1000 if has_ref_image else 1200))
     unload_after = True
 
     try:

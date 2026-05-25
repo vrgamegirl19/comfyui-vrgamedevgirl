@@ -1,6 +1,6 @@
 import { api } from "../../scripts/api.js";
 
-const PROMPT_CREATOR_VERSION = "prompt-creator-2026-05-23-direct-lyrics";
+const PROMPT_CREATOR_VERSION = "prompt-creator-2026-05-24-clean-gemma-panel";
 const LYRIC_CREATOR_GPT_URL = "https://chatgpt.com/g/g-69979b391cc88191ae4fe298b59c236e-ai-lyric-creator";
 const STYLE_THEME_GPT_URL = "https://chatgpt.com/g/g-69fb415a964c8191b4a737f84f37227f-ltx-2-3-style-theme-guide/c/69fb427d-4518-8331-bfd7-505c0f55d2cc";
 const STORY_IDEA_GPT_URL = "https://chatgpt.com/g/g-69fb3cb767448191a6caa88be94940d5-ltx-2-3-story-concept-helper/c/69fb3e25-7e74-8326-abd6-7df9cf847a5b";
@@ -156,6 +156,29 @@ function makeCompactField(label, control, width = "110px", hint = "") {
   field.style.flex = `0 0 ${width}`;
   control.style.width = "100%";
   return field;
+}
+
+function makeHintButton(title, lines = []) {
+  const button = makeButton("?");
+  button.type = "button";
+  button.style.cssText += "width:28px;min-width:28px;padding:7px 0;";
+  button.onclick = () => showInfoPopup(title, lines);
+  return button;
+}
+
+function makeCompactHintField(label, control, width = "110px", hintTitle = label, hintLines = []) {
+  const wrapper = document.createElement("label");
+  wrapper.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:12px;color:#d4d4d8;font-weight:800;";
+  wrapper.style.width = width;
+  wrapper.style.flex = `0 0 ${width}`;
+  const header = document.createElement("span");
+  header.style.cssText = "display:flex;align-items:center;gap:6px;";
+  const text = document.createElement("span");
+  text.textContent = label;
+  header.append(text, makeHintButton(hintTitle, hintLines));
+  control.style.width = "100%";
+  wrapper.append(header, control);
+  return wrapper;
 }
 
 function makePickerField(label, input, button, hint = "") {
@@ -628,6 +651,11 @@ function openPromptCreator(options = {}) {
   emptySegmentField.style.flex = "1 1 260px";
   const appendSubjectField = makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving.");
   appendSubjectField.style.flex = "1 1 260px";
+  const durationPresetHints = [
+    "varied_no_repeat: creates varied scene lengths and avoids repeating the same duration pattern back to back.",
+    "impact_weighted: favors stronger beat/impact moments when choosing scene boundaries, so cuts feel more tied to the music.",
+    "clustered_no_repeat: groups cuts around denser musical moments while still avoiding obvious repeated durations.",
+  ];
   const setupControls = [
     projectFolderNote,
     audioField,
@@ -635,10 +663,20 @@ function openPromptCreator(options = {}) {
     makeCompactField("Fixed scene duration", fixedSceneDuration, "140px", "Used when SRT is off."),
     emptySegmentField,
     appendSubjectField,
-    makeCompactField("Min duration", minDuration, "110px"),
-    makeCompactField("Max duration", maxDuration, "110px"),
-    makeCompactField("Bias", bias, "80px"),
-    makeCompactField("Duration preset", durationPreset, "250px"),
+    makeCompactHintField("Min duration", minDuration, "110px", "Min Duration", [
+      "Smallest scene length the beat/SRT setup should create.",
+      "Use this to prevent cuts from becoming too fast or too short.",
+    ]),
+    makeCompactHintField("Max duration", maxDuration, "110px", "Max Duration", [
+      "Largest scene length the beat/SRT setup should create.",
+      "Use this to prevent long sections from staying on one scene for too long.",
+    ]),
+    makeCompactHintField("Bias", bias, "90px", "Bias", [
+      "Controls how strongly the timing chooser leans toward preferred beat/duration choices.",
+      "Lower values stay more even and conservative. Higher values allow stronger timing choices and more variation.",
+      "0.7 is a balanced default.",
+    ]),
+    makeCompactHintField("Duration preset", durationPreset, "250px", "Duration Presets", durationPresetHints),
   ];
   const setupGrid = document.createElement("div");
   setupGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;";
@@ -672,6 +710,12 @@ function openPromptCreator(options = {}) {
       "Full lyrics",
       fullLyrics,
       [
+        (() => {
+          const button = makeButton("Sonauto");
+          button.style.padding = "6px 9px";
+          button.onclick = () => window.open("https://sonauto.ai/", "_blank", "noopener,noreferrer");
+          return button;
+        })(),
         makeGemmaInputButton("Gemma4 Lyrics", "full_lyrics", fullLyrics),
         makeGptButton(LYRIC_CREATOR_GPT_URL),
       ]
@@ -745,15 +789,11 @@ function openPromptCreator(options = {}) {
   ]);
   const conceptMatchField = makeField("Concept lyric match", conceptMatchRow);
   conceptMatchField.append(conceptMatchHint);
-  const settingsNote = document.createElement("div");
-  settingsNote.textContent = "Uses non-vision Gemma. unload_after_run=true, n_ctx=14848, max_new_tokens=32000, temperature=0.30, top_p=0.80.";
-  settingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
   conceptMatchField.style.flex = "1 1 360px";
   setupControls.push(conceptMatchField);
   setupGrid.append(conceptMatchField);
   modelPanel.append(
     makeField("Gemma4 text model", modelSelect),
-    settingsNote,
   );
 
   const outputsPanel = makePanel("Generated Outputs");
@@ -1016,8 +1056,8 @@ function openPromptCreator(options = {}) {
       user_input: idea,
       subject_locations: fieldKey === "subject_locations" ? (idea || subjectLocations.value) : subjectLocations.value,
       unload_after: true,
-      n_ctx: 13000,
-      max_new_tokens: fieldKey === "full_lyrics" ? 32000 : 8000,
+      n_ctx: fieldKey === "style_theme" ? 8000 : 13000,
+      max_new_tokens: fieldKey === "full_lyrics" ? 32000 : fieldKey === "style_theme" ? 600 : 8000,
       temperature: 0.75,
       top_p: 0.95,
     };

@@ -149,12 +149,12 @@ function makeSelect(options = [], value = "") {
 
 function makeSearchableLoraPicker(value = "[none]") {
   const wrapper = document.createElement("div");
-  wrapper.style.cssText = "position:relative;";
+  wrapper.style.cssText = "display:flex;flex-direction:column;gap:4px;position:relative;z-index:1;";
   const input = makeInput(value || "[none]");
   const list = document.createElement("div");
-  list.style.cssText = "display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:20;width:min(560px,80vw);max-height:240px;overflow:auto;border:1px solid #3f3f46;border-radius:6px;background:#18181b;box-shadow:0 12px 30px rgba(0,0,0,.45);";
+  list.style.cssText = "display:none;width:100%;max-height:180px;overflow:auto;border:1px solid #3f3f46;border-radius:6px;background:#18181b;box-shadow:0 8px 18px rgba(0,0,0,.32);";
   wrapper.append(input, list);
-  return { wrapper, input, list, options: [] };
+  return { wrapper, input, list, options: [], matches: [], activeIndex: -1 };
 }
 
 function makeField(label, control) {
@@ -192,7 +192,7 @@ function makeMiniButton(label) {
 function makeSettingsSection(title, children = [], open = true) {
   const details = document.createElement("details");
   details.open = Boolean(open);
-  details.style.cssText = "border:1px solid #303038;border-radius:7px;background:#18181b;overflow:hidden;";
+  details.style.cssText = "border:1px solid #303038;border-radius:7px;background:#18181b;overflow:visible;";
   const summary = document.createElement("summary");
   summary.textContent = title;
   summary.style.cssText = "cursor:pointer;list-style:none;padding:10px 10px;font-size:12px;font-weight:900;color:#e4e4e7;border-bottom:1px solid #27272a;";
@@ -1464,6 +1464,16 @@ function openBuilder(node) {
   ernieT2IPrompt.placeholder = t2iPrompt.placeholder;
   ernieT2IPrompt.style.cssText = t2iPrompt.style.cssText;
   const ernieUseVisionReference = makeCheckbox("Use vision reference image?", false);
+  const ernieRefImagePanel = document.createElement("div");
+  ernieRefImagePanel.style.cssText = refImagePanel.style.cssText;
+  const ernieRefImageNote = document.createElement("div");
+  ernieRefImageNote.textContent = refImageNote.textContent;
+  ernieRefImageNote.style.cssText = refImageNote.style.cssText;
+  const ernieRefImageDrop = document.createElement("div");
+  ernieRefImageDrop.textContent = refImageDrop.textContent;
+  ernieRefImageDrop.style.cssText = refImageDrop.style.cssText;
+  const ernieRefImageLoadButton = makeButton("Load Reference Image", "primary");
+  ernieRefImagePanel.append(ernieRefImageNote, ernieRefImageDrop, ernieRefImageLoadButton);
   const ernieCreateT2IButton = makeButton("Gemma T2I", "primary");
   const ernieSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const i2vPrompt = document.createElement("textarea");
@@ -1681,6 +1691,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         makeField("Notes", ernieNotesInput),
         ernieUseVisionReference.wrapper,
+        ernieRefImagePanel,
         ernieCreateT2IButton,
         makeField("T2I prompt", ernieT2IPrompt),
         ernieSendT2IPromptToEnhanceButton,
@@ -2093,6 +2104,7 @@ function openBuilder(node) {
     themeStylePath: "",
     storyIdeaPath: "",
     subjectScenePath: "",
+    imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     fluxKleinSettings: defaultFluxKleinSettings(),
     ernieImageSettings: defaultErnieImageSettings(),
@@ -2462,6 +2474,7 @@ function openBuilder(node) {
       timelinePanelHeight: state.timelinePanelHeight,
       timelineZoom: state.timelineZoom,
       autoSaveEnabled: state.autoSaveEnabled,
+      imageModelMode: state.imageModelMode,
       zimageSettings: state.zimageSettings,
       fluxKleinSettings: state.fluxKleinSettings,
       ernieImageSettings: state.ernieImageSettings,
@@ -2500,6 +2513,7 @@ function openBuilder(node) {
     state.timelinePanelHeight = data.timelinePanelHeight || state.timelinePanelHeight || 300;
     state.timelineZoom = data.timelineZoom || state.timelineZoom || 45;
     state.autoSaveEnabled = data.autoSaveEnabled ?? state.autoSaveEnabled ?? true;
+    state.imageModelMode = data.imageModelMode || data.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
     state.pxPerSecond = state.timelineZoom;
     waveformModeSelect.value = state.waveformMode;
     snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
@@ -2910,6 +2924,7 @@ function openBuilder(node) {
       useSceneZImageSettings.input.checked = false;
       refImageInput.value = "";
       refImagePanel.style.display = "none";
+      ernieRefImagePanel.style.display = "none";
       audioSummary.textContent = "Select a scene to view or edit scene audio.";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
@@ -2925,6 +2940,7 @@ function openBuilder(node) {
     i2vNotesInput.value = segment.i2v_notes || "";
     t2iPrompt.value = segment.t2i_prompt || "";
     ernieT2IPrompt.value = segment.t2i_prompt || "";
+    fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
     i2vPrompt.value = segment.i2v_prompt || "";
     useVisionReference.input.checked = Boolean(segment.use_vision_reference);
     ernieUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
@@ -2932,6 +2948,7 @@ function openBuilder(node) {
     useSceneZImageSettings.input.checked = Boolean(segment.use_scene_zimage_settings);
     refImageInput.value = segment.ref_image_path || "";
     refImagePanel.style.display = useVisionReference.input.checked ? "flex" : "none";
+    ernieRefImagePanel.style.display = ernieUseVisionReference.input.checked ? "flex" : "none";
     audioSummary.innerHTML = segment.custom_audio_path
       ? `
         <div><strong>Scene audio:</strong> ${escapeHtml(segment.custom_audio_name || segment.custom_audio_path)}</div>
@@ -3304,7 +3321,22 @@ function openBuilder(node) {
     }
     ingredients.forEach((item, index) => {
       const row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#18181b;padding:8px;";
+      row.style.cssText = "display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#18181b;padding:8px;";
+      const thumbWrap = document.createElement("div");
+      thumbWrap.style.cssText = "width:52px;height:52px;border:1px solid #3f3f46;border-radius:6px;background:#09090b;overflow:hidden;display:flex;align-items:center;justify-content:center;";
+      const imageSrc = item?.data || (item?.path ? makeEditorImageUrl(item.path) : "");
+      if (imageSrc) {
+        const thumb = document.createElement("img");
+        thumb.alt = "";
+        thumb.src = imageSrc;
+        thumb.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+        thumbWrap.append(thumb);
+      } else {
+        const placeholder = document.createElement("div");
+        placeholder.textContent = "IMG";
+        placeholder.style.cssText = "font-size:10px;font-weight:900;color:#71717a;";
+        thumbWrap.append(placeholder);
+      }
       const label = document.createElement("div");
       label.textContent = `${index + 1}. ${item?.name || item?.path || "image ingredient"}`;
       label.title = item?.path || item?.name || "";
@@ -3313,7 +3345,7 @@ function openBuilder(node) {
       remove.onclick = () => {
         onRemove(index);
       };
-      row.append(label, remove);
+      row.append(thumbWrap, label, remove);
       listElement.append(row);
     });
   }
@@ -3354,7 +3386,8 @@ function openBuilder(node) {
   function syncFluxKleinPanel() {
     const settings = state.fluxKleinSettings || {};
     const segment = activeSegment();
-    const mode = settings.image_model_mode || "";
+    const mode = state.imageModelMode || settings.image_model_mode || "zimage";
+    state.imageModelMode = mode;
     settings.image_model_mode = mode;
     settings.enabled = mode === "flux_klein";
     zImageModePanel.style.display = mode === "zimage" ? "flex" : "none";
@@ -3381,7 +3414,7 @@ function openBuilder(node) {
     renderFluxGlobalIngredientList();
     renderFluxIngredientList(segment);
     fluxNotes.value = segment?.flux_notes || "";
-    fluxPrompt.value = segment?.flux_prompt || "";
+    fluxPrompt.value = segment?.t2i_prompt || segment?.flux_prompt || "";
     fluxUnetPicker.input.value = chooseModelValue(
       fluxUnetPicker.options || [],
       settings.unet_name || "flux\\flux-2-klein-4b-fp8.safetensors",
@@ -3407,10 +3440,11 @@ function openBuilder(node) {
       if (!Array.isArray(segment.flux_image_ingredients)) segment.flux_image_ingredients = [];
       segment.flux_notes = fluxNotes.value || "";
       segment.flux_prompt = fluxPrompt.value || "";
+      segment.t2i_prompt = segment.flux_prompt;
     }
     state.fluxKleinSettings = {
       enabled: Boolean(useFluxKlein.input.checked),
-      image_model_mode: current.image_model_mode || (useFluxKlein.input.checked ? "flux_klein" : ""),
+      image_model_mode: state.imageModelMode || current.image_model_mode || (useFluxKlein.input.checked ? "flux_klein" : "zimage"),
       unet_name: fluxUnetPicker.input.value || "",
       clip_name: fluxClipPicker.input.value || "",
       vae_name: fluxVaePicker.input.value || "",
@@ -3418,7 +3452,6 @@ function openBuilder(node) {
       height: Number(fluxHeight.value || 576),
       seed: Number(fluxSeed.value || 100),
     };
-    syncFluxKleinPanel();
     return {
       ...state.fluxKleinSettings,
       image_ingredients: mergedFluxImageIngredients(segment),
@@ -3546,23 +3579,30 @@ function openBuilder(node) {
       segment.end = Math.max(segment.start + 0.1, Number(endInput.value || segment.start + 4));
     }
     segment.notes = notesInput.value || "";
-    if (state.fluxKleinSettings?.image_model_mode === "ernie_image") {
+    if (state.imageModelMode === "ernie_image") {
       segment.notes = ernieNotesInput.value || "";
     }
     segment.i2v_notes = i2vNotesInput.value || "";
-    segment.t2i_prompt = t2iPrompt.value || "";
-    if (state.fluxKleinSettings?.image_model_mode === "ernie_image") {
-      segment.t2i_prompt = ernieT2IPrompt.value || "";
-    }
+    const editedT2IPrompt = state.imageModelMode === "ernie_image"
+      ? ernieT2IPrompt.value || ""
+      : state.imageModelMode === "flux_klein"
+        ? fluxPrompt.value || ""
+        : t2iPrompt.value || "";
+    segment.t2i_prompt = editedT2IPrompt;
+    segment.flux_prompt = editedT2IPrompt;
+    if (t2iPrompt.value !== editedT2IPrompt) t2iPrompt.value = editedT2IPrompt;
+    if (ernieT2IPrompt.value !== editedT2IPrompt) ernieT2IPrompt.value = editedT2IPrompt;
+    if (fluxPrompt.value !== editedT2IPrompt) fluxPrompt.value = editedT2IPrompt;
     segment.i2v_prompt = i2vPrompt.value || "";
     segment.enhance_prompt = zEnhancePromptPreview.value || segment.enhance_prompt || "";
     segment.use_vision_reference = Boolean(useVisionReference.input.checked);
-    if (state.fluxKleinSettings?.image_model_mode === "ernie_image") {
+    if (state.imageModelMode === "ernie_image") {
       segment.use_vision_reference = Boolean(ernieUseVisionReference.input.checked);
     }
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
+    ernieRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     if (!state.timingFrozen && !hasLockedVideo(segment) && !isOverlay) normalizeSegments(segment);
     if (isOverlay) sortSegments(state.overlaySegments);
     render();
@@ -4315,7 +4355,7 @@ function openBuilder(node) {
   }
 
   function setImageToImageSource({ path = "", data = "", name = "" } = {}) {
-    const useErnie = (state.fluxKleinSettings?.image_model_mode || "") === "ernie_image";
+    const useErnie = (state.imageModelMode || "") === "ernie_image";
     const settings = useErnie ? (state.ernieImageSettings || defaultErnieImageSettings()) : activeZImageSettings();
     pushHistory();
     settings.use_image_to_image = true;
@@ -4378,8 +4418,10 @@ function openBuilder(node) {
     }
     segment.use_vision_reference = true;
     useVisionReference.input.checked = true;
+    ernieUseVisionReference.input.checked = true;
     refImageInput.value = segment.ref_image_path || name || "";
     refImagePanel.style.display = "flex";
+    ernieRefImagePanel.style.display = "flex";
     renderList();
     toast(`Vision reference set${segment.ref_image_path ? `:\n${segment.ref_image_path}` : "."}`);
   }
@@ -4434,6 +4476,8 @@ function openBuilder(node) {
     settings.enabled = true;
     state.fluxKleinSettings = settings;
     syncFluxKleinPanel();
+    renderFluxIngredientList(segment);
+    render();
     toast(`Image ingredient added${path || name ? `:\n${path || name}` : "."}`);
   }
 
@@ -4541,7 +4585,7 @@ function openBuilder(node) {
     box.style.cssText = `
       position:fixed;left:50%;top:8%;transform:translateX(-50%);
       z-index:100005;width:min(900px,calc(100vw - 36px));height:min(720px,calc(100vh - 56px));
-      display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;
+      display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;
       border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#e0f2fe;
       box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden;
     `;
@@ -5054,6 +5098,7 @@ function openBuilder(node) {
       timeline_panel_height: state.timelinePanelHeight,
       timeline_zoom: state.timelineZoom,
       auto_save_enabled: state.autoSaveEnabled,
+      image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       flux_klein_settings: state.fluxKleinSettings,
       ernie_image_settings: state.ernieImageSettings,
@@ -5142,6 +5187,7 @@ function openBuilder(node) {
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
         state.timelineZoom = data.session.timeline_zoom || state.timelineZoom;
         state.autoSaveEnabled = data.session.auto_save_enabled ?? state.autoSaveEnabled;
+        state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
         snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
@@ -5542,12 +5588,13 @@ function openBuilder(node) {
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
       unload_after: true,
-    });
+    }, useVision ? 10 * 60 * 1000 : 120000);
     pushHistory();
     segment.t2i_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
     segment.enhance_prompt = segment.t2i_prompt;
     t2iPrompt.value = segment.t2i_prompt;
     ernieT2IPrompt.value = segment.t2i_prompt;
+    fluxPrompt.value = segment.t2i_prompt;
     zEnhancePromptPreview.value = segment.enhance_prompt;
     render();
     return data;
@@ -5770,6 +5817,7 @@ function openBuilder(node) {
       segment.enhance_prompt = segment.flux_prompt;
       t2iPrompt.value = segment.t2i_prompt;
       ernieT2IPrompt.value = segment.t2i_prompt;
+      fluxPrompt.value = segment.t2i_prompt;
       zEnhancePromptPreview.value = segment.enhance_prompt;
       progress.set("Flux/Klein prompt ready.", 100);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt complete");
@@ -5818,8 +5866,8 @@ function openBuilder(node) {
     segment.enhance_prompt = segment.flux_prompt;
     if (segment.id === activeSegment()?.id) {
       fluxPrompt.value = segment.flux_prompt;
-      t2iPrompt.value = segment.t2i_prompt;
-      ernieT2IPrompt.value = segment.t2i_prompt;
+      t2iPrompt.value = segment.flux_prompt;
+      ernieT2IPrompt.value = segment.flux_prompt;
       zEnhancePromptPreview.value = segment.enhance_prompt;
     }
     render();
@@ -5925,6 +5973,7 @@ function openBuilder(node) {
       segment.preview_mode = "image";
       t2iPrompt.value = prompt;
       ernieT2IPrompt.value = prompt;
+      fluxPrompt.value = prompt;
       zEnhancePromptPreview.value = prompt;
       syncPreview(segment);
       render();
@@ -7005,9 +7054,9 @@ function openBuilder(node) {
       zImageAllButton.disabled = true;
       state.batchCancelled = false;
       progress = createProgressWindow("Build Full Video");
-      const imageStage = (state.fluxKleinSettings?.image_model_mode || "") === "flux_klein" ? "Flux/Klein image pass" : "Z-Image pass";
+      const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
       progress.set(`Stage 1/3: ${imageStage}...`, 5);
-      const imageMode = state.fluxKleinSettings?.image_model_mode || "";
+      const imageMode = state.imageModelMode || "zimage";
       if (imageMode === "flux_klein") {
         await fluxKleinAllScenes({ throwOnError: true });
       } else if (imageMode === "ernie_image") {
@@ -7496,7 +7545,7 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunZImageAll() {
-    const imageMode = state.fluxKleinSettings?.image_model_mode || "";
+    const imageMode = state.imageModelMode || "zimage";
     const useFluxKleinMode = imageMode === "flux_klein";
     const useErnieMode = imageMode === "ernie_image";
     const title = useFluxKleinMode ? "Run Flux/Klein Image All?" : useErnieMode ? "Run Ernie Image All?" : "Run Z-Image All?";
@@ -7743,24 +7792,28 @@ function openBuilder(node) {
   ernieI2ILoadButton.onclick = () => i2iImageFileInput.click();
   zImageCard.onclick = () => {
     pushHistory();
+    state.imageModelMode = "zimage";
     state.fluxKleinSettings.image_model_mode = "zimage";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
   };
   fluxKleinCard.onclick = () => {
     pushHistory();
+    state.imageModelMode = "flux_klein";
     state.fluxKleinSettings.image_model_mode = "flux_klein";
     state.fluxKleinSettings.enabled = true;
     syncFluxKleinPanel();
   };
   ernieImageCard.onclick = () => {
     pushHistory();
+    state.imageModelMode = "ernie_image";
     state.fluxKleinSettings.image_model_mode = "ernie_image";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
   };
   zEnhanceCard.onclick = () => {
     pushHistory();
+    state.imageModelMode = "z_enhance";
     state.fluxKleinSettings.image_model_mode = "z_enhance";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
@@ -7854,33 +7907,41 @@ function openBuilder(node) {
     loadImageToImageFile(file);
   });
   refImageLoadButton.onclick = () => visionRefFileInput.click();
-  visionRefFileInput.addEventListener("change", () => loadVisionReferenceFile(visionRefFileInput.files?.[0]));
-  refImageDrop.addEventListener("dragover", (event) => {
-    const types = Array.from(event.dataTransfer?.types || []);
-    if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    refImageDrop.style.borderColor = "#a3e635";
+  ernieRefImageLoadButton.onclick = () => visionRefFileInput.click();
+  visionRefFileInput.addEventListener("change", () => {
+    loadVisionReferenceFile(visionRefFileInput.files?.[0]);
+    visionRefFileInput.value = "";
   });
-  refImageDrop.addEventListener("dragleave", () => {
-    refImageDrop.style.borderColor = "#155e75";
-  });
-  refImageDrop.addEventListener("drop", (event) => {
-    const sceneSource = droppedSceneImageSource(event);
-    if (sceneSource) {
+  function wireVisionReferenceDrop(dropElement) {
+    dropElement.addEventListener("dragover", (event) => {
+      const types = Array.from(event.dataTransfer?.types || []);
+      if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
       event.preventDefault();
       event.stopPropagation();
-      refImageDrop.style.borderColor = "#155e75";
-      setVisionReferenceSource(sceneSource).catch((error) => toast(String(error?.message || error), true));
-      return;
-    }
-    const file = imageFileFromDrop(event);
-    if (!file) return;
-    event.preventDefault();
-    event.stopPropagation();
-    refImageDrop.style.borderColor = "#155e75";
-    loadVisionReferenceFile(file);
-  });
+      dropElement.style.borderColor = "#a3e635";
+    });
+    dropElement.addEventListener("dragleave", () => {
+      dropElement.style.borderColor = "#155e75";
+    });
+    dropElement.addEventListener("drop", (event) => {
+      const sceneSource = droppedSceneImageSource(event);
+      if (sceneSource) {
+        event.preventDefault();
+        event.stopPropagation();
+        dropElement.style.borderColor = "#155e75";
+        setVisionReferenceSource(sceneSource).catch((error) => toast(String(error?.message || error), true));
+        return;
+      }
+      const file = imageFileFromDrop(event);
+      if (!file) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dropElement.style.borderColor = "#155e75";
+      loadVisionReferenceFile(file);
+    });
+  }
+  wireVisionReferenceDrop(refImageDrop);
+  wireVisionReferenceDrop(ernieRefImageDrop);
   deleteSegmentButton.onclick = deleteSegment;
   deleteSelectedMediaButton.onclick = deleteSelectedMedia;
   playButton.onclick = () => {
@@ -8065,30 +8126,69 @@ function openBuilder(node) {
     const matches = options
       .filter((name) => !query || String(name).toLowerCase().includes(query))
       .slice(0, 50);
+    picker.matches = matches;
+    if (!matches.length) picker.activeIndex = -1;
+    else if (!Number.isInteger(picker.activeIndex) || picker.activeIndex < 0 || picker.activeIndex >= matches.length) picker.activeIndex = 0;
     picker.list.textContent = "";
-    for (const name of matches) {
+    const choose = (name) => {
+      picker.input.value = name;
+      picker.list.style.display = "none";
+      onSelect?.();
+    };
+    for (const [index, name] of matches.entries()) {
       const item = document.createElement("button");
       item.type = "button";
       item.textContent = name;
       item.title = name;
-      item.style.cssText = "display:block;width:100%;text-align:left;border:0;background:#18181b;color:#fafafa;padding:7px 8px;font-size:12px;line-height:1.35;cursor:pointer;white-space:normal;overflow-wrap:anywhere;";
-      item.onmouseenter = () => { item.style.background = "#27272a"; };
-      item.onmouseleave = () => { item.style.background = "#18181b"; };
+      item.style.cssText = `display:block;width:100%;text-align:left;border:0;background:${index === picker.activeIndex ? "#0e7490" : "#18181b"};color:#fafafa;padding:7px 8px;font-size:12px;line-height:1.35;cursor:pointer;white-space:normal;overflow-wrap:anywhere;`;
+      item.onmouseenter = () => {
+        picker.activeIndex = index;
+        renderSearchableSuggestions(picker, onSelect);
+      };
       item.onclick = () => {
-        picker.input.value = name;
-        picker.list.style.display = "none";
-        onSelect?.();
+        choose(name);
       };
       picker.list.append(item);
     }
     picker.list.style.display = matches.length ? "block" : "none";
+    const activeButton = picker.list.children[picker.activeIndex];
+    activeButton?.scrollIntoView?.({ block: "nearest" });
   }
 
   function wireSearchablePicker(picker, onChange = null) {
     picker.input.addEventListener("focus", () => renderSearchableSuggestions(picker, onChange));
     picker.input.addEventListener("input", () => {
+      picker.activeIndex = 0;
       renderSearchableSuggestions(picker, onChange);
       onChange?.();
+    });
+    picker.input.addEventListener("keydown", (event) => {
+      if (picker.list.style.display !== "block") {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          renderSearchableSuggestions(picker, onChange);
+        }
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        picker.activeIndex = Math.min((picker.matches?.length || 1) - 1, (picker.activeIndex < 0 ? 0 : picker.activeIndex + 1));
+        renderSearchableSuggestions(picker, onChange);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        picker.activeIndex = Math.max(0, picker.activeIndex <= 0 ? 0 : picker.activeIndex - 1);
+        renderSearchableSuggestions(picker, onChange);
+      } else if (event.key === "Enter") {
+        const selected = picker.matches?.[picker.activeIndex];
+        if (selected) {
+          event.preventDefault();
+          picker.input.value = selected;
+          picker.list.style.display = "none";
+          onChange?.();
+        }
+      } else if (event.key === "Escape") {
+        picker.list.style.display = "none";
+      }
     });
     picker.input.addEventListener("blur", () => {
       setTimeout(() => { picker.list.style.display = "none"; }, 180);
