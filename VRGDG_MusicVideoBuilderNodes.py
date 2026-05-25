@@ -71,6 +71,84 @@ def _project_prompt_creator_paths(project_folder):
     return paths
 
 
+def _json_file_has_text_values(path):
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+    except Exception:
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                return bool(handle.read().strip())
+        except Exception:
+            return False
+    if isinstance(data, dict):
+        return any(str(value or "").strip() for value in data.values())
+    if isinstance(data, list):
+        return any(str(item or "").strip() for item in data)
+    return False
+
+
+def _latest_prompt_creator_source(exclude_project_folder=""):
+    output_dir = folder_paths.get_output_directory()
+    exclude = os.path.normcase(os.path.abspath(str(exclude_project_folder or ""))) if exclude_project_folder else ""
+    candidates = []
+    for root, dirs, _files in os.walk(output_dir):
+        if os.path.basename(root) != "project_context":
+            continue
+        project_folder = os.path.dirname(root)
+        if exclude and os.path.normcase(os.path.abspath(project_folder)) == exclude:
+            continue
+        concept_path = os.path.join(root, "ConceptPrompts.txt")
+        srt_path = _srt_path(project_folder)
+        if not os.path.isfile(concept_path) or not os.path.isfile(srt_path):
+            continue
+        if not _json_file_has_text_values(concept_path):
+            continue
+        motion_path = os.path.join(root, "I2VMotionNotes.txt")
+        has_motion = _json_file_has_text_values(motion_path)
+        related = [
+            concept_path,
+            srt_path,
+            motion_path,
+            os.path.join(root, "themestyle.txt"),
+            os.path.join(root, "storyconcept.txt"),
+            os.path.join(root, "subjectsandscenes.txt"),
+        ]
+        newest = max((os.path.getmtime(path) for path in related if os.path.isfile(path)), default=0)
+        candidates.append((1 if has_motion else 0, newest, project_folder, root))
+    if not candidates:
+        raise ValueError("No previous Prompt Creator output was found. Run Prompt Creator first, then import it into this project.")
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return candidates[0][2], candidates[0][3]
+
+
+def _copy_latest_prompt_creator_outputs(project_folder):
+    target = os.path.abspath(str(project_folder or "").strip().strip('"'))
+    if not target:
+        raise ValueError("Create or load a project before importing Prompt Creator data.")
+    os.makedirs(target, exist_ok=True)
+    os.makedirs(_context_folder(target), exist_ok=True)
+    os.makedirs(os.path.join(target, "audio"), exist_ok=True)
+    source_project, source_context = _latest_prompt_creator_source(target)
+    copied = {}
+    for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt", "subject.txt", "full_lyrics.txt"):
+        source_path = os.path.join(source_context, filename)
+        if os.path.isfile(source_path):
+            copied[filename] = _copy_file_if_exists(source_path, os.path.join(_context_folder(target), filename))
+    source_srt = _srt_path(source_project)
+    if os.path.isfile(source_srt):
+        copied["builder_segments.srt"] = _copy_file_if_exists(source_srt, _srt_path(target))
+    source_audio = _newest_file(os.path.join(source_project, "audio"), (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".mp4"))
+    if source_audio:
+        copied["audio"] = _copy_file_if_exists(source_audio, os.path.join(target, "audio", os.path.basename(source_audio)))
+    result = _project_prompt_creator_paths(target)
+    result["source_project_folder"] = source_project
+    result["copied"] = copied
+    return result
+
+
 def _newest_file(folder, extensions):
     if not os.path.isdir(folder):
         return ""
@@ -1226,6 +1304,7 @@ def _generate_builder_t2i_prompt(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     ref_image_path = str(payload.get("ref_image_path", "") or "").strip().strip('"')
+    ref_image_data = str(payload.get("ref_image_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
     theme_style = _read_text_file(payload.get("theme_style_path", ""), "Theme/style file")
     story_idea = _read_text_file(payload.get("story_idea_path", ""), "Story idea file")
@@ -1240,11 +1319,11 @@ def _generate_builder_t2i_prompt(payload):
     if context_parts:
         user_notes = "\n\n".join(context_parts + ([f"Segment notes:\n{user_notes}"] if user_notes else []))
     use_vision = bool(payload.get("use_vision"))
-    has_ref_image = bool(use_vision and ref_image_path and os.path.isfile(ref_image_path))
+    has_ref_image = bool(use_vision and ((ref_image_path and os.path.isfile(ref_image_path)) or ref_image_data))
     if not model_file:
         raise ValueError("Choose a Gemma model first.")
     if use_vision and not has_ref_image:
-        raise ValueError("Choose a valid reference image path or turn off vision reference.")
+        raise ValueError("Choose a valid reference image path/data or turn off vision reference.")
     if has_ref_image and not mmproj_file:
         raise ValueError("Choose an mmproj file for the vision model.")
     if not has_ref_image and not user_notes:
@@ -1253,7 +1332,9 @@ def _generate_builder_t2i_prompt(payload):
     llm = VRGDG_SuperGemmaGGUFChat()
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
     mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if has_ref_image else ""
-    image = Image.open(ref_image_path).convert("RGB") if has_ref_image else None
+    image = None
+    if has_ref_image:
+        image = _image_from_data_url(ref_image_data).convert("RGB") if ref_image_data else Image.open(ref_image_path).convert("RGB")
     if has_ref_image:
         prompt = _VISUAL_T2I_INSTRUCTIONS
         prompt += f"\n\nUser notes:\n{user_notes or 'Use the reference image as the guide.'}"
@@ -2378,6 +2459,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _project_prompt_creator_paths(payload.get("project_folder", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/import_latest_prompt_creator_outputs")
+    async def vrgdg_music_builder_import_latest_prompt_creator_outputs(request):
+        try:
+            payload = await request.json()
+            result = _copy_latest_prompt_creator_outputs(payload.get("project_folder", ""))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

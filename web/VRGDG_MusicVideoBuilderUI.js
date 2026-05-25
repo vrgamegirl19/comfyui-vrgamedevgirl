@@ -16,6 +16,7 @@ const TIMELINE_SCENE_AUDIO_TOP = TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT 
 const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
 const TIMELINE_WAVE_TOP = 98;
 const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_NON_VISION_GEMMA_MODEL = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf";
 const LTX_MODEL_DOWNLOADS = [
   { label: "LTX GGUF", url: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { label: "Video VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
@@ -926,6 +927,7 @@ function newSegment(start = 0, end = 4) {
     notes: "",
     i2v_notes: "",
     t2i_prompt: "",
+    enhance_notes: "",
     enhance_prompt: "",
     i2v_prompt: "",
     ref_image_path: "",
@@ -1349,6 +1351,12 @@ function openBuilder(node) {
   const zEnhancePromptPreview = document.createElement("textarea");
   zEnhancePromptPreview.placeholder = "Enhance prompt copied from the selected scene...";
   zEnhancePromptPreview.style.cssText = "width:100%;box-sizing:border-box;min-height:92px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
+  const zEnhanceGemmaNotes = document.createElement("textarea");
+  zEnhanceGemmaNotes.placeholder = "Optional notes for Gemma: what to preserve, improve, restyle, or emphasize from the selected image...";
+  zEnhanceGemmaNotes.style.cssText = zEnhancePromptPreview.style.cssText;
+  const zEnhanceGemmaModelSelect = makeSelect([""], "");
+  const zEnhanceMmprojSelect = makeSelect([""], "");
+  const zEnhanceGemmaButton = makeButton("Gemma Enhance Prompt", "primary");
   const zEnhanceUnetPicker = makeSearchableLoraPicker("z_image_turbo_bf16.safetensors");
   const zEnhanceClipPicker = makeSearchableLoraPicker("qwen_3_4b.safetensors");
   const zEnhanceVaePicker = makeSearchableLoraPicker("ae.safetensors");
@@ -1750,6 +1758,10 @@ function openBuilder(node) {
         makeField("ZImage model", zEnhanceUnetPicker.wrapper),
         makeField("CLIP", zEnhanceClipPicker.wrapper),
         makeField("VAE", zEnhanceVaePicker.wrapper),
+        makeSettingsSection("Vision LLM Models", [
+          makeField("Gemma vision model", zEnhanceGemmaModelSelect),
+          makeField("Vision mmproj", zEnhanceMmprojSelect),
+        ]),
         zEnhanceUseLora.wrapper,
         zEnhanceLoraPanel,
       ]),
@@ -1769,7 +1781,9 @@ function openBuilder(node) {
       label: "LLM Prompting",
       value: "prompting",
       content: makeSettingsPanel([
-        makeField("Prompt copied from this scene", zEnhancePromptPreview),
+        makeField("Gemma notes", zEnhanceGemmaNotes),
+        zEnhanceGemmaButton,
+        makeField("Enhance prompt", zEnhancePromptPreview),
       ]),
     },
   ]);
@@ -2221,6 +2235,10 @@ function openBuilder(node) {
     if (!segment) return [];
     const currentPath = String(segment.video_path || "").trim();
     const currentKey = mediaPathKey(currentPath);
+    const previousHistory = Array.isArray(segment.video_history) ? segment.video_history : [];
+    const previousIndex = Number(segment.video_history_index);
+    const previousSelectedPath = Number.isFinite(previousIndex) && previousIndex >= 0 ? String(previousHistory[previousIndex] || "").trim() : "";
+    const previousSelectedKey = mediaPathKey(previousSelectedPath);
     const seen = new Set();
     const cleaned = [];
     const backupCandidates = [
@@ -2240,7 +2258,15 @@ function openBuilder(node) {
       cleaned.push(currentPath);
     }
     segment.video_history = cleaned;
-    segment.video_history_index = cleaned.length ? cleaned.length - 1 : -1;
+    if (!cleaned.length) {
+      segment.video_history_index = -1;
+    } else if (previousSelectedKey) {
+      const selectedIndex = cleaned.findIndex((item) => mediaPathKey(item) === previousSelectedKey);
+      segment.video_history_index = selectedIndex >= 0 ? selectedIndex : Math.max(0, Math.min(cleaned.length - 1, Number(segment.video_history_index || 0)));
+    } else {
+      const currentIndex = currentKey ? cleaned.findIndex((item) => mediaPathKey(item) === currentKey) : -1;
+      segment.video_history_index = currentIndex >= 0 ? currentIndex : Math.max(0, Math.min(cleaned.length - 1, Number(segment.video_history_index || 0)));
+    }
     return cleaned;
   }
 
@@ -2348,6 +2374,7 @@ function openBuilder(node) {
     segment.image_history_index = segment.image_history.length
       ? Math.max(0, Math.min(segment.image_history.length - 1, Number(segment.image_history_index || 0)))
       : -1;
+    if (segment.enhance_notes == null) segment.enhance_notes = "";
     if (segment.enhance_prompt == null) segment.enhance_prompt = "";
     if (segment.custom_audio_path == null) segment.custom_audio_path = "";
     if (segment.custom_audio_name == null) segment.custom_audio_name = "";
@@ -2705,6 +2732,28 @@ function openBuilder(node) {
     return JSON.stringify(notes, null, 2);
   }
 
+  function hasAnyI2VMotionNotes(segments = state.segments) {
+    return Array.isArray(segments) && segments.some((segment) => String(segment?.i2v_notes || "").trim());
+  }
+
+  async function loadI2VMotionNotesFromPath(path) {
+    const notePath = String(path || "").trim();
+    if (!notePath) return [];
+    const data = await postJson("/vrgdg/music_builder/load_prompt_json", {
+      prompt_json_path: notePath,
+    });
+    return Array.isArray(data.prompts) ? data.prompts : [];
+  }
+
+  async function loadPromptJsonFromPath(path) {
+    const promptPath = String(path || "").trim();
+    if (!promptPath) return [];
+    const data = await postJson("/vrgdg/music_builder/load_prompt_json", {
+      prompt_json_path: promptPath,
+    });
+    return Array.isArray(data.prompts) ? data.prompts : [];
+  }
+
   async function syncPromptJsonFromSegments(reason = "") {
     const path = String(promptJsonInput.value || state.promptJsonPath || "").trim();
     if (!path) return false;
@@ -2727,6 +2776,17 @@ function openBuilder(node) {
     const path = String(i2vMotionJsonInput.value || state.i2vMotionJsonPath || "").trim();
     if (!path) return false;
     try {
+      if (!hasAnyI2VMotionNotes()) {
+        try {
+          const existingNotes = await loadI2VMotionNotesFromPath(path);
+          if (existingNotes.some((note) => String(note || "").trim())) {
+            console.warn(`[VRGDG Music Builder] Skipped blank I2VMotionNotes sync after ${reason || "segment change"} because the existing file has motion notes.`);
+            return false;
+          }
+        } catch (_error) {
+          // If the file does not exist yet, allow the normal save path below.
+        }
+      }
       const result = await postJson("/vrgdg/music_builder/save_text_file", {
         path,
         content: i2vMotionNotesTextFromSegments(),
@@ -2879,12 +2939,12 @@ function openBuilder(node) {
   function syncInspector() {
     const segment = activeSegment();
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, previewButton, ernieCreateButton, deleteSegmentButton, createSceneVideoButton]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, deleteSegmentButton, createSceneVideoButton]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -3483,6 +3543,8 @@ function openBuilder(node) {
   function syncZEnhanceSettingsPanel() {
     const settings = state.zEnhanceSettings || {};
     const promptInfo = activeScenePromptForEnhance();
+    const segment = activeSegment();
+    zEnhanceGemmaNotes.value = segment?.enhance_notes || "";
     zEnhancePromptPreview.value = promptInfo.prompt || "";
     zEnhanceUnetPicker.input.value = settings.unet_name || "z_image_turbo_bf16.safetensors";
     zEnhanceClipPicker.input.value = settings.clip_name || "qwen_3_4b.safetensors";
@@ -3505,7 +3567,10 @@ function openBuilder(node) {
 
   function saveZEnhanceSettingsFromPanel() {
     const segment = activeSegment();
-    if (segment) segment.enhance_prompt = zEnhancePromptPreview.value || "";
+    if (segment) {
+      segment.enhance_notes = zEnhanceGemmaNotes.value || "";
+      segment.enhance_prompt = zEnhancePromptPreview.value || "";
+    }
     const count = Math.max(0, Math.min(4, Number(zEnhanceLoraCount.value || 0)));
     state.zEnhanceSettings = {
       unet_name: zEnhanceUnetPicker.input.value || "",
@@ -3594,6 +3659,7 @@ function openBuilder(node) {
     if (ernieT2IPrompt.value !== editedT2IPrompt) ernieT2IPrompt.value = editedT2IPrompt;
     if (fluxPrompt.value !== editedT2IPrompt) fluxPrompt.value = editedT2IPrompt;
     segment.i2v_prompt = i2vPrompt.value || "";
+    segment.enhance_notes = zEnhanceGemmaNotes.value || "";
     segment.enhance_prompt = zEnhancePromptPreview.value || segment.enhance_prompt || "";
     segment.use_vision_reference = Boolean(useVisionReference.input.checked);
     if (state.imageModelMode === "ernie_image") {
@@ -4626,7 +4692,7 @@ function openBuilder(node) {
     cancel.onclick = () => box.remove();
     gemma.onclick = async () => {
       const idea = String(textarea.value || "").trim();
-      const modelFile = String(t2iTextGemmaModelSelect.value || gemmaModelSelect.value || ernieTextGemmaModelSelect.value || ernieGemmaModelSelect.value || i2vTextGemmaModelSelect.value || i2vGemmaModelSelect.value || fluxGemmaModelSelect.value || "").trim();
+      const modelFile = String(t2iTextGemmaModelSelect.value || gemmaModelSelect.value || ernieTextGemmaModelSelect.value || ernieGemmaModelSelect.value || zEnhanceGemmaModelSelect.value || i2vTextGemmaModelSelect.value || i2vGemmaModelSelect.value || fluxGemmaModelSelect.value || "").trim();
       if (!modelFile) {
         toast("Choose a Gemma4 model first in the Image tab model settings.", true);
         return;
@@ -4881,7 +4947,7 @@ function openBuilder(node) {
     });
   }
 
-  async function importPromptJson() {
+  async function importPromptJson(options = {}) {
     try {
       if (!promptJsonInput.value.trim()) {
         const paths = await getJson("/vrgdg/music_builder/default_context_paths");
@@ -4892,7 +4958,7 @@ function openBuilder(node) {
         prompt_json_path: promptJsonInput.value,
       });
       const prompts = data.prompts || [];
-      pushHistory();
+      if (options.pushHistory !== false) pushHistory();
       state.promptJsonPath = data.prompt_json_path || promptJsonInput.value;
       for (let index = 0; index < state.segments.length && index < prompts.length; index++) {
         const segment = state.segments[index];
@@ -4904,9 +4970,12 @@ function openBuilder(node) {
       }
       syncInspector();
       render();
-      toast(`Imported ${prompts.length} prompt${prompts.length === 1 ? "" : "s"} into segment notes.`);
+      if (!options.quiet) toast(`Imported ${prompts.length} prompt${prompts.length === 1 ? "" : "s"} into segment notes.`);
+      return prompts;
     } catch (error) {
-      toast(String(error?.message || error), true);
+      if (options.throwOnError) throw error;
+      if (!options.quiet) toast(String(error?.message || error), true);
+      return [];
     }
   }
 
@@ -4967,14 +5036,38 @@ function openBuilder(node) {
       autoLoadAllButton.disabled = true;
       autoLoadAllButton.textContent = "Importing...";
       pushHistory();
-      const paths = await postJson("/vrgdg/music_builder/project_prompt_creator_paths", {
+      let paths = await postJson("/vrgdg/music_builder/project_prompt_creator_paths", {
         project_folder: projectInput.value || state.projectFolder || "",
       });
-      const exists = paths.exists || {};
-      if (!exists.srt_path || !exists.concept_prompts_path) {
-        throw new Error(
-          "No saved Prompt Creator outputs were found in this project yet. Run Prompt Creator first, then come back and import."
-        );
+      let exists = paths.exists || {};
+      let sourceLabel = "this project";
+      let currentPrompts = [];
+      let currentMotionNotes = [];
+      if (exists.concept_prompts_path) {
+        try {
+          currentPrompts = await loadPromptJsonFromPath(paths.concept_prompts_path);
+        } catch (_error) {
+          currentPrompts = [];
+        }
+      }
+      if (exists.i2v_motion_notes_path) {
+        try {
+          currentMotionNotes = await loadI2VMotionNotesFromPath(paths.i2v_motion_notes_path);
+        } catch (_error) {
+          currentMotionNotes = [];
+        }
+      }
+      const hasCurrentPrompts = currentPrompts.some((item) => String(item || "").trim());
+      const hasCurrentMotionNotes = currentMotionNotes.some((item) => String(item || "").trim());
+      if (!exists.srt_path || !exists.concept_prompts_path || !hasCurrentPrompts || !hasCurrentMotionNotes) {
+        paths = await postJson("/vrgdg/music_builder/import_latest_prompt_creator_outputs", {
+          project_folder: projectInput.value || state.projectFolder || "",
+        }, 90000);
+        exists = paths.exists || {};
+        sourceLabel = paths.source_project_folder ? `latest Prompt Creator project:\n${paths.source_project_folder}` : "latest Prompt Creator project";
+        if (!exists.srt_path || !exists.concept_prompts_path) {
+          throw new Error("No previous Prompt Creator output was found. Run Prompt Creator first, then import it into this project.");
+        }
       }
       if (paths.audio_path) audioInput.value = paths.audio_path;
       if (paths.srt_path) srtInput.value = paths.srt_path;
@@ -4992,13 +5085,32 @@ function openBuilder(node) {
       useVrgdgTextContext.input.checked = true;
       if (paths.audio_path) await loadAudio();
       await loadSrt();
-      if (promptJsonInput.value) await importPromptJson();
-      if (i2vMotionJsonInput.value) await importI2VMotionJson();
+      let importedPrompts = [];
+      let importedMotionNotes = [];
+      if (promptJsonInput.value) {
+        importedPrompts = await importPromptJson({ quiet: true, pushHistory: false });
+      }
+      if (i2vMotionJsonInput.value) {
+        importedMotionNotes = await importI2VMotionJson({ quiet: true, pushHistory: false });
+      }
+      const nonEmptyPrompts = importedPrompts.filter((item) => String(item || "").trim()).length;
+      const nonEmptyMotionNotes = importedMotionNotes.filter((item) => String(item || "").trim()).length;
+      if (!nonEmptyPrompts) {
+        throw new Error(
+          `Prompt Creator import found ${promptJsonInput.value || "ConceptPrompts.txt"}, but it contains no usable prompts. Run Prompt Creator first, then import it into this project.`
+        );
+      }
       clearGeneratedSceneOutputsForImport();
       syncInspector();
       render();
       await autoSaveSessionQuiet("prompt creator import");
-      toast("Imported this project's Prompt Creator audio, SRT, prompt JSON, and context files. Previous generated images/videos were cleared from this project session.");
+      const parts = [
+        `Imported ${nonEmptyPrompts} concept prompt${nonEmptyPrompts === 1 ? "" : "s"}`,
+        nonEmptyMotionNotes
+          ? `${nonEmptyMotionNotes} I2V motion note${nonEmptyMotionNotes === 1 ? "" : "s"}`
+          : "no I2V motion notes found",
+      ];
+      toast(`${parts.join(" and ")} from ${sourceLabel}. Previous generated images/videos were cleared from this project session.`);
     } catch (error) {
       toast(String(error?.message || error), true);
     } finally {
@@ -5049,27 +5161,27 @@ function openBuilder(node) {
     return output;
   }
 
-  async function importI2VMotionJson() {
+  async function importI2VMotionJson(options = {}) {
     try {
       if (!i2vMotionJsonInput.value.trim()) {
         const paths = await getJson("/vrgdg/music_builder/default_context_paths");
         i2vMotionJsonInput.value = paths.i2v_motion_notes_path || "";
         state.i2vMotionJsonPath = i2vMotionJsonInput.value;
       }
-      const data = await postJson("/vrgdg/music_builder/load_prompt_json", {
-        prompt_json_path: i2vMotionJsonInput.value,
-      });
-      const notes = data.prompts || [];
-      pushHistory();
-      state.i2vMotionJsonPath = data.prompt_json_path || i2vMotionJsonInput.value;
+      const notes = await loadI2VMotionNotesFromPath(i2vMotionJsonInput.value);
+      if (options.pushHistory !== false) pushHistory();
+      state.i2vMotionJsonPath = i2vMotionJsonInput.value;
       for (let index = 0; index < state.segments.length && index < notes.length; index++) {
         state.segments[index].i2v_notes = notes[index];
       }
       syncInspector();
       render();
-      toast(`Imported ${notes.length} I2V motion note${notes.length === 1 ? "" : "s"} into scenes.`);
+      if (!options.quiet) toast(`Imported ${notes.length} I2V motion note${notes.length === 1 ? "" : "s"} into scenes.`);
+      return notes;
     } catch (error) {
-      toast(String(error?.message || error), true);
+      if (options.throwOnError) throw error;
+      if (!options.quiet) toast(String(error?.message || error), true);
+      return [];
     }
   }
 
@@ -5386,6 +5498,25 @@ function openBuilder(node) {
       setWidgetValue(node, "session_path", state.sessionPath);
       setWidgetValue(node, "srt_path", state.srtPath);
       rememberLastProject(state.projectFolder);
+      if (!state.i2vMotionJsonPath) {
+        try {
+          const paths = await postJson("/vrgdg/music_builder/project_prompt_creator_paths", {
+            project_folder: state.projectFolder,
+          });
+          if (paths?.exists?.i2v_motion_notes_path && paths.i2v_motion_notes_path) {
+            state.i2vMotionJsonPath = paths.i2v_motion_notes_path;
+          }
+        } catch (error) {
+          console.warn("[VRGDG Music Builder] Could not find project I2V motion notes path during load:", error);
+        }
+      }
+      i2vMotionJsonInput.value = state.i2vMotionJsonPath || i2vMotionJsonInput.value || "";
+      if (state.i2vMotionJsonPath && !hasAnyI2VMotionNotes(state.segments)) {
+        const restoredNotes = await importI2VMotionJson({ quiet: true, pushHistory: false });
+        if (restoredNotes.some((note) => String(note || "").trim())) {
+          console.log(`[VRGDG Music Builder] Restored ${restoredNotes.length} I2V motion note(s) from project file.`);
+        }
+      }
       state.activeTrack = session.active_track || "base";
       state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
       syncZImageSettingsPanel();
@@ -5512,6 +5643,8 @@ function openBuilder(node) {
     if (!segment || !videoPath || isBackupSceneVideoPath(videoPath)) return;
     segment.video_path = videoPath;
     normalizeSegmentVideoHistory(segment);
+    const currentIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(videoPath));
+    if (currentIndex >= 0) segment.video_history_index = currentIndex;
   }
 
   function cycleSegmentVideoHistory(segment) {
@@ -5520,8 +5653,6 @@ function openBuilder(node) {
     pushHistory();
     const nextIndex = (Math.max(-1, Number(segment.video_history_index ?? -1)) + 1) % segment.video_history.length;
     segment.video_history_index = nextIndex;
-    const selectedPath = selectedSegmentVideoPath(segment);
-    if (selectedPath) segment.video_path = selectedPath;
     segment.preview_mode = "video";
     setActiveSegment(segment);
     syncPreview(segment);
@@ -5995,6 +6126,65 @@ function openBuilder(node) {
     return null;
   }
 
+  async function generateEnhancePromptWithGemma() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    let source = currentEnhanceSource(segment);
+    if (!source?.path && !source?.data && segment.image?.filename) {
+      const archived = await archiveGeneratedSceneImage(segment, segment.image);
+      if (archived) source = { path: archived, name: "scene_image.png" };
+    }
+    if (!source?.path && !source?.data) {
+      toast("Hey, load or create an image first so Gemma can see what to enhance.", true);
+      return;
+    }
+    const modelFile = String(zEnhanceGemmaModelSelect.value || "").trim();
+    const mmprojFile = String(zEnhanceMmprojSelect.value || "").trim();
+    if (!modelFile || !mmprojFile) {
+      toast("Choose the Enhance vision Gemma model and mmproj in the Enhance Models tab first.", true);
+      return;
+    }
+    const notes = String(zEnhanceGemmaNotes.value || "").trim();
+    let progress = null;
+    try {
+      zEnhanceGemmaButton.disabled = true;
+      zEnhanceGemmaButton.textContent = "Gemma...";
+      progress = createProgressWindow("Creating Enhance prompt");
+      progress.set("Reading selected image with Gemma vision...", 20);
+      const userNotes = [
+        "Create a text-to-image prompt for image-to-image upscale/enhance.",
+        "Describe the visible subject, setting, lighting, clothing, pose, composition, and mood from the image.",
+        "Preserve the important identity and scene details from the image.",
+        notes ? `User enhancement notes:\n${notes}` : "User enhancement notes:\nKeep the image identity, improve cinematic detail, clarity, lighting, and polish.",
+      ].join("\n\n");
+      const data = await postJson("/vrgdg/music_builder/generate_t2i", {
+        model_file: modelFile,
+        mmproj_file: mmprojFile,
+        use_vision: true,
+        ref_image_path: source.path || "",
+        ref_image_data: source.data || "",
+        user_notes: userNotes,
+        unload_after: true,
+        max_new_tokens: 1000,
+      }, 10 * 60 * 1000);
+      pushHistory();
+      segment.enhance_prompt = applyTriggerPhrase(data.prompt, state.imageTriggerPhrase);
+      zEnhancePromptPreview.value = segment.enhance_prompt;
+      progress.set("Enhance prompt ready.", 100);
+      progress.close(900);
+      render();
+      await autoSaveSessionQuiet("Gemma enhance prompt");
+      toast("Gemma created the Enhance prompt.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      zEnhanceGemmaButton.disabled = false;
+      zEnhanceGemmaButton.textContent = "Gemma Enhance Prompt";
+    }
+  }
+
   async function upscaleEnhanceImage() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -6231,7 +6421,7 @@ function openBuilder(node) {
     return data;
   }
 
-  async function i2vAllTextOnlyScenes(options = {}) {
+  async function i2vAllScenes(options = {}) {
     const progress = options.progress || createProgressWindow("Gemma I2V All Scenes");
     const closeProgress = !options.progress;
     const allScenes = allEditableSegments();
@@ -6638,7 +6828,9 @@ function openBuilder(node) {
     segment.video_source_path = videoPath;
     segment.video_path = collected.video_path || videoPath;
     segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
-    addSegmentVideoHistoryPath(segment, segment.video_path);
+    normalizeSegmentVideoHistory(segment);
+    const currentVideoIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_path));
+    if (currentVideoIndex >= 0) segment.video_history_index = currentVideoIndex;
     segment.preview_mode = "video";
     segment.video_status = "done";
     syncPreview(segment);
@@ -7066,7 +7258,7 @@ function openBuilder(node) {
       }
       assertBatchNotStopped();
       progress.set("Stage 2/3: creating I2V prompts...", 38);
-      await i2vAllTextOnlyScenes({ throwOnError: true });
+      await i2vAllScenes({ throwOnError: true });
       assertBatchNotStopped();
       progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
       await renderAllScenes();
@@ -7591,7 +7783,7 @@ function openBuilder(node) {
     const ok = await confirmLongBatchAction({
       title: "Build Full Video?",
       lines: [
-        "This will create missing images, create text-only I2V prompts, render missing scene videos, then stitch the final video.",
+        "This will create missing images, create I2V prompts using each scene's image-reference setting, render missing scene videos, then stitch the final video.",
         "Existing images and videos are skipped so this can resume an unfinished project.",
         "This is the longest batch process and is meant for unattended runs.",
       ],
@@ -7600,7 +7792,7 @@ function openBuilder(node) {
     if (ok) await buildFullVideoPipeline();
   }
 
-  for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhancePromptPreview]) {
+  for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview]) {
     control.addEventListener("input", updateActiveFromInputs);
     control.addEventListener("change", updateActiveFromInputs);
   }
@@ -7773,6 +7965,7 @@ function openBuilder(node) {
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
   sendFluxPromptToEnhanceButton.onclick = () => sendPromptToEnhance("Flux/Klein", fluxPrompt.value);
+  zEnhanceGemmaButton.onclick = generateEnhancePromptWithGemma;
   createFluxPromptButton.onclick = createFluxKleinPromptWithGemma;
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
@@ -8073,7 +8266,7 @@ function openBuilder(node) {
   getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
     const models = data.models || [];
     const mmproj = data.mmproj || [];
-    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect]) {
+    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, zEnhanceGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect]) {
       select.textContent = "";
       for (const model of models) {
         const option = document.createElement("option");
@@ -8082,7 +8275,16 @@ function openBuilder(node) {
         select.append(option);
       }
     }
-    for (const select of [mmprojSelect, ernieMmprojSelect, i2vMmprojSelect, fluxMmprojSelect]) {
+    const preferredNonVision = models.find((model) => model === DEFAULT_NON_VISION_GEMMA_MODEL)
+      || models.find((model) => /supergemma4.*fast.*q4_k_m/i.test(model))
+      || models.find((model) => /supergemma/i.test(model))
+      || "";
+    if (preferredNonVision) {
+      for (const select of [t2iTextGemmaModelSelect, ernieTextGemmaModelSelect, i2vTextGemmaModelSelect]) {
+        select.value = preferredNonVision;
+      }
+    }
+    for (const select of [mmprojSelect, ernieMmprojSelect, zEnhanceMmprojSelect, i2vMmprojSelect, fluxMmprojSelect]) {
       select.textContent = "";
       for (const item of mmproj) {
         const option = document.createElement("option");
@@ -8143,11 +8345,15 @@ function openBuilder(node) {
       item.style.cssText = `display:block;width:100%;text-align:left;border:0;background:${index === picker.activeIndex ? "#0e7490" : "#18181b"};color:#fafafa;padding:7px 8px;font-size:12px;line-height:1.35;cursor:pointer;white-space:normal;overflow-wrap:anywhere;`;
       item.onmouseenter = () => {
         picker.activeIndex = index;
-        renderSearchableSuggestions(picker, onSelect);
+        Array.from(picker.list.children).forEach((button, childIndex) => {
+          button.style.background = childIndex === picker.activeIndex ? "#0e7490" : "#18181b";
+        });
       };
-      item.onclick = () => {
+      item.onpointerdown = (event) => {
+        event.preventDefault();
         choose(name);
       };
+      item.onclick = () => choose(name);
       picker.list.append(item);
     }
     picker.list.style.display = matches.length ? "block" : "none";
