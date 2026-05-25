@@ -230,61 +230,6 @@
       "title": "VRGDG_IntToFloat"
     }
   },
-  "842": {
-    "inputs": {
-      "use_custom_loras": false,
-      "lora_count": 1,
-      "ltx_two_pass_mode": true,
-      "lora_1": "[none]",
-      "strength_1": 1,
-      "lora_2": "[none]",
-      "strength_2": 1,
-      "lora_3": "[none]",
-      "strength_3": 1,
-      "lora_4": "[none]",
-      "strength_4": 1,
-      "lora_5": "[none]",
-      "strength_5": 1,
-      "lora_6": "[none]",
-      "strength_6": 1,
-      "lora_7": "[none]",
-      "strength_7": 1,
-      "lora_8": "[none]",
-      "strength_8": 1,
-      "lora_9": "[none]",
-      "strength_9": 1,
-      "lora_10": "[none]",
-      "strength_10": 1,
-      "lora_11": "[none]",
-      "strength_11": 1,
-      "lora_12": "[none]",
-      "strength_12": 1,
-      "lora_13": "[none]",
-      "strength_13": 1,
-      "lora_14": "[none]",
-      "strength_14": 1,
-      "lora_15": "[none]",
-      "strength_15": 1,
-      "lora_16": "[none]",
-      "strength_16": 1,
-      "lora_17": "[none]",
-      "strength_17": 1,
-      "lora_18": "[none]",
-      "strength_18": 1,
-      "lora_19": "[none]",
-      "strength_19": 1,
-      "lora_20": "[none]",
-      "strength_20": 1,
-      "model": [
-        "271:215",
-        0
-      ]
-    },
-    "class_type": "VRGDG_OptionalMultiLoraModelOnly",
-    "_meta": {
-      "title": "VRGDG Optional Multi LoRA Model Only"
-    }
-  },
   "925": {
     "inputs": {
       "folder_path": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\output\\1111Woman in the Blue Static_2026-05-16_10-28-49\\z-image",
@@ -385,6 +330,80 @@
     "class_type": "VAEDecode",
     "_meta": {
       "title": "VAE Decode"
+    }
+  },
+  "937": {
+    "inputs": {
+      "use_custom_loras": false,
+      "lora_count": 0,
+      "lora_1": "[none]",
+      "first_pass_strength_1": 1,
+      "second_pass_strength_1": 1,
+      "lora_2": "[none]",
+      "first_pass_strength_2": 1,
+      "second_pass_strength_2": 1,
+      "lora_3": "[none]",
+      "first_pass_strength_3": 1,
+      "second_pass_strength_3": 1,
+      "lora_4": "[none]",
+      "first_pass_strength_4": 1,
+      "second_pass_strength_4": 1,
+      "lora_5": "[none]",
+      "first_pass_strength_5": 1,
+      "second_pass_strength_5": 1,
+      "lora_6": "[none]",
+      "first_pass_strength_6": 1,
+      "second_pass_strength_6": 1,
+      "lora_7": "[none]",
+      "first_pass_strength_7": 1,
+      "second_pass_strength_7": 1,
+      "lora_8": "[none]",
+      "first_pass_strength_8": 1,
+      "second_pass_strength_8": 1,
+      "lora_9": "[none]",
+      "first_pass_strength_9": 1,
+      "second_pass_strength_9": 1,
+      "lora_10": "[none]",
+      "first_pass_strength_10": 1,
+      "second_pass_strength_10": 1,
+      "lora_11": "[none]",
+      "first_pass_strength_11": 1,
+      "second_pass_strength_11": 1,
+      "lora_12": "[none]",
+      "first_pass_strength_12": 1,
+      "second_pass_strength_12": 1,
+      "lora_13": "[none]",
+      "first_pass_strength_13": 1,
+      "second_pass_strength_13": 1,
+      "lora_14": "[none]",
+      "first_pass_strength_14": 1,
+      "second_pass_strength_14": 1,
+      "lora_15": "[none]",
+      "first_pass_strength_15": 1,
+      "second_pass_strength_15": 1,
+      "lora_16": "[none]",
+      "first_pass_strength_16": 1,
+      "second_pass_strength_16": 1,
+      "lora_17": "[none]",
+      "first_pass_strength_17": 1,
+      "second_pass_strength_17": 1,
+      "lora_18": "[none]",
+      "first_pass_strength_18": 1,
+      "second_pass_strength_18": 1,
+      "lora_19": "[none]",
+      "first_pass_strength_19": 1,
+      "second_pass_strength_19": 1,
+      "lora_20": "[none]",
+      "first_pass_strength_20": 1,
+      "second_pass_strength_20": 1,
+      "model": [
+        "271:215",
+        0
+      ]
+    },
+    "class_type": "VRGDG_OptionalMultiLoraTwoPassStrengths",
+    "_meta": {
+      "title": "VRGDG Optional Multi LoRA Two Pass Strengths"
     }
   },
   "271:211": {
@@ -786,7 +805,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "842",
+        "937",
         0
       ],
       "positive": [
@@ -952,7 +971,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "842",
+        "937",
         1
       ],
       "positive": [

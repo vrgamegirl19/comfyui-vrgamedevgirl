@@ -661,12 +661,15 @@ def _patch_i2v_api_prompt(prompt, payload):
 
     use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
     lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
-    _set_api_input(prompt, "842", "use_custom_loras", use_custom_loras)
-    _set_api_input(prompt, "842", "lora_count", lora_count)
-    _set_api_input(prompt, "842", "ltx_two_pass_mode", True)
+    _set_api_input(prompt, "937", "use_custom_loras", use_custom_loras)
+    _set_api_input(prompt, "937", "lora_count", lora_count)
     for slot in range(1, _MAX_LORA_SLOTS + 1):
-        _set_api_input(prompt, "842", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
-        _set_api_input(prompt, "842", f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
+        legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
+        first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
+        second_pass_strength = _float_payload(payload, f"second_pass_strength_{slot}", legacy_strength)
+        _set_api_input(prompt, "937", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
+        _set_api_input(prompt, "937", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "937", f"second_pass_strength_{slot}", second_pass_strength)
 
     _set_api_input(prompt, "927", "audio_file", audio_path)
     _set_api_input(prompt, "927", "seek_seconds", 0)
