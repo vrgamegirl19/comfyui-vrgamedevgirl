@@ -1384,13 +1384,15 @@ function openBuilder(node) {
   const zLoraSlots = [];
   for (let slot = 1; slot <= 4; slot++) {
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 76px 76px;gap:8px;";
     const picker = makeSearchableLoraPicker("[none]");
-    const strength = makeInput("1", "number");
-    strength.step = "0.01";
-    row.append(makeField(`LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    const firstPassStrength = makeInput("0.5", "number");
+    firstPassStrength.step = "0.01";
+    const secondPassStrength = makeInput("1", "number");
+    secondPassStrength.step = "0.01";
+    row.append(makeField(`LoRA ${slot}`, picker.wrapper), makeField("Pass 1", firstPassStrength), makeField("Pass 2", secondPassStrength));
     zLoraRows.append(row);
-    zLoraSlots.push({ row, picker, strength });
+    zLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength });
   }
   const zUseImageToImage = makeCheckbox("Use image-to-image?", false);
   const zI2IPanel = document.createElement("div");
@@ -3429,9 +3431,11 @@ function openBuilder(node) {
     zLoraRows.style.display = zUseLora.input.checked && Number(zLoraCount.value || 0) > 0 ? "flex" : "none";
     zLoraSlots.forEach((slot, index) => {
       const config = settings.loras?.[index] || {};
+      const legacyStrength = config.strength;
       slot.row.style.display = index < Number(zLoraCount.value || 0) ? "grid" : "none";
       slot.picker.input.value = config.name || "[none]";
-      slot.strength.value = config.strength ?? 1;
+      slot.firstPassStrength.value = config.first_pass_strength ?? legacyStrength ?? 0.5;
+      slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength ?? 1;
     });
     zUseImageToImage.input.checked = Boolean(settings.use_image_to_image);
     zI2IPanel.style.display = zUseImageToImage.input.checked ? "flex" : "none";
@@ -3473,7 +3477,12 @@ function openBuilder(node) {
       batch_size: Math.max(1, Math.min(16, Number(zBatchSize.value || 1))),
       use_loras: Boolean(zUseLora.input.checked),
       lora_count: count,
-      loras: zLoraSlots.map((slot) => ({ name: slot.picker.input.value || "[none]", strength: Number(slot.strength.value || 1) })),
+      loras: zLoraSlots.map((slot) => ({
+        name: slot.picker.input.value || "[none]",
+        first_pass_strength: Number(slot.firstPassStrength.value || 0.5),
+        second_pass_strength: Number(slot.secondPassStrength.value || 1),
+        strength: Number(slot.secondPassStrength.value || 1),
+      })),
       use_image_to_image: Boolean(zUseImageToImage.input.checked),
       image_to_image_start_at_step: Math.max(1, Math.min(8, Number(zI2IStartStep.value || zI2ISlider.value || 5))),
       image_to_image_path: keepDataSource ? "" : i2iPathValue,
@@ -6052,7 +6061,9 @@ function openBuilder(node) {
     };
     zLoraSlots.forEach((slot, index) => {
       payload[`lora_${index + 1}`] = useLoras && index < zSettings.lora_count ? slot.picker.input.value : "[none]";
-      payload[`strength_${index + 1}`] = Number(slot.strength.value || 1);
+      payload[`first_pass_strength_${index + 1}`] = Number(slot.firstPassStrength.value || 0.5);
+      payload[`second_pass_strength_${index + 1}`] = Number(slot.secondPassStrength.value || 1);
+      payload[`strength_${index + 1}`] = Number(slot.secondPassStrength.value || 1);
     });
     progress?.set(`${label}: building hidden ZImage workflow...`, percentBase + percentSpan * 0.25);
     const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", payload);
@@ -8781,31 +8792,6 @@ function openBuilder(node) {
     toast(`Could not load Gemma model choices:\n${String(error?.message || error)}`, true);
   });
 
-  function renderLoraSuggestions(slot) {
-    const query = String(slot.picker.input.value || "").trim().toLowerCase();
-    const options = slot.picker.options || ["[none]"];
-    const matches = options
-      .filter((name) => name === "[none]" || !query || String(name).toLowerCase().includes(query))
-      .slice(0, 40);
-    slot.picker.list.textContent = "";
-    for (const name of matches) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.textContent = name;
-      item.title = name;
-      item.style.cssText = "display:block;width:100%;text-align:left;border:0;background:#18181b;color:#fafafa;padding:7px 8px;font-size:12px;line-height:1.35;cursor:pointer;white-space:normal;overflow-wrap:anywhere;";
-      item.onmouseenter = () => { item.style.background = "#27272a"; };
-      item.onmouseleave = () => { item.style.background = "#18181b"; };
-      item.onclick = () => {
-        slot.picker.input.value = name;
-        slot.picker.list.style.display = "none";
-        saveZImageSettingsFromPanel();
-      };
-      slot.picker.list.append(item);
-    }
-    slot.picker.list.style.display = matches.length ? "block" : "none";
-  }
-
   function renderSearchableSuggestions(picker, onSelect = null) {
     const query = String(picker.input.value || "").trim().toLowerCase();
     const options = picker.options || [];
@@ -8992,26 +8978,14 @@ function openBuilder(node) {
   ernieUseLora.input.addEventListener("change", saveErnieImageSettingsFromPanel);
   ernieUseImageToImage.input.addEventListener("change", saveErnieImageSettingsFromPanel);
   for (const slot of zLoraSlots) {
-    slot.picker.input.addEventListener("focus", () => renderLoraSuggestions(slot));
-    slot.picker.input.addEventListener("input", () => {
-      renderLoraSuggestions(slot);
-      saveZImageSettingsFromPanel();
-    });
-    slot.picker.input.addEventListener("blur", () => {
-      setTimeout(() => { slot.picker.list.style.display = "none"; }, 180);
-    });
-    slot.strength.addEventListener("input", saveZImageSettingsFromPanel);
-    slot.strength.addEventListener("change", saveZImageSettingsFromPanel);
+    wireSearchablePicker(slot.picker, saveZImageSettingsFromPanel);
+    slot.firstPassStrength.addEventListener("input", saveZImageSettingsFromPanel);
+    slot.firstPassStrength.addEventListener("change", saveZImageSettingsFromPanel);
+    slot.secondPassStrength.addEventListener("input", saveZImageSettingsFromPanel);
+    slot.secondPassStrength.addEventListener("change", saveZImageSettingsFromPanel);
   }
   for (const slot of ernieLoraSlots) {
-    slot.picker.input.addEventListener("focus", () => renderLoraSuggestions(slot));
-    slot.picker.input.addEventListener("input", () => {
-      renderLoraSuggestions(slot);
-      saveErnieImageSettingsFromPanel();
-    });
-    slot.picker.input.addEventListener("blur", () => {
-      setTimeout(() => { slot.picker.list.style.display = "none"; }, 180);
-    });
+    wireSearchablePicker(slot.picker, saveErnieImageSettingsFromPanel);
     slot.strength.addEventListener("input", saveErnieImageSettingsFromPanel);
     slot.strength.addEventListener("change", saveErnieImageSettingsFromPanel);
   }

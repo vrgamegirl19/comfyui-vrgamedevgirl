@@ -191,6 +191,25 @@ def _set_widget_key(workflow, node_id, key, value):
     widgets[key] = value
 
 
+def _workflow_node_id_by_class(workflow, class_type, fallback=None):
+    for node in workflow.get("nodes", []):
+        if node.get("type") == class_type or node.get("class_type") == class_type:
+            return str(node.get("id"))
+    if fallback is not None:
+        _node_by_id(workflow, fallback)
+        return str(fallback)
+    raise KeyError(f"Workflow node class {class_type} was not found.")
+
+
+def _api_node_id_by_class(prompt, class_type, fallback=None):
+    for node_id, node in prompt.items():
+        if isinstance(node, dict) and node.get("class_type") == class_type:
+            return str(node_id)
+    if fallback is not None and str(fallback) in prompt:
+        return str(fallback)
+    raise KeyError(f"API prompt node class {class_type} was not found.")
+
+
 def _int_payload(payload, key, default, minimum=1, maximum=16384):
     try:
         value = int(payload.get(key, default))
@@ -251,15 +270,29 @@ def _patch_zimage_workflow(workflow, payload):
     _set_widget(workflow, 964, 1, seed)
     _set_widget(workflow, 966, 1, seed)
 
-    _set_widget(workflow, 974, 0, use_custom_loras)
-    _set_widget(workflow, 974, 1, lora_count)
-    _set_widget(workflow, 974, 2, ltx_two_pass_mode)
-    for slot in range(1, _MAX_LORA_SLOTS + 1):
-        lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
-        strength = _float_payload(payload, f"strength_{slot}", 1.0)
-        base_index = 3 + ((slot - 1) * 2)
-        _set_widget(workflow, 974, base_index, lora_name)
-        _set_widget(workflow, 974, base_index + 1, strength)
+    lora_node_id = _workflow_node_id_by_class(workflow, "VRGDG_OptionalMultiLoraTwoPassStrengths", fallback=974)
+    lora_node = _node_by_id(workflow, lora_node_id)
+    is_two_pass_lora = lora_node.get("type") == "VRGDG_OptionalMultiLoraTwoPassStrengths" or lora_node.get("class_type") == "VRGDG_OptionalMultiLoraTwoPassStrengths"
+    _set_widget(workflow, lora_node_id, 0, use_custom_loras)
+    _set_widget(workflow, lora_node_id, 1, lora_count)
+    if is_two_pass_lora:
+        for slot in range(1, _MAX_LORA_SLOTS + 1):
+            lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+            legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
+            first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
+            second_pass_strength = _float_payload(payload, f"second_pass_strength_{slot}", legacy_strength)
+            base_index = 2 + ((slot - 1) * 3)
+            _set_widget(workflow, lora_node_id, base_index, lora_name)
+            _set_widget(workflow, lora_node_id, base_index + 1, first_pass_strength)
+            _set_widget(workflow, lora_node_id, base_index + 2, second_pass_strength)
+    else:
+        _set_widget(workflow, lora_node_id, 2, ltx_two_pass_mode)
+        for slot in range(1, _MAX_LORA_SLOTS + 1):
+            lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+            strength = _float_payload(payload, f"strength_{slot}", 1.0)
+            base_index = 3 + ((slot - 1) * 2)
+            _set_widget(workflow, lora_node_id, base_index, lora_name)
+            _set_widget(workflow, lora_node_id, base_index + 1, strength)
 
     return workflow
 
@@ -397,12 +430,23 @@ def _patch_zimage_api_prompt(prompt, payload):
     use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
     lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
     ltx_two_pass_mode = _bool_payload(payload, "ltx_two_pass_mode", False)
-    _set_api_input(prompt, "974", "use_custom_loras", use_custom_loras)
-    _set_api_input(prompt, "974", "lora_count", lora_count)
-    _set_api_input(prompt, "974", "ltx_two_pass_mode", ltx_two_pass_mode)
-    for slot in range(1, _MAX_LORA_SLOTS + 1):
-        _set_api_input(prompt, "974", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
-        _set_api_input(prompt, "974", f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
+    lora_node_id = _api_node_id_by_class(prompt, "VRGDG_OptionalMultiLoraTwoPassStrengths", fallback=974)
+    is_two_pass_lora = prompt.get(str(lora_node_id), {}).get("class_type") == "VRGDG_OptionalMultiLoraTwoPassStrengths"
+    _set_api_input(prompt, lora_node_id, "use_custom_loras", use_custom_loras)
+    _set_api_input(prompt, lora_node_id, "lora_count", lora_count)
+    if is_two_pass_lora:
+        for slot in range(1, _MAX_LORA_SLOTS + 1):
+            legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
+            first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
+            second_pass_strength = _float_payload(payload, f"second_pass_strength_{slot}", legacy_strength)
+            _set_api_input(prompt, lora_node_id, f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
+            _set_api_input(prompt, lora_node_id, f"first_pass_strength_{slot}", first_pass_strength)
+            _set_api_input(prompt, lora_node_id, f"second_pass_strength_{slot}", second_pass_strength)
+    else:
+        _set_api_input(prompt, lora_node_id, "ltx_two_pass_mode", ltx_two_pass_mode)
+        for slot in range(1, _MAX_LORA_SLOTS + 1):
+            _set_api_input(prompt, lora_node_id, f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
+            _set_api_input(prompt, lora_node_id, f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
     return prompt, seed
 
 
@@ -1777,7 +1821,11 @@ class VRGDG_ZImageWorkflowRunnerUI:
         }
         for slot in range(1, _MAX_LORA_SLOTS + 1):
             required[f"lora_{slot}"] = (lora_choices, {"default": _NONE_LORA})
-            required[f"strength_{slot}"] = (
+            required[f"first_pass_strength_{slot}"] = (
+                "FLOAT",
+                {"default": 0.5, "min": -100.0, "max": 100.0, "step": 0.01},
+            )
+            required[f"second_pass_strength_{slot}"] = (
                 "FLOAT",
                 {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01},
             )

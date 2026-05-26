@@ -373,6 +373,25 @@ def _project_audio_folder(project_folder):
     return folder
 
 
+def _prompt_creator_debug_folder(project_folder):
+    folder = os.path.join(project_folder, "prompt_creator_debug")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _write_prompt_creator_debug_file(project_folder, stem, content):
+    try:
+        folder = _prompt_creator_debug_folder(project_folder)
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(folder, f"{stamp}_{stem}.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(str(content or ""))
+        return path
+    except Exception as exc:
+        print(f"[PromptCreator] Failed to write debug file {stem}: {exc}")
+        return ""
+
+
 def _safe_file_name(name, fallback="vrgdg_audio.wav"):
     safe_name = re.sub(r'[<>:"/\\|?*]+', "_", os.path.basename(str(name or ""))).strip()
     return safe_name or fallback
@@ -978,6 +997,8 @@ def _create_concepts(payload):
 
 
 def _create_i2v_motion_notes(payload):
+    project_folder = _project_folder_from_payload(payload)
+    _ensure_project_folders(project_folder)
     prompt_data = payload.get("prompts") or payload.get("concept_prompts")
     if isinstance(prompt_data, str):
         prompt_data = _extract_json_object(prompt_data)
@@ -994,7 +1015,9 @@ def _create_i2v_motion_notes(payload):
         f"THEME_STYLE:\n{str(payload.get('style_theme', '') or '').strip()}\n\n"
         f"SUBJECT:\n{str(payload.get('subject', '') or '').strip()}"
     )
+    debug_input_path = _write_prompt_creator_debug_file(project_folder, "i2v_motion_notes_input", user_input)
     result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
+    debug_raw_path = _write_prompt_creator_debug_file(project_folder, "i2v_motion_notes_raw_output", result["text"])
     try:
         raw = _extract_json_object(result["text"])
         fixed_notes = "Parsed I2V motion notes JSON."
@@ -1012,12 +1035,25 @@ def _create_i2v_motion_notes(payload):
         if not value:
             value = "Subtle cinematic camera movement with gentle environmental motion that fits the scene."
         data[f"Motion{index}"] = value
+    fallback_count = sum(
+        1 for value in data.values()
+        if value == "Subtle cinematic camera movement with gentle environmental motion that fits the scene."
+    )
+    if debug_raw_path:
+        fixed_notes = f"{fixed_notes} Raw Gemma output saved to: {debug_raw_path}"
+    if debug_input_path:
+        fixed_notes = f"{fixed_notes} Input saved to: {debug_input_path}"
+    if fallback_count:
+        fixed_notes = f"{fixed_notes} Fallback motion notes used: {fallback_count}/{expected_count}."
     return {
         "motion_notes": data,
         "motion_count": expected_count,
         "raw_text": result["text"],
         "fixed_text": json.dumps(data, indent=2, ensure_ascii=False),
         "fixer_notes": fixed_notes,
+        "debug_input_path": debug_input_path,
+        "debug_raw_output_path": debug_raw_path,
+        "fallback_count": fallback_count,
         "was_fixed": True,
         "used_model": result["used_model"],
         "unloaded": True,

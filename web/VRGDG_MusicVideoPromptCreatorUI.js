@@ -1161,7 +1161,13 @@ function openPromptCreator(options = {}) {
     const result = await postJson("/vrgdg/music_prompt_creator/create_i2v_motion_notes", payload);
     state.i2vMotionNotes = result.motion_notes || {};
     i2vMotionOutput.value = prettyJson(state.i2vMotionNotes);
-    setStatus(status, `Created ${result.motion_count || 0} I2V motion note(s). Gemma unloaded.`);
+    const debugNote = result.debug_raw_output_path
+      ? `\nRaw Gemma output saved:\n${result.debug_raw_output_path}`
+      : "";
+    const fallbackNote = Number(result.fallback_count || 0)
+      ? `\nFallback notes used: ${result.fallback_count}/${result.motion_count || 0}`
+      : "";
+    setStatus(status, `Created ${result.motion_count || 0} I2V motion note(s). Gemma unloaded.${fallbackNote}${debugNote}`);
     return result;
   }
 

@@ -50,7 +50,7 @@
       "noise_seed": 1,
       "cfg": 1,
       "model": [
-        "974",
+        "984",
         0
       ],
       "positive": [
@@ -96,8 +96,8 @@
       "noise_seed": 1,
       "cfg": 1,
       "model": [
-        "974",
-        0
+        "984",
+        1
       ],
       "positive": [
         "971",
@@ -232,61 +232,6 @@
       "title": "Load Diffusion Model"
     }
   },
-  "974": {
-    "inputs": {
-      "use_custom_loras": false,
-      "lora_count": 1,
-      "ltx_two_pass_mode": false,
-      "lora_1": "[none]",
-      "strength_1": 1,
-      "lora_2": "[none]",
-      "strength_2": 1,
-      "lora_3": "[none]",
-      "strength_3": 1,
-      "lora_4": "[none]",
-      "strength_4": 1,
-      "lora_5": "[none]",
-      "strength_5": 1,
-      "lora_6": "[none]",
-      "strength_6": 1,
-      "lora_7": "[none]",
-      "strength_7": 1,
-      "lora_8": "[none]",
-      "strength_8": 1,
-      "lora_9": "[none]",
-      "strength_9": 1,
-      "lora_10": "[none]",
-      "strength_10": 1,
-      "lora_11": "[none]",
-      "strength_11": 1,
-      "lora_12": "[none]",
-      "strength_12": 1,
-      "lora_13": "[none]",
-      "strength_13": 1,
-      "lora_14": "[none]",
-      "strength_14": 1,
-      "lora_15": "[none]",
-      "strength_15": 1,
-      "lora_16": "[none]",
-      "strength_16": 1,
-      "lora_17": "[none]",
-      "strength_17": 1,
-      "lora_18": "[none]",
-      "strength_18": 1,
-      "lora_19": "[none]",
-      "strength_19": 1,
-      "lora_20": "[none]",
-      "strength_20": 1,
-      "model": [
-        "972",
-        0
-      ]
-    },
-    "class_type": "VRGDG_OptionalMultiLoraModelOnly",
-    "_meta": {
-      "title": "VRGDG Optional Multi LoRA Model Only"
-    }
-  },
   "975": {
     "inputs": {
       "images": [
@@ -404,6 +349,80 @@
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "Int - on true can be 1-8"
+    }
+  },
+  "984": {
+    "inputs": {
+      "use_custom_loras": false,
+      "lora_count": 0,
+      "lora_1": "[none]",
+      "first_pass_strength_1": 0.5,
+      "second_pass_strength_1": 1,
+      "lora_2": "[none]",
+      "first_pass_strength_2": 0.5,
+      "second_pass_strength_2": 1,
+      "lora_3": "[none]",
+      "first_pass_strength_3": 0.5,
+      "second_pass_strength_3": 1,
+      "lora_4": "[none]",
+      "first_pass_strength_4": 0.5,
+      "second_pass_strength_4": 1,
+      "lora_5": "[none]",
+      "first_pass_strength_5": 0.5,
+      "second_pass_strength_5": 1,
+      "lora_6": "[none]",
+      "first_pass_strength_6": 0.5,
+      "second_pass_strength_6": 1,
+      "lora_7": "[none]",
+      "first_pass_strength_7": 0.5,
+      "second_pass_strength_7": 1,
+      "lora_8": "[none]",
+      "first_pass_strength_8": 0.5,
+      "second_pass_strength_8": 1,
+      "lora_9": "[none]",
+      "first_pass_strength_9": 0.5,
+      "second_pass_strength_9": 1,
+      "lora_10": "[none]",
+      "first_pass_strength_10": 0.5,
+      "second_pass_strength_10": 1,
+      "lora_11": "[none]",
+      "first_pass_strength_11": 0.5,
+      "second_pass_strength_11": 1,
+      "lora_12": "[none]",
+      "first_pass_strength_12": 0.5,
+      "second_pass_strength_12": 1,
+      "lora_13": "[none]",
+      "first_pass_strength_13": 0.5,
+      "second_pass_strength_13": 1,
+      "lora_14": "[none]",
+      "first_pass_strength_14": 0.5,
+      "second_pass_strength_14": 1,
+      "lora_15": "[none]",
+      "first_pass_strength_15": 0.5,
+      "second_pass_strength_15": 1,
+      "lora_16": "[none]",
+      "first_pass_strength_16": 0.5,
+      "second_pass_strength_16": 1,
+      "lora_17": "[none]",
+      "first_pass_strength_17": 0.5,
+      "second_pass_strength_17": 1,
+      "lora_18": "[none]",
+      "first_pass_strength_18": 0.5,
+      "second_pass_strength_18": 1,
+      "lora_19": "[none]",
+      "first_pass_strength_19": 0.5,
+      "second_pass_strength_19": 1,
+      "lora_20": "[none]",
+      "first_pass_strength_20": 0.5,
+      "second_pass_strength_20": 1,
+      "model": [
+        "972",
+        0
+      ]
+    },
+    "class_type": "VRGDG_OptionalMultiLoraTwoPassStrengths",
+    "_meta": {
+      "title": "VRGDG Optional Multi LoRA Two Pass Strengths"
     }
   }
 }
