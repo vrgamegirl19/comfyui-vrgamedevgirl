@@ -1,6 +1,7 @@
 import importlib
 import importlib.util
 import os
+import sys
 
 import folder_paths
 
@@ -30,8 +31,44 @@ _VRGDG_OPTIONAL_SUBMODULES = (
     ".VRGDG_FileDeleteNode",
 )
 
+_VRGDG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _vrgdg_module_file(modname):
+    module_name = str(modname or "").lstrip(".")
+    if not module_name:
+        return ""
+    return os.path.join(_VRGDG_DIR, f"{module_name}.py")
+
+
+def _vrgdg_has_submodule(modname):
+    try:
+        if importlib.util.find_spec(modname, package=__name__) is not None:
+            return True
+    except Exception:
+        pass
+    return os.path.isfile(_vrgdg_module_file(modname))
+
+
+def _import_vrgdg_submodule(modname):
+    try:
+        return importlib.import_module(modname, package=__name__)
+    except ModuleNotFoundError as exc:
+        module_path = _vrgdg_module_file(modname)
+        if not os.path.isfile(module_path):
+            raise
+        module_name = f"_vrgdg_custom_{os.path.splitext(os.path.basename(module_path))[0]}"
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise exc
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        return module
+
+
 for _modname in _VRGDG_OPTIONAL_SUBMODULES:
-    if importlib.util.find_spec(_modname, package=__name__) is not None:
+    if _vrgdg_has_submodule(_modname):
         _VRGDG_SUBMODULES += (_modname,)
 
 NODE_CLASS_MAPPINGS = {}
@@ -41,7 +78,7 @@ _VRGDG_FAILED = []
 
 for _modname in _VRGDG_SUBMODULES:
     try:
-        _mod = importlib.import_module(_modname, package=__name__)
+        _mod = _import_vrgdg_submodule(_modname)
     except Exception as exc:
         _VRGDG_FAILED.append((_modname, f"{type(exc).__name__}: {exc}"))
         continue
