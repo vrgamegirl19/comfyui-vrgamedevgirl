@@ -563,6 +563,16 @@ def _patch_flux_klein_api_prompt(prompt, payload):
     _set_api_input(prompt, "1068", "unet_name", str(payload.get("unet_name", "") or ""))
     _set_api_input(prompt, "1066", "clip_name", str(payload.get("clip_name", "") or ""))
     _set_api_input(prompt, "1064", "vae_name", str(payload.get("vae_name", "") or ""))
+    lora_node_id = _api_node_id_by_class(prompt, "VRGDG_OptionalMultiLoraModelOnly", fallback=1075)
+    use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
+    lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
+    _set_api_input(prompt, lora_node_id, "use_custom_loras", use_custom_loras)
+    _set_api_input(prompt, lora_node_id, "lora_count", lora_count)
+    if "ltx_two_pass_mode" in prompt[lora_node_id].get("inputs", {}):
+        _set_api_input(prompt, lora_node_id, "ltx_two_pass_mode", False)
+    for slot in range(1, _MAX_LORA_SLOTS + 1):
+        _set_api_input(prompt, lora_node_id, f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
+        _set_api_input(prompt, lora_node_id, f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
     _set_api_input(prompt, "1072", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     return prompt
 

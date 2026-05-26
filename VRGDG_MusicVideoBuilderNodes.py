@@ -885,19 +885,48 @@ def _rehydrate_builder_session(project_folder, session):
         session["overlay_segments"] = []
         overlay_segments = session["overlay_segments"]
 
+    # Only rebuild timeline scenes from loose media files when the session has no
+    # saved scene list. Otherwise deleted scenes can come back from old files.
     existing_count = len(segments)
-    asset_numbers = _project_scene_numbers(project_folder)
-    base_asset_numbers = [number for number in asset_numbers if number < 10000]
-    target_count = max(existing_count, max(base_asset_numbers) if base_asset_numbers else 0)
-    for index in range(existing_count + 1, target_count + 1):
-        start = float((index - 1) * 4)
-        segments.append({
-            "id": f"recovered_scene_{index}",
-            "label": f"Scene {index}",
-            "start": start,
-            "end": start + 4,
-            "source": "recovered",
-        })
+    if existing_count == 0:
+        asset_numbers = _project_scene_numbers(project_folder)
+        base_asset_numbers = [number for number in asset_numbers if number < 10000]
+        target_count = max(base_asset_numbers) if base_asset_numbers else 0
+        for index in range(1, target_count + 1):
+            start = float((index - 1) * 4)
+            segments.append({
+                "id": f"recovered_scene_{index}",
+                "label": f"Scene {index}",
+                "start": start,
+                "end": start + 4,
+                "source": "recovered",
+            })
+
+    cleaned_segments = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        is_recovered = str(segment.get("source", "") or "").lower() == "recovered" or str(segment.get("id", "") or "").startswith("recovered_scene_")
+        if is_recovered:
+            start = float(segment.get("start", 0) or 0)
+            end = float(segment.get("end", start) or start)
+            overlaps_real = False
+            for other in segments:
+                if other is segment or not isinstance(other, dict):
+                    continue
+                other_recovered = str(other.get("source", "") or "").lower() == "recovered" or str(other.get("id", "") or "").startswith("recovered_scene_")
+                if other_recovered:
+                    continue
+                other_start = float(other.get("start", 0) or 0)
+                other_end = float(other.get("end", other_start) or other_start)
+                if min(end, other_end) - max(start, other_start) > 0.05:
+                    overlaps_real = True
+                    break
+            if overlaps_real:
+                continue
+        cleaned_segments.append(segment)
+    session["segments"] = cleaned_segments
+    segments = cleaned_segments
 
     for index, segment in enumerate(segments, start=1):
         if not isinstance(segment, dict):

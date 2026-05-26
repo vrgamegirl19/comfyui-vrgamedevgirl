@@ -50,6 +50,58 @@ const LLM_MODEL_DOWNLOADS = [
   { label: "Gemma Vision GGUF", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ2_M.gguf" },
   { label: "Vision mmproj", url: "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/mmproj-BF16.gguf" },
 ];
+const MODEL_FOLDER_HINTS = {
+  "LLM / Vision": `ComfyUI/
+models/
+  LLM/
+    supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf
+    gemma-4-26B-A4B-it-UD-IQ2_M.gguf
+    mmproj-BF16.gguf`,
+  "ZImage": `ComfyUI/
+models/
+  text_encoders/
+    qwen_3_4b.safetensors
+  diffusion_models/
+    z_image_turbo_bf16.safetensors
+  vae/
+    ae.safetensors`,
+  "Flux/Klein 9B": `ComfyUI/
+models/
+  diffusion_models/
+    flux-2-klein-9b-fp8.safetensors
+  text_encoders/
+    qwen_3_8b_fp8mixed.safetensors
+  vae/
+    full_encoder_small_decoder.safetensors`,
+  "Flux/Klein 4B": `ComfyUI/
+models/
+  text_encoders/
+    qwen_3_4b.safetensors
+  diffusion_models/
+    flux-2-klein-4b-fp8.safetensors
+  vae/
+    flux2-vae.safetensors`,
+  "Ernie Image": `ComfyUI/
+models/
+  diffusion_models/
+    ernie-image-turbo.safetensors
+  text_encoders/
+    ministral-3-3b.safetensors
+  vae/
+    flux2-vae.safetensors`,
+  "LTX 2.3": `ComfyUI/
+models/
+  diffusion_models/
+    ltx-2.3-distilled_1.1-Q6_k.gguf
+  text_encoders/
+    ltx-2.3-text_projection_bf16.safetensors
+    abliterated-sikaworld-high-fidelity-edition.safetensors
+  vae/
+    LTX2.3_video_vae_bf16.safetensors
+    LTX2.3_audio_vae_bf16.safetensors
+  latent_upscale_models/
+    ltx-2.3-spatial-upscaler-x2-1.1.safetensors`,
+};
 const WAVEFORM_MODES = {
   small: { label: "Small wave", height: 150, gain: 1 },
   medium: { label: "Medium wave", height: 190, gain: 1.35 },
@@ -434,9 +486,29 @@ function showModelDownloadModal() {
   for (const group of groups) {
     const card = document.createElement("div");
     card.style.cssText = "display:flex;flex-direction:column;gap:14px;border:1px solid #334155;border-radius:10px;background:#111827;padding:18px;";
+    const titleRow = document.createElement("div");
+    titleRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
     const groupTitle = document.createElement("div");
     groupTitle.textContent = group.title;
     groupTitle.style.cssText = "font-size:22px;font-weight:900;color:#f8fafc;";
+    const folderButton = makeMiniButton("Folders");
+    folderButton.style.fontSize = "13px";
+    folderButton.style.padding = "8px 10px";
+    folderButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const pre = document.createElement("pre");
+      pre.textContent = MODEL_FOLDER_HINTS[group.title] || "No folder location listed yet.";
+      pre.style.cssText = "white-space:pre-wrap;margin:0;padding:12px;border:1px solid #334155;border-radius:8px;background:#020617;color:#bae6fd;font-size:12px;line-height:1.45;overflow:auto;";
+      showInfoModal({
+        title: `${group.title} Folder Locations`,
+        lines: [
+          "Place the files here, then restart ComfyUI if the dropdowns do not refresh.",
+          pre,
+        ],
+      });
+    });
+    titleRow.append(groupTitle, folderButton);
     const note = document.createElement("div");
     note.textContent = group.note;
     note.style.cssText = "font-size:17px;line-height:1.35;color:#c7d2fe;";
@@ -458,7 +530,7 @@ function showModelDownloadModal() {
       });
       buttons.append(button);
     }
-    card.append(groupTitle, note, buttons);
+    card.append(titleRow, note, buttons);
     body.append(card);
   }
   box.append(header, body);
@@ -519,9 +591,13 @@ function showInfoModal({ title, lines = [], confirmLabel = "Got it" } = {}) {
     const body = document.createElement("div");
     body.style.cssText = "display:flex;flex-direction:column;gap:9px;font-size:13px;color:#d4d4d8;line-height:1.45;";
     for (const line of lines) {
-      const item = document.createElement("div");
-      item.textContent = line;
-      body.append(item);
+      if (line instanceof HTMLElement) {
+        body.append(line);
+      } else {
+        const item = document.createElement("div");
+        item.textContent = line;
+        body.append(item);
+      }
     }
     const confirm = makeButton(confirmLabel, "primary");
     confirm.onclick = () => {
@@ -1289,7 +1365,7 @@ function openBuilder(node) {
   const previewVideo = document.createElement("video");
   previewVideo.controls = true;
   previewVideo.playsInline = true;
-  previewVideo.muted = true;
+  previewVideo.muted = false;
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
   previewStage.append(previewEmpty, previewImage, previewVideo);
   const customImageFileInput = document.createElement("input");
@@ -1557,6 +1633,26 @@ function openBuilder(node) {
   const fluxUnetPicker = makeSearchableLoraPicker("flux\\flux-2-klein-4b-fp8.safetensors");
   const fluxClipPicker = makeSearchableLoraPicker("qwen_3_4b.safetensors");
   const fluxVaePicker = makeSearchableLoraPicker("flux\\flux2-vae.safetensors");
+  const fluxUseLora = makeCheckbox("Use Flux/Klein LoRAs?", false);
+  const fluxLoraPanel = document.createElement("div");
+  fluxLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const fluxLoraCount = makeInput("0", "number");
+  fluxLoraCount.min = "0";
+  fluxLoraCount.max = "4";
+  const fluxLoraRows = document.createElement("div");
+  fluxLoraRows.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const fluxLoraSlots = [];
+  for (let slot = 1; slot <= 4; slot++) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:8px;";
+    const picker = makeSearchableLoraPicker("[none]");
+    const strength = makeInput("1", "number");
+    strength.step = "0.01";
+    row.append(makeField(`LoRA ${slot}`, picker.wrapper), makeField("Strength", strength));
+    fluxLoraRows.append(row);
+    fluxLoraSlots.push({ row, picker, strength });
+  }
+  fluxLoraPanel.append(makeField("LoRA count", fluxLoraCount), fluxLoraRows);
   const fluxWidth = makeInput("1024", "number");
   const fluxHeight = makeInput("576", "number");
   const fluxSeed = makeInput("100", "number");
@@ -1986,6 +2082,8 @@ function openBuilder(node) {
           makeField("Gemma vision model", fluxGemmaModelSelect),
           makeField("Vision mmproj", fluxMmprojSelect),
         ]),
+        fluxUseLora.wrapper,
+        fluxLoraPanel,
         makeFluxCreateButton(),
       ]),
     },
@@ -2296,6 +2394,9 @@ function openBuilder(node) {
       width: 1024,
       height: 576,
       seed: 100,
+      use_loras: false,
+      lora_count: 0,
+      loras: [],
       image_trigger_phrase: "",
     };
   }
@@ -2776,6 +2877,12 @@ function openBuilder(node) {
       width: Number(source.width || 1024),
       height: Number(source.height || 576),
       seed: Number(source.seed || 100),
+      use_loras: Boolean(source.use_loras),
+      lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
+      loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
+        name: item?.name || "[none]",
+        strength: Number(item?.strength ?? 1),
+      })) : [],
       image_trigger_phrase: source.image_trigger_phrase || state.imageTriggerPhrase || "",
     };
   }
@@ -3309,7 +3416,7 @@ function openBuilder(node) {
         previewVideo.src = makeEditorVideoUrl(videoPath);
         previewVideo.dataset.path = videoPath;
       }
-      previewVideo.muted = true;
+      previewVideo.muted = false;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
       previewEmpty.style.display = "none";
@@ -3459,7 +3566,7 @@ function openBuilder(node) {
     if (previewVideo.dataset.path !== videoPath) {
       previewVideo.src = makeEditorVideoUrl(videoPath);
       previewVideo.dataset.path = videoPath;
-      previewVideo.muted = true;
+      previewVideo.muted = false;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
       previewEmpty.style.display = "none";
@@ -3973,11 +4080,30 @@ function openBuilder(node) {
     fluxWidth.value = settings.width || 1024;
     fluxHeight.value = settings.height || 576;
     fluxSeed.value = settings.seed || 100;
+    fluxUseLora.input.checked = Boolean(settings.use_loras);
+    fluxLoraCount.value = Number(settings.lora_count || 0);
+    fluxLoraSlots.forEach((slot, index) => {
+      const config = settings.loras?.[index] || {};
+      slot.row.style.display = index < Number(fluxLoraCount.value || 0) ? "grid" : "none";
+      slot.picker.input.value = config.name || "[none]";
+      slot.strength.value = config.strength ?? 1;
+    });
+    updateFluxLoraVisibility();
     syncErnieImagePanel();
+  }
+
+  function updateFluxLoraVisibility() {
+    const count = Math.max(0, Math.min(4, Number(fluxLoraCount.value || 0)));
+    fluxLoraPanel.style.display = fluxUseLora.input.checked ? "flex" : "none";
+    fluxLoraRows.style.display = fluxUseLora.input.checked && count > 0 ? "flex" : "none";
+    fluxLoraSlots.forEach((slot, index) => {
+      slot.row.style.display = index < count ? "grid" : "none";
+    });
   }
 
   function saveFluxKleinSettingsFromPanel() {
     pushHistory();
+    const count = Math.max(0, Math.min(4, Number(fluxLoraCount.value || 0)));
     const current = activeFluxKleinSettings() || {};
     const segment = activeSegment();
     if (segment) {
@@ -3995,6 +4121,12 @@ function openBuilder(node) {
       width: Number(fluxWidth.value || 1024),
       height: Number(fluxHeight.value || 576),
       seed: Number(fluxSeed.value || 100),
+      use_loras: Boolean(fluxUseLora.input.checked),
+      lora_count: count,
+      loras: fluxLoraSlots.map((slot) => ({
+        name: slot.picker.input.value || "[none]",
+        strength: Number(slot.strength.value || 1),
+      })),
       image_trigger_phrase: fluxImageTriggerInput.value || "",
     };
     if (segment?.use_scene_flux_klein_settings) segment.flux_klein_settings = settings;
@@ -4002,6 +4134,7 @@ function openBuilder(node) {
       state.imageTriggerPhrase = settings.image_trigger_phrase || "";
       state.fluxKleinSettings = settings;
     }
+    updateFluxLoraVisibility();
     return {
       ...settings,
       image_ingredients: mergedFluxImageIngredients(segment),
@@ -6917,6 +7050,21 @@ function openBuilder(node) {
     };
   }
 
+  function fluxKleinLoraPayload(settings = {}) {
+    const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    const useLoras = Boolean(settings.use_loras && count > 0);
+    const payload = {
+      use_custom_loras: useLoras,
+      lora_count: useLoras ? count : 0,
+    };
+    for (let slot = 1; slot <= 4; slot++) {
+      const config = settings.loras?.[slot - 1] || {};
+      payload[`lora_${slot}`] = config.name || "[none]";
+      payload[`strength_${slot}`] = Number(config.strength ?? 1);
+    }
+    return payload;
+  }
+
   async function generateFluxKleinPromptForSegment(segment, progress = null, percent = 25, label = "Flux/Klein Gemma", options = {}) {
     state.activeId = segment.id;
     syncInspector();
@@ -6960,6 +7108,7 @@ function openBuilder(node) {
       width: settings.width || 1024,
       height: settings.height || 576,
       seed: settings.seed || 100,
+      ...fluxKleinLoraPayload(settings),
     });
     progress?.set(`${label}: queueing Flux/Klein workflow...`, percentBase + percentSpan * 0.45);
     const queued = await queueWorkflowPrompt(built.prompt);
@@ -7013,6 +7162,7 @@ function openBuilder(node) {
         width: settings.width || 1024,
         height: settings.height || 576,
         seed: settings.seed || 100,
+        ...fluxKleinLoraPayload(settings),
       });
       progress.set("Queueing Flux/Klein workflow...", 50);
       const queued = await queueWorkflowPrompt(built.prompt);
@@ -9702,7 +9852,7 @@ function openBuilder(node) {
 
   getJson("/vrgdg/workflow_runner/lora_list").then((data) => {
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
@@ -9803,11 +9953,17 @@ function openBuilder(node) {
     wireSearchablePicker(picker, saveFluxKleinSettingsFromPanel);
     picker.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
   }
-  for (const control of [fluxNotes, fluxPrompt, fluxWidth, fluxHeight, fluxSeed]) {
+  for (const control of [fluxNotes, fluxPrompt, fluxWidth, fluxHeight, fluxSeed, fluxLoraCount]) {
     control.addEventListener("input", saveFluxKleinSettingsFromPanel);
     control.addEventListener("change", saveFluxKleinSettingsFromPanel);
   }
   useFluxKlein.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
+  fluxUseLora.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
+  for (const slot of fluxLoraSlots) {
+    wireSearchablePicker(slot.picker, saveFluxKleinSettingsFromPanel);
+    slot.strength.addEventListener("input", saveFluxKleinSettingsFromPanel);
+    slot.strength.addEventListener("change", saveFluxKleinSettingsFromPanel);
+  }
   i2vLoraHintButton.addEventListener("click", () => {
     showInfoModal({
       title: "Two-Pass LoRA Strengths",

@@ -41,7 +41,7 @@
     "inputs": {
       "cfg": 1,
       "model": [
-        "1068",
+        "1075",
         0
       ],
       "positive": [
@@ -201,6 +201,7 @@
       "upscale_method": "nearest-exact",
       "megapixels": 1,
       "resolution_steps": 1,
+      "Clear Image Paths": null,
       "positive": [
         "1067",
         0
@@ -217,6 +218,61 @@
     "class_type": "VRGDG_MultiReferenceConditioningFromPaths",
     "_meta": {
       "title": "VRGDG UI Multi Reference Conditioning"
+    }
+  },
+  "1075": {
+    "inputs": {
+      "use_custom_loras": false,
+      "lora_count": 0,
+      "ltx_two_pass_mode": false,
+      "lora_1": "[none]",
+      "strength_1": 1,
+      "lora_2": "[none]",
+      "strength_2": 1,
+      "lora_3": "[none]",
+      "strength_3": 1,
+      "lora_4": "[none]",
+      "strength_4": 1,
+      "lora_5": "[none]",
+      "strength_5": 1,
+      "lora_6": "[none]",
+      "strength_6": 1,
+      "lora_7": "[none]",
+      "strength_7": 1,
+      "lora_8": "[none]",
+      "strength_8": 1,
+      "lora_9": "[none]",
+      "strength_9": 1,
+      "lora_10": "[none]",
+      "strength_10": 1,
+      "lora_11": "[none]",
+      "strength_11": 1,
+      "lora_12": "[none]",
+      "strength_12": 1,
+      "lora_13": "[none]",
+      "strength_13": 1,
+      "lora_14": "[none]",
+      "strength_14": 1,
+      "lora_15": "[none]",
+      "strength_15": 1,
+      "lora_16": "[none]",
+      "strength_16": 1,
+      "lora_17": "[none]",
+      "strength_17": 1,
+      "lora_18": "[none]",
+      "strength_18": 1,
+      "lora_19": "[none]",
+      "strength_19": 1,
+      "lora_20": "[none]",
+      "strength_20": 1,
+      "model": [
+        "1068",
+        0
+      ]
+    },
+    "class_type": "VRGDG_OptionalMultiLoraModelOnly",
+    "_meta": {
+      "title": "VRGDG Optional Multi LoRA Model Only"
     }
   }
 }
