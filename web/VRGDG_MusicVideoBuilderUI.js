@@ -1228,6 +1228,7 @@ function openBuilder(node) {
   closeButton.onclick = () => overlay.remove();
   const promptCreatorButton = makeButton("Prompt Creator");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
+  const promptOptionsButton = makeButton("Prompt Options");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
   const zImageAllButton = makeButton("Image All");
@@ -1259,6 +1260,7 @@ function openBuilder(node) {
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
+  importActions.append(promptOptionsButton);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, closeButton);
@@ -1340,7 +1342,14 @@ function openBuilder(node) {
   const useSceneFluxKleinSettings = makeCheckbox("Use custom Flux/Klein settings for this scene", false);
   const fluxImageTriggerInput = makeInput("");
   fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
-  const useSceneI2VVideoSettings = makeCheckbox("Use custom video settings for this scene", false);
+  const useSceneI2VVideoSettings = makeCheckbox("Use custom video models/settings/LoRAs for this scene", false);
+  const useSceneI2VVideoSettingsModels = makeCheckbox("Use custom video models/settings/LoRAs for this scene", false);
+  const useSceneI2VVideoSettingsNote = document.createElement("div");
+  useSceneI2VVideoSettingsNote.textContent = "Applies the Models tab choices too, including video model files, LoRAs, LoRA count, and both pass strengths.";
+  useSceneI2VVideoSettingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
+  const useSceneI2VVideoSettingsModelsNote = document.createElement("div");
+  useSceneI2VVideoSettingsModelsNote.textContent = useSceneI2VVideoSettingsNote.textContent;
+  useSceneI2VVideoSettingsModelsNote.style.cssText = useSceneI2VVideoSettingsNote.style.cssText;
   const videoTriggerInput = makeInput("");
   videoTriggerInput.placeholder = "Optional video trigger word or phrase...";
   const useVrgdgTextContext = makeCheckbox("Use VRGDG text context files", true);
@@ -2057,6 +2066,8 @@ function openBuilder(node) {
       label: "Models",
       value: "models",
       content: makeSettingsPanel([
+        useSceneI2VVideoSettingsModels.wrapper,
+        useSceneI2VVideoSettingsModelsNote,
         makeSettingsSection("Video Models", [
           makeField("Unet model", i2vUnetPicker.wrapper),
           makeField("Video VAE", i2vVaePicker.wrapper),
@@ -2082,6 +2093,7 @@ function openBuilder(node) {
       value: "settings",
       content: makeSettingsPanel([
         useSceneI2VVideoSettings.wrapper,
+        useSceneI2VVideoSettingsNote,
         makeField("Video trigger phrase", videoTriggerInput),
         i2vSettingsGrid,
         makeCreateSceneVideoButton(),
@@ -2370,6 +2382,7 @@ function openBuilder(node) {
     fluxGlobalImageIngredients: [],
     zEnhanceSettings: defaultZEnhanceSettings(),
     i2vVideoSettings: defaultI2VVideoSettings(),
+    promptToolsHintPrefs: {},
     undoStack: [],
     redoStack: [],
     isRestoringHistory: false,
@@ -2485,22 +2498,19 @@ function openBuilder(node) {
     const previousSelectedKey = mediaPathKey(previousSelectedPath);
     const seen = new Set();
     const cleaned = [];
-    const backupCandidates = [
+    const candidates = [
       ...(Array.isArray(segment.video_backup_paths) ? segment.video_backup_paths : []),
-      ...(Array.isArray(segment.video_history) ? segment.video_history.filter(isBackupSceneVideoPath) : []),
+      ...(Array.isArray(segment.video_history) ? segment.video_history : []),
+      currentPath,
     ];
-    for (const item of backupCandidates) {
+    for (const item of candidates) {
       const path = String(item || "").trim();
       const key = mediaPathKey(path);
-      if (!path || !key || seen.has(key) || !isBackupSceneVideoPath(path)) continue;
+      if (!path || !key || seen.has(key)) continue;
       seen.add(key);
       cleaned.push(path);
     }
-    segment.video_backup_paths = cleaned.slice();
-    if (currentPath && currentKey && !seen.has(currentKey)) {
-      seen.add(currentKey);
-      cleaned.push(currentPath);
-    }
+    segment.video_backup_paths = cleaned.filter(isBackupSceneVideoPath);
     segment.video_history = cleaned;
     if (!cleaned.length) {
       segment.video_history_index = -1;
@@ -2838,6 +2848,7 @@ function openBuilder(node) {
       fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
       zEnhanceSettings: state.zEnhanceSettings,
       i2vVideoSettings: state.i2vVideoSettings,
+      promptToolsHintPrefs: state.promptToolsHintPrefs,
     });
   }
 
@@ -2882,6 +2893,7 @@ function openBuilder(node) {
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.i2vVideoSettings = data.i2vVideoSettings || state.i2vVideoSettings;
+    state.promptToolsHintPrefs = data.promptToolsHintPrefs || data.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
@@ -3300,7 +3312,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneI2VVideoSettings.input, useSceneI2VVideoSettingsModels.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -3313,6 +3325,7 @@ function openBuilder(node) {
     useSceneErnieImageSettings.input.checked = Boolean(segment?.use_scene_ernie_image_settings);
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
+    useSceneI2VVideoSettingsModels.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
     storyIdeaInput.value = state.storyIdeaPath || "";
@@ -4014,6 +4027,7 @@ function openBuilder(node) {
   function syncI2VVideoSettingsPanel() {
     const segment = activeSegment();
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
+    useSceneI2VVideoSettingsModels.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
     const settings = activeI2VVideoSettings() || {};
     videoTriggerInput.value = settings.video_trigger_phrase || state.videoTriggerPhrase || "";
     i2vUnetPicker.input.value = BAD_I2V_UNET_ALIASES.has(settings.unet_name) ? DEFAULT_I2V_UNET : settings.unet_name || "";
@@ -5196,6 +5210,395 @@ function openBuilder(node) {
     };
   }
 
+  function projectPromptsPath(filename) {
+    const folder = String(projectInput.value || state.projectFolder || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") ? "\\" : "/";
+    return `${folder}${separator}prompts${separator}${filename}`;
+  }
+
+  function projectPromptBackupPath(kind, name) {
+    const folder = String(projectInput.value || state.projectFolder || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") ? "\\" : "/";
+    return `${folder}${separator}prompts${separator}backups${separator}${kind}_prompts_${name}.txt`;
+  }
+
+  function promptKindLabel(kind) {
+    return kind === "i2v" ? "image-to-video" : "text-to-image";
+  }
+
+  function promptKindFile(kind) {
+    return projectPromptsPath(kind === "i2v" ? "i2v_prompts.txt" : "t2i_prompts.txt");
+  }
+
+  function promptKindPrefix(kind) {
+    return kind === "i2v" ? "I2V" : "Prompt";
+  }
+
+  function formatPromptBlocks(kind, prompts = null) {
+    const values = Array.isArray(prompts)
+      ? prompts
+      : allEditableSegments().map((segment) => kind === "i2v" ? segment.i2v_prompt : (segment.t2i_prompt || segment.flux_prompt));
+    return values.map((item) => String(item || "").trim()).join("\n\n").replace(/\s+$/g, "") + "\n";
+  }
+
+  function numericPromptKey(key, kind) {
+    const text = String(key || "");
+    const expected = kind === "i2v" ? /^(?:i2v|motion|prompt)\s*(\d+)$/i : /^(?:prompt|t2i|image)\s*(\d+)$/i;
+    const match = text.match(expected) || text.match(/(\d+)/);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  }
+
+  function parsePromptTextBlocks(text, kind) {
+    const raw = String(text || "").replace(/\r\n/g, "\n").trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item || "").trim());
+      }
+      if (parsed && typeof parsed === "object") {
+        return Object.keys(parsed)
+          .sort((a, b) => numericPromptKey(a, kind) - numericPromptKey(b, kind))
+          .map((key) => String(parsed[key] || "").trim());
+      }
+    } catch (_error) {
+      // Not JSON; try key/value and then the normal blank-line format.
+    }
+    const keyed = [];
+    const keyPattern = kind === "i2v"
+      ? /^\s*(?:I2V|Motion|Prompt)\s*(\d+)\s*[:=]\s*(.*)\s*$/i
+      : /^\s*(?:Prompt|T2I|Image)\s*(\d+)\s*[:=]\s*(.*)\s*$/i;
+    for (const line of raw.split("\n")) {
+      const match = line.match(keyPattern);
+      if (!match) continue;
+      keyed.push({ index: Number(match[1]), value: String(match[2] || "").trim() });
+    }
+    if (keyed.length) {
+      keyed.sort((a, b) => a.index - b.index);
+      return keyed.map((item) => item.value);
+    }
+    return raw.split(/\n\s*\n+/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  function applyPromptBlocksToSegments(kind, prompts) {
+    const values = Array.isArray(prompts) ? prompts : [];
+    if (!values.length) throw new Error(`No ${promptKindLabel(kind)} prompts were found in that text.`);
+    const segments = allEditableSegments();
+    pushHistory();
+    for (let index = 0; index < segments.length && index < values.length; index += 1) {
+      const value = String(values[index] || "").trim();
+      if (kind === "i2v") {
+        segments[index].i2v_prompt = value;
+      } else {
+        segments[index].t2i_prompt = value;
+        segments[index].flux_prompt = value;
+      }
+    }
+    syncInspector();
+    render();
+  }
+
+  async function loadPromptTextFile(path, fallback = "") {
+    const filePath = String(path || "").trim();
+    if (!filePath) return fallback;
+    try {
+      const data = await postJson("/vrgdg/music_builder/load_text_file", { path: filePath });
+      return String(data.content || "");
+    } catch (error) {
+      const message = String(error?.message || error);
+      if (/not found|was not found|cannot find/i.test(message)) return fallback;
+      throw error;
+    }
+  }
+
+  async function savePromptTextFile(path, content) {
+    const filePath = String(path || "").trim();
+    if (!filePath) throw new Error("Create or load a project first.");
+    return await postJson("/vrgdg/music_builder/save_text_file", { path: filePath, content: String(content || "") });
+  }
+
+  function promptTimestamp() {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  }
+
+  async function ensureOriginalPromptBackup(kind) {
+    const backupPath = projectPromptBackupPath(kind, "original");
+    if (!backupPath) throw new Error("Create or load a project first.");
+    const existing = await loadPromptTextFile(backupPath, null);
+    if (existing !== null) return backupPath;
+    const currentPath = promptKindFile(kind);
+    const currentContent = await loadPromptTextFile(currentPath, formatPromptBlocks(kind));
+    await savePromptTextFile(backupPath, currentContent || formatPromptBlocks(kind));
+    return backupPath;
+  }
+
+  async function backupCurrentPromptState(kind, reason) {
+    const backupPath = projectPromptBackupPath(kind, `${reason}_${promptTimestamp()}`);
+    if (!backupPath) throw new Error("Create or load a project first.");
+    await savePromptTextFile(backupPath, formatPromptBlocks(kind));
+    return backupPath;
+  }
+
+  function showPromptFormatHint(kind, actionKey, force = false) {
+    return new Promise((resolve) => {
+      const prefKey = `${kind}_${actionKey}`;
+      if (!force && state.promptToolsHintPrefs?.[prefKey] === false) {
+        resolve(true);
+        return;
+      }
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(680px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = `${promptKindLabel(kind).replace(/^\w/, (letter) => letter.toUpperCase())} Prompt Formats`;
+      heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+      const body = document.createElement("div");
+      body.style.cssText = "display:flex;flex-direction:column;gap:10px;font-size:13px;color:#d4d4d8;line-height:1.45;max-height:60vh;overflow:auto;padding-right:4px;";
+      const addText = (text) => {
+        const item = document.createElement("div");
+        item.textContent = text;
+        body.append(item);
+      };
+      const addSection = (title, code) => {
+        const label = document.createElement("div");
+        label.textContent = title;
+        label.style.cssText = "font-weight:900;color:#e0f2fe;margin-top:2px;";
+        const block = document.createElement("pre");
+        block.textContent = code;
+        block.style.cssText = "margin:0;border:1px solid #334155;border-radius:6px;background:#020617;color:#f8fafc;padding:10px;white-space:pre-wrap;font-size:12px;line-height:1.4;overflow:auto;";
+        body.append(label, block);
+      };
+      addText(`This tool edits the final ${promptKindLabel(kind)} prompt list for the current project.`);
+      addText("Reload updates the scene prompt boxes from the file. Original reload uses the first backup this tool created.");
+      if (kind === "i2v") {
+        addSection("Blank-line format", "Video prompt for scene 1\n\nVideo prompt for scene 2\n\nVideo prompt for scene 3");
+        addSection("Key/value format", "I2V1=Video prompt for scene 1\nI2V2=Video prompt for scene 2\nI2V3=Video prompt for scene 3");
+        addSection("JSON format", "{\n  \"I2V1\": \"Video prompt for scene 1\",\n  \"I2V2\": \"Video prompt for scene 2\"\n}");
+      } else {
+        addSection("Blank-line format", "Prompt for scene 1\n\nPrompt for scene 2\n\nPrompt for scene 3");
+        addSection("Key/value format", "Prompt1=Prompt for scene 1\nPrompt2=Prompt for scene 2\nPrompt3=Prompt for scene 3");
+        addSection("JSON format", "{\n  \"Prompt1\": \"Prompt for scene 1\",\n  \"Prompt2\": \"Prompt for scene 2\"\n}");
+      }
+      const showAgain = makeCheckbox("Show this hint next time", true);
+      showAgain.input.checked = state.promptToolsHintPrefs?.[prefKey] !== false;
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const confirm = makeButton("Continue", "primary");
+      const finish = (result) => {
+        if (!showAgain.input.checked) {
+          state.promptToolsHintPrefs = { ...(state.promptToolsHintPrefs || {}), [prefKey]: false };
+          autoSaveSessionQuiet("prompt format hint preference changed");
+        }
+        backdrop.remove();
+        resolve(result);
+      };
+      cancel.onclick = () => finish(false);
+      confirm.onclick = () => finish(true);
+      actions.append(cancel, confirm);
+      box.append(heading, body, showAgain.wrapper, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
+  function showPromptReloadConfirm(kind, original = false) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = original
+        ? `Reload original ${promptKindLabel(kind)} prompts?`
+        : `Reload ${promptKindLabel(kind)} prompts?`;
+      heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+      const body = document.createElement("div");
+      body.style.cssText = "display:flex;flex-direction:column;gap:9px;font-size:13px;color:#d4d4d8;line-height:1.45;";
+      const source = document.createElement("div");
+      source.textContent = original
+        ? "This reads the original backup created by Prompt Options."
+        : "This reads the current prompt text file in the project prompts folder.";
+      const effect = document.createElement("div");
+      effect.textContent = kind === "i2v"
+        ? "It updates the I2V prompt boxes for the scenes, then saves the project."
+        : "It updates the T2I prompt boxes for the scenes, then saves the project.";
+      const backup = document.createElement("div");
+      backup.textContent = "The current scene prompts are backed up first.";
+      body.append(source, effect, backup);
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const confirm = makeButton("Reload", "primary");
+      cancel.onclick = () => {
+        backdrop.remove();
+        resolve(false);
+      };
+      confirm.onclick = () => {
+        backdrop.remove();
+        resolve(true);
+      };
+      actions.append(cancel, confirm);
+      box.append(heading, body, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
+  async function editFinalPromptList(kind) {
+    if (!await showPromptFormatHint(kind, "edit")) return;
+    const path = promptKindFile(kind);
+    if (!path) {
+      toast("Create or load a project first, then prompt files can be edited.", true);
+      return;
+    }
+    try {
+      await ensureOriginalPromptBackup(kind);
+      const currentContent = await loadPromptTextFile(path, formatPromptBlocks(kind));
+      const box = document.createElement("div");
+      box.style.cssText = `
+        position:fixed;left:50%;top:6%;transform:translateX(-50%);
+        z-index:100006;width:min(980px,calc(100vw - 36px));height:min(760px,calc(100vh - 56px));
+        display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;
+        border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#e0f2fe;
+        box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden;
+      `;
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #155e75;background:#083344;";
+      const heading = document.createElement("div");
+      heading.textContent = kind === "i2v" ? "Edit Image-to-Video Prompts" : "Edit Text-to-Image Prompts";
+      heading.style.cssText = "font-size:13px;font-weight:900;";
+      const headerActions = document.createElement("div");
+      headerActions.style.cssText = "display:flex;align-items:center;gap:8px;";
+      const hint = makeButton("?");
+      hint.style.minWidth = "34px";
+      const close = makeButton("Close");
+      close.style.padding = "5px 8px";
+      headerActions.append(hint, close);
+      header.append(heading, headerActions);
+      const pathText = document.createElement("div");
+      pathText.textContent = path;
+      pathText.style.cssText = "padding:8px 12px;border-bottom:1px solid #1f2937;color:#bae6fd;font-size:11px;overflow-wrap:anywhere;";
+      const textarea = document.createElement("textarea");
+      textarea.value = currentContent || formatPromptBlocks(kind);
+      textarea.spellcheck = false;
+      textarea.style.cssText = "width:100%;height:100%;box-sizing:border-box;border:0;resize:none;background:#020617;color:#fafafa;padding:12px;font-size:12px;line-height:1.45;outline:none;font-family:monospace;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;justify-content:flex-end;gap:8px;padding:10px 12px;border-top:1px solid #155e75;background:#111827;";
+      const save = makeButton("Save", "primary");
+      const cancel = makeButton("Cancel");
+      actions.append(cancel, save);
+      box.append(header, pathText, textarea, actions);
+      document.body.append(box);
+      textarea.focus();
+      close.onclick = () => box.remove();
+      cancel.onclick = () => box.remove();
+      hint.onclick = () => showPromptFormatHint(kind, "editor_help", true);
+      save.onclick = async () => {
+        try {
+          save.disabled = true;
+          save.textContent = "Saving...";
+          await ensureOriginalPromptBackup(kind);
+          await backupCurrentPromptState(kind, "before_edit");
+          await savePromptTextFile(path, textarea.value);
+          const prompts = parsePromptTextBlocks(textarea.value, kind);
+          applyPromptBlocksToSegments(kind, prompts);
+          await saveSession({ quiet: true, throwOnError: true });
+          toast(`Saved and loaded ${prompts.length} ${promptKindLabel(kind)} prompt${prompts.length === 1 ? "" : "s"}.`);
+          box.remove();
+        } catch (error) {
+          toast(String(error?.message || error), true);
+        } finally {
+          save.disabled = false;
+          save.textContent = "Save";
+        }
+      };
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  }
+
+  async function reloadFinalPromptList(kind, original = false) {
+    if (!await showPromptReloadConfirm(kind, original)) return;
+    const path = original ? projectPromptBackupPath(kind, "original") : promptKindFile(kind);
+    if (!path) {
+      toast("Create or load a project first, then prompt files can be reloaded.", true);
+      return;
+    }
+    try {
+      await ensureOriginalPromptBackup(kind);
+      await backupCurrentPromptState(kind, original ? "before_original_reload" : "before_reload");
+      const content = await loadPromptTextFile(path, "");
+      if (!String(content || "").trim()) throw new Error(`That ${promptKindLabel(kind)} prompt file is empty:\n${path}`);
+      const prompts = parsePromptTextBlocks(content, kind);
+      applyPromptBlocksToSegments(kind, prompts);
+      await saveSession({ quiet: true, throwOnError: true });
+      toast(`Reloaded ${prompts.length} ${promptKindLabel(kind)} prompt${prompts.length === 1 ? "" : "s"} into the scene boxes.`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  }
+
+  function openPromptOptionsModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Prompt Options";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const note = document.createElement("div");
+    note.textContent = "Edit or reload the final generated prompt text files for this project. Reload updates the scene boxes immediately and saves the session.";
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;";
+    const imageGroup = document.createElement("div");
+    imageGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:8px;";
+    const videoGroup = document.createElement("div");
+    videoGroup.style.cssText = imageGroup.style.cssText;
+    const imageHeading = document.createElement("div");
+    imageHeading.textContent = "Image";
+    imageHeading.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;";
+    const videoHeading = document.createElement("div");
+    videoHeading.textContent = "Video";
+    videoHeading.style.cssText = imageHeading.style.cssText;
+    const editT2I = makeButton("Edit Text to Image Prompts", "primary");
+    const reloadT2I = makeButton("Reload Text to Image Prompts");
+    const originalT2I = makeButton("Reload Original T2I Prompts");
+    const editI2V = makeButton("Edit Image to Video Prompts", "primary");
+    const reloadI2V = makeButton("Reload Image to Video Prompts");
+    const originalI2V = makeButton("Reload Original I2V Prompts");
+    imageGroup.append(imageHeading, editT2I, reloadT2I, originalT2I);
+    videoGroup.append(videoHeading, editI2V, reloadI2V, originalI2V);
+    grid.append(imageGroup, videoGroup);
+    box.append(header, note, grid);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const run = (action) => {
+      backdrop.remove();
+      action();
+    };
+    close.onclick = () => backdrop.remove();
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
+    editT2I.onclick = () => run(() => editFinalPromptList("t2i"));
+    reloadT2I.onclick = () => run(() => reloadFinalPromptList("t2i", false));
+    originalT2I.onclick = () => run(() => reloadFinalPromptList("t2i", true));
+    editI2V.onclick = () => run(() => editFinalPromptList("i2v"));
+    reloadI2V.onclick = () => run(() => reloadFinalPromptList("i2v", false));
+    originalI2V.onclick = () => run(() => reloadFinalPromptList("i2v", true));
+  }
+
   function render() {
     drawWaveform();
     renderSegments();
@@ -5656,6 +6059,7 @@ function openBuilder(node) {
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
       z_enhance_settings: state.zEnhanceSettings,
       i2v_video_settings: state.i2vVideoSettings,
+      prompt_tools_hint_prefs: state.promptToolsHintPrefs || {},
     };
   }
 
@@ -5750,6 +6154,7 @@ function openBuilder(node) {
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
         state.i2vVideoSettings = data.session.i2v_video_settings || state.i2vVideoSettings;
+        state.promptToolsHintPrefs = data.session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
         syncZImageSettingsPanel();
         syncFluxKleinPanel();
         syncErnieImagePanel();
@@ -5879,6 +6284,7 @@ function openBuilder(node) {
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
       state.i2vVideoSettings = session.i2v_video_settings || state.i2vVideoSettings;
+      state.promptToolsHintPrefs = session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
       if (session.audio_path) {
         audioInput.value = session.audio_path;
         setWidgetValue(node, "audio_path", session.audio_path);
@@ -6986,8 +7392,8 @@ function openBuilder(node) {
 
   function i2vVideoSettingsPayload() {
     const settings = saveI2VVideoSettingsFromPanel();
-    const useLoras = Boolean(i2vUseLora.input.checked && Number(i2vLoraCount.value || 0) > 0);
-    const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
+    const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
+    const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const payload = {
       unet_name: settings.unet_name || "",
       vae_name: settings.vae_name || "",
@@ -7002,11 +7408,12 @@ function openBuilder(node) {
       use_custom_loras: useLoras,
       lora_count: useLoras ? count : 0,
     };
-    i2vLoraSlots.forEach((slot, index) => {
-      payload[`lora_${index + 1}`] = useLoras && index < count ? slot.picker.input.value : "[none]";
-      payload[`first_pass_strength_${index + 1}`] = Number(slot.firstPassStrength.value || 1);
-      payload[`second_pass_strength_${index + 1}`] = Number(slot.secondPassStrength.value || 1);
-    });
+    for (let index = 0; index < 4; index += 1) {
+      const lora = settings.loras?.[index] || {};
+      payload[`lora_${index + 1}`] = useLoras && index < count ? (lora.name || "[none]") : "[none]";
+      payload[`first_pass_strength_${index + 1}`] = Number(lora.first_pass_strength ?? lora.strength ?? 1);
+      payload[`second_pass_strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 1);
+    }
     return payload;
   }
 
@@ -7809,9 +8216,10 @@ function openBuilder(node) {
       });
       assertBatchNotStopped();
       progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
+      const shouldRandomizeVideoSeed = buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos";
       await renderAllScenes({
         forceVideos: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
-        randomizeVideoSeed: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
+        randomizeVideoSeed: shouldRandomizeVideoSeed && options.videoSeedMode !== "keep",
       });
       progress.set("Build Full Video complete.", 100);
       progress.close(4500);
@@ -8018,6 +8426,7 @@ function openBuilder(node) {
     state.fluxGlobalImageIngredients = [];
     state.zEnhanceSettings = defaultZEnhanceSettings();
     state.i2vVideoSettings = defaultI2VVideoSettings();
+    state.promptToolsHintPrefs = {};
     projectInput.value = state.projectFolder;
     srtInput.value = state.srtPath;
     setWidgetValue(node, "audio_path", "");
@@ -8206,7 +8615,7 @@ function openBuilder(node) {
     });
   }
 
-  function chooseBatchModeAction({ title, intro = "", choices = [], confirmLabel = "Continue" } = {}) {
+  function chooseBatchModeAction({ title, intro = "", choices = [], confirmLabel = "Continue", extraGroups = [], returnAll = false } = {}) {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
       backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
@@ -8219,6 +8628,7 @@ function openBuilder(node) {
       text.textContent = intro || "";
       text.style.cssText = `display:${intro ? "block" : "none"};font-size:13px;color:#d4d4d8;line-height:1.45;`;
       let selected = choices[0]?.value || "";
+      const extraSelected = {};
       const list = document.createElement("div");
       list.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto;";
       choices.forEach((choice, index) => {
@@ -8251,6 +8661,52 @@ function openBuilder(node) {
         };
         list.append(label);
       });
+      for (const group of extraGroups) {
+        const groupBox = document.createElement("div");
+        groupBox.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;";
+        const groupTitle = document.createElement("div");
+        groupTitle.textContent = group.label || "Options";
+        groupTitle.style.cssText = "font-weight:900;color:#cffafe;font-size:13px;";
+        const groupNote = document.createElement("div");
+        groupNote.textContent = group.description || "";
+        groupNote.style.cssText = `display:${group.description ? "block" : "none"};color:#cbd5e1;font-size:12px;line-height:1.45;`;
+        const groupChoices = document.createElement("div");
+        groupChoices.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+        const key = group.key || `extra_${Object.keys(extraSelected).length}`;
+        extraSelected[key] = group.choices?.[0]?.value || "";
+        (group.choices || []).forEach((choice, index) => {
+          const id = `vrgdg_batch_extra_${key}_${Date.now()}_${index}`;
+          const label = document.createElement("label");
+          label.htmlFor = id;
+          label.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#111827;padding:9px;cursor:pointer;";
+          const input = document.createElement("input");
+          input.type = "radio";
+          input.name = `vrgdg_batch_extra_${key}`;
+          input.id = id;
+          input.value = choice.value;
+          input.checked = index === 0;
+          input.style.marginTop = "3px";
+          input.onchange = () => {
+            if (input.checked) extraSelected[key] = choice.value;
+          };
+          const copy = document.createElement("div");
+          const name = document.createElement("div");
+          name.textContent = choice.label || choice.value;
+          name.style.cssText = "font-weight:900;color:#f8fafc;font-size:12px;";
+          const desc = document.createElement("div");
+          desc.textContent = choice.description || "";
+          desc.style.cssText = `display:${choice.description ? "block" : "none"};margin-top:3px;color:#cbd5e1;font-size:11px;line-height:1.35;`;
+          copy.append(name, desc);
+          label.append(input, copy);
+          label.onclick = () => {
+            input.checked = true;
+            extraSelected[key] = choice.value;
+          };
+          groupChoices.append(label);
+        });
+        groupBox.append(groupTitle, groupNote, groupChoices);
+        list.append(groupBox);
+      }
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
       const cancel = makeButton("Cancel");
@@ -8261,7 +8717,7 @@ function openBuilder(node) {
       };
       confirm.onclick = () => {
         backdrop.remove();
-        resolve(selected);
+        resolve(returnAll ? { mode: selected, ...extraSelected } : selected);
       };
       actions.append(cancel, confirm);
       box.append(heading, text, list, actions);
@@ -8400,10 +8856,11 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunFullBuild() {
-    const mode = await chooseBatchModeAction({
+    const options = await chooseBatchModeAction({
       title: "Build Full Video?",
       intro: "Build Full Video can run the whole pipeline: image prompts, images, I2V prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.",
       confirmLabel: "Build Full Video",
+      returnAll: true,
       choices: [
         {
           value: "resume_missing",
@@ -8413,21 +8870,40 @@ function openBuilder(node) {
         {
           value: "fresh_rebuild",
           label: "Fresh full rebuild",
-          description: "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image and video seeds are randomized.",
+          description: "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image seeds are randomized.",
         },
         {
           value: "redo_i2v_prompts_videos",
           label: "Keep images, redo I2V prompts and videos",
-          description: "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions with randomized video seeds.",
+          description: "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions.",
         },
         {
           value: "redo_videos",
           label: "Keep images and prompts, redo videos",
-          description: "Use the current selected images and existing I2V prompts. Only create new video versions with randomized video seeds, then stitch.",
+          description: "Use the current selected images and existing I2V prompts. Only create new video versions, then stitch.",
+        },
+      ],
+      extraGroups: [
+        {
+          key: "videoSeedMode",
+          label: "Video seed behavior",
+          description: "Used only when this build creates new scene videos.",
+          choices: [
+            {
+              value: "keep",
+              label: "Keep current video seed",
+              description: "Best when you like the motion and only changed LoRAs or model settings.",
+            },
+            {
+              value: "random",
+              label: "Randomize video seed",
+              description: "Best when you want new motion variations.",
+            },
+          ],
         },
       ],
     });
-    if (mode) await buildFullVideoPipeline({ buildMode: mode });
+    if (options?.mode) await buildFullVideoPipeline({ buildMode: options.mode, videoSeedMode: options.videoSeedMode || "keep" });
   }
 
   for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview]) {
@@ -8545,17 +9021,24 @@ function openBuilder(node) {
     renderList();
     toast(segment.use_scene_flux_klein_settings ? "This scene now has custom Flux/Klein settings." : "This scene is using global Flux/Klein settings again.");
   });
-  useSceneI2VVideoSettings.input.addEventListener("change", () => {
+  function setSceneI2VVideoSettingsEnabled(enabled) {
     const segment = activeSegment();
     if (!segment) return;
     pushHistory();
-    segment.use_scene_i2v_video_settings = Boolean(useSceneI2VVideoSettings.input.checked);
+    saveI2VVideoSettingsFromPanel();
+    segment.use_scene_i2v_video_settings = Boolean(enabled);
     if (segment.use_scene_i2v_video_settings && !segment.i2v_video_settings) {
       segment.i2v_video_settings = cloneI2VVideoSettings(state.i2vVideoSettings);
     }
     syncI2VVideoSettingsPanel();
     renderList();
-    toast(segment.use_scene_i2v_video_settings ? "This scene now has custom video settings." : "This scene is using global video settings again.");
+    toast(segment.use_scene_i2v_video_settings ? "This scene now has custom video models, settings, and LoRAs." : "This scene is using global video models, settings, and LoRAs again.");
+  }
+  useSceneI2VVideoSettings.input.addEventListener("change", () => {
+    setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettings.input.checked));
+  });
+  useSceneI2VVideoSettingsModels.input.addEventListener("change", () => {
+    setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettingsModels.input.checked));
   });
   refImageInput.addEventListener("input", updateActiveFromInputs);
   refImageInput.addEventListener("change", updateActiveFromInputs);
@@ -8596,6 +9079,7 @@ function openBuilder(node) {
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
   promptCreatorButton.onclick = openPromptCreatorPanel;
+  promptOptionsButton.onclick = openPromptOptionsModal;
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;
