@@ -616,17 +616,48 @@ def _normalize_inline_text(value):
     return " ".join(str(value or "").replace("\r", " ").replace("\n", " ").split())
 
 
-def _prepend_subject_to_prompts(prompts, subject, separator=", "):
+def _strip_leading_subject(prompt, subjects):
+    prompt_text = _normalize_inline_text(prompt)
+    subject_list = [_normalize_inline_text(item) for item in (subjects or []) if _normalize_inline_text(item)]
+    guard = 0
+    changed = True
+    while changed and guard < 8:
+        changed = False
+        guard += 1
+        for subject_text in subject_list:
+            if not prompt_text:
+                break
+            lower_prompt = prompt_text.lower()
+            lower_subject = subject_text.lower()
+            if lower_prompt == lower_subject:
+                prompt_text = ""
+                changed = True
+                break
+            if lower_prompt.startswith(lower_subject):
+                prompt_text = prompt_text[len(subject_text):].lstrip()
+                prompt_text = re.sub(r"^[,;:.-]\s*", "", prompt_text).strip()
+                changed = True
+                break
+    return prompt_text
+
+
+def _prepend_subject_to_prompts(prompts, subject, separator=", ", previous_subjects=None):
     subject_text = _normalize_inline_text(subject)
     if not subject_text or not isinstance(prompts, dict):
         return prompts
 
+    known_subjects = [subject_text]
+    if isinstance(previous_subjects, (list, tuple, set)):
+        known_subjects.extend(previous_subjects)
+    elif previous_subjects:
+        known_subjects.append(previous_subjects)
+
     output = {}
     for key, value in prompts.items():
-        prompt_text = _normalize_inline_text(value)
-        if prompt_text and not prompt_text.lower().startswith(subject_text.lower()):
+        prompt_text = _strip_leading_subject(value, known_subjects)
+        if prompt_text:
             prompt_text = f"{subject_text}{separator}{prompt_text}"
-        elif not prompt_text:
+        else:
             prompt_text = subject_text
         output[str(key)] = prompt_text
     return output
@@ -1103,6 +1134,7 @@ def _save_prompt_creator_outputs(payload):
                 concept_prompts,
                 str(payload.get("subject", "") or ""),
                 separator=", ",
+                previous_subjects=[str(payload.get("previous_subject", "") or "")],
             )
 
     files = {}

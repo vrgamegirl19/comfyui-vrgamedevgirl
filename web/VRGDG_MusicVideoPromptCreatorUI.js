@@ -453,15 +453,43 @@ function normalizeInlineText(value) {
   return String(value || "").replace(/\r|\n/g, " ").split(/\s+/).filter(Boolean).join(" ");
 }
 
-function prependSubjectToPrompts(prompts, subject, separator = ", ") {
+function stripLeadingSubject(prompt, subjects = []) {
+  let promptText = normalizeInlineText(prompt);
+  const subjectList = subjects.map(normalizeInlineText).filter(Boolean);
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < 8) {
+    changed = false;
+    guard += 1;
+    for (const subjectText of subjectList) {
+      if (!promptText) break;
+      const lowerPrompt = promptText.toLowerCase();
+      const lowerSubject = subjectText.toLowerCase();
+      if (lowerPrompt === lowerSubject) {
+        promptText = "";
+        changed = true;
+        break;
+      }
+      if (lowerPrompt.startsWith(lowerSubject)) {
+        promptText = promptText.slice(subjectText.length).replace(/^\s*[,;:.-]\s*/, "").trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+  return promptText;
+}
+
+function prependSubjectToPrompts(prompts, subject, separator = ", ", previousSubjects = []) {
   const subjectText = normalizeInlineText(subject);
   if (!subjectText || !prompts || typeof prompts !== "object" || Array.isArray(prompts)) return prompts || {};
+  const knownSubjects = [subjectText, ...(Array.isArray(previousSubjects) ? previousSubjects : [previousSubjects])];
   const output = {};
   for (const [key, value] of Object.entries(prompts)) {
-    let promptText = normalizeInlineText(value);
-    if (promptText && !promptText.toLowerCase().startsWith(subjectText.toLowerCase())) {
+    let promptText = stripLeadingSubject(value, knownSubjects);
+    if (promptText) {
       promptText = `${subjectText}${separator}${promptText}`;
-    } else if (!promptText) {
+    } else {
       promptText = subjectText;
     }
     output[key] = promptText;
@@ -1175,10 +1203,11 @@ function openPromptCreator(options = {}) {
     setStatus(status, "Extracting subject line with Gemma...", true);
     progress?.set("Step 4/6: Extracting the subject line with Gemma...", 76);
     const result = await postJson("/vrgdg/music_prompt_creator/extract_subject", buildPayload(controls, modelSelect));
+    const previousSubject = state.extractedSubject || subjectOutput.value || "";
     state.extractedSubject = result.subject || "";
     subjectOutput.value = state.extractedSubject;
     if (appendSubjectToPrompts.checked && state.extractedSubject && state.conceptPrompts && Object.keys(state.conceptPrompts).length) {
-      state.conceptPrompts = prependSubjectToPrompts(state.conceptPrompts, state.extractedSubject);
+      state.conceptPrompts = prependSubjectToPrompts(state.conceptPrompts, state.extractedSubject, ", ", [previousSubject]);
       conceptOutput.value = prettyJson(state.conceptPrompts);
     }
     setStatus(status, "Subject extracted. Gemma unloaded.");
@@ -1200,12 +1229,15 @@ function openPromptCreator(options = {}) {
     payload.i2v_motion_notes = state.i2vMotionNotes && Object.keys(state.i2vMotionNotes).length
       ? state.i2vMotionNotes
       : parseJsonSafe(i2vMotionOutput.value, {});
+    const previousSubject = state.extractedSubject || "";
     payload.subject = subjectOutput.value || state.extractedSubject || "";
+    payload.previous_subject = previousSubject;
     if (appendSubjectToPrompts.checked && payload.subject && payload.prompts && Object.keys(payload.prompts).length) {
-      payload.prompts = prependSubjectToPrompts(payload.prompts, payload.subject);
+      payload.prompts = prependSubjectToPrompts(payload.prompts, payload.subject, ", ", [previousSubject]);
       state.conceptPrompts = payload.prompts;
       conceptOutput.value = prettyJson(payload.prompts);
     }
+    state.extractedSubject = payload.subject || "";
     const result = await postJson("/vrgdg/music_prompt_creator/save_outputs", payload);
     projectFolder.value = result.project_folder || projectFolder.value;
     projectFolderNote.textContent = projectFolder.value
