@@ -98,6 +98,15 @@ def _i2v_api_template_path():
     )
 
 
+def _t2v_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "Singlet2vForUI_API.json",
+    )
+
+
 def _clear_memory_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -789,6 +798,67 @@ def _patch_i2v_api_prompt(prompt, payload):
     return prompt, output_folder
 
 
+def _patch_t2v_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    t2v_prompt = str(payload.get("t2v_prompt", payload.get("i2v_prompt", "")) or "").strip()
+    if not t2v_prompt:
+        raise ValueError("T2V prompt is empty.")
+
+    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"Audio file was not found: {audio_path}")
+    srt_path = os.path.abspath(str(payload.get("srt_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(srt_path):
+        raise FileNotFoundError(f"SRT file was not found: {srt_path}")
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = os.path.join(project_folder, "text_to_video_clips")
+    os.makedirs(output_folder, exist_ok=True)
+
+    prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+    width = _int_payload(payload, "width", 1920, 64, 4096)
+    height = _int_payload(payload, "height", 1080, 64, 4096)
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+
+    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
+    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    _set_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
+    _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
+
+    _set_api_input(prompt, "736:424", "value", fps)
+    _set_api_input(prompt, "736:425", "value", width)
+    _set_api_input(prompt, "736:426", "value", height)
+    _set_api_input(prompt, "736:449", "value", seed)
+    _set_api_input(prompt, "736:551", "value", 0)
+
+    use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
+    lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
+    _set_api_input(prompt, "937", "use_custom_loras", use_custom_loras)
+    _set_api_input(prompt, "937", "lora_count", lora_count)
+    for slot in range(1, _MAX_LORA_SLOTS + 1):
+        legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
+        first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
+        second_pass_strength = _float_payload(payload, f"second_pass_strength_{slot}", legacy_strength)
+        _set_api_input(prompt, "937", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
+        _set_api_input(prompt, "937", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "937", f"second_pass_strength_{slot}", second_pass_strength)
+
+    _set_api_input(prompt, "927", "audio_file", audio_path)
+    _set_api_input(prompt, "927", "seek_seconds", 0)
+    _set_api_input(prompt, "927", "duration", 0)
+    _set_api_input(prompt, "930", "value", prompt_number)
+    _set_api_input(prompt, "933", "text", t2v_prompt)
+    _set_api_input(prompt, "933", "output_mode", "string")
+    _set_api_input(prompt, "935", "value", srt_path)
+    _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
+    _set_api_input(prompt, "437", "value", output_folder)
+    return prompt, output_folder
+
+
 def _get_comfy_node_mappings():
     comfy_nodes = sys.modules.get("nodes")
     if comfy_nodes is None or not hasattr(comfy_nodes, "NODE_CLASS_MAPPINGS"):
@@ -1082,6 +1152,16 @@ def _build_i2v_api_prompt(payload):
         "workflow_path": workflow_path,
         "output_folder": output_folder,
         "prompt": _workflow_to_api_prompt(patched),
+    }
+
+
+def _build_t2v_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_t2v_api_template_path())
+    patched_prompt, output_folder = _patch_t2v_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": patched_prompt,
     }
 
 
@@ -1724,6 +1804,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_i2v_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_t2v_prompt")
+    async def vrgdg_workflow_runner_build_t2v_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_t2v_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

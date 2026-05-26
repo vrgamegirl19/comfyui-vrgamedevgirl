@@ -28,6 +28,17 @@ from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
 
+_T2V_INSTRUCTIONS = """Create one polished text-to-video prompt for a video generation model.
+
+Use the provided scene concept and motion notes to describe one short cinematic video shot.
+
+Rules:
+- Output one normal text-to-video prompt, not an edit prompt.
+- Describe visible subject, setting, atmosphere, camera motion, character motion, and environmental motion.
+- Do not mention source prompts, notes, lyrics, segments, JSON, or instructions.
+- Keep it concise, cinematic, and directly usable.
+- Do not include markdown, labels, quotes, or explanations."""
+
 
 def _vrgdg_textfile_path(folder_name, file_name):
     return os.path.join(
@@ -1521,6 +1532,119 @@ def _generate_builder_i2v_prompt(payload):
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
+def _generate_builder_t2v_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
+    scene_prompt = str(payload.get("t2i_prompt", "") or payload.get("scene_prompt", "") or "").strip()
+    image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
+    image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
+    user_notes = str(payload.get("user_notes", "") or "").strip()
+    if not model_file:
+        raise ValueError("Choose a T2V Gemma model first.")
+    if not model_file.lower().endswith(".gguf"):
+        raise ValueError("The T2V model field is not a GGUF model.")
+    if not scene_prompt:
+        raise ValueError("Create or paste a T2I/concept prompt first.")
+
+    image = None
+    has_image_reference = False
+    if image_reference_data:
+        image = _image_from_data_url(image_reference_data).convert("RGB")
+        has_image_reference = True
+    elif image_reference_path:
+        image_path = _resolve_existing_file(image_reference_path, "T2V Gemma image reference")
+        image = Image.open(image_path).convert("RGB")
+        has_image_reference = True
+    if has_image_reference and not mmproj_file:
+        raise ValueError("Choose an mmproj file for the T2V vision model.")
+    if has_image_reference:
+        max_height = 512
+        if image.height > max_height:
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+            width = max(1, int(image.width * (max_height / max(1, image.height))))
+            image = image.resize((width, max_height), resample)
+
+    theme_style = _read_text_file(payload.get("theme_style_path", ""), "Theme/style file")
+    story_idea = _read_text_file(payload.get("story_idea_path", ""), "Story idea file")
+    subject_scene = _read_text_file(payload.get("subject_scene_path", ""), "Subject/scene file")
+    context_parts = []
+    if subject_scene:
+        context_parts.append(f"Subject/scene:\n{subject_scene}")
+    if theme_style:
+        context_parts.append(f"Theme/style:\n{theme_style}")
+    if story_idea:
+        context_parts.append(f"Story idea:\n{story_idea}")
+    if context_parts:
+        user_notes = "\n\n".join(context_parts + ([f"Segment motion notes:\n{user_notes}"] if user_notes else []))
+
+    image_guidance = (
+        "Use the provided reference image only to guide pose, framing, composition, mood, visible styling, or other user-requested visual details. "
+        "Do not describe it as a reference image in the final prompt.\n\n"
+        if has_image_reference else ""
+    )
+    prompt = (
+        f"{_T2V_INSTRUCTIONS}\n\n"
+        f"{image_guidance}"
+        f"Scene concept:\n{scene_prompt}\n\n"
+        f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
+    )
+
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if has_image_reference else ""
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.7)
+    top_p = float(payload.get("top_p") or 0.95)
+    max_new_tokens = int(payload.get("max_new_tokens") or 4000)
+    unload_after = bool(payload.get("unload_after", True))
+
+    try:
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+            mmproj_path=mmproj_path,
+        )
+        if has_image_reference:
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[image],
+                instruction_text=prompt,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+        else:
+            text = llm._run_gguf_text_pipeline(
+                model=model,
+                instruction_text=prompt,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+        text = _clean_gemma_prompt_text(text)
+        _validate_builder_gemma_prompt(text, "T2V")
+        return {"prompt": text, "used_model": model_path, "used_mmproj": mmproj_path, "used_image_reference": has_image_reference, "unloaded": unload_after}
+    finally:
+        if unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+
+
 def _image_from_prompt_payload(path, data, label):
     raw_data = str(data or "").strip()
     raw_path = str(path or "").strip().strip('"')
@@ -2538,6 +2662,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _generate_builder_i2v_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/generate_t2v")
+    async def vrgdg_music_builder_generate_t2v(request):
+        try:
+            payload = await request.json()
+            result = _generate_builder_t2v_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

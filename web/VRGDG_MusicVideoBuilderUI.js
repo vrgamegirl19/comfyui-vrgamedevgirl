@@ -1343,13 +1343,11 @@ function openBuilder(node) {
   const fluxImageTriggerInput = makeInput("");
   fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
   const useSceneI2VVideoSettings = makeCheckbox("Use custom video models/settings/LoRAs for this scene", false);
-  const useSceneI2VVideoSettingsModels = makeCheckbox("Use custom video models/settings/LoRAs for this scene", false);
   const useSceneI2VVideoSettingsNote = document.createElement("div");
   useSceneI2VVideoSettingsNote.textContent = "Applies the Models tab choices too, including video model files, LoRAs, LoRA count, and both pass strengths.";
   useSceneI2VVideoSettingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
-  const useSceneI2VVideoSettingsModelsNote = document.createElement("div");
-  useSceneI2VVideoSettingsModelsNote.textContent = useSceneI2VVideoSettingsNote.textContent;
-  useSceneI2VVideoSettingsModelsNote.style.cssText = useSceneI2VVideoSettingsNote.style.cssText;
+  const videoSettingsScopeNote = document.createElement("div");
+  videoSettingsScopeNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
   const videoTriggerInput = makeInput("");
   videoTriggerInput.placeholder = "Optional video trigger word or phrase...";
   const useVrgdgTextContext = makeCheckbox("Use VRGDG text context files", true);
@@ -1681,6 +1679,10 @@ function openBuilder(node) {
   const i2vReferenceNote = document.createElement("div");
   i2vReferenceNote.textContent = "When checked, Gemma looks at the scene image and your video notes to create the I2V prompt. When unchecked, it uses the T2I prompt text and your video notes instead.";
   i2vReferenceNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
+  const useT2VVisionReference = makeCheckbox("Use image reference for T2V Gemma prompt?", false);
+  const t2vReferenceNote = document.createElement("div");
+  t2vReferenceNote.textContent = "Optional: Gemma looks at a reference image for pose, framing, mood, or visual direction while still creating a text-to-video prompt.";
+  t2vReferenceNote.style.cssText = i2vReferenceNote.style.cssText;
   const refImageInput = makeInput("");
   refImageInput.style.display = "none";
   const refImagePanel = document.createElement("div");
@@ -1716,11 +1718,26 @@ function openBuilder(node) {
   ernieRefImageDrop.style.cssText = refImageDrop.style.cssText;
   const ernieRefImageLoadButton = makeButton("Load Reference Image", "primary");
   ernieRefImagePanel.append(ernieRefImageNote, ernieRefImageDrop, ernieRefImageLoadButton);
+  const t2vRefImagePanel = document.createElement("div");
+  t2vRefImagePanel.style.cssText = refImagePanel.style.cssText;
+  const t2vRefImageNote = document.createElement("div");
+  t2vRefImageNote.textContent = "Drop/load the image Gemma should look at while writing the T2V prompt.";
+  t2vRefImageNote.style.cssText = refImageNote.style.cssText;
+  const t2vRefImageDrop = document.createElement("div");
+  t2vRefImageDrop.textContent = refImageDrop.textContent;
+  t2vRefImageDrop.style.cssText = refImageDrop.style.cssText;
+  const t2vRefImageLoadButton = makeButton("Load Reference Image", "primary");
+  t2vRefImagePanel.append(t2vRefImageNote, t2vRefImageDrop, t2vRefImageLoadButton);
   const ernieCreateT2IButton = makeButton("Gemma T2I", "primary");
   const ernieSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
+  const videoModeChooser = document.createElement("div");
+  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  const imageToVideoCard = makeImageModelCard("Image to Video", "i2v");
+  const textToVideoCard = makeImageModelCard("Text to Video", "t2v");
+  videoModeChooser.append(imageToVideoCard, textToVideoCard);
   const i2vUnetPicker = makeSearchableLoraPicker("");
   const i2vVaePicker = makeSearchableLoraPicker("");
   const i2vClip1Picker = makeSearchableLoraPicker("");
@@ -2066,8 +2083,8 @@ function openBuilder(node) {
       label: "Models",
       value: "models",
       content: makeSettingsPanel([
-        useSceneI2VVideoSettingsModels.wrapper,
-        useSceneI2VVideoSettingsModelsNote,
+        useSceneI2VVideoSettings.wrapper,
+        useSceneI2VVideoSettingsNote,
         makeSettingsSection("Video Models", [
           makeField("Unet model", i2vUnetPicker.wrapper),
           makeField("Video VAE", i2vVaePicker.wrapper),
@@ -2092,8 +2109,7 @@ function openBuilder(node) {
       label: "Video Settings",
       value: "settings",
       content: makeSettingsPanel([
-        useSceneI2VVideoSettings.wrapper,
-        useSceneI2VVideoSettingsNote,
+        videoSettingsScopeNote,
         makeField("Video trigger phrase", videoTriggerInput),
         i2vSettingsGrid,
         makeCreateSceneVideoButton(),
@@ -2103,16 +2119,19 @@ function openBuilder(node) {
       label: "LLM Prompting",
       value: "prompting",
       content: makeSettingsPanel([
-        makeField("I2V motion notes", i2vNotesInput),
+        makeField("Video motion notes", i2vNotesInput),
         useI2VVisionReference.wrapper,
         i2vReferenceNote,
+        useT2VVisionReference.wrapper,
+        t2vReferenceNote,
+        t2vRefImagePanel,
         createI2VButton,
-        makeField("I2V prompt", i2vPrompt),
+        makeField("Video prompt", i2vPrompt),
         makeCreateSceneVideoButton(),
       ]),
     },
   ]);
-  videoPanel.append(videoSubTabs.wrapper);
+  videoPanel.append(videoModeChooser, videoSubTabs.wrapper);
   audioPanel.append(
     makeSettingsSection("Scene Audio", [
       audioSummary,
@@ -2381,6 +2400,7 @@ function openBuilder(node) {
     useFluxGlobalImageIngredients: false,
     fluxGlobalImageIngredients: [],
     zEnhanceSettings: defaultZEnhanceSettings(),
+    videoModelMode: "i2v",
     i2vVideoSettings: defaultI2VVideoSettings(),
     promptToolsHintPrefs: {},
     undoStack: [],
@@ -2847,6 +2867,7 @@ function openBuilder(node) {
       useFluxGlobalImageIngredients: state.useFluxGlobalImageIngredients,
       fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
       zEnhanceSettings: state.zEnhanceSettings,
+      videoModelMode: state.videoModelMode,
       i2vVideoSettings: state.i2vVideoSettings,
       promptToolsHintPrefs: state.promptToolsHintPrefs,
     });
@@ -2892,6 +2913,7 @@ function openBuilder(node) {
     state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
+    state.videoModelMode = data.videoModelMode || data.video_model_mode || state.videoModelMode || "i2v";
     state.i2vVideoSettings = data.i2vVideoSettings || state.i2vVideoSettings;
     state.promptToolsHintPrefs = data.promptToolsHintPrefs || data.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
     syncZImageSettingsPanel();
@@ -2899,6 +2921,7 @@ function openBuilder(node) {
     syncErnieImagePanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
+    syncVideoModePanel();
     syncInspector();
     render();
     updateHistoryButtons();
@@ -3047,9 +3070,9 @@ function openBuilder(node) {
     return false;
   }
 
-  function applyTriggerPhrase(prompt, trigger) {
+  function applyTriggerPhrase(prompt, trigger, options = {}) {
     const promptText = cleanGeneratedPromptText(prompt);
-    if (looksLikeGeneratedPromptJunk(promptText)) {
+    if (options.validateJunk !== false && looksLikeGeneratedPromptJunk(promptText)) {
       throw new Error("Gemma returned repeated/thought junk instead of a usable prompt. Try again or shorten the notes.");
     }
     const triggerText = String(trigger || "").trim().replace(/\s+/g, " ");
@@ -3059,11 +3082,40 @@ function openBuilder(node) {
     return `${triggerText}, ${promptText}`;
   }
 
-  function imageTriggerPhraseForSegment(segment = activeSegment()) {
+  function imageTriggerPhraseForSegment(segment = activeSegment(), imageMode = state.imageModelMode) {
     if (!segment) return state.imageTriggerPhrase || "";
-    if (state.imageModelMode === "flux_klein") return fluxKleinSettingsForSegment(segment).image_trigger_phrase || state.imageTriggerPhrase || "";
-    if (state.imageModelMode === "ernie_image") return (segment.use_scene_ernie_image_settings ? segment.ernie_image_settings?.image_trigger_phrase : state.ernieImageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
+    if (imageMode === "flux_klein") return fluxKleinSettingsForSegment(segment).image_trigger_phrase || state.imageTriggerPhrase || "";
+    if (imageMode === "ernie_image") return (segment.use_scene_ernie_image_settings ? segment.ernie_image_settings?.image_trigger_phrase : state.ernieImageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
     return (segment.use_scene_zimage_settings ? segment.zimage_settings?.image_trigger_phrase : state.zimageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
+  }
+
+  function applyImageTriggerToPrompt(prompt, segment = activeSegment(), imageMode = state.imageModelMode, options = {}) {
+    return applyTriggerPhrase(prompt, imageTriggerPhraseForSegment(segment, imageMode), options);
+  }
+
+  function syncSegmentT2IPrompt(segment, prompt) {
+    if (!segment) return "";
+    const cleanPrompt = String(prompt || "").trim();
+    segment.t2i_prompt = cleanPrompt;
+    segment.flux_prompt = cleanPrompt;
+    segment.enhance_prompt = cleanPrompt;
+    if (segment.id === activeSegment()?.id) {
+      t2iPrompt.value = cleanPrompt;
+      ernieT2IPrompt.value = cleanPrompt;
+      fluxPrompt.value = cleanPrompt;
+      zEnhancePromptPreview.value = cleanPrompt;
+    }
+    return cleanPrompt;
+  }
+
+  function ensureSegmentT2IPromptHasTrigger(segment, imageMode = state.imageModelMode, fallback = "") {
+    const rawPrompt = String(
+      imageMode === "flux_klein"
+        ? (segment?.flux_prompt || segment?.t2i_prompt || fallback)
+        : (segment?.t2i_prompt || segment?.flux_prompt || fallback)
+    ).trim();
+    const prompt = applyImageTriggerToPrompt(rawPrompt, segment, imageMode, { validateJunk: false });
+    return syncSegmentT2IPrompt(segment, prompt);
   }
 
   function videoTriggerPhraseForSegment(segment = activeSegment()) {
@@ -3312,7 +3364,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneI2VVideoSettings.input, useSceneI2VVideoSettingsModels.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -3325,7 +3377,6 @@ function openBuilder(node) {
     useSceneErnieImageSettings.input.checked = Boolean(segment?.use_scene_ernie_image_settings);
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
-    useSceneI2VVideoSettingsModels.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
     storyIdeaInput.value = state.storyIdeaPath || "";
@@ -3349,14 +3400,17 @@ function openBuilder(node) {
       useVisionReference.input.checked = false;
       ernieUseVisionReference.input.checked = false;
       useI2VVisionReference.input.checked = true;
+      useT2VVisionReference.input.checked = false;
       useSceneZImageSettings.input.checked = false;
       refImageInput.value = "";
       refImagePanel.style.display = "none";
       ernieRefImagePanel.style.display = "none";
+      t2vRefImagePanel.style.display = "none";
       audioSummary.textContent = "Select a scene to view or edit scene audio.";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
       syncErnieImagePanel();
+      syncVideoModePanel();
       syncPreview(null);
       return;
     }
@@ -3373,6 +3427,7 @@ function openBuilder(node) {
     useVisionReference.input.checked = Boolean(segment.use_vision_reference);
     ernieUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
     useI2VVisionReference.input.checked = segment.use_i2v_vision_reference !== false;
+    useT2VVisionReference.input.checked = Boolean(segment.use_t2v_vision_reference);
     useSceneZImageSettings.input.checked = Boolean(segment.use_scene_zimage_settings);
     refImageInput.value = segment.ref_image_path || "";
     refImagePanel.style.display = useVisionReference.input.checked ? "flex" : "none";
@@ -3388,6 +3443,7 @@ function openBuilder(node) {
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
+    syncVideoModePanel();
     syncPreview(segment);
     updateAudioScrubbers();
   }
@@ -4027,7 +4083,9 @@ function openBuilder(node) {
   function syncI2VVideoSettingsPanel() {
     const segment = activeSegment();
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
-    useSceneI2VVideoSettingsModels.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
+    videoSettingsScopeNote.textContent = segment?.use_scene_i2v_video_settings
+      ? "This scene is using custom video models, settings, and LoRAs from the Models tab."
+      : "This scene is using global video models, settings, and LoRAs. Enable custom scene video settings in the Models tab.";
     const settings = activeI2VVideoSettings() || {};
     videoTriggerInput.value = settings.video_trigger_phrase || state.videoTriggerPhrase || "";
     i2vUnetPicker.input.value = BAD_I2V_UNET_ALIASES.has(settings.unet_name) ? DEFAULT_I2V_UNET : settings.unet_name || "";
@@ -4084,6 +4142,33 @@ function openBuilder(node) {
     return settings;
   }
 
+  function currentVideoMode() {
+    return state.videoModelMode === "t2v" ? "t2v" : "i2v";
+  }
+
+  function syncVideoModePanel() {
+    const mode = currentVideoMode();
+    state.videoModelMode = mode;
+    for (const card of [imageToVideoCard, textToVideoCard]) {
+      const active = card.dataset.model === mode;
+      card.style.borderColor = active ? "#71717a" : "#3f3f46";
+      card.style.background = active ? "#52525b" : "#27272a";
+      card.style.color = "#f4f4f5";
+      card.style.boxShadow = active ? "inset 0 0 0 1px rgba(244,244,245,.12)" : "none";
+    }
+    const isT2V = mode === "t2v";
+    useI2VVisionReference.wrapper.style.display = isT2V ? "none" : "flex";
+    i2vReferenceNote.style.display = isT2V ? "none" : "";
+    useT2VVisionReference.wrapper.style.display = isT2V ? "flex" : "none";
+    t2vReferenceNote.style.display = isT2V ? "" : "none";
+    t2vRefImagePanel.style.display = isT2V && useT2VVisionReference.input.checked ? "flex" : "none";
+    createI2VButton.textContent = isT2V ? "Gemma T2V" : "Gemma I2V";
+    i2vNotesInput.placeholder = isT2V
+      ? "Extra text-to-video motion notes, camera movement, character movement..."
+      : "Extra video motion notes, camera movement, character movement...";
+    i2vPrompt.placeholder = isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+  }
+
   function updateActiveFromInputs() {
     const segment = activeSegment();
     if (!segment) return;
@@ -4117,9 +4202,11 @@ function openBuilder(node) {
       segment.use_vision_reference = Boolean(ernieUseVisionReference.input.checked);
     }
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
+    segment.use_t2v_vision_reference = Boolean(useT2VVisionReference.input.checked);
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     ernieRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
+    t2vRefImagePanel.style.display = currentVideoMode() === "t2v" && segment.use_t2v_vision_reference ? "flex" : "none";
     if (!state.timingFrozen && !hasLockedVideo(segment) && !isOverlay) normalizeSegments(segment);
     if (isOverlay) sortSegments(state.overlaySegments);
     render();
@@ -4918,7 +5005,7 @@ function openBuilder(node) {
     reader.readAsDataURL(file);
   }
 
-  async function setVisionReferenceSource({ path = "", data = "", name = "" } = {}) {
+  async function setVisionReferenceSource({ path = "", data = "", name = "", forT2V = false } = {}) {
     const segment = activeSegment();
     if (!segment) return;
     pushHistory();
@@ -4933,21 +5020,27 @@ function openBuilder(node) {
       });
       segment.ref_image_path = saved.saved_path || "";
     }
-    segment.use_vision_reference = true;
-    useVisionReference.input.checked = true;
-    ernieUseVisionReference.input.checked = true;
+    if (forT2V) {
+      segment.use_t2v_vision_reference = true;
+      useT2VVisionReference.input.checked = true;
+    } else {
+      segment.use_vision_reference = true;
+      useVisionReference.input.checked = true;
+      ernieUseVisionReference.input.checked = true;
+    }
     refImageInput.value = segment.ref_image_path || name || "";
-    refImagePanel.style.display = "flex";
-    ernieRefImagePanel.style.display = "flex";
+    refImagePanel.style.display = useVisionReference.input.checked ? "flex" : "none";
+    ernieRefImagePanel.style.display = ernieUseVisionReference.input.checked ? "flex" : "none";
+    t2vRefImagePanel.style.display = currentVideoMode() === "t2v" && useT2VVisionReference.input.checked ? "flex" : "none";
     renderList();
     toast(`Vision reference set${segment.ref_image_path ? `:\n${segment.ref_image_path}` : "."}`);
   }
 
-  function loadVisionReferenceFile(file) {
+  function loadVisionReferenceFile(file, options = {}) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setVisionReferenceSource({ data: String(reader.result || ""), name: file.name || "reference.png" }).catch((error) => toast(String(error?.message || error), true));
+      setVisionReferenceSource({ data: String(reader.result || ""), name: file.name || "reference.png", forT2V: Boolean(options.forT2V) }).catch((error) => toast(String(error?.message || error), true));
     };
     reader.onerror = () => toast("Failed to read the vision reference image.", true);
     reader.readAsDataURL(file);
@@ -6058,6 +6151,7 @@ function openBuilder(node) {
       use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
       z_enhance_settings: state.zEnhanceSettings,
+      video_model_mode: state.videoModelMode || "i2v",
       i2v_video_settings: state.i2vVideoSettings,
       prompt_tools_hint_prefs: state.promptToolsHintPrefs || {},
     };
@@ -6153,12 +6247,14 @@ function openBuilder(node) {
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
+        state.videoModelMode = data.session.video_model_mode || state.videoModelMode || "i2v";
         state.i2vVideoSettings = data.session.i2v_video_settings || state.i2vVideoSettings;
         state.promptToolsHintPrefs = data.session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
         syncZImageSettingsPanel();
         syncFluxKleinPanel();
         syncErnieImagePanel();
         syncI2VVideoSettingsPanel();
+        syncVideoModePanel();
         syncInspector();
       }
       projectInput.value = state.projectFolder;
@@ -6283,6 +6379,7 @@ function openBuilder(node) {
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
+      state.videoModelMode = session.video_model_mode || state.videoModelMode || "i2v";
       state.i2vVideoSettings = session.i2v_video_settings || state.i2vVideoSettings;
       state.promptToolsHintPrefs = session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
       if (session.audio_path) {
@@ -6367,6 +6464,7 @@ function openBuilder(node) {
       syncFluxKleinPanel();
       syncZEnhanceSettingsPanel();
       syncI2VVideoSettingsPanel();
+      syncVideoModePanel();
       syncInspector();
       render();
       toast(`Loaded builder session.\n${state.sessionPath}`);
@@ -6550,6 +6648,10 @@ function openBuilder(node) {
     return "";
   }
 
+  function sceneConceptPromptText(segment) {
+    return String(segment?.t2i_prompt || segment?.flux_prompt || segment?.notes || segment?.flux_notes || "").trim();
+  }
+
   async function generateT2IPromptForSegment(segment, progress = null, percent = 30, label = "Gemma T2I", options = {}) {
     const missing = t2iMissingReason(segment);
     if (missing) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${missing}`);
@@ -6573,12 +6675,7 @@ function openBuilder(node) {
       unload_after: options.unloadAfter !== false,
     }, useVision ? 10 * 60 * 1000 : 120000);
     pushHistory();
-    segment.t2i_prompt = applyTriggerPhrase(data.prompt, imageTriggerPhraseForSegment(segment));
-    segment.enhance_prompt = segment.t2i_prompt;
-    t2iPrompt.value = segment.t2i_prompt;
-    ernieT2IPrompt.value = segment.t2i_prompt;
-    fluxPrompt.value = segment.t2i_prompt;
-    zEnhancePromptPreview.value = segment.enhance_prompt;
+    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, state.imageModelMode, { validateJunk: true }));
     render();
     return data;
   }
@@ -6586,7 +6683,7 @@ function openBuilder(node) {
   async function createZImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "ZImage") {
     state.activeId = segment.id;
     syncInspector();
-    const prompt = String(segment.t2i_prompt || segment.notes || "").trim();
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "zimage", segment.notes || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     progress?.set(`${label}: preparing ZImage settings...`, percentBase);
     const zSettings = saveZImageSettingsFromPanel();
@@ -6634,8 +6731,7 @@ function openBuilder(node) {
     for (const image of images) {
       await archiveGeneratedSceneImage(segment, image);
     }
-    segment.enhance_prompt = prompt;
-    zEnhancePromptPreview.value = prompt;
+    syncSegmentT2IPrompt(segment, prompt);
     segment.image = images[images.length - 1] || null;
     segment.custom_image_path = "";
     segment.custom_image_data = "";
@@ -6679,7 +6775,7 @@ function openBuilder(node) {
   async function createErnieImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Ernie") {
     state.activeId = segment.id;
     syncInspector();
-    const prompt = String(segment.t2i_prompt || segment.notes || "").trim();
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "ernie_image", segment.notes || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     progress?.set(`${label}: preparing Ernie settings...`, percentBase);
     const settings = saveErnieImageSettingsFromPanel();
@@ -6796,14 +6892,7 @@ function openBuilder(node) {
         unload_after: true,
       }, FLUX_GEMMA_TIMEOUT_MS);
       pushHistory();
-      segment.flux_prompt = applyTriggerPhrase(data.prompt, imageTriggerPhraseForSegment(segment));
-      fluxPrompt.value = segment.flux_prompt;
-      segment.t2i_prompt = segment.flux_prompt;
-      segment.enhance_prompt = segment.flux_prompt;
-      t2iPrompt.value = segment.t2i_prompt;
-      ernieT2IPrompt.value = segment.t2i_prompt;
-      fluxPrompt.value = segment.t2i_prompt;
-      zEnhancePromptPreview.value = segment.enhance_prompt;
+      syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "flux_klein", { validateJunk: true }));
       progress.set("Flux/Klein prompt ready.", 100);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt complete");
       progress.close(900);
@@ -6846,15 +6935,7 @@ function openBuilder(node) {
       unload_after: options.unloadAfter !== false,
     }, FLUX_GEMMA_TIMEOUT_MS);
     pushHistory();
-    segment.flux_prompt = applyTriggerPhrase(data.prompt, imageTriggerPhraseForSegment(segment));
-    segment.t2i_prompt = segment.flux_prompt;
-    segment.enhance_prompt = segment.flux_prompt;
-    if (segment.id === activeSegment()?.id) {
-      fluxPrompt.value = segment.flux_prompt;
-      t2iPrompt.value = segment.flux_prompt;
-      ernieT2IPrompt.value = segment.flux_prompt;
-      zEnhancePromptPreview.value = segment.enhance_prompt;
-    }
+    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "flux_klein", { validateJunk: true }));
     render();
     return data;
   }
@@ -6864,7 +6945,7 @@ function openBuilder(node) {
     syncInspector();
     render();
     const settings = fluxKleinSettingsForSegment(segment);
-    const prompt = String(settings.prompt || segment.flux_prompt || segment.t2i_prompt || "").trim();
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "flux_klein", settings.prompt || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flux/Klein prompt is missing.`);
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
@@ -6890,19 +6971,13 @@ function openBuilder(node) {
     pushHistory();
     segment.image = images[images.length - 1] || null;
     await archiveGeneratedSceneImage(segment, segment.image);
-    segment.t2i_prompt = prompt;
-    segment.enhance_prompt = prompt;
-    segment.flux_prompt = prompt;
+    syncSegmentT2IPrompt(segment, prompt);
     segment.custom_image_path = "";
     segment.custom_image_data = "";
     segment.custom_image_name = "";
     segment.approved_image_path = "";
     segment.preview_mode = "image";
     if (segment.id === activeSegment()?.id) {
-      t2iPrompt.value = prompt;
-      ernieT2IPrompt.value = prompt;
-      fluxPrompt.value = prompt;
-      zEnhancePromptPreview.value = prompt;
       syncPreview(segment);
     }
     render();
@@ -6913,7 +6988,7 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (!segment) return;
     const settings = saveFluxKleinSettingsFromPanel();
-    const prompt = String(settings.prompt || fluxPrompt.value || "").trim();
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "flux_klein", settings.prompt || fluxPrompt.value || "");
     if (!prompt) {
       toast("Hey, you need a Flux/Klein prompt first. Click Gemma Flux Prompt or type one into the Flux/Klein prompt box.", true);
       return;
@@ -6948,18 +7023,12 @@ function openBuilder(node) {
       pushHistory();
       segment.image = images[images.length - 1] || null;
       await archiveGeneratedSceneImage(segment, segment.image);
-      segment.t2i_prompt = prompt;
-      segment.enhance_prompt = prompt;
-      segment.flux_prompt = prompt;
+      syncSegmentT2IPrompt(segment, prompt);
       segment.custom_image_path = "";
       segment.custom_image_data = "";
       segment.custom_image_name = "";
       segment.approved_image_path = "";
       segment.preview_mode = "image";
-      t2iPrompt.value = prompt;
-      ernieT2IPrompt.value = prompt;
-      fluxPrompt.value = prompt;
-      zEnhancePromptPreview.value = prompt;
       syncPreview(segment);
       render();
       await autoSaveSessionQuiet("Flux/Klein image complete");
@@ -7168,51 +7237,58 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
-    const useImageReference = segment.use_i2v_vision_reference !== false;
+    const isT2V = currentVideoMode() === "t2v";
+    const modeLabel = isT2V ? "T2V" : "I2V";
+    const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+    const conceptPrompt = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
-      toast("Hey, you need a scene image first. Save/load an image, or turn off image reference to create I2V from the T2I prompt instead.", true);
+      toast(isT2V
+        ? "Hey, T2V Gemma image reference is on, but no reference image is loaded. Drop/load a reference image or turn it off."
+        : "Hey, you need a scene image first. Save/load an image, or turn off image reference to create I2V from the T2I prompt instead.", true);
       return;
     }
-    if (!useImageReference && !segment.t2i_prompt) {
-      toast("Hey, you need a T2I prompt first. Create/type one, or turn image reference back on and use a saved/custom image.", true);
+    if ((isT2V || !useImageReference) && !conceptPrompt) {
+      toast(isT2V
+        ? "Hey, you need a T2I/concept prompt first so Gemma has scene content to turn into a text-to-video prompt."
+        : "Hey, you need a T2I prompt first. Create/type one, or turn image reference back on and use a saved/custom image.", true);
       return;
     }
     let progress = null;
     try {
       createI2VButton.disabled = true;
       createI2VButton.textContent = "Gemma...";
-      progress = createProgressWindow("Creating I2V prompt");
-      progress.set("Autosaving session/SRT before Gemma I2V...", 8);
-      await autoSaveSessionQuiet("Gemma I2V");
+      progress = createProgressWindow(`Creating ${modeLabel} prompt`);
+      progress.set(`Autosaving session/SRT before Gemma ${modeLabel}...`, 8);
+      await autoSaveSessionQuiet(`Gemma ${modeLabel}`);
       progress.set(useImageReference ? "Preparing image reference and motion notes..." : "Preparing T2I prompt and motion notes...", 20);
-      progress.set(useImageReference ? "Running Gemma vision I2V prompt generation..." : "Running Gemma text-only I2V prompt generation...", 50);
-      const data = await postJson("/vrgdg/music_builder/generate_i2v", {
+      progress.set(useImageReference ? "Running Gemma vision I2V prompt generation..." : `Running Gemma text-only ${modeLabel} prompt generation...`, 50);
+      const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-        t2i_prompt: useImageReference ? "" : segment.t2i_prompt,
+        t2i_prompt: isT2V ? conceptPrompt : useImageReference ? "" : conceptPrompt,
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         user_notes: segment.i2v_notes || "",
-        theme_style_path: useImageReference ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-        story_idea_path: useImageReference ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-        subject_scene_path: useImageReference ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+        story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+        subject_scene_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
         unload_after: true,
       });
       pushHistory();
       segment.i2v_prompt = applyTriggerPhrase(data.prompt, videoTriggerPhraseForSegment(segment));
       i2vPrompt.value = segment.i2v_prompt;
       render();
-      await autoSaveSessionQuiet("Gemma I2V complete");
-      progress.set("I2V prompt ready.", 100);
+      await autoSaveSessionQuiet(`Gemma ${modeLabel} complete`);
+      progress.set(`${modeLabel} prompt ready.`, 100);
       progress.close(900);
-      toast(data.used_image_reference ? "Gemma created I2V prompt from the image reference." : "Gemma created I2V prompt from the T2I prompt.");
+      toast(data.used_image_reference ? "Gemma created I2V prompt from the image reference." : `Gemma created ${modeLabel} prompt from the T2I prompt.`);
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
       createI2VButton.disabled = false;
-      createI2VButton.textContent = "Gemma I2V";
+      syncVideoModePanel();
     }
   }
 
@@ -7243,40 +7319,44 @@ function openBuilder(node) {
 
   async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
     if (!segment) throw new Error("Scene is missing.");
-    const useImageReference = segment.use_i2v_vision_reference !== false;
+    const isT2V = currentVideoMode() === "t2v";
+    const modeLabel = isT2V ? "T2V" : "I2V";
+    const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
-    const t2iText = String(segment.t2i_prompt || "").trim();
+    const t2iText = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: I2V image reference is enabled, but no scene image was found.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
-    if (!useImageReference && !t2iText) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
+    if ((isT2V || !useImageReference) && !t2iText) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I/concept prompt is missing.`);
     }
     progress?.set(useImageReference
-      ? `${label}: creating I2V prompt from scene image and motion notes...`
-      : `${label}: converting T2I prompt to I2V prompt without vision...`, percent);
-    const data = await postJson("/vrgdg/music_builder/generate_i2v", {
+      ? `${label}: creating ${modeLabel} prompt from reference image, concept, and motion notes...`
+      : `${label}: converting T2I prompt to ${modeLabel} prompt without vision...`, percent);
+    const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
       model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
       mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-      t2i_prompt: useImageReference ? "" : t2iText,
+      t2i_prompt: isT2V ? t2iText : useImageReference ? "" : t2iText,
       image_reference_path: imageReference.path,
       image_reference_data: imageReference.data,
       user_notes: segment.i2v_notes || "",
-      theme_style_path: useImageReference ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-      story_idea_path: useImageReference ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-      subject_scene_path: useImageReference ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+      theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+      story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+      subject_scene_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
       unload_after: options.unloadAfter !== false,
     });
     pushHistory();
     segment.i2v_prompt = applyTriggerPhrase(data.prompt, videoTriggerPhraseForSegment(segment));
-    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
+    if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty ${modeLabel} prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
     return data;
   }
 
   async function i2vAllScenes(options = {}) {
-    const progress = options.progress || createProgressWindow("Gemma I2V All Scenes");
+    const isT2V = currentVideoMode() === "t2v";
+    const modeLabel = isT2V ? "T2V" : "I2V";
+    const progress = options.progress || createProgressWindow(`Gemma ${modeLabel} All Scenes`);
     const closeProgress = !options.progress;
     const allScenes = allEditableSegments();
     const redoPrompts = options.i2vRunMode === "redo_prompts";
@@ -7290,19 +7370,19 @@ function openBuilder(node) {
     if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const useImageReference = segment.use_i2v_vision_reference !== false;
+      const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (useImageReference && !imageReference.path && !imageReference.data) {
-        missing.push(`${sceneDisplayName(segment, index)}: I2V image reference is enabled, but no scene image was found.`);
+        missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
-      if (!useImageReference && !String(segment.t2i_prompt || "").trim()) {
-        missing.push(`${sceneDisplayName(segment, index)}: T2I prompt is missing.`);
+      if ((isT2V || !useImageReference) && !sceneConceptPromptText(segment)) {
+        missing.push(`${sceneDisplayName(segment, index)}: T2I/concept prompt is missing.`);
       }
     });
     if (missing.length) {
       progress.setHtml(`
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="font-weight:900;color:#fecaca;">Gemma I2V All cannot start yet.</div>
+          <div style="font-weight:900;color:#fecaca;">Gemma ${escapeHtml(modeLabel)} All cannot start yet.</div>
           <div>Fix these first:</div>
           <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
         </div>
@@ -7312,12 +7392,12 @@ function openBuilder(node) {
     }
     try {
       createI2VButton.disabled = true;
-      progress.set("Autosaving session/SRT before Gemma I2V All...", 3);
+      progress.set(`Autosaving session/SRT before Gemma ${modeLabel} All...`, 3);
       await saveSessionForSceneVideo();
       if (!scenes.length) {
-        progress.set("All scenes already have I2V prompts. Skipping Gemma I2V All.", 100);
+        progress.set(`All scenes already have ${modeLabel} prompts. Skipping Gemma ${modeLabel} All.`, 100);
         if (closeProgress) progress.close(1800);
-        toast("All scenes already have I2V prompts. Gemma I2V skipped.");
+        toast(`All scenes already have ${modeLabel} prompts. Gemma ${modeLabel} skipped.`);
         return;
       }
       for (let index = 0; index < scenes.length; index += 1) {
@@ -7327,15 +7407,15 @@ function openBuilder(node) {
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * 100);
-        const useImageReference = segment.use_i2v_vision_reference !== false;
+        const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
         const displayIndex = segmentIndexInfo(segment).index;
-        progress.set(`Gemma I2V All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\n${useImageReference ? "Using scene image reference." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma I2V All ${index + 1}/${scenes.length}`, { unloadAfter: false });
-        await autoSaveSessionQuiet(`Gemma I2V All ${sceneDisplayName(segment, displayIndex)}`);
+        progress.set(`Gemma ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
+        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false });
+        await autoSaveSessionQuiet(`Gemma ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
-      await runClearMemoryWorkflowQuiet(progress, "Gemma I2V prompt pass", 96);
-      await autoSaveSessionQuiet("Gemma I2V All complete");
-      progress.set("Gemma I2V All complete.", 100);
+      await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} prompt pass`, 96);
+      await autoSaveSessionQuiet(`Gemma ${modeLabel} All complete`);
+      progress.set(`Gemma ${modeLabel} All complete.`, 100);
       if (closeProgress) progress.close(1800);
     } catch (error) {
       progress.set(`Stopped/Error:\n${String(error?.message || error)}`, 100);
@@ -7354,11 +7434,20 @@ function openBuilder(node) {
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\image_to_video_clips`;
   }
 
+  function t2vVideoOutputFolder() {
+    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\text_to_video_clips`;
+  }
+
+  function activeVideoOutputFolder(mode = currentVideoMode()) {
+    return mode === "t2v" ? t2vVideoOutputFolder() : i2vVideoOutputFolder();
+  }
+
   function collectedSceneVideoFolder() {
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\rendered_scene_videos`;
   }
 
-  function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden I2V workflow...", details = {}) {
+  function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden video workflow...", details = {}) {
+    const videoMode = details.videoMode === "t2v" ? "t2v" : "i2v";
     const promptNumber = Number(details.promptNumber || sceneIndex + 1);
     const imageIndex = sceneSlotNumber(segment) - 1;
     const imageSource = segmentImageSource(segment);
@@ -7369,21 +7458,22 @@ function openBuilder(node) {
     return `
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-weight:900;color:#cffafe;">${escapeHtml(statusText)}</div>
-        ${imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
+        ${videoMode === "i2v" && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
         <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:5px 10px;font-size:11px;">
           <div style="color:#67e8f9;font-weight:900;">Scene</div><div>${escapeHtml(segment.label || `Scene ${promptNumber}`)}</div>
-          <div style="color:#67e8f9;font-weight:900;">Image index</div><div>${imageIndex} (0 based)</div>
+          <div style="color:#67e8f9;font-weight:900;">Video mode</div><div>${videoMode === "t2v" ? "Text to Video" : "Image to Video"}</div>
+          ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image index</div><div>${imageIndex} (0 based)</div>` : ""}
           <div style="color:#67e8f9;font-weight:900;">SRT prompt #</div><div>${promptNumber} (1 based)</div>
           <div style="color:#67e8f9;font-weight:900;">Audio mode</div><div>${escapeHtml(audioMode)}</div>
-          <div style="color:#67e8f9;font-weight:900;">Image folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(i2vImagesFolder())}</div>
-          <div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>
+          ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(i2vImagesFolder())}</div>` : ""}
+          ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>` : ""}
           <div style="color:#67e8f9;font-weight:900;">Audio sent to LTX</div><div style="overflow-wrap:anywhere;">${escapeHtml(audioPath)}</div>
           <div style="color:#67e8f9;font-weight:900;">SRT path</div><div style="overflow-wrap:anywhere;">${escapeHtml(srtPath || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Save folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(outputFolder || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Collected clips</div><div style="overflow-wrap:anywhere;">${escapeHtml(collectedSceneVideoFolder())}</div>
         </div>
         <div>
-          <div style="color:#67e8f9;font-weight:900;margin-bottom:4px;">I2V prompt</div>
+          <div style="color:#67e8f9;font-weight:900;margin-bottom:4px;">${videoMode === "t2v" ? "T2V prompt" : "I2V prompt"}</div>
           <div style="border:1px solid #155e75;border-radius:6px;background:#020617;color:#e0f2fe;padding:8px;max-height:130px;overflow:auto;white-space:pre-wrap;">${escapeHtml(segment.i2v_prompt || "")}</div>
         </div>
       </div>
@@ -7430,8 +7520,9 @@ function openBuilder(node) {
   function validateSceneReadyForVideo(segment, sceneIndex) {
     const name = sceneDisplayName(segment, sceneIndex);
     const missing = [];
-    if (!segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
-    if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: I2V prompt is missing.`);
+    const mode = currentVideoMode();
+    if (mode !== "t2v" && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
+    if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${mode === "t2v" ? "T2V" : "I2V"} prompt is missing.`);
     return missing;
   }
 
@@ -7595,6 +7686,8 @@ function openBuilder(node) {
     state.activeId = segment.id;
     syncInspector();
     updateActiveFromInputs();
+    const videoMode = currentVideoMode();
+    const modeLabel = videoMode === "t2v" ? "T2V" : "I2V";
     const missing = validateSceneReadyForVideo(segment, sceneIndex);
     if (missing.length) throw new Error(missing.join("\n"));
     segment.video_status = "running";
@@ -7602,8 +7695,12 @@ function openBuilder(node) {
     progress?.set(`${batchLabel}Saving current UI session/SRT timing...`, pct(8));
     let srtPath = await saveSessionForSceneVideo();
     if (!srtPath) throw new Error("The builder SRT path was not created.");
-    progress?.set(`${batchLabel}Preparing selected scene image for I2V...`, pct(12));
-    await ensureSelectedImageForSceneVideo(segment, sceneIndex);
+    if (videoMode === "i2v") {
+      progress?.set(`${batchLabel}Preparing selected scene image for I2V...`, pct(12));
+      await ensureSelectedImageForSceneVideo(segment, sceneIndex);
+    } else {
+      progress?.set(`${batchLabel}Preparing text-to-video render...`, pct(12));
+    }
     let audioPathForScene = options.audioPathOverride || audioInput.value;
     let promptNumberForScene = sceneIndex + 1;
     let audioModeForScene = options.audioPathOverride ? "Combined scene-audio track" : "Global/project audio trimmed for this scene";
@@ -7638,7 +7735,7 @@ function openBuilder(node) {
     if (!String(audioPathForScene || "").trim()) {
       throw new Error(`${sceneDisplayName(segment, sceneIndex)}: no audio path is being sent to LTX. Add custom scene audio or load project/global audio before creating the video.`);
     }
-    progress?.set(`${batchLabel}Checking SRT timing before hidden I2V...`, pct(14));
+    progress?.set(`${batchLabel}Checking SRT timing before hidden ${modeLabel}...`, pct(14));
     const expectedDurationForScene = !options.audioPathOverride
       ? Math.max(0.1, timelineSegmentDuration(segment) || 4)
       : timelineSegmentDuration(segment);
@@ -7652,34 +7749,40 @@ function openBuilder(node) {
     const payload = {
       ...i2vVideoSettingsPayload(),
       i2v_prompt: segment.i2v_prompt,
+      t2v_prompt: segment.i2v_prompt,
       audio_path: audioPathForScene,
-      image_folder: i2vImagesFolder(),
-      image_index_zero_based: slotNumber - 1,
       prompt_number_one_based: promptNumberForScene,
       srt_path: srtPath,
       project_folder: projectInput.value,
     };
+    if (videoMode === "i2v") {
+      payload.image_folder = i2vImagesFolder();
+      payload.image_index_zero_based = slotNumber - 1;
+    }
     const workflowDetails = {
       audioPath: audioPathForScene,
       promptNumber: promptNumberForScene,
       audioMode: audioModeForScene,
+      videoMode,
     };
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, i2vVideoOutputFolder(), `${batchLabel}Preparing hidden I2V workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`, workflowDetails), pct(15));
-    const built = await postJson("/vrgdg/workflow_runner/build_i2v_prompt", payload);
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queueing hidden I2V workflow...`, workflowDetails), pct(40));
+    const defaultOutputFolder = activeVideoOutputFolder(videoMode);
+    const buildEndpoint = videoMode === "t2v" ? "/vrgdg/workflow_runner/build_t2v_prompt" : "/vrgdg/workflow_runner/build_i2v_prompt";
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, defaultOutputFolder, `${batchLabel}Preparing hidden ${modeLabel} workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`, workflowDetails), pct(15));
+    const built = await postJson(buildEndpoint, payload);
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queueing hidden ${modeLabel} workflow...`, workflowDetails), pct(40));
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
     if (!promptId) throw new Error("ComfyUI queued the video but did not return a prompt_id.");
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Queued prompt ID: ${promptId}\nWaiting for video...`, workflowDetails), pct(60));
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queued prompt ID: ${promptId}\nWaiting for video...`, workflowDetails), pct(60));
     const videos = await waitForVideos(
       promptId,
-      (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}${message}\nPrompt ID: ${promptId}`, workflowDetails), pct(80)),
+      (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}${message}\nPrompt ID: ${promptId}`, workflowDetails), pct(80)),
       () => state.batchCancelled
     );
     const video = videos[videos.length - 1] || null;
     const videoPath = resolveComfyVideoPath(video);
-    if (!videoPath) throw new Error("The I2V workflow finished, but no video path was found in history.");
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || i2vVideoOutputFolder(), `${batchLabel}Collecting scene video into builder folder...`, workflowDetails), pct(90));
+    if (!videoPath) throw new Error(`The ${modeLabel} workflow finished, but no video path was found in history.`);
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Collecting scene video into builder folder...`, workflowDetails), pct(90));
     const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
       source_path: videoPath,
       project_folder: projectInput.value,
@@ -8197,32 +8300,39 @@ function openBuilder(node) {
       zImageAllButton.disabled = true;
       state.batchCancelled = false;
       progress = createProgressWindow("Build Full Video");
-      const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
-      progress.set(`Stage 1/3: ${imageStage}...`, 5);
-      const imageMode = state.imageModelMode || "zimage";
-      const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
-      if (imageMode === "flux_klein") {
-        await fluxKleinAllScenes({ throwOnError: true, imageRunMode });
-      } else if (imageMode === "ernie_image") {
-        await ernieImageAllScenes({ throwOnError: true, imageRunMode });
+      const videoMode = currentVideoMode();
+      if (videoMode === "t2v") {
+        progress.set("Stage 1/3: Text-to-video mode skips image generation.", 20);
       } else {
-        await zImageAllScenes({ throwOnError: true, imageRunMode });
+        const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
+        progress.set(`Stage 1/3: ${imageStage}...`, 5);
+        const imageMode = state.imageModelMode || "zimage";
+        const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
+        if (imageMode === "flux_klein") {
+          await fluxKleinAllScenes({ throwOnError: true, imageRunMode });
+        } else if (imageMode === "ernie_image") {
+          await ernieImageAllScenes({ throwOnError: true, imageRunMode });
+        } else {
+          await zImageAllScenes({ throwOnError: true, imageRunMode });
+        }
       }
       assertBatchNotStopped();
-      progress.set("Stage 2/3: creating I2V prompts...", 38);
+      const videoPromptStage = currentVideoMode() === "t2v" ? "creating T2V prompts" : "creating I2V prompts";
+      progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
       await i2vAllScenes({
         throwOnError: true,
         i2vRunMode: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" ? "redo_prompts" : "resume_missing",
       });
       assertBatchNotStopped();
       progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
+      progress.close(300);
+      progress = null;
       const shouldRandomizeVideoSeed = buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos";
       await renderAllScenes({
         forceVideos: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
         randomizeVideoSeed: shouldRandomizeVideoSeed && options.videoSeedMode !== "keep",
       });
-      progress.set("Build Full Video complete.", 100);
-      progress.close(4500);
+      toast("Build Full Video complete.");
     } catch (error) {
       const errorMessage = String(error?.message || error);
       progress?.set(`Build Full Video stopped:\n${errorMessage}`, 100);
@@ -8425,6 +8535,7 @@ function openBuilder(node) {
     state.useFluxGlobalImageIngredients = false;
     state.fluxGlobalImageIngredients = [];
     state.zEnhanceSettings = defaultZEnhanceSettings();
+    state.videoModelMode = "i2v";
     state.i2vVideoSettings = defaultI2VVideoSettings();
     state.promptToolsHintPrefs = {};
     projectInput.value = state.projectFolder;
@@ -8451,6 +8562,7 @@ function openBuilder(node) {
     syncErnieImagePanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
+    syncVideoModePanel();
     syncInspector();
     render();
   }
@@ -8841,13 +8953,16 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunRenderAll() {
+    const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
     const ok = await confirmLongBatchAction({
       title: "Run Render All?",
       lines: [
         "Render All only works on the video/render stage.",
-        "It uses the current selected images and existing I2V prompts.",
+        currentVideoMode() === "t2v"
+          ? "It uses existing T2V prompts and does not require scene images."
+          : "It uses the current selected images and existing I2V prompts.",
         "Scenes that already have a selected video are skipped.",
-        "Scenes missing video are rendered, then the final video is stitched.",
+        `Scenes missing video are rendered with ${videoLabel}, then the final video is stitched.`,
         "If every scene already has video, this only stitches the final video.",
       ],
       confirmLabel: "Run Render All",
@@ -8856,9 +8971,12 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunFullBuild() {
+    const t2vMode = currentVideoMode() === "t2v";
     const options = await chooseBatchModeAction({
       title: "Build Full Video?",
-      intro: "Build Full Video can run the whole pipeline: image prompts, images, I2V prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.",
+      intro: t2vMode
+        ? "Build Full Video is in Text-to-Video mode. It skips image generation, creates T2V prompts, renders scene videos, and stitches the final video. Model selections, LoRAs, notes, and project paths are not reset."
+        : "Build Full Video can run the whole pipeline: image prompts, images, I2V prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.",
       confirmLabel: "Build Full Video",
       returnAll: true,
       choices: [
@@ -8870,17 +8988,23 @@ function openBuilder(node) {
         {
           value: "fresh_rebuild",
           label: "Fresh full rebuild",
-          description: "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image seeds are randomized.",
+          description: t2vMode
+            ? "Start fresh for generated video outputs. Regenerate T2V prompts and videos. Video seeds can be randomized below."
+            : "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image seeds are randomized.",
         },
         {
           value: "redo_i2v_prompts_videos",
-          label: "Keep images, redo I2V prompts and videos",
-          description: "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions.",
+          label: t2vMode ? "Redo T2V prompts and videos" : "Keep images, redo I2V prompts and videos",
+          description: t2vMode
+            ? "Regenerate T2V prompts with Gemma, then create new video versions."
+            : "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions.",
         },
         {
           value: "redo_videos",
-          label: "Keep images and prompts, redo videos",
-          description: "Use the current selected images and existing I2V prompts. Only create new video versions, then stitch.",
+          label: t2vMode ? "Keep prompts, redo videos" : "Keep images and prompts, redo videos",
+          description: t2vMode
+            ? "Use existing T2V prompts. Only create new video versions, then stitch."
+            : "Use the current selected images and existing I2V prompts. Only create new video versions, then stitch.",
         },
       ],
       extraGroups: [
@@ -8985,6 +9109,7 @@ function openBuilder(node) {
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
   ernieUseVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
+  useT2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useSceneZImageSettings.input.addEventListener("change", () => {
     const segment = activeSegment();
     if (!segment) return;
@@ -9036,9 +9161,6 @@ function openBuilder(node) {
   }
   useSceneI2VVideoSettings.input.addEventListener("change", () => {
     setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettings.input.checked));
-  });
-  useSceneI2VVideoSettingsModels.input.addEventListener("change", () => {
-    setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettingsModels.input.checked));
   });
   refImageInput.addEventListener("input", updateActiveFromInputs);
   refImageInput.addEventListener("change", updateActiveFromInputs);
@@ -9159,6 +9281,16 @@ function openBuilder(node) {
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
   };
+  imageToVideoCard.onclick = () => {
+    pushHistory();
+    state.videoModelMode = "i2v";
+    syncVideoModePanel();
+  };
+  textToVideoCard.onclick = () => {
+    pushHistory();
+    state.videoModelMode = "t2v";
+    syncVideoModePanel();
+  };
   fluxIngredientFileInput.addEventListener("change", () => {
     const files = Array.from(fluxIngredientFileInput.files || []);
     for (const file of files) loadFluxIngredientFile(file);
@@ -9247,13 +9379,23 @@ function openBuilder(node) {
     ernieI2IDrop.style.borderColor = "#155e75";
     loadImageToImageFile(file);
   });
+  const t2vVisionRefFileInput = document.createElement("input");
+  t2vVisionRefFileInput.type = "file";
+  t2vVisionRefFileInput.accept = "image/*";
+  t2vVisionRefFileInput.style.display = "none";
+  document.body.append(t2vVisionRefFileInput);
   refImageLoadButton.onclick = () => visionRefFileInput.click();
   ernieRefImageLoadButton.onclick = () => visionRefFileInput.click();
+  t2vRefImageLoadButton.onclick = () => t2vVisionRefFileInput.click();
   visionRefFileInput.addEventListener("change", () => {
     loadVisionReferenceFile(visionRefFileInput.files?.[0]);
     visionRefFileInput.value = "";
   });
-  function wireVisionReferenceDrop(dropElement) {
+  t2vVisionRefFileInput.addEventListener("change", () => {
+    loadVisionReferenceFile(t2vVisionRefFileInput.files?.[0], { forT2V: true });
+    t2vVisionRefFileInput.value = "";
+  });
+  function wireVisionReferenceDrop(dropElement, options = {}) {
     dropElement.addEventListener("dragover", (event) => {
       const types = Array.from(event.dataTransfer?.types || []);
       if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
@@ -9270,7 +9412,7 @@ function openBuilder(node) {
         event.preventDefault();
         event.stopPropagation();
         dropElement.style.borderColor = "#155e75";
-        setVisionReferenceSource(sceneSource).catch((error) => toast(String(error?.message || error), true));
+        setVisionReferenceSource({ ...sceneSource, forT2V: Boolean(options.forT2V) }).catch((error) => toast(String(error?.message || error), true));
         return;
       }
       const file = imageFileFromDrop(event);
@@ -9278,11 +9420,12 @@ function openBuilder(node) {
       event.preventDefault();
       event.stopPropagation();
       dropElement.style.borderColor = "#155e75";
-      loadVisionReferenceFile(file);
+      loadVisionReferenceFile(file, { forT2V: Boolean(options.forT2V) });
     });
   }
   wireVisionReferenceDrop(refImageDrop);
   wireVisionReferenceDrop(ernieRefImageDrop);
+  wireVisionReferenceDrop(t2vRefImageDrop, { forT2V: true });
   deleteSegmentButton.onclick = deleteSegment;
   deleteSelectedMediaButton.onclick = deleteSelectedMedia;
   playButton.onclick = () => {
@@ -9730,6 +9873,7 @@ function openBuilder(node) {
   syncFluxKleinPanel();
   syncZEnhanceSettingsPanel();
   syncI2VVideoSettingsPanel();
+  syncVideoModePanel();
   updateHistoryButtons();
   render();
 }
