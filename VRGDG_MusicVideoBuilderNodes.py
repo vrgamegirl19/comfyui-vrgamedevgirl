@@ -1233,6 +1233,17 @@ def _load_prompt_json(path):
     return {"prompt_json_path": json_path, "prompts": prompts}
 
 
+def _extract_json_object_from_text(text):
+    cleaned = str(text or "").strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start >= 0 and end > start:
+        cleaned = cleaned[start:end + 1]
+    return json.loads(cleaned)
+
+
 def _read_text_file(path, label):
     if not str(path or "").strip():
         return ""
@@ -2042,6 +2053,161 @@ def _generate_flux_klein_prompt(payload):
                 n_threads=n_threads,
                 chat_format=chat_format,
                 mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            _clear_comfy_model_memory()
+
+
+def _generate_flux_reference_location_map(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file:
+        raise ValueError("Choose a non-vision Gemma model first.")
+
+    scenes = payload.get("scenes") or []
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("No scenes were provided for location mapping.")
+
+    cleaned_scenes = []
+    for index, scene in enumerate(scenes, start=1):
+        if not isinstance(scene, dict):
+            continue
+        scene_id = str(scene.get("id", "") or f"scene_{index}").strip()
+        label = str(scene.get("label", "") or f"Scene {index}").strip()
+        concept = str(scene.get("concept", "") or "").strip()
+        notes = str(scene.get("notes", "") or "").strip()
+        if concept or notes:
+            cleaned_scenes.append({
+                "id": scene_id,
+                "label": label,
+                "concept": concept,
+                "notes": notes,
+            })
+    if not cleaned_scenes:
+        raise ValueError("Scenes need concept prompt text before Gemma can map locations.")
+
+    subject_scene = str(payload.get("subject_scene_text", "") or "").strip()
+    existing_locations = payload.get("existing_locations") or []
+    if not isinstance(existing_locations, list):
+        existing_locations = []
+    existing_location_lines = []
+    for item in existing_locations:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "") or "").strip()
+        description = str(item.get("description", "") or "").strip()
+        if name:
+            existing_location_lines.append(f"- {name}" + (f": {description}" if description else ""))
+
+    scene_lines = []
+    for index, scene in enumerate(cleaned_scenes, start=1):
+        scene_lines.append(
+            f"Scene {index}\n"
+            f"id: {scene['id']}\n"
+            f"label: {scene['label']}\n"
+            f"concept: {scene['concept']}\n"
+            f"notes: {scene['notes']}"
+        )
+
+    instruction = (
+        "You map music-video scenes to reusable physical locations for Flux/Klein reference images.\n\n"
+        "Read each scene concept and choose the best actual location/background for that scene.\n"
+        "Use the location clearly stated in the scene concept when it exists. Do not replace a clear location with a different one.\n"
+        "Reuse locations when scenes can plausibly happen in the same place. Most projects should use a small reusable location list.\n"
+        "If a scene is symbolic or abstract, choose a concrete physical location that best fits the concept and subject/location context.\n"
+        "Existing locations may be reused when they fit, but do not force them if the concept clearly needs a new place.\n\n"
+        "Output strict JSON only using this schema:\n"
+        "{\n"
+        "  \"locations\": [\n"
+        "    {\"name\": \"short location name\", \"description\": \"visual description for a reference image\"}\n"
+        "  ],\n"
+        "  \"scene_map\": {\n"
+        "    \"scene id from input\": \"location name\"\n"
+        "  }\n"
+        "}\n\n"
+        "Rules:\n"
+        "- Every input scene id must appear in scene_map.\n"
+        "- scene_map values must exactly match one location name in locations.\n"
+        "- Keep location names short and readable, like bedroom, empty street at night, flower garden, bathroom, rooftop, stairs.\n"
+        "- Location descriptions should describe only the place/background, not the main character.\n"
+        "- Do not include markdown, comments, labels, or explanations.\n\n"
+        f"Subject/location context:\n{subject_scene or '(none)'}\n\n"
+        f"Existing editable locations:\n{chr(10).join(existing_location_lines) if existing_location_lines else '(none)'}\n\n"
+        f"Scenes:\n\n{chr(10).join(scene_lines)}"
+    )
+
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    n_ctx = int(payload.get("n_ctx") or 10000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.8)
+    max_new_tokens = int(payload.get("max_new_tokens") or 5000)
+    unload_after = bool(payload.get("unload_after", True))
+
+    try:
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+        )
+        text = llm._run_gguf_text_pipeline(
+            model=model,
+            instruction_text=instruction,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
+        data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
+        if not isinstance(data, dict):
+            raise ValueError("Gemma did not return a JSON object.")
+        locations = data.get("locations") or []
+        scene_map = data.get("scene_map") or {}
+        if not isinstance(locations, list) or not locations:
+            raise ValueError("Gemma location map is missing locations.")
+        if not isinstance(scene_map, dict):
+            raise ValueError("Gemma location map is missing scene_map.")
+        normalized_locations = []
+        seen_names = set()
+        for item in locations:
+            if not isinstance(item, dict):
+                continue
+            name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+            description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen_names:
+                continue
+            seen_names.add(key)
+            normalized_locations.append({"name": name, "description": description})
+        if not normalized_locations:
+            raise ValueError("Gemma returned only empty location names.")
+        valid_names = {item["name"].lower(): item["name"] for item in normalized_locations}
+        normalized_map = {}
+        for scene in cleaned_scenes:
+            raw_name = re.sub(r"\s+", " ", str(scene_map.get(scene["id"], "") or "").strip())
+            normalized_map[scene["id"]] = valid_names.get(raw_name.lower(), normalized_locations[0]["name"])
+        return {
+            "locations": normalized_locations,
+            "scene_map": normalized_map,
+            "raw_text": text,
+            "used_model": model_path,
+            "unloaded": unload_after,
+        }
+    finally:
+        if unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
             )
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
             _clear_comfy_model_memory()
@@ -2944,6 +3110,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_klein_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/flux_reference_location_map")
+    async def vrgdg_music_builder_flux_reference_location_map(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_flux_reference_location_map, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

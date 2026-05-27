@@ -2360,7 +2360,8 @@ function openBuilder(node) {
       if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
       event.preventDefault();
       event.stopPropagation();
-    });
+      event.stopImmediatePropagation?.();
+    }, true);
   }
 
   function defaultZImageSettings() {
@@ -5954,8 +5955,12 @@ function openBuilder(node) {
     const locationsTitle = document.createElement("div");
     locationsTitle.textContent = "Location References";
     locationsTitle.style.cssText = subjectTitle.style.cssText;
+    const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
     const addLocation = makeButton("Add Location", "primary");
-    locationsHeader.append(locationsTitle, addLocation);
+    const locationActions = document.createElement("div");
+    locationActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
+    locationActions.append(autoMapLocations, addLocation);
+    locationsHeader.append(locationsTitle, locationActions);
     const locationsList = document.createElement("div");
     locationsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
     locationsCard.append(locationsHeader, locationsList);
@@ -6011,15 +6016,29 @@ function openBuilder(node) {
       reader.readAsDataURL(file);
     };
     const wireDrop = (drop, target) => {
+      for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
+        drop.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+        }, true);
+      }
       drop.addEventListener("dragover", (event) => {
         event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
         drop.style.borderColor = "#22d3ee";
       });
-      drop.addEventListener("dragleave", () => {
+      drop.addEventListener("dragleave", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
         drop.style.borderColor = "#0891b2";
       });
       drop.addEventListener("drop", (event) => {
         event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation?.();
         drop.style.borderColor = "#0891b2";
         const file = Array.from(event.dataTransfer?.files || []).find((item) => /^image\//i.test(item.type) || /\.(png|jpe?g|webp)$/i.test(item.name || ""));
         setImageTarget(target, file);
@@ -6034,6 +6053,77 @@ function openBuilder(node) {
       pendingImageTarget = target;
       fileInput.click();
     };
+    const locationKey = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const locationByName = (name) => refs.locations.find((item) => locationKey(item.name) === locationKey(name));
+    const createLocation = (name = "", description = "") => {
+      const location = {
+        id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        name: String(name || `Location ${refs.locations.length + 1}`).trim(),
+        description: String(description || "").trim(),
+        image: { path: "", data: "", name: "" },
+      };
+      refs.locations.push(location);
+      return location;
+    };
+
+    async function autoMapLocationsWithGemma() {
+      const scenes = allEditableSegments().map((segment, index) => ({
+        id: segment.id,
+        label: segment.label || `Scene ${index + 1}`,
+        concept: sceneConceptPromptText(segment),
+        notes: segment.notes || "",
+      }));
+      const usableScenes = scenes.filter((scene) => String(scene.concept || scene.notes || "").trim());
+      if (!usableScenes.length) {
+        toast("Auto Map needs scene concept prompts or notes first.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile) {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      try {
+        autoMapLocations.disabled = true;
+        autoMapLocations.textContent = "Mapping...";
+        progress = createProgressWindow("Auto mapping Flux/Klein locations");
+        progress.set("Sending scene concepts to Gemma...", 10);
+        const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
+          model_file: modelFile,
+          scenes: usableScenes,
+          subject_scene_text: subjectSceneInput.value || "",
+          existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+          unload_after: true,
+        }, 10 * 60 * 1000);
+        progress.set("Applying location map...", 80);
+        const nameToId = new Map();
+        for (const item of data.locations || []) {
+          const name = String(item.name || "").trim();
+          if (!name) continue;
+          let location = locationByName(name);
+          if (!location) location = createLocation(name, item.description || "");
+          else if (!String(location.description || "").trim() && item.description) location.description = String(item.description || "");
+          nameToId.set(locationKey(location.name), location.id);
+        }
+        for (const [sceneId, locationName] of Object.entries(data.scene_map || {})) {
+          const id = nameToId.get(locationKey(locationName)) || locationByName(locationName)?.id || "";
+          if (id) refs.scene_map[sceneId] = id;
+        }
+        refs.use_location_references = true;
+        useLocations.input.checked = true;
+        renderAll();
+        progress.set("Location mapping ready. Review/edit the mappings before saving.", 100);
+        progress.close(1600);
+        toast(`Auto mapped ${(data.locations || []).length} location${(data.locations || []).length === 1 ? "" : "s"}. Review, add images, then save.`);
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        autoMapLocations.disabled = false;
+        autoMapLocations.textContent = "Auto Map Locations with Gemma";
+      }
+    }
 
     function renderLocations() {
       locationsList.innerHTML = "";
@@ -6129,14 +6219,10 @@ function openBuilder(node) {
       renderAll();
     };
     addLocation.onclick = () => {
-      refs.locations.push({
-        id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-        name: `Location ${refs.locations.length + 1}`,
-        description: "",
-        image: { path: "", data: "", name: "" },
-      });
+      createLocation();
       renderAll();
     };
+    autoMapLocations.onclick = autoMapLocationsWithGemma;
     useSubject.input.onchange = () => { refs.use_subject_reference = Boolean(useSubject.input.checked); };
     useLocations.input.onchange = () => { refs.use_location_references = Boolean(useLocations.input.checked); };
     includeManual.input.onchange = () => { refs.include_manual_ingredients = Boolean(includeManual.input.checked); };
