@@ -563,6 +563,21 @@ def _unique_preview_path(project_folder, scene_number, extension=".png"):
         index += 1
 
 
+def _unique_file_path(path):
+    base = os.path.abspath(str(path or "").strip().strip('"'))
+    folder = os.path.dirname(base)
+    stem, ext = os.path.splitext(os.path.basename(base))
+    os.makedirs(folder, exist_ok=True)
+    if not os.path.exists(base):
+        return base
+    index = 2
+    while True:
+        candidate = os.path.join(folder, f"{stem}_{index:02d}{ext}")
+        if not os.path.exists(candidate):
+            return candidate
+        index += 1
+
+
 def _is_inside_folder(path, folder):
     try:
         return os.path.commonpath([os.path.abspath(path), os.path.abspath(folder)]) == os.path.abspath(folder)
@@ -2213,6 +2228,103 @@ def _generate_flux_reference_location_map(payload):
             _clear_comfy_model_memory()
 
 
+def _generate_flux_reference_zimage_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    reference_type = str(payload.get("reference_type", "") or "").strip().lower()
+    source_text = str(payload.get("source_text", "") or "").strip()
+    style_theme = str(payload.get("style_theme", "") or "").strip()
+    if reference_type not in {"subject", "location"}:
+        raise ValueError("Reference type must be subject or location.")
+    if not model_file:
+        raise ValueError("Choose a non-vision Gemma model first.")
+    if not source_text:
+        raise ValueError("Enter a subject or location description first.")
+
+    if reference_type == "subject":
+        instruction = (
+            "Create one text-to-image prompt for a character reference sheet.\n\n"
+            "The image must contain the same character shown three times in one image:\n"
+            "1. Left panel: close-up head and face portrait\n"
+            "2. Center panel: upper-body view from waist/chest up\n"
+            "3. Right panel: full-body standing view\n\n"
+            "All three views must show the same person with consistent face, hair, outfit, colors, body type, and identity. "
+            "Use a clean neutral studio background. The character should face forward or mostly forward. Keep lighting clear and even. "
+            "Do not create a cinematic scene, action pose, environment, story moment, props, text labels, captions, logos, watermarks, or multiple different characters.\n\n"
+            "Use this exact output structure:\n\n"
+            "A clean three-panel character reference sheet on a neutral studio background, showing the same [subject] in all panels with consistent [face/hair/body/outfit/identity details]. "
+            "Left panel: close-up head and face portrait. Center panel: upper-body waist-up view. Right panel: full-body standing view. "
+            "Clear even lighting, front-facing pose, consistent outfit colors and body proportions, detailed character design, no text, no labels, no props, no environment.\n\n"
+            "Rules:\n"
+            "- Output only one polished text-to-image prompt.\n"
+            "- Do not include markdown, labels, quotes, explanations, or multiple options.\n"
+            "- Keep it as one single image containing three views of the same character.\n"
+            "- Preserve the subject identity from the user input.\n\n"
+            f"Subject description:\n{source_text}\n\n"
+            f"Optional global style/theme:\n{style_theme or '(none)'}"
+        )
+    else:
+        instruction = (
+            "Create one text-to-image prompt for a reusable location reference image.\n\n"
+            "The image must show only the physical environment/location. Do not include the main character, people, animals, readable text, captions, logos, watermarks, or story action.\n\n"
+            "Use this exact output structure:\n\n"
+            "A clear cinematic environment reference image of [location/environment], showing [layout/architecture], [important furniture/props/objects], [lighting details], [colors/materials/textures], and [atmosphere]. "
+            "Wide enough framing to understand the space layout, [time of day/weather if relevant], no people, no animals, no readable text, no logos, no captions.\n\n"
+            "Rules:\n"
+            "- Output only one polished text-to-image prompt.\n"
+            "- Do not include markdown, labels, quotes, explanations, or multiple options.\n"
+            "- Do not include the main character.\n"
+            "- Do not describe a music video action.\n"
+            "- Keep it as a reusable setting/reference image.\n"
+            "- Preserve the location identity from the user input.\n"
+            "- Use the optional style/theme only for visual mood, lighting, color, or texture.\n\n"
+            f"Location description:\n{source_text}\n\n"
+            f"Optional global style/theme:\n{style_theme or '(none)'}"
+        )
+
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.8)
+    max_new_tokens = int(payload.get("max_new_tokens") or 900)
+    unload_after = bool(payload.get("unload_after", True))
+
+    try:
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+        )
+        text = llm._run_gguf_text_pipeline(
+            model=model,
+            instruction_text=instruction,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
+        text = _clean_visual_gemma_text(text)
+        _validate_builder_gemma_prompt(text, f"Flux/Klein {reference_type} reference")
+        return {"prompt": text, "used_model": model_path, "unloaded": unload_after}
+    finally:
+        if unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            _clear_comfy_model_memory()
+
+
 def _gemma_choices():
     from .LLM import VRGDG_SuperGemmaGGUFChat
 
@@ -2359,6 +2471,41 @@ def _archive_scene_image(payload):
         "saved_path": target_path,
         "preview_folder": _scene_preview_folder(project_folder, scene_number),
         "scene_number": scene_number,
+    }
+
+
+def _save_flux_reference_image(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    reference_type = str(payload.get("reference_type", "") or "").strip().lower()
+    if reference_type not in {"subject", "location"}:
+        reference_type = "location"
+    raw_name = str(payload.get("name", "") or "").strip() or reference_type
+    safe_name = _safe_project_name(raw_name)
+    target_dir = os.path.join(_context_folder(project_folder), "flux_references", f"{reference_type}s")
+    os.makedirs(target_dir, exist_ok=True)
+
+    image_data = str(payload.get("image_data", "") or "").strip()
+    if image_data:
+        ext = ".png"
+        target_path = _unique_file_path(os.path.join(target_dir, f"{safe_name}{ext}"))
+        image = _image_from_data_url(image_data)
+        image.save(target_path, format="PNG")
+    else:
+        image_info = payload.get("image")
+        if isinstance(image_info, dict):
+            source_path = _resolve_comfy_image_path(image_info)
+        else:
+            source_path = _resolve_existing_file(payload.get("source_path", ""), "Reference image")
+        ext = os.path.splitext(source_path)[1] or ".png"
+        target_path = _unique_file_path(os.path.join(target_dir, f"{safe_name}{ext}"))
+        shutil.copy2(source_path, target_path)
+
+    return {
+        "saved_path": target_path,
+        "reference_type": reference_type,
+        "folder": target_dir,
     }
 
 
@@ -2881,6 +3028,15 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/save_flux_reference_image")
+    async def vrgdg_music_builder_save_flux_reference_image(request):
+        try:
+            payload = await request.json()
+            result = _save_flux_reference_image(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/music_builder/save_scene_audio")
     async def vrgdg_music_builder_save_scene_audio(request):
         try:
@@ -3119,6 +3275,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_reference_location_map, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/flux_reference_zimage_prompt")
+    async def vrgdg_music_builder_flux_reference_zimage_prompt(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_flux_reference_zimage_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

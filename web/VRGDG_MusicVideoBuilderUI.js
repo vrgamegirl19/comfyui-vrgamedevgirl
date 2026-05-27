@@ -5944,9 +5944,10 @@ function openBuilder(node) {
     subjectDrop.style.cssText = "min-height:118px;border:1px dashed #0891b2;border-radius:7px;background:#061620;color:#cffafe;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;overflow:hidden;";
     const subjectButtons = document.createElement("div");
     subjectButtons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const createSubjectZImage = makeButton("Create Subject with ZImage", "primary");
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
-    subjectButtons.append(uploadSubject, clearSubject);
+    subjectButtons.append(createSubjectZImage, uploadSubject, clearSubject);
     subjectCard.append(subjectTitle, makeField("Subject description", subjectDescription), subjectDrop, subjectButtons);
 
     const locationsCard = document.createElement("div");
@@ -6067,6 +6068,112 @@ function openBuilder(node) {
       return location;
     };
 
+    const currentZImageReferenceSettings = () => {
+      const settings = cloneZImageSettings(saveZImageSettingsFromPanel());
+      settings.use_image_to_image = false;
+      settings.image_to_image_path = "";
+      settings.image_to_image_data = "";
+      settings.image_to_image_name = "";
+      return settings;
+    };
+
+    const zimageReferencePayload = (prompt, settings) => {
+      const zSettings = cloneZImageSettings(settings);
+      const useLoras = Boolean(zSettings.use_loras && zSettings.lora_count > 0);
+      const trigger = zSettings.image_trigger_phrase || state.imageTriggerPhrase || "";
+      const payload = {
+        prompt: applyTriggerPhrase(prompt, trigger, { validateJunk: true }),
+        unet_name: zSettings.unet_name || "",
+        clip_name: zSettings.clip_name || "",
+        vae_name: zSettings.vae_name || "",
+        first_pass_width: zSettings.first_pass_width,
+        first_pass_height: zSettings.first_pass_height,
+        second_pass_width: zSettings.second_pass_width,
+        second_pass_height: zSettings.second_pass_height,
+        seed: zSettings.seed,
+        seed_mode: zSettings.seed_mode || "fixed",
+        batch_size: zSettings.batch_size || 1,
+        use_custom_loras: useLoras,
+        lora_count: useLoras ? zSettings.lora_count : 0,
+        ltx_two_pass_mode: false,
+        use_image_to_image: false,
+        image_to_image_start_at_step: zSettings.image_to_image_start_at_step || 5,
+        image_to_image_path: "",
+        image_to_image_data: "",
+        image_to_image_name: "",
+      };
+      for (let index = 0; index < 4; index += 1) {
+        const lora = zSettings.loras?.[index] || {};
+        payload[`lora_${index + 1}`] = useLoras && index < zSettings.lora_count ? (lora.name || "[none]") : "[none]";
+        payload[`first_pass_strength_${index + 1}`] = Number(lora.first_pass_strength ?? lora.strength ?? 0.5);
+        payload[`second_pass_strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 1);
+        payload[`strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 1);
+      }
+      return payload;
+    };
+
+    async function createFluxReferenceWithZImage(referenceType, target, sourceText, name = "") {
+      const text = String(sourceText || "").trim();
+      if (!text) {
+        toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile) {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      try {
+        progress = createProgressWindow(referenceType === "subject" ? "Creating Flux/Klein subject reference" : "Creating Flux/Klein location reference");
+        progress.set("Creating ZImage prompt with Gemma...", 8);
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          model_file: modelFile,
+          reference_type: referenceType,
+          source_text: text,
+          style_theme: styleTheme,
+          unload_after: true,
+        }, 3 * 60 * 1000);
+        const zSettings = currentZImageReferenceSettings();
+        progress.set("Building ZImage reference workflow...", 28);
+        const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(promptData.prompt, zSettings));
+        if (Number.isFinite(Number(built.used_seed))) {
+          zSettings.seed = Number(built.used_seed);
+          state.zimageSettings = zSettings;
+          zSeed.value = String(zSettings.seed);
+        }
+        progress.set("Queueing ZImage reference workflow...", 42);
+        const queued = await queueWorkflowPrompt(built.prompt);
+        const promptId = queued?.prompt_id;
+        if (!promptId) throw new Error("ComfyUI queued the ZImage reference but did not return a prompt_id.");
+        const images = await waitForImages(promptId, (message) => {
+          progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
+        });
+        const image = images[images.length - 1];
+        if (!image) throw new Error("ZImage did not return a reference image.");
+        progress.set("Saving reference image into the project...", 88);
+        const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+          project_folder: projectInput.value || state.projectFolder,
+          reference_type: referenceType,
+          name: name || text.slice(0, 48) || referenceType,
+          image,
+        });
+        target.image.path = saved.saved_path || "";
+        target.image.data = "";
+        target.image.name = `${name || referenceType}.png`;
+        advanceZImageSeedAfterRun(zSettings);
+        syncZImageSettingsPanel();
+        renderAll();
+        progress.set("Reference image ready.", 100);
+        progress.close(1300);
+        toast(referenceType === "subject" ? "Subject reference created with ZImage." : "Location reference created with ZImage.");
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    }
+
     async function autoMapLocationsWithGemma() {
       const scenes = allEditableSegments().map((segment, index) => ({
         id: segment.id,
@@ -6156,10 +6263,12 @@ function openBuilder(node) {
         renderDrop(drop, location.image, "Drop location image here");
         wireDrop(drop, target);
         const buttons = document.createElement("div");
-        buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+        buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+        const createZImage = makeButton("Create with ZImage", "primary");
         const upload = makeButton("Upload", "primary");
         const clear = makeButton("Clear");
         const remove = makeButton("Remove");
+        createZImage.onclick = () => createFluxReferenceWithZImage("location", location, `${location.name || ""}\n${location.description || ""}`, location.name || `location_${index + 1}`);
         upload.onclick = () => uploadFor(target);
         clear.onclick = () => {
           location.image = { path: "", data: "", name: "" };
@@ -6179,7 +6288,7 @@ function openBuilder(node) {
         description.addEventListener("input", () => {
           location.description = description.value;
         });
-        buttons.append(upload, clear, remove);
+        buttons.append(createZImage, upload, clear, remove);
         row.append(makeField("Location name", name), makeField("Description / prompt", description), used, drop, buttons);
         locationsList.append(row);
       });
@@ -6215,6 +6324,7 @@ function openBuilder(node) {
     }
 
     uploadSubject.onclick = () => uploadFor(refs.subject);
+    createSubjectZImage.onclick = () => createFluxReferenceWithZImage("subject", refs.subject, refs.subject.description || subjectDescription.value || "", "subject_reference");
     clearSubject.onclick = () => {
       refs.subject.image = { path: "", data: "", name: "" };
       renderAll();
