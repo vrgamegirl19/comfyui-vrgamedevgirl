@@ -1304,6 +1304,7 @@ function openBuilder(node) {
   closeButton.onclick = () => overlay.remove();
   const promptCreatorButton = makeButton("Prompt Creator");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
+  const fluxReferenceBuilderButton = makeButton("Reference Builder for Flux Klein");
   const promptOptionsButton = makeButton("Prompt Options");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
@@ -1338,7 +1339,7 @@ function openBuilder(node) {
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  importActions.append(promptOptionsButton);
+  importActions.append(fluxReferenceBuilderButton, promptOptionsButton);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, closeButton);
@@ -2503,6 +2504,7 @@ function openBuilder(node) {
     ernieImageSettings: defaultErnieImageSettings(),
     useFluxGlobalImageIngredients: false,
     fluxGlobalImageIngredients: [],
+    fluxReferenceBuilder: defaultFluxReferenceBuilder(),
     zEnhanceSettings: defaultZEnhanceSettings(),
     videoModelMode: "i2v",
     i2vVideoSettings: defaultI2VVideoSettings(),
@@ -3296,6 +3298,52 @@ function openBuilder(node) {
     return notes ? `${instrumentalNote}\n\n${notes}` : instrumentalNote;
   }
 
+  function defaultFluxReferenceBuilder() {
+    return {
+      use_subject_reference: false,
+      use_location_references: false,
+      include_manual_ingredients: true,
+      subject: { description: "", image: { path: "", data: "", name: "" } },
+      locations: [],
+      scene_map: {},
+    };
+  }
+
+  function normalizeFluxReferenceBuilder(value = {}) {
+    const source = value && typeof value === "object" ? value : {};
+    const normalized = defaultFluxReferenceBuilder();
+    normalized.use_subject_reference = Boolean(source.use_subject_reference);
+    normalized.use_location_references = Boolean(source.use_location_references);
+    normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
+    const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
+    const subjectImage = subject.image && typeof subject.image === "object" ? subject.image : {};
+    normalized.subject = {
+      description: String(subject.description || ""),
+      image: {
+        path: String(subjectImage.path || ""),
+        data: String(subjectImage.data || ""),
+        name: String(subjectImage.name || ""),
+      },
+    };
+    normalized.locations = Array.isArray(source.locations) ? source.locations
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => {
+        const image = item.image && typeof item.image === "object" ? item.image : {};
+        return {
+          id: String(item.id || `loc_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+          name: String(item.name || `Location ${index + 1}`),
+          description: String(item.description || ""),
+          image: {
+            path: String(image.path || ""),
+            data: String(image.data || ""),
+            name: String(image.name || ""),
+          },
+        };
+      }) : [];
+    normalized.scene_map = source.scene_map && typeof source.scene_map === "object" ? { ...source.scene_map } : {};
+    return normalized;
+  }
+
   async function syncPromptJsonFromSegments(reason = "") {
     const path = String(promptJsonInput.value || state.promptJsonPath || "").trim();
     if (!path) return false;
@@ -4060,9 +4108,31 @@ function openBuilder(node) {
   }
 
   function mergedFluxImageIngredients(segment = activeSegment()) {
-    const globalIngredients = state.useFluxGlobalImageIngredients && Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [];
-    const sceneIngredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
-    return [...globalIngredients, ...sceneIngredients];
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const ingredients = [];
+    const addUnique = (item) => {
+      if (!item || typeof item !== "object") return;
+      const path = String(item.path || "");
+      const data = String(item.data || "");
+      const name = String(item.name || "");
+      if (!path && !data) return;
+      const key = path || data || name;
+      if (ingredients.some((existing) => (existing.path || existing.data || existing.name) === key)) return;
+      ingredients.push({ path, data, name: name || path?.split?.(/[\\/]/)?.pop?.() || "reference.png" });
+    };
+    if (refs.use_subject_reference) addUnique(refs.subject?.image);
+    if (refs.use_location_references && segment) {
+      const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
+      const location = refs.locations.find((item) => item.id === locId);
+      addUnique(location?.image);
+    }
+    if (refs.include_manual_ingredients !== false) {
+      const globalIngredients = state.useFluxGlobalImageIngredients && Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [];
+      const sceneIngredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
+      globalIngredients.forEach(addUnique);
+      sceneIngredients.forEach(addUnique);
+    }
+    return ingredients;
   }
 
   function syncFluxKleinPanel() {
@@ -5803,6 +5873,267 @@ function openBuilder(node) {
     }
   }
 
+  function openFluxReferenceBuilderModal() {
+    state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const refs = state.fluxReferenceBuilder;
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1180px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder for Flux/Klein</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Use a global subject reference plus per-scene location references as automatic Flux/Klein image ingredients.</div>`;
+    const close = makeButton("Close");
+    header.append(heading, close);
+
+    const usage = document.createElement("div");
+    usage.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
+    const useSubject = makeCheckbox("Use subject reference", refs.use_subject_reference);
+    const useLocations = makeCheckbox("Use mapped location references", refs.use_location_references);
+    const includeManual = makeCheckbox("Also include manual Flux/Klein ingredients", refs.include_manual_ingredients !== false);
+    for (const item of [useSubject.wrapper, useLocations.wrapper, includeManual.wrapper]) {
+      item.style.cssText += "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
+    }
+    usage.append(useSubject.wrapper, useLocations.wrapper, includeManual.wrapper);
+
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.35fr) minmax(300px,1fr);gap:12px;align-items:start;";
+    const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+
+    const subjectCard = document.createElement("div");
+    subjectCard.style.cssText = cardStyle;
+    const subjectTitle = document.createElement("div");
+    subjectTitle.textContent = "Subject Reference";
+    subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
+    const subjectDescription = document.createElement("textarea");
+    subjectDescription.value = refs.subject.description || String(subjectSceneInput.value || "").split(/\n+/).find((line) => line.trim()) || "";
+    subjectDescription.placeholder = "Subject/character description...";
+    subjectDescription.style.cssText = "min-height:92px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:9px;font-size:12px;";
+    const subjectDrop = document.createElement("div");
+    subjectDrop.style.cssText = "min-height:118px;border:1px dashed #0891b2;border-radius:7px;background:#061620;color:#cffafe;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;overflow:hidden;";
+    const subjectButtons = document.createElement("div");
+    subjectButtons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const uploadSubject = makeButton("Upload Subject Image", "primary");
+    const clearSubject = makeButton("Clear Subject");
+    subjectButtons.append(uploadSubject, clearSubject);
+    subjectCard.append(subjectTitle, makeField("Subject description", subjectDescription), subjectDrop, subjectButtons);
+
+    const locationsCard = document.createElement("div");
+    locationsCard.style.cssText = cardStyle;
+    const locationsHeader = document.createElement("div");
+    locationsHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+    const locationsTitle = document.createElement("div");
+    locationsTitle.textContent = "Location References";
+    locationsTitle.style.cssText = subjectTitle.style.cssText;
+    const addLocation = makeButton("Add Location", "primary");
+    locationsHeader.append(locationsTitle, addLocation);
+    const locationsList = document.createElement("div");
+    locationsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
+    locationsCard.append(locationsHeader, locationsList);
+
+    const mappingCard = document.createElement("div");
+    mappingCard.style.cssText = cardStyle;
+    const mappingTitle = document.createElement("div");
+    mappingTitle.textContent = "Scene Mapping";
+    mappingTitle.style.cssText = subjectTitle.style.cssText;
+    const mappingNote = document.createElement("div");
+    mappingNote.textContent = "Choose which location image Flux/Klein should receive for each scene. Use Unassigned for no location reference.";
+    mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const mappingList = document.createElement("div");
+    mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
+    mappingCard.append(mappingTitle, mappingNote, mappingList);
+
+    grid.append(subjectCard, locationsCard, mappingCard);
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Save Reference Builder", "primary");
+    footer.append(cancel, save);
+    box.append(header, usage, grid, footer);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/png,image/jpeg,image/webp";
+    fileInput.style.display = "none";
+    box.append(fileInput);
+    let pendingImageTarget = null;
+
+    const imageLabel = (image) => String(image?.name || image?.path || (image?.data ? "Custom image loaded" : ""));
+    const imageSrc = (image) => image?.data || (image?.path ? makeEditorImageUrl(image.path) : "");
+    const renderDrop = (drop, image, emptyText) => {
+      const src = imageSrc(image);
+      drop.innerHTML = src
+        ? `<img src="${src}" style="max-width:100%;max-height:150px;object-fit:contain;border-radius:6px;"><div style="font-size:11px;color:#a5f3fc;margin-top:6px;overflow-wrap:anywhere;">${escapeHtml(imageLabel(image))}</div>`
+        : `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
+    };
+    const updateSubjectDrop = () => renderDrop(subjectDrop, refs.subject.image, "Drop subject reference image here");
+    const setImageTarget = (target, file) => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        target.image.path = "";
+        target.image.data = String(reader.result || "");
+        target.image.name = file.name || "reference.png";
+        renderAll();
+      };
+      reader.onerror = () => toast("Failed to read the reference image.", true);
+      reader.readAsDataURL(file);
+    };
+    const wireDrop = (drop, target) => {
+      drop.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        drop.style.borderColor = "#22d3ee";
+      });
+      drop.addEventListener("dragleave", () => {
+        drop.style.borderColor = "#0891b2";
+      });
+      drop.addEventListener("drop", (event) => {
+        event.preventDefault();
+        drop.style.borderColor = "#0891b2";
+        const file = Array.from(event.dataTransfer?.files || []).find((item) => /^image\//i.test(item.type) || /\.(png|jpe?g|webp)$/i.test(item.name || ""));
+        setImageTarget(target, file);
+      });
+    };
+    fileInput.onchange = () => {
+      setImageTarget(pendingImageTarget, fileInput.files?.[0]);
+      fileInput.value = "";
+      pendingImageTarget = null;
+    };
+    const uploadFor = (target) => {
+      pendingImageTarget = target;
+      fileInput.click();
+    };
+
+    function renderLocations() {
+      locationsList.innerHTML = "";
+      if (!refs.locations.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No locations yet. Add locations like bathroom, flower garden, neon hallway, or bedroom.";
+        empty.style.cssText = "font-size:12px;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:10px;";
+        locationsList.append(empty);
+        return;
+      }
+      refs.locations.forEach((location, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        const name = makeInput(location.name || `Location ${index + 1}`);
+        const description = document.createElement("textarea");
+        description.value = location.description || "";
+        description.placeholder = "Location description / generation prompt...";
+        description.style.cssText = "min-height:64px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;";
+        const usedBy = allEditableSegments()
+          .map((segment, sceneIndex) => refs.scene_map?.[segment.id] === location.id ? `Scene ${sceneIndex + 1}` : "")
+          .filter(Boolean)
+          .join(", ") || "Not mapped yet";
+        const used = document.createElement("div");
+        used.textContent = `Used by: ${usedBy}`;
+        used.style.cssText = "font-size:11px;color:#a5f3fc;";
+        const drop = document.createElement("div");
+        drop.style.cssText = subjectDrop.style.cssText;
+        const target = { image: location.image };
+        renderDrop(drop, location.image, "Drop location image here");
+        wireDrop(drop, target);
+        const buttons = document.createElement("div");
+        buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+        const upload = makeButton("Upload", "primary");
+        const clear = makeButton("Clear");
+        const remove = makeButton("Remove");
+        upload.onclick = () => uploadFor(target);
+        clear.onclick = () => {
+          location.image = { path: "", data: "", name: "" };
+          renderAll();
+        };
+        remove.onclick = () => {
+          refs.locations.splice(index, 1);
+          for (const segment of allEditableSegments()) {
+            if (refs.scene_map?.[segment.id] === location.id) refs.scene_map[segment.id] = "";
+          }
+          renderAll();
+        };
+        name.addEventListener("input", () => {
+          location.name = name.value;
+          renderMapping();
+        });
+        description.addEventListener("input", () => {
+          location.description = description.value;
+        });
+        buttons.append(upload, clear, remove);
+        row.append(makeField("Location name", name), makeField("Description / prompt", description), used, drop, buttons);
+        locationsList.append(row);
+      });
+    }
+
+    function renderMapping() {
+      mappingList.innerHTML = "";
+      allEditableSegments().forEach((segment, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:minmax(100px,.9fr) minmax(120px,1fr);gap:8px;align-items:center;";
+        const label = document.createElement("div");
+        label.textContent = `${index + 1}. ${segment.label || `Scene ${index + 1}`}`;
+        label.style.cssText = "font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        const select = document.createElement("select");
+        select.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:8px;font-size:12px;";
+        select.append(new Option("Unassigned", ""));
+        refs.locations.forEach((location) => select.append(new Option(location.name || "Location", location.id)));
+        select.value = refs.scene_map?.[segment.id] || "";
+        select.onchange = () => {
+          refs.scene_map[segment.id] = select.value;
+          renderLocations();
+        };
+        row.append(label, select);
+        mappingList.append(row);
+      });
+    }
+
+    function renderAll() {
+      refs.subject.description = subjectDescription.value;
+      updateSubjectDrop();
+      renderLocations();
+      renderMapping();
+    }
+
+    uploadSubject.onclick = () => uploadFor(refs.subject);
+    clearSubject.onclick = () => {
+      refs.subject.image = { path: "", data: "", name: "" };
+      renderAll();
+    };
+    addLocation.onclick = () => {
+      refs.locations.push({
+        id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        name: `Location ${refs.locations.length + 1}`,
+        description: "",
+        image: { path: "", data: "", name: "" },
+      });
+      renderAll();
+    };
+    useSubject.input.onchange = () => { refs.use_subject_reference = Boolean(useSubject.input.checked); };
+    useLocations.input.onchange = () => { refs.use_location_references = Boolean(useLocations.input.checked); };
+    includeManual.input.onchange = () => { refs.include_manual_ingredients = Boolean(includeManual.input.checked); };
+    subjectDescription.addEventListener("input", () => { refs.subject.description = subjectDescription.value; });
+    wireDrop(subjectDrop, refs.subject);
+    close.onclick = () => backdrop.remove();
+    cancel.onclick = () => backdrop.remove();
+    save.onclick = async () => {
+      refs.subject.description = subjectDescription.value;
+      refs.use_subject_reference = Boolean(useSubject.input.checked);
+      refs.use_location_references = Boolean(useLocations.input.checked);
+      refs.include_manual_ingredients = Boolean(includeManual.input.checked);
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      renderFluxIngredientList(activeSegment());
+      render();
+      await autoSaveSessionQuiet("Flux/Klein reference builder");
+      toast("Flux/Klein reference builder saved.");
+      backdrop.remove();
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
+    renderAll();
+  }
+
   function openPromptOptionsModal() {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
@@ -6358,6 +6689,7 @@ function openBuilder(node) {
       ernie_image_settings: state.ernieImageSettings,
       use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
+      flux_reference_builder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
       z_enhance_settings: state.zEnhanceSettings,
       video_model_mode: state.videoModelMode || "i2v",
       i2v_video_settings: state.i2vVideoSettings,
@@ -6454,6 +6786,7 @@ function openBuilder(node) {
         state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
+        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(data.session.flux_reference_builder);
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
         state.videoModelMode = data.session.video_model_mode || state.videoModelMode || "i2v";
         state.i2vVideoSettings = data.session.i2v_video_settings || state.i2vVideoSettings;
@@ -6586,6 +6919,7 @@ function openBuilder(node) {
       state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(session.flux_reference_builder);
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
       state.videoModelMode = session.video_model_mode || state.videoModelMode || "i2v";
       state.i2vVideoSettings = session.i2v_video_settings || state.i2vVideoSettings;
@@ -8583,9 +8917,8 @@ function openBuilder(node) {
     const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("Flux/Klein All Scenes");
-    const hasAnyGlobal = Array.isArray(state.fluxGlobalImageIngredients) && state.fluxGlobalImageIngredients.length > 0;
-    if (!hasAnyGlobal && !allEditableSegments().some((segment) => Array.isArray(segment.flux_image_ingredients) && segment.flux_image_ingredients.length)) {
-      const message = "Flux/Klein All needs at least one global or scene image ingredient.";
+    if (!allEditableSegments().some((segment) => mergedFluxImageIngredients(segment).length)) {
+      const message = "Flux/Klein All needs at least one Reference Builder, global, or scene image ingredient.";
       progress.set(message, 100);
       toast(message, true);
       if (options.throwOnError) throw new Error(message);
@@ -8933,6 +9266,7 @@ function openBuilder(node) {
     state.ernieImageSettings = defaultErnieImageSettings();
     state.useFluxGlobalImageIngredients = false;
     state.fluxGlobalImageIngredients = [];
+    state.fluxReferenceBuilder = defaultFluxReferenceBuilder();
     state.zEnhanceSettings = defaultZEnhanceSettings();
     state.videoModelMode = "i2v";
     state.i2vVideoSettings = defaultI2VVideoSettings();
@@ -9655,6 +9989,7 @@ function openBuilder(node) {
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
   promptCreatorButton.onclick = openPromptCreatorPanel;
+  fluxReferenceBuilderButton.onclick = openFluxReferenceBuilderModal;
   promptOptionsButton.onclick = openPromptOptionsModal;
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
