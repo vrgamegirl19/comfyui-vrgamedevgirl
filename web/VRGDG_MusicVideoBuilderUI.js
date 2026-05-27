@@ -2532,6 +2532,21 @@ function openBuilder(node) {
     };
   }
 
+  function gemmaRunnerLabel(options = {}) {
+    if (options.forceBuiltin) return options.vision ? "Built-in GGUF vision" : "Built-in GGUF";
+    if (options.vision) return state.textGemmaRunner === "lm_studio" ? "LM Studio vision" : "Built-in GGUF vision";
+    return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Built-in GGUF";
+  }
+
+  function gemmaRunnerLine(options = {}) {
+    return `Runner: ${gemmaRunnerLabel(options)}`;
+  }
+
+  function isLikelyEmbeddingModelId(modelId) {
+    const text = String(modelId || "").toLowerCase();
+    return text.includes("embedding") || text.includes("embed") || text.includes("nomic-embed") || text.includes("bge-") || text.includes("e5-");
+  }
+
   function rememberLastProject(projectFolder = "") {
     const folder = String(projectFolder || "").trim();
     if (!folder) return;
@@ -2963,6 +2978,18 @@ function openBuilder(node) {
       return segment.i2v_video_settings;
     }
     return state.i2vVideoSettings;
+  }
+
+  function videoVisionReferenceEnabled(segment) {
+    return currentVideoMode() === "t2v"
+      ? Boolean(segment?.use_t2v_vision_reference)
+      : segment?.use_i2v_vision_reference !== false;
+  }
+
+  function setVideoVisionReferenceEnabled(segment, enabled) {
+    if (!segment) return;
+    if (currentVideoMode() === "t2v") segment.use_t2v_vision_reference = Boolean(enabled);
+    else segment.use_i2v_vision_reference = Boolean(enabled);
   }
 
   function historySnapshot() {
@@ -5577,7 +5604,7 @@ function openBuilder(node) {
         gemma.disabled = true;
         gemma.textContent = "Gemma...";
         progress = createProgressWindow(title.replace(/^Edit\s+/i, "Gemma4 "));
-        progress.set("Creating draft from your notes...", 25);
+        progress.set(`Creating draft from your notes...\n${gemmaRunnerLine({ forceBuiltin: true })}`, 25);
         const styleTheme = gemmaTarget === "builder_story_idea" || gemmaTarget === "builder_subjects_and_scenes"
           ? await loadContextTextQuiet(themeStyleInput.value)
           : "";
@@ -6186,7 +6213,7 @@ function openBuilder(node) {
       let progress = null;
       try {
         progress = createProgressWindow(referenceType === "subject" ? "Creating Flux/Klein subject reference" : "Creating Flux/Klein location reference");
-        progress.set("Creating ZImage prompt with Gemma...", 8);
+        progress.set(`Creating ZImage prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
         const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
         const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
           ...textGemmaRunnerPayload(),
@@ -6257,7 +6284,7 @@ function openBuilder(node) {
         autoMapLocations.disabled = true;
         autoMapLocations.textContent = "Mapping...";
         progress = createProgressWindow("Auto mapping Flux/Klein locations");
-        progress.set("Sending scene concepts to Gemma...", 10);
+        progress.set(`Sending scene concepts to Gemma...\n${gemmaRunnerLine()}`, 10);
         const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
           ...textGemmaRunnerPayload(),
           model_file: modelFile,
@@ -7511,8 +7538,8 @@ function openBuilder(node) {
     if (missing) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${missing}`);
     state.activeId = segment.id;
     syncInspector();
-    progress?.set(`${label}: preparing Gemma input...`, percent);
     const useVision = Boolean(segment.use_vision_reference);
+    progress?.set(`${label}: preparing Gemma input...\n${gemmaRunnerLine({ vision: useVision })}`, percent);
     const gemmaSelect = state.imageModelMode === "ernie_image"
       ? (useVision ? ernieGemmaModelSelect : ernieTextGemmaModelSelect)
       : (useVision ? gemmaModelSelect : t2iTextGemmaModelSelect);
@@ -7738,7 +7765,7 @@ function openBuilder(node) {
       progress = createProgressWindow("Creating Flux/Klein prompt");
       progress.set("Autosaving session/SRT before Gemma Flux/Klein...", 8);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt");
-      progress.set("Combining image ingredients for Gemma vision...", 25);
+      progress.set(`Combining image ingredients for Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, 25);
       const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
         model_file: fluxGemmaModelSelect.value,
         mmproj_file: fluxMmprojSelect.value,
@@ -7796,7 +7823,7 @@ function openBuilder(node) {
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
     }
-    progress?.set(`${label}: combining global and scene image ingredients for Gemma vision...`, percent);
+    progress?.set(`${label}: combining global and scene image ingredients for Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
       model_file: fluxGemmaModelSelect.value,
       mmproj_file: fluxMmprojSelect.value,
@@ -7948,7 +7975,7 @@ function openBuilder(node) {
       zEnhanceGemmaButton.disabled = true;
       zEnhanceGemmaButton.textContent = "Gemma...";
       progress = createProgressWindow("Creating Enhance prompt");
-      progress.set("Reading selected image with Gemma vision...", 20);
+      progress.set(`Reading selected image with Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, 20);
       const userNotes = [
         "Create a text-to-image prompt for image-to-image upscale/enhance.",
         "Describe the visible subject, setting, lighting, clothing, pose, composition, and mood from the image.",
@@ -8136,7 +8163,9 @@ function openBuilder(node) {
       progress.set(`Autosaving session/SRT before Gemma ${modeLabel}...`, 8);
       await autoSaveSessionQuiet(`Gemma ${modeLabel}`);
       progress.set(useImageReference ? "Preparing image reference and motion notes..." : "Preparing T2I prompt and motion notes...", 20);
-      progress.set(useImageReference ? "Running Gemma vision I2V prompt generation..." : `Running Gemma text-only ${modeLabel} prompt generation...`, 50);
+      progress.set(useImageReference
+        ? `Running Gemma vision ${modeLabel} prompt generation...\n${gemmaRunnerLine({ vision: true })}`
+        : `Running Gemma text-only ${modeLabel} prompt generation...\n${gemmaRunnerLine()}`, 50);
       const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
         ...textGemmaRunnerPayload(),
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
@@ -8171,7 +8200,7 @@ function openBuilder(node) {
     if (!segment) throw new Error("Scene is missing.");
     const t2iText = String(segment.t2i_prompt || "").trim();
     if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
-    progress?.set(`${label}: converting T2I prompt to I2V prompt without vision...`, percent);
+    progress?.set(`${label}: converting T2I prompt to I2V prompt without vision...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_i2v", {
       ...textGemmaRunnerPayload(),
       model_file: i2vTextGemmaModelSelect.value,
@@ -8198,7 +8227,8 @@ function openBuilder(node) {
     const isT2V = currentVideoMode() === "t2v";
     const modeLabel = isT2V ? "T2V" : "I2V";
     const forceTextOnly = Boolean(options.forceTextOnly);
-    const useImageReference = forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+    const forceVision = Boolean(options.forceVision);
+    const useImageReference = forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -8208,8 +8238,8 @@ function openBuilder(node) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I/concept prompt is missing.`);
     }
     progress?.set(useImageReference
-      ? `${label}: creating ${modeLabel} prompt from reference image, concept, and motion notes...`
-      : `${label}: converting T2I prompt to ${modeLabel} prompt without vision...`, percent);
+      ? `${label}: creating ${modeLabel} prompt from reference image, concept, and motion notes...\n${gemmaRunnerLine({ vision: true })}`
+      : `${label}: converting T2I prompt to ${modeLabel} prompt without vision...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
       ...textGemmaRunnerPayload(),
       model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
@@ -8239,6 +8269,7 @@ function openBuilder(node) {
     const allScenes = allEditableSegments();
     const redoPrompts = options.i2vRunMode === "redo_prompts";
     const forceTextOnly = Boolean(options.forceTextOnly);
+    const forceVision = Boolean(options.forceVision);
     if (redoPrompts) {
       allScenes.forEach((segment) => {
         segment.i2v_prompt = "";
@@ -8249,7 +8280,7 @@ function openBuilder(node) {
     if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const useImageReference = forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+      const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
@@ -8286,10 +8317,10 @@ function openBuilder(node) {
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * 100);
-        const useImageReference = forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+        const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
         const displayIndex = segmentIndexInfo(segment).index;
-        progress.set(`Gemma ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly });
+        progress.set(`Gemma ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
+        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly, forceVision });
         await autoSaveSessionQuiet(`Gemma ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
       await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} prompt pass`, 96);
@@ -8423,33 +8454,25 @@ function openBuilder(node) {
 
   async function gemmaVideoAllTextOnly(options = {}) {
     updateActiveFromInputs();
-    const isT2V = currentVideoMode() === "t2v";
-    const modeLabel = isT2V ? "T2V" : "I2V";
-    const redoPrompts = options.promptRunMode !== "missing_only";
-    const targetScenes = allEditableSegments().filter((segment) => redoPrompts || !String(segment.i2v_prompt || "").trim());
-    const visionScenes = targetScenes
-      .filter((segment) => isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false)
-      .map((segment) => sceneDisplayName(segment, segmentIndexInfo(segment).index));
-    if (visionScenes.length) {
-      const progress = createProgressWindow(`Gemma ${modeLabel} All`);
-      progress.setHtml(`
-        <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="font-weight:900;color:#fecaca;">Gemma ${escapeHtml(modeLabel)} All is text-only review mode.</div>
-          <div>Turn off the image-reference checkbox for these scenes, then run this again:</div>
-          <div style="max-height:320px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(visionScenes.map((item) => `- ${item}`).join("\n"))}</div>
-          <div style="color:#cbd5e1;">Vision I2V prompts need scene images, so use the single-scene Gemma I2V button after images are created if you want Gemma to look at each image.</div>
-        </div>
-      `, 100);
-      toast(`Turn off image reference before running Gemma ${modeLabel} All.`, true);
-      return;
-    }
     gemmaVideoAllButton.disabled = true;
+    const changedReferenceFlags = [];
     try {
+      if (options.gemmaInputMode === "vision") {
+        allEditableSegments().forEach((segment) => {
+          const previous = videoVisionReferenceEnabled(segment);
+          if (!previous) {
+            changedReferenceFlags.push({ segment, previous });
+            setVideoVisionReferenceEnabled(segment, true);
+          }
+        });
+      }
       await i2vAllScenes({
         i2vRunMode: options.promptRunMode === "missing_only" ? "missing_only" : "redo_prompts",
-        forceTextOnly: true,
+        forceTextOnly: options.gemmaInputMode !== "vision",
+        forceVision: options.gemmaInputMode === "vision",
       });
     } finally {
+      changedReferenceFlags.forEach(({ segment, previous }) => setVideoVisionReferenceEnabled(segment, previous));
       gemmaVideoAllButton.disabled = false;
     }
   }
@@ -9791,7 +9814,7 @@ function openBuilder(node) {
     });
   }
 
-  function chooseBatchModeAction({ title, intro = "", choices = [], confirmLabel = "Continue", extraGroups = [], returnAll = false } = {}) {
+  function chooseBatchModeAction({ title, intro = "", choices = [], confirmLabel = "Continue", extraGroups = [], returnAll = false, defaultValue = "" } = {}) {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
       backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
@@ -9803,7 +9826,7 @@ function openBuilder(node) {
       const text = document.createElement("div");
       text.textContent = intro || "";
       text.style.cssText = `display:${intro ? "block" : "none"};font-size:13px;color:#d4d4d8;line-height:1.45;`;
-      let selected = choices[0]?.value || "";
+      let selected = choices.some((choice) => choice.value === defaultValue) ? defaultValue : choices[0]?.value || "";
       const extraSelected = {};
       const list = document.createElement("div");
       list.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto;";
@@ -9817,7 +9840,7 @@ function openBuilder(node) {
         input.name = "vrgdg_batch_choice";
         input.id = id;
         input.value = choice.value;
-        input.checked = index === 0;
+        input.checked = choice.value === selected;
         input.style.marginTop = "3px";
         input.onchange = () => {
           if (input.checked) selected = choice.value;
@@ -9916,6 +9939,10 @@ function openBuilder(node) {
     const runner = makeSelect(["builtin", "lm_studio"], state.textGemmaRunner || "builtin");
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
+    const modelSelect = makeSelect([""], "");
+    const loadModels = makeButton("Load LM Studio Models");
+    const modelPickerRow = document.createElement("div");
+    modelPickerRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
     const apiKey = makeInput(state.lmStudioApiKey || "", "password");
     const lmPanel = document.createElement("div");
     lmPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
@@ -9923,9 +9950,47 @@ function openBuilder(node) {
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     note.textContent = "In LM Studio, load your Gemma GGUF model, open the Local Server tab, start the server, then copy the model name shown there. No extra Python install is needed.";
     const test = makeButton("Test LM Studio", "primary");
+    modelSelect.onchange = () => {
+      if (modelSelect.value) model.value = modelSelect.value;
+    };
+    loadModels.onclick = async () => {
+      loadModels.disabled = true;
+      loadModels.textContent = "Loading...";
+      try {
+        const data = await postJson("/vrgdg/music_builder/lm_studio_models", {
+          lmstudio_base_url: baseUrl.value || "http://127.0.0.1:1234/v1",
+          lmstudio_api_key: apiKey.value || "",
+        }, 45000);
+        const allIds = Array.isArray(data?.models) ? data.models.map((item) => String(item || "").trim()).filter(Boolean) : [];
+        const ids = allIds.filter((id) => !isLikelyEmbeddingModelId(id));
+        if (!allIds.length) throw new Error("LM Studio returned no models. Load a chat model in LM Studio and make sure the local server is running.");
+        if (!ids.length) throw new Error("LM Studio only returned embedding models. Load a chat/text-generation model, then click Load LM Studio Models again.");
+        modelSelect.innerHTML = "";
+        ids.forEach((id) => {
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = id;
+          modelSelect.append(option);
+        });
+        const current = String(model.value || "").trim();
+        if (current && ids.includes(current)) modelSelect.value = current;
+        else {
+          modelSelect.value = ids[0];
+          model.value = ids[0];
+        }
+        toast(`Loaded ${ids.length} LM Studio model${ids.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        loadModels.disabled = false;
+        loadModels.textContent = "Load LM Studio Models";
+      }
+    };
+    modelPickerRow.append(makeField("Available LM Studio models", modelSelect), loadModels);
     lmPanel.append(
       note,
       makeField("LM Studio base URL", baseUrl),
+      modelPickerRow,
       makeField("LM Studio model name", model),
       makeField("API key (usually blank for local LM Studio)", apiKey),
       test,
@@ -10119,24 +10184,46 @@ function openBuilder(node) {
 
   async function confirmAndRunGemmaVideoAll() {
     const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
-    const mode = await chooseBatchModeAction({
+    const targets = allEditableSegments().filter((segment) => !String(segment.i2v_prompt || "").trim());
+    const hasVisionTargets = targets.length
+      ? targets.some((segment) => videoVisionReferenceEnabled(segment))
+      : allEditableSegments().some((segment) => videoVisionReferenceEnabled(segment));
+    const textChoices = [
+      {
+        value: "missing_text",
+        label: "Missing, text only",
+        description: `Keep existing ${videoLabel} prompts. Use the selected text runner and T2I/concept prompt plus motion notes for scenes with no saved video prompt.`,
+      },
+      {
+        value: "redo_text",
+        label: `Redo all, text only`,
+        description: "Replace every scene's saved video prompt using the selected text runner. Images and videos stay untouched.",
+      },
+    ];
+    const visionChoices = [
+      {
+        value: "missing_vision",
+        label: "Missing, vision",
+        description: `Keep existing ${videoLabel} prompts. Use the built-in vision GGUF to look at each selected scene/reference image plus motion notes for missing prompts.`,
+      },
+      {
+        value: "redo_vision",
+        label: `Redo all, vision`,
+        description: "Replace every scene's saved video prompt using the built-in vision GGUF and each scene/reference image. Images and videos stay untouched.",
+      },
+    ];
+    const action = await chooseBatchModeAction({
       title: `Run Gemma ${videoLabel} All?`,
-      intro: `This only creates ${videoLabel} prompts for review. It uses the text LLM, keeps Gemma loaded for the prompt pass, then unloads at the end. It will not render videos or stitch the final video.`,
+      intro: `This only creates ${videoLabel} prompts for review. It will not render videos or stitch the final video. ${hasVisionTargets ? "Image-reference scenes were detected, so vision options are listed first." : "No image-reference scenes were detected, so text-only options are listed first."}`,
       confirmLabel: `Run Gemma ${videoLabel} All`,
-      choices: [
-        {
-          value: "missing_only",
-          label: "Missing prompts only",
-          description: `Keep existing ${videoLabel} prompts. Only run Gemma for scenes with no saved video prompt.`,
-        },
-        {
-          value: "redo_all",
-          label: `Redo all ${videoLabel} prompts`,
-          description: "Replace every scene's saved video prompt with a fresh text-only Gemma prompt. Images and videos stay untouched.",
-        },
-      ],
+      defaultValue: hasVisionTargets ? "missing_vision" : "missing_text",
+      choices: hasVisionTargets ? [...visionChoices, ...textChoices] : [...textChoices, ...visionChoices],
     });
-    if (mode) await gemmaVideoAllTextOnly({ promptRunMode: mode });
+    if (!action) return;
+    await gemmaVideoAllTextOnly({
+      promptRunMode: action.startsWith("missing") ? "missing_only" : "redo_all",
+      gemmaInputMode: action.endsWith("vision") ? "vision" : "text",
+    });
   }
 
   async function confirmAndRunRenderAll() {
