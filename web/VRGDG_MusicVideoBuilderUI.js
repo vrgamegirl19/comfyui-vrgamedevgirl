@@ -1306,6 +1306,7 @@ function openBuilder(node) {
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const fluxReferenceBuilderButton = makeButton("Reference Builder for Flux Klein");
   const promptOptionsButton = makeButton("Prompt Options");
+  const gemmaRunnerButton = makeButton("Gemma Runner");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
   const gemmaT2IAllButton = makeButton("Gemma T2I All");
@@ -1339,7 +1340,7 @@ function openBuilder(node) {
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  importActions.append(fluxReferenceBuilderButton, promptOptionsButton);
+  importActions.append(fluxReferenceBuilderButton, gemmaRunnerButton, promptOptionsButton);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, closeButton);
@@ -2500,6 +2501,10 @@ function openBuilder(node) {
     themeStylePath: "",
     storyIdeaPath: "",
     subjectScenePath: "",
+    textGemmaRunner: "builtin",
+    lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
+    lmStudioModel: "",
+    lmStudioApiKey: "",
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     fluxKleinSettings: defaultFluxKleinSettings(),
@@ -2517,6 +2522,15 @@ function openBuilder(node) {
     batchCancelled: false,
   };
   const LAST_PROJECT_KEY = "vrgdg_music_builder_last_project_folder";
+
+  function textGemmaRunnerPayload() {
+    return {
+      text_runner: state.textGemmaRunner || "builtin",
+      lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+      lmstudio_model: state.lmStudioModel || "",
+      lmstudio_api_key: state.lmStudioApiKey || "",
+    };
+  }
 
   function rememberLastProject(projectFolder = "") {
     const folder = String(projectFolder || "").trim();
@@ -2967,6 +2981,10 @@ function openBuilder(node) {
       themeStylePath: state.themeStylePath,
       storyIdeaPath: state.storyIdeaPath,
       subjectScenePath: state.subjectScenePath,
+      textGemmaRunner: state.textGemmaRunner,
+      lmStudioBaseUrl: state.lmStudioBaseUrl,
+      lmStudioModel: state.lmStudioModel,
+      lmStudioApiKey: state.lmStudioApiKey,
       waveformMode: state.waveformMode,
       snapToBeats: state.snapToBeats,
       showBeatMarkers: state.showBeatMarkers,
@@ -3006,6 +3024,10 @@ function openBuilder(node) {
     state.themeStylePath = data.themeStylePath || "";
     state.storyIdeaPath = data.storyIdeaPath || "";
     state.subjectScenePath = data.subjectScenePath || "";
+    state.textGemmaRunner = data.textGemmaRunner || data.text_gemma_runner || state.textGemmaRunner || "builtin";
+    state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
+    state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
+    state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
     state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
@@ -6157,7 +6179,7 @@ function openBuilder(node) {
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile) {
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -6167,6 +6189,7 @@ function openBuilder(node) {
         progress.set("Creating ZImage prompt with Gemma...", 8);
         const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
         const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          ...textGemmaRunnerPayload(),
           model_file: modelFile,
           reference_type: referenceType,
           source_text: text,
@@ -6225,7 +6248,7 @@ function openBuilder(node) {
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile) {
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -6236,6 +6259,7 @@ function openBuilder(node) {
         progress = createProgressWindow("Auto mapping Flux/Klein locations");
         progress.set("Sending scene concepts to Gemma...", 10);
         const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
+          ...textGemmaRunnerPayload(),
           model_file: modelFile,
           scenes: usableScenes,
           subject_scene_text: subjectSceneInput.value || "",
@@ -6936,6 +6960,10 @@ function openBuilder(node) {
       theme_style_path: state.themeStylePath,
       story_idea_path: state.storyIdeaPath,
       subject_scene_path: state.subjectScenePath,
+      text_gemma_runner: state.textGemmaRunner || "builtin",
+      lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+      lm_studio_model: state.lmStudioModel || "",
+      lm_studio_api_key: state.lmStudioApiKey || "",
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
@@ -7028,6 +7056,10 @@ function openBuilder(node) {
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
         state.storyIdeaPath = data.session.story_idea_path || state.storyIdeaPath;
         state.subjectScenePath = data.session.subject_scene_path || state.subjectScenePath;
+        state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
+        state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
+        state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
+        state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
         state.peaks = Array.isArray(data.session.audio_peaks) ? data.session.audio_peaks : state.peaks;
@@ -7162,6 +7194,10 @@ function openBuilder(node) {
       state.themeStylePath = session.theme_style_path || "";
       state.storyIdeaPath = session.story_idea_path || "";
       state.subjectScenePath = session.subject_scene_path || "";
+      state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
+      state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
+      state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
+      state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
       state.peaks = Array.isArray(session.audio_peaks) ? session.audio_peaks : state.peaks;
@@ -7482,6 +7518,7 @@ function openBuilder(node) {
       : (useVision ? gemmaModelSelect : t2iTextGemmaModelSelect);
     const mmprojSelectForMode = state.imageModelMode === "ernie_image" ? ernieMmprojSelect : mmprojSelect;
     const data = await postJson("/vrgdg/music_builder/generate_t2i", {
+      ...textGemmaRunnerPayload(),
       model_file: gemmaSelect.value,
       mmproj_file: useVision ? mmprojSelectForMode.value : "",
       use_vision: useVision,
@@ -8101,6 +8138,7 @@ function openBuilder(node) {
       progress.set(useImageReference ? "Preparing image reference and motion notes..." : "Preparing T2I prompt and motion notes...", 20);
       progress.set(useImageReference ? "Running Gemma vision I2V prompt generation..." : `Running Gemma text-only ${modeLabel} prompt generation...`, 50);
       const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+        ...textGemmaRunnerPayload(),
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isT2V ? conceptPrompt : useImageReference ? "" : conceptPrompt,
@@ -8135,6 +8173,7 @@ function openBuilder(node) {
     if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
     progress?.set(`${label}: converting T2I prompt to I2V prompt without vision...`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_i2v", {
+      ...textGemmaRunnerPayload(),
       model_file: i2vTextGemmaModelSelect.value,
       mmproj_file: "",
       t2i_prompt: t2iText,
@@ -8172,6 +8211,7 @@ function openBuilder(node) {
       ? `${label}: creating ${modeLabel} prompt from reference image, concept, and motion notes...`
       : `${label}: converting T2I prompt to ${modeLabel} prompt without vision...`, percent);
     const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+      ...textGemmaRunnerPayload(),
       model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
       mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
       t2i_prompt: isT2V ? t2iText : useImageReference ? "" : t2iText,
@@ -9862,6 +9902,84 @@ function openBuilder(node) {
     });
   }
 
+  function openGemmaRunnerModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(640px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Gemma Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">LM Studio is used for text-only Gemma steps. Vision/image-reference Gemma stays on the built-in GGUF runner for now.</div>`;
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const runner = makeSelect(["builtin", "lm_studio"], state.textGemmaRunner || "builtin");
+    const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
+    const model = makeInput(state.lmStudioModel || "");
+    const apiKey = makeInput(state.lmStudioApiKey || "", "password");
+    const lmPanel = document.createElement("div");
+    lmPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
+    const note = document.createElement("div");
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    note.textContent = "In LM Studio, load your Gemma GGUF model, open the Local Server tab, start the server, then copy the model name shown there. No extra Python install is needed.";
+    const test = makeButton("Test LM Studio", "primary");
+    lmPanel.append(
+      note,
+      makeField("LM Studio base URL", baseUrl),
+      makeField("LM Studio model name", model),
+      makeField("API key (usually blank for local LM Studio)", apiKey),
+      test,
+    );
+    const syncVisibility = () => {
+      lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
+    };
+    runner.onchange = syncVisibility;
+    test.onclick = async () => {
+      state.textGemmaRunner = "lm_studio";
+      state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
+      state.lmStudioModel = model.value || "";
+      state.lmStudioApiKey = apiKey.value || "";
+      let progress = null;
+      try {
+        progress = createProgressWindow("Testing LM Studio");
+        progress.set("Sending a tiny text prompt to LM Studio...", 35);
+        const data = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          ...textGemmaRunnerPayload(),
+          model_file: t2iTextGemmaModelSelect.value || "",
+          reference_type: "location",
+          source_text: "small empty test room",
+          style_theme: "",
+          max_new_tokens: 120,
+        }, 60000);
+        progress.set(`LM Studio responded successfully:\n${data.prompt}`, 100);
+        progress.close(4000);
+        toast("LM Studio text runner works.");
+      } catch (error) {
+        progress?.set(`LM Studio test failed:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    };
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Save Runner", "primary");
+    actions.append(cancel, save);
+    box.append(header, makeField("Text Gemma runner", runner), lmPanel, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    syncVisibility();
+    close.onclick = cancel.onclick = () => backdrop.remove();
+    save.onclick = async () => {
+      state.textGemmaRunner = runner.value || "builtin";
+      state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
+      state.lmStudioModel = model.value || "";
+      state.lmStudioApiKey = apiKey.value || "";
+      await autoSaveSessionQuiet("Gemma runner settings");
+      toast(state.textGemmaRunner === "lm_studio" ? "Gemma text runner set to LM Studio." : "Gemma text runner set to built-in GGUF.");
+      backdrop.remove();
+    };
+  }
+
   function confirmDeleteMediaAction(type, path) {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
@@ -10272,6 +10390,7 @@ function openBuilder(node) {
   promptCreatorButton.onclick = openPromptCreatorPanel;
   fluxReferenceBuilderButton.onclick = openFluxReferenceBuilderModal;
   promptOptionsButton.onclick = openPromptOptionsModal;
+  gemmaRunnerButton.onclick = openGemmaRunnerModal;
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;

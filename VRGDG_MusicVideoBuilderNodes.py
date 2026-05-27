@@ -10,6 +10,8 @@ import time
 import wave
 import base64
 import array
+import urllib.error
+import urllib.request
 
 import folder_paths
 from aiohttp import web
@@ -28,6 +30,8 @@ from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
 
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
+
+_LM_STUDIO_DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1"
 
 _T2V_INSTRUCTIONS = """Convert the user's concept prompt into a dynamic text-to-video prompt.
 
@@ -1556,6 +1560,120 @@ def _validate_builder_gemma_prompt(text, label):
         )
 
 
+def _llm_runner_from_payload(payload):
+    runner = str(payload.get("text_runner") or payload.get("gemma_runner") or "builtin").strip().lower()
+    if runner in {"lmstudio", "lm-studio", "lm_studio"}:
+        runner = "lm_studio"
+    if runner not in {"builtin", "lm_studio"}:
+        runner = "builtin"
+    return runner
+
+
+def _run_lm_studio_text(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200):
+    base_url = str(payload.get("lmstudio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL).strip().rstrip("/")
+    model = str(payload.get("lmstudio_model") or payload.get("model_file") or "").strip()
+    api_key = str(payload.get("lmstudio_api_key") or "").strip()
+    if not base_url:
+        raise ValueError("LM Studio base URL is empty.")
+    if not model:
+        raise ValueError("Enter the LM Studio model name shown in LM Studio.")
+    url = f"{base_url}/chat/completions"
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": instruction_text}],
+        "temperature": float(temperature),
+        "top_p": float(top_p),
+        "max_tokens": int(max_new_tokens),
+        "stream": False,
+    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=float(payload.get("lmstudio_timeout") or 180)) as response:
+            data = json.loads(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        raise RuntimeError(f"LM Studio request failed ({exc.code}): {details or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Could not connect to LM Studio at {base_url}. Make sure LM Studio's local server is running.") from exc
+    choices = data.get("choices") if isinstance(data, dict) else None
+    if not choices:
+        raise ValueError("LM Studio returned no choices.")
+    message = choices[0].get("message") if isinstance(choices[0], dict) else {}
+    text = message.get("content") if isinstance(message, dict) else ""
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("LM Studio returned empty text.")
+    return text
+
+
+def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200, label="Gemma"):
+    if _llm_runner_from_payload(payload) == "lm_studio":
+        text = _run_lm_studio_text(
+            payload,
+            instruction_text,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+        )
+        return _clean_visual_gemma_text(text), {
+            "runner": "lm_studio",
+            "used_model": str(payload.get("lmstudio_model") or "").strip(),
+            "unloaded": False,
+        }
+
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file:
+        raise ValueError(f"Choose a {label} model first.")
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    unload_after = bool(payload.get("unload_after", True))
+    try:
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+        )
+        text = llm._run_gguf_text_pipeline(
+            model=model,
+            instruction_text=instruction_text,
+            temperature=float(temperature),
+            top_p=float(top_p),
+            max_new_tokens=int(max_new_tokens),
+        )
+        return _clean_visual_gemma_text(text), {
+            "runner": "builtin",
+            "used_model": model_path,
+            "unloaded": unload_after,
+        }
+    finally:
+        if unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path="",
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+
+
 def _generate_builder_t2i_prompt(payload):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -1578,7 +1696,8 @@ def _generate_builder_t2i_prompt(payload):
         user_notes = "\n\n".join(context_parts + ([f"Segment notes:\n{user_notes}"] if user_notes else []))
     use_vision = bool(payload.get("use_vision"))
     has_ref_image = bool(use_vision and ((ref_image_path and os.path.isfile(ref_image_path)) or ref_image_data))
-    if not model_file:
+    text_runner = _llm_runner_from_payload(payload)
+    if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose a Gemma model first.")
     if use_vision and not has_ref_image:
         raise ValueError("Choose a valid reference image path/data or turn off vision reference.")
@@ -1587,8 +1706,8 @@ def _generate_builder_t2i_prompt(payload):
     if not has_ref_image and not user_notes:
         raise ValueError("Enter scene notes or provide a reference image.")
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if has_ref_image else ""
     mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if has_ref_image else ""
     image = None
     if has_ref_image:
@@ -1609,15 +1728,15 @@ def _generate_builder_t2i_prompt(payload):
     unload_after = bool(payload.get("unload_after", True))
 
     try:
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-            mmproj_path=mmproj_path,
-        )
         if has_ref_image:
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
             text = llm._run_gguf_vision_pipeline(
                 model=model,
                 pil_images=[image],
@@ -1627,24 +1746,26 @@ def _generate_builder_t2i_prompt(payload):
                 max_new_tokens=max_new_tokens,
             )
         else:
-            text = llm._run_gguf_text_pipeline(
-                model=model,
-                instruction_text=prompt,
+            text, run_info = _run_builder_text_llm(
+                payload,
+                prompt,
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
+                label="Gemma",
             )
         text = _clean_visual_gemma_text(text)
         _validate_builder_gemma_prompt(text, "T2I")
         return {
             "prompt": text,
             "used_reference_image": has_ref_image,
-            "used_model": model_path,
+            "used_model": model_path if has_ref_image else run_info.get("used_model", ""),
             "used_mmproj": mmproj_path,
-            "unloaded": unload_after,
+            "runner": "builtin" if has_ref_image else run_info.get("runner", "builtin"),
+            "unloaded": unload_after if has_ref_image else run_info.get("unloaded", unload_after),
         }
     finally:
-        if unload_after:
+        if has_ref_image and unload_after:
             llm._unload_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -1665,9 +1786,10 @@ def _generate_builder_i2v_prompt(payload):
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
-    if not model_file:
+    text_runner = _llm_runner_from_payload(payload)
+    if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose an I2V Gemma model first.")
-    if not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner != "lm_studio" and not model_file.lower().endswith(".gguf"):
         raise ValueError("The I2V model field is not a GGUF model.")
 
     image = None
@@ -1682,6 +1804,8 @@ def _generate_builder_i2v_prompt(payload):
 
     if has_image_reference and not mmproj_file:
         raise ValueError("Choose an mmproj file for the I2V vision model.")
+    if has_image_reference and not model_file:
+        raise ValueError("Choose an I2V vision Gemma model first.")
     if not has_image_reference and not t2i_prompt:
         raise ValueError("Create or paste a T2I prompt first, or save/load an image reference.")
     if not has_image_reference:
@@ -1774,9 +1898,10 @@ def _generate_builder_t2v_prompt(payload):
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
-    if not model_file:
+    text_runner = _llm_runner_from_payload(payload)
+    if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose a T2V Gemma model first.")
-    if not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner != "lm_studio" and not model_file.lower().endswith(".gguf"):
         raise ValueError("The T2V model field is not a GGUF model.")
     if not scene_prompt:
         raise ValueError("Create or paste a T2I/concept prompt first.")
@@ -1792,6 +1917,8 @@ def _generate_builder_t2v_prompt(payload):
         has_image_reference = True
     if has_image_reference and not mmproj_file:
         raise ValueError("Choose an mmproj file for the T2V vision model.")
+    if has_image_reference and not model_file:
+        raise ValueError("Choose a T2V vision Gemma model first.")
     if has_image_reference:
         max_height = 512
         if image.height > max_height:
@@ -1824,8 +1951,8 @@ def _generate_builder_t2v_prompt(payload):
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if has_image_reference else ""
     mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if has_image_reference else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -1837,15 +1964,15 @@ def _generate_builder_t2v_prompt(payload):
     unload_after = bool(payload.get("unload_after", True))
 
     try:
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-            mmproj_path=mmproj_path,
-        )
         if has_image_reference:
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
             text = llm._run_gguf_vision_pipeline(
                 model=model,
                 pil_images=[image],
@@ -1855,18 +1982,26 @@ def _generate_builder_t2v_prompt(payload):
                 max_new_tokens=max_new_tokens,
             )
         else:
-            text = llm._run_gguf_text_pipeline(
-                model=model,
-                instruction_text=prompt,
+            text, run_info = _run_builder_text_llm(
+                payload,
+                prompt,
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
+                label="T2V Gemma",
             )
         text = _clean_gemma_prompt_text(text)
         _validate_builder_gemma_prompt(text, "T2V")
-        return {"prompt": text, "used_model": model_path, "used_mmproj": mmproj_path, "used_image_reference": has_image_reference, "unloaded": unload_after}
+        return {
+            "prompt": text,
+            "used_model": model_path if has_image_reference else run_info.get("used_model", ""),
+            "used_mmproj": mmproj_path,
+            "runner": "builtin" if has_image_reference else run_info.get("runner", "builtin"),
+            "used_image_reference": has_image_reference,
+            "unloaded": unload_after if has_image_reference else run_info.get("unloaded", unload_after),
+        }
     finally:
-        if unload_after:
+        if has_image_reference and unload_after:
             llm._unload_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -2074,10 +2209,8 @@ def _generate_flux_klein_prompt(payload):
 
 
 def _generate_flux_reference_location_map(payload):
-    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
-
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file:
+    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
         raise ValueError("Choose a non-vision Gemma model first.")
 
     scenes = payload.get("scenes") or []
@@ -2152,92 +2285,65 @@ def _generate_flux_reference_location_map(payload):
         f"Scenes:\n\n{chr(10).join(scene_lines)}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
-    n_ctx = int(payload.get("n_ctx") or 10000)
-    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
-    n_threads = int(payload.get("n_threads") or 8)
-    chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.8)
     max_new_tokens = int(payload.get("max_new_tokens") or 5000)
-    unload_after = bool(payload.get("unload_after", True))
-
-    try:
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-        )
-        text = llm._run_gguf_text_pipeline(
-            model=model,
-            instruction_text=instruction,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-        )
-        data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
-        if not isinstance(data, dict):
-            raise ValueError("Gemma did not return a JSON object.")
-        locations = data.get("locations") or []
-        scene_map = data.get("scene_map") or {}
-        if not isinstance(locations, list) or not locations:
-            raise ValueError("Gemma location map is missing locations.")
-        if not isinstance(scene_map, dict):
-            raise ValueError("Gemma location map is missing scene_map.")
-        normalized_locations = []
-        seen_names = set()
-        for item in locations:
-            if not isinstance(item, dict):
-                continue
-            name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
-            description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
-            if not name:
-                continue
-            key = name.lower()
-            if key in seen_names:
-                continue
-            seen_names.add(key)
-            normalized_locations.append({"name": name, "description": description})
-        if not normalized_locations:
-            raise ValueError("Gemma returned only empty location names.")
-        valid_names = {item["name"].lower(): item["name"] for item in normalized_locations}
-        normalized_map = {}
-        for scene in cleaned_scenes:
-            raw_name = re.sub(r"\s+", " ", str(scene_map.get(scene["id"], "") or "").strip())
-            normalized_map[scene["id"]] = valid_names.get(raw_name.lower(), normalized_locations[0]["name"])
-        return {
-            "locations": normalized_locations,
-            "scene_map": normalized_map,
-            "raw_text": text,
-            "used_model": model_path,
-            "unloaded": unload_after,
-        }
-    finally:
-        if unload_after:
-            llm._unload_gguf_model(
-                model_path=model_path,
-                n_ctx=n_ctx,
-                n_gpu_layers=n_gpu_layers,
-                n_threads=n_threads,
-                chat_format=chat_format,
-            )
-            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
-            _clear_comfy_model_memory()
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=temperature,
+        top_p=top_p,
+        max_new_tokens=max_new_tokens,
+        label="Gemma",
+    )
+    data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
+    if not isinstance(data, dict):
+        raise ValueError("Gemma did not return a JSON object.")
+    locations = data.get("locations") or []
+    scene_map = data.get("scene_map") or {}
+    if not isinstance(locations, list) or not locations:
+        raise ValueError("Gemma location map is missing locations.")
+    if not isinstance(scene_map, dict):
+        raise ValueError("Gemma location map is missing scene_map.")
+    normalized_locations = []
+    seen_names = set()
+    for item in locations:
+        if not isinstance(item, dict):
+            continue
+        name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+        description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        normalized_locations.append({"name": name, "description": description})
+    if not normalized_locations:
+        raise ValueError("Gemma returned only empty location names.")
+    valid_names = {item["name"].lower(): item["name"] for item in normalized_locations}
+    normalized_map = {}
+    for scene in cleaned_scenes:
+        raw_name = re.sub(r"\s+", " ", str(scene_map.get(scene["id"], "") or "").strip())
+        normalized_map[scene["id"]] = valid_names.get(raw_name.lower(), normalized_locations[0]["name"])
+    return {
+        "locations": normalized_locations,
+        "scene_map": normalized_map,
+        "raw_text": text,
+        "used_model": run_info.get("used_model", ""),
+        "runner": run_info.get("runner", "builtin"),
+        "unloaded": run_info.get("unloaded", True),
+    }
 
 
 def _generate_flux_reference_zimage_prompt(payload):
-    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
-
     model_file = str(payload.get("model_file", "") or "").strip()
     reference_type = str(payload.get("reference_type", "") or "").strip().lower()
     source_text = str(payload.get("source_text", "") or "").strip()
     style_theme = str(payload.get("style_theme", "") or "").strip()
     if reference_type not in {"subject", "location"}:
         raise ValueError("Reference type must be subject or location.")
-    if not model_file:
+    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
         raise ValueError("Choose a non-vision Gemma model first.")
     if not source_text:
         raise ValueError("Enter a subject or location description first.")
@@ -2283,46 +2389,26 @@ def _generate_flux_reference_zimage_prompt(payload):
             f"Optional global style/theme:\n{style_theme or '(none)'}"
         )
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
-    n_ctx = int(payload.get("n_ctx") or 8000)
-    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
-    n_threads = int(payload.get("n_threads") or 8)
-    chat_format = str(payload.get("chat_format", "") or "").strip()
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.8)
     max_new_tokens = int(payload.get("max_new_tokens") or 900)
-    unload_after = bool(payload.get("unload_after", True))
 
-    try:
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-        )
-        text = llm._run_gguf_text_pipeline(
-            model=model,
-            instruction_text=instruction,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-        )
-        text = _clean_visual_gemma_text(text)
-        _validate_builder_gemma_prompt(text, f"Flux/Klein {reference_type} reference")
-        return {"prompt": text, "used_model": model_path, "unloaded": unload_after}
-    finally:
-        if unload_after:
-            llm._unload_gguf_model(
-                model_path=model_path,
-                n_ctx=n_ctx,
-                n_gpu_layers=n_gpu_layers,
-                n_threads=n_threads,
-                chat_format=chat_format,
-            )
-            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
-            _clear_comfy_model_memory()
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=temperature,
+        top_p=top_p,
+        max_new_tokens=max_new_tokens,
+        label="Gemma",
+    )
+    text = _clean_visual_gemma_text(text)
+    _validate_builder_gemma_prompt(text, f"Flux/Klein {reference_type} reference")
+    return {
+        "prompt": text,
+        "used_model": run_info.get("used_model", ""),
+        "runner": run_info.get("runner", "builtin"),
+        "unloaded": run_info.get("unloaded", True),
+    }
 
 
 def _gemma_choices():
