@@ -1307,6 +1307,8 @@ function openBuilder(node) {
   const promptOptionsButton = makeButton("Prompt Options");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
+  const gemmaT2IAllButton = makeButton("Gemma T2I All");
+  const gemmaVideoAllButton = makeButton("Gemma Video All");
   const zImageAllButton = makeButton("Image All");
   const fullBuildButton = makeButton("Build Full Video");
   const remakeModeButton = makeButton("Remake Mode");
@@ -1322,7 +1324,7 @@ function openBuilder(node) {
     button.style.textAlign = "left";
     button.style.justifyContent = "flex-start";
   };
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, zImageAllButton, renderAllButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -1420,7 +1422,7 @@ function openBuilder(node) {
   fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
   const useSceneI2VVideoSettings = makeCheckbox("Use custom video models/settings/LoRAs for this scene", false);
   const useSceneI2VVideoSettingsNote = document.createElement("div");
-  useSceneI2VVideoSettingsNote.textContent = "Applies the Models tab choices too, including video model files, LoRAs, LoRA count, and both pass strengths.";
+  useSceneI2VVideoSettingsNote.textContent = "Applies video model files, LoRAs, LoRA count, pass strengths, FPS, size, trigger phrase, and seed to this scene only.";
   useSceneI2VVideoSettingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
   const videoSettingsScopeNote = document.createElement("div");
   videoSettingsScopeNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
@@ -3316,6 +3318,9 @@ function openBuilder(node) {
   }
 
   function setActiveSegment(segment) {
+    if (state.activeId && state.activeId !== segment?.id) {
+      saveI2VVideoSettingsFromPanel();
+    }
     state.activeId = segment?.id || "";
     state.activeTrack = segment ? segmentTrack(segment) : state.activeTrack || "base";
     syncInspector();
@@ -3990,12 +3995,14 @@ function openBuilder(node) {
     return seed;
   }
 
-  function setVideoSeedRandom() {
-    const settings = activeI2VVideoSettings() || {};
+  function setVideoSeedRandom(segment = activeSegment()) {
+    const settings = segment?.use_scene_i2v_video_settings
+      ? cloneI2VVideoSettings(segment.i2v_video_settings || state.i2vVideoSettings)
+      : cloneI2VVideoSettings(state.i2vVideoSettings);
     settings.seed = randomSeedValue();
-    if (activeSegment()?.use_scene_i2v_video_settings) activeSegment().i2v_video_settings = settings;
+    if (segment?.use_scene_i2v_video_settings) segment.i2v_video_settings = settings;
     else state.i2vVideoSettings = settings;
-    i2vSeedInput.value = String(settings.seed);
+    if (!segment || segment.id === activeSegment()?.id) i2vSeedInput.value = String(settings.seed);
     return settings.seed;
   }
 
@@ -5871,7 +5878,7 @@ function openBuilder(node) {
     }
   }
 
-  async function loadSrt() {
+  async function loadSrt(options = {}) {
     try {
       if (!srtInput.value.trim()) {
         const paths = await getJson("/vrgdg/music_builder/default_audio_srt_paths");
@@ -5895,6 +5902,7 @@ function openBuilder(node) {
       render();
       toast(`Loaded ${state.segments.length} SRT segment${state.segments.length === 1 ? "" : "s"}.\nTiming is frozen.`);
     } catch (error) {
+      if (options.throwOnError) throw error;
       toast(String(error?.message || error), true);
     }
   }
@@ -6098,7 +6106,7 @@ function openBuilder(node) {
     previewVideo.style.display = "none";
   }
 
-  async function autoLoadAll() {
+  async function autoLoadAll(options = {}) {
     try {
       autoLoadAllButton.disabled = true;
       autoLoadAllButton.textContent = "Importing...";
@@ -6108,6 +6116,7 @@ function openBuilder(node) {
       });
       let exists = paths.exists || {};
       let sourceLabel = "this project";
+      const sourceProjectFolder = String(options.sourceProjectFolder || "").trim();
       let currentPrompts = [];
       let currentMotionNotes = [];
       if (exists.concept_prompts_path) {
@@ -6126,7 +6135,31 @@ function openBuilder(node) {
       }
       const hasCurrentPrompts = currentPrompts.some((item) => String(item || "").trim());
       const hasCurrentMotionNotes = currentMotionNotes.some((item) => String(item || "").trim());
-      if (!exists.srt_path || !exists.concept_prompts_path || !hasCurrentPrompts || !hasCurrentMotionNotes) {
+      if (sourceProjectFolder) {
+        const targetProjectFolder = String(projectInput.value || state.projectFolder || "").trim();
+        if (targetProjectFolder && targetProjectFolder.replace(/[\\/]+$/, "").toLowerCase() === sourceProjectFolder.replace(/[\\/]+$/, "").toLowerCase()) {
+          paths = await postJson("/vrgdg/music_builder/project_prompt_creator_paths", {
+            project_folder: sourceProjectFolder,
+          });
+        } else {
+          try {
+            paths = await postJson("/vrgdg/music_builder/copy_prompt_creator_outputs", {
+              project_folder: targetProjectFolder,
+              source_project_folder: sourceProjectFolder,
+            }, 90000);
+          } catch (error) {
+            if (/\b405\b/.test(String(error?.message || error))) {
+              throw new Error("The Prompt Creator handoff backend route is not loaded yet. Fully restart ComfyUI, refresh the browser, then try Send To Video Creator again.");
+            }
+            throw error;
+          }
+        }
+        exists = paths.exists || {};
+        sourceLabel = paths.source_project_folder ? `selected Prompt Creator project:\n${paths.source_project_folder}` : "selected Prompt Creator project";
+        if (!exists.srt_path || !exists.concept_prompts_path) {
+          throw new Error("The selected Prompt Creator project does not have saved SRT and concept prompt outputs yet. Run or save Prompt Creator outputs first, then send it to Video Creator.");
+        }
+      } else if (!exists.srt_path || !exists.concept_prompts_path || !hasCurrentPrompts || !hasCurrentMotionNotes) {
         paths = await postJson("/vrgdg/music_builder/import_latest_prompt_creator_outputs", {
           project_folder: projectInput.value || state.projectFolder || "",
         }, 90000);
@@ -6151,7 +6184,7 @@ function openBuilder(node) {
       state.useVrgdgTextContext = true;
       useVrgdgTextContext.input.checked = true;
       if (paths.audio_path) await loadAudio();
-      await loadSrt();
+      await loadSrt({ throwOnError: true });
       let importedPrompts = [];
       let importedMotionNotes = [];
       if (promptJsonInput.value) {
@@ -6180,6 +6213,7 @@ function openBuilder(node) {
       toast(`${parts.join(" and ")} from ${sourceLabel}. Previous generated images/videos were cleared from this project session.`);
     } catch (error) {
       toast(String(error?.message || error), true);
+      if (options.throwOnError) throw error;
     } finally {
       autoLoadAllButton.disabled = false;
       autoLoadAllButton.textContent = "Import Data From Prompt Creator";
@@ -6762,6 +6796,16 @@ function openBuilder(node) {
       return null;
     }
     return segment;
+  }
+
+  function isBlankStarterProject() {
+    const segments = allEditableSegments();
+    if (state.overlaySegments.length) return false;
+    if (segments.length !== 1) return false;
+    const segment = segments[0] || {};
+    const emptyMedia = !segmentImageSource(segment) && !String(selectedSegmentVideoPath(segment) || "").trim();
+    const emptyText = !String(segment.notes || segment.t2i_prompt || segment.flux_prompt || segment.i2v_notes || segment.i2v_prompt || "").trim();
+    return emptyMedia && emptyText && /^new scene$/i.test(String(segment.label || "").trim());
   }
 
   function assertBatchNotStopped() {
@@ -7471,7 +7515,8 @@ function openBuilder(node) {
     if (!segment) throw new Error("Scene is missing.");
     const isT2V = currentVideoMode() === "t2v";
     const modeLabel = isT2V ? "T2V" : "I2V";
-    const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+    const forceTextOnly = Boolean(options.forceTextOnly);
+    const useImageReference = forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -7510,6 +7555,7 @@ function openBuilder(node) {
     const closeProgress = !options.progress;
     const allScenes = allEditableSegments();
     const redoPrompts = options.i2vRunMode === "redo_prompts";
+    const forceTextOnly = Boolean(options.forceTextOnly);
     if (redoPrompts) {
       allScenes.forEach((segment) => {
         segment.i2v_prompt = "";
@@ -7520,7 +7566,7 @@ function openBuilder(node) {
     if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+      const useImageReference = forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
@@ -7557,10 +7603,10 @@ function openBuilder(node) {
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * 100);
-        const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+        const useImageReference = forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
         const displayIndex = segmentIndexInfo(segment).index;
         progress.set(`Gemma ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false });
+        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly });
         await autoSaveSessionQuiet(`Gemma ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
       await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} prompt pass`, 96);
@@ -7573,6 +7619,155 @@ function openBuilder(node) {
       toast(String(error?.message || error), true);
     } finally {
       createI2VButton.disabled = false;
+    }
+  }
+
+  function promptAllModeTargets(promptRunMode = "missing_only", imageMode = state.imageModelMode || "zimage") {
+    const scenes = allEditableSegments().map((segment) => ({ segment, index: segmentIndexInfo(segment).index }));
+    if (promptRunMode === "redo_all") return scenes;
+    return scenes.filter(({ segment }) => {
+      if (imageMode === "flux_klein") return !String(segment.flux_prompt || segment.t2i_prompt || "").trim();
+      return !String(segment.t2i_prompt || "").trim();
+    });
+  }
+
+  async function gemmaT2IAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const imageMode = state.imageModelMode || "zimage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const promptRunMode = options.promptRunMode || "redo_all";
+    const redoPrompts = promptRunMode === "redo_all";
+    const allScenes = allEditableSegments().map((segment) => ({ segment, index: segmentIndexInfo(segment).index }));
+    const targetScenes = promptAllModeTargets(promptRunMode, imageMode);
+    const progress = createProgressWindow(`Gemma T2I All (${modelLabel})`);
+    const missing = [];
+    if (!allScenes.length) missing.push("No scenes found. Add or load scenes first.");
+    if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
+    targetScenes.forEach(({ segment, index }) => {
+      if (imageMode === "flux_klein") {
+        const ingredients = mergedFluxImageIngredients(segment);
+        if (!Array.isArray(ingredients) || !ingredients.length) {
+          missing.push(`${sceneDisplayName(segment, index)}: add at least one global or scene Flux/Klein image ingredient.`);
+        }
+      } else {
+        const reason = t2iMissingReason(segment);
+        if (reason) missing.push(`${sceneDisplayName(segment, index)}: ${reason}`);
+      }
+    });
+    if (missing.length) {
+      progress.setHtml(`
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:900;color:#fecaca;">Gemma T2I All cannot start yet.</div>
+          <div>Fix these first:</div>
+          <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
+        </div>
+      `, 100);
+      toast("Gemma T2I All needs scene inputs first.", true);
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      gemmaT2IAllButton.disabled = true;
+      zImageAllButton.disabled = true;
+      createT2IButton.disabled = true;
+      ernieCreateT2IButton.disabled = true;
+      createFluxPromptButton.disabled = true;
+      progress.set("Autosaving session/SRT before Gemma T2I All...", 3);
+      await saveSessionForSceneVideo();
+      if (redoPrompts) {
+        targetScenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      const promptScenes = redoPrompts ? targetScenes : promptAllModeTargets("missing_only", imageMode);
+      if (!promptScenes.length) {
+        progress.set("All scenes already have T2I prompts. Nothing to do.", 100);
+        progress.close(1800);
+        toast("All scenes already have T2I prompts.");
+        return;
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = promptScenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 5 + Math.floor((index / promptScenes.length) * 88);
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        progress.set(`Gemma T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+        if (imageMode === "flux_klein") {
+          await generateFluxKleinPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: Flux/Klein`, {
+            clearBeforeLoad: index === 0,
+            unloadAfter: false,
+          });
+        } else {
+          await generateT2IPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: ${modelLabel}`, {
+            unloadAfter: false,
+          });
+        }
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Gemma T2I All ${sceneLabel}`);
+      }
+      await runClearMemoryWorkflowQuiet(progress, "Gemma T2I prompt pass", 96);
+      await autoSaveSessionQuiet("Gemma T2I All complete");
+      progress.set("Gemma T2I All complete. Review or edit the image prompts before creating images.", 100);
+      progress.close(2500);
+      toast("Gemma T2I All complete.");
+    } catch (error) {
+      const message = String(error?.message || error);
+      const stopped = /stopped by user/i.test(message);
+      progress.set(`${stopped ? "Stopped" : "Error"}:\n${message}\n\nRunning memory cleanup...`, 100);
+      toast(message, !stopped);
+      try {
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped Gemma T2I All" : "Gemma T2I All error", 100);
+        progress.set(`${stopped ? "Stopped" : "Error"}:\n${message}\n\n${cleanupOutput}`, 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after Gemma T2I All failed:", cleanupError);
+      }
+    } finally {
+      gemmaT2IAllButton.disabled = false;
+      zImageAllButton.disabled = false;
+      createT2IButton.disabled = false;
+      ernieCreateT2IButton.disabled = false;
+      createFluxPromptButton.disabled = false;
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
+  async function gemmaVideoAllTextOnly(options = {}) {
+    updateActiveFromInputs();
+    const isT2V = currentVideoMode() === "t2v";
+    const modeLabel = isT2V ? "T2V" : "I2V";
+    const redoPrompts = options.promptRunMode !== "missing_only";
+    const targetScenes = allEditableSegments().filter((segment) => redoPrompts || !String(segment.i2v_prompt || "").trim());
+    const visionScenes = targetScenes
+      .filter((segment) => isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false)
+      .map((segment) => sceneDisplayName(segment, segmentIndexInfo(segment).index));
+    if (visionScenes.length) {
+      const progress = createProgressWindow(`Gemma ${modeLabel} All`);
+      progress.setHtml(`
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:900;color:#fecaca;">Gemma ${escapeHtml(modeLabel)} All is text-only review mode.</div>
+          <div>Turn off the image-reference checkbox for these scenes, then run this again:</div>
+          <div style="max-height:320px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(visionScenes.map((item) => `- ${item}`).join("\n"))}</div>
+          <div style="color:#cbd5e1;">Vision I2V prompts need scene images, so use the single-scene Gemma I2V button after images are created if you want Gemma to look at each image.</div>
+        </div>
+      `, 100);
+      toast(`Turn off image reference before running Gemma ${modeLabel} All.`, true);
+      return;
+    }
+    gemmaVideoAllButton.disabled = true;
+    try {
+      await i2vAllScenes({
+        i2vRunMode: options.promptRunMode === "missing_only" ? "missing_only" : "redo_prompts",
+        forceTextOnly: true,
+      });
+    } finally {
+      gemmaVideoAllButton.disabled = false;
     }
   }
 
@@ -7630,8 +7825,18 @@ function openBuilder(node) {
     `;
   }
 
-  function i2vVideoSettingsPayload() {
-    const settings = saveI2VVideoSettingsFromPanel();
+  function i2vVideoSettingsForSegment(segment = activeSegment()) {
+    if (!segment || segment.id === activeSegment()?.id) {
+      return saveI2VVideoSettingsFromPanel();
+    }
+    if (segment.use_scene_i2v_video_settings) {
+      return cloneI2VVideoSettings(segment.i2v_video_settings || state.i2vVideoSettings);
+    }
+    return cloneI2VVideoSettings(state.i2vVideoSettings);
+  }
+
+  function i2vVideoSettingsPayload(segment = activeSegment()) {
+    const settings = i2vVideoSettingsForSegment(segment);
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const payload = {
@@ -7897,7 +8102,7 @@ function openBuilder(node) {
       expectedDuration: expectedDurationForScene,
     });
     const payload = {
-      ...i2vVideoSettingsPayload(),
+      ...i2vVideoSettingsPayload(segment),
       i2v_prompt: segment.i2v_prompt,
       t2v_prompt: segment.i2v_prompt,
       audio_path: audioPathForScene,
@@ -8074,7 +8279,7 @@ function openBuilder(node) {
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
-        if (randomizeVideoSeed) setVideoSeedRandom();
+        if (randomizeVideoSeed) setVideoSeedRandom(segment);
         progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...`, base);
         await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
           progressBase: base,
@@ -8793,6 +8998,16 @@ function openBuilder(node) {
           state.subjectScenePath = subjectSceneInput.value;
         }
       },
+      onSendToVideoCreator: async (result) => {
+        const sourceProject = String(result?.project_folder || "").trim();
+        const currentProject = String(projectInput.value || state.projectFolder || "").trim();
+        if (sourceProject && (!currentProject || isBlankStarterProject())) {
+          projectInput.value = sourceProject;
+          state.projectFolder = sourceProject;
+          setWidgetValue(node, "project_folder", state.projectFolder);
+        }
+        await autoLoadAll({ sourceProjectFolder: result?.project_folder || "", throwOnError: true });
+      },
     });
   }
 
@@ -9102,6 +9317,51 @@ function openBuilder(node) {
     else await zImageAllScenes({ imageRunMode: mode });
   }
 
+  async function confirmAndRunGemmaT2IAll() {
+    const imageMode = state.imageModelMode || "zimage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const mode = await chooseBatchModeAction({
+      title: "Run Gemma T2I All?",
+      intro: `This only creates text-to-image prompts for review. It will not create images, videos, or the final stitched video. Current image model: ${modelLabel}.`,
+      confirmLabel: "Run Gemma T2I All",
+      choices: [
+        {
+          value: "missing_only",
+          label: "Missing prompts only",
+          description: "Keep existing T2I/Flux prompts. Only run Gemma for scenes with no saved image prompt.",
+        },
+        {
+          value: "redo_all",
+          label: "Redo all T2I prompts",
+          description: "Replace every scene's saved T2I/Flux prompt with a fresh Gemma prompt. Images and videos stay untouched.",
+        },
+      ],
+    });
+    if (mode) await gemmaT2IAllScenes({ promptRunMode: mode });
+  }
+
+  async function confirmAndRunGemmaVideoAll() {
+    const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+    const mode = await chooseBatchModeAction({
+      title: `Run Gemma ${videoLabel} All?`,
+      intro: `This only creates ${videoLabel} prompts for review. It uses the text LLM, keeps Gemma loaded for the prompt pass, then unloads at the end. It will not render videos or stitch the final video.`,
+      confirmLabel: `Run Gemma ${videoLabel} All`,
+      choices: [
+        {
+          value: "missing_only",
+          label: "Missing prompts only",
+          description: `Keep existing ${videoLabel} prompts. Only run Gemma for scenes with no saved video prompt.`,
+        },
+        {
+          value: "redo_all",
+          label: `Redo all ${videoLabel} prompts`,
+          description: "Replace every scene's saved video prompt with a fresh text-only Gemma prompt. Images and videos stay untouched.",
+        },
+      ],
+    });
+    if (mode) await gemmaVideoAllTextOnly({ promptRunMode: mode });
+  }
+
   async function confirmAndRunRenderAll() {
     const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
     const ok = await confirmLongBatchAction({
@@ -9355,6 +9615,8 @@ function openBuilder(node) {
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;
+  gemmaT2IAllButton.onclick = confirmAndRunGemmaT2IAll;
+  gemmaVideoAllButton.onclick = confirmAndRunGemmaVideoAll;
   zImageAllButton.onclick = confirmAndRunZImageAll;
   fullBuildButton.onclick = confirmAndRunFullBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;

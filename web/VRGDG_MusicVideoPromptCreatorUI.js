@@ -639,10 +639,11 @@ function openPromptCreator(options = {}) {
   title.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;margin-right:auto;";
   const backButton = makeButton("Back To Video Creator");
   const loadDraftButton = makeButton("Load Project Draft");
+  const sendToVideoButton = makeButton("Send To Video Creator", "primary");
   const saveDraftButton = makeButton("Save Project Draft", "primary");
   const closeButton = makeButton("Close");
   closeButton.onclick = () => overlay.remove();
-  topbar.append(title, backButton, loadDraftButton, saveDraftButton, closeButton);
+  topbar.append(title, backButton, loadDraftButton, sendToVideoButton, saveDraftButton, closeButton);
 
   const body = document.createElement("div");
   body.style.cssText = "min-height:0;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px;background:#1f2328;";
@@ -1248,6 +1249,32 @@ function openPromptCreator(options = {}) {
     return result;
   }
 
+  async function sendToVideoCreator() {
+    let progress = null;
+    try {
+      sendToVideoButton.disabled = true;
+      sendToVideoButton.textContent = "Sending...";
+      progress = createProgressWindow("Sending To Video Creator");
+      const result = await saveOutputs(progress);
+      progress.set("Opening Video Creator and importing this Prompt Creator project...", 96);
+      if (typeof options.onSendToVideoCreator === "function") {
+        await options.onSendToVideoCreator(result);
+      } else {
+        options.onSaved?.(result);
+      }
+      progress.set("Sent to Video Creator.", 100);
+      progress.close(900);
+      overlay.remove();
+    } catch (error) {
+      const message = error?.message || error;
+      setStatus(status, `Error:\n${message}`);
+      progress?.set(`Error:\n${message}`, 100);
+    } finally {
+      sendToVideoButton.disabled = false;
+      sendToVideoButton.textContent = "Send To Video Creator";
+    }
+  }
+
   async function saveDraft(progress = null) {
     setStatus(status, "Saving prompt creator draft...", true);
     progress?.set("Saving prompt creator draft...", 80);
@@ -1329,6 +1356,7 @@ function openPromptCreator(options = {}) {
       saveEditedOutputsButton.textContent = "Save Manual Edits";
     }
   };
+  sendToVideoButton.onclick = sendToVideoCreator;
   saveDraftButton.onclick = async () => {
     let progress = null;
     try {

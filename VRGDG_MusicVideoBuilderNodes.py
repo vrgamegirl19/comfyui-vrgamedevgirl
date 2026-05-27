@@ -34,7 +34,11 @@ Use the provided scene concept and motion notes to describe one short cinematic 
 
 Rules:
 - Output one normal text-to-video prompt, not an edit prompt.
-- Describe visible subject, setting, atmosphere, camera motion, character motion, and environmental motion.
+- Describe visible subject, setting, atmosphere, camera motion, character motion, performance energy, expressive facial movement, and environmental motion.
+- When the scene has a visible performer or singer, make the subject physically singing with passion, including natural mouth movement, expressive face, body movement, and strong performance gestures.
+- Keep the subject visible and framed throughout the shot.
+- User motion/camera notes always take priority. If user notes ask for no singing, silent b-roll, instrumental motion, no lip movement, or non-performance action, follow the user notes instead.
+- Do not use orbit type camera motion, do not use the word "spin", and the subject should never spin.
 - Do not mention source prompts, notes, lyrics, segments, JSON, or instructions.
 - Keep it concise, cinematic, and directly usable.
 - Do not include markdown, labels, quotes, or explanations."""
@@ -102,7 +106,59 @@ def _json_file_has_text_values(path):
     return False
 
 
+def _is_prompt_creator_output_folder(context_folder):
+    marker_path = os.path.join(context_folder, "prompt_creator_output.json")
+    if os.path.isfile(marker_path):
+        try:
+            with open(marker_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if str(data.get("type", "") or "") == "vrgdg_prompt_creator_output":
+                return True
+        except Exception:
+            return True
+
+    project_folder = os.path.dirname(context_folder)
+    legacy_markers = (
+        os.path.join(project_folder, "prompt_creator_draft.json"),
+        os.path.join(project_folder, "prompts", "lyric_segments.json"),
+        os.path.join(context_folder, "full_lyrics.txt"),
+    )
+    return any(os.path.isfile(path) for path in legacy_markers)
+
+
+def _last_prompt_creator_pointer_source(exclude_project_folder=""):
+    pointer_path = os.path.join(folder_paths.get_output_directory(), "VRGDG_LastPromptCreatorProject.json")
+    if not os.path.isfile(pointer_path):
+        return "", ""
+    try:
+        with open(pointer_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except Exception:
+        return "", ""
+    if str(data.get("type", "") or "") != "vrgdg_last_prompt_creator_project":
+        return "", ""
+    project_folder = os.path.abspath(str(data.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        return "", ""
+    exclude = os.path.normcase(os.path.abspath(str(exclude_project_folder or ""))) if exclude_project_folder else ""
+    if exclude and os.path.normcase(project_folder) == exclude:
+        return "", ""
+    raw_context = str(data.get("context_folder", "") or "").strip().strip('"')
+    context_folder = os.path.abspath(raw_context) if raw_context else _context_folder(project_folder)
+    concept_path = os.path.join(context_folder, "ConceptPrompts.txt")
+    srt_path = _srt_path(project_folder)
+    if not os.path.isfile(concept_path) or not os.path.isfile(srt_path):
+        return "", ""
+    if not _json_file_has_text_values(concept_path):
+        return "", ""
+    return project_folder, context_folder
+
+
 def _latest_prompt_creator_source(exclude_project_folder=""):
+    pointer_project, pointer_context = _last_prompt_creator_pointer_source(exclude_project_folder)
+    if pointer_project and pointer_context:
+        return pointer_project, pointer_context
+
     output_dir = folder_paths.get_output_directory()
     exclude = os.path.normcase(os.path.abspath(str(exclude_project_folder or ""))) if exclude_project_folder else ""
     candidates = []
@@ -115,6 +171,8 @@ def _latest_prompt_creator_source(exclude_project_folder=""):
         concept_path = os.path.join(root, "ConceptPrompts.txt")
         srt_path = _srt_path(project_folder)
         if not os.path.isfile(concept_path) or not os.path.isfile(srt_path):
+            continue
+        if not _is_prompt_creator_output_folder(root):
             continue
         if not _json_file_has_text_values(concept_path):
             continue
@@ -136,14 +194,22 @@ def _latest_prompt_creator_source(exclude_project_folder=""):
     return candidates[0][2], candidates[0][3]
 
 
-def _copy_latest_prompt_creator_outputs(project_folder):
+def _copy_prompt_creator_outputs_from_source(project_folder, source_project_folder=""):
     target = os.path.abspath(str(project_folder or "").strip().strip('"'))
     if not target:
         raise ValueError("Create or load a project before importing Prompt Creator data.")
     os.makedirs(target, exist_ok=True)
     os.makedirs(_context_folder(target), exist_ok=True)
     os.makedirs(os.path.join(target, "audio"), exist_ok=True)
-    source_project, source_context = _latest_prompt_creator_source(target)
+    if source_project_folder:
+        source_project = os.path.abspath(str(source_project_folder or "").strip().strip('"'))
+        source_context = _context_folder(source_project)
+        if os.path.normcase(source_project) == os.path.normcase(target):
+            return _project_prompt_creator_paths(target)
+        if not os.path.isfile(os.path.join(source_context, "ConceptPrompts.txt")) or not os.path.isfile(_srt_path(source_project)):
+            raise ValueError("The selected Prompt Creator project does not have saved ConceptPrompts.txt and builder_segments.srt outputs.")
+    else:
+        source_project, source_context = _latest_prompt_creator_source(target)
     copied = {}
     for filename in ("ConceptPrompts.txt", "I2VMotionNotes.txt", "themestyle.txt", "storyconcept.txt", "subjectsandscenes.txt", "subject.txt", "full_lyrics.txt"):
         source_path = os.path.join(source_context, filename)
@@ -159,6 +225,10 @@ def _copy_latest_prompt_creator_outputs(project_folder):
     result["source_project_folder"] = source_project
     result["copied"] = copied
     return result
+
+
+def _copy_latest_prompt_creator_outputs(project_folder):
+    return _copy_prompt_creator_outputs_from_source(project_folder, "")
 
 
 def _newest_file(folder, extensions):
@@ -2644,6 +2714,18 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _copy_latest_prompt_creator_outputs(payload.get("project_folder", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/copy_prompt_creator_outputs")
+    async def vrgdg_music_builder_copy_prompt_creator_outputs(request):
+        try:
+            payload = await request.json()
+            result = _copy_prompt_creator_outputs_from_source(
+                payload.get("project_folder", ""),
+                payload.get("source_project_folder", ""),
+            )
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

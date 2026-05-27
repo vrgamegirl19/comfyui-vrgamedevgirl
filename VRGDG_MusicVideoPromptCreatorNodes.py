@@ -1175,6 +1175,28 @@ def _save_prompt_creator_outputs(payload):
             handle.write(srt_text)
         files["builder_segments.srt"] = _srt_path(project_folder)
 
+    marker_path = os.path.join(context, "prompt_creator_output.json")
+    marker = {
+        "type": "vrgdg_prompt_creator_output",
+        "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "has_concept_prompts": bool(concept_prompts),
+        "has_i2v_motion_notes": bool(i2v_motion_notes),
+        "has_srt": bool(srt_text.strip()),
+    }
+    with open(marker_path, "w", encoding="utf-8") as handle:
+        json.dump(marker, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    files["prompt_creator_output.json"] = marker_path
+    latest_path = os.path.join(folder_paths.get_output_directory(), "VRGDG_LastPromptCreatorProject.json")
+    with open(latest_path, "w", encoding="utf-8") as handle:
+        json.dump({
+            "type": "vrgdg_last_prompt_creator_project",
+            "project_folder": project_folder,
+            "context_folder": context,
+            "saved_at": marker["saved_at"],
+        }, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+
     return {
         "project_folder": project_folder,
         "session_path": _session_path(project_folder),
@@ -1189,9 +1211,34 @@ def _draft_path(project_folder):
     return os.path.join(project_folder, "prompt_creator_draft.json")
 
 
+def _write_prompt_creator_pointer(project_folder, context, saved_at, marker=None):
+    marker_path = os.path.join(context, "prompt_creator_output.json")
+    marker_data = marker or {
+        "type": "vrgdg_prompt_creator_output",
+        "saved_at": saved_at,
+        "has_concept_prompts": os.path.isfile(os.path.join(context, "ConceptPrompts.txt")),
+        "has_i2v_motion_notes": os.path.isfile(os.path.join(context, "I2VMotionNotes.txt")),
+        "has_srt": os.path.isfile(_srt_path(project_folder)),
+    }
+    with open(marker_path, "w", encoding="utf-8") as handle:
+        json.dump(marker_data, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    latest_path = os.path.join(folder_paths.get_output_directory(), "VRGDG_LastPromptCreatorProject.json")
+    with open(latest_path, "w", encoding="utf-8") as handle:
+        json.dump({
+            "type": "vrgdg_last_prompt_creator_project",
+            "project_folder": project_folder,
+            "context_folder": context,
+            "saved_at": saved_at,
+        }, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    return marker_path
+
+
 def _save_prompt_creator_draft(payload):
     project_folder = _project_folder_from_payload(payload)
     _ensure_project_folders(project_folder)
+    saved_at = time.strftime("%Y-%m-%d %H:%M:%S")
     draft = {
         "audio_path": str(payload.get("audio_path", "") or ""),
         "min_duration": payload.get("min_duration", 4),
@@ -1213,12 +1260,20 @@ def _save_prompt_creator_draft(payload):
         "concept_prompts_text": str(payload.get("concept_prompts_text", "") or ""),
         "i2v_motion_notes_text": str(payload.get("i2v_motion_notes_text", "") or ""),
         "subject": str(payload.get("subject", "") or ""),
-        "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "saved_at": saved_at,
     }
     path = _draft_path(project_folder)
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(draft, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
+    _write_prompt_creator_pointer(project_folder, _context_folder(project_folder), saved_at, {
+        "type": "vrgdg_prompt_creator_output",
+        "saved_at": saved_at,
+        "from_draft": True,
+        "has_concept_prompts": os.path.isfile(os.path.join(_context_folder(project_folder), "ConceptPrompts.txt")),
+        "has_i2v_motion_notes": os.path.isfile(os.path.join(_context_folder(project_folder), "I2VMotionNotes.txt")),
+        "has_srt": os.path.isfile(_srt_path(project_folder)),
+    })
     return {
         "project_folder": project_folder,
         "draft_path": path,
