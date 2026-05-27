@@ -3188,6 +3188,44 @@ function openBuilder(node) {
     return false;
   }
 
+  function isRecoverableBuildGemmaError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    if (!message) return false;
+    const recoverable = [
+      "gemma returned repeated/thought junk",
+      "gemma returned repeated/thought text",
+      "repeated/thought junk",
+      "repeated/thought text",
+      "thought junk",
+      "request timed out",
+      "backend may still be processing",
+      "failed to create a usable prompt",
+      "returned an empty i2v prompt",
+      "returned an empty t2v prompt",
+      "returned an empty flux/klein prompt",
+    ];
+    if (recoverable.some((item) => message.includes(item))) return true;
+    if (/gemma[\s\S]{0,80}(thought|junk|empty|timed out|timeout|repeated)/i.test(message)) return true;
+    return false;
+  }
+
+  async function recoverFromBuildGemmaError(error, attempt, maxRetries, progress) {
+    const message = String(error?.message || error);
+    const windowTitle = `Build Full Video recovery ${attempt}/${maxRetries}`;
+    const recoveryProgress = progress || createProgressWindow(windowTitle);
+    recoveryProgress.set(`Recoverable Gemma error detected:\n${message}\n\nInterrupting any stuck backend job...`, 100);
+    await api.fetchApi("/interrupt", { method: "POST" }).catch(() => null);
+    recoveryProgress.set(`Recoverable Gemma error detected:\n${message}\n\nClearing memory before retry ${attempt + 1}/${maxRetries + 1}...`, 100);
+    try {
+      const cleanupOutput = await runClearMemoryWorkflowQuiet(recoveryProgress, `Build Full Video retry ${attempt}/${maxRetries}`, 100);
+      recoveryProgress.set(`${cleanupOutput}\n\nRetrying Build Full Video in resume mode so finished work is kept...`, 100);
+    } catch (cleanupError) {
+      recoveryProgress.set(`Cleanup failed after recoverable Gemma error:\n${String(cleanupError?.message || cleanupError)}\n\nRetrying anyway in resume mode...`, 100);
+    }
+    await autoSaveSessionQuiet("Build Full Video auto retry recovery").catch(() => null);
+    recoveryProgress.close(1600);
+  }
+
   function applyTriggerPhrase(prompt, trigger, options = {}) {
     const promptText = cleanGeneratedPromptText(prompt);
     if (options.validateJunk !== false && looksLikeGeneratedPromptJunk(promptText)) {
@@ -9250,7 +9288,9 @@ function openBuilder(node) {
   }
 
   async function buildFullVideoPipeline(options = {}) {
-    const buildMode = options.buildMode || "resume_missing";
+    let buildMode = options.buildMode || "resume_missing";
+    const maxAutoRetries = Math.max(0, Math.min(5, Number(options.maxAutoRetries ?? 3)));
+    let attempt = 0;
     let progress = null;
     try {
       fullBuildButton.disabled = true;
@@ -9258,40 +9298,54 @@ function openBuilder(node) {
       renderAllButton.disabled = true;
       zImageAllButton.disabled = true;
       state.batchCancelled = false;
-      progress = createProgressWindow("Build Full Video");
-      const videoMode = currentVideoMode();
-      if (videoMode === "t2v") {
-        progress.set("Stage 1/3: Text-to-video mode skips image generation.", 20);
-      } else {
-        const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
-        progress.set(`Stage 1/3: ${imageStage}...`, 5);
-        const imageMode = state.imageModelMode || "zimage";
-        const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
-        if (imageMode === "flux_klein") {
-          await fluxKleinAllScenes({ throwOnError: true, imageRunMode });
-        } else if (imageMode === "ernie_image") {
-          await ernieImageAllScenes({ throwOnError: true, imageRunMode });
-        } else {
-          await zImageAllScenes({ throwOnError: true, imageRunMode });
+      while (true) {
+        attempt += 1;
+        progress = createProgressWindow(attempt > 1 ? `Build Full Video retry ${attempt}/${maxAutoRetries + 1}` : "Build Full Video");
+        try {
+          const videoMode = currentVideoMode();
+          if (videoMode === "t2v") {
+            progress.set("Stage 1/3: Text-to-video mode skips image generation.", 20);
+          } else {
+            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
+            progress.set(`Stage 1/3: ${imageStage}...`, 5);
+            const imageMode = state.imageModelMode || "zimage";
+            const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
+            if (imageMode === "flux_klein") {
+              await fluxKleinAllScenes({ throwOnError: true, imageRunMode });
+            } else if (imageMode === "ernie_image") {
+              await ernieImageAllScenes({ throwOnError: true, imageRunMode });
+            } else {
+              await zImageAllScenes({ throwOnError: true, imageRunMode });
+            }
+          }
+          assertBatchNotStopped();
+          const videoPromptStage = currentVideoMode() === "t2v" ? "creating T2V prompts" : "creating I2V prompts";
+          progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
+          await i2vAllScenes({
+            throwOnError: true,
+            i2vRunMode: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" ? "redo_prompts" : "resume_missing",
+          });
+          assertBatchNotStopped();
+          progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
+          progress.close(300);
+          progress = null;
+          const shouldRandomizeVideoSeed = buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos";
+          await renderAllScenes({
+            forceVideos: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
+            randomizeVideoSeed: shouldRandomizeVideoSeed && options.videoSeedMode !== "keep",
+          });
+          toast(attempt > 1 ? `Build Full Video complete after ${attempt} attempts.` : "Build Full Video complete.");
+          break;
+        } catch (error) {
+          const errorMessage = String(error?.message || error);
+          const canRetry = !state.batchCancelled && attempt <= maxAutoRetries && isRecoverableBuildGemmaError(error);
+          if (!canRetry) throw error;
+          progress?.set(`Build Full Video hit a recoverable Gemma error on attempt ${attempt}/${maxAutoRetries + 1}:\n${errorMessage}`, 100);
+          await recoverFromBuildGemmaError(error, attempt, maxAutoRetries, progress);
+          progress = null;
+          buildMode = "resume_missing";
         }
       }
-      assertBatchNotStopped();
-      const videoPromptStage = currentVideoMode() === "t2v" ? "creating T2V prompts" : "creating I2V prompts";
-      progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
-      await i2vAllScenes({
-        throwOnError: true,
-        i2vRunMode: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" ? "redo_prompts" : "resume_missing",
-      });
-      assertBatchNotStopped();
-      progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
-      progress.close(300);
-      progress = null;
-      const shouldRandomizeVideoSeed = buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos";
-      await renderAllScenes({
-        forceVideos: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" || buildMode === "redo_videos",
-        randomizeVideoSeed: shouldRandomizeVideoSeed && options.videoSeedMode !== "keep",
-      });
-      toast("Build Full Video complete.");
     } catch (error) {
       const errorMessage = String(error?.message || error);
       progress?.set(`Build Full Video stopped:\n${errorMessage}`, 100);
