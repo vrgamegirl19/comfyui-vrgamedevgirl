@@ -1945,6 +1945,14 @@ def _generate_flux_klein_prompt(payload):
             ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
     if not isinstance(ingredients, list):
         raise ValueError("Image ingredients must be a list.")
+    reference_context = payload.get("reference_context") or {}
+    if not isinstance(reference_context, dict):
+        reference_context = {}
+    has_subject_reference = bool(reference_context.get("has_subject_reference"))
+    has_location_reference = bool(reference_context.get("has_location_reference"))
+    subject_description = str(reference_context.get("subject_description", "") or "").strip()
+    location_name = str(reference_context.get("location_name", "") or "").strip()
+    location_description = str(reference_context.get("location_description", "") or "").strip()
     images = []
     for index, item in enumerate(ingredients, start=1):
         if isinstance(item, str):
@@ -1953,10 +1961,30 @@ def _generate_flux_klein_prompt(payload):
             continue
         images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"Image ingredient {index}"))
     combined_image = _combine_flux_ingredient_images(images)
+    reference_rules = []
+    if has_subject_reference:
+        subject_line = "Use the subject reference for the main subject identity, face/body details, outfit, and visible character consistency."
+        if subject_description:
+            subject_line += f" Subject description: {subject_description}"
+        reference_rules.append(subject_line)
+    if has_location_reference:
+        location_line = "Use the mapped location reference as the required setting/background. Do not replace it with a different location from the concept or notes."
+        location_details = "; ".join(part for part in (location_name, location_description) if part)
+        if location_details:
+            location_line += f" Mapped location: {location_details}"
+        reference_rules.append(location_line)
+    reference_text = ""
+    if reference_rules:
+        reference_text = (
+            "\nReference Builder priorities:\n"
+            + "\n".join(f"- {rule}" for rule in reference_rules)
+            + "\n- Use the user's notes/concept for action, pose, mood, lighting, story beat, and details after respecting the reference priorities.\n"
+        )
     instruction = (
         "Create one polished text-to-image prompt for an image generation model.\n\n"
         "The provided reference image is a composite of image ingredients. These may include a character, background, props, style references, or other visual ingredients.\n\n"
-        "Use the visible ingredients to create one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n\n"
+        "Use the visible ingredients to create one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n"
+        f"{reference_text}\n"
         "Rules:\n"
         "- Output one normal text-to-image prompt, not an edit prompt.\n"
         "- Describe only visible concrete details.\n"

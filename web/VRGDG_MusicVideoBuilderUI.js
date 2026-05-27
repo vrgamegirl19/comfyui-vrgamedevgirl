@@ -4135,6 +4135,33 @@ function openBuilder(node) {
     return ingredients;
   }
 
+  function fluxReferenceContextForSegment(segment = activeSegment()) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const context = {
+      has_subject_reference: false,
+      has_location_reference: false,
+      subject_description: "",
+      location_name: "",
+      location_description: "",
+    };
+    const subjectImage = refs.subject?.image || {};
+    if (refs.use_subject_reference && (subjectImage.path || subjectImage.data)) {
+      context.has_subject_reference = true;
+      context.subject_description = refs.subject?.description || "";
+    }
+    if (refs.use_location_references && segment) {
+      const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
+      const location = refs.locations.find((item) => item.id === locId);
+      const image = location?.image || {};
+      if (location && (image.path || image.data)) {
+        context.has_location_reference = true;
+        context.location_name = location.name || "";
+        context.location_description = location.description || "";
+      }
+    }
+    return context;
+  }
+
   function syncFluxKleinPanel() {
     const segment = activeSegment();
     const settings = activeFluxKleinSettings() || {};
@@ -4246,6 +4273,7 @@ function openBuilder(node) {
       scene_image_ingredients: Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [],
       notes: segment?.flux_notes || "",
       prompt: segment?.flux_prompt || "",
+      reference_context: fluxReferenceContextForSegment(segment),
     };
   }
 
@@ -7443,6 +7471,7 @@ function openBuilder(node) {
         model_file: fluxGemmaModelSelect.value,
         mmproj_file: fluxMmprojSelect.value,
         image_ingredients: settings.image_ingredients || [],
+        reference_context: settings.reference_context || {},
         user_notes: settings.notes || "",
         unload_after: true,
       }, FLUX_GEMMA_TIMEOUT_MS);
@@ -7500,6 +7529,7 @@ function openBuilder(node) {
       model_file: fluxGemmaModelSelect.value,
       mmproj_file: fluxMmprojSelect.value,
       image_ingredients: settings.image_ingredients || [],
+      reference_context: settings.reference_context || {},
       user_notes: settings.notes || segment.notes || "",
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
