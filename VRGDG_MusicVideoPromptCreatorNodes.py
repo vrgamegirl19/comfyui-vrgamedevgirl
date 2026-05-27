@@ -13,6 +13,8 @@ from server import PromptServer
 from .VRGDG_MusicVideoBuilderNodes import (
     _context_folder,
     _prompts_folder,
+    _run_builder_text_llm,
+    _llm_runner_from_payload,
     _safe_project_name,
     _session_path,
     _srt_path,
@@ -750,8 +752,26 @@ def _split_subject_locations(value):
     return subject, locations
 
 
-def _run_text_gemma(model_file, prompt, overrides=None):
+def _run_text_gemma(model_file, prompt, overrides=None, payload=None):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    runner_payload = dict(payload or {})
+    if _llm_runner_from_payload(runner_payload) == "lm_studio":
+        settings = dict(_LLM_SETTINGS)
+        if isinstance(overrides, dict):
+            settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
+        text, run_info = _run_builder_text_llm(
+            runner_payload,
+            prompt,
+            temperature=float(settings["temperature"]),
+            top_p=float(settings["top_p"]),
+            max_new_tokens=int(settings["max_new_tokens"]),
+            label="Gemma4",
+        )
+        text = _clean_llm_json_text(text)
+        if not text:
+            raise ValueError("Gemma returned an empty response.")
+        return {"text": text, "used_model": run_info.get("used_model", ""), "runner": run_info.get("runner", "lm_studio")}
 
     if not str(model_file or "").strip():
         raise ValueError("Choose a Gemma4 text model first.")
@@ -782,7 +802,7 @@ def _run_text_gemma(model_file, prompt, overrides=None):
         text = _clean_llm_json_text(text)
         if not text:
             raise ValueError("Gemma returned an empty response.")
-        return {"text": text, "used_model": model_path}
+        return {"text": text, "used_model": model_path, "runner": "builtin"}
     finally:
         llm._unload_gguf_model(
             model_path=model_path,
@@ -795,8 +815,27 @@ def _run_text_gemma(model_file, prompt, overrides=None):
         _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
-def _run_text_gemma_custom(model_file, custom_instructions, user_input, overrides=None):
+def _run_text_gemma_custom(model_file, custom_instructions, user_input, overrides=None, payload=None):
     from .LLM import VRGDG_SuperGemmaGGUFChat
+
+    runner_payload = dict(payload or {})
+    if _llm_runner_from_payload(runner_payload) == "lm_studio":
+        settings = dict(_LLM_SETTINGS)
+        if isinstance(overrides, dict):
+            settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
+        prompt = f"{str(custom_instructions or '').strip()}\n\nUser input:\n{str(user_input or '').strip()}"
+        text, run_info = _run_builder_text_llm(
+            runner_payload,
+            prompt,
+            temperature=float(settings["temperature"]),
+            top_p=float(settings["top_p"]),
+            max_new_tokens=int(settings["max_new_tokens"]),
+            label="Gemma4",
+        )
+        text = _clean_llm_json_text(text)
+        if not text:
+            raise ValueError("Gemma returned an empty response.")
+        return {"text": text, "used_model": run_info.get("used_model", ""), "runner": run_info.get("runner", "lm_studio")}
 
     if not str(model_file or "").strip():
         raise ValueError("Choose a Gemma4 text model first.")
@@ -829,7 +868,7 @@ def _run_text_gemma_custom(model_file, custom_instructions, user_input, override
     text = _clean_llm_json_text(text)
     if not text:
         raise ValueError("Gemma returned an empty response.")
-    return {"text": text, "used_model": used_model}
+    return {"text": text, "used_model": used_model, "runner": "builtin"}
 
 
 def _repair_segments(payload):
@@ -865,7 +904,7 @@ def _repair_segments(payload):
             f"REAL_LYRIC_WINDOW:\n" + "\n".join(lyric_window) + "\n\n"
             f"PREVIOUS_REPAIRED_CONTEXT:\n{json.dumps(previous_context, ensure_ascii=False, indent=2)}"
         )
-        result = _run_text_gemma_custom(payload.get("model_file", ""), _WHISPER_BATCH_REPAIR_INSTRUCTIONS, batch_input, repair_settings)
+        result = _run_text_gemma_custom(payload.get("model_file", ""), _WHISPER_BATCH_REPAIR_INSTRUCTIONS, batch_input, repair_settings, payload)
         raw_outputs.append(result["text"])
         fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
         try:
@@ -876,7 +915,7 @@ def _repair_segments(payload):
                 f"PREVIOUS_INVALID_ANSWER:\n{result['text']}\n\n"
                 f"Return only these exact keys: {', '.join(batch_keys)}"
             )
-            result = _run_text_gemma_custom(payload.get("model_file", ""), _WHISPER_BATCH_REPAIR_INSTRUCTIONS, retry_input, repair_settings)
+            result = _run_text_gemma_custom(payload.get("model_file", ""), _WHISPER_BATCH_REPAIR_INSTRUCTIONS, retry_input, repair_settings, payload)
             raw_outputs.append(result["text"])
             fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
             repaired_segments.update(_segment_subset_with_fallback(fixed.get("json_output"), batch_keys, target_segments))
@@ -907,7 +946,7 @@ def _repair_segments(payload):
             f"{user_input}\n\n"
             f"PREVIOUS_INVALID_ANSWER:\n{result['text']}"
         )
-        result = _run_text_gemma_custom(payload.get("model_file", ""), retry_instructions, retry_input, payload.get("llm_settings"))
+        result = _run_text_gemma_custom(payload.get("model_file", ""), retry_instructions, retry_input, payload.get("llm_settings"), payload)
         fixed = _fix_lyric_segment_json_like_old_workflow(result["text"])
     data = _validate_segment_json(fixed["json_output"], expected_count)
     return {
@@ -943,7 +982,7 @@ def _create_concepts(payload):
         f"SUBJECT:\n{subject_text}\n\n"
         f"LOCATIONS:\n{locations_text}"
     )
-    result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
+    result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"), payload)
     fixed = _fix_prompt_map_json_like_old_workflow(result["text"])
     retry_used = False
     try:
@@ -983,7 +1022,7 @@ def _create_concepts(payload):
                 f"SUBJECT:\n{subject_text}\n\n"
                 f"LOCATIONS:\n{locations_text}"
             )
-            repair_result = _run_text_gemma(payload.get("model_file", ""), repair_prompt, payload.get("llm_settings"))
+            repair_result = _run_text_gemma(payload.get("model_file", ""), repair_prompt, payload.get("llm_settings"), payload)
             repair_fixed = _fix_prompt_map_json_like_old_workflow(repair_result["text"])
             repair_map = _canonical_prompt_mapping(repair_fixed.get("json_output") if isinstance(repair_fixed.get("json_output"), dict) else {})
             repaired_text = str(repair_map.get(target_key, "") or "").strip()
@@ -1011,7 +1050,7 @@ def _create_concepts(payload):
                 f"LOCATIONS:\n{locations_text}\n\n"
                 f"PREVIOUS_INVALID_ANSWER:\n{result['text']}"
             )
-            result = _run_text_gemma(payload.get("model_file", ""), retry_prompt, payload.get("llm_settings"))
+            result = _run_text_gemma(payload.get("model_file", ""), retry_prompt, payload.get("llm_settings"), payload)
             fixed = _fix_prompt_map_json_like_old_workflow(result["text"])
             data = _validate_prompt_json(fixed["json_output"], expected_count)
     return {
@@ -1047,7 +1086,7 @@ def _create_i2v_motion_notes(payload):
         f"SUBJECT:\n{str(payload.get('subject', '') or '').strip()}"
     )
     debug_input_path = _write_prompt_creator_debug_file(project_folder, "i2v_motion_notes_input", user_input)
-    result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"))
+    result = _run_text_gemma(payload.get("model_file", ""), user_input, payload.get("llm_settings"), payload)
     debug_raw_path = _write_prompt_creator_debug_file(project_folder, "i2v_motion_notes_raw_output", result["text"])
     try:
         raw = _extract_json_object(result["text"])
@@ -1097,6 +1136,7 @@ def _extract_subject(payload):
         payload.get("model_file", ""),
         f"{_SUBJECT_EXTRACT_INSTRUCTIONS}\n{subject_locations}",
         payload.get("llm_settings"),
+        payload,
     )
     text = _clean_gemma_prompt_text(result["text"])
     line = next((line.strip() for line in text.splitlines() if line.strip()), "")
@@ -1250,6 +1290,10 @@ def _save_prompt_creator_draft(payload):
         "empty_segment_text": str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section."),
         "concept_match_mode": str(payload.get("concept_match_mode", "medium") or "medium"),
         "append_subject_to_prompts": bool(payload.get("append_subject_to_prompts", True)),
+        "text_gemma_runner": str(payload.get("text_gemma_runner") or payload.get("text_runner") or "builtin"),
+        "lm_studio_base_url": str(payload.get("lm_studio_base_url") or payload.get("lmstudio_base_url") or "http://127.0.0.1:1234/v1"),
+        "lm_studio_model": str(payload.get("lm_studio_model") or payload.get("lmstudio_model") or ""),
+        "lm_studio_api_key": str(payload.get("lm_studio_api_key") or payload.get("lmstudio_api_key") or ""),
         "full_lyrics": str(payload.get("full_lyrics", "") or ""),
         "style_theme": str(payload.get("style_theme", "") or ""),
         "story_idea": str(payload.get("story_idea", "") or ""),

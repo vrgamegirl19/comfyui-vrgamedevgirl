@@ -6,6 +6,11 @@ const STYLE_THEME_GPT_URL = "https://chatgpt.com/g/g-69fb415a964c8191b4a737f84f3
 const STORY_IDEA_GPT_URL = "https://chatgpt.com/g/g-69fb3cb767448191a6caa88be94940d5-ltx-2-3-story-concept-helper/c/69fb3e25-7e74-8326-abd6-7df9cf847a5b";
 const SUBJECT_LOCATION_GPT_URL = "https://chatgpt.com/g/g-69fb38a997fc8191a2fa479e44a3c675-ltx-2-3-subject-and-location-creator/c/69fb39e2-2ba0-8328-94c0-6ac9c94d0c89";
 
+function isLikelyEmbeddingModelId(modelId) {
+  const text = String(modelId || "").toLowerCase();
+  return text.includes("embedding") || text.includes("embed") || text.includes("nomic-embed") || text.includes("bge-") || text.includes("e5-");
+}
+
 function makeButton(label, kind = "neutral") {
   const button = document.createElement("button");
   button.type = "button";
@@ -518,6 +523,14 @@ function buildPayload(controls, modelSelect) {
     subject_locations: controls.subjectLocations.value,
     srt_text: controls.srtText.value,
     output_srt_path: controls.srtOutput.value,
+    text_runner: controls.textGemmaRunner || "builtin",
+    lmstudio_base_url: controls.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+    lmstudio_model: controls.lmStudioModel || "",
+    lmstudio_api_key: controls.lmStudioApiKey || "",
+    text_gemma_runner: controls.textGemmaRunner || "builtin",
+    lm_studio_base_url: controls.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+    lm_studio_model: controls.lmStudioModel || "",
+    lm_studio_api_key: controls.lmStudioApiKey || "",
   };
 }
 
@@ -625,7 +638,15 @@ function openPromptCreator(options = {}) {
     conceptPrompts: {},
     i2vMotionNotes: {},
     extractedSubject: "",
+    textGemmaRunner: "builtin",
+    lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
+    lmStudioModel: "",
+    lmStudioApiKey: "",
   };
+
+  function gemmaRunnerLine() {
+    return `Runner: ${state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Built-in GGUF"}`;
+  }
 
   const overlay = document.createElement("div");
   overlay.className = "vrgdg-music-prompt-creator";
@@ -640,10 +661,11 @@ function openPromptCreator(options = {}) {
   const backButton = makeButton("Back To Video Creator");
   const loadDraftButton = makeButton("Load Project Draft");
   const sendToVideoButton = makeButton("Send To Video Creator", "primary");
+  const gemmaRunnerButton = makeButton("Gemma Runner");
   const saveDraftButton = makeButton("Save Project Draft", "primary");
   const closeButton = makeButton("Close");
   closeButton.onclick = () => overlay.remove();
-  topbar.append(title, backButton, loadDraftButton, sendToVideoButton, saveDraftButton, closeButton);
+  topbar.append(title, backButton, loadDraftButton, sendToVideoButton, gemmaRunnerButton, saveDraftButton, closeButton);
 
   const body = document.createElement("div");
   body.style.cssText = "min-height:0;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px;background:#1f2328;";
@@ -825,6 +847,103 @@ function openPromptCreator(options = {}) {
     makeField("Gemma4 text model", modelSelect),
   );
 
+  function syncRunnerControls() {
+    controls.textGemmaRunner = state.textGemmaRunner;
+    controls.lmStudioBaseUrl = state.lmStudioBaseUrl;
+    controls.lmStudioModel = state.lmStudioModel;
+    controls.lmStudioApiKey = state.lmStudioApiKey;
+  }
+
+  function openGemmaRunnerModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100070;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(640px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Prompt Creator Gemma Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Prompt Creator is text-only, so LM Studio can run these Gemma steps.</div>`;
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const runner = makeSelect(["builtin", "lm_studio"], state.textGemmaRunner || "builtin");
+    const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
+    const model = makeInput(state.lmStudioModel || "");
+    const modelSelectLm = makeSelect([""], "");
+    const loadModels = makeButton("Load LM Studio Models");
+    const modelPickerRow = document.createElement("div");
+    modelPickerRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
+    const apiKey = makeInput(state.lmStudioApiKey || "", "password");
+    const lmPanel = document.createElement("div");
+    lmPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
+    const note = document.createElement("div");
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    note.textContent = "In LM Studio, load your Gemma text model, open Local Server, start the server, then load the model list here.";
+    modelSelectLm.onchange = () => {
+      if (modelSelectLm.value) model.value = modelSelectLm.value;
+    };
+    loadModels.onclick = async () => {
+      loadModels.disabled = true;
+      loadModels.textContent = "Loading...";
+      try {
+        const data = await postJson("/vrgdg/music_builder/lm_studio_models", {
+          lmstudio_base_url: baseUrl.value || "http://127.0.0.1:1234/v1",
+          lmstudio_api_key: apiKey.value || "",
+        });
+        const allIds = Array.isArray(data.models) ? data.models.map((item) => String(item || "").trim()).filter(Boolean) : [];
+        const ids = allIds.filter((id) => !isLikelyEmbeddingModelId(id));
+        if (!allIds.length) throw new Error("LM Studio returned no models. Load a chat model and make sure the local server is running.");
+        if (!ids.length) throw new Error("LM Studio only returned embedding models. Load a chat/text-generation model, then try again.");
+        modelSelectLm.replaceChildren();
+        ids.forEach((id) => {
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = id;
+          modelSelectLm.append(option);
+        });
+        const current = String(model.value || "").trim();
+        modelSelectLm.value = current && ids.includes(current) ? current : ids[0];
+        model.value = modelSelectLm.value;
+        setStatus(status, `Loaded ${ids.length} LM Studio model${ids.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        setStatus(status, String(error?.message || error), true);
+      } finally {
+        loadModels.disabled = false;
+        loadModels.textContent = "Load LM Studio Models";
+      }
+    };
+    modelPickerRow.append(makeField("Available LM Studio models", modelSelectLm), loadModels);
+    lmPanel.append(
+      note,
+      makeField("LM Studio base URL", baseUrl),
+      modelPickerRow,
+      makeField("LM Studio model name", model),
+      makeField("API key (usually blank for local LM Studio)", apiKey),
+    );
+    const syncVisibility = () => {
+      lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
+    };
+    runner.onchange = syncVisibility;
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Save Runner", "primary");
+    actions.append(cancel, save);
+    box.append(header, makeField("Text Gemma runner", runner), lmPanel, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    syncVisibility();
+    close.onclick = cancel.onclick = () => backdrop.remove();
+    save.onclick = async () => {
+      state.textGemmaRunner = runner.value || "builtin";
+      state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
+      state.lmStudioModel = model.value || "";
+      state.lmStudioApiKey = apiKey.value || "";
+      syncRunnerControls();
+      setStatus(status, state.textGemmaRunner === "lm_studio" ? "Prompt Creator Gemma runner set to LM Studio." : "Prompt Creator Gemma runner set to built-in GGUF.");
+      backdrop.remove();
+    };
+  }
+
   const outputsPanel = makePanel("Generated Outputs");
   const repairedOutput = makeCompactPreviewBox("", 3);
   const conceptOutput = makeTextarea("", 14);
@@ -881,6 +1000,7 @@ function openPromptCreator(options = {}) {
     whisperSegments,
     srtText,
   };
+  syncRunnerControls();
 
   function updateDurationModeUi() {
     const usingSrt = useSrtDurations.checked;
@@ -956,6 +1076,11 @@ function openPromptCreator(options = {}) {
     state.conceptPrompts = parseJsonSafe(conceptOutput.value, {});
     state.i2vMotionNotes = parseJsonSafe(i2vMotionOutput.value, {});
     state.extractedSubject = subjectOutput.value || "";
+    state.textGemmaRunner = draft.text_gemma_runner || draft.text_runner || draft.textGemmaRunner || state.textGemmaRunner || "builtin";
+    state.lmStudioBaseUrl = draft.lm_studio_base_url || draft.lmstudio_base_url || draft.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
+    state.lmStudioModel = draft.lm_studio_model || draft.lmstudio_model || draft.lmStudioModel || state.lmStudioModel || "";
+    state.lmStudioApiKey = draft.lm_studio_api_key || draft.lmstudio_api_key || draft.lmStudioApiKey || state.lmStudioApiKey || "";
+    syncRunnerControls();
   }
 
   async function loadDraft() {
@@ -1051,7 +1176,7 @@ function openPromptCreator(options = {}) {
     const target = targetByField[fieldKey];
     const modelFile = String(modelSelect.value || "").trim();
     if (!target) return;
-    if (!modelFile) {
+    if (!modelFile && state.textGemmaRunner !== "lm_studio") {
       setStatus(status, "Choose a Gemma4 text model first.");
       return;
     }
@@ -1089,6 +1214,10 @@ function openPromptCreator(options = {}) {
       max_new_tokens: fieldKey === "full_lyrics" ? 32000 : fieldKey === "style_theme" ? 600 : 8000,
       temperature: 0.75,
       top_p: 0.95,
+      text_runner: state.textGemmaRunner || "builtin",
+      lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+      lmstudio_model: state.lmStudioModel || "",
+      lmstudio_api_key: state.lmStudioApiKey || "",
     };
 
     let progress = null;
@@ -1096,8 +1225,8 @@ function openPromptCreator(options = {}) {
       button.disabled = true;
       button.textContent = "Gemma...";
       progress = createProgressWindow(`Gemma4 ${fieldKey.replaceAll("_", " ")}`);
-      setStatus(status, `Gemma4 is drafting ${fieldKey.replaceAll("_", " ")}...`, true);
-      progress.set("Creating draft from your user input and context...", 25);
+      setStatus(status, `Gemma4 is drafting ${fieldKey.replaceAll("_", " ")}...\n${gemmaRunnerLine()}`, true);
+      progress.set(`Creating draft from your user input and context...\n${gemmaRunnerLine()}`, 25);
       const data = await postJson("/vrgdg/gemma4/generate", payload);
       const text = String(data.text || "").trim();
       if (!text) throw new Error("Gemma4 returned an empty draft.");
@@ -1170,8 +1299,8 @@ function openPromptCreator(options = {}) {
     payload.segments = state.repairedSegments && Object.keys(state.repairedSegments).length
       ? state.repairedSegments
       : parseJsonSafe(repairedOutput.value, {});
-    setStatus(status, "Creating visual concept prompts with Gemma...", true);
-    progress?.set("Step 3/6: Creating ConceptPrompts JSON with Gemma...", 58);
+    setStatus(status, `Creating visual concept prompts with Gemma...\n${gemmaRunnerLine()}`, true);
+    progress?.set(`Step 3/6: Creating ConceptPrompts JSON with Gemma...\n${gemmaRunnerLine()}`, 58);
     const result = await postJson("/vrgdg/music_prompt_creator/create_concepts", payload);
     state.conceptPrompts = result.prompts || {};
     conceptOutput.value = prettyJson(state.conceptPrompts);
@@ -1185,8 +1314,8 @@ function openPromptCreator(options = {}) {
       ? state.conceptPrompts
       : parseJsonSafe(conceptOutput.value, {});
     payload.subject = subjectOutput.value || state.extractedSubject || "";
-    setStatus(status, "Creating I2V motion notes with Gemma...", true);
-    progress?.set("Step 5/6: Creating I2V motion notes JSON with Gemma...", 84);
+    setStatus(status, `Creating I2V motion notes with Gemma...\n${gemmaRunnerLine()}`, true);
+    progress?.set(`Step 5/6: Creating I2V motion notes JSON with Gemma...\n${gemmaRunnerLine()}`, 84);
     const result = await postJson("/vrgdg/music_prompt_creator/create_i2v_motion_notes", payload);
     state.i2vMotionNotes = result.motion_notes || {};
     i2vMotionOutput.value = prettyJson(state.i2vMotionNotes);
@@ -1201,8 +1330,8 @@ function openPromptCreator(options = {}) {
   }
 
   async function extractSubject(progress = null) {
-    setStatus(status, "Extracting subject line with Gemma...", true);
-    progress?.set("Step 4/6: Extracting the subject line with Gemma...", 76);
+    setStatus(status, `Extracting subject line with Gemma...\n${gemmaRunnerLine()}`, true);
+    progress?.set(`Step 4/6: Extracting the subject line with Gemma...\n${gemmaRunnerLine()}`, 76);
     const result = await postJson("/vrgdg/music_prompt_creator/extract_subject", buildPayload(controls, modelSelect));
     const previousSubject = state.extractedSubject || subjectOutput.value || "";
     state.extractedSubject = result.subject || "";
@@ -1375,6 +1504,7 @@ function openPromptCreator(options = {}) {
     }
   };
   loadDraftButton.onclick = chooseAndLoadDraft;
+  gemmaRunnerButton.onclick = openGemmaRunnerModal;
   chooseAudioButton.onclick = chooseAudioFile;
   backButton.onclick = () => {
     overlay.remove();

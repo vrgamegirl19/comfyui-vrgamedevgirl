@@ -18,6 +18,8 @@ from nodes import PreviewImage
 from PIL import Image, ImageOps
 from server import PromptServer
 
+from .VRGDG_MusicVideoBuilderNodes import _llm_runner_from_payload, _run_builder_text_llm
+
 
 class AnyType(str):
     def __ne__(self, __value: object) -> bool:
@@ -795,15 +797,13 @@ def _run_gemma4_prompt(payload):
 
     target = str(payload.get("target", "") or "").strip()
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file:
+    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
         raise ValueError("No Gemma4 model_file was selected.")
 
     prompt = _build_gemma4_prompt(target, payload)
     if not prompt.strip():
         raise ValueError("Gemma4 prompt was empty.")
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
     # Match the known-good SuperGemma settings used in the workflow node.
     n_ctx = int(payload.get("n_ctx") or 13000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -814,6 +814,27 @@ def _run_gemma4_prompt(payload):
     max_new_tokens = int(payload.get("max_new_tokens") or 32000)
     unload_after = bool(payload.get("unload_after"))
 
+    if _llm_runner_from_payload(payload) == "lm_studio":
+        text, run_info = _run_builder_text_llm(
+            payload,
+            prompt,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+            label="Gemma4",
+        )
+        text = _clean_gemma4_text(text)
+        if not text:
+            raise ValueError("Gemma4 returned an empty response.")
+        return {
+            "text": text,
+            "used_model": run_info.get("used_model", ""),
+            "runner": run_info.get("runner", "lm_studio"),
+            "unloaded": False,
+        }
+
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
     mmproj_path = ""
     model = None
     try:
