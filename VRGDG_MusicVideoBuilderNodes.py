@@ -9,6 +9,7 @@ import sys
 import time
 import wave
 import base64
+import array
 
 import folder_paths
 from aiohttp import web
@@ -28,19 +29,28 @@ from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
 
-_T2V_INSTRUCTIONS = """Create one polished text-to-video prompt for a video generation model.
+_T2V_INSTRUCTIONS = """Convert the user's concept prompt into a dynamic text-to-video prompt.
 
-Use the provided scene concept and motion notes to describe one short cinematic video shot.
+Use the user's prompt as the full scene foundation. Preserve the original subject, setting, outfit, mood, atmosphere, and scene identity. Infer only the missing video details needed to make the scene feel complete, including time of day, weather, lighting behavior, environmental movement, subject movement, camera movement, and performance energy. Do not add unrelated characters, new locations, major story changes, captions, text overlays, dialogue, or audio instructions.
+
+Add fast, cinematic motion by giving the subject a clear action sequence, expressive facial expressions, strong gestures, and intentional camera movement. Keep the subject visible, centered, and clearly framed throughout. Add lighting only as natural scene behavior, such as flickering stage lights, passing sunlight, glowing streetlights, storm flashes, reflections, or shifting shadows, based on what best fits the user's prompt.
+
+Output one polished paragraph using this structure:
+
+The [Subject] who is singing with passion and in sync with the audio, in [setting/environment] during [time/weather]. The subject [dynamic performance action with expressive face, body movement, and strong gestures]. Their clothing/hair [reacts to movement, wind, or performance energy]. The lighting [changes or reacts naturally within the scene]. The camera [Camera Motion] while maintaining [subject visibility and framing]. The environment [reacts dynamically].
+
+Each word in brackets should be chosen based on the user input and what best fits the scene.
 
 Rules:
-- Output one normal text-to-video prompt, not an edit prompt.
-- Describe visible subject, setting, atmosphere, camera motion, character motion, performance energy, expressive facial movement, and environmental motion.
-- When the scene has a visible performer or singer, make the subject physically singing with passion, including natural mouth movement, expressive face, body movement, and strong performance gestures.
-- Keep the subject visible and framed throughout the shot.
-- User motion/camera notes always take priority. If user notes ask for no singing, silent b-roll, instrumental motion, no lip movement, or non-performance action, follow the user notes instead.
+- This is text-to-video
+- Subject must be physically singing with passion
+- Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color grading, camera photo style, or static image-quality descriptions.
+- Keep it vivid, fast, cinematic, dynamic, and video-ready
+- Use one location inferred by the user's concept prompt. If one is not listed use one from the location list.
+- Must use user input to help create the prompt
+- User notes take priority. If user notes ask for no singing, silent b-roll, instrumental motion, no lip movement, or non-performance action, follow the user notes instead.
 - Do not use orbit type camera motion, do not use the word "spin", and the subject should never spin.
 - Do not mention source prompts, notes, lyrics, segments, JSON, or instructions.
-- Keep it concise, cinematic, and directly usable.
 - Do not include markdown, labels, quotes, or explanations."""
 
 
@@ -75,6 +85,7 @@ def _project_prompt_creator_paths(project_folder):
         "project_folder": folder,
         "audio_path": _newest_file(audio_folder, (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".mp4")),
         "srt_path": _srt_path(folder),
+        "lyric_segments_path": os.path.join(folder, "prompts", "lyric_segments.json"),
         "concept_prompts_path": os.path.join(context, "ConceptPrompts.txt"),
         "i2v_motion_notes_path": os.path.join(context, "I2VMotionNotes.txt"),
         "theme_style_path": os.path.join(context, "themestyle.txt"),
@@ -215,12 +226,18 @@ def _copy_prompt_creator_outputs_from_source(project_folder, source_project_fold
         source_path = os.path.join(source_context, filename)
         if os.path.isfile(source_path):
             copied[filename] = _copy_file_if_exists(source_path, os.path.join(_context_folder(target), filename))
+    source_lyrics = os.path.join(source_project, "prompts", "lyric_segments.json")
+    if os.path.isfile(source_lyrics):
+        copied["lyric_segments.json"] = _copy_file_if_exists(source_lyrics, os.path.join(_prompts_folder(target), "lyric_segments.json"))
     source_srt = _srt_path(source_project)
     if os.path.isfile(source_srt):
         copied["builder_segments.srt"] = _copy_file_if_exists(source_srt, _srt_path(target))
     source_audio = _newest_file(os.path.join(source_project, "audio"), (".wav", ".mp3", ".flac", ".m4a", ".ogg", ".mp4"))
     if source_audio:
-        copied["audio"] = _copy_file_if_exists(source_audio, os.path.join(target, "audio", os.path.basename(source_audio)))
+        if os.path.splitext(source_audio)[1].lower() == ".m4a":
+            copied["audio"] = _convert_audio_to_wav(source_audio, os.path.join(target, "audio", "project_audio.wav"))
+        else:
+            copied["audio"] = _copy_file_if_exists(source_audio, os.path.join(target, "audio", os.path.basename(source_audio)))
     result = _project_prompt_creator_paths(target)
     result["source_project_folder"] = source_project
     result["copied"] = copied
@@ -569,6 +586,45 @@ def _copy_file_into_folder(source_path, target_folder, target_name=None):
     return target
 
 
+def _convert_audio_to_wav(source_path, target_path):
+    source = _resolve_existing_file(source_path, "Audio file")
+    target = os.path.abspath(str(target_path or "").strip().strip('"'))
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        source,
+        "-vn",
+        "-acodec",
+        "pcm_s16le",
+        "-ar",
+        "44100",
+        "-ac",
+        "2",
+        target,
+    ]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0:
+        error_text = result.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError(f"Could not convert audio to WAV: {error_text or f'ffmpeg exited with code {result.returncode}'}")
+    if not os.path.isfile(target) or os.path.getsize(target) <= 0:
+        raise ValueError("Audio conversion finished, but the WAV file was not created.")
+    return target
+
+
+def _copy_or_convert_project_audio(source_path, target_folder, target_name=None):
+    source = _resolve_existing_file(source_path, "Audio file")
+    name = target_name or os.path.basename(source)
+    if os.path.splitext(source)[1].lower() == ".m4a":
+        safe_stem = _safe_project_name(os.path.splitext(name)[0])
+        return _convert_audio_to_wav(source, os.path.join(target_folder, f"{safe_stem}.wav"))
+    return _copy_file_into_folder(source, target_folder, name)
+
+
 def _project_rebased_path(project_folder, old_project_folder, raw_path):
     text = str(raw_path or "").strip().strip('"')
     if not text or not old_project_folder:
@@ -586,7 +642,7 @@ def _project_rebased_path(project_folder, old_project_folder, raw_path):
 def _snapshot_project_assets(project_folder, session, audio_path, old_project_folder=""):
     project_folder = os.path.abspath(project_folder)
     if audio_path and os.path.isfile(audio_path):
-        copied_audio = _copy_file_into_folder(
+        copied_audio = _copy_or_convert_project_audio(
             audio_path,
             os.path.join(project_folder, "project_audio"),
             "project_audio" + os.path.splitext(audio_path)[1],
@@ -1290,6 +1346,55 @@ def _read_audio_peaks_with_wave(audio_path, target_peaks=1600):
     }
 
 
+def _read_audio_peaks_with_ffmpeg(audio_path, target_peaks=1600):
+    sample_rate = 16000
+    command = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        audio_path,
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        str(sample_rate),
+        "-f",
+        "f32le",
+        "pipe:1",
+    ]
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0:
+        error_text = result.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError(error_text or f"ffmpeg exited with code {result.returncode}")
+    samples = array.array("f")
+    samples.frombytes(result.stdout)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    total_samples = len(samples)
+    duration = total_samples / float(sample_rate)
+    if total_samples <= 0:
+        return {"duration": 0, "sample_rate": sample_rate, "channels": 1, "peaks": []}
+    peak_count = max(1, min(int(target_peaks or 1600), total_samples))
+    samples_per_peak = max(1, math.ceil(total_samples / peak_count))
+    peaks = []
+    for start in range(0, total_samples, samples_per_peak):
+        chunk = samples[start: start + samples_per_peak]
+        if not chunk:
+            continue
+        total = 0.0
+        for value in chunk:
+            total += float(value) * float(value)
+        peaks.append(min(1.0, math.sqrt(total / len(chunk))))
+    return {
+        "duration": duration,
+        "sample_rate": sample_rate,
+        "channels": 1,
+        "peaks": peaks,
+    }
+
+
 def _read_audio_peaks(audio_path, target_peaks=1600):
     try:
         return _read_audio_peaks_with_torchaudio(audio_path, target_peaks)
@@ -1297,10 +1402,13 @@ def _read_audio_peaks(audio_path, target_peaks=1600):
         try:
             return _read_audio_peaks_with_wave(audio_path, target_peaks)
         except Exception as wave_exc:
-            raise ValueError(
-                "Could not read audio for waveform. Try a standard WAV, MP3, FLAC, or M4A file. "
-                f"torchaudio error: {torch_exc}; wav fallback error: {wave_exc}"
-            )
+            try:
+                return _read_audio_peaks_with_ffmpeg(audio_path, target_peaks)
+            except Exception as ffmpeg_exc:
+                raise ValueError(
+                    "Could not read audio for waveform. Try a standard WAV, MP3, FLAC, or M4A file. "
+                    f"torchaudio error: {torch_exc}; wav fallback error: {wave_exc}; ffmpeg fallback error: {ffmpeg_exc}"
+                )
 
 
 def _estimate_beats_from_peaks(peaks, duration):
@@ -2108,14 +2216,25 @@ def _save_project_audio(payload):
     ext = os.path.splitext(source_name)[1].lower()
     if ext not in {".wav", ".mp3", ".flac", ".m4a", ".ogg"}:
         ext = ".wav"
-    target_path = os.path.join(folder, f"project_audio{ext}")
+    target_path = os.path.join(folder, f"project_audio{'.wav' if ext == '.m4a' else ext}")
+    raw_target_path = os.path.join(folder, f"project_audio_source{ext}") if ext == ".m4a" else target_path
     audio_data = str(payload.get("audio_data", "") or "").strip()
     if audio_data:
-        with open(target_path, "wb") as handle:
+        with open(raw_target_path, "wb") as handle:
             handle.write(_audio_bytes_from_data_url(audio_data))
     else:
         source_path = _resolve_existing_file(payload.get("source_path", ""), "Audio file")
-        shutil.copy2(source_path, target_path)
+        if ext == ".m4a":
+            shutil.copy2(source_path, raw_target_path)
+        else:
+            shutil.copy2(source_path, target_path)
+    if ext == ".m4a":
+        target_path = _convert_audio_to_wav(raw_target_path, target_path)
+        try:
+            if os.path.abspath(raw_target_path) != os.path.abspath(target_path):
+                os.remove(raw_target_path)
+        except Exception:
+            pass
     audio_info = _read_audio_peaks(target_path, 1600)
     return {"saved_path": target_path, "audio_folder": folder, **audio_info}
 
@@ -2502,6 +2621,12 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             audio_path = _resolve_existing_file(payload.get("audio_path", ""), "Audio file")
+            project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+            if os.path.splitext(audio_path)[1].lower() == ".m4a" and project_folder:
+                audio_path = _convert_audio_to_wav(
+                    audio_path,
+                    os.path.join(project_folder, "project_audio", "project_audio.wav"),
+                )
             result = _read_audio_peaks(audio_path, payload.get("target_peaks", 1600))
             result["beats"] = _estimate_beats_from_peaks(result.get("peaks", []), result.get("duration", 0))
         except Exception as exc:

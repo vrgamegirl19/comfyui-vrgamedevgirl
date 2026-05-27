@@ -2490,6 +2490,7 @@ function openBuilder(node) {
     srtMode: false,
     promptJsonPath: "",
     i2vMotionJsonPath: "",
+    lyricSegmentsPath: "",
     imageTriggerPhrase: "",
     videoTriggerPhrase: "",
     useVrgdgTextContext: true,
@@ -2740,6 +2741,7 @@ function openBuilder(node) {
     if (!Number.isFinite(Number(segment.end))) segment.end = Number(segment.start || 0) + 4;
     if (Number(segment.end) <= Number(segment.start)) segment.end = Number(segment.start || 0) + 0.1;
     if (segment.label == null) segment.label = "New scene";
+    if (segment.lyric_text == null) segment.lyric_text = "";
     if (segment.id == null || !String(segment.id).trim()) segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
     const approvedImagePath = String(segment.approved_image_path || "");
@@ -3098,8 +3100,11 @@ function openBuilder(node) {
     try {
       const data = await postJson("/vrgdg/music_builder/analyze_audio", {
         audio_path: audioPath,
+        project_folder: projectInput.value || state.projectFolder || "",
         target_peaks: 1800,
       }, 90000);
+      audioInput.value = data.audio_path || audioInput.value;
+      setWidgetValue(node, "audio_path", audioInput.value);
       state.duration = Math.max(Number(state.duration || 0), Number(data.duration || 0));
       state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
       state.beats = Array.isArray(data.beats) ? data.beats : [];
@@ -3268,6 +3273,27 @@ function openBuilder(node) {
       prompt_json_path: promptPath,
     });
     return Array.isArray(data.prompts) ? data.prompts : [];
+  }
+
+  async function loadLyricSegmentsFromPath(path) {
+    const lyricPath = String(path || "").trim();
+    if (!lyricPath) return [];
+    const data = await postJson("/vrgdg/music_builder/load_prompt_json", {
+      prompt_json_path: lyricPath,
+    });
+    return Array.isArray(data.prompts) ? data.prompts : [];
+  }
+
+  function isInstrumentalLyricText(text) {
+    const value = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
+    return value === "instrumental" || value === "[instrumental]" || value === "instrumental section" || value === "instrumental section.";
+  }
+
+  function videoGemmaNotesForSegment(segment) {
+    const notes = String(segment?.i2v_notes || "").trim();
+    if (!isInstrumentalLyricText(segment?.lyric_text)) return notes;
+    const instrumentalNote = "Lyric/performance status: instrumental / no sung lyrics. Do not make the subject sing or lip-sync unless the user notes explicitly ask for singing; use visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere instead.";
+    return notes ? `${instrumentalNote}\n\n${notes}` : instrumentalNote;
   }
 
   async function syncPromptJsonFromSegments(reason = "") {
@@ -5853,8 +5879,10 @@ function openBuilder(node) {
       }
       const data = await postJson("/vrgdg/music_builder/analyze_audio", {
         audio_path: audioInput.value,
+        project_folder: projectInput.value || state.projectFolder || "",
         target_peaks: 1800,
       }, 90000);
+      audioInput.value = data.audio_path || audioInput.value;
       state.duration = Number(data.duration || 0);
       state.peaks = data.peaks || [];
       state.beats = data.beats || [];
@@ -6173,6 +6201,7 @@ function openBuilder(node) {
       if (paths.srt_path) srtInput.value = paths.srt_path;
       promptJsonInput.value = paths.concept_prompts_path || "";
       i2vMotionJsonInput.value = exists.i2v_motion_notes_path ? paths.i2v_motion_notes_path || "" : "";
+      state.lyricSegmentsPath = exists.lyric_segments_path ? paths.lyric_segments_path || "" : "";
       themeStyleInput.value = exists.theme_style_path ? paths.theme_style_path || "" : "";
       storyIdeaInput.value = exists.story_idea_path ? paths.story_idea_path || "" : "";
       subjectSceneInput.value = exists.subject_scene_path ? paths.subject_scene_path || "" : "";
@@ -6187,11 +6216,23 @@ function openBuilder(node) {
       await loadSrt({ throwOnError: true });
       let importedPrompts = [];
       let importedMotionNotes = [];
+      let importedLyrics = [];
       if (promptJsonInput.value) {
         importedPrompts = await importPromptJson({ quiet: true, pushHistory: false });
       }
       if (i2vMotionJsonInput.value) {
         importedMotionNotes = await importI2VMotionJson({ quiet: true, pushHistory: false });
+      }
+      if (state.lyricSegmentsPath) {
+        try {
+          importedLyrics = await loadLyricSegmentsFromPath(state.lyricSegmentsPath);
+        } catch (error) {
+          console.warn("[VRGDG Music Builder] Could not import lyric segment status:", error);
+          importedLyrics = [];
+        }
+      }
+      for (let index = 0; index < state.segments.length && index < importedLyrics.length; index += 1) {
+        state.segments[index].lyric_text = String(importedLyrics[index] || "").trim();
       }
       const nonEmptyPrompts = importedPrompts.filter((item) => String(item || "").trim()).length;
       const nonEmptyMotionNotes = importedMotionNotes.filter((item) => String(item || "").trim()).length;
@@ -6555,13 +6596,16 @@ function openBuilder(node) {
         try {
           const audioData = await postJson("/vrgdg/music_builder/analyze_audio", {
             audio_path: session.audio_path,
+            project_folder: projectInput.value || state.projectFolder || "",
             target_peaks: 1800,
           });
+          audioInput.value = audioData.audio_path || session.audio_path;
+          setWidgetValue(node, "audio_path", audioInput.value);
           state.duration = Number(audioData.duration || 0);
           state.peaks = Array.isArray(audioData.peaks) && audioData.peaks.length ? audioData.peaks : state.peaks;
           state.beats = Array.isArray(audioData.beats) && audioData.beats.length ? audioData.beats : state.beats;
           showBeatMarkersIfAvailable();
-          audio.src = audioUrl(audioData.audio_path || session.audio_path);
+          audio.src = audioUrl(audioInput.value);
           audio.load();
         } catch (error) {
           toast(`Loaded session, but audio waveform failed:\n${String(error?.message || error)}`, true);
@@ -7463,7 +7507,7 @@ function openBuilder(node) {
         t2i_prompt: isT2V ? conceptPrompt : useImageReference ? "" : conceptPrompt,
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
-        user_notes: segment.i2v_notes || "",
+        user_notes: videoGemmaNotesForSegment(segment),
         theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
         subject_scene_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -7497,7 +7541,7 @@ function openBuilder(node) {
       t2i_prompt: t2iText,
       image_reference_path: "",
       image_reference_data: "",
-      user_notes: segment.i2v_notes || "",
+      user_notes: videoGemmaNotesForSegment(segment),
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -7534,7 +7578,7 @@ function openBuilder(node) {
       t2i_prompt: isT2V ? t2iText : useImageReference ? "" : t2iText,
       image_reference_path: imageReference.path,
       image_reference_data: imageReference.data,
-      user_notes: segment.i2v_notes || "",
+      user_notes: videoGemmaNotesForSegment(segment),
       theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
