@@ -2358,6 +2358,7 @@ function openBuilder(node) {
   for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
     overlay.addEventListener(eventName, (event) => {
       if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+      if (event.target?.closest?.("[data-vrgdg-file-drop-zone='true']")) return;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation?.();
@@ -6016,11 +6017,11 @@ function openBuilder(node) {
       reader.readAsDataURL(file);
     };
     const wireDrop = (drop, target) => {
+      drop.dataset.vrgdgFileDropZone = "true";
       for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
         drop.addEventListener(eventName, (event) => {
           event.preventDefault();
           event.stopPropagation();
-          event.stopImmediatePropagation?.();
         }, true);
       }
       drop.addEventListener("dragover", (event) => {
