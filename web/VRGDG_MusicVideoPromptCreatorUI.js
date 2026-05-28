@@ -648,6 +648,16 @@ function openPromptCreator(options = {}) {
     return `Runner: ${state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Built-in GGUF"}`;
   }
 
+  const instructionLabels = {
+    full_lyrics: "Full Lyrics",
+    style_theme: "Style / Theme",
+    story_idea: "Story Idea",
+    subject_locations: "Subject and Locations",
+    concept_prompts: "Concept Prompts",
+    subject_extract: "Subject Extraction",
+    i2v_motion_notes: "I2V Motion Notes",
+  };
+
   const overlay = document.createElement("div");
   overlay.className = "vrgdg-music-prompt-creator";
   overlay.dataset.version = PROMPT_CREATOR_VERSION;
@@ -747,6 +757,12 @@ function openPromptCreator(options = {}) {
     };
     return button;
   };
+  const makeInstructionButton = (key) => {
+    const button = makeButton("Edit Instructions");
+    button.style.padding = "6px 9px";
+    button.onclick = () => openInstructionEditor(key);
+    return button;
+  };
   const makeGptButton = (url) => {
     const button = makeButton("Use GPT");
     button.style.background = "#6d28d9";
@@ -768,6 +784,7 @@ function openPromptCreator(options = {}) {
           return button;
         })(),
         makeGemmaInputButton("Gemma4 Lyrics", "full_lyrics", fullLyrics),
+        makeInstructionButton("full_lyrics"),
         makeGptButton(LYRIC_CREATOR_GPT_URL),
       ]
     ),
@@ -776,6 +793,7 @@ function openPromptCreator(options = {}) {
       styleTheme,
       [
         makeGemmaInputButton("Gemma4", "style_theme", styleTheme),
+        makeInstructionButton("style_theme"),
         makeGptButton(STYLE_THEME_GPT_URL),
       ]
     ),
@@ -784,6 +802,7 @@ function openPromptCreator(options = {}) {
       storyIdea,
       [
         makeGemmaInputButton("Gemma4", "story_idea", storyIdea),
+        makeInstructionButton("story_idea"),
         makeGptButton(STORY_IDEA_GPT_URL),
       ]
     ),
@@ -792,6 +811,7 @@ function openPromptCreator(options = {}) {
       subjectLocations,
       [
         makeGemmaInputButton("Gemma4", "subject_locations", subjectLocations),
+        makeInstructionButton("subject_locations"),
         makeGptButton(SUBJECT_LOCATION_GPT_URL),
       ]
     ),
@@ -944,6 +964,192 @@ function openPromptCreator(options = {}) {
     };
   }
 
+  function showInstructionWarning(label) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100075;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #7f1d1d;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = `Advanced Users: ${label} Instructions`;
+      heading.style.cssText = "font-size:17px;font-weight:900;color:#fecaca;";
+      const note = document.createElement("div");
+      note.textContent = "Changing LLM instructions can break output formatting, cause missing JSON keys, or make Gemma return unusable text. Keep required output formats intact. Use Reset To Default if results get weird.";
+      note.style.cssText = "font-size:13px;color:#f5d0d0;line-height:1.45;border:1px solid #7f1d1d;background:#450a0a;border-radius:7px;padding:10px;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const proceed = makeButton("Continue", "primary");
+      actions.append(cancel, proceed);
+      box.append(heading, note, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      cancel.onclick = () => finish(false);
+      proceed.onclick = () => finish(true);
+      backdrop.onclick = (event) => {
+        if (event.target === backdrop) finish(false);
+      };
+    });
+  }
+
+  async function chooseInstructionPreset(key) {
+    const data = await postJson("/vrgdg/music_prompt_creator/list_instruction_presets", { key });
+    const presets = Array.isArray(data.presets) ? data.presets : [];
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100080;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(720px,calc(100vw - 40px));max-height:min(680px,calc(100vh - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = `Load ${instructionLabels[key] || key} Preset`;
+      heading.style.cssText = "font-size:17px;font-weight:900;color:#cffafe;";
+      const list = document.createElement("div");
+      list.style.cssText = "display:flex;flex-direction:column;gap:8px;overflow:auto;max-height:min(440px,52vh);";
+      if (!presets.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No presets saved for this instruction yet.";
+        empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:12px;color:#a1a1aa;text-align:center;font-size:12px;";
+        list.append(empty);
+      } else {
+        for (const preset of presets) {
+          const row = document.createElement("div");
+          row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #3f3f46;border-radius:7px;background:#18181b;padding:10px;";
+          const info = document.createElement("div");
+          info.style.cssText = "display:flex;flex-direction:column;gap:4px;min-width:0;";
+          const name = document.createElement("div");
+          name.textContent = preset.name || "Unnamed preset";
+          name.style.cssText = "font-size:13px;font-weight:900;color:#f8fafc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+          const meta = document.createElement("div");
+          meta.textContent = preset.updated ? new Date(preset.updated * 1000).toLocaleString() : "unknown date";
+          meta.style.cssText = "font-size:11px;color:#a1a1aa;";
+          info.append(name, meta);
+          const load = makeButton("Load", "primary");
+          load.onclick = () => {
+            backdrop.remove();
+            resolve(preset);
+          };
+          row.append(info, load);
+          list.append(row);
+        }
+      }
+      const close = makeButton("Close");
+      close.onclick = () => {
+        backdrop.remove();
+        resolve(null);
+      };
+      box.append(heading, list, close);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
+  async function openInstructionEditor(key) {
+    const label = instructionLabels[key] || key;
+    if (!(await showInstructionWarning(label))) return;
+    let data;
+    try {
+      data = await postJson("/vrgdg/music_prompt_creator/get_instruction", {
+        project_folder: projectFolder.value || "",
+        key,
+      });
+    } catch (error) {
+      setStatus(status, `Could not load ${label} instructions:\n${error.message}`, true);
+      return;
+    }
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100076;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(920px,calc(100vw - 40px));height:min(760px,calc(100vh - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #155e75;background:#083344;";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div style="font-size:15px;font-weight:900;color:#cffafe;">Edit ${label} Instructions</div><div style="font-size:11px;color:#a5f3fc;margin-top:3px;">Saved instructions apply only to this Prompt Creator project unless you save them as a preset.</div>`;
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const textarea = makeTextarea(data.text || data.default_text || "", 24);
+    textarea.style.height = "100%";
+    textarea.style.minHeight = "0";
+    textarea.style.resize = "none";
+    const body = document.createElement("div");
+    body.style.cssText = "min-height:0;padding:14px;display:flex;flex-direction:column;gap:8px;";
+    const pathNote = document.createElement("div");
+    pathNote.textContent = data.has_custom ? `Using custom instructions: ${data.path}` : "Using built-in default instructions until you save a custom version.";
+    pathNote.style.cssText = "font-size:11px;color:#a1a1aa;overflow-wrap:anywhere;";
+    body.append(pathNote, textarea);
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:12px 14px;border-top:1px solid #155e75;background:#0f172a;";
+    const loadPreset = makeButton("Load Preset");
+    const savePreset = makeButton("Save As Preset");
+    const reset = makeButton("Reset To Default");
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Save Instructions", "primary");
+    actions.append(loadPreset, savePreset, reset, cancel, save);
+    box.append(header, body, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const closeModal = () => backdrop.remove();
+    close.onclick = cancel.onclick = closeModal;
+    save.onclick = async () => {
+      try {
+        const saved = await postJson("/vrgdg/music_prompt_creator/save_instruction", {
+          project_folder: projectFolder.value || "",
+          key,
+          text: textarea.value || "",
+        });
+        pathNote.textContent = `Using custom instructions: ${saved.path}`;
+        setStatus(status, `Saved ${label} custom instructions.`);
+      } catch (error) {
+        setStatus(status, `Could not save ${label} instructions:\n${error.message}`, true);
+      }
+    };
+    reset.onclick = async () => {
+      if (!window.confirm(`Reset ${label} instructions to the built-in default for this project?`)) return;
+      try {
+        const resetData = await postJson("/vrgdg/music_prompt_creator/reset_instruction", {
+          project_folder: projectFolder.value || "",
+          key,
+        });
+        textarea.value = resetData.text || resetData.default_text || "";
+        pathNote.textContent = "Using built-in default instructions until you save a custom version.";
+        setStatus(status, `Reset ${label} instructions to default.`);
+      } catch (error) {
+        setStatus(status, `Could not reset ${label} instructions:\n${error.message}`, true);
+      }
+    };
+    savePreset.onclick = async () => {
+      const name = window.prompt(`Preset name for ${label}:`, "");
+      if (!name) return;
+      try {
+        await postJson("/vrgdg/music_prompt_creator/save_instruction_preset", {
+          key,
+          name,
+          text: textarea.value || "",
+        });
+        setStatus(status, `Saved ${label} preset: ${name}`);
+      } catch (error) {
+        setStatus(status, `Could not save preset:\n${error.message}`, true);
+      }
+    };
+    loadPreset.onclick = async () => {
+      try {
+        const preset = await chooseInstructionPreset(key);
+        if (!preset?.name) return;
+        const loaded = await postJson("/vrgdg/music_prompt_creator/load_instruction_preset", {
+          key,
+          name: preset.name,
+        });
+        textarea.value = loaded.text || "";
+        setStatus(status, `Loaded ${label} preset: ${preset.name}. Click Save Instructions to use it in this project.`);
+      } catch (error) {
+        setStatus(status, `Could not load preset:\n${error.message}`, true);
+      }
+    };
+  }
+
   const outputsPanel = makePanel("Generated Outputs");
   const repairedOutput = makeCompactPreviewBox("", 3);
   const conceptOutput = makeTextarea("", 14);
@@ -973,12 +1179,21 @@ function openPromptCreator(options = {}) {
   const taskPanel = makePanel("Run Tasks");
   const runAllButton = makeButton("Run", "primary");
   const runSkipWhisperButton = makeButton("Run: Skip Whisper/SRT", "primary");
+  const instructionRow = document.createElement("div");
+  instructionRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;";
+  const conceptInstructionsButton = makeInstructionButton("concept_prompts");
+  conceptInstructionsButton.textContent = "Edit Concept Instructions";
+  const subjectInstructionsButton = makeInstructionButton("subject_extract");
+  subjectInstructionsButton.textContent = "Edit Subject Instructions";
+  const motionInstructionsButton = makeInstructionButton("i2v_motion_notes");
+  motionInstructionsButton.textContent = "Edit I2V Motion Instructions";
+  instructionRow.append(conceptInstructionsButton, subjectInstructionsButton, motionInstructionsButton);
   const status = document.createElement("div");
   status.style.cssText = "min-height:44px;border:1px solid #27272a;border-radius:7px;background:#09090b;color:#d4d4d8;padding:10px;font-size:12px;line-height:1.45;white-space:pre-wrap;";
   const runNote = document.createElement("div");
   runNote.textContent = "Runs the full prompt creator pipeline in order and auto-saves the generated files into this project. Use Save Manual Edits only if you change the final outputs afterward.";
   runNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
-  taskPanel.append(runAllButton, runSkipWhisperButton, runNote, status);
+  taskPanel.append(instructionRow, runAllButton, runSkipWhisperButton, runNote, status);
 
   const controls = {
     projectFolder,
@@ -1201,6 +1416,7 @@ function openPromptCreator(options = {}) {
     if (userInput == null) return;
     const idea = String(userInput || "").trim();
     const payload = {
+      project_folder: projectFolder.value || "",
       target,
       model_file: modelFile,
       notes: idea,

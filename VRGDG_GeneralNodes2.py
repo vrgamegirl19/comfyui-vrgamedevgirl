@@ -655,6 +655,25 @@ def _clean_gemma4_text(value):
     return text.strip()
 
 
+def _prompt_creator_custom_instruction(payload, key, default_text):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        return str(default_text or "")
+    safe_key = re.sub(r"[^a-z0-9_]+", "_", str(key or "").strip().lower()).strip("_")
+    if not safe_key:
+        return str(default_text or "")
+    path = os.path.join(project_folder, "project_context", "custom_llm_instructions", f"{safe_key}.txt")
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                text = handle.read().strip()
+            if text:
+                return text
+        except Exception:
+            pass
+    return str(default_text or "")
+
+
 def _first_clean_gemma4_line(value):
     for line in _clean_gemma4_text(value).splitlines():
         text = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
@@ -672,8 +691,9 @@ def _build_gemma4_prompt(target, payload):
 
     if target == "builder_style_theme":
         idea = notes or lyrics or style_theme or story_idea
+        instructions = _prompt_creator_custom_instruction(payload, "style_theme", _VRGDG_GEMMA4_STYLE_INSTRUCTIONS)
         prompt = (
-            f"{_VRGDG_GEMMA4_STYLE_INSTRUCTIONS}\n\n"
+            f"{instructions}\n\n"
             "Create the style/theme block from normal user ideas instead of lyrics.\n"
             "Use the user's rough idea as the full creative direction.\n"
             "If the idea is short, infer a useful cinematic visual style without adding extra sections.\n\n"
@@ -683,8 +703,9 @@ def _build_gemma4_prompt(target, payload):
 
     if target == "builder_story_idea":
         idea = notes or story_idea or lyrics
+        instructions = _prompt_creator_custom_instruction(payload, "story_idea", _VRGDG_GEMMA4_STORY_INSTRUCTIONS)
         prompt = (
-            f"{_VRGDG_GEMMA4_STORY_INSTRUCTIONS}\n\n"
+            f"{instructions}\n\n"
             "Create the story idea from normal user ideas instead of lyrics.\n"
             "Treat the user idea as the full creative foundation.\n"
             "Do not ask for lyrics. Output only the story concept.\n\n"
@@ -696,8 +717,9 @@ def _build_gemma4_prompt(target, payload):
 
     if target == "builder_subjects_and_scenes":
         idea = notes or story_idea or lyrics
+        instructions = _prompt_creator_custom_instruction(payload, "subject_locations", _VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS)
         prompt = (
-            f"{_VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS}\n\n"
+            f"{instructions}\n\n"
             "Create the subject and location list from normal user ideas instead of lyrics.\n"
             "Use the user idea as the highest priority creative direction.\n"
         )
@@ -707,13 +729,15 @@ def _build_gemma4_prompt(target, payload):
         return prompt
 
     if target == "style_theme":
-        prompt = f"{_VRGDG_GEMMA4_STYLE_INSTRUCTIONS}\n\nfull lyrics:\n{lyrics}"
+        instructions = _prompt_creator_custom_instruction(payload, "style_theme", _VRGDG_GEMMA4_STYLE_INSTRUCTIONS)
+        prompt = f"{instructions}\n\nfull lyrics:\n{lyrics}"
         if notes:
             prompt += f"\n\nother notes:\n{notes}"
         return prompt
 
     if target == "story_idea":
-        prompt = f"{_VRGDG_GEMMA4_STORY_INSTRUCTIONS}\n\nLyrics:\n{lyrics}"
+        instructions = _prompt_creator_custom_instruction(payload, "story_idea", _VRGDG_GEMMA4_STORY_INSTRUCTIONS)
+        prompt = f"{instructions}\n\nLyrics:\n{lyrics}"
         if style_theme:
             prompt += f"\n\nStyle/theme:\n{style_theme}"
         if notes:
@@ -721,7 +745,8 @@ def _build_gemma4_prompt(target, payload):
         return prompt
 
     if target == "subjects_and_scenes":
-        prompt = f"{_VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS}"
+        instructions = _prompt_creator_custom_instruction(payload, "subject_locations", _VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS)
+        prompt = f"{instructions}"
         if notes:
             prompt += f"\n\nUser notes - highest priority:\n{notes}"
         prompt += f"\n\nStory idea:\n{story_idea}"
@@ -729,7 +754,8 @@ def _build_gemma4_prompt(target, payload):
 
     if target == "song_lyrics":
         duration = str(payload.get("duration", "") or "").strip()
-        prompt = f"{_VRGDG_GEMMA4_LYRICS_INSTRUCTIONS}"
+        instructions = _prompt_creator_custom_instruction(payload, "full_lyrics", _VRGDG_GEMMA4_LYRICS_INSTRUCTIONS)
+        prompt = f"{instructions}"
         if duration:
             prompt += f"\n\nRequested duration seconds:\n{duration}"
         prompt += f"\n\nSong idea and notes:\n{notes}"

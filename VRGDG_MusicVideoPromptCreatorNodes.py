@@ -20,6 +20,12 @@ from .VRGDG_MusicVideoBuilderNodes import (
     _srt_path,
 )
 from .VRGDG_GeneralNodes2 import (
+    _VRGDG_GEMMA4_LYRICS_INSTRUCTIONS,
+    _VRGDG_GEMMA4_STYLE_INSTRUCTIONS,
+    _VRGDG_GEMMA4_STORY_INSTRUCTIONS,
+    _VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS,
+)
+from .VRGDG_GeneralNodes2 import (
     VRGDG_LyricSegmentJsonFixer,
     VRGDG_PromptMapJsonFixer,
 )
@@ -331,6 +337,71 @@ Example output:
 A female with blond hair, wearing a red dress.
 
 user input:"""
+
+
+_PROMPT_CREATOR_INSTRUCTION_DEFAULTS = {
+    "full_lyrics": _VRGDG_GEMMA4_LYRICS_INSTRUCTIONS,
+    "style_theme": _VRGDG_GEMMA4_STYLE_INSTRUCTIONS,
+    "story_idea": _VRGDG_GEMMA4_STORY_INSTRUCTIONS,
+    "subject_locations": _VRGDG_GEMMA4_SUBJECTS_INSTRUCTIONS,
+    "concept_prompts": _CONCEPT_PROMPT_INSTRUCTIONS,
+    "subject_extract": _SUBJECT_EXTRACT_INSTRUCTIONS,
+    "i2v_motion_notes": _I2V_MOTION_NOTES_INSTRUCTIONS,
+}
+
+_PROMPT_CREATOR_INSTRUCTION_LABELS = {
+    "full_lyrics": "Full Lyrics",
+    "style_theme": "Style / Theme",
+    "story_idea": "Story Idea",
+    "subject_locations": "Subject and Locations",
+    "concept_prompts": "Concept Prompts",
+    "subject_extract": "Subject Extraction",
+    "i2v_motion_notes": "I2V Motion Notes",
+}
+
+
+def _safe_instruction_key(value):
+    key = re.sub(r"[^a-z0-9_]+", "_", str(value or "").strip().lower()).strip("_")
+    if key not in _PROMPT_CREATOR_INSTRUCTION_DEFAULTS:
+        raise ValueError(f"Unknown Prompt Creator instruction key: {value}")
+    return key
+
+
+def _safe_preset_name(value):
+    text = str(value or "").strip()
+    text = re.sub(r"[^A-Za-z0-9_. -]+", "_", text).strip(" ._")
+    if not text:
+        raise ValueError("Preset name is empty.")
+    return text[:80]
+
+
+def _instruction_folder(project_folder):
+    return os.path.join(_context_folder(project_folder), "custom_llm_instructions")
+
+
+def _instruction_path(project_folder, key):
+    return os.path.join(_instruction_folder(project_folder), f"{_safe_instruction_key(key)}.txt")
+
+
+def _instruction_preset_root():
+    return os.path.join(folder_paths.get_output_directory(), "VRGDG_LLM_Instruction_Presets", "prompt_creator")
+
+
+def _instruction_preset_path(key, name):
+    return os.path.join(_instruction_preset_root(), _safe_instruction_key(key), f"{_safe_preset_name(name)}.txt")
+
+
+def _prompt_creator_instruction(project_folder, key, default_text):
+    path = _instruction_path(project_folder, key)
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                text = handle.read().strip()
+            if text:
+                return text
+        except Exception:
+            pass
+    return str(default_text or "")
 
 
 def _workflow_template_path():
@@ -975,8 +1046,10 @@ def _create_concepts(payload):
         raise ValueError("Lyric segment JSON did not contain any segments.")
     subject_text, locations_text = _split_subject_locations(payload.get("subject_locations", ""))
     concept_match_mode = str(payload.get("concept_match_mode", "medium") or "medium")
+    project_folder = _project_folder_from_payload(payload)
+    concept_instructions = _prompt_creator_instruction(project_folder, "concept_prompts", _CONCEPT_PROMPT_INSTRUCTIONS)
     user_input = (
-        f"{_CONCEPT_PROMPT_INSTRUCTIONS}\n\n"
+        f"{concept_instructions}\n\n"
         f"{_concept_match_instructions(concept_match_mode)}\n\n"
         f"LYRIC_SEGMENT_JSON:\n{json.dumps(segment_data, ensure_ascii=False, indent=2)}\n\n"
         f"STORY:\n{str(payload.get('story_idea', '') or '').strip()}\n\n"
@@ -1080,8 +1153,9 @@ def _create_i2v_motion_notes(payload):
     expected_count = _segment_count_from_mapping({f"segment{_prompt_map_key_number(key)}": value for key, value in prompt_data.items()})
     if expected_count <= 0:
         raise ValueError("ConceptPrompts JSON did not contain any prompts.")
+    motion_instructions = _prompt_creator_instruction(project_folder, "i2v_motion_notes", _I2V_MOTION_NOTES_INSTRUCTIONS)
     user_input = (
-        f"{_I2V_MOTION_NOTES_INSTRUCTIONS}\n\n"
+        f"{motion_instructions}\n\n"
         f"CONCEPT_PROMPT_JSON:\n{json.dumps(prompt_data, ensure_ascii=False, indent=2)}\n\n"
         f"STORY:\n{str(payload.get('story_idea', '') or '').strip()}\n\n"
         f"THEME_STYLE:\n{str(payload.get('style_theme', '') or '').strip()}\n\n"
@@ -1134,9 +1208,11 @@ def _create_i2v_motion_notes(payload):
 
 def _extract_subject(payload):
     subject_locations = str(payload.get("subject_locations", "") or "").strip()
+    project_folder = _project_folder_from_payload(payload)
+    subject_instructions = _prompt_creator_instruction(project_folder, "subject_extract", _SUBJECT_EXTRACT_INSTRUCTIONS)
     result = _run_text_gemma(
         payload.get("model_file", ""),
-        f"{_SUBJECT_EXTRACT_INSTRUCTIONS}\n{subject_locations}",
+        f"{subject_instructions}\n{subject_locations}",
         payload.get("llm_settings"),
         payload,
     )
@@ -1460,6 +1536,103 @@ def _list_prompt_creator_drafts():
     return {"projects": projects, "output_dir": output_dir}
 
 
+def _get_prompt_creator_instruction(payload):
+    project_folder = _project_folder_from_payload(payload)
+    key = _safe_instruction_key(payload.get("key"))
+    default_text = _PROMPT_CREATOR_INSTRUCTION_DEFAULTS[key]
+    path = _instruction_path(project_folder, key)
+    custom_text = _read_text_file_if_exists(path).strip()
+    return {
+        "project_folder": project_folder,
+        "key": key,
+        "label": _PROMPT_CREATOR_INSTRUCTION_LABELS.get(key, key),
+        "default_text": default_text,
+        "custom_text": custom_text,
+        "text": custom_text or default_text,
+        "has_custom": bool(custom_text),
+        "path": path,
+    }
+
+
+def _save_prompt_creator_instruction(payload):
+    project_folder = _project_folder_from_payload(payload)
+    key = _safe_instruction_key(payload.get("key"))
+    text = str(payload.get("text", "") or "").strip()
+    if not text:
+        raise ValueError("Instruction text is empty.")
+    folder = _instruction_folder(project_folder)
+    os.makedirs(folder, exist_ok=True)
+    path = _instruction_path(project_folder, key)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.write("\n")
+    return _get_prompt_creator_instruction({"project_folder": project_folder, "key": key})
+
+
+def _reset_prompt_creator_instruction(payload):
+    project_folder = _project_folder_from_payload(payload)
+    key = _safe_instruction_key(payload.get("key"))
+    path = _instruction_path(project_folder, key)
+    if os.path.isfile(path):
+        os.remove(path)
+    return _get_prompt_creator_instruction({"project_folder": project_folder, "key": key})
+
+
+def _list_prompt_creator_instruction_presets(payload):
+    key = _safe_instruction_key(payload.get("key"))
+    folder = os.path.join(_instruction_preset_root(), key)
+    presets = []
+    if os.path.isdir(folder):
+        for filename in os.listdir(folder):
+            if not filename.lower().endswith(".txt"):
+                continue
+            path = os.path.join(folder, filename)
+            if not os.path.isfile(path):
+                continue
+            try:
+                updated = os.path.getmtime(path)
+            except OSError:
+                updated = 0
+            presets.append({
+                "name": os.path.splitext(filename)[0],
+                "path": os.path.abspath(path),
+                "updated": updated,
+            })
+    presets.sort(key=lambda item: item.get("updated", 0), reverse=True)
+    return {
+        "key": key,
+        "label": _PROMPT_CREATOR_INSTRUCTION_LABELS.get(key, key),
+        "presets": presets,
+        "preset_folder": folder,
+    }
+
+
+def _save_prompt_creator_instruction_preset(payload):
+    key = _safe_instruction_key(payload.get("key"))
+    name = _safe_preset_name(payload.get("name"))
+    text = str(payload.get("text", "") or "").strip()
+    if not text:
+        raise ValueError("Preset instruction text is empty.")
+    path = _instruction_preset_path(key, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.write("\n")
+    return {"key": key, "name": name, "path": path}
+
+
+def _load_prompt_creator_instruction_preset(payload):
+    key = _safe_instruction_key(payload.get("key"))
+    name = _safe_preset_name(payload.get("name"))
+    path = _instruction_preset_path(key, name)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"Instruction preset was not found: {path}")
+    text = _read_text_file_if_exists(path).strip()
+    if not text:
+        raise ValueError("Instruction preset is empty.")
+    return {"key": key, "name": name, "path": path, "text": text}
+
+
 def _build_whisper_workflow_prompt(payload):
     workflow_path, prompt = _load_prompt_creator_workflow_template()
     prompt = copy.deepcopy(prompt)
@@ -1653,6 +1826,48 @@ def _register_routes():
     async def vrgdg_music_prompt_creator_list_drafts(_request):
         try:
             return _json_response(_list_prompt_creator_drafts())
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/get_instruction")
+    async def vrgdg_music_prompt_creator_get_instruction(request):
+        try:
+            return _json_response(_get_prompt_creator_instruction(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/save_instruction")
+    async def vrgdg_music_prompt_creator_save_instruction(request):
+        try:
+            return _json_response(_save_prompt_creator_instruction(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/reset_instruction")
+    async def vrgdg_music_prompt_creator_reset_instruction(request):
+        try:
+            return _json_response(_reset_prompt_creator_instruction(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/list_instruction_presets")
+    async def vrgdg_music_prompt_creator_list_instruction_presets(request):
+        try:
+            return _json_response(_list_prompt_creator_instruction_presets(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/save_instruction_preset")
+    async def vrgdg_music_prompt_creator_save_instruction_preset(request):
+        try:
+            return _json_response(_save_prompt_creator_instruction_preset(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.post("/vrgdg/music_prompt_creator/load_instruction_preset")
+    async def vrgdg_music_prompt_creator_load_instruction_preset(request):
+        try:
+            return _json_response(_load_prompt_creator_instruction_preset(await request.json()))
         except Exception as exc:
             return _json_response(error=exc, status=400)
 
