@@ -134,6 +134,8 @@ STRICT RULES
 - Do not invent new lyrics.
 - Do not use visual story, style/theme, mood, color, or setting words.
 - If a Whisper segment is filler such as "Thank you." and no lyric from REAL_LYRIC_WINDOW belongs there, output "[instrumental]".
+- INTRO FILLER EXCEPTION: When a short Whisper segment (1-3 words) at the very start of the song contains the beginning of a longer sung line whose remaining words appear in the next segment, that short segment is Whisper picking up the leading edge of the first vocal entry during a silent or instrumental intro. Output "[instrumental]" for it, even though its individual words appear in REAL_LYRIC_WINDOW. The test: would the full line in REAL_LYRIC_WINDOW still make sense if these few words moved to the start of the next segment? If yes, the short segment is intro filler.
+- OUTRO FILLER EXCEPTION: Same pattern at the end of the song. A short trailing fragment (1-3 words) that duplicates the last few words of the previous segment's sung phrase, or appears after the last full sung line, is outro filler. Output "[instrumental]".
 - If a filler segment clearly sits where a lyric from REAL_LYRIC_WINDOW belongs, use the matching real lyric words.
 - Keep the segment count and key names exactly the same as TARGET_WHISPER_SEGMENTS.
 - Keep the batch in song order. Do not jump backward to earlier lyrics outside REAL_LYRIC_WINDOW.
@@ -1378,6 +1380,7 @@ def _save_prompt_creator_draft(payload):
         "empty_segment_text": str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section."),
         "concept_match_mode": str(payload.get("concept_match_mode", "medium") or "medium"),
         "append_subject_to_prompts": bool(payload.get("append_subject_to_prompts", True)),
+        "repair_lyric_segments": bool(payload.get("repair_lyric_segments", False)),
         "text_gemma_runner": str(payload.get("text_gemma_runner") or payload.get("text_runner") or "builtin"),
         "lm_studio_base_url": str(payload.get("lm_studio_base_url") or payload.get("lmstudio_base_url") or "http://127.0.0.1:1234/v1"),
         "lm_studio_model": str(payload.get("lm_studio_model") or payload.get("lmstudio_model") or ""),

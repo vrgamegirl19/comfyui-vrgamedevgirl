@@ -515,6 +515,7 @@ function buildPayload(controls, modelSelect) {
     empty_segment_text: controls.emptySegmentText.value,
     concept_match_mode: controls.conceptMatchMode.value,
     append_subject_to_prompts: controls.appendSubjectToPrompts.checked,
+    repair_lyric_segments: controls.repairLyricSegments.checked,
     model_file: modelSelect.value,
     whisper_segments: controls.whisperSegments.value,
     full_lyrics: controls.fullLyrics.value,
@@ -700,6 +701,7 @@ function openPromptCreator(options = {}) {
   const fixedSceneDuration = makeInput("4", "number");
   const emptySegmentText = makeInput("Instrumental section.");
   const appendSubjectToPrompts = makeCheckbox(true);
+  const repairLyricSegments = makeCheckbox(false);
   const srtOutput = makeInput("");
   srtOutput.style.display = "none";
   const srtText = makeTextarea("", 6);
@@ -712,6 +714,8 @@ function openPromptCreator(options = {}) {
   emptySegmentField.style.flex = "1 1 260px";
   const appendSubjectField = makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving.");
   appendSubjectField.style.flex = "1 1 260px";
+  const repairLyricField = makeCheckboxField("Gemma lyric cleanup", repairLyricSegments, "Optional extra pass that can mark intro/outro lyric bleed as instrumental and clean segment boundaries.");
+  repairLyricField.style.flex = "1 1 280px";
   const durationPresetHints = [
     "varied_no_repeat: creates varied scene lengths and avoids repeating the same duration pattern back to back.",
     "impact_weighted: favors stronger beat/impact moments when choosing scene boundaries, so cuts feel more tied to the music.",
@@ -724,6 +728,7 @@ function openPromptCreator(options = {}) {
     makeCompactField("Fixed scene duration", fixedSceneDuration, "140px", "Used when SRT is off."),
     emptySegmentField,
     appendSubjectField,
+    repairLyricField,
     makeCompactHintField("Min duration", minDuration, "110px", "Min Duration", [
       "Smallest scene length the beat/SRT setup should create.",
       "Use this to prevent cuts from becoming too fast or too short.",
@@ -1207,6 +1212,7 @@ function openPromptCreator(options = {}) {
     emptySegmentText,
     conceptMatchMode,
     appendSubjectToPrompts,
+    repairLyricSegments,
     srtOutput,
     fullLyrics,
     styleTheme,
@@ -1232,6 +1238,16 @@ function openPromptCreator(options = {}) {
   }
   useSrtDurations.addEventListener("change", updateDurationModeUi);
   updateDurationModeUi();
+
+  repairLyricSegments.addEventListener("change", () => {
+    if (!repairLyricSegments.checked) return;
+    const ok = window.confirm(
+      "Gemma lyric cleanup is an advanced optional pass.\n\n" +
+      "It can help fix instrumental intro/outro lyric bleed and some segment boundary mistakes, but it adds an extra Gemma pass, can slow Prompt Creator down, and may change lyrics that were already correct.\n\n" +
+      "If it fails, Prompt Creator will fall back to the raw Whisper segments. Turn this on only when you need extra lyric cleanup."
+    );
+    if (!ok) repairLyricSegments.checked = false;
+  });
 
   async function loadConfig() {
     try {
@@ -1275,6 +1291,7 @@ function openPromptCreator(options = {}) {
     emptySegmentText.value = draft.empty_segment_text || emptySegmentText.value;
     conceptMatchMode.value = draft.concept_match_mode || conceptMatchMode.value;
     appendSubjectToPrompts.checked = draft.append_subject_to_prompts ?? appendSubjectToPrompts.checked;
+    repairLyricSegments.checked = draft.repair_lyric_segments ?? repairLyricSegments.checked;
     conceptMatchHint.textContent = conceptMatchDescriptions[conceptMatchMode.value] || "";
     updateDurationModeUi();
     fullLyrics.value = draft.full_lyrics || "";
@@ -1498,6 +1515,20 @@ function openPromptCreator(options = {}) {
     setStatus(status, "Preparing lyric segments...", true);
     progress?.set("Step 2/6: Preparing lyric segment JSON...", 38);
     state.repairedSegments = parseLyricSegmentsToJson(whisperSegments.value);
+    if (repairLyricSegments.checked) {
+      try {
+        setStatus(status, `Cleaning lyric segments with Gemma...\n${gemmaRunnerLine()}`, true);
+        progress?.set(`Step 2/6: Cleaning lyric segments with Gemma...\n${gemmaRunnerLine()}`, 38);
+        const payload = buildPayload(controls, modelSelect);
+        const result = await postJson("/vrgdg/music_prompt_creator/repair_segments", payload);
+        if (result?.segments && Object.keys(result.segments).length) {
+          state.repairedSegments = result.segments;
+          setStatus(status, `Gemma lyric cleanup finished for ${result.segment_count || Object.keys(result.segments).length} segment(s).`);
+        }
+      } catch (error) {
+        setStatus(status, `Gemma lyric cleanup failed, using raw Whisper segments instead:\n${error.message}`, true);
+      }
+    }
     const segmentCount = Object.keys(state.repairedSegments).length;
     if (!segmentCount) {
       throw new Error("No lyricSegment lines were found in the extractor output.");
