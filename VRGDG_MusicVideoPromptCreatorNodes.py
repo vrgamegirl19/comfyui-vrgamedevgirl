@@ -1253,6 +1253,16 @@ def _draft_path(project_folder):
     return os.path.join(project_folder, "prompt_creator_draft.json")
 
 
+def _read_text_file_if_exists(path):
+    if not path or not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            return handle.read()
+    except Exception:
+        return ""
+
+
 def _write_prompt_creator_pointer(project_folder, context, saved_at, marker=None):
     marker_path = os.path.join(context, "prompt_creator_output.json")
     marker_data = marker or {
@@ -1331,6 +1341,43 @@ def _load_prompt_creator_draft(payload):
     project_folder = _project_folder_from_payload(payload)
     path = _draft_path(project_folder)
     if not os.path.isfile(path):
+        context = _context_folder(project_folder)
+        prompts = _prompts_folder(project_folder)
+        synthetic = {
+            "full_lyrics": _read_text_file_if_exists(os.path.join(context, "full_lyrics.txt")),
+            "style_theme": _read_text_file_if_exists(os.path.join(context, "themestyle.txt")),
+            "story_idea": _read_text_file_if_exists(os.path.join(context, "storyconcept.txt")),
+            "subject_locations": _read_text_file_if_exists(os.path.join(context, "subjectsandscenes.txt")),
+            "srt_text": _read_text_file_if_exists(_srt_path(project_folder)),
+            "corrected_segments_text": _read_text_file_if_exists(os.path.join(prompts, "lyric_segments.json")),
+            "concept_prompts_text": _read_text_file_if_exists(os.path.join(context, "ConceptPrompts.txt")),
+            "i2v_motion_notes_text": _read_text_file_if_exists(os.path.join(context, "I2VMotionNotes.txt")),
+            "subject": _read_text_file_if_exists(os.path.join(context, "subject.txt")).strip(),
+        }
+        if any(str(value or "").strip() for value in synthetic.values()):
+            audio_folder = os.path.join(project_folder, "audio")
+            audio_path = ""
+            try:
+                for filename in sorted(os.listdir(audio_folder), reverse=True):
+                    candidate = os.path.join(audio_folder, filename)
+                    if os.path.isfile(candidate) and filename.lower().endswith((".wav", ".mp3", ".flac", ".m4a", ".ogg", ".mp4")):
+                        audio_path = candidate
+                        break
+            except Exception:
+                audio_path = ""
+            synthetic["audio_path"] = audio_path
+            synthetic["use_srt_durations"] = True
+            synthetic["fixed_scene_duration"] = 4
+            synthetic["empty_segment_text"] = "Instrumental section."
+            synthetic["concept_match_mode"] = "medium"
+            synthetic["append_subject_to_prompts"] = True
+            return {
+                "project_folder": project_folder,
+                "draft_path": path,
+                "found": True,
+                "draft": synthetic,
+                "synthetic": True,
+            }
         return {
             "project_folder": project_folder,
             "draft_path": path,
@@ -1347,6 +1394,70 @@ def _load_prompt_creator_draft(payload):
         "found": True,
         "draft": draft,
     }
+
+
+def _list_prompt_creator_drafts():
+    output_dir = os.path.abspath(folder_paths.get_output_directory())
+    projects = []
+    if not os.path.isdir(output_dir):
+        return {"projects": projects, "output_dir": output_dir}
+
+    for name in os.listdir(output_dir):
+        folder = os.path.join(output_dir, name)
+        if not os.path.isdir(folder):
+            continue
+
+        draft_path = _draft_path(folder)
+        context = _context_folder(folder)
+        marker_path = os.path.join(context, "prompt_creator_output.json")
+        concept_path = os.path.join(context, "ConceptPrompts.txt")
+        i2v_path = os.path.join(context, "I2VMotionNotes.txt")
+        srt_path = _srt_path(folder)
+
+        has_draft = os.path.isfile(draft_path)
+        has_marker = os.path.isfile(marker_path)
+        has_outputs = os.path.isfile(concept_path) or os.path.isfile(i2v_path) or os.path.isfile(srt_path)
+        if not (has_draft or has_marker or has_outputs):
+            continue
+
+        updated_candidates = []
+        for candidate in (draft_path, marker_path, concept_path, i2v_path, srt_path):
+            if os.path.isfile(candidate):
+                try:
+                    updated_candidates.append(os.path.getmtime(candidate))
+                except OSError:
+                    pass
+        updated = max(updated_candidates) if updated_candidates else 0
+
+        scene_count = 0
+        if os.path.isfile(srt_path):
+            try:
+                with open(srt_path, "r", encoding="utf-8-sig") as handle:
+                    scene_count = len(re.findall(r"(?m)^\s*\d+\s*$", handle.read()))
+            except Exception:
+                scene_count = 0
+        if not scene_count and os.path.isfile(concept_path):
+            try:
+                with open(concept_path, "r", encoding="utf-8-sig") as handle:
+                    data = json.load(handle)
+                if isinstance(data, dict):
+                    scene_count = len([key for key in data.keys() if re.match(r"^(?:Prompt|prompt)\d+$", str(key))])
+            except Exception:
+                scene_count = 0
+
+        projects.append({
+            "name": name,
+            "project_folder": os.path.abspath(folder),
+            "draft_path": os.path.abspath(draft_path) if has_draft else "",
+            "context_folder": os.path.abspath(context),
+            "updated": updated,
+            "scene_count": scene_count,
+            "has_draft": has_draft,
+            "has_outputs": has_outputs,
+        })
+
+    projects.sort(key=lambda item: item.get("updated", 0), reverse=True)
+    return {"projects": projects, "output_dir": output_dir}
 
 
 def _build_whisper_workflow_prompt(payload):
@@ -1535,6 +1646,13 @@ def _register_routes():
     async def vrgdg_music_prompt_creator_load_draft(request):
         try:
             return _json_response(_load_prompt_creator_draft(await request.json()))
+        except Exception as exc:
+            return _json_response(error=exc, status=400)
+
+    @server_instance.routes.get("/vrgdg/music_prompt_creator/list_drafts")
+    async def vrgdg_music_prompt_creator_list_drafts(_request):
+        try:
+            return _json_response(_list_prompt_creator_drafts())
         except Exception as exc:
             return _json_response(error=exc, status=400)
 

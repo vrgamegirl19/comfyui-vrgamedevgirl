@@ -1103,7 +1103,7 @@ function openPromptCreator(options = {}) {
     try {
       loadDraftButton.disabled = true;
       loadDraftButton.textContent = "Loading...";
-      const projectData = await getJson("/vrgdg/music_builder/list_projects");
+      const projectData = await getJson("/vrgdg/music_prompt_creator/list_drafts");
       const choice = await showPromptCreatorDraftProjectModal(projectData.projects || []);
       if (!choice?.project_folder) {
         return;
