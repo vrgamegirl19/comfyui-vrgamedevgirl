@@ -1002,6 +1002,38 @@ function openPromptCreator(options = {}) {
     });
   }
 
+  function showLyricCleanupWarning() {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100075;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #7f1d1d;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = "Enable Gemma Lyric Cleanup?";
+      heading.style.cssText = "font-size:17px;font-weight:900;color:#fecaca;";
+      const note = document.createElement("div");
+      note.textContent = "This is an advanced optional pass. It can help fix instrumental intro/outro lyric bleed and some segment boundary mistakes, but it adds an extra Gemma run, can slow Prompt Creator down, and may change lyrics that were already correct. If it fails, Prompt Creator will fall back to the raw Whisper segments.";
+      note.style.cssText = "font-size:13px;color:#f5d0d0;line-height:1.45;border:1px solid #7f1d1d;background:#450a0a;border-radius:7px;padding:10px;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Keep Off");
+      const enable = makeButton("Enable Cleanup", "primary");
+      actions.append(cancel, enable);
+      box.append(heading, note, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      cancel.onclick = () => finish(false);
+      enable.onclick = () => finish(true);
+      backdrop.onclick = (event) => {
+        if (event.target === backdrop) finish(false);
+      };
+    });
+  }
+
   async function chooseInstructionPreset(key) {
     const data = await postJson("/vrgdg/music_prompt_creator/list_instruction_presets", { key });
     const presets = Array.isArray(data.presets) ? data.presets : [];
@@ -1240,13 +1272,9 @@ function openPromptCreator(options = {}) {
   useSrtDurations.addEventListener("change", updateDurationModeUi);
   updateDurationModeUi();
 
-  repairLyricSegments.addEventListener("change", () => {
+  repairLyricSegments.addEventListener("change", async () => {
     if (!repairLyricSegments.checked) return;
-    const ok = window.confirm(
-      "Gemma lyric cleanup is an advanced optional pass.\n\n" +
-      "It can help fix instrumental intro/outro lyric bleed and some segment boundary mistakes, but it adds an extra Gemma pass, can slow Prompt Creator down, and may change lyrics that were already correct.\n\n" +
-      "If it fails, Prompt Creator will fall back to the raw Whisper segments. Turn this on only when you need extra lyric cleanup."
-    );
+    const ok = await showLyricCleanupWarning();
     if (!ok) repairLyricSegments.checked = false;
   });
 
