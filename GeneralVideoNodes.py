@@ -2999,10 +2999,9 @@ class VRGDG_LatestSRTAutoLoader:
         return os.path.join(node_dir, "srt_files")
 
     @classmethod
-    def _get_latest_srt_info(cls):
+    def _get_latest_srt_info(cls, require_srt=True):
         srt_dir = cls._get_srt_dir()
-        if not os.path.isdir(srt_dir):
-            raise Exception(f"SRT folder does not exist: {srt_dir}")
+        os.makedirs(srt_dir, exist_ok=True)
 
         srt_files = []
         for entry in os.scandir(srt_dir):
@@ -3010,7 +3009,9 @@ class VRGDG_LatestSRTAutoLoader:
                 srt_files.append((entry.path, entry.name, entry.stat().st_mtime))
 
         if not srt_files:
-            raise Exception(f"No .srt files found in: {srt_dir}")
+            if require_srt:
+                raise Exception(f"No .srt files found in: {srt_dir}")
+            return ("", "", 0)
 
         # Most recent by modified timestamp.
         srt_files.sort(key=lambda x: x[2], reverse=True)
@@ -3018,11 +3019,13 @@ class VRGDG_LatestSRTAutoLoader:
 
     @classmethod
     def IS_CHANGED(cls, trigger, refresh):
-        latest_path, _, latest_mtime = cls._get_latest_srt_info()
+        latest_path, _, latest_mtime = cls._get_latest_srt_info(require_srt=False)
         return f"{trigger}|{refresh}|{latest_path}|{latest_mtime}"
 
     def load_latest_srt(self, trigger, refresh):
-        latest_path, latest_name, _ = self._get_latest_srt_info()
+        latest_path, latest_name, _ = self._get_latest_srt_info(require_srt=False)
+        if not latest_path:
+            print(f"[VRGDG_LatestSRTAutoLoader] No .srt files found in: {self._get_srt_dir()}; returning empty SRT path.")
         return (latest_path, latest_name)
 
 
