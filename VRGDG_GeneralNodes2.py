@@ -822,6 +822,15 @@ def _run_gemma4_prompt(payload):
             top_p=top_p,
             max_new_tokens=max_new_tokens,
             label="Gemma4",
+            preserve_paragraphs=target in {
+                "builder_style_theme",
+                "style_theme",
+                "builder_story_idea",
+                "story_idea",
+                "builder_subjects_and_scenes",
+                "subjects_and_scenes",
+                "song_lyrics",
+            },
         )
         text = _clean_gemma4_text(text)
         if not text:

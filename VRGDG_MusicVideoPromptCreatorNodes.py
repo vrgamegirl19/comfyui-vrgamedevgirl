@@ -767,6 +767,7 @@ def _run_text_gemma(model_file, prompt, overrides=None, payload=None):
             top_p=float(settings["top_p"]),
             max_new_tokens=int(settings["max_new_tokens"]),
             label="Gemma4",
+            preserve_paragraphs=True,
         )
         text = _clean_llm_json_text(text)
         if not text:
@@ -831,6 +832,7 @@ def _run_text_gemma_custom(model_file, custom_instructions, user_input, override
             top_p=float(settings["top_p"]),
             max_new_tokens=int(settings["max_new_tokens"]),
             label="Gemma4",
+            preserve_paragraphs=True,
         )
         text = _clean_llm_json_text(text)
         if not text:

@@ -1710,7 +1710,16 @@ def _list_lm_studio_models(payload):
     return {"models": models, "raw": data}
 
 
-def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200, label="Gemma"):
+def _clean_lm_studio_plain_text(text):
+    cleaned = str(text or "").strip()
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+    cleaned = re.sub(r"^\s*```(?:text|json)?\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()
+    cleaned = re.sub(r"^(?:Assistant|Answer|Final answer)\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
+
+
+def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200, label="Gemma", preserve_paragraphs=False):
     if _llm_runner_from_payload(payload) == "lm_studio":
         text = _run_lm_studio_text(
             payload,
@@ -1719,7 +1728,8 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
             top_p=top_p,
             max_new_tokens=max_new_tokens,
         )
-        return _clean_visual_gemma_text(text), {
+        cleaned = _clean_lm_studio_plain_text(text) if preserve_paragraphs else _clean_visual_gemma_text(text)
+        return cleaned, {
             "runner": "lm_studio",
             "used_model": str(payload.get("lmstudio_model") or "").strip(),
             "unloaded": False,
