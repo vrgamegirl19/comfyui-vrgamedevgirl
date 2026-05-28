@@ -2705,11 +2705,12 @@ class BeatSceneDurationNode:
         srt_lines = merge_short_first_scene_if_needed(srt_lines)
         scene_index = len([line for line in srt_lines if line.strip().isdigit()]) + 1
 
-        # Save next to THIS custom node file, inside /SRT_Files
+        # Save next to THIS custom node file, inside /srt_files.
+        # Keep this lowercase because Linux treats SRT_Files and srt_files as different folders.
         node_dir = os.path.dirname(os.path.abspath(__file__))
 
         # Create folder if missing
-        srt_dir = os.path.join(node_dir, "SRT_Files")
+        srt_dir = os.path.join(node_dir, "srt_files")
         os.makedirs(srt_dir, exist_ok=True)
 
         # Ensure .srt extension
@@ -2998,15 +2999,23 @@ class VRGDG_LatestSRTAutoLoader:
         node_dir = os.path.dirname(os.path.abspath(__file__))
         return os.path.join(node_dir, "srt_files")
 
+    @staticmethod
+    def _get_legacy_srt_dir():
+        node_dir = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(node_dir, "SRT_Files")
+
     @classmethod
     def _get_latest_srt_info(cls, require_srt=True):
         srt_dir = cls._get_srt_dir()
         os.makedirs(srt_dir, exist_ok=True)
 
         srt_files = []
-        for entry in os.scandir(srt_dir):
-            if entry.is_file() and entry.name.lower().endswith(".srt"):
-                srt_files.append((entry.path, entry.name, entry.stat().st_mtime))
+        for folder in (srt_dir, cls._get_legacy_srt_dir()):
+            if not os.path.isdir(folder):
+                continue
+            for entry in os.scandir(folder):
+                if entry.is_file() and entry.name.lower().endswith(".srt"):
+                    srt_files.append((entry.path, entry.name, entry.stat().st_mtime))
 
         if not srt_files:
             if require_srt:

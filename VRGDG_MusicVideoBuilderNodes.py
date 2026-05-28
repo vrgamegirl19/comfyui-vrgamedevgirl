@@ -268,10 +268,12 @@ def _newest_file(folder, extensions):
 def _default_audio_srt_paths():
     repo_dir = os.path.dirname(os.path.abspath(__file__))
     srt_folder = os.path.join(repo_dir, "srt_files")
+    legacy_srt_folder = os.path.join(repo_dir, "SRT_Files")
     audio_folder = os.path.join(folder_paths.get_output_directory(), "VRGDG_AudioFiles")
+    srt_path = _newest_file(srt_folder, (".srt",)) or _newest_file(legacy_srt_folder, (".srt",))
     return {
         "audio_path": _newest_file(audio_folder, (".wav", ".mp3", ".flac", ".m4a", ".ogg")),
-        "srt_path": _newest_file(srt_folder, (".srt",)),
+        "srt_path": srt_path,
         "audio_folder": audio_folder,
         "srt_folder": srt_folder,
     }
