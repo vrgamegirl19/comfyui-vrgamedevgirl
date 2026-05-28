@@ -714,8 +714,9 @@ function openPromptCreator(options = {}) {
   emptySegmentField.style.flex = "1 1 260px";
   const appendSubjectField = makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving.");
   appendSubjectField.style.flex = "1 1 260px";
-  const repairLyricField = makeCheckboxField("Gemma lyric cleanup", repairLyricSegments, "Optional extra pass that can mark intro/outro lyric bleed as instrumental and clean segment boundaries.");
-  repairLyricField.style.flex = "1 1 280px";
+  const repairLyricField = makeCheckboxField("Gemma lyric cleanup", repairLyricSegments);
+  repairLyricField.title = "Optional extra Gemma pass that can mark intro/outro lyric bleed as instrumental and clean segment boundaries.";
+  repairLyricField.style.cssText += "border:1px solid #3f3f46;border-radius:6px;background:#27272a;padding:6px 8px;";
   const durationPresetHints = [
     "varied_no_repeat: creates varied scene lengths and avoids repeating the same duration pattern back to back.",
     "impact_weighted: favors stronger beat/impact moments when choosing scene boundaries, so cuts feel more tied to the music.",
@@ -728,7 +729,6 @@ function openPromptCreator(options = {}) {
     makeCompactField("Fixed scene duration", fixedSceneDuration, "140px", "Used when SRT is off."),
     emptySegmentField,
     appendSubjectField,
-    repairLyricField,
     makeCompactHintField("Min duration", minDuration, "110px", "Min Duration", [
       "Smallest scene length the beat/SRT setup should create.",
       "Use this to prevent cuts from becoming too fast or too short.",
@@ -790,6 +790,7 @@ function openPromptCreator(options = {}) {
         })(),
         makeGemmaInputButton("Gemma4 Lyrics", "full_lyrics", fullLyrics),
         makeInstructionButton("full_lyrics"),
+        repairLyricField,
         makeGptButton(LYRIC_CREATOR_GPT_URL),
       ]
     ),
