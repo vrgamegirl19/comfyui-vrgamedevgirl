@@ -2260,6 +2260,7 @@ function openBuilder(node) {
   const playButton = makeButton("Play");
   const stopButton = makeButton("Stop");
   const multiSelectButton = makeButton("Select Multi");
+  const multiSelectHintButton = makeButton("?");
   const deleteSegmentButton = makeButton("Del");
   const zoomOutButton = makeButton("-");
   const zoomInButton = makeButton("+");
@@ -2270,6 +2271,7 @@ function openBuilder(node) {
   playButton.title = "Play / Pause";
   stopButton.title = "Stop";
   multiSelectButton.title = "Select multiple scenes, then batch-apply image/video settings or stitch a preview.";
+  multiSelectHintButton.title = "What does Select Multi do?";
   deleteSegmentButton.title = "Delete selected segment";
   zoomOutButton.title = "Zoom out timeline";
   zoomInButton.title = "Zoom in timeline";
@@ -2280,10 +2282,11 @@ function openBuilder(node) {
   playButton.textContent = "▶";
   stopButton.textContent = "■";
   multiSelectButton.textContent = "Select Multi";
+  multiSelectHintButton.textContent = "?";
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
   }
@@ -2334,7 +2337,7 @@ function openBuilder(node) {
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -9181,6 +9184,39 @@ function openBuilder(node) {
     });
   }
 
+  function showMultiSelectHint() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Select Multi";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const body = document.createElement("div");
+    body.style.cssText = "display:flex;flex-direction:column;gap:10px;font-size:12px;line-height:1.45;color:#d4d4d8;";
+    const batch = document.createElement("div");
+    batch.innerHTML = `<strong style="color:#e0f2fe;">Batch scene settings</strong><br>Turn Select Multi on, click the scenes you want, then change image or video model settings. Those settings are saved only to the selected scenes as custom scene settings.`;
+    const preview = document.createElement("div");
+    preview.innerHTML = `<strong style="color:#e0f2fe;">Stitch Preview</strong><br>Use the Stitch Preview menu option to make a quick complete video from selected scenes or from a start/end scene range. Inserts are included automatically, and no Gemma, image generation, or video rendering is run.`;
+    const note = document.createElement("div");
+    note.textContent = "Selected scenes turn red. Turn Select Multi off when you want normal single-scene editing again.";
+    note.style.cssText = "border:1px solid #334155;border-radius:6px;background:#0f172a;padding:9px;color:#cbd5e1;";
+    body.append(batch, preview, note);
+    const ok = makeButton("Got it", "primary");
+    box.append(header, body, ok);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    close.onclick = () => backdrop.remove();
+    ok.onclick = () => backdrop.remove();
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
+  }
+
   async function renderAllScenes(options = {}) {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
@@ -10959,6 +10995,7 @@ function openBuilder(node) {
       ? "Multi-select is on. Click scenes to add/remove them. Image and video model/settings changes will apply to selected scenes."
       : "Multi-select is off.");
   };
+  multiSelectHintButton.onclick = showMultiSelectHint;
   stopButton.onclick = () => {
     pauseAllAudio();
     audio.currentTime = 0;
