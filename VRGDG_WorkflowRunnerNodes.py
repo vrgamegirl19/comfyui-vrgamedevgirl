@@ -1299,13 +1299,14 @@ def _safe_project_subfolder(project_folder, folder_name):
     return project, target
 
 
-def _unique_final_video_path(project_folder):
-    candidate = os.path.join(project_folder, "FINAL_VIDEO.mp4")
+def _unique_final_video_path(project_folder, prefix="FINAL_VIDEO"):
+    safe_prefix = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(prefix or "FINAL_VIDEO")).strip("_") or "FINAL_VIDEO"
+    candidate = os.path.join(project_folder, f"{safe_prefix}.mp4")
     if not os.path.exists(candidate):
         return candidate
     index = 2
     while True:
-        candidate = os.path.join(project_folder, f"FINAL_VIDEO{index}.mp4")
+        candidate = os.path.join(project_folder, f"{safe_prefix}{index}.mp4")
         if not os.path.exists(candidate):
             return candidate
         index += 1
@@ -1514,6 +1515,8 @@ def _stitch_scene_videos(payload):
     if not isinstance(raw_overlay_items, list):
         raw_overlay_items = []
     audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    preview_audio_start = max(0.0, float(payload.get("audio_start", 0) or 0))
+    preview_audio_duration = max(0.0, float(payload.get("audio_duration", 0) or 0))
 
     scene_paths = []
     for index, raw_path in enumerate(raw_paths, start=1):
@@ -1557,9 +1560,10 @@ def _stitch_scene_videos(payload):
 
     temp_video = os.path.join(target_dir, "_temp_video_no_audio.mp4")
     temp_audio = os.path.join(target_dir, "_temp_scene_audio.m4a")
+    temp_global_audio = os.path.join(target_dir, "_temp_global_audio.m4a")
     temp_audio_parts = []
     audio_concat_file = os.path.join(target_dir, "audio_concat_list.txt")
-    final_output = _unique_final_video_path(project_folder)
+    final_output = _unique_final_video_path(project_folder, payload.get("output_prefix", "FINAL_VIDEO"))
 
     concat_cmd = [
         ffmpeg_path,
@@ -1586,7 +1590,8 @@ def _stitch_scene_videos(payload):
             raise FileNotFoundError(f"Insert {index} video was not found: {path}")
         start = max(0.0, float(item.get("start", 0) or 0))
         end = max(start + 0.05, float(item.get("end", start + 4) or start + 4))
-        insert_items.append({"path": path, "start": start, "end": end, "duration": end - start})
+        source_start = max(0.0, float(item.get("source_start", 0) or 0))
+        insert_items.append({"path": path, "start": start, "end": end, "duration": end - start, "source_start": source_start})
 
     if insert_items:
         insert_items.sort(key=lambda item: (item["start"], item["end"]))
@@ -1622,7 +1627,7 @@ def _stitch_scene_videos(payload):
         for item in insert_items:
             if item["start"] > cursor + 0.01:
                 add_flatten_part(temp_video, cursor, item["start"] - cursor)
-            add_flatten_part(item["path"], 0.0, item["duration"])
+            add_flatten_part(item["path"], item.get("source_start", 0.0), item["duration"])
             cursor = max(cursor, item["end"])
 
         add_flatten_part(temp_video, cursor, None)
@@ -1697,6 +1702,16 @@ def _stitch_scene_videos(payload):
         ]
         subprocess.run(audio_concat_cmd, capture_output=True, text=True, check=True)
         mux_audio_path = temp_audio
+    elif preview_audio_start or preview_audio_duration:
+        trim_audio_cmd = [ffmpeg_path, "-y"]
+        if preview_audio_start:
+            trim_audio_cmd.extend(["-ss", f"{preview_audio_start:.6f}"])
+        trim_audio_cmd.extend(["-i", audio_path])
+        if preview_audio_duration:
+            trim_audio_cmd.extend(["-t", f"{preview_audio_duration:.6f}"])
+        trim_audio_cmd.extend(["-c:a", "aac", temp_global_audio])
+        subprocess.run(trim_audio_cmd, capture_output=True, text=True, check=True)
+        mux_audio_path = temp_global_audio
 
     mux_cmd = [
         ffmpeg_path,
@@ -1733,6 +1748,11 @@ def _stitch_scene_videos(payload):
         try:
             if os.path.exists(temp_audio):
                 os.remove(temp_audio)
+        except Exception:
+            pass
+        try:
+            if os.path.exists(temp_global_audio):
+                os.remove(temp_global_audio)
         except Exception:
             pass
         for part_path in temp_audio_parts:

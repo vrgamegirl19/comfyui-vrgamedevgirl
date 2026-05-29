@@ -1309,6 +1309,7 @@ function openBuilder(node) {
   const gemmaRunnerButton = makeButton("Gemma Runner");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
+  const stitchPreviewButton = makeButton("Stitch Preview");
   const gemmaT2IAllButton = makeButton("Gemma T2I All");
   const gemmaVideoAllButton = makeButton("Gemma Video All");
   const zImageAllButton = makeButton("Image All");
@@ -1326,7 +1327,7 @@ function openBuilder(node) {
     button.style.textAlign = "left";
     button.style.justifyContent = "flex-start";
   };
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -2251,13 +2252,14 @@ function openBuilder(node) {
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
-  timelineHeader.style.cssText = "display:grid;grid-template-columns:auto auto auto auto auto auto auto auto auto auto minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
+  timelineHeader.style.cssText = "display:grid;grid-template-columns:auto auto auto auto auto auto auto auto auto auto auto minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
   const addSegmentButton = makeButton("Add Segment", "primary");
   const addOverlaySegmentButton = makeButton("Add Insert", "primary");
   const undoButton = makeButton("Undo");
   const redoButton = makeButton("Redo");
   const playButton = makeButton("Play");
   const stopButton = makeButton("Stop");
+  const multiSelectButton = makeButton("Select Multi");
   const deleteSegmentButton = makeButton("Del");
   const zoomOutButton = makeButton("-");
   const zoomInButton = makeButton("+");
@@ -2267,6 +2269,7 @@ function openBuilder(node) {
   redoButton.title = "Redo";
   playButton.title = "Play / Pause";
   stopButton.title = "Stop";
+  multiSelectButton.title = "Select multiple scenes, then batch-apply image/video settings or stitch a preview.";
   deleteSegmentButton.title = "Delete selected segment";
   zoomOutButton.title = "Zoom out timeline";
   zoomInButton.title = "Zoom in timeline";
@@ -2276,10 +2279,11 @@ function openBuilder(node) {
   redoButton.textContent = "↷";
   playButton.textContent = "▶";
   stopButton.textContent = "■";
+  multiSelectButton.textContent = "Select Multi";
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
   }
@@ -2330,7 +2334,7 @@ function openBuilder(node) {
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -2472,6 +2476,8 @@ function openBuilder(node) {
     overlaySegments: [],
     activeId: "",
     activeTrack: "base",
+    multiSelectMode: false,
+    selectedSegmentIds: [],
     inspectorTab: "scene",
     pxPerSecond: 45,
     timelineZoom: 45,
@@ -2592,6 +2598,77 @@ function openBuilder(node) {
 
   function activeSegment() {
     return allEditableSegments().find((segment) => segment.id === state.activeId) || null;
+  }
+
+  function selectedSegmentsForBatch({ baseOnly = false } = {}) {
+    const ids = new Set(Array.isArray(state.selectedSegmentIds) ? state.selectedSegmentIds : []);
+    const items = allEditableSegments().filter((segment) => ids.has(segment.id));
+    return baseOnly ? items.filter((segment) => segmentTrack(segment) !== "overlay") : items;
+  }
+
+  function isSegmentMultiSelected(segment) {
+    return Boolean(segment?.id && Array.isArray(state.selectedSegmentIds) && state.selectedSegmentIds.includes(segment.id));
+  }
+
+  function updateMultiSelectButton() {
+    const count = selectedSegmentsForBatch().length;
+    multiSelectButton.textContent = state.multiSelectMode ? `Multi ${count}` : "Select Multi";
+    multiSelectButton.style.background = state.multiSelectMode ? "#0e7490" : "#27272a";
+    multiSelectButton.style.borderColor = state.multiSelectMode ? "#22d3ee" : "#3f3f46";
+    multiSelectButton.style.color = state.multiSelectMode ? "#ecfeff" : "#f4f4f5";
+  }
+
+  function toggleMultiSegmentSelection(segment) {
+    if (!segment?.id) return;
+    const ids = new Set(Array.isArray(state.selectedSegmentIds) ? state.selectedSegmentIds : []);
+    if (ids.has(segment.id)) ids.delete(segment.id);
+    else ids.add(segment.id);
+    state.selectedSegmentIds = Array.from(ids);
+    if (!state.activeId || !ids.has(state.activeId)) {
+      state.activeId = segment.id;
+      state.activeTrack = segmentTrack(segment);
+      syncInspector();
+    }
+    render();
+  }
+
+  function handleSegmentPick(segment) {
+    if (state.multiSelectMode) toggleMultiSegmentSelection(segment);
+    else setActiveSegment(segment);
+  }
+
+  function applyImageSettingsToMultiSelection(kind, settings) {
+    if (!state.multiSelectMode) return 0;
+    const targets = selectedSegmentsForBatch();
+    if (targets.length <= 1) return 0;
+    for (const segment of targets) {
+      if (kind === "zimage") {
+        segment.use_scene_zimage_settings = true;
+        segment.zimage_settings = cloneZImageSettings(settings);
+      } else if (kind === "ernie_image") {
+        segment.use_scene_ernie_image_settings = true;
+        segment.ernie_image_settings = { ...settings, loras: Array.isArray(settings.loras) ? settings.loras.map((item) => ({ ...item })) : [] };
+      } else if (kind === "flux_klein") {
+        segment.use_scene_flux_klein_settings = true;
+        segment.flux_klein_settings = { ...settings, loras: Array.isArray(settings.loras) ? settings.loras.map((item) => ({ ...item })) : [] };
+      }
+    }
+    return targets.length;
+  }
+
+  function hasMultiSceneBatchSelection() {
+    return state.multiSelectMode && selectedSegmentsForBatch().length > 1;
+  }
+
+  function applyVideoSettingsToMultiSelection(settings) {
+    if (!state.multiSelectMode) return 0;
+    const targets = selectedSegmentsForBatch();
+    if (targets.length <= 1) return 0;
+    for (const segment of targets) {
+      segment.use_scene_i2v_video_settings = true;
+      segment.i2v_video_settings = cloneI2VVideoSettings(settings);
+    }
+    return targets.length;
   }
 
   function usingSceneAudioMode() {
@@ -3510,6 +3587,16 @@ function openBuilder(node) {
     render();
   }
 
+  function setMultiSelectMode(enabled) {
+    state.multiSelectMode = Boolean(enabled);
+    if (!state.multiSelectMode) {
+      state.selectedSegmentIds = [];
+    } else if (state.activeId && !state.selectedSegmentIds.includes(state.activeId)) {
+      state.selectedSegmentIds = [state.activeId];
+    }
+    render();
+  }
+
   function segmentAtTime(time) {
     const current = Number(time || 0);
     return state.segments.find((segment, index) => {
@@ -3948,12 +4035,14 @@ function openBuilder(node) {
       image_to_image_name: keepDataSource ? currentSettings.image_to_image_name || "" : "",
     };
     const segment = activeSegment();
-    if (segment?.use_scene_zimage_settings) {
+    if (segment?.use_scene_zimage_settings || hasMultiSceneBatchSelection()) {
       segment.zimage_settings = settings;
+      if (segment) segment.use_scene_zimage_settings = true;
     } else {
       state.imageTriggerPhrase = settings.image_trigger_phrase || "";
       state.zimageSettings = settings;
     }
+    applyImageSettingsToMultiSelection("zimage", settings);
     updateZLoraVisibility();
     updateZImageToImageVisibility();
     renderList();
@@ -4053,11 +4142,17 @@ function openBuilder(node) {
       image_to_image_data: keepDataSource ? currentSettings.image_to_image_data || "" : "",
       image_to_image_name: keepDataSource ? currentSettings.image_to_image_name || "" : "",
     };
-    if (segment?.use_scene_ernie_image_settings) segment.ernie_image_settings = settings;
+    if (segment?.use_scene_ernie_image_settings || hasMultiSceneBatchSelection()) {
+      if (segment) {
+        segment.use_scene_ernie_image_settings = true;
+        segment.ernie_image_settings = settings;
+      }
+    }
     else {
       state.imageTriggerPhrase = settings.image_trigger_phrase || "";
       state.ernieImageSettings = settings;
     }
+    applyImageSettingsToMultiSelection("ernie_image", settings);
     updateErnieLoraVisibility();
     updateErnieImageToImageVisibility();
     return settings;
@@ -4348,11 +4443,17 @@ function openBuilder(node) {
       })),
       image_trigger_phrase: fluxImageTriggerInput.value || "",
     };
-    if (segment?.use_scene_flux_klein_settings) segment.flux_klein_settings = settings;
+    if (segment?.use_scene_flux_klein_settings || hasMultiSceneBatchSelection()) {
+      if (segment) {
+        segment.use_scene_flux_klein_settings = true;
+        segment.flux_klein_settings = settings;
+      }
+    }
     else {
       state.imageTriggerPhrase = settings.image_trigger_phrase || "";
       state.fluxKleinSettings = settings;
     }
+    applyImageSettingsToMultiSelection("flux_klein", settings);
     updateFluxLoraVisibility();
     return {
       ...settings,
@@ -4486,11 +4587,17 @@ function openBuilder(node) {
         second_pass_strength: Number(slot.secondPassStrength.value || 1),
       })),
     };
-    if (segment?.use_scene_i2v_video_settings) segment.i2v_video_settings = settings;
+    if (segment?.use_scene_i2v_video_settings || hasMultiSceneBatchSelection()) {
+      if (segment) {
+        segment.use_scene_i2v_video_settings = true;
+        segment.i2v_video_settings = settings;
+      }
+    }
     else {
       state.videoTriggerPhrase = settings.video_trigger_phrase || "";
       state.i2vVideoSettings = settings;
     }
+    applyVideoSettingsToMultiSelection(settings);
     updateI2VLoraVisibility();
     return settings;
   }
@@ -4751,12 +4858,16 @@ function openBuilder(node) {
       const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
+      const isMultiSelected = isSegmentMultiSelected(segment);
+      const borderColor = isActive || isMultiSelected ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2";
+      const borderWidth = isActive || isMultiSelected ? "3px" : "1px";
+      const shadow = isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.55)" : "none";
       block.style.cssText = `
         position:absolute;left:${left}px;top:${blockTop}px;width:${width}px;height:${blockHeight}px;
-        border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : lockedByVideo ? "#a3e635" : isOverlay ? "#f97316" : inserted ? "#f59e0b" : "#0891b2"};
+        border:${borderWidth} solid ${borderColor};
         border-radius:5px;background:${thumb ? `linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)), url("${thumb}") center / auto 100% repeat-x` : isOverlay ? "#7c2d12" : inserted ? "#92400e" : segment.image ? "#166534" : "#164e63"};
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
-        box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.28), 0 0 18px rgba(239,68,68,.55)" : "none"};
+        box-shadow:${shadow};
       `;
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
       const dragImageSource = segmentImageSource(segment);
@@ -4803,7 +4914,7 @@ function openBuilder(node) {
       const rightHandle = document.createElement("div");
       rightHandle.style.cssText = "position:absolute;right:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;";
       block.append(leftHandle, rightHandle);
-      block.onclick = () => setActiveSegment(segment);
+      block.onclick = () => handleSegmentPick(segment);
       block.oncontextmenu = (event) => openSegmentContextMenu(event, segment);
       enableImageDrop(block, segment);
       makeDragHandle(block, segment, "move");
@@ -5196,13 +5307,14 @@ function openBuilder(node) {
         </div>
       `;
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
-      row.style.cssText = `width:100%;text-align:left;border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : inserted ? "#f59e0b" : "#3f3f46"};border-radius:7px;background:${isActive ? "#3f1d24" : inserted ? "#451a03" : "#27272a"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
+      const isMultiSelected = isSegmentMultiSelected(segment);
+      row.style.cssText = `width:100%;text-align:left;border:${isActive || isMultiSelected ? "3px" : "1px"} solid ${isActive || isMultiSelected ? "#ef4444" : inserted ? "#f59e0b" : "#3f3f46"};border-radius:7px;background:${isActive || isMultiSelected ? "#3f1d24" : inserted ? "#451a03" : "#27272a"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
       row.innerHTML = `<div style="font-weight:800;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${index + 1}. ${escapeHtml(segment.label || "Scene")}</div><div style="font-size:11px;color:#a1a1aa;margin-top:4px;">Duration in seconds: ${formatDurationSeconds(segment.start, segment.end)}</div><div style="font-size:11px;color:#71717a;margin-top:2px;">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>${status}${thumb}`;
-      row.onclick = () => setActiveSegment(segment);
+      row.onclick = () => handleSegmentPick(segment);
       row.onkeydown = (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          setActiveSegment(segment);
+          handleSegmentPick(segment);
         }
       };
       const optionsButton = document.createElement("span");
@@ -5240,13 +5352,14 @@ function openBuilder(node) {
       const previewThumbPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || segment.custom_image_path || segment.approved_image_path || "";
       const thumb = previewThumbPath ? `<img src="${makeEditorImageUrl(previewThumbPath)}" style="width:100%;height:50px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">` : "";
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
-      row.style.cssText = `width:100%;text-align:left;border:${isActive ? "3px" : "1px"} solid ${isActive ? "#ef4444" : "#f97316"};border-radius:7px;background:${isActive ? "#3f1d24" : "#431407"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
+      const isMultiSelected = isSegmentMultiSelected(segment);
+      row.style.cssText = `width:100%;text-align:left;border:${isActive || isMultiSelected ? "3px" : "1px"} solid ${isActive || isMultiSelected ? "#ef4444" : "#f97316"};border-radius:7px;background:${isActive || isMultiSelected ? "#3f1d24" : "#431407"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
       row.innerHTML = `<div style="font-weight:800;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Insert ${index + 1}. ${escapeHtml(segment.label || "Insert")}</div><div style="font-size:11px;color:#fed7aa;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>${thumb}`;
-      row.onclick = () => setActiveSegment(segment);
+      row.onclick = () => handleSegmentPick(segment);
       row.onkeydown = (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          setActiveSegment(segment);
+          handleSegmentPick(segment);
         }
       };
       enableImageDrop(row, segment);
@@ -6508,6 +6621,7 @@ function openBuilder(node) {
     renderSegments();
     renderList();
     updateSelectedMediaTools();
+    updateMultiSelectButton();
     timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} insert${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
   }
 
@@ -8876,27 +8990,31 @@ function openBuilder(node) {
     return segment.video_path;
   }
 
-  async function stitchRenderedScenes(progress) {
-    const paths = state.segments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
-    const overlayItems = state.overlaySegments
+  async function stitchRenderedScenes(progress, options = {}) {
+    const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
+    const overlaySegments = Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments;
+    const timelineOffset = Number(options.timelineOffset || 0);
+    const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
+    const overlayItems = overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
       .map((segment, index) => ({
         path: String(selectedSegmentVideoPath(segment) || "").trim(),
-        start: Number(segment.start || 0),
-        end: Number(segment.end || 0),
+        start: Math.max(0, Number(segment.start || 0) - timelineOffset),
+        end: Math.max(0.05, Number(segment.end || 0) - timelineOffset),
+        source_start: Math.max(0, Number(segment.overlay_source_start || 0)),
         label: segment.label || `Insert ${index + 1}`,
       }));
     const sceneAudioMode = usingSceneAudioMode();
-    const audioPaths = sceneAudioMode ? state.segments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
-    const audioItems = sceneAudioMode ? state.segments.map((segment) => ({
+    const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
+    const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
       path: String(segment.custom_audio_path || "").trim(),
       start: audioSourceStart(segment),
       duration: audioChunkDuration(segment),
     })) : [];
     const missing = [];
     paths.forEach((path, index) => {
-      if (!path) missing.push(`${sceneDisplayName(state.segments[index], index)}: rendered scene video is missing.`);
-      if (sceneAudioMode && !audioPaths[index]) missing.push(`${sceneDisplayName(state.segments[index], index)}: scene audio is missing.`);
+      if (!path) missing.push(`${sceneDisplayName(baseSegments[index], index)}: rendered scene video is missing.`);
+      if (sceneAudioMode && !audioPaths[index]) missing.push(`${sceneDisplayName(baseSegments[index], index)}: scene audio is missing.`);
     });
     if (missing.length) throw new Error(missing.join("\n"));
     progress?.set(sceneAudioMode ? "Stitching rendered scene videos with scene audio clips..." : "Stitching rendered scene videos with original audio...", 94);
@@ -8907,6 +9025,9 @@ function openBuilder(node) {
       scene_audio_items: audioItems,
       overlay_items: overlayItems,
       project_folder: projectInput.value,
+      audio_start: Number(options.audioStart || 0),
+      audio_duration: Number(options.audioDuration || 0),
+      output_prefix: options.outputPrefix || "FINAL_VIDEO",
     }, 20 * 60 * 1000);
     state.finalVideoPath = data.final_video_path || "";
     return data;
@@ -8951,6 +9072,113 @@ function openBuilder(node) {
     } finally {
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
     }
+  }
+
+  function overlaySegmentsForPreviewRange(startTime, endTime) {
+    return state.overlaySegments
+      .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
+      .filter((segment) => Number(segment.end || 0) > startTime && Number(segment.start || 0) < endTime)
+      .map((segment) => ({
+        ...segment,
+        overlay_source_start: Math.max(0, startTime - Number(segment.start || 0)),
+        start: Math.max(startTime, Number(segment.start || 0)),
+        end: Math.min(endTime, Number(segment.end || 0)),
+      }));
+  }
+
+  async function stitchPreviewFromSegments(segments, label = "selected") {
+    const baseSegments = (Array.isArray(segments) ? segments : []).filter((segment) => segmentTrack(segment) !== "overlay");
+    if (!baseSegments.length) {
+      toast("Choose at least one base scene for the preview stitch.", true);
+      return;
+    }
+    const sorted = baseSegments.slice().sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const baseIndexes = sorted.map((segment) => state.segments.findIndex((item) => item.id === segment.id));
+    const nonContiguous = baseIndexes.some((index) => index < 0) || baseIndexes.some((index, itemIndex) => itemIndex > 0 && index !== baseIndexes[itemIndex - 1] + 1);
+    if (nonContiguous) {
+      toast("Preview stitching needs contiguous base scenes. Select one continuous scene range, or use Start scene / End scene.", true);
+      return;
+    }
+    const startTime = Math.min(...sorted.map((segment) => Number(segment.start || 0)));
+    const endTime = Math.max(...sorted.map((segment) => Number(segment.end || 0)));
+    const overlays = overlaySegmentsForPreviewRange(startTime, endTime);
+    const progress = createProgressWindow("Stitch Preview");
+    try {
+      progress.set(`Stitching preview from ${label}...\nScenes: ${sorted.length}`, 15);
+      const stitched = await stitchRenderedScenes(progress, {
+        segments: sorted,
+        overlaySegments: overlays,
+        timelineOffset: startTime,
+        audioStart: startTime,
+        audioDuration: Math.max(0.1, endTime - startTime),
+        outputPrefix: `PREVIEW_SCENES_${label.replace(/[^a-z0-9_-]+/gi, "_")}`,
+      });
+      progress.set(`Preview stitch complete.\n\nPreview video:\n${stitched.final_video_path}`, 100);
+      progress.close(6500);
+      toast(`Preview stitch complete:\n${stitched.final_video_path}`);
+      showFinalVideoReadyModal(stitched.final_video_path);
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    }
+  }
+
+  function openStitchPreviewModal() {
+    const selectedBase = selectedSegmentsForBatch({ baseOnly: true })
+      .slice()
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Stitch Preview";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const note = document.createElement("div");
+    note.textContent = "Creates a preview video from already-rendered scene videos. Inserts are included automatically. This does not run Gemma, create images, or render new videos.";
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const selectedCount = selectedBase.length;
+    const selectedButton = makeButton(`Use Selected Scenes${selectedCount ? ` (${selectedCount})` : ""}`, "primary");
+    selectedButton.disabled = !selectedCount;
+    const startInput = makeInput("1");
+    const endInput = makeInput(String(Math.max(1, state.segments.length)));
+    startInput.type = "number";
+    endInput.type = "number";
+    startInput.min = "1";
+    endInput.min = "1";
+    startInput.max = String(Math.max(1, state.segments.length));
+    endInput.max = String(Math.max(1, state.segments.length));
+    const rangeGrid = document.createElement("div");
+    rangeGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    rangeGrid.append(makeField("Start scene", startInput), makeField("End scene", endInput));
+    const rangeButton = makeButton("Use Scene Range", "primary");
+    const cancel = makeButton("Cancel");
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    actions.append(cancel, rangeButton);
+    box.append(header, note, selectedButton, rangeGrid, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    close.onclick = () => backdrop.remove();
+    cancel.onclick = () => backdrop.remove();
+    selectedButton.onclick = () => {
+      backdrop.remove();
+      stitchPreviewFromSegments(selectedBase, "selected");
+    };
+    rangeButton.onclick = () => {
+      const start = Math.max(1, Math.min(state.segments.length, Number(startInput.value || 1)));
+      const end = Math.max(start, Math.min(state.segments.length, Number(endInput.value || start)));
+      const scenes = state.segments.slice(start - 1, end);
+      backdrop.remove();
+      stitchPreviewFromSegments(scenes, `${String(start).padStart(3, "0")}-${String(end).padStart(3, "0")}`);
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
   }
 
   async function renderAllScenes(options = {}) {
@@ -10481,6 +10709,7 @@ function openBuilder(node) {
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;
+  stitchPreviewButton.onclick = openStitchPreviewModal;
   gemmaT2IAllButton.onclick = confirmAndRunGemmaT2IAll;
   gemmaVideoAllButton.onclick = confirmAndRunGemmaVideoAll;
   zImageAllButton.onclick = confirmAndRunZImageAll;
@@ -10723,6 +10952,12 @@ function openBuilder(node) {
       return;
     }
     audio.play().then(updatePlayPauseButton).catch((error) => toast(String(error?.message || error), true));
+  };
+  multiSelectButton.onclick = () => {
+    setMultiSelectMode(!state.multiSelectMode);
+    toast(state.multiSelectMode
+      ? "Multi-select is on. Click scenes to add/remove them. Image and video model/settings changes will apply to selected scenes."
+      : "Multi-select is off.");
   };
   stopButton.onclick = () => {
     pauseAllAudio();
