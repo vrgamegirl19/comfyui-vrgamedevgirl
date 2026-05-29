@@ -1707,6 +1707,7 @@ def _build_whisper_workflow_prompt(payload):
     use_srt_durations = bool(payload.get("use_srt_durations", True))
     fixed_scene_duration = float(payload.get("fixed_scene_duration", 4) or 4)
     empty_segment_text = str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section.").strip() or "Instrumental section."
+    whisper_language = str(payload.get("whisper_language", "english") or "english").strip() or "english"
     full_lyrics = str(payload.get("full_lyrics", "") or "")
     output_filename = f"builder_segments_{time.strftime('%Y%m%d_%H%M%S')}.srt"
 
@@ -1733,6 +1734,7 @@ def _build_whisper_workflow_prompt(payload):
         extractor_inputs = node(960).setdefault("inputs", {})
         extractor_inputs["scene_duration_seconds"] = fixed_scene_duration
         extractor_inputs["reference_lyrics"] = full_lyrics
+        extractor_inputs["language"] = whisper_language
 
     if "28:933" in prompt:
         node("28:933").setdefault("inputs", {})["switch"] = use_srt_durations

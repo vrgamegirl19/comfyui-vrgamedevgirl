@@ -561,6 +561,7 @@ function buildPayload(controls, modelSelect) {
     use_srt_durations: controls.useSrtDurations.checked,
     fixed_scene_duration: controls.fixedSceneDuration.value,
     empty_segment_text: controls.emptySegmentText.value,
+    whisper_language: controls.whisperLanguage.value,
     concept_match_mode: controls.conceptMatchMode.value,
     append_subject_to_prompts: controls.appendSubjectToPrompts.checked,
     repair_lyric_segments: controls.repairLyricSegments.checked,
@@ -733,12 +734,22 @@ function openPromptCreator(options = {}) {
   const projectFolder = makeInput(options.projectFolder || "");
   projectFolder.readOnly = true;
   projectFolder.style.display = "none";
-  const projectFolderNote = document.createElement("div");
-  projectFolderNote.textContent = projectFolder.value
-    ? `Prompt Creator files will be saved into: ${projectFolder.value}`
-    : "Prompt Creator files will be saved into the current project folder.";
-  projectFolderNote.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#bae6fd;padding:9px;font-size:11px;line-height:1.4;overflow-wrap:anywhere;";
-  projectFolderNote.style.flex = "1 1 260px";
+  const whisperLanguageOptions = [
+    "english",
+    "auto",
+    "spanish",
+    "french",
+    "german",
+    "italian",
+    "portuguese",
+    "japanese",
+    "korean",
+    "chinese",
+    "russian",
+    "arabic",
+    "hindi",
+  ];
+  const whisperLanguage = makeSelect(whisperLanguageOptions, "english");
   const audioPath = makeInput("");
   const chooseAudioButton = makeButton("Choose Audio", "primary");
   const minDuration = makeInput("4", "number");
@@ -760,6 +771,8 @@ function openPromptCreator(options = {}) {
   useSrtField.style.flex = "1 1 250px";
   const emptySegmentField = makeField("Empty lyric segment text", emptySegmentText, "Used by VRGDG Lyric Segment Text Cleaner for no-vocal or blank segments.");
   emptySegmentField.style.flex = "1 1 260px";
+  const whisperLanguageField = makeField("Whisper language", whisperLanguage, "Language hint for the advanced Whisper/stable-ts extractor. Use auto only when the song language is unknown.");
+  whisperLanguageField.style.flex = "1 1 260px";
   const appendSubjectField = makeCheckboxField("Append subject to ConceptPrompts", appendSubjectToPrompts, "When enabled, the extracted subject is added to the start of each concept prompt before saving.");
   appendSubjectField.style.flex = "1 1 260px";
   const repairLyricField = makeCheckboxField("Gemma lyric cleanup", repairLyricSegments);
@@ -771,7 +784,7 @@ function openPromptCreator(options = {}) {
     "clustered_no_repeat: groups cuts around denser musical moments while still avoiding obvious repeated durations.",
   ];
   const setupControls = [
-    projectFolderNote,
+    whisperLanguageField,
     audioField,
     useSrtField,
     makeCompactField("Fixed scene duration", fixedSceneDuration, "140px", "Used when SRT is off."),
@@ -1291,6 +1304,7 @@ function openPromptCreator(options = {}) {
     useSrtDurations,
     fixedSceneDuration,
     emptySegmentText,
+    whisperLanguage,
     conceptMatchMode,
     appendSubjectToPrompts,
     repairLyricSegments,
@@ -1366,6 +1380,7 @@ function openPromptCreator(options = {}) {
     useSrtDurations.checked = draft.use_srt_durations ?? useSrtDurations.checked;
     fixedSceneDuration.value = draft.fixed_scene_duration ?? fixedSceneDuration.value;
     emptySegmentText.value = draft.empty_segment_text || emptySegmentText.value;
+    whisperLanguage.value = draft.whisper_language || whisperLanguage.value;
     conceptMatchMode.value = draft.concept_match_mode || conceptMatchMode.value;
     appendSubjectToPrompts.checked = draft.append_subject_to_prompts ?? appendSubjectToPrompts.checked;
     repairLyricSegments.checked = draft.repair_lyric_segments ?? repairLyricSegments.checked;
@@ -1419,7 +1434,6 @@ function openPromptCreator(options = {}) {
       }
       progress = createProgressWindow("Loading Prompt Creator Draft");
       projectFolder.value = choice.project_folder;
-      projectFolderNote.textContent = `Prompt Creator files will be saved into: ${projectFolder.value}`;
       progress.set("Loading selected project draft...", 65);
       const result = await postJson("/vrgdg/music_prompt_creator/load_draft", {
         project_folder: projectFolder.value,
@@ -1458,9 +1472,6 @@ function openPromptCreator(options = {}) {
         const imported = await postForm("/vrgdg/music_prompt_creator/import_audio", form);
         projectFolder.value = imported.project_folder || projectFolder.value;
         audioPath.value = imported.audio_path || file.path || file.name || "";
-        projectFolderNote.textContent = projectFolder.value
-          ? `Prompt Creator files will be saved into: ${projectFolder.value}`
-          : "Prompt Creator files will be saved into the current project folder.";
         setStatus(status, `Audio imported into project.\n${audioPath.value}`);
       } catch (error) {
         audioPath.value = file.path || file.name || "";
@@ -1566,6 +1577,7 @@ function openPromptCreator(options = {}) {
       use_srt_durations: useSrtDurations.checked,
       fixed_scene_duration: fixedSceneDuration.value,
       empty_segment_text: emptySegmentText.value,
+      whisper_language: whisperLanguage.value,
       full_lyrics: fullLyrics.value,
     });
     progress?.set("Step 1/6: Queuing hidden Whisper/SRT workflow...", 14);
@@ -1581,9 +1593,6 @@ function openPromptCreator(options = {}) {
     if (text.srt) srtText.value = text.srt;
     srtOutput.value = built.expected_srt_path || srtOutput.value;
     projectFolder.value = built.project_folder || projectFolder.value;
-    projectFolderNote.textContent = projectFolder.value
-      ? `Prompt Creator files will be saved into: ${projectFolder.value}`
-      : "Prompt Creator files will be saved into the current project folder.";
     setStatus(status, "Hidden Whisper/SRT workflow finished.");
     return text;
   }
@@ -1696,9 +1705,6 @@ function openPromptCreator(options = {}) {
     state.extractedSubject = payload.subject || "";
     const result = await postJson("/vrgdg/music_prompt_creator/save_outputs", payload);
     projectFolder.value = result.project_folder || projectFolder.value;
-    projectFolderNote.textContent = projectFolder.value
-      ? `Prompt Creator files will be saved into: ${projectFolder.value}`
-      : "Prompt Creator files will be saved into the current project folder.";
     setStatus(status, `Saved prompt creator files.\n${result.project_folder}`);
     options.onSaved?.(result);
     return result;
@@ -1740,9 +1746,6 @@ function openPromptCreator(options = {}) {
     payload.subject = subjectOutput.value || "";
     const result = await postJson("/vrgdg/music_prompt_creator/save_draft", payload);
     projectFolder.value = result.project_folder || projectFolder.value;
-    projectFolderNote.textContent = projectFolder.value
-      ? `Prompt Creator files will be saved into: ${projectFolder.value}`
-      : "Prompt Creator files will be saved into the current project folder.";
     setStatus(status, `Saved prompt creator draft.\n${result.draft_path}`);
     return result;
   }
