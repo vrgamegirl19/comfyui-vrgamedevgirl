@@ -1316,9 +1316,11 @@ def _concat_file_path(path):
     return os.path.abspath(path).replace("\\", "/").replace("'", "'\\''")
 
 
-def _cleanup_i2v_scratch_folders(project_folder, keep_folders=None):
+def _cleanup_video_scratch_folders(project_folder, keep_folders=None):
     project_folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
     keep = {os.path.abspath(path) for path in (keep_folders or []) if path}
+    scratch_prefixes = ("image_to_video_clips_", "text_to_video_clips_")
+    permanent_folders = {"image_to_video_clips", "text_to_video_clips", "rendered_scene_videos", "rendered_scene_videos_backup"}
     removed_folders = []
     if not os.path.isdir(project_folder):
         return removed_folders
@@ -1326,7 +1328,7 @@ def _cleanup_i2v_scratch_folders(project_folder, keep_folders=None):
         path = os.path.abspath(os.path.join(project_folder, name))
         if path in keep or not os.path.isdir(path):
             continue
-        if name == "image_to_video_clips" or not name.startswith("image_to_video_clips_"):
+        if name in permanent_folders or not name.startswith(scratch_prefixes):
             continue
         try:
             if os.path.commonpath([project_folder, path]) != project_folder:
@@ -1334,8 +1336,12 @@ def _cleanup_i2v_scratch_folders(project_folder, keep_folders=None):
             shutil.rmtree(path)
             removed_folders.append(path)
         except Exception as exc:
-            print(f"[VRGDG WorkflowRunner] Could not delete I2V scratch folder '{path}': {exc}")
+            print(f"[VRGDG WorkflowRunner] Could not delete video scratch folder '{path}': {exc}")
     return removed_folders
+
+
+def _cleanup_i2v_scratch_folders(project_folder, keep_folders=None):
+    return _cleanup_video_scratch_folders(project_folder, keep_folders=keep_folders)
 
 
 def _retry_file_op(operation, description, attempts=30, delay=0.25):
@@ -1462,31 +1468,7 @@ def _collect_scene_video(payload):
 
     removed_files = []
     removed_folder = ""
-    keep_folders = [target_dir]
-    if source_dir not in {target_dir, project_folder}:
-        try:
-            if os.path.commonpath([project_folder, source_dir]) == project_folder:
-                for name in os.listdir(source_dir):
-                    path = os.path.join(source_dir, name)
-                    if os.path.isfile(path) and os.path.splitext(name)[1].lower() in {".png", ".mp4"}:
-                        try:
-                            _retry_file_op(
-                                lambda path=path: os.remove(path),
-                                f"Removing I2V scratch file '{path}'",
-                                attempts=8,
-                                delay=0.25,
-                            )
-                            removed_files.append(path)
-                        except Exception as exc:
-                            print(f"[VRGDG WorkflowRunner] Could not delete I2V scratch file '{path}': {exc}")
-                if not os.listdir(source_dir):
-                    os.rmdir(source_dir)
-                    removed_folder = source_dir
-        except Exception as exc:
-            print(f"[VRGDG WorkflowRunner] Could not fully clean I2V scratch folder '{source_dir}': {exc}")
-    if removed_folder:
-        keep_folders.append(removed_folder)
-    removed_scratch_folders = _cleanup_i2v_scratch_folders(project_folder, keep_folders=keep_folders)
+    removed_scratch_folders = []
 
     return {
         "video_path": target_path,
@@ -1761,7 +1743,7 @@ def _stitch_scene_videos(payload):
                     os.remove(part_path)
             except Exception:
                 pass
-    removed_scratch_folders = _cleanup_i2v_scratch_folders(project_folder, keep_folders=[target_dir])
+    removed_scratch_folders = _cleanup_video_scratch_folders(project_folder, keep_folders=[target_dir])
 
     return {
         "final_video_path": final_output,
