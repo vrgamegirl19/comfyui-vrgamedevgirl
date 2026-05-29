@@ -4000,6 +4000,70 @@ class VRGDG_MultiReferenceConditioningFromPaths:
         )
 
 
+class VRGDG_ImageBatchMultiFromPaths:
+    upscale_methods = VRGDG_MultiReferenceConditioning.upscale_methods
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image_paths": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "tooltip": "Image paths from the UI. Use one path per line, a JSON list of paths, or an object with image_paths/images.",
+                    },
+                ),
+                "upscale_method": (cls.upscale_methods, {"default": "bilinear"}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "load_batch"
+    CATEGORY = "VRGDG/Image"
+    DESCRIPTION = (
+        "UI-friendly Image Batch Multi node. Takes image file paths from a text box, "
+        "loads each image, and returns one IMAGE batch without requiring dynamic noodle inputs."
+    )
+
+    def load_batch(self, image_paths, upscale_method):
+        paths = VRGDG_MultiReferenceConditioningFromPaths._parse_image_paths(image_paths)
+        if not paths:
+            raise ValueError("VRGDG UI Image Batch Multi needs at least one image path.")
+
+        images = []
+        for path in paths:
+            images.append(VRGDG_MultiReferenceConditioningFromPaths._load_image_tensor(path))
+
+        if len(images) == 1:
+            return (images[0],)
+
+        base = images[0]
+        batched = [base]
+        for image in images[1:]:
+            next_image = image
+            if next_image.shape[-1] != base.shape[-1]:
+                max_channels = max(next_image.shape[-1], base.shape[-1])
+                if base.shape[-1] < max_channels:
+                    base = torch.nn.functional.pad(base, (0, max_channels - base.shape[-1]), value=1.0)
+                    batched[0] = base
+                if next_image.shape[-1] < max_channels:
+                    next_image = torch.nn.functional.pad(next_image, (0, max_channels - next_image.shape[-1]), value=1.0)
+            if next_image.shape[1:] != base.shape[1:]:
+                next_image = comfy.utils.common_upscale(
+                    next_image.movedim(-1, 1),
+                    base.shape[2],
+                    base.shape[1],
+                    upscale_method,
+                    "center",
+                ).movedim(1, -1)
+            batched.append(next_image)
+
+        return (torch.cat(batched, dim=0),)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_ShowText": VRGDG_ShowText,
     "VRGDG_ShowAny": VRGDG_ShowAny,
@@ -4033,6 +4097,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_T2VPromptsFromConcepts": VRGDG_T2VPromptsFromConcepts,
     "VRGDG_MultiReferenceConditioning": VRGDG_MultiReferenceConditioning,
     "VRGDG_MultiReferenceConditioningFromPaths": VRGDG_MultiReferenceConditioningFromPaths,
+    "VRGDG_ImageBatchMultiFromPaths": VRGDG_ImageBatchMultiFromPaths,
     
 }
 
@@ -4069,5 +4134,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_T2VPromptsFromConcepts": "Text to video prompts from concepts",
     "VRGDG_MultiReferenceConditioning": "VRGDG Multi Reference Conditioning",
     "VRGDG_MultiReferenceConditioningFromPaths": "VRGDG UI Multi Reference Conditioning",
+    "VRGDG_ImageBatchMultiFromPaths": "VRGDG UI Image Batch Multi",
     
 }
