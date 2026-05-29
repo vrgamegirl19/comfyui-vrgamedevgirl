@@ -1368,6 +1368,8 @@ def _write_prompt_creator_pointer(project_folder, context, saved_at, marker=None
 def _save_prompt_creator_draft(payload):
     project_folder = _project_folder_from_payload(payload)
     _ensure_project_folders(project_folder)
+    context = _context_folder(project_folder)
+    prompts = _prompts_folder(project_folder)
     saved_at = time.strftime("%Y-%m-%d %H:%M:%S")
     draft = {
         "audio_path": str(payload.get("audio_path", "") or ""),
@@ -1401,6 +1403,57 @@ def _save_prompt_creator_draft(payload):
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(draft, handle, indent=2, ensure_ascii=False)
         handle.write("\n")
+
+    files_written = {}
+    context_values = {
+        os.path.join(context, "full_lyrics.txt"): draft["full_lyrics"],
+        os.path.join(context, "themestyle.txt"): draft["style_theme"],
+        os.path.join(context, "storyconcept.txt"): draft["story_idea"],
+        os.path.join(context, "subjectsandscenes.txt"): draft["subject_locations"],
+        os.path.join(context, "subject.txt"): draft["subject"],
+    }
+    for context_path, value in context_values.items():
+        with open(context_path, "w", encoding="utf-8") as handle:
+            handle.write(str(value or ""))
+        files_written[os.path.basename(context_path)] = context_path
+
+    if draft["corrected_segments_text"].strip():
+        corrected_segments = _canonical_segment_mapping(_extract_json_object(draft["corrected_segments_text"]))
+        if corrected_segments:
+            lyric_path = os.path.join(prompts, "lyric_segments.json")
+            with open(lyric_path, "w", encoding="utf-8") as handle:
+                json.dump(corrected_segments, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            files_written["lyric_segments.json"] = lyric_path
+
+    if draft["concept_prompts_text"].strip():
+        concept_prompts = _canonical_prompt_mapping(_extract_json_object(draft["concept_prompts_text"]))
+        if concept_prompts:
+            concept_path = os.path.join(context, "ConceptPrompts.txt")
+            with open(concept_path, "w", encoding="utf-8") as handle:
+                json.dump(concept_prompts, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            files_written["ConceptPrompts.txt"] = concept_path
+
+    if draft["i2v_motion_notes_text"].strip():
+        raw_motion_notes = _extract_json_object(draft["i2v_motion_notes_text"])
+        motion_notes = {}
+        for raw_key, raw_value in (raw_motion_notes or {}).items():
+            match = re.search(r"(\d+)", str(raw_key or ""))
+            if match:
+                motion_notes[f"Motion{int(match.group(1))}"] = str(raw_value or "").strip()
+        if motion_notes:
+            motion_path = os.path.join(context, "I2VMotionNotes.txt")
+            with open(motion_path, "w", encoding="utf-8") as handle:
+                json.dump(motion_notes, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            files_written["I2VMotionNotes.txt"] = motion_path
+
+    if draft["srt_text"].strip():
+        with open(_srt_path(project_folder), "w", encoding="utf-8") as handle:
+            handle.write(draft["srt_text"])
+        files_written["builder_segments.srt"] = _srt_path(project_folder)
+
     _write_prompt_creator_pointer(project_folder, _context_folder(project_folder), saved_at, {
         "type": "vrgdg_prompt_creator_output",
         "saved_at": saved_at,
@@ -1413,6 +1466,7 @@ def _save_prompt_creator_draft(payload):
         "project_folder": project_folder,
         "draft_path": path,
         "draft": draft,
+        "files": files_written,
     }
 
 

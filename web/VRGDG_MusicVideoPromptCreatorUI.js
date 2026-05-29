@@ -424,6 +424,54 @@ function parseJsonSafe(text, fallback = {}) {
   }
 }
 
+function parseOutputMapping(text, prefix, label) {
+  const raw = String(text || "").trim();
+  if (!raw) return {};
+  if (/^\s*[\[{]/.test(raw)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      throw new Error(`${label} is not valid JSON: ${error.message}`);
+    }
+    const output = {};
+    if (Array.isArray(parsed)) {
+      parsed.forEach((value, index) => {
+        output[`${prefix}${index + 1}`] = String(value ?? "").trim();
+      });
+      return output;
+    }
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error(`${label} must be a JSON object or array.`);
+    }
+    for (const [key, value] of Object.entries(parsed)) {
+      const match = String(key).match(/(\d+)/);
+      if (!match) continue;
+      output[`${prefix}${Number(match[1])}`] = String(value ?? "").trim();
+    }
+    return output;
+  }
+
+  const keyed = {};
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    const match = line.match(/^\s*(?:Prompt|I2V|Motion)\s*(\d+)\s*[:=]\s*(.*)$/i);
+    if (!match) continue;
+    keyed[`${prefix}${Number(match[1])}`] = String(match[2] ?? "").trim();
+  }
+  if (Object.keys(keyed).length) return keyed;
+
+  const blocks = raw
+    .split(/\n\s*\n+/)
+    .map((block) => block.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const output = {};
+  blocks.forEach((block, index) => {
+    output[`${prefix}${index + 1}`] = block;
+  });
+  return output;
+}
+
 function prettyJson(value) {
   try {
     return JSON.stringify(value || {}, null, 2);
@@ -1623,8 +1671,10 @@ function openPromptCreator(options = {}) {
   async function saveOutputs(progress = null) {
     setStatus(status, "Saving prompt creator outputs into the project folder...", true);
     progress?.set("Step 6/6: Saving prompt creator files into the project folder...", 92);
-    state.conceptPrompts = parseJsonSafe(conceptOutput.value, state.conceptPrompts || {});
-    state.i2vMotionNotes = parseJsonSafe(i2vMotionOutput.value, state.i2vMotionNotes || {});
+    const editedConceptPrompts = parseOutputMapping(conceptOutput.value, "Prompt", "ConceptPrompts");
+    const editedI2VMotionNotes = parseOutputMapping(i2vMotionOutput.value, "Motion", "I2V Motion Notes");
+    state.conceptPrompts = Object.keys(editedConceptPrompts).length ? editedConceptPrompts : (state.conceptPrompts || {});
+    state.i2vMotionNotes = Object.keys(editedI2VMotionNotes).length ? editedI2VMotionNotes : (state.i2vMotionNotes || {});
     const payload = buildPayload(controls, modelSelect);
     payload.segments = state.repairedSegments && Object.keys(state.repairedSegments).length
       ? state.repairedSegments
