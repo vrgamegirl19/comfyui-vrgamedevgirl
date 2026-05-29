@@ -2252,7 +2252,8 @@ function openBuilder(node) {
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
-  timelineHeader.style.cssText = "display:grid;grid-template-columns:auto auto auto auto auto auto auto auto auto auto auto minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
+  timelineHeader.style.cssText = "display:grid;grid-template-columns:repeat(13,auto) minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
+  const bulkSegmentsButton = makeButton("Bulk Segments");
   const addSegmentButton = makeButton("Add Segment", "primary");
   const addOverlaySegmentButton = makeButton("Add Insert", "primary");
   const undoButton = makeButton("Undo");
@@ -2264,6 +2265,7 @@ function openBuilder(node) {
   const deleteSegmentButton = makeButton("Del");
   const zoomOutButton = makeButton("-");
   const zoomInButton = makeButton("+");
+  bulkSegmentsButton.title = "Create many manual timeline scenes from pasted durations or start/end times.";
   addSegmentButton.title = "Add segment";
   addOverlaySegmentButton.title = "Add an insert/overlay segment at the playhead without changing the base timeline.";
   undoButton.title = "Undo";
@@ -2275,6 +2277,7 @@ function openBuilder(node) {
   deleteSegmentButton.title = "Delete selected segment";
   zoomOutButton.title = "Zoom out timeline";
   zoomInButton.title = "Zoom in timeline";
+  bulkSegmentsButton.textContent = "Bulk Segments";
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Insert";
   undoButton.textContent = "↶";
@@ -2286,10 +2289,13 @@ function openBuilder(node) {
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
   }
+  bulkSegmentsButton.style.width = "max-content";
+  addSegmentButton.style.width = "max-content";
+  addOverlaySegmentButton.style.width = "max-content";
   for (const button of [undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.width = "34px";
   }
@@ -2337,7 +2343,7 @@ function openBuilder(node) {
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(bulkSegmentsButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -9731,6 +9737,199 @@ function openBuilder(node) {
     autoSaveSessionQuiet("segment added");
   }
 
+  function parseBulkTimeValue(raw) {
+    const text = String(raw || "").trim().replace(",", ".");
+    if (!text) return NaN;
+    const parts = text.split(":").map((part) => part.trim());
+    if (parts.length === 1) return Number(parts[0]);
+    if (parts.length === 2) return Number(parts[0]) * 60 + Number(parts[1]);
+    if (parts.length === 3) return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]);
+    return NaN;
+  }
+
+  function cleanBulkTimingLines(text) {
+    return String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim())
+      .filter((line) => line && !line.startsWith("#"));
+  }
+
+  function parseBulkSegmentTimings(text, mode, appendStart = 0) {
+    const lines = cleanBulkTimingLines(text);
+    const segments = [];
+    if (mode === "durations") {
+      let cursor = Number(appendStart || 0);
+      for (const line of lines) {
+        const duration = parseBulkTimeValue(line);
+        if (!Number.isFinite(duration) || duration <= 0) {
+          throw new Error(`Invalid duration: ${line}`);
+        }
+        segments.push({ start: cursor, end: cursor + duration });
+        cursor += duration;
+      }
+    } else if (mode === "ranges") {
+      for (const line of lines) {
+        const match = line.match(/^(.+?)\s*(?:-->|-|to)\s*(.+)$/i);
+        if (!match) throw new Error(`Invalid start/end row: ${line}`);
+        const start = parseBulkTimeValue(match[1]);
+        const end = parseBulkTimeValue(match[2]);
+        if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+          throw new Error(`Invalid start/end row: ${line}`);
+        }
+        segments.push({ start, end });
+      }
+    } else {
+      const markers = lines.map(parseBulkTimeValue);
+      if (markers.some((value) => !Number.isFinite(value))) {
+        throw new Error("One or more timestamp markers could not be read.");
+      }
+      for (let index = 0; index < markers.length - 1; index += 1) {
+        const start = markers[index];
+        const end = markers[index + 1];
+        if (end <= start) throw new Error("Timestamp markers must go from earliest to latest.");
+        segments.push({ start, end });
+      }
+    }
+    if (!segments.length) throw new Error("No segments were found in the box.");
+    return segments;
+  }
+
+  async function applyBulkSegmentTimings(timings, action) {
+    const replacing = action === "replace";
+    const newSegments = timings.map((timing, index) => {
+      const segment = newSegment(Number(timing.start || 0), Number(timing.end || 0));
+      segment.label = `Scene ${replacing ? index + 1 : state.segments.length + index + 1}`;
+      segment.source = "manual";
+      return segment;
+    });
+    pushHistory();
+    if (replacing) {
+      state.segments = newSegments;
+      state.srtMode = false;
+      state.timingFrozen = false;
+      state.activeId = newSegments[0]?.id || "";
+    } else {
+      state.segments.push(...newSegments);
+      state.activeId = newSegments[0]?.id || state.activeId;
+    }
+    sortSegments(state.segments);
+    state.duration = Math.max(
+      Number(state.duration || 0),
+      ...state.segments.map((segment) => Number(segment.end || 0)),
+      ...state.overlaySegments.map((segment) => Number(segment.end || 0)),
+    );
+    state.activeTrack = "base";
+    syncInspector();
+    render();
+    await syncPromptJsonFromSegments("bulk segments");
+    await syncI2VMotionJsonFromSegments("bulk segments");
+    await autoSaveSessionQuiet("bulk segments");
+  }
+
+  function openBulkSegmentsModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 60px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #155e75;background:#083f4f;";
+    const heading = document.createElement("div");
+    heading.textContent = "Bulk Manual Segments";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px 16px;display:flex;flex-direction:column;gap:12px;overflow:auto;";
+    const explanation = document.createElement("div");
+    explanation.innerHTML = `
+      <div><strong style="color:#e0f2fe;">What this does</strong></div>
+      <div>Create many manual base timeline scenes from pasted timing text instead of clicking + Segment over and over.</div>
+      <div style="margin-top:6px;"><strong style="color:#fecaca;">Replace current base timeline</strong> rebuilds the base scenes and clears generated scene outputs from those new scenes. Inserts stay in the insert track.</div>
+      <div><strong style="color:#bbf7d0;">Append after last scene</strong> adds duration-based scenes after the current last base scene.</div>
+    `;
+    explanation.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;color:#d4d4d8;font-size:12px;line-height:1.45;";
+    const modeSelect = makeSelect(["durations", "ranges", "markers"], "durations");
+    modeSelect.options[0].textContent = "Durations";
+    modeSelect.options[1].textContent = "Start - End rows";
+    modeSelect.options[2].textContent = "Timestamp markers";
+    const actionSelect = makeSelect(["replace", "append"], "replace");
+    actionSelect.options[0].textContent = "Replace current base timeline";
+    actionSelect.options[1].textContent = "Append after last scene";
+    const controls = document.createElement("div");
+    controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    controls.append(makeField("Input format", modeSelect), makeField("Apply mode", actionSelect));
+    const examples = document.createElement("div");
+    examples.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;color:#cbd5e1;font-size:12px;line-height:1.45;";
+    const textarea = document.createElement("textarea");
+    textarea.style.cssText = "min-height:220px;resize:vertical;border:1px solid #3f3f46;border-radius:7px;background:#09090b;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+    const setExample = () => {
+      if (modeSelect.value === "durations") {
+        examples.innerHTML = `<strong style="color:#e0f2fe;">Durations</strong><br>One scene duration per line. Values can be seconds, <code>mm:ss</code>, or <code>hh:mm:ss</code>.`;
+        if (!textarea.value.trim()) textarea.value = "4\n6.5\n3\n8\n5";
+        actionSelect.disabled = false;
+      } else if (modeSelect.value === "ranges") {
+        examples.innerHTML = `<strong style="color:#e0f2fe;">Start - End rows</strong><br>One exact scene range per line, like <code>0 - 4</code> or <code>00:04.00 - 00:08.50</code>. These are absolute timeline times.`;
+        if (!textarea.value.trim()) textarea.value = "0 - 4\n4 - 8.5\n8.5 - 13\n13 - 20";
+        actionSelect.value = "replace";
+        actionSelect.disabled = true;
+      } else {
+        examples.innerHTML = `<strong style="color:#e0f2fe;">Timestamp markers</strong><br>One marker per line. Scenes are created between each neighboring pair. Example: 0, 4, 8.5 creates two scenes.`;
+        if (!textarea.value.trim()) textarea.value = "0\n4\n8.5\n13\n20";
+        actionSelect.value = "replace";
+        actionSelect.disabled = true;
+      }
+    };
+    const preview = document.createElement("div");
+    preview.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;color:#a5f3fc;font-size:12px;white-space:pre-wrap;min-height:42px;";
+    const updatePreview = () => {
+      try {
+        const appendStart = actionSelect.value === "append" ? Number(state.segments[state.segments.length - 1]?.end || 0) : 0;
+        const timings = parseBulkSegmentTimings(textarea.value, modeSelect.value, appendStart);
+        const first = timings[0];
+        const last = timings[timings.length - 1];
+        preview.textContent = `Ready: ${timings.length} scene${timings.length === 1 ? "" : "s"} | ${formatTime(first.start)} - ${formatTime(last.end)} | total ${(last.end - first.start).toFixed(2)}s`;
+      } catch (error) {
+        preview.textContent = `Preview: ${String(error?.message || error)}`;
+      }
+    };
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;border-top:1px solid #1f2937;";
+    const cancel = makeButton("Cancel");
+    const apply = makeButton("Apply Bulk Segments", "primary");
+    actions.append(cancel, apply);
+    body.append(explanation, controls, examples, textarea, preview);
+    box.append(header, body, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const closeModal = () => backdrop.remove();
+    close.onclick = closeModal;
+    cancel.onclick = closeModal;
+    modeSelect.onchange = () => {
+      textarea.value = "";
+      setExample();
+      updatePreview();
+    };
+    actionSelect.onchange = updatePreview;
+    textarea.addEventListener("input", updatePreview);
+    apply.onclick = async () => {
+      try {
+        const appendStart = actionSelect.value === "append" ? Number(state.segments[state.segments.length - 1]?.end || 0) : 0;
+        const timings = parseBulkSegmentTimings(textarea.value, modeSelect.value, appendStart);
+        await applyBulkSegmentTimings(timings, actionSelect.value);
+        toast(`Created ${timings.length} manual scene${timings.length === 1 ? "" : "s"}.`);
+        closeModal();
+      } catch (error) {
+        toast(String(error?.message || error), true);
+        updatePreview();
+      }
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    setExample();
+    updatePreview();
+  }
+
   async function addOverlaySegment() {
     const duration = 4;
     const start = Math.max(0, snapTimeToBeat(currentGlobalTime()));
@@ -10770,6 +10969,7 @@ function openBuilder(node) {
   saveButton.onclick = saveSession;
   importPromptJsonButton.onclick = importPromptJson;
   importI2VMotionJsonButton.onclick = importI2VMotionJson;
+  bulkSegmentsButton.onclick = openBulkSegmentsModal;
   addSegmentButton.onclick = addSegment;
   addOverlaySegmentButton.onclick = addOverlaySegment;
   createT2IButton.onclick = createT2IPromptWithGemma;
