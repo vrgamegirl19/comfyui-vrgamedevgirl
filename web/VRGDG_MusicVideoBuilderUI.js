@@ -1267,7 +1267,7 @@ function openBuilder(node) {
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;";
   const shell = document.createElement("div");
-  shell.style.cssText = `
+  const normalShellStyle = `
     width: min(1800px, calc(100vw - 24px));
     height: min(920px, calc(100vh - 24px));
     display: grid;
@@ -1279,6 +1279,20 @@ function openBuilder(node) {
     overflow: hidden;
     box-shadow: 0 24px 90px rgba(0,0,0,.55);
   `;
+  const fullscreenShellStyle = `
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto minmax(0,1fr) minmax(230px, 34vh);
+    background: #18181b;
+    color: #fafafa;
+    border: 0;
+    border-radius: 0;
+    overflow: hidden;
+    box-shadow: none;
+  `;
+  shell.style.cssText = normalShellStyle;
+  let builderFullscreen = false;
 
   const topbar = document.createElement("div");
   topbar.style.cssText = "position:relative;display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding:12px;border-bottom:1px solid #27272a;background:#202024;";
@@ -1300,6 +1314,8 @@ function openBuilder(node) {
   const saveButton = makeButton("Quick Save", "primary");
   const autoSaveControl = makeCheckbox("Auto save", true);
   autoSaveControl.wrapper.style.cssText += "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px 10px;";
+  const fullscreenButton = makeButton("Fullscreen");
+  fullscreenButton.title = "Expand the Video Creator to fill the browser window without closing or resetting anything.";
   const closeButton = makeButton("Close");
   closeButton.onclick = () => overlay.remove();
   const promptCreatorButton = makeButton("Prompt Creator");
@@ -1344,7 +1360,7 @@ function openBuilder(node) {
   importActions.append(fluxReferenceBuilderButton, gemmaRunnerButton, promptOptionsButton);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, closeButton);
+  utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
   topbar.append(projectActions, importActions, batchActions, utilityActions, menuDropdown);
 
   const main = document.createElement("div");
@@ -2363,6 +2379,21 @@ function openBuilder(node) {
   shell.append(topbar, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
+
+  function applyBuilderFullscreen(enabled) {
+    builderFullscreen = Boolean(enabled);
+    shell.style.cssText = builderFullscreen ? fullscreenShellStyle : normalShellStyle;
+    overlay.style.alignItems = builderFullscreen ? "stretch" : "center";
+    overlay.style.justifyContent = builderFullscreen ? "stretch" : "center";
+    overlay.style.background = builderFullscreen ? "#09090b" : "rgba(0,0,0,.72)";
+    fullscreenButton.textContent = builderFullscreen ? "Exit Fullscreen" : "Fullscreen";
+    fullscreenButton.title = builderFullscreen
+      ? "Return the Video Creator to the normal floating panel size."
+      : "Expand the Video Creator to fill the browser window without closing or resetting anything.";
+    applyLayoutSizes();
+    render();
+  }
+
   setTimeout(() => {
     showStartupWelcome().catch((error) => {
       console.warn("[VRGDG Music Builder] Startup welcome failed:", error);
@@ -11049,6 +11080,7 @@ function openBuilder(node) {
   remakeModeButton.onclick = showRemakeModeComingSoon;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
   downloadModelsButton.onclick = showModelDownloadModal;
+  fullscreenButton.onclick = () => applyBuilderFullscreen(!builderFullscreen);
   openSceneAudioOptionsButton.onclick = () => {
     const segment = requireActiveSegment();
     if (segment) openSceneOptions(segment);
