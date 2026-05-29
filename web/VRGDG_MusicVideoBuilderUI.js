@@ -3711,6 +3711,43 @@ function openBuilder(node) {
     return history[index] || segment?.approved_image_path || segment?.custom_image_path || "";
   }
 
+  function selectedSegmentImageThumbnailPath(segment) {
+    ensureSegmentRuntimeFields(segment);
+    return segment?.image_history?.[segment.image_history_index]
+      || segment?.image_history?.[segment.image_history.length - 1]
+      || segment?.custom_image_path
+      || segment?.approved_image_path
+      || "";
+  }
+
+  function selectedSegmentVideoThumbnailPath(segment) {
+    return selectedSegmentVideoPath(segment);
+  }
+
+  function mediaThumbnailHtml(segment, height = 56) {
+    const imagePath = selectedSegmentImageThumbnailPath(segment);
+    if (imagePath) {
+      return `<img src="${escapeHtml(makeEditorImageUrl(imagePath))}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
+    }
+    const videoPath = selectedSegmentVideoThumbnailPath(segment);
+    if (!videoPath) return "";
+    return `<video src="${escapeHtml(makeEditorVideoUrl(videoPath))}" preload="metadata" muted playsinline style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;display:block;"></video>`;
+  }
+
+  function appendTimelineVideoThumbnail(block, segment) {
+    const videoPath = selectedSegmentVideoThumbnailPath(segment);
+    if (!videoPath) return;
+    const video = document.createElement("video");
+    video.src = makeEditorVideoUrl(videoPath);
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.72;pointer-events:none;z-index:0;";
+    const shade = document.createElement("span");
+    shade.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.24);pointer-events:none;z-index:1;";
+    block.append(video, shade);
+  }
+
   function selectedMediaForDelete() {
     const segment = activeSegment();
     if (!segment) return { segment: null, type: "", path: "" };
@@ -4916,11 +4953,12 @@ function openBuilder(node) {
       const blockHeight = isOverlay ? TIMELINE_OVERLAY_HEIGHT : TIMELINE_SEGMENT_HEIGHT;
       const block = document.createElement("button");
       block.type = "button";
-      block.innerHTML = `<span style="display:block;font-weight:900;">${escapeHtml(segment.label || (isOverlay ? "Insert" : "Scene"))}</span><span style="display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
+      block.innerHTML = `<span style="position:relative;z-index:2;display:block;font-weight:900;">${escapeHtml(segment.label || (isOverlay ? "Insert" : "Scene"))}</span><span style="position:relative;z-index:2;display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
       const left = segment.start * state.pxPerSecond;
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
-      const previewThumbPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || segment.custom_image_path || segment.approved_image_path || "";
+      const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
       const thumb = previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
+      const videoThumbPath = thumb ? "" : selectedSegmentVideoThumbnailPath(segment);
       const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
@@ -4935,6 +4973,7 @@ function openBuilder(node) {
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
         box-shadow:${shadow};
       `;
+      if (!thumb && videoThumbPath) appendTimelineVideoThumbnail(block, segment);
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -4976,9 +5015,9 @@ function openBuilder(node) {
         block.append(modeButton);
       }
       const leftHandle = document.createElement("div");
-      leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;";
+      leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;z-index:4;";
       const rightHandle = document.createElement("div");
-      rightHandle.style.cssText = "position:absolute;right:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;";
+      rightHandle.style.cssText = "position:absolute;right:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;z-index:4;";
       block.append(leftHandle, rightHandle);
       block.onclick = () => handleSegmentPick(segment);
       block.oncontextmenu = (event) => openSegmentContextMenu(event, segment);
@@ -5353,13 +5392,13 @@ function openBuilder(node) {
       const row = document.createElement("div");
       row.role = "button";
       row.tabIndex = 0;
-      const previewThumbPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || segment.custom_image_path || segment.approved_image_path || "";
-      const thumb = previewThumbPath ? `<img src="${makeEditorImageUrl(previewThumbPath)}" style="width:100%;height:56px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">` : "";
+      const thumb = mediaThumbnailHtml(segment, 56);
       const inserted = state.srtMode && segment.source !== "srt";
       const t2iDone = Boolean(segmentImageSource(segment));
       const i2vDone = Boolean(String(segment.i2v_prompt || "").trim());
       const videoDone = Boolean(segment.video_path);
       const historyStatus = segment.image_history.length ? `<span style="border:1px solid #67e8f9;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#bae6fd;">IMG ${segment.image_history.length}</span>` : "";
+      const videoHistoryStatus = segment.video_history.length ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#f3e8ff;">VID ${segment.video_history.length}</span>` : "";
       const zStatus = segment.use_scene_zimage_settings ? `<span style="border:1px solid #f59e0b;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#fde68a;">Z custom</span>` : "";
       const audioStatus = segment.custom_audio_path ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#ddd6fe;">AUD</span>` : "";
       const status = `
@@ -5368,6 +5407,7 @@ function openBuilder(node) {
           <span style="border:1px solid ${i2vDone ? "#22c55e" : "#52525b"};border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:${i2vDone ? "#bbf7d0" : "#a1a1aa"};">I2V ${i2vDone ? "OK" : "--"}</span>
           <span style="border:1px solid ${videoDone ? "#22c55e" : "#52525b"};border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:${videoDone ? "#bbf7d0" : "#a1a1aa"};">VID ${videoDone ? "OK" : "--"}</span>
           ${historyStatus}
+          ${videoHistoryStatus}
           ${zStatus}
           ${audioStatus}
         </div>
@@ -5415,8 +5455,7 @@ function openBuilder(node) {
       const row = document.createElement("div");
       row.role = "button";
       row.tabIndex = 0;
-      const previewThumbPath = segment.image_history?.[segment.image_history_index] || segment.image_history?.[segment.image_history.length - 1] || segment.custom_image_path || segment.approved_image_path || "";
-      const thumb = previewThumbPath ? `<img src="${makeEditorImageUrl(previewThumbPath)}" style="width:100%;height:50px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">` : "";
+      const thumb = mediaThumbnailHtml(segment, 50);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
       const isMultiSelected = isSegmentMultiSelected(segment);
       row.style.cssText = `width:100%;text-align:left;border:${isActive || isMultiSelected ? "3px" : "1px"} solid ${isActive || isMultiSelected ? "#ef4444" : "#f97316"};border-radius:7px;background:${isActive || isMultiSelected ? "#3f1d24" : "#431407"};color:#fafafa;padding:8px;margin-bottom:8px;cursor:pointer;box-shadow:${isActive || isMultiSelected ? "0 0 0 2px rgba(239,68,68,.25), 0 0 18px rgba(239,68,68,.42)" : "none"};`;
