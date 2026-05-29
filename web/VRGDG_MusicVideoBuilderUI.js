@@ -3030,6 +3030,63 @@ function openBuilder(node) {
     };
   }
 
+  function applyModelDefaults(defaults) {
+    if (!defaults || typeof defaults !== "object" || Array.isArray(defaults)) return false;
+    if (defaults.text_gemma_runner || defaults.textGemmaRunner) {
+      state.textGemmaRunner = defaults.text_gemma_runner || defaults.textGemmaRunner || state.textGemmaRunner || "builtin";
+    }
+    if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
+      state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
+    }
+    if (defaults.lm_studio_model || defaults.lmStudioModel) {
+      state.lmStudioModel = defaults.lm_studio_model || defaults.lmStudioModel || state.lmStudioModel || "";
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "lm_studio_api_key") || Object.prototype.hasOwnProperty.call(defaults, "lmStudioApiKey")) {
+      state.lmStudioApiKey = defaults.lm_studio_api_key ?? defaults.lmStudioApiKey ?? state.lmStudioApiKey ?? "";
+    }
+    state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
+    if (defaults.zimage_settings || defaults.zimageSettings) {
+      state.zimageSettings = cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings);
+    }
+    if (defaults.flux_klein_settings || defaults.fluxKleinSettings) {
+      state.fluxKleinSettings = cloneFluxKleinSettings(defaults.flux_klein_settings || defaults.fluxKleinSettings);
+    }
+    if (defaults.ernie_image_settings || defaults.ernieImageSettings) {
+      state.ernieImageSettings = cloneErnieImageSettings(defaults.ernie_image_settings || defaults.ernieImageSettings);
+    }
+    if (defaults.z_enhance_settings || defaults.zEnhanceSettings) {
+      state.zEnhanceSettings = {
+        ...defaultZEnhanceSettings(),
+        ...(defaults.z_enhance_settings || defaults.zEnhanceSettings || {}),
+      };
+    }
+    state.videoModelMode = defaults.video_model_mode || defaults.videoModelMode || state.videoModelMode || "i2v";
+    if (defaults.i2v_video_settings || defaults.i2vVideoSettings) {
+      state.i2vVideoSettings = cloneI2VVideoSettings(defaults.i2v_video_settings || defaults.i2vVideoSettings);
+    }
+    syncZImageSettingsPanel();
+    syncFluxKleinPanel();
+    syncErnieImagePanel();
+    syncZEnhanceSettingsPanel();
+    syncI2VVideoSettingsPanel();
+    syncVideoModePanel();
+    return true;
+  }
+
+  async function loadGlobalModelDefaultsQuiet() {
+    try {
+      const data = await getJson("/vrgdg/music_builder/model_defaults");
+      const applied = applyModelDefaults(data.defaults || {});
+      if (applied) {
+        console.log("[VRGDG Music Builder] Loaded global model defaults:", data.path || "");
+      }
+      return applied;
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Could not load global model defaults:", error);
+      return false;
+    }
+  }
+
   function activeZImageSettings() {
     const segment = activeSegment();
     if (segment?.use_scene_zimage_settings) {
@@ -10121,6 +10178,7 @@ function openBuilder(node) {
         project_folder: projectName,
       }, 60000);
       resetProjectState(data.project_folder || "", data.session_path || "", data.srt_path || "");
+      await loadGlobalModelDefaultsQuiet();
       if (data.concept_prompts_path) {
         promptJsonInput.value = data.concept_prompts_path;
         state.promptJsonPath = data.concept_prompts_path;

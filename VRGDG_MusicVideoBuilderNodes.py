@@ -2560,6 +2560,71 @@ def _gemma_choices():
     }
 
 
+_MODEL_DEFAULT_KEYS = (
+    "text_gemma_runner",
+    "lm_studio_base_url",
+    "lm_studio_model",
+    "lm_studio_api_key",
+    "image_model_mode",
+    "zimage_settings",
+    "flux_klein_settings",
+    "ernie_image_settings",
+    "z_enhance_settings",
+    "video_model_mode",
+    "i2v_video_settings",
+)
+
+
+def _model_defaults_path():
+    defaults_folder = os.path.join(folder_paths.get_output_directory(), "VRGDG_Model_Defaults")
+    os.makedirs(defaults_folder, exist_ok=True)
+    return os.path.join(defaults_folder, "model_defaults.json")
+
+
+def _extract_model_defaults(session):
+    if not isinstance(session, dict):
+        return {}
+    defaults = {}
+    for key in _MODEL_DEFAULT_KEYS:
+        value = session.get(key)
+        if value is not None:
+            defaults[key] = value
+    return defaults
+
+
+def _save_model_defaults(session):
+    defaults = _extract_model_defaults(session)
+    if not defaults:
+        return ""
+    target = _model_defaults_path()
+    payload = {
+        "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "defaults": defaults,
+    }
+    with open(target, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    return target
+
+
+def _load_model_defaults():
+    target = _model_defaults_path()
+    if not os.path.isfile(target):
+        return {"path": target, "defaults": {}, "saved_at": ""}
+    with open(target, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict):
+        payload = {}
+    defaults = payload.get("defaults")
+    if not isinstance(defaults, dict):
+        defaults = {}
+    return {
+        "path": target,
+        "defaults": defaults,
+        "saved_at": str(payload.get("saved_at", "") or ""),
+    }
+
+
 def _save_builder_session(payload):
     audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
     audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
@@ -2600,6 +2665,7 @@ def _save_builder_session(payload):
         handle.write("\n")
     with open(_srt_path(project_folder), "w", encoding="utf-8") as handle:
         handle.write(srt_text)
+    model_defaults_path = _save_model_defaults(session)
 
     t2i_lines = []
     i2v_lines = []
@@ -2620,6 +2686,7 @@ def _save_builder_session(payload):
         "images_folder": _images_folder(project_folder),
         "prompts_folder": _prompts_folder(project_folder),
         "context_folder": _context_folder(project_folder),
+        "model_defaults_path": model_defaults_path,
         "session": session,
     }
 
@@ -3205,6 +3272,14 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _save_builder_session(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.get("/vrgdg/music_builder/model_defaults")
+    async def vrgdg_music_builder_model_defaults(request):
+        try:
+            result = _load_model_defaults()
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
