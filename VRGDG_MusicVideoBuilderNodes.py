@@ -2619,46 +2619,27 @@ def _generate_nb_image_prompt(payload):
         context_parts.append("\n".join(reference_flags))
 
     instruction = (
-        "Create one NanoBanana image-edit prompt from the user input and available reference context.\n\n"
-        "Prompt Structure (MANDATORY)\n\n"
-        "Every generated prompt must follow this exact section structure:\n\n"
-        "CAMERA COMPOSITION (PRIORITY)\n\n"
-        "CHARACTER REFERENCE\n\n"
-        "SCENE REFERENCE\n\n"
-        "FINAL IMAGE\n\n"
-        "The camera section must always appear first so the model determines the shot from the story description instead of copying the scene reference angle.\n\n"
-        "CAMERA COMPOSITION (PRIORITY)\n\n"
-        "This section defines the camera shot and physical viewpoint.\n\n"
-        "Rules:\n"
-        "- Always begin with: Create a completely new camera position and shot composition.\n"
-        "- Define the shot size from the Story Group camera field if present, otherwise infer a clear shot size from user input.\n"
-        "- Describe the framing using the Story Group frame field if present, otherwise infer simple physical framing.\n"
-        "- Explicitly state that the camera position is different from the reference image.\n"
-        "- Keep the instructions simple and spatial.\n"
-        "- Do not add storytelling or emotional interpretation.\n\n"
-        "CHARACTER REFERENCE\n\n"
-        "Character references define identity only.\n"
-        "They should influence only face, hair, hairstyle, and clothing.\n"
-        "They must NOT influence pose, camera angle, framing, or environment.\n"
-        "Keep this section short and direct.\n\n"
-        "SCENE REFERENCE\n\n"
-        "Scene references define location identity only.\n"
-        "They should influence only environment, architecture, layout, skyline, or landmarks.\n"
-        "They must NOT influence camera angle, shot size, framing, perspective, or composition.\n\n"
-        "FINAL IMAGE\n\n"
-        "This section describes the finished image.\n"
-        "Rules:\n"
-        "- Keep this section short and literal.\n"
-        "- Focus on visible environment and lighting.\n"
-        "- Avoid symbolism, metaphors, or story interpretation.\n"
-        "- Do not introduce new scene elements not defined in the Story Group.\n\n"
-        "Important Constraints:\n"
-        "- Do not introduce extra scene elements that are not part of the Story Group.\n"
-        "- Do not describe emotional symbolism.\n"
-        "- Do not add crowds or background characters unless explicitly defined.\n"
-        "- Do not create long cinematic paragraphs.\n"
-        "- Prompts must remain clear, spatial, and camera-focused.\n"
-        "- Output only the final prompt with the four section headers. Do not include markdown fences, notes, or explanations.\n\n"
+        "Create one concise NanoBanana image prompt from the user input and available reference context.\n"
+        "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
+        "Prompt style:\n"
+        "- Start with: Using the provided character reference and location reference, create...\n"
+        "- If only a character reference is available, start with: Using the provided character reference, create...\n"
+        "- If only a location reference is available, start with: Using the provided location reference, create...\n"
+        "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
+        "- Use the user's scene/concept notes as the main creative direction.\n"
+        "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
+        "- Preserve the location identity from the location reference: environment, architecture, layout, atmosphere, and major visible setting details.\n"
+        "- Create a new camera angle, new pose, and new composition.\n"
+        "- Do not paste the character into the location image.\n"
+        "- Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.\n"
+        "- Do not copy the exact location reference camera angle, framing, perspective, or composition.\n"
+        "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
+        "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
+        "- Keep the prompt visually specific and practical for image generation.\n"
+        "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n\n"
+        "Good output examples:\n"
+        "Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.\n"
+        "Using the provided character reference and location reference, create an intimate upper body shot of the woman framed by gnarled forest branches. Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. New pose, new camera angle, soft bokeh, high cinematic quality.\n\n"
         f"{chr(10).join(context_parts) if context_parts else 'User input: Create a new image using the available reference images.'}"
     )
 
@@ -2729,6 +2710,11 @@ def _generate_nb_image_prompt(payload):
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
             _clear_comfy_model_memory()
     text = _clean_lm_studio_plain_text(text)
+    text = re.sub(r"(?im)^CAMERA\s+COMPOSI+TION\s*\(PRIORITY\)", "CAMERA COMPOSITION (PRIORITY)", text)
+    text = re.sub(r"(?im)^CHARACTER\s+REFEREN[CC]E\b", "CHARACTER REFERENCE", text)
+    text = re.sub(r"(?im)^SCE+NE\s+REFEREN[CC]E\b", "SCENE REFERENCE", text)
+    text = re.sub(r"\breference\s+imagae\b", "reference image", text, flags=re.IGNORECASE)
+    text = re.sub(r"\breference\s+imagaes\b", "reference images", text, flags=re.IGNORECASE)
     if not text:
         raise ValueError("NanoBanana Gemma returned an empty prompt.")
     return {"prompt": text, **info}
