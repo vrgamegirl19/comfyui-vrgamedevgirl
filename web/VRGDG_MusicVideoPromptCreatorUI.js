@@ -362,7 +362,7 @@ function extractPromptCreatorText(historyPayload, promptId) {
     }
   }
   return {
-    whisper: readText(804) || readText("28:870") || readText(961) || allText.find((value) => /lyricSegment\s*\d+/i.test(value)) || "",
+    whisper: readText(804) || readText("28:870") || readText(961) || allText.find((value) => /(?:lyricSegment|segment)\s*\d+/i.test(value)) || "",
     srt: readText("28:869") || readText(962) || allText.find((value) => /-->\s*\d{2}:/i.test(value)) || "",
   };
 }
@@ -374,7 +374,7 @@ async function waitForPromptCreatorText(promptId, onStatus) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`History request failed (${response.status})`);
     const text = extractPromptCreatorText(data, promptId);
-    if (text.whisper || text.srt) return text;
+    if (text.whisper) return text;
     onStatus?.("Waiting for Whisper/SRT workflow output...");
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
@@ -493,7 +493,7 @@ function parseLyricSegmentsToJson(text) {
 
   const segments = {};
   for (const line of String(text || "").split(/\r?\n/)) {
-    const match = line.match(/^\s*lyricSegment\s*(\d+)\s*=\s*(.*)$/i);
+    const match = line.match(/^\s*(?:lyricSegment|segment)\s*(\d+)\s*[:=]\s*(.*)$/i);
     if (!match) continue;
     const index = Number(match[1]);
     if (!Number.isFinite(index) || index <= 0) continue;
