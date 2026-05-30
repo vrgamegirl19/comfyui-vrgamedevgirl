@@ -11816,10 +11816,38 @@ function openBuilder(node) {
     const useNBMode = imageMode === "nano_banana";
     const useErnieMode = imageMode === "ernie_image";
     const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : "ZImage";
-    const mode = await chooseBatchModeAction({
+    const imageModeChoices = [
+      {
+        value: "zimage",
+        label: "ZImage",
+        description: "Use the ZImage image workflow. Does not require Nano B reference images.",
+      },
+      {
+        value: "flux_klein",
+        label: "Flux/Klein",
+        description: "Use Flux/Klein and its image ingredients/reference images.",
+      },
+      {
+        value: "nano_banana",
+        label: "Nano B",
+        description: "Use Nano B and its required reference images/API key.",
+      },
+      {
+        value: "ernie_image",
+        label: "Ernie",
+        description: "Use the Ernie image workflow.",
+      },
+    ];
+    const currentChoice = imageModeChoices.find((choice) => choice.value === imageMode) || imageModeChoices[0];
+    const orderedImageModeChoices = [
+      currentChoice,
+      ...imageModeChoices.filter((choice) => choice.value !== currentChoice.value),
+    ];
+    const action = await chooseBatchModeAction({
       title: "Run Image All?",
       intro: `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
       confirmLabel: "Run Image All",
+      returnAll: true,
       choices: [
         {
           value: "resume_missing",
@@ -11837,12 +11865,25 @@ function openBuilder(node) {
           description: "Regenerate image prompts with Gemma, randomize image seeds, and create a new image version for every scene.",
         },
       ],
+      extraGroups: [
+        {
+          key: "imageMode",
+          label: "Image model to run",
+          description: "This explicit choice controls which Image All pipeline runs.",
+          choices: orderedImageModeChoices,
+        },
+      ],
     });
-    if (!mode) return;
-    if (useFluxKleinMode) await fluxKleinAllScenes({ imageRunMode: mode });
-    else if (useNBMode) await nbImageAllScenes({ imageRunMode: mode });
-    else if (useErnieMode) await ernieImageAllScenes({ imageRunMode: mode });
-    else await zImageAllScenes({ imageRunMode: mode });
+    if (!action?.mode) return;
+    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(action.imageMode) ? action.imageMode : imageMode;
+    state.imageModelMode = selectedImageMode;
+    state.fluxKleinSettings.image_model_mode = selectedImageMode;
+    state.fluxKleinSettings.enabled = selectedImageMode === "flux_klein";
+    syncFluxKleinPanel();
+    if (selectedImageMode === "flux_klein") await fluxKleinAllScenes({ imageRunMode: action.mode });
+    else if (selectedImageMode === "nano_banana") await nbImageAllScenes({ imageRunMode: action.mode });
+    else if (selectedImageMode === "ernie_image") await ernieImageAllScenes({ imageRunMode: action.mode });
+    else await zImageAllScenes({ imageRunMode: action.mode });
   }
 
   async function confirmAndRunGemmaT2IAll() {
