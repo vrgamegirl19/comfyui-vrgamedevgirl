@@ -3348,14 +3348,24 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         top_p: float,
         max_new_tokens: int,
         system_prompt: str = "",
+        seed: Optional[int] = None,
     ) -> str:
-        response = model.create_chat_completion(
-            messages=self._build_gguf_messages(instruction_text, system_prompt),
-            temperature=float(temperature),
-            top_p=float(top_p),
-            max_tokens=int(max_new_tokens),
-            stop=list(self._GEMMA_STOP_SEQUENCES),
-        )
+        kwargs = {}
+        if seed is not None:
+            kwargs["seed"] = int(seed)
+        call_args = {
+            "messages": self._build_gguf_messages(instruction_text, system_prompt),
+            "temperature": float(temperature),
+            "top_p": float(top_p),
+            "max_tokens": int(max_new_tokens),
+            "stop": list(self._GEMMA_STOP_SEQUENCES),
+            **kwargs,
+        }
+        try:
+            response = model.create_chat_completion(**call_args)
+        except TypeError:
+            call_args.pop("seed", None)
+            response = model.create_chat_completion(**call_args)
         return self._extract_gguf_text(response)
 
     def _run_gguf_vision_pipeline(
@@ -3366,19 +3376,29 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         temperature: float,
         top_p: float,
         max_new_tokens: int,
+        seed: Optional[int] = None,
     ) -> str:
         user_content = [
             {"type": "image_url", "image_url": {"url": self._pil_to_data_url(img)}}
             for img in pil_images
         ]
         user_content.append({"type": "text", "text": instruction_text})
-        response = model.create_chat_completion(
-            messages=[{"role": "user", "content": user_content}],
-            temperature=float(temperature),
-            top_p=float(top_p),
-            max_tokens=int(max_new_tokens),
-            stop=list(self._GEMMA_STOP_SEQUENCES),
-        )
+        kwargs = {}
+        if seed is not None:
+            kwargs["seed"] = int(seed)
+        call_args = {
+            "messages": [{"role": "user", "content": user_content}],
+            "temperature": float(temperature),
+            "top_p": float(top_p),
+            "max_tokens": int(max_new_tokens),
+            "stop": list(self._GEMMA_STOP_SEQUENCES),
+            **kwargs,
+        }
+        try:
+            response = model.create_chat_completion(**call_args)
+        except TypeError:
+            call_args.pop("seed", None)
+            response = model.create_chat_completion(**call_args)
         return self._extract_gguf_text(response)
 
     def generate_prompt(

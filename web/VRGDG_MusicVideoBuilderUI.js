@@ -1166,7 +1166,60 @@ async function waitForText(promptId, onStatus, shouldCancel) {
   throw new Error("Timed out waiting for the cleanup result.");
 }
 
-async function queueWorkflowPrompt(prompt) {
+function queueListsFromStatus(data) {
+  return {
+    running: Array.isArray(data?.queue_running) ? data.queue_running : [],
+    pending: Array.isArray(data?.queue_pending) ? data.queue_pending : [],
+  };
+}
+
+async function getComfyQueueStatus() {
+  const response = await api.fetchApi("/queue");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Queue status request failed (${response.status})`);
+  return queueListsFromStatus(data);
+}
+
+async function waitForComfyQueueIdle(onStatus, options = {}) {
+  const timeoutMs = Number(options.timeoutMs || 10 * 60 * 1000);
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (options.shouldCancel?.()) throw new Error("Stopped by user.");
+    const status = await getComfyQueueStatus();
+    if (!status.running.length && !status.pending.length) return status;
+    onStatus?.(`Waiting for ComfyUI queue to become idle...\nRunning: ${status.running.length}\nPending: ${status.pending.length}`);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error("Timed out waiting for ComfyUI queue to become idle. Nothing new was queued.");
+}
+
+async function clearPendingComfyQueue() {
+  const response = await api.fetchApi("/queue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clear: true }),
+  }).catch(() => null);
+  if (!response) return;
+  if (!response.ok) {
+    console.warn("[VRGDG Music Builder] Could not clear pending ComfyUI queue:", response.status);
+  }
+}
+
+async function cancelComfyExecutionAndWaitIdle(onStatus, options = {}) {
+  onStatus?.("Interrupting ComfyUI and clearing pending queue...");
+  await api.fetchApi("/interrupt", { method: "POST" }).catch(() => null);
+  await clearPendingComfyQueue();
+  return await waitForComfyQueueIdle(onStatus, {
+    timeoutMs: options.timeoutMs || 5 * 60 * 1000,
+    shouldCancel: options.shouldCancel,
+  });
+}
+
+async function queueWorkflowPrompt(prompt, options = {}) {
+  await waitForComfyQueueIdle(options.onStatus, {
+    timeoutMs: options.idleTimeoutMs,
+    shouldCancel: options.shouldCancel,
+  });
   const clientId = api.clientId || app?.clientId || crypto.randomUUID();
   const response = await api.fetchApi("/prompt", {
     method: "POST",
@@ -1672,6 +1725,7 @@ function openBuilder(node) {
   const fluxNotes = document.createElement("textarea");
   fluxNotes.placeholder = "Optional pose, camera, wardrobe, lighting, or mood notes...";
   fluxNotes.style.cssText = "width:100%;box-sizing:border-box;min-height:72px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.45;";
+  const fluxUseTextOnlyGemmaPrompt = makeCheckbox("Use text-only Gemma for Flux prompts", false);
   const fluxGemmaModelSelect = makeSelect([""], "");
   const fluxMmprojSelect = makeSelect([""], "");
   const fluxPrompt = document.createElement("textarea");
@@ -1717,6 +1771,7 @@ function openBuilder(node) {
   const nbModelSelect = makeSelect(NB_IMAGE_MODELS, DEFAULT_NB_IMAGE_MODEL);
   const nbGemmaModelSelect = makeSelect([""], "");
   const nbMmprojSelect = makeSelect([""], "");
+  const nbUseTextOnlyGemmaPrompt = makeCheckbox("Use text-only Gemma for Nano B prompts", false);
   const nbNotes = document.createElement("textarea");
   nbNotes.placeholder = "Optional camera, framing, pose, scene, or edit notes for NanoBanana...";
   nbNotes.style.cssText = fluxNotes.style.cssText;
@@ -2179,6 +2234,7 @@ function openBuilder(node) {
       value: "settings",
       content: makeSettingsPanel([
         useSceneFluxKleinSettings.wrapper,
+        fluxUseTextOnlyGemmaPrompt.wrapper,
         makeField("Image trigger phrase", fluxImageTriggerInput),
         fluxImageRefsPanel,
         fluxGrid,
@@ -2222,6 +2278,7 @@ function openBuilder(node) {
       value: "settings",
       content: makeSettingsPanel([
         nbUseGlobalIngredients.wrapper,
+        nbUseTextOnlyGemmaPrompt.wrapper,
         nbGlobalIngredientPanel,
         nbIngredientDrop,
         nbIngredientActions,
@@ -2547,6 +2604,7 @@ function openBuilder(node) {
     return {
       enabled: false,
       image_model_mode: "",
+      use_text_only_gemma_prompt: false,
       unet_name: "flux\\flux-2-klein-4b-fp8.safetensors",
       clip_name: "qwen_3_4b.safetensors",
       vae_name: "flux\\flux2-vae.safetensors",
@@ -2692,6 +2750,7 @@ function openBuilder(node) {
     return {
       api_key: "",
       model: DEFAULT_NB_IMAGE_MODEL,
+      use_text_only_gemma_prompt: false,
     };
   }
 
@@ -3154,6 +3213,7 @@ function openBuilder(node) {
       ...source,
       api_key: source.api_key || "",
       model: source.model || DEFAULT_NB_IMAGE_MODEL,
+      use_text_only_gemma_prompt: Boolean(source.use_text_only_gemma_prompt),
     };
   }
 
@@ -3165,6 +3225,7 @@ function openBuilder(node) {
       width: Number(source.width || 1024),
       height: Number(source.height || 576),
       seed: Number(source.seed || 100),
+      use_text_only_gemma_prompt: Boolean(source.use_text_only_gemma_prompt),
       use_loras: Boolean(source.use_loras),
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
@@ -3585,8 +3646,10 @@ function openBuilder(node) {
     const message = String(error?.message || error);
     const windowTitle = `Build Full Video recovery ${attempt}/${maxRetries}`;
     const recoveryProgress = progress || createProgressWindow(windowTitle);
-    recoveryProgress.set(`Recoverable Gemma error detected:\n${message}\n\nInterrupting any stuck backend job...`, 100);
-    await api.fetchApi("/interrupt", { method: "POST" }).catch(() => null);
+    recoveryProgress.set(`Recoverable Gemma error detected:\n${message}\n\nInterrupting any stuck backend job and clearing pending queue...`, 100);
+    await cancelComfyExecutionAndWaitIdle((status) => {
+      recoveryProgress.set(`Recoverable Gemma error detected:\n${message}\n\n${status}`, 100);
+    }, { shouldCancel: () => state.batchCancelled });
     recoveryProgress.set(`Recoverable Gemma error detected:\n${message}\n\nClearing memory before retry ${attempt + 1}/${maxRetries + 1}...`, 100);
     try {
       const cleanupOutput = await runClearMemoryWorkflowQuiet(recoveryProgress, `Build Full Video retry ${attempt}/${maxRetries}`, 100);
@@ -3596,6 +3659,57 @@ function openBuilder(node) {
     }
     await autoSaveSessionQuiet("Build Full Video auto retry recovery").catch(() => null);
     recoveryProgress.close(1600);
+  }
+
+  async function runGemmaImagePromptPassWithRetry(segment, progress, basePercent, label, generator, options = {}) {
+    const maxRetries = Math.max(1, Number(options.maxRetries || 3));
+    let lastError = null;
+    let lastErrorWasRecoverable = false;
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      assertBatchNotStopped();
+      try {
+        const retryLabel = attempt === 1 ? label : `${label} retry ${attempt}/${maxRetries}`;
+        const retryOptions = {
+          ...(options.generatorOptions || {}),
+          clearBeforeLoad: attempt === 1 ? options.clearBeforeLoad !== false : true,
+          unloadAfter: attempt === maxRetries ? options.unloadAfter !== false : false,
+          seed: Math.floor((Date.now() + Math.random() * 1000000 + attempt * 9973) % 2147483647),
+          temperature: Math.min(0.95, Number(options.temperature ?? 0.25) + (attempt - 1) * 0.18),
+          topP: Math.max(0.72, Math.min(0.98, Number(options.topP ?? 0.95) - (attempt - 1) * 0.04)),
+        };
+        progress?.set(`${retryLabel}\n${attempt === 1 ? "Keeping Gemma loaded until this prompt pass finishes..." : "Fresh retry after cleanup..."}`, basePercent);
+        return await generator(segment, progress, Math.min(96, basePercent + 4), retryLabel, retryOptions);
+      } catch (error) {
+        lastError = error;
+        lastErrorWasRecoverable = isRecoverableBuildGemmaError(error);
+        if (!lastErrorWasRecoverable || attempt >= maxRetries) break;
+        progress?.set(`${label}: Gemma returned a recoverable bad response on attempt ${attempt}/${maxRetries}.\nInterrupting and clearing memory before retry...`, Math.min(96, basePercent + 2));
+        await cancelComfyExecutionAndWaitIdle((status) => {
+          progress?.set(`${label}: cancelling failed Gemma job before retry...\n${status}`, Math.min(96, basePercent + 2));
+        }, { shouldCancel: () => state.batchCancelled });
+        await runClearMemoryWorkflowQuiet(progress, `${label} retry ${attempt}/${maxRetries}`, Math.min(96, basePercent + 3));
+      }
+    }
+    if (lastErrorWasRecoverable && options.textFallback !== false) {
+      progress?.set(`${label}: vision Gemma kept returning junk.\nSwitching to text-only Gemma for this scene only...`, Math.min(96, basePercent + 5));
+      await cancelComfyExecutionAndWaitIdle((status) => {
+        progress?.set(`${label}: cancelling vision Gemma before text-only fallback...\n${status}`, Math.min(96, basePercent + 5));
+      }, { shouldCancel: () => state.batchCancelled });
+      await runImageMemoryCleanupQuiet(progress, `${label} text-only fallback`, Math.min(96, basePercent + 6));
+      try {
+        return await generateTextOnlyImagePromptFallbackForSegment(
+          segment,
+          progress,
+          Math.min(96, basePercent + 8),
+          `${label}: text-only fallback`,
+          { imageMode: options.imageMode || state.imageModelMode || "zimage" },
+        );
+      } catch (fallbackError) {
+        progress?.set(`${label}: text-only Gemma fallback also failed.\nSaving a local notes-based prompt so the batch can continue...`, Math.min(96, basePercent + 9));
+        return buildEmergencyImagePromptForSegment(segment, options.imageMode || state.imageModelMode || "zimage");
+      }
+    }
+    throw lastError || new Error(`${label}: failed to create a usable prompt.`);
   }
 
   function applyTriggerPhrase(prompt, trigger, options = {}) {
@@ -4014,7 +4128,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, nbUseTextOnlyGemmaPrompt.input, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -4712,6 +4826,7 @@ function openBuilder(node) {
     fluxWidth.value = settings.width || 1024;
     fluxHeight.value = settings.height || 576;
     fluxSeed.value = settings.seed || 100;
+    fluxUseTextOnlyGemmaPrompt.input.checked = Boolean(settings.use_text_only_gemma_prompt);
     fluxUseLora.input.checked = Boolean(settings.use_loras);
     fluxLoraCount.value = Number(settings.lora_count || 0);
     fluxLoraSlots.forEach((slot, index) => {
@@ -4754,6 +4869,7 @@ function openBuilder(node) {
       width: Number(fluxWidth.value || 1024),
       height: Number(fluxHeight.value || 576),
       seed: Number(fluxSeed.value || 100),
+      use_text_only_gemma_prompt: Boolean(fluxUseTextOnlyGemmaPrompt.input.checked),
       use_loras: Boolean(fluxUseLora.input.checked),
       lora_count: count,
       loras: fluxLoraSlots.map((slot) => ({
@@ -4792,6 +4908,7 @@ function openBuilder(node) {
     useSceneNBImageSettings.input.checked = Boolean(segment?.use_scene_nb_image_settings);
     nbApiKey.value = settings.api_key || "";
     nbModelSelect.value = NB_IMAGE_MODELS.includes(settings.model) ? settings.model : DEFAULT_NB_IMAGE_MODEL;
+    nbUseTextOnlyGemmaPrompt.input.checked = Boolean(settings.use_text_only_gemma_prompt);
     nbNotes.value = segment?.nb_notes || segment?.flux_notes || segment?.notes || "";
     nbPrompt.value = segment?.nb_prompt || segment?.t2i_prompt || "";
     renderNBIngredientList(segment);
@@ -4811,6 +4928,7 @@ function openBuilder(node) {
       ...current,
       api_key: nbApiKey.value || "",
       model: nbModelSelect.value || DEFAULT_NB_IMAGE_MODEL,
+      use_text_only_gemma_prompt: Boolean(nbUseTextOnlyGemmaPrompt.input.checked),
     };
     if (segment?.use_scene_nb_image_settings || hasMultiSceneBatchSelection()) {
       if (segment) {
@@ -6486,6 +6604,78 @@ function openBuilder(node) {
     }
   }
 
+  function showPromptClearConfirm(kind) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #991b1b;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const heading = document.createElement("div");
+      heading.textContent = kind === "i2v" ? "Clear all I2V prompts?" : "Clear all T2I prompts?";
+      heading.style.cssText = "font-size:16px;font-weight:900;color:#fecaca;";
+      const body = document.createElement("div");
+      body.style.cssText = "display:flex;flex-direction:column;gap:9px;font-size:13px;color:#d4d4d8;line-height:1.45;";
+      const scope = document.createElement("div");
+      scope.textContent = kind === "i2v"
+        ? "This clears only the saved image-to-video prompt text from every scene."
+        : "This clears only the saved text-to-image prompt text from every scene, including model-specific T2I prompt copies.";
+      const keep = document.createElement("div");
+      keep.textContent = "Images, videos, notes, model settings, LoRAs, reference images, timing, and project paths are not changed.";
+      const backup = document.createElement("div");
+      backup.textContent = "The current prompt list is backed up first.";
+      body.append(scope, keep, backup);
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const confirm = makeButton(kind === "i2v" ? "Yes, clear I2V prompts" : "Yes, clear T2I prompts");
+      confirm.style.background = "#991b1b";
+      confirm.style.borderColor = "#dc2626";
+      confirm.style.color = "#fff";
+      cancel.onclick = () => {
+        backdrop.remove();
+        resolve(false);
+      };
+      confirm.onclick = () => {
+        backdrop.remove();
+        resolve(true);
+      };
+      actions.append(cancel, confirm);
+      box.append(heading, body, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
+  async function clearFinalPromptList(kind) {
+    if (!await showPromptClearConfirm(kind)) return;
+    const path = promptKindFile(kind);
+    if (!path) {
+      toast("Create or load a project first, then prompts can be cleared.", true);
+      return;
+    }
+    try {
+      await ensureOriginalPromptBackup(kind);
+      await backupCurrentPromptState(kind, "before_clear");
+      pushHistory();
+      for (const segment of allEditableSegments()) {
+        if (kind === "i2v") {
+          segment.i2v_prompt = "";
+        } else {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.nb_prompt = "";
+        }
+      }
+      await savePromptTextFile(path, "");
+      syncInspector();
+      render();
+      await saveSession({ quiet: true, throwOnError: true });
+      toast(kind === "i2v" ? "Cleared all I2V prompts." : "Cleared all T2I prompts.");
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  }
+
   function openFluxReferenceBuilderModal() {
     const referenceBuilderTargetLabel = state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
@@ -7187,11 +7377,17 @@ function openBuilder(node) {
     const editT2I = makeButton("Edit Text to Image Prompts", "primary");
     const reloadT2I = makeButton("Reload Text to Image Prompts");
     const originalT2I = makeButton("Reload Original T2I Prompts");
+    const clearT2I = makeButton("Clear All T2I Prompts");
+    clearT2I.style.borderColor = "#7f1d1d";
+    clearT2I.style.color = "#fecaca";
     const editI2V = makeButton("Edit Image to Video Prompts", "primary");
     const reloadI2V = makeButton("Reload Image to Video Prompts");
     const originalI2V = makeButton("Reload Original I2V Prompts");
-    imageGroup.append(imageHeading, editT2I, reloadT2I, originalT2I);
-    videoGroup.append(videoHeading, editI2V, reloadI2V, originalI2V);
+    const clearI2V = makeButton("Clear All I2V Prompts");
+    clearI2V.style.borderColor = "#7f1d1d";
+    clearI2V.style.color = "#fecaca";
+    imageGroup.append(imageHeading, editT2I, reloadT2I, originalT2I, clearT2I);
+    videoGroup.append(videoHeading, editI2V, reloadI2V, originalI2V, clearI2V);
     grid.append(imageGroup, videoGroup);
     box.append(header, note, grid);
     backdrop.append(box);
@@ -7207,9 +7403,11 @@ function openBuilder(node) {
     editT2I.onclick = () => run(() => editFinalPromptList("t2i"));
     reloadT2I.onclick = () => run(() => reloadFinalPromptList("t2i", false));
     originalT2I.onclick = () => run(() => reloadFinalPromptList("t2i", true));
+    clearT2I.onclick = () => run(() => clearFinalPromptList("t2i"));
     editI2V.onclick = () => run(() => editFinalPromptList("i2v"));
     reloadI2V.onclick = () => run(() => reloadFinalPromptList("i2v", false));
     originalI2V.onclick = () => run(() => reloadFinalPromptList("i2v", true));
+    clearI2V.onclick = () => run(() => clearFinalPromptList("i2v"));
   }
 
   function render() {
@@ -7623,17 +7821,9 @@ function openBuilder(node) {
       clearMemoryButton.disabled = true;
       clearMemoryButton.textContent = "Clearing...";
       progress = createProgressWindow("Clearing memory");
-      progress.set("Building cleanup workflow...", 20);
-      const built = await postJson("/vrgdg/workflow_runner/build_clear_memory_prompt", {});
-      progress.set("Queueing cleanup workflow...", 40);
-      const queued = await queueWorkflowPrompt(built.prompt);
-      const promptId = queued?.prompt_id;
-      if (!promptId) throw new Error("ComfyUI queued the cleanup workflow but did not return a prompt_id.");
-      progress.set(`Cleanup queued.\nPrompt ID: ${promptId}`, 60);
-      const text = await waitForText(promptId, (message) => {
-        progress.set(`${message}\nPrompt ID: ${promptId}`, 78);
-      });
-      progress.set(`Cleanup finished.\nPrompt ID: ${promptId}\n\n${text.join("\n\n")}`, 100);
+      progress.set("Clearing memory directly without queueing a workflow...", 35);
+      const data = await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
+      progress.set(data.message || "Memory cleanup finished.", 100);
       progress.close(4500);
       toast("Memory cleanup workflow finished.");
     } catch (error) {
@@ -7646,15 +7836,9 @@ function openBuilder(node) {
   }
 
   async function runClearMemoryWorkflowQuiet(progress, label, percent = 95) {
-    progress?.set(`Clearing memory after ${label}...`, percent);
-    const built = await postJson("/vrgdg/workflow_runner/build_clear_memory_prompt", {});
-    const queued = await queueWorkflowPrompt(built.prompt);
-    const promptId = queued?.prompt_id;
-    if (!promptId) throw new Error("ComfyUI queued the cleanup workflow but did not return a prompt_id.");
-    const text = await waitForText(promptId, (message) => {
-      progress?.set(`${message}\nPrompt ID: ${promptId}`, percent);
-    });
-    const output = `Memory cleanup finished after ${label}.\nPrompt ID: ${promptId}\n\n${text.join("\n\n")}`;
+    progress?.set(`Clearing memory directly after ${label}...`, percent);
+    const data = await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
+    const output = data.message || `Memory cleanup finished after ${label}.`;
     progress?.set(output, percent);
     return output;
   }
@@ -7753,8 +7937,10 @@ function openBuilder(node) {
       stopWorkflowButton.disabled = true;
       stopWorkflowButton.textContent = "Stopping...";
       progress = createProgressWindow("Stopping workflow");
-      progress.set("Sending interrupt to ComfyUI...", 20);
-      await api.fetchApi("/interrupt", { method: "POST" }).catch(() => null);
+      progress.set("Interrupting ComfyUI and clearing pending queue...", 20);
+      await cancelComfyExecutionAndWaitIdle((status) => {
+        progress.set(`${status}`, 45);
+      }, { shouldCancel: () => false });
       progress.set("Clearing memory after stop...", 45);
       await runClearMemoryWorkflowQuiet(progress, "stop request", 85);
       progress.set("Stop requested and memory cleanup finished.", 100);
@@ -7957,6 +8143,7 @@ function openBuilder(node) {
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
       state.timelineZoom = session.timeline_zoom || state.timelineZoom || 45;
       state.autoSaveEnabled = session.auto_save_enabled ?? state.autoSaveEnabled ?? true;
+      state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
       snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
@@ -8256,6 +8443,73 @@ function openBuilder(node) {
     return String(segment?.t2i_prompt || segment?.flux_prompt || segment?.notes || segment?.flux_notes || "").trim();
   }
 
+  function textOnlyFallbackNotesForSegment(segment, imageMode = state.imageModelMode || "zimage") {
+    const parts = [];
+    const add = (title, value) => {
+      const text = String(value || "").trim();
+      if (text) parts.push(`${title}:\n${text}`);
+    };
+    add("Scene notes", segment?.notes);
+    add("Flux/Klein notes", segment?.flux_notes);
+    add("NanoBanana notes", segment?.nb_notes);
+    if (imageMode === "flux_klein" || imageMode === "nano_banana") {
+      const context = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
+      add("Reference subject description", context?.subject_description);
+      add("Reference location name", context?.location_name);
+      add("Reference location description", context?.location_description);
+    }
+    if (!parts.length) {
+      parts.push(`Scene:\n${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`);
+      parts.push("Direction:\nCreate a cinematic image prompt that fits this scene.");
+    }
+    return parts.join("\n\n");
+  }
+
+  function buildEmergencyImagePromptForSegment(segment, imageMode = state.imageModelMode || "zimage") {
+    const source = textOnlyFallbackNotesForSegment(segment, imageMode)
+      .replace(/^[^:\n]{1,48}:\s*/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const base = source || `cinematic image for ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`;
+    const clipped = base.length > 850 ? `${base.slice(0, 847).trim()}...` : base;
+    const prompt = `cinematic image, ${clipped}, visually specific composition, clear subject, atmospheric lighting, high detail`;
+    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(prompt, segment, imageMode, { validateJunk: false }));
+    render();
+    return { prompt: segment.t2i_prompt, used_local_notes_fallback: true };
+  }
+
+  async function generateTextOnlyImagePromptFallbackForSegment(segment, progress = null, percent = 30, label = "Gemma text-only fallback", options = {}) {
+    state.activeId = segment.id;
+    syncInspector();
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const textModelSelect = imageMode === "ernie_image" ? ernieTextGemmaModelSelect : t2iTextGemmaModelSelect;
+    const userNotes = textOnlyFallbackNotesForSegment(segment, imageMode);
+    const referenceContext = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : imageMode === "flux_klein" ? fluxReferenceContextForSegment(segment) : {};
+    progress?.set(`${label}: creating prompt from notes with non-vision Gemma...\n${gemmaRunnerLine({ vision: false })}`, percent);
+    const data = await postJson("/vrgdg/music_builder/generate_t2i", {
+      ...textGemmaRunnerPayload(),
+      model_file: textModelSelect.value,
+      mmproj_file: "",
+      use_vision: false,
+      ref_image_path: "",
+      prompt_mode: imageMode,
+      reference_context: referenceContext || {},
+      repair_model_file: textModelSelect.value,
+      user_notes: userNotes,
+      theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+      story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+      subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+      unload_after: true,
+      seed: options.seed,
+      temperature: options.temperature,
+      top_p: options.topP,
+    }, 120000);
+    pushHistory();
+    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }));
+    render();
+    return { ...data, used_text_only_fallback: true };
+  }
+
   async function generateT2IPromptForSegment(segment, progress = null, percent = 30, label = "Gemma T2I", options = {}) {
     const missing = t2iMissingReason(segment);
     if (missing) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${missing}`);
@@ -8273,11 +8527,15 @@ function openBuilder(node) {
       mmproj_file: useVision ? mmprojSelectForMode.value : "",
       use_vision: useVision,
       ref_image_path: segment.ref_image_path || "",
+      repair_model_file: state.imageModelMode === "ernie_image" ? ernieTextGemmaModelSelect.value : t2iTextGemmaModelSelect.value,
       user_notes: segment.notes || "",
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
       unload_after: options.unloadAfter !== false,
+      seed: options.seed,
+      temperature: options.temperature,
+      top_p: options.topP,
     }, useVision ? 10 * 60 * 1000 : 120000);
     pushHistory();
     syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, state.imageModelMode, { validateJunk: true }));
@@ -8483,7 +8741,7 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (!segment) return;
     const settings = saveFluxKleinSettingsFromPanel();
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+    if (!settings.use_text_only_gemma_prompt && (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length)) {
       toast("Load at least one image ingredient first.", true);
       return;
     }
@@ -8494,17 +8752,7 @@ function openBuilder(node) {
       progress = createProgressWindow("Creating Flux/Klein prompt");
       progress.set("Autosaving session/SRT before Gemma Flux/Klein...", 8);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt");
-      progress.set(`Combining image ingredients for Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, 25);
-      const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
-        model_file: fluxGemmaModelSelect.value,
-        mmproj_file: fluxMmprojSelect.value,
-        image_ingredients: settings.image_ingredients || [],
-        reference_context: settings.reference_context || {},
-        user_notes: settings.notes || "",
-        unload_after: true,
-      }, FLUX_GEMMA_TIMEOUT_MS);
-      pushHistory();
-      syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "flux_klein", { validateJunk: true }));
+      const data = await generateFluxKleinPromptForSegment(segment, progress, 25, "Gemma Flux/Klein", { unloadAfter: true });
       progress.set("Flux/Klein prompt ready.", 100);
       await autoSaveSessionQuiet("Gemma Flux/Klein prompt complete");
       progress.close(900);
@@ -8549,6 +8797,9 @@ function openBuilder(node) {
     syncInspector();
     render();
     const settings = fluxKleinSettingsForSegment(segment);
+    if (settings.use_text_only_gemma_prompt) {
+      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "flux_klein" });
+    }
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
     }
@@ -8558,9 +8809,13 @@ function openBuilder(node) {
       mmproj_file: fluxMmprojSelect.value,
       image_ingredients: settings.image_ingredients || [],
       reference_context: settings.reference_context || {},
+      repair_model_file: t2iTextGemmaModelSelect.value,
       user_notes: settings.notes || segment.notes || "",
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
+      seed: options.seed,
+      temperature: options.temperature,
+      top_p: options.topP,
     }, FLUX_GEMMA_TIMEOUT_MS);
     pushHistory();
     syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "flux_klein", { validateJunk: true }));
@@ -8630,7 +8885,7 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (!segment) return;
     const settings = saveNBImageSettingsFromPanel();
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+    if (!settings.use_text_only_gemma_prompt && (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length)) {
       toast("Load at least one NanoBanana reference image first.", true);
       return;
     }
@@ -8641,23 +8896,7 @@ function openBuilder(node) {
       progress = createProgressWindow("Creating NanoBanana prompt");
       progress.set("Autosaving session/SRT before Gemma NanoBanana...", 8);
       await autoSaveSessionQuiet("Gemma NanoBanana prompt");
-      progress.set(`Creating structured edit prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, 25);
-      const data = await postJson("/vrgdg/music_builder/generate_nb_image_prompt", {
-        model_file: nbGemmaModelSelect.value || fluxGemmaModelSelect.value,
-        mmproj_file: nbMmprojSelect.value || fluxMmprojSelect.value,
-        text_gemma_runner: state.textGemmaRunner || "builtin",
-        lmstudio_base_url: state.lmStudioBaseUrl || "",
-        lmstudio_model: state.lmStudioModel || "",
-        lmstudio_api_key: state.lmStudioApiKey || "",
-        image_ingredients: settings.image_ingredients || [],
-        reference_context: settings.reference_context || {},
-        user_notes: settings.notes || segment.notes || "",
-        n_ctx: 8000,
-        max_new_tokens: 900,
-        unload_after: true,
-      }, 180000);
-      pushHistory();
-      syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "nano_banana", { validateJunk: true }));
+      const data = await generateNBPromptForSegment(segment, progress, 25, "Gemma NanoBanana", { unloadAfter: true });
       progress.set("NanoBanana prompt ready.", 100);
       await autoSaveSessionQuiet("Gemma NanoBanana prompt complete");
       progress.close(900);
@@ -8677,24 +8916,31 @@ function openBuilder(node) {
     syncInspector();
     render();
     const settings = nbImageSettingsForSegment(segment);
+    if (settings.use_text_only_gemma_prompt) {
+      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "nano_banana" });
+    }
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one NanoBanana reference image.`);
     }
     progress?.set(`${label}: creating structured NanoBanana prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_nb_image_prompt", {
+      ...textGemmaRunnerPayload(),
       model_file: nbGemmaModelSelect.value || fluxGemmaModelSelect.value,
       mmproj_file: nbMmprojSelect.value || fluxMmprojSelect.value,
-      text_gemma_runner: state.textGemmaRunner || "builtin",
       lmstudio_base_url: state.lmStudioBaseUrl || "",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
       image_ingredients: settings.image_ingredients || [],
-      reference_context: settings.reference_context || {},
+      reference_context: {},
+      repair_model_file: t2iTextGemmaModelSelect.value,
       user_notes: settings.notes || segment.notes || "",
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
       n_ctx: 8000,
       max_new_tokens: 900,
+      seed: options.seed,
+      temperature: options.temperature,
+      top_p: options.topP,
     }, 180000);
     pushHistory();
     syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "nano_banana", { validateJunk: true }));
@@ -9068,6 +9314,7 @@ function openBuilder(node) {
         t2i_prompt: isT2V ? conceptPrompt : useImageReference ? "" : conceptPrompt,
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
+        repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: videoGemmaNotesForSegment(segment),
         theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
@@ -9103,6 +9350,7 @@ function openBuilder(node) {
       t2i_prompt: t2iText,
       image_reference_path: "",
       image_reference_data: "",
+      repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
@@ -9142,6 +9390,7 @@ function openBuilder(node) {
       t2i_prompt: isT2V ? t2iText : useImageReference ? "" : t2iText,
       image_reference_path: imageReference.path,
       image_reference_data: imageReference.data,
+      repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
       theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
@@ -9255,13 +9504,15 @@ function openBuilder(node) {
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
     targetScenes.forEach(({ segment, index }) => {
       if (imageMode === "flux_klein") {
-        const ingredients = mergedFluxImageIngredients(segment);
-        if (!Array.isArray(ingredients) || !ingredients.length) {
+        const settings = fluxKleinSettingsForSegment(segment);
+        const ingredients = settings.image_ingredients || [];
+        if (!settings.use_text_only_gemma_prompt && (!Array.isArray(ingredients) || !ingredients.length)) {
           missing.push(`${sceneDisplayName(segment, index)}: add at least one global or scene Flux/Klein image ingredient.`);
         }
       } else if (imageMode === "nano_banana") {
-        const ingredients = mergedFluxImageIngredients(segment);
-        if (!Array.isArray(ingredients) || !ingredients.length) {
+        const settings = nbImageSettingsForSegment(segment);
+        const ingredients = settings.image_ingredients || [];
+        if (!settings.use_text_only_gemma_prompt && (!Array.isArray(ingredients) || !ingredients.length)) {
           missing.push(`${sceneDisplayName(segment, index)}: add at least one NanoBanana reference image.`);
         }
       } else {
@@ -9312,19 +9563,21 @@ function openBuilder(node) {
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Gemma T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+        const promptLabel = `Gemma T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}`;
         if (imageMode === "flux_klein") {
-          await generateFluxKleinPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: Flux/Klein`, {
+          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateFluxKleinPromptForSegment, {
             clearBeforeLoad: index === 0,
             unloadAfter: false,
+            generatorOptions: {},
           });
         } else if (imageMode === "nano_banana") {
-          await generateNBPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: NanoBanana`, {
+          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateNBPromptForSegment, {
             clearBeforeLoad: index === 0,
             unloadAfter: false,
+            generatorOptions: {},
           });
         } else {
-          await generateT2IPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: ${modelLabel}`, {
+          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
             unloadAfter: false,
           });
         }
@@ -10129,8 +10382,14 @@ function openBuilder(node) {
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
-        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`, { unloadAfter: false });
+        await runGemmaImagePromptPassWithRetry(
+          segment,
+          progress,
+          base,
+          `Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}`,
+          generateT2IPromptForSegment,
+          { unloadAfter: false },
+        );
         assertBatchNotStopped();
         await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
       }
@@ -10240,8 +10499,14 @@ function openBuilder(node) {
         state.activeId = segment.id;
         syncInspector();
         render();
-        progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
-        await generateT2IPromptForSegment(segment, progress, Math.min(38, base + 3), `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`, { unloadAfter: false });
+        await runGemmaImagePromptPassWithRetry(
+          segment,
+          progress,
+          base,
+          `Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}`,
+          generateT2IPromptForSegment,
+          { unloadAfter: false },
+        );
         assertBatchNotStopped();
         await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
       }
@@ -10343,12 +10608,12 @@ function openBuilder(node) {
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const base = 6 + Math.floor((index / promptScenes.length) * 32);
         try {
-          progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
-          await generateFluxKleinPromptForSegment(
+          await runGemmaImagePromptPassWithRetry(
             segment,
             progress,
-            Math.min(38, base + 3),
-            `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`,
+            base,
+            `Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}`,
+            generateFluxKleinPromptForSegment,
             { clearBeforeLoad: index === 0, unloadAfter: false },
           );
           assertBatchNotStopped();
@@ -10462,12 +10727,12 @@ function openBuilder(node) {
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
         const base = 6 + Math.floor((index / promptScenes.length) * 32);
         try {
-          progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
-          await generateNBPromptForSegment(
+          await runGemmaImagePromptPassWithRetry(
             segment,
             progress,
-            Math.min(38, base + 3),
-            `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`,
+            base,
+            `Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}`,
+            generateNBPromptForSegment,
             { clearBeforeLoad: index === 0, unloadAfter: false },
           );
           assertBatchNotStopped();
@@ -10549,6 +10814,9 @@ function openBuilder(node) {
           `${label}: NanoBanana failed on attempt ${attempt}/${maxRetries}.\n${message}\n\nClearing memory before retry ${attempt + 1}/${maxRetries}...`,
           Math.min(99, percentBase + percentSpan),
         );
+        await cancelComfyExecutionAndWaitIdle((status) => {
+          progress?.set(`${label}: cancelling failed job before retry...\n${status}`, Math.min(99, percentBase + percentSpan));
+        }, { shouldCancel: () => state.batchCancelled });
         try {
           await runClearMemoryWorkflowQuiet(progress, `${label} failed attempt ${attempt}/${maxRetries}`, Math.min(99, percentBase + percentSpan));
         } catch (cleanupError) {
@@ -11744,8 +12012,10 @@ function openBuilder(node) {
   imageTriggerInput.addEventListener("input", saveZImageSettingsFromPanel);
   ernieImageTriggerInput.addEventListener("input", saveErnieImageSettingsFromPanel);
   fluxImageTriggerInput.addEventListener("input", saveFluxKleinSettingsFromPanel);
+  fluxUseTextOnlyGemmaPrompt.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
   nbApiKey.addEventListener("input", saveNBImageSettingsFromPanel);
   nbModelSelect.addEventListener("change", saveNBImageSettingsFromPanel);
+  nbUseTextOnlyGemmaPrompt.input.addEventListener("change", saveNBImageSettingsFromPanel);
   nbNotes.addEventListener("input", saveNBImageSettingsFromPanel);
   nbPrompt.addEventListener("input", saveNBImageSettingsFromPanel);
   videoTriggerInput.addEventListener("input", saveI2VVideoSettingsFromPanel);
@@ -11976,6 +12246,7 @@ function openBuilder(node) {
     state.fluxKleinSettings.image_model_mode = "zimage";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to ZImage").catch(() => null);
   };
   fluxKleinCard.onclick = () => {
     pushHistory();
@@ -11983,6 +12254,7 @@ function openBuilder(node) {
     state.fluxKleinSettings.image_model_mode = "flux_klein";
     state.fluxKleinSettings.enabled = true;
     syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to Flux/Klein").catch(() => null);
   };
   ernieImageCard.onclick = () => {
     pushHistory();
@@ -11990,6 +12262,7 @@ function openBuilder(node) {
     state.fluxKleinSettings.image_model_mode = "ernie_image";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to Ernie").catch(() => null);
   };
   zEnhanceCard.onclick = () => {
     pushHistory();
@@ -11997,6 +12270,7 @@ function openBuilder(node) {
     state.fluxKleinSettings.image_model_mode = "z_enhance";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to Enhance").catch(() => null);
   };
   nbImageCard.onclick = () => {
     pushHistory();
@@ -12004,6 +12278,7 @@ function openBuilder(node) {
     state.fluxKleinSettings.image_model_mode = "nano_banana";
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to NanoBanana").catch(() => null);
   };
   imageToVideoCard.onclick = () => {
     pushHistory();

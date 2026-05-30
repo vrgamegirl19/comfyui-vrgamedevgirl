@@ -10,6 +10,7 @@ import time
 import wave
 import base64
 import array
+import gc
 import urllib.error
 import urllib.request
 
@@ -1801,6 +1802,8 @@ def _run_lm_studio_text(payload, instruction_text, temperature=0.6, top_p=0.95, 
         "max_tokens": int(max_new_tokens),
         "stream": False,
     }
+    if payload.get("seed") is not None:
+        body["seed"] = int(payload.get("seed"))
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -1869,6 +1872,8 @@ def _run_lm_studio_vision(payload, instruction_text, pil_images, temperature=0.2
         "max_tokens": int(max_new_tokens),
         "stream": False,
     }
+    if payload.get("seed") is not None:
+        body["seed"] = int(payload.get("seed"))
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -1962,6 +1967,7 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
     n_threads = int(payload.get("n_threads") or 8)
     chat_format = str(payload.get("chat_format", "") or "").strip()
     unload_after = bool(payload.get("unload_after", True))
+    seed = payload.get("seed")
     try:
         model = llm._load_gguf_model(
             model_path=model_path,
@@ -1976,6 +1982,7 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
             temperature=float(temperature),
             top_p=float(top_p),
             max_new_tokens=int(max_new_tokens),
+            seed=int(seed) if seed is not None else None,
         )
         return _clean_visual_gemma_text(text), {
             "runner": "builtin",
@@ -1995,6 +2002,56 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
+def _repair_builder_gemma_prompt(payload, text, label):
+    original = str(text or "").strip()
+    if not original or not _looks_like_gemma_repeat_failure(original):
+        return original
+
+    repair_payload = dict(payload or {})
+    repair_model = str(
+        repair_payload.get("repair_model_file")
+        or repair_payload.get("text_model_file")
+        or repair_payload.get("model_file")
+        or ""
+    ).strip()
+    if repair_model:
+        repair_payload["model_file"] = repair_model
+    repair_payload["mmproj_file"] = ""
+    repair_payload["use_vision"] = False
+    broken = original[:5000]
+    instruction = (
+        f"Clean this broken {label} image prompt into one usable final prompt.\n\n"
+        "The broken text may contain internal thoughts, analysis, channel tags, repeated tokens, markdown, or junk.\n"
+        "Do not continue the broken text. Do not explain the repair. Do not mention that it was repaired.\n"
+        "Return exactly one normal image prompt paragraph.\n"
+        "Remove all thought, analysis, channel, role, markdown, labels, and repeated junk.\n"
+        "Keep only usable visual image-generation content. If usable details are scarce, create a concise cinematic prompt from the usable fragments.\n"
+        "Keep it under 120 words.\n\n"
+        f"Broken text:\n{broken}"
+    )
+    try:
+        repaired, _run_info = _run_builder_text_llm(
+            repair_payload,
+            instruction,
+            temperature=0.25,
+            top_p=0.85,
+            max_new_tokens=350,
+            label=f"{label} repair Gemma",
+        )
+        repaired = _clean_visual_gemma_text(repaired)
+        if repaired and not _looks_like_gemma_repeat_failure(repaired):
+            return repaired
+    except Exception:
+        pass
+    return original
+
+
+def _repair_and_validate_builder_gemma_prompt(payload, text, label):
+    repaired = _repair_builder_gemma_prompt(payload, text, label)
+    _validate_builder_gemma_prompt(repaired, label)
+    return repaired
+
+
 def _generate_builder_t2i_prompt(payload):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -2003,6 +2060,10 @@ def _generate_builder_t2i_prompt(payload):
     ref_image_path = str(payload.get("ref_image_path", "") or "").strip().strip('"')
     ref_image_data = str(payload.get("ref_image_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    prompt_mode = str(payload.get("prompt_mode", "") or "").strip().lower()
+    reference_context = payload.get("reference_context") or {}
+    if not isinstance(reference_context, dict):
+        reference_context = {}
     theme_style = _read_text_file(payload.get("theme_style_path", ""), "Theme/style file")
     story_idea = _read_text_file(payload.get("story_idea_path", ""), "Story idea file")
     subject_scene = _read_text_file(payload.get("subject_scene_path", ""), "Subject/scene file")
@@ -2036,6 +2097,79 @@ def _generate_builder_t2i_prompt(payload):
     if has_ref_image:
         prompt = _VISUAL_T2I_INSTRUCTIONS
         prompt += f"\n\nUser notes:\n{user_notes or 'Use the reference image as the guide.'}"
+    elif prompt_mode == "flux_klein":
+        subject_description = str(reference_context.get("subject_description", "") or "").strip()
+        location_name = str(reference_context.get("location_name", "") or "").strip()
+        location_description = str(reference_context.get("location_description", "") or "").strip()
+        reference_rules = []
+        if subject_description:
+            reference_rules.append(
+                "Use the subject description for the main subject identity, face/body details, outfit, and visible character consistency. "
+                f"Subject description: {subject_description}"
+            )
+        if location_name or location_description:
+            location_details = "; ".join(part for part in (location_name, location_description) if part)
+            reference_rules.append(
+                "Use the mapped location as the required setting/background. Do not replace it with a different location from the concept or notes. "
+                f"Mapped location: {location_details}"
+            )
+        reference_text = ""
+        if reference_rules:
+            reference_text = (
+                "\nReference Builder priorities:\n"
+                + "\n".join(f"- {rule}" for rule in reference_rules)
+                + "\n- Use the user's notes/concept for action, pose, mood, lighting, story beat, and details after respecting the reference priorities.\n"
+            )
+        prompt = (
+            "Create one polished text-to-image prompt for an image generation model.\n\n"
+            "Use the text notes and available reference descriptions to create one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n"
+            f"{reference_text}\n"
+            "Rules:\n"
+            "- Output one normal text-to-image prompt, not an edit prompt.\n"
+            "- Describe only concrete visual details supported by the notes/reference descriptions.\n"
+            "- Do not mention reference image, composite, source images, ingredient images, or image grid.\n"
+            "- Do not include labels, notes, quotes, markdown, or explanations.\n"
+            "- Keep it cinematic, detailed, and visually specific.\n"
+            "- Keep the prompt under 120 words.\n\n"
+            f"User notes:\n{user_notes or 'Create a cinematic image using the available scene notes.'}"
+        )
+    elif prompt_mode == "nano_banana":
+        subject_description = str(reference_context.get("subject_description", "") or "").strip()
+        location_name = str(reference_context.get("location_name", "") or "").strip()
+        location_description = str(reference_context.get("location_description", "") or "").strip()
+        has_subject_reference = bool(reference_context.get("has_subject_reference") or subject_description)
+        has_location_reference = bool(reference_context.get("has_location_reference") or location_name or location_description)
+        context_parts = []
+        if subject_description:
+            context_parts.append(f"Character reference description:\n{subject_description}")
+        if location_name or location_description:
+            context_parts.append(f"Location reference description:\n{location_name}\n{location_description}".strip())
+        if user_notes:
+            context_parts.append(f"User input:\n{user_notes}")
+        start_rules = [
+            "- Start with: Using the provided character reference and location reference, create...",
+            "- If only a character reference description is available, start with: Using the provided character reference, create...",
+            "- If only a location reference description is available, start with: Using the provided location reference, create...",
+        ]
+        if not has_subject_reference and not has_location_reference:
+            start_rules = ["- Start directly with the shot and subject; do not claim a provided reference exists."]
+        prompt = (
+            "Create one concise NanoBanana image prompt from the user input and available reference descriptions.\n"
+            "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
+            "Prompt style:\n"
+            + "\n".join(start_rules)
+            + "\n"
+            "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
+            "- Use the user's scene/concept notes as the main creative direction.\n"
+            "- Preserve the character identity from the character reference description: face, hair, outfit, makeup, and overall identity.\n"
+            "- Preserve the location identity from the location reference description: environment, architecture, layout, atmosphere, and major visible setting details.\n"
+            "- Create a new camera angle, new pose, and new composition.\n"
+            "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
+            "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
+            "- Keep the prompt visually specific and practical for image generation.\n"
+            "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n\n"
+            f"{chr(10).join(context_parts) if context_parts else 'User input: Create a cinematic image using the available scene notes.'}"
+        )
     else:
         prompt = f"{_TEXT_ONLY_T2I_INSTRUCTIONS}\n\nUser notes:\n{user_notes}"
 
@@ -2047,6 +2181,7 @@ def _generate_builder_t2i_prompt(payload):
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or (1000 if has_ref_image else 1200))
     unload_after = bool(payload.get("unload_after", True))
+    seed = payload.get("seed")
 
     try:
         if has_ref_image:
@@ -2076,7 +2211,8 @@ def _generate_builder_t2i_prompt(payload):
                 label="Gemma",
             )
         text = _clean_visual_gemma_text(text)
-        _validate_builder_gemma_prompt(text, "T2I")
+        label = "Flux/Klein" if prompt_mode == "flux_klein" else "NanoBanana" if prompt_mode == "nano_banana" else "T2I"
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, label)
         return {
             "prompt": text,
             "used_reference_image": has_ref_image,
@@ -2167,6 +2303,7 @@ def _generate_builder_i2v_prompt(payload):
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 4000)
     unload_after = bool(payload.get("unload_after", True))
+    seed = payload.get("seed")
 
     try:
         if has_image_reference and text_runner == "lm_studio":
@@ -2200,6 +2337,7 @@ def _generate_builder_i2v_prompt(payload):
                     temperature=temperature,
                     top_p=top_p,
                     max_new_tokens=max_new_tokens,
+                    seed=int(seed) if seed is not None else None,
                 )
                 run_info = {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
             else:
@@ -2209,10 +2347,11 @@ def _generate_builder_i2v_prompt(payload):
                     temperature=temperature,
                     top_p=top_p,
                     max_new_tokens=max_new_tokens,
+                    seed=int(seed) if seed is not None else None,
                 )
                 run_info = {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
         text = _clean_gemma_prompt_text(text)
-        _validate_builder_gemma_prompt(text, "I2V")
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, "I2V")
         return {"prompt": text, "used_model": run_info.get("used_model", model_path), "used_mmproj": mmproj_path, "used_image_reference": has_image_reference, "runner": run_info.get("runner", "builtin"), "unloaded": run_info.get("unloaded", unload_after)}
     finally:
         if llm and unload_after:
@@ -2344,7 +2483,7 @@ def _generate_builder_t2v_prompt(payload):
                 label="T2V Gemma",
             )
         text = _clean_gemma_prompt_text(text)
-        _validate_builder_gemma_prompt(text, "T2V")
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, "T2V")
         return {
             "prompt": text,
             "used_model": run_info.get("used_model", model_path if has_image_reference else ""),
@@ -2440,6 +2579,23 @@ def _clear_comfy_model_memory():
         pass
 
 
+def _clear_builder_memory_direct():
+    from .LLM import _clear_vrgdg_llm_caches
+
+    _clear_comfy_model_memory()
+    llm_result = _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+    gc.collect()
+    return {
+        "message": (
+            "Memory cleanup finished.\n"
+            f"GGUF models unloaded: {llm_result.get('gguf_models_unloaded', 0)}\n"
+            f"HF pipelines unloaded: {llm_result.get('hf_pipelines_unloaded', 0)}\n"
+            f"CUDA cache cleared: {bool(llm_result.get('cuda_cache_cleared'))}"
+        ),
+        **llm_result,
+    }
+
+
 def _generate_flux_klein_prompt(payload):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -2521,6 +2677,7 @@ def _generate_flux_klein_prompt(payload):
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 350)
+    seed = payload.get("seed")
     clear_before_load = bool(payload.get("clear_before_load", True))
     unload_after = bool(payload.get("unload_after", True))
 
@@ -2543,9 +2700,10 @@ def _generate_flux_klein_prompt(payload):
             temperature=temperature,
             top_p=top_p,
             max_new_tokens=max_new_tokens,
+            seed=int(seed) if seed is not None else None,
         )
         text = _clean_visual_gemma_text(text)
-        _validate_builder_gemma_prompt(text, "Flux/Klein")
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, "Flux/Klein")
         return {"prompt": text, "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after}
     finally:
         if unload_after:
@@ -2650,6 +2808,7 @@ def _generate_nb_image_prompt(payload):
     temperature = float(payload.get("temperature") or 0.25)
     top_p = float(payload.get("top_p") or 0.95)
     max_new_tokens = int(payload.get("max_new_tokens") or 900)
+    seed = payload.get("seed")
     clear_before_load = bool(payload.get("clear_before_load", True))
     unload_after = bool(payload.get("unload_after", True))
     llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
@@ -2690,6 +2849,7 @@ def _generate_nb_image_prompt(payload):
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
+                seed=int(seed) if seed is not None else None,
             )
             info = {
                 "runner": "builtin",
@@ -2717,6 +2877,7 @@ def _generate_nb_image_prompt(payload):
     text = re.sub(r"\breference\s+imagaes\b", "reference images", text, flags=re.IGNORECASE)
     if not text:
         raise ValueError("NanoBanana Gemma returned an empty prompt.")
+    text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
     return {"prompt": text, **info}
 
 
@@ -3997,6 +4158,14 @@ def _ensure_music_builder_routes():
             result = _list_lm_studio_models(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/clear_memory_direct")
+    async def vrgdg_music_builder_clear_memory_direct(request):
+        try:
+            result = await asyncio.to_thread(_clear_builder_memory_direct)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/music_builder/generate_t2i")
