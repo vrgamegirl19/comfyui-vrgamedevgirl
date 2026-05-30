@@ -6879,7 +6879,7 @@ function openBuilder(node) {
     };
     const wireDrop = (drop, target) => {
       drop.dataset.vrgdgFileDropZone = "true";
-      for (const eventName of ["dragenter", "dragover", "dragleave", "drop"]) {
+      for (const eventName of ["dragenter", "dragover", "dragleave"]) {
         drop.addEventListener(eventName, (event) => {
           event.preventDefault();
           event.stopPropagation();
