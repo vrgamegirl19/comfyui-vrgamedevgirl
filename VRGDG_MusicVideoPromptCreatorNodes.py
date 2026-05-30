@@ -518,12 +518,12 @@ def _repair_json_like_text(text):
     repaired = re.sub(r"//.*?$", "", repaired, flags=re.MULTILINE)
     repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
     repaired = re.sub(
-        r'([{\[,]\s*)([A-Za-z_]*(?:Prompt|prompt|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\d+)\s*:',
+        r'([{\[,]\s*)([A-Za-z_]*(?:Prompt|prompt|I2V|i2v|Motion|motion|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\d+)\s*:',
         r'\1"\2":',
         repaired,
     )
     repaired = re.sub(
-        r'(^\s*)([A-Za-z_]*(?:Prompt|prompt|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\d+)\s*:',
+        r'(^\s*)([A-Za-z_]*(?:Prompt|prompt|I2V|i2v|Motion|motion|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\d+)\s*:',
         r'\1"\2":',
         repaired,
         flags=re.MULTILINE,
@@ -536,7 +536,7 @@ def _parse_json_like_key_value_lines(text):
     current_key = None
     current_parts = []
     key_pattern = re.compile(
-        r'^\s*"?([A-Za-z_]*(?:Prompt|prompt|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\s*\d+)"?\s*[:=]\s*(.*?)(?:,\s*)?$'
+        r'^\s*"?([A-Za-z_]*(?:Prompt|prompt|I2V|i2v|Motion|motion|segment|Segment|lyricSegment|LyricSegment|segments|Segments)\s*\d+)"?\s*[:=]\s*(.*?)(?:,\s*)?$'
     )
     for raw_line in str(text or "").splitlines():
         line = raw_line.strip()

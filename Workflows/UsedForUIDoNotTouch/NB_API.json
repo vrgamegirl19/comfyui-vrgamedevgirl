@@ -1,0 +1,39 @@
+{
+  "1": {
+    "inputs": {
+      "api_key": "",
+      "prompt": "",
+      "model": "gemini-3-pro-image-preview",
+      "image1": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "VRGDG_NanoBananaPro",
+    "_meta": {
+      "title": "🚀 VRGDG NanoBanana Pro 🚀"
+    }
+  },
+  "3": {
+    "inputs": {
+      "image_paths": "",
+      "upscale_method": "bilinear"
+    },
+    "class_type": "VRGDG_ImageBatchMultiFromPaths",
+    "_meta": {
+      "title": "VRGDG UI Image Batch Multi"
+    }
+  },
+  "4": {
+    "inputs": {
+      "images": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  }
+}

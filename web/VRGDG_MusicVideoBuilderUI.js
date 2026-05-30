@@ -17,6 +17,8 @@ const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
 const TIMELINE_WAVE_TOP = 98;
 const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_NON_VISION_GEMMA_MODEL = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf";
+const NB_IMAGE_MODELS = ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"];
+const DEFAULT_NB_IMAGE_MODEL = "gemini-3-pro-image-preview";
 const LTX_MODEL_DOWNLOADS = [
   { label: "LTX GGUF", url: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { label: "Video VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
@@ -328,14 +330,15 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function createProgressWindow(title) {
+function createProgressWindow(title, options = {}) {
   const box = document.createElement("div");
+  const zIndex = Number(options.zIndex || 100004);
   box.style.cssText = `
     position: fixed;
     left: 50%;
     top: 54px;
     transform: translateX(-50%);
-    z-index: 100004;
+    z-index: ${zIndex};
     width: min(850px, calc(100vw - 560px));
     min-width: 520px;
     border: 1px solid #155e75;
@@ -374,7 +377,7 @@ function createProgressWindow(title) {
   restore.type = "button";
   restore.textContent = title;
   restore.title = "Restore progress window";
-  restore.style.cssText = "position:fixed;left:50%;top:54px;transform:translateX(-50%);z-index:100004;display:none;max-width:min(850px,calc(100vw - 560px));min-width:260px;border:1px solid #155e75;border-radius:8px;background:#083344;color:#cffafe;padding:8px 12px;font-size:12px;font-weight:900;box-shadow:0 16px 48px rgba(0,0,0,.45);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  restore.style.cssText = `position:fixed;left:50%;top:54px;transform:translateX(-50%);z-index:${zIndex};display:none;max-width:min(850px,calc(100vw - 560px));min-width:260px;border:1px solid #155e75;border-radius:8px;background:#083344;color:#cffafe;padding:8px 12px;font-size:12px;font-weight:900;box-shadow:0 16px 48px rgba(0,0,0,.45);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
   document.body.append(restore);
   const removeAll = () => {
     box.remove();
@@ -1246,12 +1249,16 @@ function newSegment(start = 0, end = 4) {
     flux_image_ingredients: [],
     flux_notes: "",
     flux_prompt: "",
+    nb_notes: "",
+    nb_prompt: "",
     use_scene_zimage_settings: false,
     zimage_settings: null,
     use_scene_ernie_image_settings: false,
     ernie_image_settings: null,
     use_scene_flux_klein_settings: false,
     flux_klein_settings: null,
+    use_scene_nb_image_settings: false,
+    nb_image_settings: null,
     use_scene_i2v_video_settings: false,
     i2v_video_settings: null,
     source: "manual",
@@ -1320,7 +1327,7 @@ function openBuilder(node) {
   closeButton.onclick = () => overlay.remove();
   const promptCreatorButton = makeButton("Prompt Creator");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
-  const fluxReferenceBuilderButton = makeButton("Reference Builder for Flux Klein");
+  const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const promptOptionsButton = makeButton("Prompt Options");
   const gemmaRunnerButton = makeButton("Gemma Runner");
   const clearMemoryButton = makeButton("Clear Memory");
@@ -1439,6 +1446,7 @@ function openBuilder(node) {
   const useSceneFluxKleinSettings = makeCheckbox("Use custom Flux/Klein settings for this scene", false);
   const fluxImageTriggerInput = makeInput("");
   fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
+  const useSceneNBImageSettings = makeCheckbox("Use custom NanoBanana settings for this scene", false);
   const useSceneI2VVideoSettings = makeCheckbox("Use custom video models/settings/LoRAs for this scene", false);
   const useSceneI2VVideoSettingsNote = document.createElement("div");
   useSceneI2VVideoSettingsNote.textContent = "Applies video model files, LoRAs, LoRA count, pass strengths, FPS, size, trigger phrase, and seed to this scene only.";
@@ -1633,6 +1641,24 @@ function openBuilder(node) {
     fluxGlobalIngredientActions,
     fluxGlobalIngredientList,
   );
+  const nbUseGlobalIngredients = makeCheckbox("Use global Nano B reference images", false);
+  const nbGlobalIngredientPanel = document.createElement("div");
+  nbGlobalIngredientPanel.style.cssText = fluxGlobalIngredientPanel.style.cssText;
+  const nbGlobalIngredientDrop = document.createElement("div");
+  nbGlobalIngredientDrop.innerHTML = `<b>Global Nano B reference images</b><br><span>Drop character, face, costume, or style references here to use them in every Nano B scene.</span>`;
+  nbGlobalIngredientDrop.style.cssText = fluxGlobalIngredientDrop.style.cssText;
+  const nbGlobalIngredientList = document.createElement("div");
+  nbGlobalIngredientList.style.cssText = fluxGlobalIngredientList.style.cssText;
+  const nbGlobalIngredientActions = document.createElement("div");
+  nbGlobalIngredientActions.style.cssText = fluxGlobalIngredientActions.style.cssText;
+  const nbGlobalIngredientButton = makeButton("Upload Global References", "primary");
+  const nbGlobalIngredientClearButton = makeButton("Clear Globals");
+  nbGlobalIngredientActions.append(nbGlobalIngredientButton, nbGlobalIngredientClearButton);
+  nbGlobalIngredientPanel.append(
+    nbGlobalIngredientDrop,
+    nbGlobalIngredientActions,
+    nbGlobalIngredientList,
+  );
   const fluxIngredientDrop = document.createElement("div");
   fluxIngredientDrop.innerHTML = `<b>Image ingredients</b><br><span>Drop images here: character, background, props, style references, or anything else Flux/Klein should use.</span>`;
   fluxIngredientDrop.style.cssText = "border:1px dashed #155e75;border-radius:6px;background:#020617;color:#bae6fd;padding:12px;text-align:center;font-size:12px;line-height:1.45;";
@@ -1683,6 +1709,33 @@ function openBuilder(node) {
   const createFluxPromptButton = makeButton("Gemma Flux Prompt", "primary");
   const previewFluxButton = makeButton("Create with Flux/Klein", "primary");
   const sendFluxPromptToEnhanceButton = makeMiniButton("Send to Enhance");
+  const nbImagePanel = document.createElement("div");
+  nbImagePanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
+  const nbApiKey = makeInput("");
+  nbApiKey.type = "password";
+  nbApiKey.placeholder = "NanoBanana API key...";
+  const nbModelSelect = makeSelect(NB_IMAGE_MODELS, DEFAULT_NB_IMAGE_MODEL);
+  const nbGemmaModelSelect = makeSelect([""], "");
+  const nbMmprojSelect = makeSelect([""], "");
+  const nbNotes = document.createElement("textarea");
+  nbNotes.placeholder = "Optional camera, framing, pose, scene, or edit notes for NanoBanana...";
+  nbNotes.style.cssText = fluxNotes.style.cssText;
+  const nbPrompt = document.createElement("textarea");
+  nbPrompt.placeholder = "NanoBanana prompt...";
+  nbPrompt.style.cssText = fluxPrompt.style.cssText;
+  const nbIngredientDrop = document.createElement("div");
+  nbIngredientDrop.innerHTML = `<b>NanoBanana reference images</b><br><span>Drop character and scene references here. Reference Builder images are also included when enabled for this scene.</span>`;
+  nbIngredientDrop.style.cssText = fluxIngredientDrop.style.cssText;
+  const nbIngredientList = document.createElement("div");
+  nbIngredientList.style.cssText = fluxIngredientList.style.cssText;
+  const nbIngredientActions = document.createElement("div");
+  nbIngredientActions.style.cssText = fluxIngredientActions.style.cssText;
+  const nbIngredientButton = makeButton("Upload References", "primary");
+  const nbIngredientClearButton = makeButton("Clear References");
+  nbIngredientActions.append(nbIngredientButton, nbIngredientClearButton);
+  const createNBPromptButton = makeButton("Gemma NB Prompt", "primary");
+  const previewNBButton = makeButton("Create with NanoBanana", "primary");
+  const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
   fluxImageRefsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
   fluxImageRefsPanel.append(
@@ -1749,23 +1802,30 @@ function openBuilder(node) {
   }
   zEnhanceLoraPanel.append(makeField("LoRA count", zEnhanceLoraCount), zEnhanceLoraRows);
   const zEnhanceButton = makeButton("Upscale / Enhance Image", "primary");
+  const imageModelChooserWrap = document.createElement("div");
+  imageModelChooserWrap.style.cssText = "display:flex;flex-direction:column;gap:5px;min-width:0;";
+  const imageModelChooserLabel = document.createElement("div");
+  imageModelChooserLabel.textContent = "Model";
+  imageModelChooserLabel.style.cssText = "font-size:11px;font-weight:900;color:#bae6fd;letter-spacing:0;";
   const imageModelChooser = document.createElement("div");
-  imageModelChooser.style.cssText = "display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;";
+  imageModelChooser.style.cssText = "display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;max-width:100%;padding:0 0 3px;scrollbar-width:thin;";
   function makeImageModelCard(label, value) {
     const card = document.createElement("button");
     card.type = "button";
     card.dataset.model = value;
     card.textContent = label;
-    card.style.cssText = "min-height:38px;border:1px solid #3f3f46;border-radius:6px;background:#27272a;color:#f4f4f5;font-size:12px;font-weight:900;cursor:pointer;padding:8px 10px;";
+    card.style.cssText = "height:34px;min-width:72px;flex:0 0 auto;border:1px solid #3f3f46;border-radius:999px;background:#27272a;color:#f4f4f5;font-size:12px;font-weight:900;cursor:pointer;padding:0 10px;white-space:nowrap;";
     return card;
   }
   const zImageCard = makeImageModelCard("ZImage", "zimage");
   const fluxKleinCard = makeImageModelCard("Flux Klein", "flux_klein");
+  const nbImageCard = makeImageModelCard("Nano B", "nano_banana");
   const ernieImageCard = makeImageModelCard("Ernie", "ernie_image");
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
-  const loadCustomImageButton = makeImageModelCard("Load Custom", "custom_image");
+  const loadCustomImageButton = makeImageModelCard("+ Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
-  imageModelChooser.append(zImageCard, fluxKleinCard, ernieImageCard, zEnhanceCard, loadCustomImageButton);
+  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, zEnhanceCard, loadCustomImageButton);
+  imageModelChooserWrap.append(imageModelChooserLabel, imageModelChooser);
   const zImageModePanel = document.createElement("div");
   zImageModePanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   const fluxKleinModePanel = document.createElement("div");
@@ -1925,6 +1985,12 @@ function openBuilder(node) {
   function makeFluxCreateButton() {
     const button = makeButton("Create with Flux/Klein", "primary");
     fluxCreateButtons.push(button);
+    return button;
+  }
+  const nbCreateButtons = [previewNBButton];
+  function makeNBCreateButton() {
+    const button = makeButton("Create with NanoBanana", "primary");
+    nbCreateButtons.push(button);
     return button;
   }
   function setButtonGroupState(buttons, { disabled = false, text = "" } = {}) {
@@ -2134,6 +2200,49 @@ function openBuilder(node) {
   fluxKleinPanel.append(
     fluxKleinSubTabs.wrapper,
   );
+  const nbImageSubTabs = makeSubTabs([
+    {
+      label: "Models",
+      value: "models",
+      content: makeSettingsPanel([
+        useSceneNBImageSettings.wrapper,
+        makeSettingsSection("NanoBanana", [
+          makeField("Google Cloud API key", nbApiKey),
+          makeField("Model", nbModelSelect),
+        ]),
+        makeSettingsSection("Vision LLM Models", [
+          makeField("Gemma vision model", nbGemmaModelSelect),
+          makeField("Vision mmproj", nbMmprojSelect),
+        ]),
+        makeNBCreateButton(),
+      ]),
+    },
+    {
+      label: "Image Settings",
+      value: "settings",
+      content: makeSettingsPanel([
+        nbUseGlobalIngredients.wrapper,
+        nbGlobalIngredientPanel,
+        nbIngredientDrop,
+        nbIngredientActions,
+        nbIngredientList,
+        makeNBCreateButton(),
+      ]),
+    },
+    {
+      label: "LLM Prompting",
+      value: "prompting",
+      content: makeSettingsPanel([
+        makeField("NanoBanana notes", nbNotes),
+        createNBPromptButton,
+        makeField("NanoBanana prompt", nbPrompt),
+        sendNBPromptToEnhanceButton,
+        previewNBButton,
+      ]),
+    },
+  ]);
+  nbImagePanel.append(nbImageSubTabs.wrapper);
+  fluxKleinModePanel.append(nbImagePanel);
   const zEnhanceSubTabs = makeSubTabs([
     {
       label: "Models",
@@ -2190,7 +2299,7 @@ function openBuilder(node) {
     makeEditField("Global subject/scene text file", subjectSceneInput, editSubjectSceneButton),
   );
   imagePanel.append(
-    imageModelChooser,
+    imageModelChooserWrap,
     zImageModePanel,
     fluxKleinModePanel,
     ernieImageModePanel,
@@ -2555,6 +2664,7 @@ function openBuilder(node) {
     zimageSettings: defaultZImageSettings(),
     fluxKleinSettings: defaultFluxKleinSettings(),
     ernieImageSettings: defaultErnieImageSettings(),
+    nbImageSettings: defaultNBImageSettings(),
     useFluxGlobalImageIngredients: false,
     fluxGlobalImageIngredients: [],
     fluxReferenceBuilder: defaultFluxReferenceBuilder(),
@@ -2575,6 +2685,13 @@ function openBuilder(node) {
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
+    };
+  }
+
+  function defaultNBImageSettings() {
+    return {
+      api_key: "",
+      model: DEFAULT_NB_IMAGE_MODEL,
     };
   }
 
@@ -2691,6 +2808,9 @@ function openBuilder(node) {
       } else if (kind === "flux_klein") {
         segment.use_scene_flux_klein_settings = true;
         segment.flux_klein_settings = { ...settings, loras: Array.isArray(settings.loras) ? settings.loras.map((item) => ({ ...item })) : [] };
+      } else if (kind === "nano_banana") {
+        segment.use_scene_nb_image_settings = true;
+        segment.nb_image_settings = cloneNBImageSettings(settings);
       }
     }
     return targets.length;
@@ -2938,6 +3058,10 @@ function openBuilder(node) {
     if (segment.ernie_image_settings && typeof segment.ernie_image_settings !== "object") segment.ernie_image_settings = null;
     if (segment.use_scene_flux_klein_settings == null) segment.use_scene_flux_klein_settings = false;
     if (segment.flux_klein_settings && typeof segment.flux_klein_settings !== "object") segment.flux_klein_settings = null;
+    if (segment.nb_notes == null) segment.nb_notes = "";
+    if (segment.nb_prompt == null) segment.nb_prompt = "";
+    if (segment.use_scene_nb_image_settings == null) segment.use_scene_nb_image_settings = false;
+    if (segment.nb_image_settings && typeof segment.nb_image_settings !== "object") segment.nb_image_settings = null;
     if (segment.use_scene_i2v_video_settings == null) segment.use_scene_i2v_video_settings = false;
     if (segment.i2v_video_settings && typeof segment.i2v_video_settings !== "object") segment.i2v_video_settings = null;
     if (!["image", "video"].includes(segment.preview_mode)) segment.preview_mode = segment.video_path ? "video" : "image";
@@ -3023,6 +3147,16 @@ function openBuilder(node) {
     };
   }
 
+  function cloneNBImageSettings(settings) {
+    const source = settings || {};
+    return {
+      ...defaultNBImageSettings(),
+      ...source,
+      api_key: source.api_key || "",
+      model: source.model || DEFAULT_NB_IMAGE_MODEL,
+    };
+  }
+
   function cloneFluxKleinSettings(settings) {
     const source = settings || {};
     return {
@@ -3085,6 +3219,9 @@ function openBuilder(node) {
     if (defaults.ernie_image_settings || defaults.ernieImageSettings) {
       state.ernieImageSettings = cloneErnieImageSettings(defaults.ernie_image_settings || defaults.ernieImageSettings);
     }
+    if (defaults.nb_image_settings || defaults.nbImageSettings) {
+      state.nbImageSettings = cloneNBImageSettings(defaults.nb_image_settings || defaults.nbImageSettings);
+    }
     if (defaults.z_enhance_settings || defaults.zEnhanceSettings) {
       state.zEnhanceSettings = {
         ...defaultZEnhanceSettings(),
@@ -3098,6 +3235,7 @@ function openBuilder(node) {
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
+    syncNBImagePanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
     syncVideoModePanel();
@@ -3134,6 +3272,15 @@ function openBuilder(node) {
       return segment.ernie_image_settings;
     }
     return state.ernieImageSettings;
+  }
+
+  function activeNBImageSettings() {
+    const segment = activeSegment();
+    if (segment?.use_scene_nb_image_settings) {
+      if (!segment.nb_image_settings) segment.nb_image_settings = cloneNBImageSettings(state.nbImageSettings);
+      return segment.nb_image_settings;
+    }
+    return state.nbImageSettings;
   }
 
   function activeFluxKleinSettings() {
@@ -3197,6 +3344,7 @@ function openBuilder(node) {
       imageModelMode: state.imageModelMode,
       zimageSettings: state.zimageSettings,
       fluxKleinSettings: state.fluxKleinSettings,
+      nbImageSettings: state.nbImageSettings,
       ernieImageSettings: state.ernieImageSettings,
       useFluxGlobalImageIngredients: state.useFluxGlobalImageIngredients,
       fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
@@ -3247,6 +3395,7 @@ function openBuilder(node) {
     applyLayoutSizes();
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
+    state.nbImageSettings = data.nbImageSettings || data.nb_image_settings || state.nbImageSettings;
     state.ernieImageSettings = data.ernieImageSettings || state.ernieImageSettings;
     state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
@@ -3464,6 +3613,7 @@ function openBuilder(node) {
   function imageTriggerPhraseForSegment(segment = activeSegment(), imageMode = state.imageModelMode) {
     if (!segment) return state.imageTriggerPhrase || "";
     if (imageMode === "flux_klein") return fluxKleinSettingsForSegment(segment).image_trigger_phrase || state.imageTriggerPhrase || "";
+    if (imageMode === "nano_banana") return "";
     if (imageMode === "ernie_image") return (segment.use_scene_ernie_image_settings ? segment.ernie_image_settings?.image_trigger_phrase : state.ernieImageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
     return (segment.use_scene_zimage_settings ? segment.zimage_settings?.image_trigger_phrase : state.zimageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
   }
@@ -3477,11 +3627,13 @@ function openBuilder(node) {
     const cleanPrompt = String(prompt || "").trim();
     segment.t2i_prompt = cleanPrompt;
     segment.flux_prompt = cleanPrompt;
+    segment.nb_prompt = cleanPrompt;
     segment.enhance_prompt = cleanPrompt;
     if (segment.id === activeSegment()?.id) {
       t2iPrompt.value = cleanPrompt;
       ernieT2IPrompt.value = cleanPrompt;
       fluxPrompt.value = cleanPrompt;
+      nbPrompt.value = cleanPrompt;
       zEnhancePromptPreview.value = cleanPrompt;
     }
     return cleanPrompt;
@@ -3491,6 +3643,8 @@ function openBuilder(node) {
     const rawPrompt = String(
       imageMode === "flux_klein"
         ? (segment?.flux_prompt || segment?.t2i_prompt || fallback)
+        : imageMode === "nano_banana"
+          ? (segment?.nb_prompt || segment?.t2i_prompt || fallback)
         : (segment?.t2i_prompt || segment?.flux_prompt || fallback)
     ).trim();
     const prompt = applyImageTriggerToPrompt(rawPrompt, segment, imageMode, { validateJunk: false });
@@ -3855,12 +4009,12 @@ function openBuilder(node) {
   function syncInspector() {
     const segment = activeSegment();
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, deleteSegmentButton, createSceneVideoButton]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, nbNotes, i2vNotesInput, t2iPrompt, ernieT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -3872,6 +4026,7 @@ function openBuilder(node) {
     i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
     useSceneErnieImageSettings.input.checked = Boolean(segment?.use_scene_ernie_image_settings);
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
+    useSceneNBImageSettings.input.checked = Boolean(segment?.use_scene_nb_image_settings);
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
@@ -3889,15 +4044,18 @@ function openBuilder(node) {
       endInput.value = "4";
       notesInput.value = "";
       ernieNotesInput.value = "";
+      nbNotes.value = "";
       i2vNotesInput.value = "";
       t2iPrompt.value = "";
       ernieT2IPrompt.value = "";
+      nbPrompt.value = "";
       i2vPrompt.value = "";
       useVisionReference.input.checked = false;
       ernieUseVisionReference.input.checked = false;
       useI2VVisionReference.input.checked = true;
       useT2VVisionReference.input.checked = false;
       useSceneZImageSettings.input.checked = false;
+      useSceneNBImageSettings.input.checked = false;
       refImageInput.value = "";
       refImagePanel.style.display = "none";
       ernieRefImagePanel.style.display = "none";
@@ -3915,10 +4073,12 @@ function openBuilder(node) {
     endInput.value = segment.end;
     notesInput.value = segment.notes || "";
     ernieNotesInput.value = segment.notes || "";
+    nbNotes.value = segment.nb_notes || segment.flux_notes || segment.notes || "";
     i2vNotesInput.value = segment.i2v_notes || "";
     t2iPrompt.value = segment.t2i_prompt || "";
     ernieT2IPrompt.value = segment.t2i_prompt || "";
     fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
+    nbPrompt.value = segment.t2i_prompt || segment.nb_prompt || "";
     i2vPrompt.value = segment.i2v_prompt || "";
     useVisionReference.input.checked = Boolean(segment.use_vision_reference);
     ernieUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
@@ -4406,6 +4566,20 @@ function openBuilder(node) {
       pushHistory();
       active.flux_image_ingredients.splice(index, 1);
       renderFluxIngredientList(active);
+      renderNBIngredientList(active);
+      render();
+    });
+  }
+
+  function renderNBIngredientList(segment = activeSegment()) {
+    const ingredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
+    renderFluxIngredientRows(nbIngredientList, ingredients, "No scene-specific NanoBanana reference images loaded for this scene.", (index) => {
+      const active = activeSegment();
+      if (!active || !Array.isArray(active.flux_image_ingredients)) return;
+      pushHistory();
+      active.flux_image_ingredients.splice(index, 1);
+      renderFluxIngredientList(active);
+      renderNBIngredientList(active);
       render();
     });
   }
@@ -4418,11 +4592,19 @@ function openBuilder(node) {
       renderFluxGlobalIngredientList();
       render();
     });
+    renderFluxIngredientRows(nbGlobalIngredientList, ingredients, "No global Nano B reference images loaded.", (index) => {
+      pushHistory();
+      state.fluxGlobalImageIngredients.splice(index, 1);
+      renderFluxGlobalIngredientList();
+      render();
+    });
   }
 
   function syncFluxGlobalIngredientPanel() {
     useFluxGlobalIngredients.input.checked = Boolean(state.useFluxGlobalImageIngredients);
+    nbUseGlobalIngredients.input.checked = Boolean(state.useFluxGlobalImageIngredients);
     fluxGlobalIngredientPanel.style.display = state.useFluxGlobalImageIngredients ? "flex" : "none";
+    nbGlobalIngredientPanel.style.display = state.useFluxGlobalImageIngredients ? "flex" : "none";
   }
 
   function mergedFluxImageIngredients(segment = activeSegment()) {
@@ -4490,20 +4672,21 @@ function openBuilder(node) {
     settings.image_model_mode = mode;
     settings.enabled = mode === "flux_klein";
     zImageModePanel.style.display = mode === "zimage" ? "flex" : "none";
-    fluxKleinModePanel.style.display = mode === "flux_klein" ? "flex" : "none";
+    fluxKleinModePanel.style.display = mode === "flux_klein" || mode === "nano_banana" ? "flex" : "none";
     ernieImageModePanel.style.display = mode === "ernie_image" ? "flex" : "none";
     zEnhancePanel.style.display = mode === "z_enhance" ? "flex" : "none";
     previewButton.style.display = mode === "zimage" ? "" : "none";
     ernieCreateButton.style.display = mode === "ernie_image" ? "" : "none";
     useFluxKlein.input.checked = mode === "flux_klein";
     fluxKleinPanel.style.display = mode === "flux_klein" ? "flex" : "none";
+    nbImagePanel.style.display = mode === "nano_banana" ? "flex" : "none";
     ernieImagePanel.style.display = mode === "ernie_image" ? "flex" : "none";
-    for (const card of [zImageCard, fluxKleinCard, ernieImageCard, zEnhanceCard]) {
+    for (const card of [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, zEnhanceCard]) {
       const active = card.dataset.model === mode;
-      card.style.borderColor = active ? "#71717a" : "#3f3f46";
-      card.style.background = active ? "#52525b" : "#27272a";
-      card.style.color = "#f4f4f5";
-      card.style.boxShadow = active ? "inset 0 0 0 1px rgba(244,244,245,.12)" : "none";
+      card.style.borderColor = active ? "#0891b2" : "#3f3f46";
+      card.style.background = active ? "#06b6d4" : "#27272a";
+      card.style.color = active ? "#082f49" : "#f4f4f5";
+      card.style.boxShadow = active ? "inset 0 0 0 1px rgba(8,47,73,.22)" : "none";
     }
     loadCustomImageButton.style.borderColor = "#3f3f46";
     loadCustomImageButton.style.background = "#27272a";
@@ -4512,6 +4695,7 @@ function openBuilder(node) {
     syncFluxGlobalIngredientPanel();
     renderFluxGlobalIngredientList();
     renderFluxIngredientList(segment);
+    renderNBIngredientList(segment);
     fluxNotes.value = segment?.flux_notes || "";
     fluxPrompt.value = segment?.t2i_prompt || segment?.flux_prompt || "";
     fluxUnetPicker.input.value = chooseModelValue(
@@ -4538,6 +4722,7 @@ function openBuilder(node) {
     });
     updateFluxLoraVisibility();
     syncErnieImagePanel();
+    syncNBImagePanel();
   }
 
   function updateFluxLoraVisibility() {
@@ -4597,6 +4782,50 @@ function openBuilder(node) {
       scene_image_ingredients: Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [],
       notes: segment?.flux_notes || "",
       prompt: segment?.flux_prompt || "",
+      reference_context: fluxReferenceContextForSegment(segment),
+    };
+  }
+
+  function syncNBImagePanel() {
+    const segment = activeSegment();
+    const settings = activeNBImageSettings() || {};
+    useSceneNBImageSettings.input.checked = Boolean(segment?.use_scene_nb_image_settings);
+    nbApiKey.value = settings.api_key || "";
+    nbModelSelect.value = NB_IMAGE_MODELS.includes(settings.model) ? settings.model : DEFAULT_NB_IMAGE_MODEL;
+    nbNotes.value = segment?.nb_notes || segment?.flux_notes || segment?.notes || "";
+    nbPrompt.value = segment?.nb_prompt || segment?.t2i_prompt || "";
+    renderNBIngredientList(segment);
+  }
+
+  function saveNBImageSettingsFromPanel() {
+    pushHistory();
+    const current = activeNBImageSettings() || {};
+    const segment = activeSegment();
+    if (segment) {
+      if (!Array.isArray(segment.flux_image_ingredients)) segment.flux_image_ingredients = [];
+      segment.nb_notes = nbNotes.value || "";
+      segment.nb_prompt = nbPrompt.value || "";
+      segment.t2i_prompt = segment.nb_prompt;
+    }
+    const settings = {
+      ...current,
+      api_key: nbApiKey.value || "",
+      model: nbModelSelect.value || DEFAULT_NB_IMAGE_MODEL,
+    };
+    if (segment?.use_scene_nb_image_settings || hasMultiSceneBatchSelection()) {
+      if (segment) {
+        segment.use_scene_nb_image_settings = true;
+        segment.nb_image_settings = settings;
+      }
+    } else {
+      state.nbImageSettings = settings;
+    }
+    applyImageSettingsToMultiSelection("nano_banana", settings);
+    return {
+      ...settings,
+      image_ingredients: mergedFluxImageIngredients(segment),
+      notes: segment?.nb_notes || segment?.flux_notes || segment?.notes || "",
+      prompt: segment?.nb_prompt || "",
       reference_context: fluxReferenceContextForSegment(segment),
     };
   }
@@ -4776,18 +5005,24 @@ function openBuilder(node) {
     segment.notes = notesInput.value || "";
     if (state.imageModelMode === "ernie_image") {
       segment.notes = ernieNotesInput.value || "";
+    } else if (state.imageModelMode === "nano_banana") {
+      segment.nb_notes = nbNotes.value || "";
     }
     segment.i2v_notes = i2vNotesInput.value || "";
     const editedT2IPrompt = state.imageModelMode === "ernie_image"
       ? ernieT2IPrompt.value || ""
       : state.imageModelMode === "flux_klein"
         ? fluxPrompt.value || ""
+        : state.imageModelMode === "nano_banana"
+          ? nbPrompt.value || ""
         : t2iPrompt.value || "";
     segment.t2i_prompt = editedT2IPrompt;
     segment.flux_prompt = editedT2IPrompt;
+    segment.nb_prompt = editedT2IPrompt;
     if (t2iPrompt.value !== editedT2IPrompt) t2iPrompt.value = editedT2IPrompt;
     if (ernieT2IPrompt.value !== editedT2IPrompt) ernieT2IPrompt.value = editedT2IPrompt;
     if (fluxPrompt.value !== editedT2IPrompt) fluxPrompt.value = editedT2IPrompt;
+    if (nbPrompt.value !== editedT2IPrompt) nbPrompt.value = editedT2IPrompt;
     segment.i2v_prompt = i2vPrompt.value || "";
     segment.enhance_notes = zEnhanceGemmaNotes.value || "";
     segment.enhance_prompt = zEnhancePromptPreview.value || segment.enhance_prompt || "";
@@ -5661,13 +5896,21 @@ function openBuilder(node) {
 
   function addFluxIngredient({ path = "", data = "", name = "", global = false } = {}) {
     pushHistory();
+    const candidate = {
+      path: path || "",
+      data: data || "",
+      name: name || path?.split?.(/[\\/]/)?.pop?.() || "image.png",
+    };
+    const ingredientKey = (item) => String(item?.path || item?.data || item?.name || "").trim();
+    const candidateKey = ingredientKey(candidate);
     if (global) {
       if (!Array.isArray(state.fluxGlobalImageIngredients)) state.fluxGlobalImageIngredients = [];
-      state.fluxGlobalImageIngredients.push({
-        path: path || "",
-        data: data || "",
-        name: name || path?.split?.(/[\\/]/)?.pop?.() || "image.png",
-      });
+      if (candidateKey && state.fluxGlobalImageIngredients.some((item) => ingredientKey(item) === candidateKey)) {
+        renderFluxGlobalIngredientList();
+        toast("That global image ingredient is already loaded.");
+        return;
+      }
+      state.fluxGlobalImageIngredients.push(candidate);
       renderFluxGlobalIngredientList();
       render();
       toast(`Global image ingredient added${path || name ? `:\n${path || name}` : "."}`);
@@ -5679,16 +5922,19 @@ function openBuilder(node) {
       return;
     }
     if (!Array.isArray(segment.flux_image_ingredients)) segment.flux_image_ingredients = [];
-    segment.flux_image_ingredients.push({
-      path: path || "",
-      data: data || "",
-      name: name || path?.split?.(/[\\/]/)?.pop?.() || "image.png",
-    });
+    if (candidateKey && segment.flux_image_ingredients.some((item) => ingredientKey(item) === candidateKey)) {
+      renderFluxIngredientList(segment);
+      renderNBIngredientList(segment);
+      toast("That image ingredient is already loaded for this scene.");
+      return;
+    }
+    segment.flux_image_ingredients.push(candidate);
     const settings = state.fluxKleinSettings || {};
     settings.enabled = true;
     state.fluxKleinSettings = settings;
     syncFluxKleinPanel();
     renderFluxIngredientList(segment);
+    renderNBIngredientList(segment);
     render();
     toast(`Image ingredient added${path || name ? `:\n${path || name}` : "."}`);
   }
@@ -5702,9 +5948,10 @@ function openBuilder(node) {
   }
 
   function enableFluxIngredientDrop(element, { global = false } = {}) {
+    element.dataset.vrgdgFileDropZone = "true";
     element.addEventListener("dragover", (event) => {
-      const types = Array.from(event.dataTransfer?.types || []);
-      if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
+      const types = Array.from(event.dataTransfer?.types || []).map((item) => String(item).toLowerCase());
+      if (!types.includes("files") && !types.includes("application/x-vrgdg-segment-id")) return;
       event.preventDefault();
       event.stopPropagation();
       element.style.borderColor = "#a3e635";
@@ -6240,6 +6487,7 @@ function openBuilder(node) {
   }
 
   function openFluxReferenceBuilderModal() {
+    const referenceBuilderTargetLabel = state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     const backdrop = document.createElement("div");
@@ -6249,7 +6497,7 @@ function openBuilder(node) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder for Flux/Klein</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Use a global subject reference plus per-scene location references as automatic Flux/Klein image ingredients.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Image Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Use a global subject reference plus per-scene location references as automatic ${escapeHtml(referenceBuilderTargetLabel)} reference images.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -6257,15 +6505,49 @@ function openBuilder(node) {
     usage.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
     const useSubject = makeCheckbox("Use subject reference", refs.use_subject_reference);
     const useLocations = makeCheckbox("Use mapped location references", refs.use_location_references);
-    const includeManual = makeCheckbox("Also include manual Flux/Klein ingredients", refs.include_manual_ingredients !== false);
+    const includeManual = makeCheckbox("Also include manually loaded reference images", refs.include_manual_ingredients !== false);
     for (const item of [useSubject.wrapper, useLocations.wrapper, includeManual.wrapper]) {
       item.style.cssText += "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
     }
     usage.append(useSubject.wrapper, useLocations.wrapper, includeManual.wrapper);
+    const inlineProgress = document.createElement("div");
+    inlineProgress.style.cssText = "display:none;border:1px solid #155e75;border-radius:7px;background:#07111f;padding:9px 10px;gap:7px;flex-direction:column;";
+    const inlineProgressText = document.createElement("div");
+    inlineProgressText.style.cssText = "font-size:12px;color:#e0f2fe;white-space:pre-wrap;line-height:1.35;";
+    const inlineProgressTrack = document.createElement("div");
+    inlineProgressTrack.style.cssText = "height:8px;border-radius:999px;background:#164e63;overflow:hidden;";
+    const inlineProgressBar = document.createElement("div");
+    inlineProgressBar.style.cssText = "height:100%;width:0%;background:#22d3ee;border-radius:999px;transition:width .18s ease;";
+    inlineProgressTrack.append(inlineProgressBar);
+    inlineProgress.append(inlineProgressText, inlineProgressTrack);
+    const setInlineProgress = (message, percent = 8) => {
+      inlineProgress.style.display = "flex";
+      inlineProgressText.textContent = message || "Working...";
+      inlineProgressBar.style.width = `${Math.max(0, Math.min(100, Number(percent) || 0))}%`;
+    };
+    const hideInlineProgress = (delay = 1200) => {
+      setTimeout(() => {
+        inlineProgress.style.display = "none";
+        inlineProgressBar.style.width = "0%";
+      }, delay);
+    };
 
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.35fr) minmax(300px,1fr);gap:12px;align-items:start;";
     const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+
+    const modalDragGuard = (event) => {
+      const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+      const inDropZone = path.some((item) => item?.dataset?.vrgdgFileDropZone === "true")
+        || event.target?.closest?.("[data-vrgdg-file-drop-zone='true']");
+      if (!inDropZone) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    };
+    for (const eventName of ["dragenter", "dragover", "drop"]) {
+      backdrop.addEventListener(eventName, modalDragGuard, true);
+      box.addEventListener(eventName, modalDragGuard, true);
+    }
 
     const subjectCard = document.createElement("div");
     subjectCard.style.cssText = cardStyle;
@@ -6293,11 +6575,12 @@ function openBuilder(node) {
     const locationsTitle = document.createElement("div");
     locationsTitle.textContent = "Location References";
     locationsTitle.style.cssText = subjectTitle.style.cssText;
+    const extractLocations = makeButton("Extract Locations", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const locationActions = document.createElement("div");
     locationActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    locationActions.append(autoMapLocations, addLocation);
+    locationActions.append(extractLocations, autoMapLocations, addLocation);
     locationsHeader.append(locationsTitle, locationActions);
     const locationsList = document.createElement("div");
     locationsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
@@ -6309,7 +6592,7 @@ function openBuilder(node) {
     mappingTitle.textContent = "Scene Mapping";
     mappingTitle.style.cssText = subjectTitle.style.cssText;
     const mappingNote = document.createElement("div");
-    mappingNote.textContent = "Choose which location image Flux/Klein should receive for each scene. Use Unassigned for no location reference.";
+    mappingNote.textContent = `Choose which location image ${referenceBuilderTargetLabel} should receive for each scene. Use Unassigned for no location reference.`;
     mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     const mappingList = document.createElement("div");
     mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
@@ -6321,7 +6604,7 @@ function openBuilder(node) {
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Reference Builder", "primary");
     footer.append(cancel, save);
-    box.append(header, usage, grid, footer);
+    box.append(header, usage, inlineProgress, grid, footer);
     backdrop.append(box);
     document.body.append(backdrop);
 
@@ -6336,22 +6619,73 @@ function openBuilder(node) {
     const imageSrc = (image) => image?.data || (image?.path ? makeEditorImageUrl(image.path) : "");
     const renderDrop = (drop, image, emptyText) => {
       const src = imageSrc(image);
+      drop.style.flexDirection = "column";
+      drop.style.gap = "6px";
       drop.innerHTML = src
-        ? `<img src="${src}" style="max-width:100%;max-height:150px;object-fit:contain;border-radius:6px;"><div style="font-size:11px;color:#a5f3fc;margin-top:6px;overflow-wrap:anywhere;">${escapeHtml(imageLabel(image))}</div>`
+        ? `<img src="${src}" draggable="false" style="max-width:100%;max-height:150px;object-fit:contain;border-radius:6px;"><div style="font-size:11px;color:#a5f3fc;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeHtml(imageLabel(image))}</div>`
         : `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
     };
     const updateSubjectDrop = () => renderDrop(subjectDrop, refs.subject.image, "Drop subject reference image here");
+    const setImageTargetFromSource = (target, source = {}) => {
+      if (!target) return;
+      if (!target.image) target.image = { path: "", data: "", name: "" };
+      target.image.path = source.path || "";
+      target.image.data = source.data || "";
+      target.image.name = source.name || source.path?.split?.(/[\\/]/)?.pop?.() || "reference.png";
+      renderAll();
+    };
     const setImageTarget = (target, file) => {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        target.image.path = "";
-        target.image.data = String(reader.result || "");
-        target.image.name = file.name || "reference.png";
-        renderAll();
+        setImageTargetFromSource(target, {
+          path: "",
+          data: String(reader.result || ""),
+          name: file.name || "reference.png",
+        });
       };
       reader.onerror = () => toast("Failed to read the reference image.", true);
       reader.readAsDataURL(file);
+    };
+    const droppedImageFile = (event) => {
+      const files = Array.from(event.dataTransfer?.files || []);
+      const fromFiles = files.find((item) => /^image\//i.test(item.type) || /\.(png|jpe?g|webp)$/i.test(item.name || ""));
+      if (fromFiles) return fromFiles;
+      const items = Array.from(event.dataTransfer?.items || []);
+      for (const item of items) {
+        if (item.kind !== "file") continue;
+        const file = item.getAsFile?.();
+        if (file && (/^image\//i.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name || ""))) return file;
+      }
+      return null;
+    };
+    const droppedImageText = (event) => {
+      return String(
+        event.dataTransfer?.getData("text/uri-list")
+        || event.dataTransfer?.getData("URL")
+        || event.dataTransfer?.getData("text/plain")
+        || ""
+      ).split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#")) || "";
+    };
+    const setImageTargetFromDroppedUrl = async (target, urlText) => {
+      const url = String(urlText || "").trim();
+      if (!url) return false;
+      if (/^data:image\//i.test(url)) {
+        setImageTargetFromSource(target, { path: "", data: url, name: "reference.png" });
+        return true;
+      }
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        if (!/^image\//i.test(blob.type)) return false;
+        const cleanName = url.split(/[?#]/)[0].split("/").pop() || "reference.png";
+        setImageTarget(target, new File([blob], cleanName, { type: blob.type || "image/png" }));
+        return true;
+      } catch (error) {
+        console.warn("[VRGDG Music Builder] Could not read dropped reference image URL:", error);
+        return false;
+      }
     };
     const wireDrop = (drop, target) => {
       drop.dataset.vrgdgFileDropZone = "true";
@@ -6359,12 +6693,15 @@ function openBuilder(node) {
         drop.addEventListener(eventName, (event) => {
           event.preventDefault();
           event.stopPropagation();
+          event.stopImmediatePropagation?.();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
         }, true);
       }
       drop.addEventListener("dragover", (event) => {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation?.();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
         drop.style.borderColor = "#22d3ee";
       });
       drop.addEventListener("dragleave", (event) => {
@@ -6378,8 +6715,24 @@ function openBuilder(node) {
         event.stopPropagation();
         event.stopImmediatePropagation?.();
         drop.style.borderColor = "#0891b2";
-        const file = Array.from(event.dataTransfer?.files || []).find((item) => /^image\//i.test(item.type) || /\.(png|jpe?g|webp)$/i.test(item.name || ""));
-        setImageTarget(target, file);
+        const sceneSource = droppedSceneImageSource(event);
+        if (sceneSource) {
+          setImageTargetFromSource(target, sceneSource);
+          return;
+        }
+        const file = droppedImageFile(event);
+        if (file) {
+          setImageTarget(target, file);
+          return;
+        }
+        const urlText = droppedImageText(event);
+        if (urlText) {
+          setImageTargetFromDroppedUrl(target, urlText).then((ok) => {
+            if (!ok) toast("That drop did not contain a readable image. Use Upload Image or drop a PNG/JPG/WebP file.", true);
+          });
+          return;
+        }
+        toast("That drop did not contain a readable image. Use Upload Image or drop a PNG/JPG/WebP file.", true);
       });
     };
     fileInput.onchange = () => {
@@ -6460,8 +6813,10 @@ function openBuilder(node) {
         return;
       }
       let progress = null;
+      let ranZImage = false;
       try {
-        progress = createProgressWindow(referenceType === "subject" ? "Creating Flux/Klein subject reference" : "Creating Flux/Klein location reference");
+        setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
+        progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
         progress.set(`Creating ZImage prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
         const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
         const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
@@ -6473,6 +6828,7 @@ function openBuilder(node) {
           unload_after: true,
         }, 3 * 60 * 1000);
         const zSettings = currentZImageReferenceSettings();
+        setInlineProgress("Building ZImage reference workflow...", 28);
         progress.set("Building ZImage reference workflow...", 28);
         const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(promptData.prompt, zSettings));
         if (Number.isFinite(Number(built.used_seed))) {
@@ -6480,15 +6836,19 @@ function openBuilder(node) {
           state.zimageSettings = zSettings;
           zSeed.value = String(zSettings.seed);
         }
+        setInlineProgress("Queueing ZImage reference workflow...", 42);
         progress.set("Queueing ZImage reference workflow...", 42);
         const queued = await queueWorkflowPrompt(built.prompt);
         const promptId = queued?.prompt_id;
         if (!promptId) throw new Error("ComfyUI queued the ZImage reference but did not return a prompt_id.");
+        ranZImage = true;
         const images = await waitForImages(promptId, (message) => {
+          setInlineProgress(`${message}\nPrompt ID: ${promptId}`, 66);
           progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
         });
         const image = images[images.length - 1];
         if (!image) throw new Error("ZImage did not return a reference image.");
+        setInlineProgress("Saving reference image into the project...", 88);
         progress.set("Saving reference image into the project...", 88);
         const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
           project_folder: projectInput.value || state.projectFolder,
@@ -6502,16 +6862,31 @@ function openBuilder(node) {
         advanceZImageSeedAfterRun(zSettings);
         syncZImageSettingsPanel();
         renderAll();
+        setInlineProgress("Cleaning memory after ZImage reference...", 94);
+        await runImageMemoryCleanupQuiet(progress, "ZImage reference", 94);
+        setInlineProgress("Reference image ready.", 100);
         progress.set("Reference image ready.", 100);
         progress.close(1300);
+        hideInlineProgress();
         toast(referenceType === "subject" ? "Subject reference created with ZImage." : "Location reference created with ZImage.");
       } catch (error) {
+        if (ranZImage) {
+          setInlineProgress("Cleaning memory after failed ZImage reference...", 100);
+          await runImageMemoryCleanupQuiet(progress, "failed ZImage reference", 100);
+        }
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
         progress?.set(`Error:\n${String(error?.message || error)}`, 100);
         toast(String(error?.message || error), true);
       }
     }
 
-    async function autoMapLocationsWithGemma() {
+    async function extractLocationsWithGemma() {
+      let progress = null;
+      extractLocations.disabled = true;
+      autoMapLocations.disabled = true;
+      extractLocations.textContent = "Extracting...";
+      progress = createProgressWindow("Extracting locations", { zIndex: 100008 });
+      progress.set("Checking scene concept prompts and location context...", 5);
       const scenes = allEditableSegments().map((segment, index) => ({
         id: segment.id,
         label: segment.label || `Scene ${index + 1}`,
@@ -6520,19 +6895,102 @@ function openBuilder(node) {
       }));
       const usableScenes = scenes.filter((scene) => String(scene.concept || scene.notes || "").trim());
       if (!usableScenes.length) {
-        toast("Auto Map needs scene concept prompts or notes first.", true);
+        const message = "Extract Locations needs scene concept prompts or notes first.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        extractLocations.disabled = false;
+        autoMapLocations.disabled = false;
+        extractLocations.textContent = "Extract Locations";
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
       if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        toast("Choose a non-vision Gemma model first.", true);
+        const message = "Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        extractLocations.disabled = false;
+        autoMapLocations.disabled = false;
+        extractLocations.textContent = "Extract Locations";
         return;
       }
-      let progress = null;
       try {
-        autoMapLocations.disabled = true;
-        autoMapLocations.textContent = "Mapping...";
-        progress = createProgressWindow("Auto mapping Flux/Klein locations");
+        progress.set(`Asking Gemma for a reusable location list...\n${gemmaRunnerLine()}`, 15);
+        const data = await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          scenes: usableScenes,
+          subject_scene_text: subjectSceneInput.value || "",
+          existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+          unload_after: true,
+        }, 10 * 60 * 1000);
+        progress.set("Adding extracted locations to the Reference Builder...", 78);
+        let added = 0;
+        let updated = 0;
+        for (const item of data.locations || []) {
+          const name = String(item.name || "").trim();
+          if (!name) continue;
+          let location = locationByName(name);
+          if (!location) {
+            location = createLocation(name, item.description || "");
+            added += 1;
+          } else if (!String(location.description || "").trim() && item.description) {
+            location.description = String(item.description || "");
+            updated += 1;
+          }
+        }
+        renderAll();
+        progress.set(`Extracted locations ready.\nAdded: ${added}\nUpdated: ${updated}\n\nReview/edit the locations, add or create images, then run Auto Map.`, 100);
+        progress.close(2600);
+        toast(`Extracted ${added} new location${added === 1 ? "" : "s"}. Review them before Auto Map.`);
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        extractLocations.disabled = false;
+        autoMapLocations.disabled = false;
+        extractLocations.textContent = "Extract Locations";
+      }
+    }
+
+    async function autoMapLocationsWithGemma() {
+      let progress = null;
+      autoMapLocations.disabled = true;
+      autoMapLocations.textContent = "Mapping...";
+      progress = createProgressWindow("Auto mapping locations", { zIndex: 100008 });
+      progress.set("Checking scene concept prompts, location list, and Gemma settings...\nNo reference images are required for Auto Map.", 5);
+      const scenes = allEditableSegments().map((segment, index) => ({
+        id: segment.id,
+        label: segment.label || `Scene ${index + 1}`,
+        concept: sceneConceptPromptText(segment),
+        notes: segment.notes || "",
+      }));
+      const usableScenes = scenes.filter((scene) => String(scene.concept || scene.notes || "").trim());
+      if (!usableScenes.length) {
+        const message = "Auto Map needs scene concept prompts or notes first. It does not need images yet, but it does need scene text to choose locations.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        autoMapLocations.disabled = false;
+        autoMapLocations.textContent = "Auto Map Locations with Gemma";
+        return;
+      }
+      if (!refs.locations.length) {
+        const message = "Auto Map needs at least one location first. Click Extract Locations or Add Location, then run Auto Map.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        autoMapLocations.disabled = false;
+        autoMapLocations.textContent = "Auto Map Locations with Gemma";
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        autoMapLocations.disabled = false;
+        autoMapLocations.textContent = "Auto Map Locations with Gemma";
+        return;
+      }
+      try {
         progress.set(`Sending scene concepts to Gemma...\n${gemmaRunnerLine()}`, 10);
         const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
           ...textGemmaRunnerPayload(),
@@ -6575,7 +7033,7 @@ function openBuilder(node) {
       locationsList.innerHTML = "";
       if (!refs.locations.length) {
         const empty = document.createElement("div");
-        empty.textContent = "No locations yet. Add locations like bathroom, flower garden, neon hallway, or bedroom.";
+        empty.textContent = "No locations yet. Add locations/scenes";
         empty.style.cssText = "font-size:12px;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:10px;";
         locationsList.append(empty);
         return;
@@ -6671,6 +7129,7 @@ function openBuilder(node) {
       createLocation();
       renderAll();
     };
+    extractLocations.onclick = extractLocationsWithGemma;
     autoMapLocations.onclick = autoMapLocationsWithGemma;
     useSubject.input.onchange = () => { refs.use_subject_reference = Boolean(useSubject.input.checked); };
     useLocations.input.onchange = () => { refs.use_location_references = Boolean(useLocations.input.checked); };
@@ -6686,9 +7145,10 @@ function openBuilder(node) {
       refs.include_manual_ingredients = Boolean(includeManual.input.checked);
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       renderFluxIngredientList(activeSegment());
+      renderNBIngredientList(activeSegment());
       render();
-      await autoSaveSessionQuiet("Flux/Klein reference builder");
-      toast("Flux/Klein reference builder saved.");
+      await autoSaveSessionQuiet(`${referenceBuilderTargetLabel} reference builder`);
+      toast(`${referenceBuilderTargetLabel} reference builder saved.`);
       backdrop.remove();
     };
     backdrop.addEventListener("pointerdown", (event) => {
@@ -6962,6 +7422,7 @@ function openBuilder(node) {
         const segment = state.segments[index];
         segment.notes = prompts[index];
         segment.flux_notes = prompts[index];
+        segment.nb_notes = prompts[index];
         if (!state.segments[index].label || /^Prompt\s+\d+$/i.test(state.segments[index].label)) {
           state.segments[index].label = `Scene ${index + 1}`;
         }
@@ -7198,6 +7659,15 @@ function openBuilder(node) {
     return output;
   }
 
+  async function runImageMemoryCleanupQuiet(progress, label, percent = 95) {
+    try {
+      return await runClearMemoryWorkflowQuiet(progress, label, percent);
+    } catch (error) {
+      console.warn(`[VRGDG Music Builder] Memory cleanup after ${label} failed:`, error);
+      return "";
+    }
+  }
+
   async function importI2VMotionJson(options = {}) {
     try {
       if (!i2vMotionJsonInput.value.trim()) {
@@ -7254,6 +7724,7 @@ function openBuilder(node) {
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       flux_klein_settings: state.fluxKleinSettings,
+      nb_image_settings: state.nbImageSettings,
       ernie_image_settings: state.ernieImageSettings,
       use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
@@ -7355,6 +7826,7 @@ function openBuilder(node) {
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
+        state.nbImageSettings = data.session.nb_image_settings || state.nbImageSettings;
         state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
@@ -7492,6 +7964,7 @@ function openBuilder(node) {
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
+      state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
       state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
@@ -7886,17 +8359,23 @@ function openBuilder(node) {
       return;
     }
     let progress = null;
+    let ranZImage = false;
     try {
       setButtonGroupState(zCreateButtons, { disabled: true, text: "Creating..." });
       progress = createProgressWindow("Creating ZImage preview");
       progress.set("Autosaving session/SRT before ZImage...", 8);
       await autoSaveSessionQuiet("ZImage preview");
+      ranZImage = true;
       await createZImageForSegment(segment, progress, 15, 75, "ZImage preview");
       await autoSaveSessionQuiet("ZImage preview complete");
+      await runImageMemoryCleanupQuiet(progress, "ZImage preview", 94);
       progress.set("ZImage preview ready.", 100);
       progress.close(900);
       toast("ZImage preview ready.");
     } catch (error) {
+      if (ranZImage) {
+        await runImageMemoryCleanupQuiet(progress, "failed ZImage preview", 100);
+      }
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
@@ -8132,6 +8611,172 @@ function openBuilder(node) {
     }
     render();
     return images;
+  }
+
+  function nbImageSettingsForSegment(segment = activeSegment()) {
+    const current = segment?.use_scene_nb_image_settings
+      ? (segment.nb_image_settings || cloneNBImageSettings(state.nbImageSettings))
+      : (state.nbImageSettings || {});
+    return {
+      ...cloneNBImageSettings(current),
+      image_ingredients: mergedFluxImageIngredients(segment),
+      notes: segment?.nb_notes || segment?.flux_notes || segment?.notes || "",
+      prompt: segment?.nb_prompt || segment?.t2i_prompt || "",
+      reference_context: fluxReferenceContextForSegment(segment),
+    };
+  }
+
+  async function createNBPromptWithGemma() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const settings = saveNBImageSettingsFromPanel();
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      toast("Load at least one NanoBanana reference image first.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      createNBPromptButton.disabled = true;
+      createNBPromptButton.textContent = "Gemma...";
+      progress = createProgressWindow("Creating NanoBanana prompt");
+      progress.set("Autosaving session/SRT before Gemma NanoBanana...", 8);
+      await autoSaveSessionQuiet("Gemma NanoBanana prompt");
+      progress.set(`Creating structured edit prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, 25);
+      const data = await postJson("/vrgdg/music_builder/generate_nb_image_prompt", {
+        model_file: nbGemmaModelSelect.value || fluxGemmaModelSelect.value,
+        mmproj_file: nbMmprojSelect.value || fluxMmprojSelect.value,
+        text_gemma_runner: state.textGemmaRunner || "builtin",
+        lmstudio_base_url: state.lmStudioBaseUrl || "",
+        lmstudio_model: state.lmStudioModel || "",
+        lmstudio_api_key: state.lmStudioApiKey || "",
+        image_ingredients: settings.image_ingredients || [],
+        reference_context: settings.reference_context || {},
+        user_notes: settings.notes || segment.notes || "",
+        n_ctx: 8000,
+        max_new_tokens: 900,
+        unload_after: true,
+      }, 180000);
+      pushHistory();
+      syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "nano_banana", { validateJunk: true }));
+      progress.set("NanoBanana prompt ready.", 100);
+      await autoSaveSessionQuiet("Gemma NanoBanana prompt complete");
+      progress.close(900);
+      render();
+      toast("Gemma created the NanoBanana prompt.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      createNBPromptButton.disabled = false;
+      createNBPromptButton.textContent = "Gemma NB Prompt";
+    }
+  }
+
+  async function generateNBPromptForSegment(segment, progress = null, percent = 25, label = "NanoBanana Gemma", options = {}) {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    const settings = nbImageSettingsForSegment(segment);
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one NanoBanana reference image.`);
+    }
+    progress?.set(`${label}: creating structured NanoBanana prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, percent);
+    const data = await postJson("/vrgdg/music_builder/generate_nb_image_prompt", {
+      model_file: nbGemmaModelSelect.value || fluxGemmaModelSelect.value,
+      mmproj_file: nbMmprojSelect.value || fluxMmprojSelect.value,
+      text_gemma_runner: state.textGemmaRunner || "builtin",
+      lmstudio_base_url: state.lmStudioBaseUrl || "",
+      lmstudio_model: state.lmStudioModel || "",
+      lmstudio_api_key: state.lmStudioApiKey || "",
+      image_ingredients: settings.image_ingredients || [],
+      reference_context: settings.reference_context || {},
+      user_notes: settings.notes || segment.notes || "",
+      clear_before_load: options.clearBeforeLoad !== false,
+      unload_after: options.unloadAfter !== false,
+      n_ctx: 8000,
+      max_new_tokens: 900,
+    }, 180000);
+    pushHistory();
+    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "nano_banana", { validateJunk: true }));
+    render();
+    return data;
+  }
+
+  async function createNBImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "NanoBanana") {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    const settings = nbImageSettingsForSegment(segment);
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "nano_banana", settings.prompt || "");
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: NanoBanana prompt is missing.`);
+    if (!String(settings.api_key || "").trim()) throw new Error("NanoBanana API key is missing.");
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one NanoBanana reference image.`);
+    }
+    progress?.set(`${label}: building hidden NanoBanana workflow...`, percentBase + percentSpan * 0.25);
+    const built = await postJson("/vrgdg/workflow_runner/build_nb_image_prompt", {
+      api_key: settings.api_key || "",
+      model: settings.model || DEFAULT_NB_IMAGE_MODEL,
+      prompt,
+      image_ingredients: settings.image_ingredients || [],
+    });
+    progress?.set(`${label}: queueing NanoBanana workflow...`, percentBase + percentSpan * 0.45);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the NanoBanana image but did not return a prompt_id.");
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    });
+    pushHistory();
+    segment.image = images[images.length - 1] || null;
+    await archiveGeneratedSceneImage(segment, segment.image);
+    syncSegmentT2IPrompt(segment, prompt);
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    if (segment.id === activeSegment()?.id) {
+      syncPreview(segment);
+    }
+    render();
+    return images;
+  }
+
+  async function previewNBImage() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const settings = saveNBImageSettingsFromPanel();
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "nano_banana", settings.prompt || nbPrompt.value || "");
+    if (!prompt) {
+      toast("Hey, you need a NanoBanana prompt first. Click Gemma NB Prompt or type one into the NanoBanana prompt box.", true);
+      return;
+    }
+    if (!String(settings.api_key || "").trim()) {
+      toast("NanoBanana API key is missing.", true);
+      return;
+    }
+    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
+      toast("Hey, you need at least one NanoBanana reference image first.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      setButtonGroupState(nbCreateButtons, { disabled: true, text: "Creating..." });
+      progress = createProgressWindow("Creating NanoBanana image");
+      progress.set("Autosaving session/SRT before NanoBanana image...", 8);
+      await autoSaveSessionQuiet("NanoBanana image");
+      await createNBImageForSegment(segment, progress, 15, 75, "NanoBanana image");
+      await autoSaveSessionQuiet("NanoBanana image complete");
+      progress.set("NanoBanana image ready.", 100);
+      progress.close(900);
+      toast("NanoBanana image preview ready.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      setButtonGroupState(nbCreateButtons, { disabled: false, text: "Create with NanoBanana" });
+    }
   }
 
   async function previewFluxKleinImage() {
@@ -8591,6 +9236,7 @@ function openBuilder(node) {
     if (promptRunMode === "redo_all") return scenes;
     return scenes.filter(({ segment }) => {
       if (imageMode === "flux_klein") return !String(segment.flux_prompt || segment.t2i_prompt || "").trim();
+      if (imageMode === "nano_banana") return !String(segment.nb_prompt || segment.t2i_prompt || "").trim();
       return !String(segment.t2i_prompt || "").trim();
     });
   }
@@ -8598,7 +9244,7 @@ function openBuilder(node) {
   async function gemmaT2IAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageMode = state.imageModelMode || "zimage";
-    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
     const promptRunMode = options.promptRunMode || "redo_all";
     const redoPrompts = promptRunMode === "redo_all";
     const allScenes = allEditableSegments().map((segment) => ({ segment, index: segmentIndexInfo(segment).index }));
@@ -8612,6 +9258,11 @@ function openBuilder(node) {
         const ingredients = mergedFluxImageIngredients(segment);
         if (!Array.isArray(ingredients) || !ingredients.length) {
           missing.push(`${sceneDisplayName(segment, index)}: add at least one global or scene Flux/Klein image ingredient.`);
+        }
+      } else if (imageMode === "nano_banana") {
+        const ingredients = mergedFluxImageIngredients(segment);
+        if (!Array.isArray(ingredients) || !ingredients.length) {
+          missing.push(`${sceneDisplayName(segment, index)}: add at least one NanoBanana reference image.`);
         }
       } else {
         const reason = t2iMissingReason(segment);
@@ -8642,6 +9293,7 @@ function openBuilder(node) {
         targetScenes.forEach(({ segment }) => {
           segment.t2i_prompt = "";
           segment.flux_prompt = "";
+          segment.nb_prompt = "";
           segment.enhance_prompt = "";
         });
       }
@@ -8663,6 +9315,11 @@ function openBuilder(node) {
         progress.set(`Gemma T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
         if (imageMode === "flux_klein") {
           await generateFluxKleinPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: Flux/Klein`, {
+            clearBeforeLoad: index === 0,
+            unloadAfter: false,
+          });
+        } else if (imageMode === "nano_banana") {
+          await generateNBPromptForSegment(segment, progress, Math.min(96, base + 4), `Gemma T2I All ${index + 1}/${promptScenes.length}: NanoBanana`, {
             clearBeforeLoad: index === 0,
             unloadAfter: false,
           });
@@ -9454,6 +10111,7 @@ function openBuilder(node) {
         scenes.forEach(({ segment }) => {
           segment.t2i_prompt = "";
           segment.flux_prompt = "";
+          segment.nb_prompt = "";
           segment.enhance_prompt = "";
         });
       }
@@ -9564,6 +10222,7 @@ function openBuilder(node) {
         scenes.forEach(({ segment }) => {
           segment.t2i_prompt = "";
           segment.flux_prompt = "";
+          segment.nb_prompt = "";
           segment.enhance_prompt = "";
         });
       }
@@ -9668,6 +10327,7 @@ function openBuilder(node) {
         scenes.forEach(({ segment }) => {
           segment.t2i_prompt = "";
           segment.flux_prompt = "";
+          segment.nb_prompt = "";
           segment.enhance_prompt = "";
         });
       }
@@ -9747,6 +10407,169 @@ function openBuilder(node) {
     }
   }
 
+  async function nbImageAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const imageRunMode = options.imageRunMode || "resume_missing";
+    const redoPrompts = imageRunMode === "redo_prompts_images";
+    const progress = createProgressWindow("NanoBanana All Scenes");
+    const allHaveReferences = allEditableSegments().some((segment) => mergedFluxImageIngredients(segment).length);
+    if (!allHaveReferences) {
+      const message = "NanoBanana All needs at least one Reference Builder, global, or scene reference image.";
+      progress.set(message, 100);
+      toast(message, true);
+      if (options.throwOnError) throw new Error(message);
+      return;
+    }
+    if (!String((state.nbImageSettings || {}).api_key || "").trim() && !allEditableSegments().some((segment) => String(segment.nb_image_settings?.api_key || "").trim())) {
+      const message = "NanoBanana All needs a NanoBanana API key in the NB Models tab.";
+      progress.set(message, 100);
+      toast(message, true);
+      if (options.throwOnError) throw new Error(message);
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "NanoBanana...";
+      setButtonGroupState(nbCreateButtons, { disabled: true });
+      createNBPromptButton.disabled = true;
+      progress.set("Autosaving session/SRT before NanoBanana All...", 3);
+      await saveSessionForSceneVideo();
+      const scenes = imageAllSegmentsForMode(imageRunMode, "nano_banana");
+      if (!scenes.length) {
+        progress.set("All scenes already have images. Skipping NanoBanana All.", 100);
+        progress.close(1800);
+        toast("All scenes already have images. NanoBanana All skipped.");
+        return;
+      }
+      if (redoPrompts) {
+        scenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.nb_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      const promptScenes = scenes.filter(({ segment }) => !String(segment.nb_prompt || segment.t2i_prompt || "").trim());
+      if (promptScenes.length) {
+        progress.set(`Image All: creating ${promptScenes.length} missing NanoBanana prompt${promptScenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
+      } else {
+        progress.set("Image All: all missing images already have image prompts. Skipping Gemma prompt pass...", 12);
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = promptScenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 6 + Math.floor((index / promptScenes.length) * 32);
+        try {
+          progress.set(`Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}\nKeeping Gemma loaded until this prompt pass finishes...`, base);
+          await generateNBPromptForSegment(
+            segment,
+            progress,
+            Math.min(38, base + 3),
+            `Image All prompt pass ${index + 1}/${promptScenes.length}: Gemma`,
+            { clearBeforeLoad: index === 0, unloadAfter: false },
+          );
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
+        } catch (error) {
+          throw new Error(`Image All prompt pass stopped at ${sceneLabel} (${index + 1}/${promptScenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+        }
+      }
+      if (promptScenes.length) {
+        await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
+      }
+      progress.set(`Image All: creating ${scenes.length} NanoBanana image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 45 + Math.floor((index / scenes.length) * 45);
+        const span = Math.max(1, Math.floor(40 / scenes.length));
+        try {
+          progress.set(`NanoBanana image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved NanoBanana prompt...`, base);
+          await createNBImageForSegmentWithRetry(
+            segment,
+            progress,
+            base + span * 0.35,
+            span * 0.45,
+            `NanoBanana All ${index + 1}/${scenes.length}: ${sceneLabel}`,
+            { maxRetries: 10 },
+          );
+          assertBatchNotStopped();
+          await autoSaveSessionQuiet(`NanoBanana All scene ${sceneIndex + 1}`);
+          await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+        } catch (error) {
+          throw new Error(`NanoBanana image pass stopped at ${sceneLabel} (${index + 1}/${scenes.length}):\n${String(error?.message || error || "Unknown error")}`);
+        }
+      }
+      await autoSaveSessionQuiet("NanoBanana All complete");
+      progress.set("Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.close(4500);
+      toast("NanoBanana All complete.");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
+      try {
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped NanoBanana All" : "NanoBanana All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after NanoBanana All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
+      }
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
+      setButtonGroupState(nbCreateButtons, { disabled: false, text: "Create with NanoBanana" });
+      createNBPromptButton.disabled = false;
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
+  async function createNBImageForSegmentWithRetry(segment, progress, percentBase, percentSpan, label, options = {}) {
+    const maxRetries = Math.max(1, Number(options.maxRetries || 10));
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+      assertBatchNotStopped();
+      try {
+        const attemptLabel = attempt === 1 ? label : `${label} retry ${attempt}/${maxRetries}`;
+        progress?.set(`${attemptLabel}: creating NanoBanana image...`, percentBase);
+        return await createNBImageForSegment(segment, progress, percentBase, percentSpan, attemptLabel);
+      } catch (error) {
+        lastError = error;
+        const message = String(error?.message || error || "Unknown error");
+        if (attempt >= maxRetries) break;
+        progress?.set(
+          `${label}: NanoBanana failed on attempt ${attempt}/${maxRetries}.\n${message}\n\nClearing memory before retry ${attempt + 1}/${maxRetries}...`,
+          Math.min(99, percentBase + percentSpan),
+        );
+        try {
+          await runClearMemoryWorkflowQuiet(progress, `${label} failed attempt ${attempt}/${maxRetries}`, Math.min(99, percentBase + percentSpan));
+        } catch (cleanupError) {
+          console.warn("[VRGDG Music Builder] Cleanup before NanoBanana retry failed:", cleanupError);
+          progress?.set(
+            `${label}: cleanup failed before retry ${attempt + 1}/${maxRetries}, retrying anyway.\n${String(cleanupError?.message || cleanupError)}`,
+            Math.min(99, percentBase + percentSpan),
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+    }
+    progress?.set(`${label}: failed after ${maxRetries} NanoBanana attempts. Clearing memory before stopping...`, 100);
+    try {
+      await runClearMemoryWorkflowQuiet(progress, `${label} failed after ${maxRetries} attempts`, 100);
+    } catch (cleanupError) {
+      console.warn("[VRGDG Music Builder] Final cleanup after NanoBanana retry failure failed:", cleanupError);
+    }
+    throw new Error(`${label}: NanoBanana failed after ${maxRetries} attempts.\nLast error:\n${String(lastError?.message || lastError || "Unknown error")}`);
+  }
+
   async function buildFullVideoPipeline(options = {}) {
     let buildMode = options.buildMode || "resume_missing";
     const maxAutoRetries = Math.max(0, Math.min(5, Number(options.maxAutoRetries ?? 3)));
@@ -9766,12 +10589,14 @@ function openBuilder(node) {
           if (videoMode === "t2v") {
             progress.set("Stage 1/3: Text-to-video mode skips image generation.", 20);
           } else {
-            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
+            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "nano_banana" ? "NanoBanana image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
             progress.set(`Stage 1/3: ${imageStage}...`, 5);
             const imageMode = state.imageModelMode || "zimage";
             const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
             if (imageMode === "flux_klein") {
               await fluxKleinAllScenes({ throwOnError: true, imageRunMode });
+            } else if (imageMode === "nano_banana") {
+              await nbImageAllScenes({ throwOnError: true, imageRunMode });
             } else if (imageMode === "ernie_image") {
               await ernieImageAllScenes({ throwOnError: true, imageRunMode });
             } else {
@@ -10720,8 +11545,9 @@ function openBuilder(node) {
   async function confirmAndRunZImageAll() {
     const imageMode = state.imageModelMode || "zimage";
     const useFluxKleinMode = imageMode === "flux_klein";
+    const useNBMode = imageMode === "nano_banana";
     const useErnieMode = imageMode === "ernie_image";
-    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useErnieMode ? "Ernie" : "ZImage";
+    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : "ZImage";
     const mode = await chooseBatchModeAction({
       title: "Run Image All?",
       intro: `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
@@ -10746,13 +11572,14 @@ function openBuilder(node) {
     });
     if (!mode) return;
     if (useFluxKleinMode) await fluxKleinAllScenes({ imageRunMode: mode });
+    else if (useNBMode) await nbImageAllScenes({ imageRunMode: mode });
     else if (useErnieMode) await ernieImageAllScenes({ imageRunMode: mode });
     else await zImageAllScenes({ imageRunMode: mode });
   }
 
   async function confirmAndRunGemmaT2IAll() {
     const imageMode = state.imageModelMode || "zimage";
-    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
     const mode = await chooseBatchModeAction({
       title: "Run Gemma T2I All?",
       intro: `This only creates text-to-image prompts for review. It will not create images, videos, or the final stitched video. Current image model: ${modelLabel}.`,
@@ -10917,6 +11744,10 @@ function openBuilder(node) {
   imageTriggerInput.addEventListener("input", saveZImageSettingsFromPanel);
   ernieImageTriggerInput.addEventListener("input", saveErnieImageSettingsFromPanel);
   fluxImageTriggerInput.addEventListener("input", saveFluxKleinSettingsFromPanel);
+  nbApiKey.addEventListener("input", saveNBImageSettingsFromPanel);
+  nbModelSelect.addEventListener("change", saveNBImageSettingsFromPanel);
+  nbNotes.addEventListener("input", saveNBImageSettingsFromPanel);
+  nbPrompt.addEventListener("input", saveNBImageSettingsFromPanel);
   videoTriggerInput.addEventListener("input", saveI2VVideoSettingsFromPanel);
   useVrgdgTextContext.input.addEventListener("change", () => {
     pushHistory();
@@ -11010,6 +11841,18 @@ function openBuilder(node) {
     syncFluxKleinPanel();
     renderList();
     toast(segment.use_scene_flux_klein_settings ? "This scene now has custom Flux/Klein settings." : "This scene is using global Flux/Klein settings again.");
+  });
+  useSceneNBImageSettings.input.addEventListener("change", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.use_scene_nb_image_settings = Boolean(useSceneNBImageSettings.input.checked);
+    if (segment.use_scene_nb_image_settings && !segment.nb_image_settings) {
+      segment.nb_image_settings = cloneNBImageSettings(state.nbImageSettings);
+    }
+    syncNBImagePanel();
+    renderList();
+    toast(segment.use_scene_nb_image_settings ? "This scene now has custom NanoBanana settings." : "This scene is using global NanoBanana settings again.");
   });
   function setSceneI2VVideoSettingsEnabled(enabled) {
     const segment = activeSegment();
@@ -11109,11 +11952,13 @@ function openBuilder(node) {
   sendFluxPromptToEnhanceButton.onclick = () => sendPromptToEnhance("Flux/Klein", fluxPrompt.value);
   zEnhanceGemmaButton.onclick = generateEnhancePromptWithGemma;
   createFluxPromptButton.onclick = createFluxKleinPromptWithGemma;
+  createNBPromptButton.onclick = createNBPromptWithGemma;
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
   for (const button of zCreateButtons) button.onclick = previewZImage;
   for (const button of ernieCreateButtons) button.onclick = previewErnieImage;
   for (const button of fluxCreateButtons) button.onclick = previewFluxKleinImage;
+  for (const button of nbCreateButtons) button.onclick = previewNBImage;
   customImageFileInput.addEventListener("change", () => {
     const file = customImageFileInput.files?.[0];
     if (file) loadCustomImageFile(file);
@@ -11153,6 +11998,13 @@ function openBuilder(node) {
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
   };
+  nbImageCard.onclick = () => {
+    pushHistory();
+    state.imageModelMode = "nano_banana";
+    state.fluxKleinSettings.image_model_mode = "nano_banana";
+    state.fluxKleinSettings.enabled = false;
+    syncFluxKleinPanel();
+  };
   imageToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "i2v";
@@ -11175,6 +12027,7 @@ function openBuilder(node) {
   });
   fluxIngredientButton.onclick = () => fluxIngredientFileInput.click();
   fluxGlobalIngredientButton.onclick = () => fluxGlobalIngredientFileInput.click();
+  nbGlobalIngredientButton.onclick = () => fluxGlobalIngredientFileInput.click();
   fluxGlobalIngredientClearButton.onclick = () => {
     pushHistory();
     state.fluxGlobalImageIngredients = [];
@@ -11182,9 +12035,22 @@ function openBuilder(node) {
     render();
     toast("Global Flux/Klein image ingredients cleared.");
   };
+  nbGlobalIngredientClearButton.onclick = () => {
+    pushHistory();
+    state.fluxGlobalImageIngredients = [];
+    renderFluxGlobalIngredientList();
+    render();
+    toast("Global Nano B reference images cleared.");
+  };
   useFluxGlobalIngredients.input.addEventListener("change", () => {
     pushHistory();
     state.useFluxGlobalImageIngredients = Boolean(useFluxGlobalIngredients.input.checked);
+    syncFluxGlobalIngredientPanel();
+    render();
+  });
+  nbUseGlobalIngredients.input.addEventListener("change", () => {
+    pushHistory();
+    state.useFluxGlobalImageIngredients = Boolean(nbUseGlobalIngredients.input.checked);
     syncFluxGlobalIngredientPanel();
     render();
   });
@@ -11194,11 +12060,25 @@ function openBuilder(node) {
     pushHistory();
     segment.flux_image_ingredients = [];
     renderFluxIngredientList(segment);
+    renderNBIngredientList(segment);
     render();
     toast("Flux/Klein image ingredients cleared for this scene.");
   };
   enableFluxIngredientDrop(fluxGlobalIngredientDrop, { global: true });
+  enableFluxIngredientDrop(nbGlobalIngredientDrop, { global: true });
   enableFluxIngredientDrop(fluxIngredientDrop);
+  nbIngredientButton.onclick = () => fluxIngredientFileInput.click();
+  nbIngredientClearButton.onclick = () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.flux_image_ingredients = [];
+    renderFluxIngredientList(segment);
+    renderNBIngredientList(segment);
+    render();
+    toast("NanoBanana reference images cleared for this scene.");
+  };
+  enableFluxIngredientDrop(nbIngredientDrop);
   zI2IDrop.addEventListener("dragover", (event) => {
     const types = Array.from(event.dataTransfer?.types || []);
     if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
@@ -11440,7 +12320,7 @@ function openBuilder(node) {
   getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
     const models = data.models || [];
     const mmproj = data.mmproj || [];
-    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, zEnhanceGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect]) {
+    for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, zEnhanceGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect, nbGemmaModelSelect]) {
       select.textContent = "";
       for (const model of models) {
         const option = document.createElement("option");
@@ -11458,7 +12338,7 @@ function openBuilder(node) {
         select.value = preferredNonVision;
       }
     }
-    for (const select of [mmprojSelect, ernieMmprojSelect, zEnhanceMmprojSelect, i2vMmprojSelect, fluxMmprojSelect]) {
+    for (const select of [mmprojSelect, ernieMmprojSelect, zEnhanceMmprojSelect, i2vMmprojSelect, fluxMmprojSelect, nbMmprojSelect]) {
       select.textContent = "";
       for (const item of mmproj) {
         const option = document.createElement("option");

@@ -1262,7 +1262,220 @@ def _extract_json_object_from_text(text):
     end = cleaned.rfind("}")
     if start >= 0 and end > start:
         cleaned = cleaned[start:end + 1]
-    return json.loads(cleaned)
+    candidates = [cleaned, _repair_builder_json_like_text(cleaned)]
+    last_error = None
+    for candidate in candidates:
+        if not str(candidate or "").strip():
+            continue
+        try:
+            return json.loads(candidate)
+        except Exception as error:
+            last_error = error
+    if last_error:
+        raise last_error
+    raise ValueError("Gemma did not return a JSON object.")
+
+
+def _repair_builder_json_like_text(text):
+    repaired = str(text or "").strip()
+    repaired = repaired.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    repaired = re.sub(r"//.*?$", "", repaired, flags=re.MULTILINE)
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    repaired = re.sub(
+        r'([{\[,]\s*)(locations|scene_map|name|description|id|label|prompt|runner|used_model)\s*:',
+        r'\1"\2":',
+        repaired,
+        flags=re.IGNORECASE,
+    )
+    repaired = re.sub(
+        r'(^\s*)(locations|scene_map|name|description|id|label|prompt|runner|used_model)\s*:',
+        r'\1"\2":',
+        repaired,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    # Gemma sometimes omits commas between array objects or object properties.
+    repaired = re.sub(r'(["}\]])\s*\n\s*(")', r'\1,\n\2', repaired)
+    repaired = re.sub(r'(})\s*\n\s*({)', r'\1,\n\2', repaired)
+    repaired = re.sub(r'(})\s*({)', r'\1,\2', repaired)
+    repaired = re.sub(r'(\])\s*("scene_map"\s*:)', r'\1,\2', repaired, flags=re.IGNORECASE)
+    return repaired
+
+
+def _parse_flux_location_map_fallback(text, cleaned_scenes, existing_locations=None):
+    cleaned = _clean_visual_gemma_text(text)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start >= 0 and end > start:
+        cleaned = cleaned[start:end + 1]
+
+    locations = []
+    seen_names = set()
+    location_block_match = re.search(
+        r'"?locations"?\s*:\s*\[(.*?)]\s*,?\s*"?scene_map"?\s*:',
+        cleaned,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    location_block = location_block_match.group(1) if location_block_match else ""
+    for object_text in re.findall(r"\{(.*?)\}", location_block, flags=re.DOTALL):
+        name_match = re.search(r'"?name"?\s*:\s*"([^"]+)"', object_text, flags=re.IGNORECASE | re.DOTALL)
+        description_match = re.search(r'"?description"?\s*:\s*"([^"]*)"', object_text, flags=re.IGNORECASE | re.DOTALL)
+        name = re.sub(r"\s+", " ", (name_match.group(1) if name_match else "").strip())
+        description = re.sub(r"\s+", " ", (description_match.group(1) if description_match else "").strip())
+        if not name or name.lower() in seen_names:
+            continue
+        seen_names.add(name.lower())
+        locations.append({"name": name, "description": description})
+
+    if not locations and isinstance(existing_locations, list):
+        for item in existing_locations:
+            if not isinstance(item, dict):
+                continue
+            name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+            description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
+            if not name or name.lower() in seen_names:
+                continue
+            seen_names.add(name.lower())
+            locations.append({"name": name, "description": description})
+
+    scene_lookup = {}
+    for index, scene in enumerate(cleaned_scenes, start=1):
+        scene_lookup[str(scene["id"]).strip().lower()] = scene["id"]
+        scene_lookup[str(scene["label"]).strip().lower()] = scene["id"]
+        scene_lookup[f"scene {index}"] = scene["id"]
+        scene_lookup[f"scene{index}"] = scene["id"]
+        scene_lookup[str(index)] = scene["id"]
+
+    scene_map = {}
+    scene_block_match = re.search(r'"?scene_map"?\s*:\s*\{(.*?)\}\s*$', cleaned, flags=re.IGNORECASE | re.DOTALL)
+    scene_block = scene_block_match.group(1) if scene_block_match else ""
+    for raw_key, raw_location in re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', scene_block, flags=re.DOTALL):
+        lookup_key = re.sub(r"\s+", " ", raw_key.strip().lower())
+        scene_id = scene_lookup.get(lookup_key) or scene_lookup.get(lookup_key.replace(" ", ""))
+        location_name = re.sub(r"\s+", " ", raw_location.strip())
+        if scene_id and location_name:
+            scene_map[scene_id] = location_name
+
+    if locations:
+        if not scene_map:
+            scene_map = _fallback_location_map_by_overlap(cleaned_scenes, locations)
+        else:
+            valid_location_names = {item["name"].lower(): item["name"] for item in locations}
+            for scene in cleaned_scenes:
+                raw_name = re.sub(r"\s+", " ", str(scene_map.get(scene["id"], "") or "").strip())
+                if raw_name.lower() not in valid_location_names:
+                    scene_map[scene["id"]] = _best_location_for_scene(scene, locations)["name"]
+        return {"locations": locations, "scene_map": scene_map}
+
+    raise ValueError("Gemma location map could not be parsed as JSON or recovered from text.")
+
+
+def _fallback_location_map_by_overlap(cleaned_scenes, locations):
+    mapped = {}
+    for scene in cleaned_scenes:
+        mapped[scene["id"]] = _best_location_for_scene(scene, locations)["name"]
+    return mapped
+
+
+def _best_location_for_scene(scene, locations):
+    if not locations:
+        return {"name": "Location 1", "description": ""}
+    scene_text = f"{scene.get('concept', '')} {scene.get('notes', '')}"
+    best_location = locations[0]
+    best_score = -1
+    for location in locations:
+        score = _location_text_overlap_score(
+            scene_text,
+            f"{location.get('name', '')} {location.get('description', '')}",
+        )
+        if score > best_score:
+            best_location = location
+            best_score = score
+    return best_location
+
+
+def _location_text_overlap_score(scene_text, location_text):
+    stop_words = {
+        "a", "an", "and", "are", "as", "at", "by", "for", "from", "in", "into", "is", "it",
+        "of", "on", "or", "the", "to", "with", "scene", "shot", "cinematic", "woman", "man",
+        "girl", "boy", "subject", "character", "wearing", "light", "lighting",
+    }
+    scene_tokens = {
+        token for token in re.findall(r"[a-z0-9]+", str(scene_text or "").lower())
+        if len(token) > 2 and token not in stop_words
+    }
+    location_tokens = [
+        token for token in re.findall(r"[a-z0-9]+", str(location_text or "").lower())
+        if len(token) > 2 and token not in stop_words
+    ]
+    if not scene_tokens or not location_tokens:
+        return 0
+    score = 0
+    for token in location_tokens:
+        if token in scene_tokens:
+            score += 3
+        elif any(scene_token.startswith(token) or token.startswith(scene_token) for scene_token in scene_tokens if len(scene_token) > 4):
+            score += 1
+    return score
+
+
+def _parse_location_lines(text):
+    locations = []
+    seen_names = set()
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip().strip("-").strip()
+        if not line or line in {"{", "}", "[", "]"}:
+            continue
+        match = re.match(r"^\s*(?:Location\s*)?(\d+)\s*(?:[|:=\).-])\s*(.+?)\s*$", line, flags=re.IGNORECASE)
+        if not match:
+            continue
+        rest = match.group(2).strip().strip('"').rstrip(",")
+        parts = [part.strip().strip('"') for part in rest.split("|")]
+        if len(parts) >= 2:
+            name = parts[0]
+            description = " | ".join(parts[1:])
+        else:
+            name = rest
+            description = rest
+        name = re.sub(r"^\s*name\s*[:=]\s*", "", name, flags=re.IGNORECASE)
+        description = re.sub(r"^\s*description\s*[:=]\s*", "", description, flags=re.IGNORECASE)
+        name = re.sub(r"\s+", " ", name).strip(" ,")
+        description = re.sub(r"\s+", " ", description).strip(" ,")
+        if not name or name.lower() in seen_names:
+            continue
+        seen_names.add(name.lower())
+        locations.append({"name": name, "description": description})
+    return locations
+
+
+def _parse_scene_location_number_map(text, cleaned_scenes, locations):
+    scene_map = {}
+    scene_by_number = {str(index): scene["id"] for index, scene in enumerate(cleaned_scenes, start=1)}
+    scene_by_label = {}
+    for index, scene in enumerate(cleaned_scenes, start=1):
+        scene_by_label[scene["id"].lower()] = scene["id"]
+        scene_by_label[scene["label"].lower()] = scene["id"]
+        scene_by_label[f"scene {index}"] = scene["id"]
+        scene_by_label[f"scene{index}"] = scene["id"]
+    location_by_number = {str(index): item["name"] for index, item in enumerate(locations, start=1)}
+    location_by_name = {item["name"].lower(): item["name"] for item in locations}
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip().strip(",")
+        if not line:
+            continue
+        match = re.match(
+            r'^\s*(?:Scene\s*)?("?[^"=:\|]+"?)\s*(?:=|:|\|)\s*(?:Location\s*)?("?[^",\s]+"?)',
+            line,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            continue
+        raw_scene = match.group(1).strip().strip('"').lower()
+        raw_location = match.group(2).strip().strip('"').lower()
+        scene_id = scene_by_number.get(raw_scene) or scene_by_label.get(raw_scene) or scene_by_label.get(raw_scene.replace(" ", ""))
+        location_name = location_by_number.get(raw_location) or location_by_name.get(raw_location)
+        if scene_id and location_name:
+            scene_map[scene_id] = location_name
+    return scene_map
 
 
 def _read_text_file(path, label):
@@ -2348,6 +2561,179 @@ def _generate_flux_klein_prompt(payload):
             _clear_comfy_model_memory()
 
 
+def _generate_nb_image_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
+    user_notes = str(payload.get("user_notes", "") or "").strip()
+    text_runner = _llm_runner_from_payload(payload)
+    if text_runner != "lm_studio" and not model_file:
+        raise ValueError("Choose a NanoBanana Gemma vision model first.")
+    if text_runner != "lm_studio" and not mmproj_file:
+        raise ValueError("Choose an mmproj file for the NanoBanana vision model.")
+
+    ingredients = payload.get("image_ingredients") or []
+    if isinstance(ingredients, str):
+        try:
+            ingredients = json.loads(ingredients)
+        except Exception:
+            ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
+    if not isinstance(ingredients, list):
+        raise ValueError("NanoBanana reference images must be a list.")
+    images = []
+    for index, item in enumerate(ingredients, start=1):
+        if isinstance(item, str):
+            item = {"path": item}
+        if not isinstance(item, dict):
+            continue
+        images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"NanoBanana reference image {index}"))
+    if not images:
+        raise ValueError("NanoBanana Gemma prompting needs at least one reference image.")
+    combined_image = _combine_flux_ingredient_images(images)
+
+    reference_context = payload.get("reference_context") or {}
+    if not isinstance(reference_context, dict):
+        reference_context = {}
+
+    context_parts = []
+    subject_description = str(reference_context.get("subject_description", "") or "").strip()
+    location_name = str(reference_context.get("location_name", "") or "").strip()
+    location_description = str(reference_context.get("location_description", "") or "").strip()
+    has_subject_reference = bool(reference_context.get("has_subject_reference"))
+    has_location_reference = bool(reference_context.get("has_location_reference"))
+
+    if subject_description:
+        context_parts.append(f"Subject description:\n{subject_description}")
+    if location_name or location_description:
+        context_parts.append(f"Location reference:\n{location_name}\n{location_description}".strip())
+    if user_notes:
+        context_parts.append(f"User input:\n{user_notes}")
+
+    reference_flags = []
+    if has_subject_reference:
+        reference_flags.append("A character reference image is available.")
+    if has_location_reference:
+        reference_flags.append("A scene/location reference image is available.")
+    if reference_flags:
+        context_parts.append("\n".join(reference_flags))
+
+    instruction = (
+        "Create one NanoBanana image-edit prompt from the user input and available reference context.\n\n"
+        "Prompt Structure (MANDATORY)\n\n"
+        "Every generated prompt must follow this exact section structure:\n\n"
+        "CAMERA COMPOSITION (PRIORITY)\n\n"
+        "CHARACTER REFERENCE\n\n"
+        "SCENE REFERENCE\n\n"
+        "FINAL IMAGE\n\n"
+        "The camera section must always appear first so the model determines the shot from the story description instead of copying the scene reference angle.\n\n"
+        "CAMERA COMPOSITION (PRIORITY)\n\n"
+        "This section defines the camera shot and physical viewpoint.\n\n"
+        "Rules:\n"
+        "- Always begin with: Create a completely new camera position and shot composition.\n"
+        "- Define the shot size from the Story Group camera field if present, otherwise infer a clear shot size from user input.\n"
+        "- Describe the framing using the Story Group frame field if present, otherwise infer simple physical framing.\n"
+        "- Explicitly state that the camera position is different from the reference image.\n"
+        "- Keep the instructions simple and spatial.\n"
+        "- Do not add storytelling or emotional interpretation.\n\n"
+        "CHARACTER REFERENCE\n\n"
+        "Character references define identity only.\n"
+        "They should influence only face, hair, hairstyle, and clothing.\n"
+        "They must NOT influence pose, camera angle, framing, or environment.\n"
+        "Keep this section short and direct.\n\n"
+        "SCENE REFERENCE\n\n"
+        "Scene references define location identity only.\n"
+        "They should influence only environment, architecture, layout, skyline, or landmarks.\n"
+        "They must NOT influence camera angle, shot size, framing, perspective, or composition.\n\n"
+        "FINAL IMAGE\n\n"
+        "This section describes the finished image.\n"
+        "Rules:\n"
+        "- Keep this section short and literal.\n"
+        "- Focus on visible environment and lighting.\n"
+        "- Avoid symbolism, metaphors, or story interpretation.\n"
+        "- Do not introduce new scene elements not defined in the Story Group.\n\n"
+        "Important Constraints:\n"
+        "- Do not introduce extra scene elements that are not part of the Story Group.\n"
+        "- Do not describe emotional symbolism.\n"
+        "- Do not add crowds or background characters unless explicitly defined.\n"
+        "- Do not create long cinematic paragraphs.\n"
+        "- Prompts must remain clear, spatial, and camera-focused.\n"
+        "- Output only the final prompt with the four section headers. Do not include markdown fences, notes, or explanations.\n\n"
+        f"{chr(10).join(context_parts) if context_parts else 'User input: Create a new image using the available reference images.'}"
+    )
+
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.95)
+    max_new_tokens = int(payload.get("max_new_tokens") or 900)
+    clear_before_load = bool(payload.get("clear_before_load", True))
+    unload_after = bool(payload.get("unload_after", True))
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
+    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if llm else ""
+    try:
+        if text_runner == "lm_studio":
+            text = _run_lm_studio_vision(
+                payload,
+                instruction,
+                [combined_image],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            info = {
+                "runner": "lm_studio_vision",
+                "used_model": model_path,
+                "used_mmproj": "",
+                "unloaded": False,
+            }
+        else:
+            if clear_before_load:
+                _clear_comfy_model_memory()
+                _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[combined_image],
+                instruction_text=instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            info = {
+                "runner": "builtin",
+                "used_model": model_path,
+                "used_mmproj": mmproj_path,
+                "unloaded": unload_after,
+            }
+    finally:
+        if llm and unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            _clear_comfy_model_memory()
+    text = _clean_lm_studio_plain_text(text)
+    if not text:
+        raise ValueError("NanoBanana Gemma returned an empty prompt.")
+    return {"prompt": text, **info}
+
+
 def _generate_flux_reference_location_map(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
@@ -2379,6 +2765,8 @@ def _generate_flux_reference_location_map(payload):
     existing_locations = payload.get("existing_locations") or []
     if not isinstance(existing_locations, list):
         existing_locations = []
+    normalized_existing_locations = []
+    seen_existing = set()
     existing_location_lines = []
     for item in existing_locations:
         if not isinstance(item, dict):
@@ -2386,7 +2774,13 @@ def _generate_flux_reference_location_map(payload):
         name = str(item.get("name", "") or "").strip()
         description = str(item.get("description", "") or "").strip()
         if name:
+            key = name.lower()
+            if key not in seen_existing:
+                seen_existing.add(key)
+                normalized_existing_locations.append({"name": re.sub(r"\s+", " ", name), "description": re.sub(r"\s+", " ", description)})
             existing_location_lines.append(f"- {name}" + (f": {description}" if description else ""))
+    if not normalized_existing_locations:
+        raise ValueError("Auto Map needs locations first. Click Extract Locations or add locations manually, then run Auto Map.")
 
     scene_lines = []
     for index, scene in enumerate(cleaned_scenes, start=1):
@@ -2398,30 +2792,25 @@ def _generate_flux_reference_location_map(payload):
             f"notes: {scene['notes']}"
         )
 
+    numbered_locations = "\n".join(
+        f"{index}={item['name']}" + (f" | {item['description']}" if item.get("description") else "")
+        for index, item in enumerate(normalized_existing_locations, start=1)
+    )
     instruction = (
-        "You map music-video scenes to reusable physical locations for Flux/Klein reference images.\n\n"
-        "Read each scene concept and choose the best actual location/background for that scene.\n"
-        "Use the location clearly stated in the scene concept when it exists. Do not replace a clear location with a different one.\n"
-        "Reuse locations when scenes can plausibly happen in the same place. Most projects should use a small reusable location list.\n"
-        "If a scene is symbolic or abstract, choose a concrete physical location that best fits the concept and subject/location context.\n"
-        "Existing locations may be reused when they fit, but do not force them if the concept clearly needs a new place.\n\n"
-        "Output strict JSON only using this schema:\n"
-        "{\n"
-        "  \"locations\": [\n"
-        "    {\"name\": \"short location name\", \"description\": \"visual description for a reference image\"}\n"
-        "  ],\n"
-        "  \"scene_map\": {\n"
-        "    \"scene id from input\": \"location name\"\n"
-        "  }\n"
-        "}\n\n"
+        "Choose the best existing location number for each music-video scene.\n\n"
+        "First use a location clearly named or implied by the scene concept. "
+        "If the scene has no clear location, choose the closest fit from the location list based on visual mood, objects, and environment.\n\n"
+        "Output only simple lines in this exact format:\n"
+        "Scene1=1\n"
+        "Scene2=3\n"
+        "Scene3=3\n\n"
         "Rules:\n"
-        "- Every input scene id must appear in scene_map.\n"
-        "- scene_map values must exactly match one location name in locations.\n"
-        "- Keep location names short and readable, like bedroom, empty street at night, flower garden, bathroom, rooftop, stairs.\n"
-        "- Location descriptions should describe only the place/background, not the main character.\n"
-        "- Do not include markdown, comments, labels, or explanations.\n\n"
+        "- Every scene must get one line.\n"
+        "- Use only location numbers from the list.\n"
+        "- Do not output JSON, markdown, bullets, explanations, names, or descriptions.\n"
+        "- Do not invent new locations.\n\n"
         f"Subject/location context:\n{subject_scene or '(none)'}\n\n"
-        f"Existing editable locations:\n{chr(10).join(existing_location_lines) if existing_location_lines else '(none)'}\n\n"
+        f"Locations:\n{numbered_locations}\n\n"
         f"Scenes:\n\n{chr(10).join(scene_lines)}"
     )
 
@@ -2436,39 +2825,119 @@ def _generate_flux_reference_location_map(payload):
         max_new_tokens=max_new_tokens,
         label="Gemma",
     )
-    data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
-    if not isinstance(data, dict):
-        raise ValueError("Gemma did not return a JSON object.")
-    locations = data.get("locations") or []
-    scene_map = data.get("scene_map") or {}
-    if not isinstance(locations, list) or not locations:
-        raise ValueError("Gemma location map is missing locations.")
-    if not isinstance(scene_map, dict):
-        raise ValueError("Gemma location map is missing scene_map.")
-    normalized_locations = []
-    seen_names = set()
-    for item in locations:
-        if not isinstance(item, dict):
-            continue
-        name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
-        description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
-        if not name:
-            continue
-        key = name.lower()
-        if key in seen_names:
-            continue
-        seen_names.add(key)
-        normalized_locations.append({"name": name, "description": description})
-    if not normalized_locations:
-        raise ValueError("Gemma returned only empty location names.")
-    valid_names = {item["name"].lower(): item["name"] for item in normalized_locations}
-    normalized_map = {}
-    for scene in cleaned_scenes:
-        raw_name = re.sub(r"\s+", " ", str(scene_map.get(scene["id"], "") or "").strip())
-        normalized_map[scene["id"]] = valid_names.get(raw_name.lower(), normalized_locations[0]["name"])
+    normalized_locations = normalized_existing_locations
+    normalized_map = _parse_scene_location_number_map(text, cleaned_scenes, normalized_locations)
+    if not normalized_map:
+        normalized_map = _fallback_location_map_by_overlap(cleaned_scenes, normalized_locations)
+    else:
+        fallback_map = _fallback_location_map_by_overlap(cleaned_scenes, normalized_locations)
+        for scene in cleaned_scenes:
+            normalized_map.setdefault(scene["id"], fallback_map[scene["id"]])
     return {
         "locations": normalized_locations,
         "scene_map": normalized_map,
+        "raw_text": text,
+        "used_model": run_info.get("used_model", ""),
+        "runner": run_info.get("runner", "builtin"),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
+def _generate_flux_reference_locations(payload):
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+        raise ValueError("Choose a non-vision Gemma model first.")
+    scenes = payload.get("scenes") or []
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("No scenes were provided for location extraction.")
+    cleaned_scenes = []
+    for index, scene in enumerate(scenes, start=1):
+        if not isinstance(scene, dict):
+            continue
+        concept = str(scene.get("concept", "") or "").strip()
+        notes = str(scene.get("notes", "") or "").strip()
+        if concept or notes:
+            cleaned_scenes.append({
+                "id": str(scene.get("id", "") or f"scene_{index}").strip(),
+                "label": str(scene.get("label", "") or f"Scene {index}").strip(),
+                "concept": concept,
+                "notes": notes,
+            })
+    if not cleaned_scenes:
+        raise ValueError("Scenes need concept prompt text before Gemma can extract locations.")
+
+    subject_scene = str(payload.get("subject_scene_text", "") or "").strip()
+    existing_locations = payload.get("existing_locations") or []
+    existing_lines = []
+    if isinstance(existing_locations, list):
+        for item in existing_locations:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "") or "").strip()
+            description = str(item.get("description", "") or "").strip()
+            if name:
+                existing_lines.append(f"- {name}" + (f": {description}" if description else ""))
+
+    scene_lines = []
+    for index, scene in enumerate(cleaned_scenes, start=1):
+        scene_lines.append(
+            f"Scene {index}: {scene['label']}\n"
+            f"concept: {scene['concept']}\n"
+            f"notes: {scene['notes']}"
+        )
+
+    instruction = (
+        "Extract a short reusable location list for Flux/Klein or Nano B reference images.\n\n"
+        "Look at the scene concept prompts, scene notes, and subject/location context. "
+        "Find concrete physical places/backgrounds that repeat or are useful as references. "
+        "If the context includes locations not directly named in a concept prompt, include them when they fit the project.\n\n"
+        "Output only simple lines in this exact format:\n"
+        "1|location name|short visual description for a reference image\n"
+        "2|location name|short visual description for a reference image\n\n"
+        "Rules:\n"
+        "- Do not output JSON, markdown, bullets, headings, or explanations.\n"
+        "- Keep names short, like bedroom, foggy white forest, salt-flat desert, ruined opera house.\n"
+        "- Descriptions must describe only the place/background, not the main character.\n"
+        "- Reuse broad locations instead of creating one unique location for every scene.\n"
+        "- 3 to 8 locations is usually enough unless the project clearly needs more.\n\n"
+        f"Subject/location context:\n{subject_scene or '(none)'}\n\n"
+        f"Existing user locations:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+        f"Scenes:\n\n{chr(10).join(scene_lines)}"
+    )
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.2),
+        top_p=float(payload.get("top_p") or 0.8),
+        max_new_tokens=int(payload.get("max_new_tokens") or 2200),
+        label="Gemma",
+    )
+    locations = _parse_location_lines(text)
+    if not locations:
+        try:
+            data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
+            raw_locations = data.get("locations") if isinstance(data, dict) else data
+            if isinstance(raw_locations, list):
+                for item in raw_locations:
+                    if isinstance(item, dict):
+                        name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+                        description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
+                        if name:
+                            locations.append({"name": name, "description": description})
+        except Exception:
+            pass
+    if not locations:
+        raise ValueError("Gemma did not return any usable locations.")
+    deduped = []
+    seen = set()
+    for item in locations:
+        key = item["name"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return {
+        "locations": deduped,
         "raw_text": text,
         "used_model": run_info.get("used_model", ""),
         "runner": run_info.get("runner", "builtin"),
@@ -3580,11 +4049,29 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/generate_nb_image_prompt")
+    async def vrgdg_music_builder_generate_nb_image_prompt(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_nb_image_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/music_builder/flux_reference_location_map")
     async def vrgdg_music_builder_flux_reference_location_map(request):
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_reference_location_map, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/flux_reference_extract_locations")
+    async def vrgdg_music_builder_flux_reference_extract_locations(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_flux_reference_locations, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

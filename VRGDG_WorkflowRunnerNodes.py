@@ -62,6 +62,15 @@ def _ernie_image_api_template_path():
     )
 
 
+def _nb_image_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "NB_API.json",
+    )
+
+
 def _z_upscale_enhance_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -574,6 +583,54 @@ def _patch_flux_klein_api_prompt(prompt, payload):
         _set_api_input(prompt, lora_node_id, f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
         _set_api_input(prompt, lora_node_id, f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
     _set_api_input(prompt, "1072", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    return prompt
+
+
+def _image_paths_from_payload_ingredients(payload, label="image ingredient"):
+    ingredients = payload.get("image_ingredients") or payload.get("images") or []
+    if isinstance(ingredients, str):
+        try:
+            ingredients = json.loads(ingredients)
+        except Exception:
+            ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
+    if not isinstance(ingredients, list):
+        raise ValueError(f"{label.title()}s must be a list.")
+
+    image_paths = []
+    input_dir = folder_paths.get_input_directory()
+    for index, item in enumerate(ingredients, start=1):
+        if isinstance(item, str):
+            item = {"path": item}
+        if not isinstance(item, dict):
+            continue
+        raw_path = str(item.get("path", "") or "").strip()
+        raw_data = str(item.get("data", "") or "").strip()
+        raw_name = str(item.get("name", "") or f"{label}_{index}.png").strip() or f"{label}_{index}.png"
+        if raw_data:
+            load_image_name = _prepare_load_image_name("", raw_data, raw_name)
+            image_paths.append(os.path.abspath(os.path.join(input_dir, load_image_name)))
+        elif raw_path:
+            image_paths.append(os.path.abspath(_resolve_existing_file(raw_path, f"{label.title()} {index}")))
+    return image_paths
+
+
+def _patch_nb_image_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    api_key = str(payload.get("api_key", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("NanoBanana prompt text is empty.")
+    if not api_key:
+        raise ValueError("NanoBanana needs an API key.")
+
+    image_paths = _image_paths_from_payload_ingredients(payload, "NanoBanana reference image")
+    if not image_paths:
+        raise ValueError("NanoBanana needs at least one reference image.")
+
+    _set_api_input(prompt, "1", "api_key", api_key)
+    _set_api_input(prompt, "1", "prompt", prompt_text)
+    _set_api_input(prompt, "1", "model", str(payload.get("model", "") or "gemini-3-pro-image-preview"))
+    _set_api_input(prompt, "3", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     return prompt
 
 
@@ -1178,6 +1235,15 @@ def _build_t2v_api_prompt(payload):
 def _build_flux_klein_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_flux_klein_api_template_path())
     patched_prompt = _patch_flux_klein_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "prompt": patched_prompt,
+    }
+
+
+def _build_nb_image_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_nb_image_api_template_path())
+    patched_prompt = _patch_nb_image_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "prompt": patched_prompt,
@@ -1840,6 +1906,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_flux_klein_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_nb_image_prompt")
+    async def vrgdg_workflow_runner_build_nb_image_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_nb_image_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
