@@ -146,10 +146,57 @@ def _folder_choices(category):
             seen.add(value)
             unique.append(value)
         return unique
+    values = []
     try:
-        return folder_paths.get_filename_list(category)
+        values = list(folder_paths.get_filename_list(category) or [])
     except Exception:
+        values = []
+    values.extend(_manual_model_folder_choices(category))
+    seen = set()
+    unique = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        unique.append(text)
+    return unique
+
+
+def _manual_model_folder_choices(category):
+    category = str(category or "").strip()
+    if not category:
         return []
+    extensions = {
+        "unet": {".safetensors", ".ckpt", ".pt", ".bin", ".gguf"},
+        "diffusion_models": {".safetensors", ".ckpt", ".pt", ".bin", ".gguf"},
+        "clip": {".safetensors", ".ckpt", ".pt", ".bin"},
+        "text_encoders": {".safetensors", ".ckpt", ".pt", ".bin"},
+        "vae": {".safetensors", ".ckpt", ".pt", ".bin"},
+        "upscale_models": {".safetensors", ".ckpt", ".pt", ".bin"},
+    }.get(category, {".safetensors", ".ckpt", ".pt", ".bin", ".gguf"})
+    roots = []
+    try:
+        roots.extend(folder_paths.get_folder_paths(category) or [])
+    except Exception:
+        pass
+    base = getattr(folder_paths, "models_dir", None)
+    if base:
+        roots.append(os.path.join(base, category))
+    choices = []
+    seen_roots = set()
+    for root in roots:
+        root = os.path.abspath(str(root or ""))
+        if not root or root in seen_roots or not os.path.isdir(root):
+            continue
+        seen_roots.add(root)
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for filename in filenames:
+                if os.path.splitext(filename)[1].lower() not in extensions:
+                    continue
+                rel = os.path.relpath(os.path.join(dirpath, filename), root)
+                choices.append(rel.replace("/", os.sep).replace("\\", os.sep))
+    return choices
 
 
 def _clean_i2v_unet_name(value):
