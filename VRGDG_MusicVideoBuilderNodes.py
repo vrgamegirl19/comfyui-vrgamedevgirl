@@ -2652,9 +2652,20 @@ def _generate_flux_klein_prompt(payload):
         )
     instruction = (
         "Create one polished text-to-image prompt for an image generation model.\n\n"
-        "The provided reference image is a composite of image ingredients. These may include a character, background, props, style references, or other visual ingredients.\n\n"
-        "Use the visible ingredients to create one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n"
+        "The image input is a composite of visual ingredients. These may include a character, background, props, style references, or other visual ingredients.\n\n"
+        "Use the visible ingredients to create one coherent new scene. Use the user's notes for the main creative direction, pose, camera framing, mood, lighting, story beat, and details.\n"
         f"{reference_text}\n"
+        "Prompt style:\n"
+        "- Start directly with the scene description, shot type, subject, and action. Do not start with phrases like using the provided reference image, using the provided character reference, or using the provided location reference.\n"
+        "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
+        "- Preserve the character identity when a character is visible: face, hair, outfit, makeup, body details, and overall identity.\n"
+        "- Preserve the setting identity when a location is visible: environment, architecture, layout, atmosphere, and major visible setting details.\n"
+        "- Create a new camera angle, new pose, and new composition.\n"
+        "- Do not paste the character into the location image.\n"
+        "- Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.\n"
+        "- Do not copy the exact location reference camera angle, framing, perspective, or composition.\n"
+        "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
+        "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n\n"
         "Rules:\n"
         "- Output one normal text-to-image prompt, not an edit prompt.\n"
         "- Describe only visible concrete details.\n"
@@ -2662,7 +2673,10 @@ def _generate_flux_klein_prompt(payload):
         "- Do not include labels, notes, quotes, markdown, or explanations.\n"
         "- Keep it cinematic, detailed, and visually specific.\n"
         "- Keep the prompt under 120 words.\n\n"
-        f"User notes:\n{user_notes or 'Create a cinematic image using the provided image ingredients.'}"
+        "Good output examples:\n"
+        "A close-up profile shot of the woman in a misty white forest, her expression calm and haunted, blonde hair catching pale rim light while gnarled trees and fog blur softly behind her. Preserve her delicate facial features, white lace corset dress, sheer puff sleeves, and ethereal styling, with shallow depth of field, atmospheric haze, soft bokeh, and high cinematic detail.\n"
+        "An intimate medium close-up of the woman leaning against a gnarled pale tree trunk in a foggy white forest. Preserve her blonde hair, intricate white lace corset dress, and sheer puff sleeves while incorporating shredded white branches, a narrow mist-covered path, a new pose, a slightly low-angle composition, soft bokeh, atmospheric haze, and dramatic rim lighting.\n\n"
+        f"User notes:\n{user_notes or 'Create a cinematic image using the visible image ingredients.'}"
     )
 
     llm = VRGDG_SuperGemmaGGUFChat()
