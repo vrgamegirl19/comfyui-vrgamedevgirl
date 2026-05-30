@@ -1984,7 +1984,8 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
             max_new_tokens=int(max_new_tokens),
             seed=int(seed) if seed is not None else None,
         )
-        return _clean_visual_gemma_text(text), {
+        cleaned = _clean_lm_studio_plain_text(text) if preserve_paragraphs else _clean_visual_gemma_text(text)
+        return cleaned, {
             "runner": "builtin",
             "used_model": model_path,
             "unloaded": unload_after,
@@ -2050,6 +2051,163 @@ def _repair_and_validate_builder_gemma_prompt(payload, text, label):
     repaired = _repair_builder_gemma_prompt(payload, text, label)
     _validate_builder_gemma_prompt(repaired, label)
     return repaired
+
+
+def _generate_builder_agent_reply(payload):
+    context = payload.get("context") or {}
+    if not isinstance(context, dict):
+        context = {}
+    auto_apply = bool(payload.get("auto_apply"))
+    agent_purpose = str(payload.get("agent_purpose") or "scene_work").strip().lower()
+    if agent_purpose not in {"walkthrough", "scene_work", "troubleshoot"}:
+        agent_purpose = "scene_work"
+    messages = payload.get("messages") or []
+    if not isinstance(messages, list):
+        messages = []
+    cleaned_messages = []
+    for item in messages[-10:]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(item.get("content") or "").strip()
+        if content:
+            cleaned_messages.append({"role": role, "content": content[:3000]})
+    latest_user = str(payload.get("message") or "").strip()
+    if latest_user:
+        cleaned_messages.append({"role": "user", "content": latest_user[:3000]})
+    if not cleaned_messages:
+        raise ValueError("Type a message for the Builder Agent first.")
+
+    context_text = json.dumps(context, ensure_ascii=False, indent=2)[:9000]
+    conversation_text = "\n\n".join(
+        f"{item['role'].title()}:\n{item['content']}"
+        for item in cleaned_messages
+    )
+    instruction = (
+        "You are the VRGDG Music Video Builder Agent, a local assistant inside a scene-by-scene music video workflow.\n"
+        "Help the user think through lyrics, scene concepts, image prompts, video prompts, shot choices, continuity, and troubleshooting.\n"
+        "Be practical, concise, and specific to the provided active scene context.\n"
+        "Keep the user-facing reply short: usually 1-5 sentences. Do not write strategy essays, option menus, or long explanations unless the user asks.\n"
+        "When suggesting prompt text, provide copy-ready text clearly, but keep normal chat friendly.\n"
+        "If the context is missing something, say what is missing and make a reasonable suggestion from what is available.\n\n"
+        f"Agent purpose: {agent_purpose}.\n"
+        "If purpose is walkthrough, act like intake plus step-by-step onboarding. First identify what the user is making: music video, short film, ad/social clip, visualizer, or something else. Use project_status before choosing the next step. If project_status.has_audio is false, ask whether they plan to use custom audio and point them to Choose Audio if yes; do not ask for lyrics/SRT before resolving the audio plan. If audio exists, ask how they want scenes created: import Prompt Creator outputs, load SRT/lyrics, manually create scenes, or plan scenes with the agent. Only ask about lyrics when the user is making a music video or lyric-driven project. For short films/ads, ask for script, scene beats, product/message, or visual outline instead. Tell them one small UI step at a time and why. Do not generate prompts or run models unless the user explicitly asks. Prefer one next step over a full tutorial.\n"
+        "If purpose is troubleshoot, focus on diagnosing the user's stated problem from project_status, active scene context, and available get actions.\n"
+        "If purpose is scene_work, help create/update scene notes, prompts, images, and videos using the supported actions.\n\n"
+        "Return only valid JSON with this shape:\n"
+        "{\n"
+        "  \"reply\": \"short message to show the user\",\n"
+        "  \"actions\": []\n"
+        "}\n\n"
+        "Supported actions are:\n"
+        "- {\"type\":\"select_scene\",\"scene_id\":\"...\"} or {\"type\":\"select_scene\",\"scene_number\":2}\n"
+        "- {\"type\":\"get_scene_lyrics\",\"scene_id\":\"...\"} or {\"type\":\"get_scene_lyrics\",\"scene_number\":2}\n"
+        "- {\"type\":\"get_scene_context\",\"scene_id\":\"...\"} or {\"type\":\"get_scene_context\",\"scene_number\":2}\n"
+        "- {\"type\":\"set_scene_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
+        "- {\"type\":\"set_flux_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
+        "- {\"type\":\"set_nb_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
+        "- {\"type\":\"set_video_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
+        "- {\"type\":\"set_image_model_mode\",\"image_mode\":\"zimage|flux_klein|nano_banana|ernie_image\"}\n"
+        "- {\"type\":\"set_video_model_mode\",\"video_mode\":\"i2v|t2v\"}\n"
+        "- {\"type\":\"request_reference_images\",\"scene_id\":\"...\",\"image_mode\":\"nano_banana|flux_klein\"}\n"
+        "- {\"type\":\"generate_image_prompt_for_current_mode\",\"scene_id\":\"...\",\"image_mode\":\"optional zimage|flux_klein|nano_banana|ernie_image\"}\n"
+        "- {\"type\":\"run_image_for_current_mode\",\"scene_id\":\"...\",\"image_mode\":\"optional zimage|flux_klein|nano_banana|ernie_image\"}\n"
+        "- {\"type\":\"generate_video_prompt_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|t2v\"}\n\n"
+        "- {\"type\":\"run_video_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|t2v\"}\n\n"
+        "Use note actions to capture the creative direction you discuss with the user. Use generate actions when the user asks you to make/create/update the actual image or video prompt. Use run_image_for_current_mode only when the user asks to run/create/generate the actual image, not just the text prompt.\n"
+        "If the user asks for multiple steps, include all requested actions in order. Example: prompt, then image, then video means generate_image_prompt_for_current_mode, run_image_for_current_mode, generate_video_prompt_for_current_mode, run_video_for_current_mode.\n"
+        "If the user wants Nano B or Flux/Klein but the target scene has has_reference_images=false or reference_image_count=0, ask the user to add/drop reference images first and include request_reference_images instead of generate_image_prompt_for_current_mode.\n"
+        "Do not write final image/video prompts yourself as actions. Do not use unsupported set_image_prompt, set_flux_prompt, set_nb_prompt, or set_video_prompt actions.\n"
+        "Do not claim which image/video generator ran. The app will report the actual mode after it runs the action.\n"
+        f"Agent mode: {'AUTO APPLY. If the user asks you to do/apply/update/fill/write prompts or notes, include supported note/generate actions for the requested scene fields.' if auto_apply else 'MANUAL. Never include actions. Do not say you applied or updated the project; only suggest copy-ready text.'}\n"
+        "Only target scene IDs that appear in the active context JSON. If the target scene is unclear, ask one short clarifying question and return no actions.\n"
+        "In Auto Apply mode, the application will apply actions after your response. In Manual mode, actions must always be an empty list.\n\n"
+        "Active context JSON:\n"
+        f"{context_text}\n\n"
+        "Conversation:\n"
+        f"{conversation_text}\n\n"
+        "Return the JSON now."
+    )
+    text, info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.55),
+        top_p=float(payload.get("top_p") or 0.95),
+        max_new_tokens=int(payload.get("max_new_tokens") or 500),
+        label="Builder Agent",
+        preserve_paragraphs=True,
+    )
+    raw = _clean_lm_studio_plain_text(text)
+    try:
+        parsed = _extract_json_object_from_text(raw)
+    except Exception:
+        parsed = {"reply": raw, "actions": []}
+    reply = _clean_lm_studio_plain_text(str(parsed.get("reply") or "")).strip()
+    actions = parsed.get("actions") if isinstance(parsed, dict) else []
+    if not isinstance(actions, list) or not auto_apply:
+        actions = []
+    cleaned_actions = []
+    allowed_types = {
+        "set_scene_notes",
+        "select_scene",
+        "get_scene_lyrics",
+        "get_scene_context",
+        "set_flux_notes",
+        "set_nb_notes",
+        "set_video_notes",
+        "set_image_model_mode",
+        "set_video_model_mode",
+        "request_reference_images",
+        "generate_image_prompt_for_current_mode",
+        "run_image_for_current_mode",
+        "generate_video_prompt_for_current_mode",
+        "run_video_for_current_mode",
+    }
+    allowed_image_modes = {"zimage", "flux_klein", "nano_banana", "ernie_image"}
+    allowed_video_modes = {"i2v", "t2v"}
+    for action in actions[:12]:
+        if not isinstance(action, dict):
+            continue
+        action_type = str(action.get("type") or "").strip()
+        scene_id = str(action.get("scene_id") or "").strip()
+        action_text = str(action.get("text") or "").strip()
+        image_mode = str(action.get("image_mode") or "").strip()
+        video_mode = str(action.get("video_mode") or "").strip()
+        scene_number = action.get("scene_number")
+        try:
+            scene_number = int(scene_number) if scene_number is not None else None
+        except Exception:
+            scene_number = None
+        if action_type in allowed_types and (scene_id or scene_number is not None or action_type in {"set_image_model_mode", "set_video_model_mode"}):
+            if action_type == "request_reference_images" and not scene_id:
+                continue
+            cleaned_action = {
+                "type": action_type,
+            }
+            if scene_id:
+                cleaned_action["scene_id"] = scene_id[:160]
+            if scene_number is not None:
+                cleaned_action["scene_number"] = scene_number
+            if action_text:
+                cleaned_action["text"] = action_text[:5000]
+            if image_mode in allowed_image_modes:
+                cleaned_action["image_mode"] = image_mode
+            if video_mode in allowed_video_modes:
+                cleaned_action["video_mode"] = video_mode
+            if action_type.startswith("set_") and not action_text:
+                if action_type == "set_image_model_mode" and cleaned_action.get("image_mode"):
+                    cleaned_actions.append(cleaned_action)
+                    continue
+                if action_type == "set_video_model_mode" and cleaned_action.get("video_mode"):
+                    cleaned_actions.append(cleaned_action)
+                    continue
+                continue
+            cleaned_actions.append(cleaned_action)
+    if not reply:
+        reply = "Done." if cleaned_actions else "I can help with that."
+    return {"reply": reply, "actions": cleaned_actions, **info}
 
 
 def _generate_builder_t2i_prompt(payload):
@@ -2651,32 +2809,32 @@ def _generate_flux_klein_prompt(payload):
             + "\n- Use the user's notes/concept for action, pose, mood, lighting, story beat, and details after respecting the reference priorities.\n"
         )
     instruction = (
-        "Create one polished text-to-image prompt for an image generation model.\n\n"
-        "The image input is a composite of visual ingredients. These may include a character, background, props, style references, or other visual ingredients.\n\n"
-        "Use the visible ingredients to create one coherent new scene. Use the user's notes for the main creative direction, pose, camera framing, mood, lighting, story beat, and details.\n"
-        f"{reference_text}\n"
+        "Create one concise Flux/Klein image prompt from the user input and available reference context.\n"
+        "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
+        "The image input contains the available reference images/visual ingredients. These may include a character, background, props, style references, or other visual ingredients.\n"
+        f"{reference_text}"
         "Prompt style:\n"
-        "- Start directly with the scene description, shot type, subject, and action. Do not start with phrases like using the provided reference image, using the provided character reference, or using the provided location reference.\n"
+        "- Start with: Using the provided character reference and location reference, create...\n"
+        "- If only a character reference is available, start with: Using the provided character reference, create...\n"
+        "- If only a location reference is available, start with: Using the provided location reference, create...\n"
         "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
-        "- Preserve the character identity when a character is visible: face, hair, outfit, makeup, body details, and overall identity.\n"
-        "- Preserve the setting identity when a location is visible: environment, architecture, layout, atmosphere, and major visible setting details.\n"
+        "- Use the user's scene/concept notes as the main creative direction.\n"
+        "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
+        "- Preserve the location identity from the location reference: environment, architecture, layout, atmosphere, and major visible setting details.\n"
         "- Create a new camera angle, new pose, and new composition.\n"
         "- Do not paste the character into the location image.\n"
         "- Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.\n"
         "- Do not copy the exact location reference camera angle, framing, perspective, or composition.\n"
         "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
-        "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n\n"
-        "Rules:\n"
-        "- Output one normal text-to-image prompt, not an edit prompt.\n"
-        "- Describe only visible concrete details.\n"
-        "- Do not mention reference image, composite, source images, ingredient images, or image grid.\n"
-        "- Do not include labels, notes, quotes, markdown, or explanations.\n"
+        "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
         "- Keep it cinematic, detailed, and visually specific.\n"
+        "- Keep the prompt visually specific and practical for image generation.\n"
+        "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n"
         "- Keep the prompt under 120 words.\n\n"
         "Good output examples:\n"
-        "A close-up profile shot of the woman in a misty white forest, her expression calm and haunted, blonde hair catching pale rim light while gnarled trees and fog blur softly behind her. Preserve her delicate facial features, white lace corset dress, sheer puff sleeves, and ethereal styling, with shallow depth of field, atmospheric haze, soft bokeh, and high cinematic detail.\n"
-        "An intimate medium close-up of the woman leaning against a gnarled pale tree trunk in a foggy white forest. Preserve her blonde hair, intricate white lace corset dress, and sheer puff sleeves while incorporating shredded white branches, a narrow mist-covered path, a new pose, a slightly low-angle composition, soft bokeh, atmospheric haze, and dramatic rim lighting.\n\n"
-        f"User notes:\n{user_notes or 'Create a cinematic image using the visible image ingredients.'}"
+        "Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.\n"
+        "Using the provided character reference and location reference, create an intimate upper body shot of the woman framed by gnarled forest branches. Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. New pose, new camera angle, soft bokeh, high cinematic quality.\n\n"
+        f"User input:\n{user_notes or 'Create a new image using the available reference images.'}"
     )
 
     llm = VRGDG_SuperGemmaGGUFChat()
@@ -4187,6 +4345,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _generate_builder_t2i_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/agent_chat")
+    async def vrgdg_music_builder_agent_chat(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_builder_agent_reply, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

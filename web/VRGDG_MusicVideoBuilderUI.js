@@ -1383,6 +1383,7 @@ function openBuilder(node) {
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const promptOptionsButton = makeButton("Prompt Options");
   const gemmaRunnerButton = makeButton("Gemma Runner");
+  const builderAgentButton = makeButton("Agent");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
   const stitchPreviewButton = makeButton("Stitch Preview");
@@ -1417,7 +1418,7 @@ function openBuilder(node) {
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  importActions.append(fluxReferenceBuilderButton, gemmaRunnerButton, promptOptionsButton);
+  importActions.append(fluxReferenceBuilderButton, gemmaRunnerButton, builderAgentButton, promptOptionsButton);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
@@ -2730,6 +2731,10 @@ function openBuilder(node) {
     videoModelMode: "i2v",
     i2vVideoSettings: defaultI2VVideoSettings(),
     promptToolsHintPrefs: {},
+    builderAgentMessages: [],
+    builderAgentAutoApply: false,
+    builderAgentPurpose: "scene_work",
+    builderAgentReferenceImages: [],
     undoStack: [],
     redoStack: [],
     isRestoringHistory: false,
@@ -11609,6 +11614,641 @@ function openBuilder(node) {
     });
   }
 
+  function builderAgentSceneContext(segment) {
+    if (!segment) return null;
+    const info = segmentIndexInfo(segment);
+    const mergedRefs = mergedFluxImageIngredients(segment);
+    return {
+      id: segment.id || "",
+      index: info.index,
+      label: sceneDisplayName(segment, info.index),
+      start: Number(segment.start || 0),
+      end: Number(segment.end || 0),
+      lyric_text: String(segment.lyric_text || "").trim(),
+      scene_notes: String(segment.notes || "").trim(),
+      image_prompt: String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "").trim(),
+      flux_notes: String(segment.flux_notes || "").trim(),
+      flux_prompt: String(segment.flux_prompt || "").trim(),
+      nano_banana_notes: String(segment.nb_notes || "").trim(),
+      nano_banana_prompt: String(segment.nb_prompt || "").trim(),
+      video_notes: String(segment.i2v_notes || "").trim(),
+      video_prompt: String(segment.i2v_prompt || "").trim(),
+      image_model_mode: state.imageModelMode || "zimage",
+      video_model_mode: state.videoModelMode || "i2v",
+      reference_image_count: mergedRefs.length,
+      has_reference_images: mergedRefs.length > 0,
+    };
+  }
+
+  function builderAgentProjectStatus() {
+    const scenes = allEditableSegments();
+    const count = scenes.length;
+    const withLyrics = scenes.filter((segment) => String(segment.lyric_text || "").trim()).length;
+    const withNotes = scenes.filter((segment) => String(segment.notes || segment.flux_notes || segment.nb_notes || "").trim()).length;
+    const withImagePrompts = scenes.filter((segment) => String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "").trim()).length;
+    const withImages = scenes.filter((segment) => Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data)).length;
+    const withVideoPrompts = scenes.filter((segment) => String(segment.i2v_prompt || "").trim()).length;
+    const withVideos = scenes.filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim()).length;
+    return {
+      has_project_folder: Boolean(String(state.projectFolder || projectInput.value || "").trim()),
+      has_audio: Boolean(String(audioInput.value || "").trim()),
+      scene_count: count,
+      scenes_with_lyrics: withLyrics,
+      scenes_with_notes: withNotes,
+      scenes_with_image_prompts: withImagePrompts,
+      scenes_with_images: withImages,
+      scenes_with_video_prompts: withVideoPrompts,
+      scenes_with_videos: withVideos,
+      image_model_mode: state.imageModelMode || "zimage",
+      video_model_mode: state.videoModelMode || "i2v",
+    };
+  }
+
+  function builderAgentContext(scope = "active_scene") {
+    const segment = activeSegment();
+    const context = {
+      project_folder: state.projectFolder || "",
+      image_model_mode: state.imageModelMode || "zimage",
+      video_model_mode: state.videoModelMode || "i2v",
+      project_status: builderAgentProjectStatus(),
+      active_scene: builderAgentSceneContext(segment),
+      agent_reference_stash_count: Array.isArray(state.builderAgentReferenceImages) ? state.builderAgentReferenceImages.length : 0,
+      scene_directory: allEditableSegments().map((item) => ({
+        id: item.id || "",
+        index: segmentIndexInfo(item).index,
+        number: segmentIndexInfo(item).index + 1,
+        label: sceneDisplayName(item, segmentIndexInfo(item).index),
+      })),
+    };
+    if (scope === "neighbors" && segment) {
+      const index = state.segments.findIndex((item) => item.id === segment.id);
+      context.neighbor_scenes = [state.segments[index - 1], state.segments[index + 1]]
+        .filter(Boolean)
+        .map((item) => builderAgentSceneContext(item));
+    }
+    if (scope === "project_brief") {
+      context.scene_count = state.segments.length;
+      context.project_brief = state.segments.slice(0, 80).map((item) => ({
+        id: item.id || "",
+        index: segmentIndexInfo(item).index,
+        label: sceneDisplayName(item, segmentIndexInfo(item).index),
+        lyric_text: String(item.lyric_text || "").trim(),
+        scene_notes: String(item.notes || "").trim(),
+      }));
+    }
+    return context;
+  }
+
+  async function applyBuilderAgentActions(actions = []) {
+    const applied = [];
+    const skipped = [];
+    const list = Array.isArray(actions) ? actions : [];
+    if (!list.length) return { applied, skipped };
+    const imageModeLabel = (mode = state.imageModelMode || "zimage") => {
+      if (mode === "flux_klein") return "Flux/Klein";
+      if (mode === "nano_banana") return "Nano B";
+      if (mode === "ernie_image") return "Ernie";
+      if (mode === "z_enhance") return "Z Enhance";
+      return "ZImage";
+    };
+    const normalizeImageMode = (mode) => {
+      const value = String(mode || "").trim().toLowerCase();
+      if (["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(value)) return value;
+      if (value === "flux" || value === "klein") return "flux_klein";
+      if (value === "nano" || value === "nanobanana" || value === "nano_b") return "nano_banana";
+      if (value === "ernie") return "ernie_image";
+      return "";
+    };
+    const setAgentImageMode = (mode, push = true) => {
+      const normalized = normalizeImageMode(mode);
+      if (!normalized) return "";
+      if (push) markChanging();
+      state.imageModelMode = normalized;
+      state.fluxKleinSettings.image_model_mode = normalized;
+      state.fluxKleinSettings.enabled = normalized === "flux_klein";
+      syncFluxKleinPanel();
+      return normalized;
+    };
+    const normalizeVideoMode = (mode) => {
+      const value = String(mode || "").trim().toLowerCase();
+      if (value === "t2v" || value === "text_to_video" || value === "text-to-video") return "t2v";
+      if (value === "i2v" || value === "image_to_video" || value === "image-to-video") return "i2v";
+      return "";
+    };
+    const setAgentVideoMode = (mode, push = true) => {
+      const normalized = normalizeVideoMode(mode);
+      if (!normalized) return "";
+      if (push) markChanging();
+      state.videoModelMode = normalized;
+      syncVideoModePanel();
+      return normalized;
+    };
+    const ingredientKey = (item) => String(item?.path || item?.data || item?.name || "").trim();
+    const ensureAgentRefsForScene = (segment, imageMode) => {
+      if (!segment || !["flux_klein", "nano_banana"].includes(imageMode)) return 0;
+      if (mergedFluxImageIngredients(segment).length) return 0;
+      const refs = Array.isArray(state.builderAgentReferenceImages) ? state.builderAgentReferenceImages : [];
+      if (!refs.length) return 0;
+      markChanging();
+      if (!Array.isArray(segment.flux_image_ingredients)) segment.flux_image_ingredients = [];
+      let added = 0;
+      for (const ref of refs) {
+        const key = ingredientKey(ref);
+        if (!key || segment.flux_image_ingredients.some((item) => ingredientKey(item) === key)) continue;
+        segment.flux_image_ingredients.push({
+          path: ref.path || "",
+          data: ref.data || "",
+          name: ref.name || "agent_reference.png",
+        });
+        added += 1;
+      }
+      if (added) {
+        renderFluxIngredientList(segment);
+        renderNBIngredientList(segment);
+        render();
+      }
+      return added;
+    };
+    const findAgentScene = (action) => {
+      const sceneId = String(action?.scene_id || "").trim();
+      if (sceneId) {
+        const byId = allEditableSegments().find((item) => item.id === sceneId);
+        if (byId) return byId;
+      }
+      const number = Number(action?.scene_number);
+      if (Number.isFinite(number) && number > 0) {
+        return allEditableSegments().find((item) => segmentIndexInfo(item).index + 1 === number) || null;
+      }
+      return null;
+    };
+    let historyPushed = false;
+    const markChanging = () => {
+      if (!historyPushed) {
+        pushHistory();
+        historyPushed = true;
+      }
+    };
+    for (const action of list) {
+      const type = String(action?.type || "").trim();
+      const sceneId = String(action?.scene_id || "").trim();
+      const text = String(action?.text || "").trim();
+      if (type === "select_scene") {
+        const nextScene = findAgentScene(action);
+        if (nextScene) {
+          state.activeId = nextScene.id;
+          syncInspector();
+          render();
+          applied.push(`selected ${sceneDisplayName(nextScene, segmentIndexInfo(nextScene).index)}`);
+        } else {
+          skipped.push("scene not found");
+        }
+        continue;
+      }
+      if (type === "get_scene_lyrics") {
+        const lyricScene = findAgentScene(action);
+        if (lyricScene) {
+          const lyricText = String(lyricScene.lyric_text || "").trim() || "[no lyric text for this scene]";
+          applied.push(`${sceneDisplayName(lyricScene, segmentIndexInfo(lyricScene).index)} lyrics:\n${lyricText}`);
+        } else {
+          skipped.push("scene lyrics not found");
+        }
+        continue;
+      }
+      if (type === "get_scene_context") {
+        const contextScene = findAgentScene(action);
+        if (contextScene) {
+          applied.push(`${sceneDisplayName(contextScene, segmentIndexInfo(contextScene).index)} context:\n${JSON.stringify(builderAgentSceneContext(contextScene), null, 2)}`);
+        } else {
+          skipped.push("scene context not found");
+        }
+        continue;
+      }
+      if (type === "set_image_model_mode") {
+        const nextMode = setAgentImageMode(action?.image_mode || text);
+        if (nextMode) applied.push(`image mode: ${imageModeLabel(nextMode)}`);
+        else skipped.push("unknown image mode");
+        continue;
+      }
+      if (type === "set_video_model_mode") {
+        const nextMode = setAgentVideoMode(action?.video_mode || text);
+        if (nextMode) applied.push(`video mode: ${nextMode === "t2v" ? "T2V" : "I2V"}`);
+        else skipped.push("unknown video mode");
+        continue;
+      }
+      const segment = findAgentScene(action) || state.segments.find((item) => item.id === sceneId);
+      const needsText = type.startsWith("set_");
+      if (!segment || !type || (needsText && !text)) {
+        skipped.push(type || "unknown action");
+        continue;
+      }
+      const label = sceneDisplayName(segment, segmentIndexInfo(segment).index);
+      if (type === "set_scene_notes") {
+        markChanging();
+        segment.notes = text;
+        if (segment.id === activeSegment()?.id) {
+          notesInput.value = text;
+          ernieNotesInput.value = text;
+        }
+        applied.push(`${label}: scene notes`);
+      } else if (type === "set_flux_notes") {
+        markChanging();
+        segment.flux_notes = text;
+        if (segment.id === activeSegment()?.id) fluxNotes.value = text;
+        applied.push(`${label}: Flux notes`);
+      } else if (type === "set_nb_notes") {
+        markChanging();
+        segment.nb_notes = text;
+        if (segment.id === activeSegment()?.id) nbNotes.value = text;
+        applied.push(`${label}: Nano B notes`);
+      } else if (type === "set_video_notes") {
+        markChanging();
+        segment.i2v_notes = text;
+        if (segment.id === activeSegment()?.id) i2vNotesInput.value = text;
+        applied.push(`${label}: video notes`);
+      } else if (type === "request_reference_images") {
+        const requestedMode = normalizeImageMode(action?.image_mode) || "nano_banana";
+        setAgentImageMode(requestedMode);
+        state.activeId = segment.id;
+        syncInspector();
+        setInspectorTab("image");
+        const modeName = imageModeLabel(requestedMode);
+        applied.push(`${label}: waiting for ${modeName} reference images`);
+        toast(`${modeName} needs reference images. Drop or upload them in the Image panel, then ask the agent to continue.`);
+      } else if (type === "generate_image_prompt_for_current_mode") {
+        const previousActiveId = state.activeId;
+        const requestedMode = normalizeImageMode(action?.image_mode);
+        if (requestedMode) setAgentImageMode(requestedMode);
+        const imageMode = state.imageModelMode || "zimage";
+        const modeLabel = imageModeLabel(imageMode);
+        const copiedRefs = ensureAgentRefsForScene(segment, imageMode);
+        state.activeId = segment.id;
+        syncInspector();
+        const progress = createProgressWindow(`Builder Agent image prompt`);
+        try {
+          progress.set(`${label}: generating ${modeLabel} prompt with current settings...`, 20);
+          if (imageMode === "flux_klein") {
+            await generateFluxKleinPromptForSegment(segment, progress, 35, "Builder Agent Flux/Klein", { unloadAfter: true });
+          } else if (imageMode === "nano_banana") {
+            await generateNBPromptForSegment(segment, progress, 35, "Builder Agent NanoBanana", { unloadAfter: true });
+          } else {
+            await generateT2IPromptForSegment(segment, progress, 35, "Builder Agent T2I", { unloadAfter: true });
+          }
+          progress.set(`${label}: ${modeLabel} prompt ready.`, 100);
+          progress.close(900);
+          applied.push(`${label}: generated ${modeLabel} prompt${copiedRefs ? `, attached ${copiedRefs} recent Agent ref${copiedRefs === 1 ? "" : "s"}` : ""}`);
+        } catch (error) {
+          progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+          skipped.push(`${label}: image prompt failed (${String(error?.message || error)})`);
+        } finally {
+          state.activeId = previousActiveId || state.activeId;
+          syncInspector();
+        }
+      } else if (type === "run_image_for_current_mode") {
+        const previousActiveId = state.activeId;
+        const requestedMode = normalizeImageMode(action?.image_mode);
+        if (requestedMode) setAgentImageMode(requestedMode);
+        const imageMode = state.imageModelMode || "zimage";
+        const modeLabel = imageModeLabel(imageMode);
+        const copiedRefs = ensureAgentRefsForScene(segment, imageMode);
+        state.activeId = segment.id;
+        syncInspector();
+        const progress = createProgressWindow(`Builder Agent ${modeLabel} image`);
+        try {
+          progress.set(`${label}: running ${modeLabel} image workflow...`, 12);
+          await autoSaveSessionQuiet(`Builder Agent ${modeLabel} image`);
+          if (imageMode === "flux_klein") {
+            await createFluxKleinImageForSegment(segment, progress, 18, 72, "Builder Agent Flux/Klein image");
+          } else if (imageMode === "nano_banana") {
+            await createNBImageForSegment(segment, progress, 18, 72, "Builder Agent NanoBanana image");
+          } else if (imageMode === "ernie_image") {
+            await createErnieImageForSegment(segment, progress, 18, 72, "Builder Agent Ernie image");
+          } else {
+            await createZImageForSegment(segment, progress, 18, 72, "Builder Agent ZImage");
+            await runImageMemoryCleanupQuiet(progress, "Builder Agent ZImage", 94);
+          }
+          await autoSaveSessionQuiet(`Builder Agent ${modeLabel} image complete`);
+          progress.set(`${label}: ${modeLabel} image ready.`, 100);
+          progress.close(900);
+          applied.push(`${label}: ran ${modeLabel} image${copiedRefs ? `, attached ${copiedRefs} recent Agent ref${copiedRefs === 1 ? "" : "s"}` : ""}`);
+        } catch (error) {
+          progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+          skipped.push(`${label}: ${modeLabel} image failed (${String(error?.message || error)})`);
+        } finally {
+          state.activeId = previousActiveId || state.activeId;
+          syncInspector();
+        }
+      } else if (type === "generate_video_prompt_for_current_mode") {
+        const previousActiveId = state.activeId;
+        const requestedVideoMode = normalizeVideoMode(action?.video_mode);
+        if (requestedVideoMode) setAgentVideoMode(requestedVideoMode);
+        state.activeId = segment.id;
+        syncInspector();
+        const progress = createProgressWindow(`Builder Agent video prompt`);
+        try {
+          const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+          progress.set(`${label}: generating ${videoLabel} prompt with current video settings...`, 20);
+          await generateI2VPromptForSegment(segment, progress, 35, `Builder Agent ${videoLabel}`, { unloadAfter: true });
+          progress.set(`${label}: ${videoLabel} prompt ready.`, 100);
+          progress.close(900);
+          applied.push(`${label}: generated ${videoLabel} prompt`);
+        } catch (error) {
+          progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+          skipped.push(`${label}: video prompt failed (${String(error?.message || error)})`);
+        } finally {
+          state.activeId = previousActiveId || state.activeId;
+          syncInspector();
+        }
+      } else if (type === "run_video_for_current_mode") {
+        const previousActiveId = state.activeId;
+        const requestedVideoMode = normalizeVideoMode(action?.video_mode);
+        if (requestedVideoMode) setAgentVideoMode(requestedVideoMode);
+        const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+        state.activeId = segment.id;
+        syncInspector();
+        try {
+          await createSceneVideo();
+          applied.push(`${label}: ran ${videoLabel} video`);
+        } catch (error) {
+          skipped.push(`${label}: ${videoLabel} video failed (${String(error?.message || error)})`);
+        } finally {
+          state.activeId = previousActiveId || state.activeId;
+          syncInspector();
+        }
+      } else {
+        skipped.push(`${label}: ${type}`);
+      }
+    }
+    if (applied.length) {
+      syncInspector();
+      render();
+      autoSaveSessionQuiet("Builder Agent auto apply").catch(() => null);
+    }
+    return { applied, skipped };
+  }
+
+  function openBuilderAgentModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:flex-end;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(620px,calc(100vw - 28px));height:calc(100vh - 28px);margin:14px;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px 10px;border-bottom:1px solid #1f2937;";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Builder Agent</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Local chat for scene planning, prompt help, continuity, and workflow questions.</div>`;
+    const close = makeButton("Close");
+    header.append(heading, close);
+
+    const controls = document.createElement("div");
+    controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 14px;border-bottom:1px solid #1f2937;background:#0f172a;";
+    const scope = makeSelect(["active_scene", "neighbors", "project_brief"], "active_scene");
+    const scopeLabels = {
+      active_scene: "Active scene only",
+      neighbors: "Active scene + neighbors",
+      project_brief: "Project brief",
+    };
+    for (const option of scope.options) option.textContent = scopeLabels[option.value] || option.value;
+    const mode = makeSelect(["manual", "auto"], state.builderAgentAutoApply ? "auto" : "manual");
+    mode.options[0].textContent = "Manual: suggest only";
+    mode.options[1].textContent = "Auto: update fields";
+    const purpose = makeSelect(["walkthrough", "scene_work", "troubleshoot"], state.builderAgentPurpose || "scene_work");
+    purpose.options[0].textContent = "Walkthrough";
+    purpose.options[1].textContent = "Scene work";
+    purpose.options[2].textContent = "Troubleshoot";
+    const clear = makeButton("Clear Chat");
+    controls.append(makeField("Context sent to Gemma", scope), makeField("Agent mode", mode), makeField("Purpose", purpose), clear);
+
+    const refTools = document.createElement("div");
+    refTools.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid #1f2937;background:#111827;";
+    const agentRefDrop = document.createElement("div");
+    agentRefDrop.dataset.vrgdgFileDropZone = "true";
+    agentRefDrop.style.cssText = "border:1px dashed #155e75;border-radius:7px;background:#020617;color:#cffafe;padding:10px;text-align:center;font-size:12px;line-height:1.4;";
+    agentRefDrop.textContent = "Drop reference image for active scene";
+    const agentRefUpload = makeButton("Upload Ref");
+    const agentRefInput = document.createElement("input");
+    agentRefInput.type = "file";
+    agentRefInput.accept = "image/png,image/jpeg,image/webp";
+    agentRefInput.multiple = true;
+    agentRefInput.style.display = "none";
+    shell.append(agentRefInput);
+    refTools.append(agentRefDrop, agentRefUpload);
+
+    const log = document.createElement("div");
+    log.style.cssText = "overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#111827;";
+    const composer = document.createElement("div");
+    composer.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:12px 14px;border-top:1px solid #1f2937;background:#0f172a;";
+    const input = document.createElement("textarea");
+    input.placeholder = "Ask the agent about this scene, lyrics, image prompt, video motion, continuity, or what to do next...";
+    input.style.cssText = "min-height:72px;max-height:170px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;";
+    const send = makeButton("Send", "primary");
+    send.style.minWidth = "92px";
+    composer.append(input, send);
+    box.append(header, controls, refTools, log, composer);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const renderMessages = (pending = "") => {
+      log.textContent = "";
+      const messages = state.builderAgentMessages || [];
+      if (!messages.length && !pending) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "border:1px dashed #334155;border-radius:8px;color:#94a3b8;padding:18px;text-align:center;font-size:13px;line-height:1.5;";
+        empty.textContent = purpose.value === "walkthrough"
+          ? "Walkthrough gives one setup step at a time based on the current project state."
+          : mode.value === "auto"
+          ? "Auto mode can update scene notes, image prompts, Flux/Nano B prompts, and video prompts when you ask it to."
+          : "Manual mode only suggests text. It will not edit the project.";
+        log.append(empty);
+      }
+      for (const item of messages) {
+        const bubble = document.createElement("div");
+        const isUser = item.role === "user";
+        bubble.style.cssText = `align-self:${isUser ? "flex-end" : "flex-start"};max-width:92%;border:1px solid ${isUser ? "#0e7490" : "#334155"};border-radius:8px;background:${isUser ? "#164e63" : "#020617"};color:#f8fafc;padding:10px 11px;font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;`;
+        bubble.textContent = item.content || "";
+        log.append(bubble);
+      }
+      if (pending) {
+        const bubble = document.createElement("div");
+        bubble.style.cssText = "align-self:flex-start;max-width:92%;border:1px solid #334155;border-radius:8px;background:#020617;color:#94a3b8;padding:10px 11px;font-size:12px;line-height:1.5;";
+        bubble.textContent = pending;
+        log.append(bubble);
+      }
+      log.scrollTop = log.scrollHeight;
+    };
+
+    const sendMessage = async () => {
+      const message = String(input.value || "").trim();
+      if (!message) return;
+      if (state.textGemmaRunner !== "lm_studio" && !String(t2iTextGemmaModelSelect.value || "").trim()) {
+        toast("Choose a non-vision text Gemma model first, or use LM Studio in Gemma Runner.", true);
+        return;
+      }
+      const history = (state.builderAgentMessages || []).slice(-8);
+      const autoApply = mode.value === "auto";
+      state.builderAgentAutoApply = autoApply;
+      state.builderAgentPurpose = purpose.value || "scene_work";
+      state.builderAgentMessages.push({ role: "user", content: message });
+      input.value = "";
+      send.disabled = true;
+      send.textContent = "Thinking...";
+      renderMessages("Builder Agent is thinking...");
+      try {
+        const makeAgentPayload = (extraMessage = message, extraHistory = history, allowActions = autoApply) => ({
+          ...textGemmaRunnerPayload(),
+          model_file: t2iTextGemmaModelSelect.value || "",
+          context: builderAgentContext(scope.value || "active_scene"),
+          messages: extraHistory,
+          message: extraMessage,
+          auto_apply: allowActions,
+          agent_purpose: purpose.value || "scene_work",
+          unload_after: true,
+          n_ctx: scope.value === "project_brief" ? 12000 : 8000,
+          max_new_tokens: allowActions ? 700 : 450,
+          temperature: 0.55,
+          top_p: 0.95,
+        });
+        let data = await postJson("/vrgdg/music_builder/agent_chat", makeAgentPayload(), 180000);
+        const result = autoApply ? await applyBuilderAgentActions(data.actions || []) : { applied: [], skipped: [] };
+        let reply = String(data.reply || "").trim() || "(No reply.)";
+        const fetchedResults = result.applied.filter((item) => /\b(?:lyrics|context):\n/.test(item));
+        if (fetchedResults.length) {
+          renderMessages("Builder Agent is reading the fetched scene data...");
+          const toolMessage = [
+            "Local tool results were fetched from the project. Answer the user's original request using these results.",
+            "Keep the reply short and do not request the same data again.",
+            "",
+            fetchedResults.join("\n\n"),
+          ].join("\n");
+          const secondHistory = [
+            ...history,
+            { role: "user", content: message },
+            { role: "assistant", content: reply },
+          ].slice(-8);
+          const secondData = await postJson("/vrgdg/music_builder/agent_chat", makeAgentPayload(toolMessage, secondHistory, false), 180000);
+          if (String(secondData.reply || "").trim()) {
+            data = secondData;
+            reply = String(secondData.reply || "").trim();
+          }
+        }
+        if (result.applied.length) {
+          const updates = result.applied.filter((item) => !/\b(?:lyrics|context):\n/.test(item));
+          if (updates.length) {
+            reply += `\n\nUpdated: ${updates.join("; ")}`;
+            toast(`Builder Agent updated ${updates.length} field${updates.length === 1 ? "" : "s"}.`);
+          }
+        }
+        if (autoApply && !result.applied.length && Array.isArray(data.actions) && data.actions.length) {
+          reply += "\n\nNo supported changes were applied.";
+        }
+        if (result.skipped.length) {
+          reply += `\n\nSkipped: ${result.skipped.slice(0, 3).join("; ")}`;
+        }
+        state.builderAgentMessages.push({ role: "assistant", content: reply });
+      } catch (error) {
+        state.builderAgentMessages.push({ role: "assistant", content: `Agent failed:\n${String(error?.message || error)}` });
+      } finally {
+        send.disabled = false;
+        send.textContent = "Send";
+        renderMessages();
+      }
+    };
+
+    const rememberAgentReference = (source) => {
+      if (!source?.path && !source?.data) return;
+      if (!Array.isArray(state.builderAgentReferenceImages)) state.builderAgentReferenceImages = [];
+      const key = String(source.path || source.data || source.name || "").trim();
+      if (key && !state.builderAgentReferenceImages.some((item) => String(item.path || item.data || item.name || "").trim() === key)) {
+        state.builderAgentReferenceImages.push({
+          path: source.path || "",
+          data: source.data || "",
+          name: source.name || "agent_reference.png",
+        });
+        state.builderAgentReferenceImages = state.builderAgentReferenceImages.slice(-12);
+      }
+    };
+    const attachAgentReferenceSource = (source, labelText = "reference image") => {
+      const segment = activeSegment();
+      if (!segment) {
+        toast("Select a scene before attaching an Agent reference image.", true);
+        return;
+      }
+      rememberAgentReference(source);
+      addFluxIngredient(source);
+      state.builderAgentMessages.push({
+        role: "assistant",
+        content: `Attached ${labelText} to ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}. I can also reuse recent Agent refs if you ask me to work on another scene.`,
+      });
+      renderMessages();
+    };
+    const attachAgentReferenceFile = (file) => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => attachAgentReferenceSource({ data: String(reader.result || ""), name: file.name || "image.png" }, file.name || "reference image");
+      reader.onerror = () => toast("Failed to read the Agent reference image.", true);
+      reader.readAsDataURL(file);
+    };
+    agentRefUpload.onclick = () => agentRefInput.click();
+    agentRefInput.addEventListener("change", () => {
+      const files = Array.from(agentRefInput.files || []).filter((file) => file.type?.startsWith?.("image/"));
+      files.forEach(attachAgentReferenceFile);
+      agentRefInput.value = "";
+    });
+    agentRefDrop.addEventListener("dragover", (event) => {
+      const types = Array.from(event.dataTransfer?.types || []).map((item) => String(item).toLowerCase());
+      if (!types.includes("files") && !types.includes("application/x-vrgdg-segment-id")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      agentRefDrop.style.borderColor = "#67e8f9";
+    });
+    agentRefDrop.addEventListener("dragleave", () => {
+      agentRefDrop.style.borderColor = "#155e75";
+    });
+    agentRefDrop.addEventListener("drop", (event) => {
+      const sceneSource = droppedSceneImageSource(event);
+      const files = Array.from(event.dataTransfer?.files || []).filter((file) => file.type?.startsWith?.("image/"));
+      if (!sceneSource && !files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      agentRefDrop.style.borderColor = "#155e75";
+      const segment = activeSegment();
+      if (!segment) {
+        toast("Select a scene before attaching an Agent reference image.", true);
+        return;
+      }
+      if (sceneSource) {
+        attachAgentReferenceSource({
+          path: sceneSource.path || "",
+          data: sceneSource.data || "",
+          name: sceneSource.name || "scene_image.png",
+        }, "scene image reference");
+        return;
+      }
+      files.forEach(attachAgentReferenceFile);
+    });
+
+    close.onclick = () => backdrop.remove();
+    mode.onchange = () => {
+      state.builderAgentAutoApply = mode.value === "auto";
+      renderMessages();
+    };
+    purpose.onchange = () => {
+      state.builderAgentPurpose = purpose.value || "scene_work";
+      renderMessages();
+    };
+    clear.onclick = () => {
+      state.builderAgentMessages = [];
+      renderMessages();
+    };
+    send.onclick = sendMessage;
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+    renderMessages();
+    setTimeout(() => input.focus(), 0);
+  }
+
   function openGemmaRunnerModal() {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
@@ -11816,10 +12456,38 @@ function openBuilder(node) {
     const useNBMode = imageMode === "nano_banana";
     const useErnieMode = imageMode === "ernie_image";
     const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : "ZImage";
-    const mode = await chooseBatchModeAction({
+    const imageModeChoices = [
+      {
+        value: "zimage",
+        label: "ZImage",
+        description: "Use the ZImage image workflow. Does not require Nano B reference images.",
+      },
+      {
+        value: "flux_klein",
+        label: "Flux/Klein",
+        description: "Use Flux/Klein and its image ingredients/reference images.",
+      },
+      {
+        value: "nano_banana",
+        label: "Nano B",
+        description: "Use Nano B and its required reference images/API key.",
+      },
+      {
+        value: "ernie_image",
+        label: "Ernie",
+        description: "Use the Ernie image workflow.",
+      },
+    ];
+    const currentChoice = imageModeChoices.find((choice) => choice.value === imageMode) || imageModeChoices[0];
+    const orderedImageModeChoices = [
+      currentChoice,
+      ...imageModeChoices.filter((choice) => choice.value !== currentChoice.value),
+    ];
+    const action = await chooseBatchModeAction({
       title: "Run Image All?",
       intro: `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
       confirmLabel: "Run Image All",
+      returnAll: true,
       choices: [
         {
           value: "resume_missing",
@@ -11837,12 +12505,25 @@ function openBuilder(node) {
           description: "Regenerate image prompts with Gemma, randomize image seeds, and create a new image version for every scene.",
         },
       ],
+      extraGroups: [
+        {
+          key: "imageMode",
+          label: "Image model to run",
+          description: "This explicit choice controls which Image All pipeline runs.",
+          choices: orderedImageModeChoices,
+        },
+      ],
     });
-    if (!mode) return;
-    if (useFluxKleinMode) await fluxKleinAllScenes({ imageRunMode: mode });
-    else if (useNBMode) await nbImageAllScenes({ imageRunMode: mode });
-    else if (useErnieMode) await ernieImageAllScenes({ imageRunMode: mode });
-    else await zImageAllScenes({ imageRunMode: mode });
+    if (!action?.mode) return;
+    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(action.imageMode) ? action.imageMode : imageMode;
+    state.imageModelMode = selectedImageMode;
+    state.fluxKleinSettings.image_model_mode = selectedImageMode;
+    state.fluxKleinSettings.enabled = selectedImageMode === "flux_klein";
+    syncFluxKleinPanel();
+    if (selectedImageMode === "flux_klein") await fluxKleinAllScenes({ imageRunMode: action.mode });
+    else if (selectedImageMode === "nano_banana") await nbImageAllScenes({ imageRunMode: action.mode });
+    else if (selectedImageMode === "ernie_image") await ernieImageAllScenes({ imageRunMode: action.mode });
+    else await zImageAllScenes({ imageRunMode: action.mode });
   }
 
   async function confirmAndRunGemmaT2IAll() {
@@ -12182,6 +12863,7 @@ function openBuilder(node) {
   fluxReferenceBuilderButton.onclick = openFluxReferenceBuilderModal;
   promptOptionsButton.onclick = openPromptOptionsModal;
   gemmaRunnerButton.onclick = openGemmaRunnerModal;
+  builderAgentButton.onclick = openBuilderAgentModal;
   autoLoadAllButton.onclick = autoLoadAll;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;
