@@ -3645,6 +3645,9 @@ function openBuilder(node) {
   function looksLikeGeneratedPromptJunk(prompt) {
     const text = String(prompt || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!text) return false;
+    const bracketed = text.match(/\[[^\]]{2,80}\]/g) || [];
+    if (bracketed.length >= 2) return true;
+    if (/\[[^\]]*(?:subject|setting|environment|camera|motion|weather|lighting|dynamic|framing)[^\]]*\]/i.test(text)) return true;
     const compact = text.replace(/[^a-z0-9_<>\-|]+/g, "");
     const markers = [
       "completion-completion-completion",
@@ -3688,6 +3691,8 @@ function openBuilder(node) {
       "repeated/thought junk",
       "repeated/thought text",
       "thought junk",
+      "unfilled template",
+      "square-bracket placeholder",
       "request timed out",
       "backend may still be processing",
       "failed to create a usable prompt",
@@ -3696,7 +3701,7 @@ function openBuilder(node) {
       "returned an empty flux/klein prompt",
     ];
     if (recoverable.some((item) => message.includes(item))) return true;
-    if (/gemma[\s\S]{0,80}(thought|junk|empty|timed out|timeout|repeated)/i.test(message)) return true;
+    if (/gemma[\s\S]{0,100}(thought|junk|empty|timed out|timeout|repeated|template|placeholder)/i.test(message)) return true;
     return false;
   }
 
