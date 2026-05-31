@@ -1812,6 +1812,27 @@ def _llm_runner_from_payload(payload):
     return runner
 
 
+def _resolve_mmproj_dropdown_path(llm, mmproj_file):
+    selected = str(mmproj_file or "").strip()
+    try:
+        if selected:
+            return llm._resolve_dropdown_path(selected, llm.MISSING_MMPROJ_OPTION)
+    except Exception:
+        pass
+    try:
+        choices = [
+            choice for choice in llm._list_local_mmproj_choices()
+            if choice and choice != llm.MISSING_MMPROJ_OPTION
+        ]
+    except Exception:
+        choices = []
+    if len(choices) == 1:
+        return llm._resolve_dropdown_path(choices[0], llm.MISSING_MMPROJ_OPTION)
+    if selected:
+        return llm._resolve_dropdown_path(selected, llm.MISSING_MMPROJ_OPTION)
+    raise ValueError("Choose an mmproj file for the vision model.")
+
+
 def _run_lm_studio_text(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200):
     base_url = str(payload.get("lmstudio_base_url") or _LM_STUDIO_DEFAULT_BASE_URL).strip().rstrip("/")
     model = str(payload.get("lmstudio_model") or payload.get("model_file") or "").strip()
@@ -2268,14 +2289,12 @@ def _generate_builder_t2i_prompt(payload):
         raise ValueError("Choose a Gemma model first.")
     if use_vision and not has_ref_image:
         raise ValueError("Choose a valid reference image path/data or turn off vision reference.")
-    if has_ref_image and not mmproj_file:
-        raise ValueError("Choose an mmproj file for the vision model.")
     if not has_ref_image and not user_notes:
         raise ValueError("Enter scene notes or provide a reference image.")
 
     llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if has_ref_image else ""
-    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if has_ref_image else ""
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_ref_image else ""
     image = None
     if has_ref_image:
         image = _image_from_data_url(ref_image_data).convert("RGB") if ref_image_data else Image.open(ref_image_path).convert("RGB")
@@ -2444,8 +2463,6 @@ def _generate_builder_i2v_prompt(payload):
         image = Image.open(image_path).convert("RGB")
         has_image_reference = True
 
-    if has_image_reference and text_runner != "lm_studio" and not mmproj_file:
-        raise ValueError("Choose an mmproj file for the I2V vision model.")
     if has_image_reference and text_runner != "lm_studio" and not model_file:
         raise ValueError("Choose an I2V vision Gemma model first.")
     if not has_image_reference and not t2i_prompt:
@@ -2466,7 +2483,7 @@ def _generate_builder_i2v_prompt(payload):
 
     llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
-    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if has_image_reference and llm else ""
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_image_reference and llm else ""
     if has_image_reference:
         prompt = (
             f"{_I2V_INSTRUCTIONS}\n\n"
@@ -2577,8 +2594,6 @@ def _generate_builder_t2v_prompt(payload):
         image_path = _resolve_existing_file(image_reference_path, "T2V Gemma image reference")
         image = Image.open(image_path).convert("RGB")
         has_image_reference = True
-    if has_image_reference and text_runner != "lm_studio" and not mmproj_file:
-        raise ValueError("Choose an mmproj file for the T2V vision model.")
     if has_image_reference and text_runner != "lm_studio" and not model_file:
         raise ValueError("Choose a T2V vision Gemma model first.")
     if has_image_reference:
@@ -2615,7 +2630,7 @@ def _generate_builder_t2v_prompt(payload):
 
     llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference and text_runner != "lm_studio" else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
-    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if llm else ""
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
@@ -2789,8 +2804,6 @@ def _generate_flux_klein_prompt(payload):
     user_notes = str(payload.get("user_notes", "") or "").strip()
     if not model_file:
         raise ValueError("Choose a Gemma vision model first.")
-    if not mmproj_file:
-        raise ValueError("Choose an mmproj file for the vision model.")
 
     ingredients = payload.get("image_ingredients") or []
     if isinstance(ingredients, str):
@@ -2866,7 +2879,7 @@ def _generate_flux_klein_prompt(payload):
 
     llm = VRGDG_SuperGemmaGGUFChat()
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
-    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION)
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
     # Flux/Klein only needs one short prompt, and vision GGUF context is expensive.
     # Keep this lower than the broader Gemma prompt tools to reduce crash risk.
     n_ctx = int(payload.get("n_ctx") or 2048)
@@ -2927,8 +2940,6 @@ def _generate_nb_image_prompt(payload):
     text_runner = _llm_runner_from_payload(payload)
     if text_runner != "lm_studio" and not model_file:
         raise ValueError("Choose a NanoBanana Gemma vision model first.")
-    if text_runner != "lm_studio" and not mmproj_file:
-        raise ValueError("Choose an mmproj file for the NanoBanana vision model.")
 
     ingredients = payload.get("image_ingredients") or []
     if isinstance(ingredients, str):
@@ -3012,7 +3023,7 @@ def _generate_nb_image_prompt(payload):
     unload_after = bool(payload.get("unload_after", True))
     llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
-    mmproj_path = llm._resolve_dropdown_path(mmproj_file, llm.MISSING_MMPROJ_OPTION) if llm else ""
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     try:
         if text_runner == "lm_studio":
             text = _run_lm_studio_vision(

@@ -14030,6 +14030,8 @@ function openBuilder(node) {
   getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
     const models = data.models || [];
     const mmproj = data.mmproj || [];
+    const validMmproj = mmproj.filter((item) => item && !/^\[No mmproj/i.test(item));
+    const singleMmproj = validMmproj.length === 1 ? validMmproj[0] : "";
     for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, zEnhanceGemmaModelSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, fluxGemmaModelSelect, nbGemmaModelSelect]) {
       select.textContent = "";
       for (const model of models) {
@@ -14049,12 +14051,18 @@ function openBuilder(node) {
       }
     }
     for (const select of [mmprojSelect, ernieMmprojSelect, zEnhanceMmprojSelect, i2vMmprojSelect, fluxMmprojSelect, nbMmprojSelect]) {
+      const previousValue = select.value;
       select.textContent = "";
       for (const item of mmproj) {
         const option = document.createElement("option");
         option.value = item;
         option.textContent = item;
         select.append(option);
+      }
+      if (previousValue && mmproj.includes(previousValue)) {
+        select.value = previousValue;
+      } else if (singleMmproj) {
+        select.value = singleMmproj;
       }
     }
   }).catch((error) => {
