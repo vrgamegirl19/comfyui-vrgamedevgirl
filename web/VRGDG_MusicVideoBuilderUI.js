@@ -11995,8 +11995,12 @@ function openBuilder(node) {
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px 10px;border-bottom:1px solid #1f2937;";
     const heading = document.createElement("div");
     heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Builder Agent</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Local chat for scene planning, prompt help, continuity, and workflow questions.</div>`;
+    const headerActions = document.createElement("div");
+    headerActions.style.cssText = "display:flex;align-items:center;gap:8px;flex:0 0 auto;";
+    const hint = makeButton("Hint");
     const close = makeButton("Close");
-    header.append(heading, close);
+    headerActions.append(hint, close);
+    header.append(heading, headerActions);
 
     const controls = document.createElement("div");
     controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 14px;border-bottom:1px solid #1f2937;background:#0f172a;";
@@ -12016,6 +12020,70 @@ function openBuilder(node) {
     purpose.options[2].textContent = "Troubleshoot";
     const clear = makeButton("Clear Chat");
     controls.append(makeField("Context sent to Gemma", scope), makeField("Agent mode", mode), makeField("Purpose", purpose), clear);
+
+    function openAgentHintPopup() {
+      const hintBackdrop = document.createElement("div");
+      hintBackdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:18px;";
+      const panel = document.createElement("div");
+      panel.style.cssText = "width:min(540px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#e5e7eb;box-shadow:0 18px 60px rgba(0,0,0,.58);";
+      const top = document.createElement("div");
+      top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid #1f2937;";
+      const title = document.createElement("div");
+      title.style.cssText = "font-size:15px;font-weight:900;color:#cffafe;";
+      title.textContent = "Builder Agent Hints";
+      const hintClose = makeButton("Close");
+      top.append(title, hintClose);
+      const body = document.createElement("div");
+      body.style.cssText = "padding:14px;display:grid;gap:12px;font-size:12px;line-height:1.5;color:#cbd5e1;";
+      const sections = [
+        {
+          title: "Context sent to Gemma",
+          lines: [
+            "Active scene only: sends the selected scene details. Best when you want focused edits.",
+            "Active scene + neighbors: also sends nearby scenes. Best for continuity between scenes.",
+            "Project brief: sends a smaller overall project summary. Best for broad direction without stuffing the chat.",
+          ],
+        },
+        {
+          title: "Agent mode",
+          lines: [
+            "Manual: suggest only. The agent can explain and draft ideas, but it should not apply field changes.",
+            "Auto: update fields. The agent can update notes/prompts, select scenes, switch modes, and run supported actions.",
+          ],
+        },
+        {
+          title: "Purpose",
+          lines: [
+            "Walkthrough: helps a new user step through the workflow and asks what they are making first.",
+            "Scene work: helps plan scenes, update notes, generate prompts, and keep creative continuity.",
+            "Troubleshoot: focuses on setup problems, missing refs, wrong mode, failed prompts, or blocked runs.",
+          ],
+        },
+      ];
+      for (const section of sections) {
+        const block = document.createElement("div");
+        block.style.cssText = "border:1px solid #1f2937;border-radius:7px;background:#020617;padding:11px 12px;";
+        const blockTitle = document.createElement("div");
+        blockTitle.style.cssText = "font-weight:900;color:#f8fafc;margin-bottom:6px;";
+        blockTitle.textContent = section.title;
+        block.append(blockTitle);
+        for (const line of section.lines) {
+          const item = document.createElement("div");
+          item.style.cssText = "margin-top:5px;";
+          item.textContent = line;
+          block.append(item);
+        }
+        body.append(block);
+      }
+      panel.append(top, body);
+      hintBackdrop.append(panel);
+      document.body.append(hintBackdrop);
+      const dismiss = () => hintBackdrop.remove();
+      hintClose.onclick = dismiss;
+      hintBackdrop.addEventListener("click", (event) => {
+        if (event.target === hintBackdrop) dismiss();
+      });
+    }
 
     const refTools = document.createElement("div");
     refTools.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid #1f2937;background:#111827;";
@@ -12225,6 +12293,7 @@ function openBuilder(node) {
       files.forEach(attachAgentReferenceFile);
     });
 
+    hint.onclick = openAgentHintPopup;
     close.onclick = () => backdrop.remove();
     mode.onchange = () => {
       state.builderAgentAutoApply = mode.value === "auto";
