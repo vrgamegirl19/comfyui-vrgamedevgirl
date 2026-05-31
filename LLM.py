@@ -14,6 +14,7 @@ import subprocess
 import platform
 import urllib.request
 import urllib.error
+import urllib.parse
 import folder_paths
 import gc
 import time
@@ -111,7 +112,9 @@ def _google_rest_parts_from_contents(contents) -> list[dict]:
 
 
 def _google_generate_content_rest(api_key: str, model: str, contents) -> dict:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    safe_model = urllib.parse.quote(str(model or "").strip(), safe="-_.~")
+    safe_key = urllib.parse.quote(str(api_key or "").strip(), safe="")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{safe_model}:generateContent?key={safe_key}"
     payload = {
         "contents": [
             {
