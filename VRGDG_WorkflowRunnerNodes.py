@@ -901,6 +901,9 @@ def _patch_i2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "927", "audio_file", audio_path)
     _set_api_input(prompt, "927", "seek_seconds", 0)
     _set_api_input(prompt, "927", "duration", 0)
+    tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
+    pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
+
     _set_api_input(prompt, "925", "folder_path", image_folder)
     _set_api_input(prompt, "929", "value", image_index)
     _set_api_input(prompt, "930", "value", prompt_number)
@@ -908,6 +911,8 @@ def _patch_i2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "933", "output_mode", "string")
     _set_api_input(prompt, "935", "value", srt_path)
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
+    _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
+    _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -935,6 +940,8 @@ def _patch_t2v_api_prompt(prompt, payload):
     width = _int_payload(payload, "width", 1920, 64, 4096)
     height = _int_payload(payload, "height", 1080, 64, 4096)
     seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
+    pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
 
     _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
@@ -969,6 +976,8 @@ def _patch_t2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "933", "output_mode", "string")
     _set_api_input(prompt, "935", "value", srt_path)
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
+    _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
+    _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -1618,6 +1627,8 @@ def _stitch_scene_videos(payload):
         path = os.path.abspath(str(raw_path or "").strip().strip('"'))
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Scene {index} video was not found: {path}")
+        if os.path.splitext(path)[1].lower() not in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}:
+            raise ValueError(f"Scene {index} media is not a supported video file: {path}")
         scene_paths.append(path)
 
     scene_audio_paths = []
@@ -1683,6 +1694,8 @@ def _stitch_scene_videos(payload):
         path = os.path.abspath(str(item.get("path", "") or "").strip().strip('"'))
         if not os.path.isfile(path):
             raise FileNotFoundError(f"Insert {index} video was not found: {path}")
+        if os.path.splitext(path)[1].lower() not in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}:
+            raise ValueError(f"Insert {index} media is not a supported video file: {path}")
         start = max(0.0, float(item.get("start", 0) or 0))
         end = max(start + 0.05, float(item.get("end", start + 4) or start + 4))
         source_start = max(0.0, float(item.get("source_start", 0) or 0))
@@ -1777,7 +1790,7 @@ def _stitch_scene_videos(payload):
                     ]
                     if duration:
                         trim_cmd.extend(["-t", str(duration)])
-                    trim_cmd.extend(["-c:a", "aac", part_path])
+                    trim_cmd.extend(["-vn", "-c:a", "aac", part_path])
                     subprocess.run(trim_cmd, capture_output=True, text=True, check=True)
                     temp_audio_parts.append(part_path)
                     path = part_path
@@ -1791,6 +1804,7 @@ def _stitch_scene_videos(payload):
             "0",
             "-i",
             audio_concat_file,
+            "-vn",
             "-c:a",
             "aac",
             temp_audio,
@@ -1804,7 +1818,7 @@ def _stitch_scene_videos(payload):
         trim_audio_cmd.extend(["-i", audio_path])
         if preview_audio_duration:
             trim_audio_cmd.extend(["-t", f"{preview_audio_duration:.6f}"])
-        trim_audio_cmd.extend(["-c:a", "aac", temp_global_audio])
+        trim_audio_cmd.extend(["-vn", "-c:a", "aac", temp_global_audio])
         subprocess.run(trim_audio_cmd, capture_output=True, text=True, check=True)
         mux_audio_path = temp_global_audio
 

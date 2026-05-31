@@ -14,6 +14,8 @@ const TIMELINE_SEGMENT_TOP = 86;
 const TIMELINE_SEGMENT_HEIGHT = 62;
 const TIMELINE_SCENE_AUDIO_TOP = TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT + 10;
 const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
+const TIMELINE_NOTE_HEIGHT = 58;
+const TIMELINE_NOTE_GAP = 12;
 const TIMELINE_WAVE_TOP = 98;
 const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_NON_VISION_GEMMA_MODEL = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf";
@@ -1271,6 +1273,7 @@ function newSegment(start = 0, end = 4) {
     end,
     label: "New scene",
     notes: "",
+    timeline_note: "",
     i2v_notes: "",
     t2i_prompt: "",
     enhance_notes: "",
@@ -1727,6 +1730,7 @@ function openBuilder(node) {
   fluxNotes.placeholder = "Optional pose, camera, wardrobe, lighting, or mood notes...";
   fluxNotes.style.cssText = "width:100%;box-sizing:border-box;min-height:72px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.45;";
   const fluxUseTextOnlyGemmaPrompt = makeCheckbox("Use text-only Gemma for Flux prompts", false);
+  const fluxUseDirectorNotes = makeCheckbox("Use Director Notes in Flux prompt", false);
   const fluxGemmaModelSelect = makeSelect([""], "");
   const fluxMmprojSelect = makeSelect([""], "");
   const fluxPrompt = document.createElement("textarea");
@@ -1773,6 +1777,7 @@ function openBuilder(node) {
   const nbGemmaModelSelect = makeSelect([""], "");
   const nbMmprojSelect = makeSelect([""], "");
   const nbUseTextOnlyGemmaPrompt = makeCheckbox("Use text-only Gemma for Nano B prompts", false);
+  const nbUseDirectorNotes = makeCheckbox("Use Director Notes in Nano B prompt", false);
   const nbNotes = document.createElement("textarea");
   nbNotes.placeholder = "Optional camera, framing, pose, scene, or edit notes for NanoBanana...";
   nbNotes.style.cssText = fluxNotes.style.cssText;
@@ -1981,6 +1986,15 @@ function openBuilder(node) {
   const i2vWidthInput = makeInput("1920", "number");
   const i2vHeightInput = makeInput("1080", "number");
   const i2vSeedInput = makeInput("69", "number");
+  const i2vTailLossFramesInput = makeInput("25", "number");
+  i2vTailLossFramesInput.min = "0";
+  i2vTailLossFramesInput.step = "1";
+  const i2vPreFramesInput = makeInput("50", "number");
+  i2vPreFramesInput.min = "0";
+  i2vPreFramesInput.step = "1";
+  const i2vSrtSplitAdvancedNote = document.createElement("div");
+  i2vSrtSplitAdvancedNote.textContent = "Advanced";
+  i2vSrtSplitAdvancedNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
   const i2vUseLora = makeCheckbox("Use video LoRAs?", false);
   const i2vLoraPanel = document.createElement("div");
   i2vLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
@@ -2016,6 +2030,9 @@ function openBuilder(node) {
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   i2vSettingsGrid.append(makeField("FPS", i2vFpsInput), makeField("Seed", i2vSeedInput), makeField("Width", i2vWidthInput), makeField("Height", i2vHeightInput));
+  const i2vSrtSplitGrid = document.createElement("div");
+  i2vSrtSplitGrid.style.cssText = i2vSettingsGrid.style.cssText;
+  i2vSrtSplitGrid.append(makeField("Cool Down Frames", i2vTailLossFramesInput), makeField("Warm Up Frames", i2vPreFramesInput));
   const createSceneVideoButton = makeButton("Create Scene Video", "primary");
   const createSceneVideoButtons = [createSceneVideoButton];
   function makeCreateSceneVideoButton() {
@@ -2236,6 +2253,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         useSceneFluxKleinSettings.wrapper,
         fluxUseTextOnlyGemmaPrompt.wrapper,
+        fluxUseDirectorNotes.wrapper,
         makeField("Image trigger phrase", fluxImageTriggerInput),
         fluxImageRefsPanel,
         fluxGrid,
@@ -2280,6 +2298,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         nbUseGlobalIngredients.wrapper,
         nbUseTextOnlyGemmaPrompt.wrapper,
+        nbUseDirectorNotes.wrapper,
         nbGlobalIngredientPanel,
         nbIngredientDrop,
         nbIngredientActions,
@@ -2397,7 +2416,13 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         videoSettingsScopeNote,
         makeField("Video trigger phrase", videoTriggerInput),
-        i2vSettingsGrid,
+        makeSettingsSection("Render basics", [
+          i2vSettingsGrid,
+        ]),
+        makeSettingsSection("Advanced Settings", [
+          i2vSrtSplitAdvancedNote,
+          i2vSrtSplitGrid,
+        ]),
         makeCreateSceneVideoButton(),
       ]),
     },
@@ -2435,8 +2460,9 @@ function openBuilder(node) {
   timelineResizeHandle.title = "Drag to resize timeline";
   timelineResizeHandle.style.cssText = "cursor:row-resize;background:#18181b;border-bottom:1px solid #27272a;";
   const timelineHeader = document.createElement("div");
-  timelineHeader.style.cssText = "display:grid;grid-template-columns:repeat(13,auto) minmax(260px,1fr) auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;";
+  timelineHeader.style.cssText = "display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;";
   const bulkSegmentsButton = makeButton("Bulk Segments");
+  const sceneNoteButton = makeButton("+ Scene Note");
   const addSegmentButton = makeButton("Add Segment", "primary");
   const addOverlaySegmentButton = makeButton("Add Insert", "primary");
   const undoButton = makeButton("Undo");
@@ -2449,6 +2475,7 @@ function openBuilder(node) {
   const zoomOutButton = makeButton("-");
   const zoomInButton = makeButton("+");
   bulkSegmentsButton.title = "Create many manual timeline scenes from pasted durations or start/end times.";
+  sceneNoteButton.title = "Show editable note boxes under each base scene in the timeline.";
   addSegmentButton.title = "Add segment";
   addOverlaySegmentButton.title = "Add an insert/overlay segment at the playhead without changing the base timeline.";
   undoButton.title = "Undo";
@@ -2472,11 +2499,13 @@ function openBuilder(node) {
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
+    button.style.flex = "0 0 auto";
   }
   bulkSegmentsButton.style.width = "max-content";
+  sceneNoteButton.style.width = "max-content";
   addSegmentButton.style.width = "max-content";
   addOverlaySegmentButton.style.width = "max-content";
   for (const button of [undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
@@ -2489,6 +2518,7 @@ function openBuilder(node) {
   }
   const snapToBeatsControl = makeCheckbox("Snap beats", true);
   snapToBeatsControl.wrapper.style.margin = "0";
+  snapToBeatsControl.wrapper.style.flex = "0 0 auto";
   const beatMarkersButton = makeButton("^");
   beatMarkersButton.title = "Show or hide beat markers";
   beatMarkersButton.style.width = "34px";
@@ -2512,21 +2542,24 @@ function openBuilder(node) {
   preview.append(previewStage, globalScrubWrap);
   const timelineInfo = document.createElement("div");
   timelineInfo.textContent = "No audio loaded";
-  timelineInfo.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;";
+  timelineInfo.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;min-width:180px;flex:1 0 180px;";
   const selectedMediaTools = document.createElement("div");
   selectedMediaTools.style.cssText = "margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:6px 8px;";
   const selectedMediaLabel = document.createElement("span");
   selectedMediaLabel.textContent = "Selected media: none";
   selectedMediaLabel.style.cssText = "font-size:12px;color:#a1a1aa;white-space:nowrap;";
+  const useFrameAsImageButton = makeButton("Use Frame as Image");
+  useFrameAsImageButton.style.padding = "6px 10px";
+  useFrameAsImageButton.title = "Save the currently selected video frame as this scene's image";
   const deleteSelectedMediaButton = makeButton("Delete Image/Video");
   deleteSelectedMediaButton.style.padding = "6px 10px";
   deleteSelectedMediaButton.style.borderColor = "#7f1d1d";
   deleteSelectedMediaButton.style.color = "#fecaca";
-  selectedMediaTools.append(selectedMediaLabel, deleteSelectedMediaButton);
+  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton);
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(bulkSegmentsButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(bulkSegmentsButton, sceneNoteButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -2606,6 +2639,7 @@ function openBuilder(node) {
       enabled: false,
       image_model_mode: "",
       use_text_only_gemma_prompt: false,
+      use_director_notes: false,
       unet_name: "flux\\flux-2-klein-4b-fp8.safetensors",
       clip_name: "qwen_3_4b.safetensors",
       vae_name: "flux\\flux2-vae.safetensors",
@@ -2670,6 +2704,8 @@ function openBuilder(node) {
       width: 1920,
       height: 1080,
       seed: 69,
+      tail_loss_frames: 25,
+      pre_frames: 50,
       use_loras: false,
       lora_count: 0,
       loras: [],
@@ -2692,6 +2728,7 @@ function openBuilder(node) {
     waveformMode: "medium",
     snapToBeats: true,
     showBeatMarkers: false,
+    showTimelineSceneNotes: false,
     leftPanelWidth: 260,
     rightPanelWidth: 360,
     timelinePanelHeight: 300,
@@ -2756,6 +2793,7 @@ function openBuilder(node) {
       api_key: "",
       model: DEFAULT_NB_IMAGE_MODEL,
       use_text_only_gemma_prompt: false,
+      use_director_notes: false,
     };
   }
 
@@ -3076,6 +3114,7 @@ function openBuilder(node) {
     if (Number(segment.end) <= Number(segment.start)) segment.end = Number(segment.start || 0) + 0.1;
     if (segment.label == null) segment.label = "New scene";
     if (segment.lyric_text == null) segment.lyric_text = "";
+    if (segment.timeline_note == null) segment.timeline_note = "";
     if (segment.id == null || !String(segment.id).trim()) segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
     const approvedImagePath = String(segment.approved_image_path || "");
@@ -3219,6 +3258,7 @@ function openBuilder(node) {
       api_key: source.api_key || "",
       model: source.model || DEFAULT_NB_IMAGE_MODEL,
       use_text_only_gemma_prompt: Boolean(source.use_text_only_gemma_prompt),
+      use_director_notes: Boolean(source.use_director_notes),
     };
   }
 
@@ -3231,6 +3271,7 @@ function openBuilder(node) {
       height: Number(source.height || 576),
       seed: Number(source.seed || 100),
       use_text_only_gemma_prompt: Boolean(source.use_text_only_gemma_prompt),
+      use_director_notes: Boolean(source.use_director_notes),
       use_loras: Boolean(source.use_loras),
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
@@ -3250,6 +3291,8 @@ function openBuilder(node) {
       width: Number(source.width || 1920),
       height: Number(source.height || 1080),
       seed: Number(source.seed || 69),
+      tail_loss_frames: Math.max(0, Number(source.tail_loss_frames ?? 25)),
+      pre_frames: Math.max(0, Number(source.pre_frames ?? 50)),
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
@@ -3402,6 +3445,7 @@ function openBuilder(node) {
       waveformMode: state.waveformMode,
       snapToBeats: state.snapToBeats,
       showBeatMarkers: state.showBeatMarkers,
+      showTimelineSceneNotes: state.showTimelineSceneNotes,
       leftPanelWidth: state.leftPanelWidth,
       rightPanelWidth: state.rightPanelWidth,
       timelinePanelHeight: state.timelinePanelHeight,
@@ -3445,6 +3489,7 @@ function openBuilder(node) {
     state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
+    state.showTimelineSceneNotes = data.showTimelineSceneNotes ?? state.showTimelineSceneNotes ?? false;
     state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
     state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
     setBeatMarkersVisible(data.showBeatMarkers ?? state.showBeatMarkers ?? false);
@@ -3457,6 +3502,7 @@ function openBuilder(node) {
     state.pxPerSecond = state.timelineZoom;
     waveformModeSelect.value = state.waveformMode;
     snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
+    syncSceneNoteControls();
     autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
     applyLayoutSizes();
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
@@ -3525,6 +3571,13 @@ function openBuilder(node) {
     beatMarkersButton.style.background = state.showBeatMarkers ? "#164e63" : "#27272a";
     beatMarkersButton.style.borderColor = state.showBeatMarkers ? "#0891b2" : "#3f3f46";
     beatMarkersButton.style.color = state.showBeatMarkers ? "#cffafe" : "#fafafa";
+  }
+
+  function syncSceneNoteControls() {
+    sceneNoteButton.style.background = state.showTimelineSceneNotes ? "#164e63" : "#27272a";
+    sceneNoteButton.style.borderColor = state.showTimelineSceneNotes ? "#0891b2" : "#3f3f46";
+    sceneNoteButton.style.color = state.showTimelineSceneNotes ? "#cffafe" : "#f4f4f5";
+    sceneNoteButton.textContent = state.showTimelineSceneNotes ? "Hide Scene Notes" : "+ Scene Note";
   }
 
   function showBeatMarkersIfAvailable() {
@@ -3839,7 +3892,10 @@ function openBuilder(node) {
       use_subject_reference: false,
       use_location_references: false,
       include_manual_ingredients: true,
+      subject_count: 1,
       subject: { description: "", image: { path: "", data: "", name: "" } },
+      subjects: [],
+      subject_scene_map: {},
       locations: [],
       scene_map: {},
     };
@@ -3851,6 +3907,8 @@ function openBuilder(node) {
     normalized.use_subject_reference = Boolean(source.use_subject_reference);
     normalized.use_location_references = Boolean(source.use_location_references);
     normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
+    const rawSubjects = Array.isArray(source.subjects) ? source.subjects : [];
+    normalized.subject_count = Math.max(1, Math.min(12, Number(source.subject_count || rawSubjects.length || 1)));
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
     const subjectImage = subject.image && typeof subject.image === "object" ? subject.image : {};
     normalized.subject = {
@@ -3861,6 +3919,44 @@ function openBuilder(node) {
         name: String(subjectImage.name || ""),
       },
     };
+    normalized.subjects = rawSubjects.length ? rawSubjects
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => {
+        const image = item.image && typeof item.image === "object" ? item.image : {};
+        return {
+          id: String(item.id || `subj_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+          name: String(item.name || `Character ${index + 1}`),
+          description: String(item.description || ""),
+          image: {
+            path: String(image.path || ""),
+            data: String(image.data || ""),
+            name: String(image.name || ""),
+          },
+        };
+      }) : [];
+    if (!normalized.subjects.length && (normalized.subject.description || normalized.subject.image.path || normalized.subject.image.data || normalized.subject.image.name)) {
+      normalized.subjects.push({
+        id: "subject_1",
+        name: "Character 1",
+        description: normalized.subject.description,
+        image: { ...normalized.subject.image },
+      });
+    }
+    while (normalized.subjects.length < normalized.subject_count) {
+      normalized.subjects.push({
+        id: `subj_${Date.now()}_${normalized.subjects.length}_${Math.floor(Math.random() * 10000)}`,
+        name: `Character ${normalized.subjects.length + 1}`,
+        description: "",
+        image: { path: "", data: "", name: "" },
+      });
+    }
+    normalized.subjects = normalized.subjects.slice(0, normalized.subject_count);
+    normalized.subject_scene_map = {};
+    if (source.subject_scene_map && typeof source.subject_scene_map === "object") {
+      for (const [sceneId, value] of Object.entries(source.subject_scene_map)) {
+        normalized.subject_scene_map[sceneId] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+      }
+    }
     normalized.locations = Array.isArray(source.locations) ? source.locations
       .filter((item) => item && typeof item === "object")
       .map((item, index) => {
@@ -4005,7 +4101,14 @@ function openBuilder(node) {
     if (!Array.isArray(segment.video_history)) normalizeSegmentVideoHistory(segment);
     const history = Array.isArray(segment?.video_history) ? segment.video_history : [];
     const index = Math.max(0, Math.min(history.length - 1, Number(segment?.video_history_index || 0)));
-    return history[index] || segment?.video_path || "";
+    const path = history[index] || segment?.video_path || "";
+    return isLikelyVideoPath(path) ? path : "";
+  }
+
+  function isLikelyVideoPath(path) {
+    const text = String(path || "").trim();
+    if (!text) return false;
+    return /\.(?:mp4|mov|mkv|webm|avi|m4v)$/i.test(text);
   }
 
   function selectedSegmentImagePath(segment) {
@@ -4035,21 +4138,19 @@ function openBuilder(node) {
     }
     const videoPath = selectedSegmentVideoThumbnailPath(segment);
     if (!videoPath) return "";
-    return `<video src="${escapeHtml(makeEditorVideoUrl(videoPath))}" preload="metadata" muted playsinline style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;display:block;"></video>`;
+    return `<div title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;box-sizing:border-box;border:1px solid #155e75;border-radius:4px;margin-top:6px;background:#020617;display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:11px;font-weight:900;letter-spacing:0;">VIDEO</div>`;
   }
 
   function appendTimelineVideoThumbnail(block, segment) {
     const videoPath = selectedSegmentVideoThumbnailPath(segment);
     if (!videoPath) return;
-    const video = document.createElement("video");
-    video.src = makeEditorVideoUrl(videoPath);
-    video.preload = "metadata";
-    video.muted = true;
-    video.playsInline = true;
-    video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.72;pointer-events:none;z-index:0;";
+    const badge = document.createElement("span");
+    badge.title = videoPath;
+    badge.textContent = "VIDEO";
+    badge.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#020617;color:#67e8f9;font-size:10px;font-weight:900;letter-spacing:0;pointer-events:none;z-index:0;opacity:.78;";
     const shade = document.createElement("span");
-    shade.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.24);pointer-events:none;z-index:1;";
-    block.append(video, shade);
+    shade.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.18);pointer-events:none;z-index:1;";
+    block.append(badge, shade);
   }
 
   function selectedMediaForDelete() {
@@ -4063,8 +4164,12 @@ function openBuilder(node) {
 
   function updateSelectedMediaTools() {
     const media = selectedMediaForDelete();
+    const segment = activeSegment();
+    const hasVideoFrameSource = Boolean(selectedSegmentVideoPath(segment));
     const label = media.type ? `Selected media: ${media.type}` : "Selected media: none";
     selectedMediaLabel.textContent = media.path ? label : `${label} missing`;
+    useFrameAsImageButton.disabled = !hasVideoFrameSource;
+    useFrameAsImageButton.style.opacity = hasVideoFrameSource ? "1" : ".55";
     deleteSelectedMediaButton.textContent = media.type === "video" ? "Delete Video" : "Delete Image";
     deleteSelectedMediaButton.disabled = !media.path;
     deleteSelectedMediaButton.style.opacity = media.path ? "1" : ".55";
@@ -4133,7 +4238,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, nbUseTextOnlyGemmaPrompt.input, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -4739,7 +4844,15 @@ function openBuilder(node) {
       if (ingredients.some((existing) => (existing.path || existing.data || existing.name) === key)) return;
       ingredients.push({ path, data, name: name || path?.split?.(/[\\/]/)?.pop?.() || "reference.png" });
     };
-    if (refs.use_subject_reference) addUnique(refs.subject?.image);
+    if (refs.use_subject_reference) {
+      if (refs.subject_count > 1 && segment) {
+        const subjectIds = refs.subject_scene_map?.[segment.id] || refs.subject_scene_map?.[String(segmentIndexInfo(segment).index + 1)] || [];
+        const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
+        refs.subjects.filter((item) => idSet.has(item.id)).forEach((item) => addUnique(item.image));
+      } else {
+        addUnique(refs.subject?.image || refs.subjects?.[0]?.image);
+      }
+    }
     if (refs.use_location_references && segment) {
       const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
       const location = refs.locations.find((item) => item.id === locId);
@@ -4763,10 +4876,23 @@ function openBuilder(node) {
       location_name: "",
       location_description: "",
     };
-    const subjectImage = refs.subject?.image || {};
-    if (refs.use_subject_reference && (subjectImage.path || subjectImage.data)) {
-      context.has_subject_reference = true;
-      context.subject_description = refs.subject?.description || "";
+    if (refs.use_subject_reference) {
+      let mappedSubjects = [];
+      if (refs.subject_count > 1 && segment) {
+        const subjectIds = refs.subject_scene_map?.[segment.id] || refs.subject_scene_map?.[String(segmentIndexInfo(segment).index + 1)] || [];
+        const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
+        mappedSubjects = refs.subjects.filter((item) => idSet.has(item.id));
+      } else {
+        mappedSubjects = [{ ...refs.subjects?.[0], description: refs.subject?.description || refs.subjects?.[0]?.description || "", image: refs.subject?.image || refs.subjects?.[0]?.image || {} }];
+      }
+      const described = mappedSubjects
+        .filter((item) => item?.description || item?.name)
+        .map((item, index) => `${item.name || `Character ${index + 1}`}: ${item.description || ""}`.trim());
+      const hasImage = mappedSubjects.some((item) => item?.image?.path || item?.image?.data);
+      if (hasImage || described.length) {
+        context.has_subject_reference = hasImage;
+        context.subject_description = described.join("\n");
+      }
     }
     if (refs.use_location_references && segment) {
       const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
@@ -4832,6 +4958,7 @@ function openBuilder(node) {
     fluxHeight.value = settings.height || 576;
     fluxSeed.value = settings.seed || 100;
     fluxUseTextOnlyGemmaPrompt.input.checked = Boolean(settings.use_text_only_gemma_prompt);
+    fluxUseDirectorNotes.input.checked = Boolean(settings.use_director_notes);
     fluxUseLora.input.checked = Boolean(settings.use_loras);
     fluxLoraCount.value = Number(settings.lora_count || 0);
     fluxLoraSlots.forEach((slot, index) => {
@@ -4875,6 +5002,7 @@ function openBuilder(node) {
       height: Number(fluxHeight.value || 576),
       seed: Number(fluxSeed.value || 100),
       use_text_only_gemma_prompt: Boolean(fluxUseTextOnlyGemmaPrompt.input.checked),
+      use_director_notes: Boolean(fluxUseDirectorNotes.input.checked),
       use_loras: Boolean(fluxUseLora.input.checked),
       lora_count: count,
       loras: fluxLoraSlots.map((slot) => ({
@@ -4914,6 +5042,7 @@ function openBuilder(node) {
     nbApiKey.value = settings.api_key || "";
     nbModelSelect.value = NB_IMAGE_MODELS.includes(settings.model) ? settings.model : DEFAULT_NB_IMAGE_MODEL;
     nbUseTextOnlyGemmaPrompt.input.checked = Boolean(settings.use_text_only_gemma_prompt);
+    nbUseDirectorNotes.input.checked = Boolean(settings.use_director_notes);
     nbNotes.value = segment?.nb_notes || segment?.flux_notes || segment?.notes || "";
     nbPrompt.value = segment?.nb_prompt || segment?.t2i_prompt || "";
     renderNBIngredientList(segment);
@@ -4934,6 +5063,7 @@ function openBuilder(node) {
       api_key: nbApiKey.value || "",
       model: nbModelSelect.value || DEFAULT_NB_IMAGE_MODEL,
       use_text_only_gemma_prompt: Boolean(nbUseTextOnlyGemmaPrompt.input.checked),
+      use_director_notes: Boolean(nbUseDirectorNotes.input.checked),
     };
     if (segment?.use_scene_nb_image_settings || hasMultiSceneBatchSelection()) {
       if (segment) {
@@ -4951,6 +5081,17 @@ function openBuilder(node) {
       prompt: segment?.nb_prompt || "",
       reference_context: fluxReferenceContextForSegment(segment),
     };
+  }
+
+  function imagePromptNotesWithDirector(segment, notes, useDirectorNotes = false) {
+    const parts = [];
+    const baseNotes = String(notes || "").trim();
+    const directorNote = String(segment?.timeline_note || "").trim();
+    if (baseNotes) parts.push(baseNotes);
+    if (useDirectorNotes && directorNote) {
+      parts.push(`Director note for this scene:\n${directorNote}`);
+    }
+    return parts.join("\n\n");
   }
 
   function activeScenePromptForEnhance({ copyFallback = false } = {}) {
@@ -5038,6 +5179,8 @@ function openBuilder(node) {
     i2vWidthInput.value = settings.width || 1920;
     i2vHeightInput.value = settings.height || 1080;
     i2vSeedInput.value = settings.seed || 69;
+    i2vTailLossFramesInput.value = Math.max(0, Number(settings.tail_loss_frames ?? 25));
+    i2vPreFramesInput.value = Math.max(0, Number(settings.pre_frames ?? 50));
     i2vUseLora.input.checked = Boolean(settings.use_loras);
     i2vLoraCount.value = Number(settings.lora_count || 0);
     i2vLoraSlots.forEach((slot, index) => {
@@ -5064,6 +5207,8 @@ function openBuilder(node) {
       width: Number(i2vWidthInput.value || 1920),
       height: Number(i2vHeightInput.value || 1080),
       seed: Number(i2vSeedInput.value || 69),
+      tail_loss_frames: Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
+      pre_frames: Math.max(0, Number(i2vPreFramesInput.value || 0)),
       video_trigger_phrase: videoTriggerInput.value || "",
       use_loras: Boolean(i2vUseLora.input.checked),
       lora_count: count,
@@ -5226,7 +5371,19 @@ function openBuilder(node) {
   }
 
   function timelineHeight() {
-    return WAVEFORM_MODES[state.waveformMode]?.height || WAVEFORM_MODES.medium.height;
+    const baseHeight = WAVEFORM_MODES[state.waveformMode]?.height || WAVEFORM_MODES.medium.height;
+    return state.showTimelineSceneNotes ? baseHeight + TIMELINE_NOTE_HEIGHT + TIMELINE_NOTE_GAP + 36 : baseHeight;
+  }
+
+  function timelineNoteTop() {
+    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + TIMELINE_NOTE_GAP;
+  }
+
+  function timelineWaveTop() {
+    if (state.showTimelineSceneNotes) return timelineNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
+    return usingSceneAudioMode()
+      ? TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + 14
+      : TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT + 14;
   }
 
   function snapTimeToBeat(time) {
@@ -5262,9 +5419,7 @@ function openBuilder(node) {
     ctx.strokeStyle = "#164e63";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const waveTop = usingSceneAudioMode()
-      ? TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + 14
-      : TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT + 14;
+    const waveTop = timelineWaveTop();
     const waveBottom = timelineCanvas.height - 10;
     const waveHeight = Math.max(24, waveBottom - waveTop);
     const mid = waveTop + waveHeight / 2;
@@ -5336,6 +5491,12 @@ function openBuilder(node) {
     baseLabel.textContent = "BASE";
     baseLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_SEGMENT_TOP - 14}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
     segmentLayer.append(overlayLabel, baseLabel);
+    if (state.showTimelineSceneNotes) {
+      const noteLabel = document.createElement("div");
+      noteLabel.textContent = "DIRECTOR NOTES";
+      noteLabel.style.cssText = `position:absolute;left:4px;top:${timelineNoteTop() - 12}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
+      segmentLayer.append(noteLabel);
+    }
     for (const segment of [...state.overlaySegments, ...state.segments]) {
       const isOverlay = segmentTrack(segment) === "overlay";
       const blockTop = isOverlay ? TIMELINE_OVERLAY_TOP : TIMELINE_SEGMENT_TOP;
@@ -5415,6 +5576,39 @@ function openBuilder(node) {
       makeDragHandle(leftHandle, segment, "start");
       makeDragHandle(rightHandle, segment, "end");
       segmentLayer.append(block);
+      if (!isOverlay && state.showTimelineSceneNotes) {
+        const noteField = "timeline_note";
+        const noteBox = document.createElement("textarea");
+        noteBox.value = String(segment[noteField] || "");
+        noteBox.placeholder = "Director note...";
+        noteBox.title = "Extra note saved on this scene. This does not replace Prompt Creator notes or main scene notes.";
+        noteBox.style.cssText = `
+          position:absolute;left:${left}px;top:${timelineNoteTop()}px;width:${Math.max(86, width)}px;height:${TIMELINE_NOTE_HEIGHT}px;
+          box-sizing:border-box;resize:none;z-index:3;pointer-events:auto;
+          border:1px solid ${isActive ? "#ef4444" : "#155e75"};border-radius:5px;
+          background:rgba(8,47,73,.92);color:#ecfeff;padding:6px;font-size:11px;line-height:1.25;
+          box-shadow:${isActive ? "0 0 0 2px rgba(239,68,68,.22)" : "none"};
+        `;
+        noteBox.onpointerdown = (event) => event.stopPropagation();
+        noteBox.onclick = (event) => event.stopPropagation();
+        noteBox.onkeydown = (event) => event.stopPropagation();
+        noteBox.onfocus = () => {
+          noteBox.dataset.previousValue = noteBox.value;
+          noteBox.dataset.historyPushed = "0";
+        };
+        noteBox.oninput = () => {
+          if (noteBox.dataset.historyPushed !== "1" && noteBox.dataset.previousValue !== noteBox.value) {
+            pushHistory();
+            noteBox.dataset.historyPushed = "1";
+          }
+          segment[noteField] = noteBox.value || "";
+        };
+        noteBox.onchange = () => {
+          segment[noteField] = noteBox.value || "";
+          autoSaveSessionQuiet("timeline scene note edited");
+        };
+        segmentLayer.append(noteBox);
+      }
       if (!isOverlay && segment.custom_audio_peaks?.length) {
         const audioStart = audioTimelineStart(segment);
         const audioDuration = Math.max(0.1, audioChunkDuration(segment));
@@ -6688,11 +6882,11 @@ function openBuilder(node) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1180px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(1380px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Image Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Use a global subject reference plus per-scene location references as automatic ${escapeHtml(referenceBuilderTargetLabel)} reference images.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Image Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Use character references plus per-scene location references as automatic ${escapeHtml(referenceBuilderTargetLabel)} reference images.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -6728,7 +6922,7 @@ function openBuilder(node) {
     };
 
     const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:minmax(280px,.9fr) minmax(420px,1.35fr) minmax(300px,1fr);gap:12px;align-items:start;";
+    grid.style.cssText = "display:grid;grid-template-columns:minmax(330px,1fr) minmax(410px,1.15fr) minmax(340px,1fr);gap:12px;align-items:start;";
     const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
 
     const modalDragGuard = (event) => {
@@ -6746,9 +6940,25 @@ function openBuilder(node) {
 
     const subjectCard = document.createElement("div");
     subjectCard.style.cssText = cardStyle;
+    const subjectHeader = document.createElement("div");
+    subjectHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
     const subjectTitle = document.createElement("div");
-    subjectTitle.textContent = "Subject Reference";
+    subjectTitle.textContent = "Character References";
     subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
+    const extractSubjects = makeButton("Extract Subjects", "primary");
+    subjectHeader.append(subjectTitle, extractSubjects);
+    const subjectCountInput = makeInput(String(refs.subject_count || 1), "number");
+    subjectCountInput.min = "1";
+    subjectCountInput.max = "12";
+    subjectCountInput.step = "1";
+    const subjectSourceSelect = makeSelect(["prompts_and_director_notes", "director_notes_only", "prompts_only"], "prompts_and_director_notes");
+    for (const option of subjectSourceSelect.options) {
+      option.textContent = {
+        prompts_and_director_notes: "Prompts + Director Notes",
+        director_notes_only: "Director Notes only",
+        prompts_only: "Prompts / scene notes only",
+      }[option.value] || option.value;
+    }
     const subjectDescription = document.createElement("textarea");
     subjectDescription.value = refs.subject.description || String(subjectSceneInput.value || "").split(/\n+/).find((line) => line.trim()) || "";
     subjectDescription.placeholder = "Subject/character description...";
@@ -6761,7 +6971,9 @@ function openBuilder(node) {
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
     subjectButtons.append(createSubjectZImage, uploadSubject, clearSubject);
-    subjectCard.append(subjectTitle, makeField("Subject description", subjectDescription), subjectDrop, subjectButtons);
+    const subjectsList = document.createElement("div");
+    subjectsList.style.cssText = "display:none;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
+    subjectCard.append(subjectHeader, makeField("Character count", subjectCountInput), makeField("Extract subjects from", subjectSourceSelect), makeField("Subject description", subjectDescription), subjectDrop, subjectButtons, subjectsList);
 
     const locationsCard = document.createElement("div");
     locationsCard.style.cssText = cardStyle;
@@ -6817,7 +7029,7 @@ function openBuilder(node) {
       drop.style.flexDirection = "column";
       drop.style.gap = "6px";
       drop.innerHTML = src
-        ? `<img src="${src}" draggable="false" style="max-width:100%;max-height:150px;object-fit:contain;border-radius:6px;"><div style="font-size:11px;color:#a5f3fc;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeHtml(imageLabel(image))}</div>`
+        ? `<img src="${src}" draggable="false" style="width:96px;height:72px;max-width:100%;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#020617;"><div style="font-size:11px;color:#a5f3fc;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeHtml(imageLabel(image))}</div>`
         : `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
     };
     const updateSubjectDrop = () => renderDrop(subjectDrop, refs.subject.image, "Drop subject reference image here");
@@ -6941,6 +7153,76 @@ function openBuilder(node) {
     };
     const locationKey = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
     const locationByName = (name) => refs.locations.find((item) => locationKey(item.name) === locationKey(name));
+    const subjectKey = locationKey;
+    const subjectByName = (name) => refs.subjects.find((item) => subjectKey(item.name) === subjectKey(name));
+    const ensureSubjectCount = () => {
+      refs.subject_count = Math.max(1, Math.min(12, Number(subjectCountInput.value || refs.subject_count || 1)));
+      while (refs.subjects.length < refs.subject_count) {
+        refs.subjects.push({
+          id: `subj_${Date.now()}_${refs.subjects.length}_${Math.floor(Math.random() * 10000)}`,
+          name: `Character ${refs.subjects.length + 1}`,
+          description: "",
+          image: { path: "", data: "", name: "" },
+        });
+      }
+      refs.subjects = refs.subjects.slice(0, refs.subject_count);
+      if (refs.subject_count === 1 && refs.subjects[0]) {
+        refs.subjects[0].description = subjectDescription.value || refs.subjects[0].description || "";
+        refs.subjects[0].image = refs.subject.image || refs.subjects[0].image || { path: "", data: "", name: "" };
+      }
+    };
+    const createSubject = (name = "", description = "") => {
+      const subject = {
+        id: `subj_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        name: String(name || `Character ${refs.subjects.length + 1}`).trim(),
+        description: String(description || "").trim(),
+        image: { path: "", data: "", name: "" },
+      };
+      refs.subjects.push(subject);
+      refs.subject_count = refs.subjects.length;
+      subjectCountInput.value = String(refs.subject_count);
+      return subject;
+    };
+    const subjectGenderHint = (subject) => {
+      const text = `${subject?.name || ""} ${subject?.description || ""}`.toLowerCase();
+      if (/\b(female|woman|girl|lady)\b/.test(text)) return "female";
+      if (/\b(male|man|boy|guy)\b/.test(text)) return "male";
+      return "";
+    };
+    const noteSubjectHints = (note) => {
+      const text = String(note || "").toLowerCase();
+      const hints = [];
+      if (/\b(female|woman|girl|lady)\b/.test(text)) hints.push("female");
+      if (/\b(male|man|boy|guy)\b/.test(text)) hints.push("male");
+      for (const subject of refs.subjects) {
+        const name = String(subject?.name || "").trim().toLowerCase();
+        if (name && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) {
+          hints.push(subject.id);
+        }
+      }
+      return Array.from(new Set(hints));
+    };
+    const autoMapSubjectsFromDirectorNotes = () => {
+      if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      const subjectByGender = {};
+      for (const subject of refs.subjects) {
+        const gender = subjectGenderHint(subject);
+        if (gender && !subjectByGender[gender]) subjectByGender[gender] = subject.id;
+      }
+      let mapped = 0;
+      for (const segment of allEditableSegments()) {
+        const hints = noteSubjectHints(segment.timeline_note);
+        const ids = hints
+          .map((hint) => subjectByGender[hint] || hint)
+          .filter((id) => refs.subjects.some((subject) => subject.id === id));
+        const uniqueIds = Array.from(new Set(ids));
+        if (uniqueIds.length) {
+          refs.subject_scene_map[segment.id] = uniqueIds;
+          mapped += 1;
+        }
+      }
+      return mapped;
+    };
     const createLocation = (name = "", description = "") => {
       const location = {
         id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
@@ -7147,6 +7429,86 @@ function openBuilder(node) {
       }
     }
 
+    async function extractSubjectsWithGemma() {
+      let progress = null;
+      extractSubjects.disabled = true;
+      extractSubjects.textContent = "Extracting...";
+      progress = createProgressWindow("Extracting subjects", { zIndex: 100008 });
+      const subjectSource = subjectSourceSelect.value || "prompts_and_director_notes";
+      progress.set("Checking scene prompts, Director Notes, and character context...", 5);
+      const scenes = allEditableSegments().map((segment, index) => ({
+        id: segment.id,
+        label: segment.label || `Scene ${index + 1}`,
+        concept: subjectSource === "director_notes_only" ? "" : sceneConceptPromptText(segment),
+        notes: subjectSource === "director_notes_only" ? "" : (segment.notes || ""),
+        director_note: subjectSource === "prompts_only" ? "" : (segment.timeline_note || ""),
+      }));
+      const usableScenes = scenes.filter((scene) => String(scene.concept || scene.notes || scene.director_note || "").trim());
+      if (!usableScenes.length) {
+        const message = subjectSource === "director_notes_only"
+          ? "Extract Subjects needs Director Notes first."
+          : "Extract Subjects needs scene concept prompts, scene notes, or Director Notes first.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        extractSubjects.disabled = false;
+        extractSubjects.textContent = "Extract Subjects";
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.";
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+        extractSubjects.disabled = false;
+        extractSubjects.textContent = "Extract Subjects";
+        return;
+      }
+      try {
+        progress.set(`Asking Gemma for reusable character references...\n${gemmaRunnerLine()}`, 15);
+        const data = await postJson("/vrgdg/music_builder/flux_reference_extract_subjects", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          project_folder: projectInput.value || state.projectFolder || "",
+          scenes: usableScenes,
+          subject_source: subjectSource,
+          subject_scene_text: subjectSceneInput.value || "",
+          requested_count: Math.max(2, Number(subjectCountInput.value || refs.subject_count || 2)),
+          existing_subjects: refs.subjects.map((item) => ({ name: item.name || "", description: item.description || "" })),
+          unload_after: true,
+        }, 10 * 60 * 1000);
+        progress.set("Adding extracted subjects to the Reference Builder...", 78);
+        let added = 0;
+        let updated = 0;
+        for (const item of data.subjects || []) {
+          const name = String(item.name || "").trim();
+          if (!name) continue;
+          let subject = subjectByName(name);
+          if (!subject) {
+            subject = createSubject(name, item.description || "");
+            added += 1;
+          } else if (!String(subject.description || "").trim() && item.description) {
+            subject.description = String(item.description || "");
+            updated += 1;
+          }
+        }
+        refs.subject_count = Math.max(2, refs.subjects.length, Number(subjectCountInput.value || 2));
+        subjectCountInput.value = String(refs.subject_count);
+        refs.use_subject_reference = true;
+        useSubject.input.checked = true;
+        const mapped = autoMapSubjectsFromDirectorNotes();
+        renderAll();
+        progress.set(`Extracted subjects ready.\nAdded: ${added}\nUpdated: ${updated}\nMapped from Director Notes: ${mapped}\n\nReview/edit characters, add images, then save.`, 100);
+        progress.close(2600);
+        toast(`Extracted subjects. Mapped ${mapped} scene${mapped === 1 ? "" : "s"} from Director Notes.`);
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        extractSubjects.disabled = false;
+        extractSubjects.textContent = "Extract Subjects";
+      }
+    }
+
     async function autoMapLocationsWithGemma() {
       let progress = null;
       autoMapLocations.disabled = true;
@@ -7224,6 +7586,74 @@ function openBuilder(node) {
       }
     }
 
+    function renderSubjects() {
+      ensureSubjectCount();
+      const multi = refs.subject_count > 1;
+      extractSubjects.style.display = multi ? "" : "none";
+      subjectDescription.parentElement.style.display = multi ? "none" : "";
+      subjectDrop.style.display = multi ? "none" : "flex";
+      subjectButtons.style.display = multi ? "none" : "grid";
+      subjectsList.style.display = multi ? "flex" : "none";
+      if (!multi) {
+        refs.subject.description = subjectDescription.value;
+        updateSubjectDrop();
+        return;
+      }
+      subjectsList.innerHTML = "";
+      refs.subjects.forEach((subject, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        const name = makeInput(subject.name || `Character ${index + 1}`);
+        const description = document.createElement("textarea");
+        description.value = subject.description || "";
+        description.placeholder = "Character identity, face, hair, outfit, body, visual consistency notes...";
+        description.style.cssText = "min-height:76px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;";
+        const usedBy = allEditableSegments()
+          .map((segment, sceneIndex) => (refs.subject_scene_map?.[segment.id] || []).includes(subject.id) ? `Scene ${sceneIndex + 1}` : "")
+          .filter(Boolean)
+          .join(", ") || "Not mapped yet";
+        const used = document.createElement("div");
+        used.textContent = `Used by: ${usedBy}`;
+        used.style.cssText = "font-size:11px;color:#a5f3fc;";
+        const drop = document.createElement("div");
+        drop.style.cssText = subjectDrop.style.cssText;
+        const target = { image: subject.image };
+        renderDrop(drop, subject.image, "Drop character image here");
+        wireDrop(drop, target);
+        const buttons = document.createElement("div");
+        buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+        const createZImage = makeButton("Create with ZImage", "primary");
+        const upload = makeButton("Upload", "primary");
+        const clear = makeButton("Clear");
+        const remove = makeButton("Remove");
+        createZImage.onclick = () => createFluxReferenceWithZImage("subject", subject, `${subject.name || ""}\n${subject.description || ""}`, subject.name || `character_${index + 1}`);
+        upload.onclick = () => uploadFor(target);
+        clear.onclick = () => {
+          subject.image = { path: "", data: "", name: "" };
+          renderAll();
+        };
+        remove.onclick = () => {
+          refs.subjects.splice(index, 1);
+          refs.subject_count = Math.max(1, refs.subjects.length);
+          subjectCountInput.value = String(refs.subject_count);
+          for (const segment of allEditableSegments()) {
+            refs.subject_scene_map[segment.id] = (refs.subject_scene_map?.[segment.id] || []).filter((id) => id !== subject.id);
+          }
+          renderAll();
+        };
+        name.addEventListener("input", () => {
+          subject.name = name.value;
+          renderMapping();
+        });
+        description.addEventListener("input", () => {
+          subject.description = description.value;
+        });
+        buttons.append(createZImage, upload, clear, remove);
+        row.append(makeField("Character name", name), makeField("Description / prompt", description), used, drop, buttons);
+        subjectsList.append(row);
+      });
+    }
+
     function renderLocations() {
       locationsList.innerHTML = "";
       if (!refs.locations.length) {
@@ -7287,12 +7717,27 @@ function openBuilder(node) {
 
     function renderMapping() {
       mappingList.innerHTML = "";
+      const multiSubjects = refs.subject_count > 1;
+      mappingNote.textContent = multiSubjects
+        ? `Choose one or more characters and one location ${referenceBuilderTargetLabel} should receive for each scene.`
+        : `Choose which location image ${referenceBuilderTargetLabel} should receive for each scene. Use Unassigned for no location reference.`;
       allEditableSegments().forEach((segment, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:minmax(100px,.9fr) minmax(120px,1fr);gap:8px;align-items:center;";
+        row.style.cssText = `display:grid;grid-template-columns:minmax(100px,.8fr) ${multiSubjects ? "minmax(140px,1.1fr) " : ""}minmax(120px,1fr);gap:8px;align-items:center;`;
         const label = document.createElement("div");
         label.textContent = `${index + 1}. ${segment.label || `Scene ${index + 1}`}`;
         label.style.cssText = "font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        const subjectSelect = document.createElement("select");
+        subjectSelect.multiple = true;
+        subjectSelect.size = Math.min(4, Math.max(2, refs.subjects.length || 2));
+        subjectSelect.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:6px;font-size:12px;";
+        refs.subjects.forEach((subject) => subjectSelect.append(new Option(subject.name || "Character", subject.id)));
+        const selectedSubjectIds = new Set(refs.subject_scene_map?.[segment.id] || []);
+        for (const option of subjectSelect.options) option.selected = selectedSubjectIds.has(option.value);
+        subjectSelect.onchange = () => {
+          refs.subject_scene_map[segment.id] = Array.from(subjectSelect.selectedOptions).map((option) => option.value);
+          renderSubjects();
+        };
         const select = document.createElement("select");
         select.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:8px;font-size:12px;";
         select.append(new Option("Unassigned", ""));
@@ -7302,14 +7747,17 @@ function openBuilder(node) {
           refs.scene_map[segment.id] = select.value;
           renderLocations();
         };
-        row.append(label, select);
+        row.append(label);
+        if (multiSubjects) row.append(subjectSelect);
+        row.append(select);
         mappingList.append(row);
       });
     }
 
     function renderAll() {
+      ensureSubjectCount();
       refs.subject.description = subjectDescription.value;
-      updateSubjectDrop();
+      renderSubjects();
       renderLocations();
       renderMapping();
     }
@@ -7324,6 +7772,14 @@ function openBuilder(node) {
       createLocation();
       renderAll();
     };
+    subjectCountInput.addEventListener("change", () => {
+      ensureSubjectCount();
+      renderAll();
+    });
+    subjectCountInput.addEventListener("input", () => {
+      extractSubjects.style.display = Number(subjectCountInput.value || 1) > 1 ? "" : "none";
+    });
+    extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
     autoMapLocations.onclick = autoMapLocationsWithGemma;
     useSubject.input.onchange = () => { refs.use_subject_reference = Boolean(useSubject.input.checked); };
@@ -7334,7 +7790,12 @@ function openBuilder(node) {
     close.onclick = () => backdrop.remove();
     cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
+      ensureSubjectCount();
       refs.subject.description = subjectDescription.value;
+      if (refs.subject_count === 1 && refs.subjects[0]) {
+        refs.subjects[0].description = refs.subject.description;
+        refs.subjects[0].image = refs.subject.image;
+      }
       refs.use_subject_reference = Boolean(useSubject.input.checked);
       refs.use_location_references = Boolean(useLocations.input.checked);
       refs.include_manual_ingredients = Boolean(includeManual.input.checked);
@@ -7903,6 +8364,7 @@ function openBuilder(node) {
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
+      show_timeline_scene_notes: state.showTimelineSceneNotes,
       audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
       beat_markers: Array.isArray(state.beats) ? state.beats : [],
       left_panel_width: state.leftPanelWidth,
@@ -8001,6 +8463,7 @@ function openBuilder(node) {
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
+        state.showTimelineSceneNotes = data.session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
         state.peaks = Array.isArray(data.session.audio_peaks) ? data.session.audio_peaks : state.peaks;
         state.beats = Array.isArray(data.session.beat_markers) ? data.session.beat_markers : state.beats;
         setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
@@ -8013,6 +8476,7 @@ function openBuilder(node) {
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
         snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
+        syncSceneNoteControls();
         autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
@@ -8140,6 +8604,7 @@ function openBuilder(node) {
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
+      state.showTimelineSceneNotes = session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
       state.peaks = Array.isArray(session.audio_peaks) ? session.audio_peaks : state.peaks;
       state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
@@ -8152,6 +8617,7 @@ function openBuilder(node) {
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
       snapToBeatsControl.input.checked = Boolean(state.snapToBeats);
+      syncSceneNoteControls();
       autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
@@ -8348,7 +8814,10 @@ function openBuilder(node) {
   function addSceneImageHistoryPath(segment, imagePath) {
     ensureSegmentRuntimeFields(segment);
     if (!segment || !imagePath) return;
-    if (!segment.image_history.includes(imagePath)) {
+    const existingIndex = segment.image_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(imagePath));
+    if (existingIndex >= 0) {
+      segment.image_history_index = existingIndex;
+    } else {
       segment.image_history.push(imagePath);
       segment.image_history_index = segment.image_history.length - 1;
     }
@@ -8488,7 +8957,7 @@ function openBuilder(node) {
     syncInspector();
     const imageMode = options.imageMode || state.imageModelMode || "zimage";
     const textModelSelect = imageMode === "ernie_image" ? ernieTextGemmaModelSelect : t2iTextGemmaModelSelect;
-    const userNotes = textOnlyFallbackNotesForSegment(segment, imageMode);
+    const userNotes = String(options.userNotes || "").trim() || textOnlyFallbackNotesForSegment(segment, imageMode);
     const referenceContext = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : imageMode === "flux_klein" ? fluxReferenceContextForSegment(segment) : {};
     progress?.set(`${label}: creating prompt from notes with non-vision Gemma...\n${gemmaRunnerLine({ vision: false })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_t2i", {
@@ -8802,8 +9271,9 @@ function openBuilder(node) {
     syncInspector();
     render();
     const settings = fluxKleinSettingsForSegment(segment);
+    const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
     if (settings.use_text_only_gemma_prompt) {
-      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "flux_klein" });
+      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "flux_klein", userNotes });
     }
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
@@ -8815,7 +9285,7 @@ function openBuilder(node) {
       image_ingredients: settings.image_ingredients || [],
       reference_context: settings.reference_context || {},
       repair_model_file: t2iTextGemmaModelSelect.value,
-      user_notes: settings.notes || segment.notes || "",
+      user_notes: userNotes,
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
       seed: options.seed,
@@ -8921,8 +9391,9 @@ function openBuilder(node) {
     syncInspector();
     render();
     const settings = nbImageSettingsForSegment(segment);
+    const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
     if (settings.use_text_only_gemma_prompt) {
-      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "nano_banana" });
+      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "nano_banana", userNotes });
     }
     if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one NanoBanana reference image.`);
@@ -8938,7 +9409,7 @@ function openBuilder(node) {
       image_ingredients: settings.image_ingredients || [],
       reference_context: {},
       repair_model_file: t2iTextGemmaModelSelect.value,
-      user_notes: settings.notes || segment.notes || "",
+      user_notes: userNotes,
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
       n_ctx: 8000,
@@ -9721,6 +10192,8 @@ function openBuilder(node) {
       width: Number(settings.width || 1920),
       height: Number(settings.height || 1080),
       seed: Number(settings.seed || 1),
+      tail_loss_frames: Math.max(0, Number(settings.tail_loss_frames ?? 25)),
+      pre_frames: Math.max(0, Number(settings.pre_frames ?? 50)),
       use_custom_loras: useLoras,
       lora_count: useLoras ? count : 0,
     };
@@ -10065,7 +10538,11 @@ function openBuilder(node) {
     const missing = [];
     paths.forEach((path, index) => {
       if (!path) missing.push(`${sceneDisplayName(baseSegments[index], index)}: rendered scene video is missing.`);
+      else if (!isLikelyVideoPath(path)) missing.push(`${sceneDisplayName(baseSegments[index], index)}: selected scene media is not a video:\n${path}`);
       if (sceneAudioMode && !audioPaths[index]) missing.push(`${sceneDisplayName(baseSegments[index], index)}: scene audio is missing.`);
+    });
+    overlayItems.forEach((item) => {
+      if (!isLikelyVideoPath(item.path)) missing.push(`${item.label || "Insert"}: selected insert media is not a video:\n${item.path}`);
     });
     if (missing.length) throw new Error(missing.join("\n"));
     progress?.set(sceneAudioMode ? "Stitching rendered scene videos with scene audio clips..." : "Stitching rendered scene videos with original audio...", 94);
@@ -10922,6 +11399,187 @@ function openBuilder(node) {
     if (!segment) return;
     customImageFileInput.value = "";
     customImageFileInput.click();
+  }
+
+  function waitForVideoEvent(video, eventName, timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const cleanup = () => {
+        video.removeEventListener(eventName, onEvent);
+        video.removeEventListener("error", onError);
+        clearTimeout(timer);
+      };
+      const finish = (callback, value) => {
+        if (done) return;
+        done = true;
+        cleanup();
+        callback(value);
+      };
+      const onEvent = () => finish(resolve);
+      const onError = () => finish(reject, new Error("Video frame could not be loaded."));
+      const timer = setTimeout(() => finish(reject, new Error("Timed out while loading the selected video frame.")), timeoutMs);
+      video.addEventListener(eventName, onEvent, { once: true });
+      video.addEventListener("error", onError, { once: true });
+    });
+  }
+
+  async function seekVideoForCapture(video, time) {
+    if (video.readyState < 1) await waitForVideoEvent(video, "loadedmetadata");
+    const duration = Number(video.duration || 0);
+    const maxTime = Number.isFinite(duration) && duration > 0 ? Math.max(0, duration - 0.02) : Number.MAX_SAFE_INTEGER;
+    const target = Math.max(0, Math.min(Number(time || 0), maxTime));
+    if (Math.abs(Number(video.currentTime || 0) - target) > 0.02) {
+      const seeked = waitForVideoEvent(video, "seeked");
+      video.currentTime = target;
+      await seeked;
+    }
+    if (video.readyState < 2) await waitForVideoEvent(video, "loadeddata");
+  }
+
+  function captureVideoFrameDataUrl(video) {
+    const width = Number(video.videoWidth || 0);
+    const height = Number(video.videoHeight || 0);
+    if (!width || !height) throw new Error("The selected video frame is not ready yet.");
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not create a frame capture canvas.");
+    context.drawImage(video, 0, 0, width, height);
+    return canvas.toDataURL("image/png");
+  }
+
+  function previewVideoFrameSegment() {
+    const previewPath = String(previewVideo.dataset.path || "");
+    if (previewPath) {
+      const matched = allEditableSegments().find((segment) => selectedSegmentVideoPath(segment) === previewPath);
+      if (matched) return matched;
+    }
+    const current = currentGlobalTime();
+    return playbackSegmentAtTime(current) || activeSegment();
+  }
+
+  function chooseFrameImageTargetScene(defaultSegment = activeSegment()) {
+    const segments = allEditableSegments();
+    if (!segments.length) {
+      toast("No scenes found to receive the captured frame.", true);
+      return Promise.resolve(null);
+    }
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(480px,calc(100vw - 36px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);overflow:hidden;";
+      const header = document.createElement("div");
+      header.style.cssText = "padding:14px 16px;border-bottom:1px solid #1f2937;background:#083f4f;";
+      header.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Use Frame as Image</div><div style="font-size:12px;color:#bae6fd;margin-top:4px;">Choose which scene should receive the captured video frame.</div>`;
+      const body = document.createElement("div");
+      body.style.cssText = "padding:14px 16px;display:flex;flex-direction:column;gap:10px;";
+      const sceneSelect = makeSelect(segments.map((segment) => segment.id), defaultSegment?.id || segments[0]?.id || "");
+      for (const option of sceneSelect.options) {
+        const segment = segments.find((item) => item.id === option.value);
+        const info = segmentIndexInfo(segment);
+        const prefix = info.track === "overlay" ? `Insert ${info.index + 1}` : `Scene ${info.index + 1}`;
+        option.textContent = `${prefix}: ${segment?.label || prefix}`;
+      }
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
+      note.textContent = "This captures the frame currently visible in the video preview, then saves it as the selected scene image.";
+      body.append(makeField("Save captured frame to", sceneSelect), note);
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;border-top:1px solid #1f2937;";
+      const cancel = makeButton("Cancel");
+      const apply = makeButton("Use Frame", "primary");
+      actions.append(cancel, apply);
+      box.append(header, body, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      const finish = (segment) => {
+        backdrop.remove();
+        resolve(segment || null);
+      };
+      cancel.onclick = () => finish(null);
+      apply.onclick = () => finish(segments.find((segment) => segment.id === sceneSelect.value) || null);
+      backdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === backdrop) finish(null);
+      });
+    });
+  }
+
+  async function captureSelectedVideoFrameAsImage() {
+    const sourceSegment = previewVideoFrameSegment();
+    if (!sourceSegment) {
+      toast("Select or scrub to a scene video frame first.", true);
+      return;
+    }
+    const videoPath = selectedSegmentVideoPath(sourceSegment);
+    if (!videoPath) {
+      toast("The current preview does not have a selected video frame to use.", true);
+      return;
+    }
+    const targetSegment = await chooseFrameImageTargetScene(sourceSegment);
+    if (!targetSegment) return;
+    const previousText = useFrameAsImageButton.textContent;
+    useFrameAsImageButton.disabled = true;
+    useFrameAsImageButton.textContent = "Saving...";
+    let tempVideo = null;
+    try {
+      const previewHasVideo = previewVideo.dataset.path === videoPath && previewVideo.readyState >= 1;
+      const sourceVideo = previewHasVideo ? previewVideo : document.createElement("video");
+      if (!previewHasVideo) {
+        tempVideo = sourceVideo;
+        sourceVideo.muted = true;
+        sourceVideo.playsInline = true;
+        sourceVideo.preload = "auto";
+        sourceVideo.src = makeEditorVideoUrl(videoPath);
+      }
+      const localTime = previewHasVideo
+        ? Number(sourceVideo.currentTime || 0)
+        : Math.max(0, currentGlobalTime() - Number(sourceSegment.start || 0));
+      await seekVideoForCapture(sourceVideo, localTime);
+      const imageData = captureVideoFrameDataUrl(sourceVideo);
+      const projectFolder = projectInput.value || state.projectFolder;
+      pushHistory();
+      if (projectFolder) {
+        const sceneNumber = sceneSlotNumber(targetSegment);
+        const saved = await postJson("/vrgdg/music_builder/archive_scene_image", {
+          image_data: imageData,
+          project_folder: projectFolder,
+          scene_number: sceneNumber,
+        });
+        if (!saved.saved_path) throw new Error("The frame was captured, but no saved path was returned.");
+        addSceneImageHistoryPath(targetSegment, saved.saved_path);
+        targetSegment.approved_image_path = "";
+        targetSegment.custom_image_path = "";
+        targetSegment.custom_image_data = "";
+        targetSegment.custom_image_name = "";
+      } else {
+        targetSegment.custom_image_data = imageData;
+        targetSegment.custom_image_name = "video_frame.png";
+        targetSegment.custom_image_path = "";
+        targetSegment.approved_image_path = "";
+        targetSegment.image = null;
+        targetSegment.preview_mode = "image";
+      }
+      targetSegment.image = null;
+      targetSegment.preview_mode = "image";
+      setActiveSegment(targetSegment);
+      syncPreview(targetSegment);
+      render();
+      await autoSaveSessionQuiet("video frame saved as scene image");
+      toast(`Saved current video frame as image for ${targetSegment.label || "scene"}.`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      if (tempVideo) {
+        tempVideo.pause();
+        tempVideo.removeAttribute("src");
+        tempVideo.load?.();
+      }
+      useFrameAsImageButton.disabled = false;
+      useFrameAsImageButton.textContent = previousText;
+      updateSelectedMediaTools();
+    }
   }
 
   async function addSegment() {
@@ -11988,9 +12646,9 @@ function openBuilder(node) {
 
   function openBuilderAgentModal() {
     const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:flex-end;";
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:transparent;display:flex;align-items:center;justify-content:flex-end;pointer-events:none;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(620px,calc(100vw - 28px));height:calc(100vh - 28px);margin:14px;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;overflow:hidden;";
+    box.style.cssText = "width:min(620px,calc(100vw - 28px));height:calc(100vh - 28px);margin:14px;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;overflow:hidden;pointer-events:auto;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px 10px;border-bottom:1px solid #1f2937;";
     const heading = document.createElement("div");
@@ -11998,9 +12656,16 @@ function openBuilder(node) {
     const headerActions = document.createElement("div");
     headerActions.style.cssText = "display:flex;align-items:center;gap:8px;flex:0 0 auto;";
     const hint = makeButton("Hint");
+    const minimize = makeButton("Min");
+    minimize.title = "Minimize Builder Agent without closing the chat.";
     const close = makeButton("Close");
-    headerActions.append(hint, close);
+    headerActions.append(hint, minimize, close);
     header.append(heading, headerActions);
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.textContent = "Builder Agent";
+    restore.title = "Restore Builder Agent";
+    restore.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:100006;display:none;pointer-events:auto;border:1px solid #155e75;border-radius:8px;background:#083344;color:#cffafe;padding:10px 13px;font-size:12px;font-weight:900;box-shadow:0 14px 40px rgba(0,0,0,.5);cursor:pointer;";
 
     const controls = document.createElement("div");
     controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 14px;border-bottom:1px solid #1f2937;background:#0f172a;";
@@ -12112,6 +12777,7 @@ function openBuilder(node) {
     composer.append(input, send);
     box.append(header, controls, refTools, log, composer);
     backdrop.append(box);
+    backdrop.append(restore);
     document.body.append(backdrop);
 
     const renderMessages = (pending = "") => {
@@ -12294,6 +12960,15 @@ function openBuilder(node) {
     });
 
     hint.onclick = openAgentHintPopup;
+    minimize.onclick = () => {
+      box.style.display = "none";
+      restore.style.display = "block";
+    };
+    restore.onclick = () => {
+      restore.style.display = "none";
+      box.style.display = "grid";
+      input.focus();
+    };
     close.onclick = () => backdrop.remove();
     mode.onchange = () => {
       state.builderAgentAutoApply = mode.value === "auto";
@@ -12763,9 +13438,11 @@ function openBuilder(node) {
   ernieImageTriggerInput.addEventListener("input", saveErnieImageSettingsFromPanel);
   fluxImageTriggerInput.addEventListener("input", saveFluxKleinSettingsFromPanel);
   fluxUseTextOnlyGemmaPrompt.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
+  fluxUseDirectorNotes.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
   nbApiKey.addEventListener("input", saveNBImageSettingsFromPanel);
   nbModelSelect.addEventListener("change", saveNBImageSettingsFromPanel);
   nbUseTextOnlyGemmaPrompt.input.addEventListener("change", saveNBImageSettingsFromPanel);
+  nbUseDirectorNotes.input.addEventListener("change", saveNBImageSettingsFromPanel);
   nbNotes.addEventListener("input", saveNBImageSettingsFromPanel);
   nbPrompt.addEventListener("input", saveNBImageSettingsFromPanel);
   videoTriggerInput.addEventListener("input", saveI2VVideoSettingsFromPanel);
@@ -13205,6 +13882,7 @@ function openBuilder(node) {
   wireVisionReferenceDrop(ernieRefImageDrop);
   wireVisionReferenceDrop(t2vRefImageDrop, { forT2V: true });
   deleteSegmentButton.onclick = deleteSegment;
+  useFrameAsImageButton.onclick = captureSelectedVideoFrameAsImage;
   deleteSelectedMediaButton.onclick = deleteSelectedMedia;
   playButton.onclick = () => {
     if (isTimelinePlaying()) {
@@ -13265,6 +13943,12 @@ function openBuilder(node) {
   waveformModeSelect.onchange = () => {
     state.waveformMode = waveformModeSelect.value || "medium";
     render();
+  };
+  sceneNoteButton.onclick = () => {
+    state.showTimelineSceneNotes = !state.showTimelineSceneNotes;
+    syncSceneNoteControls();
+    render();
+    autoSaveSessionQuiet(state.showTimelineSceneNotes ? "timeline scene notes shown" : "timeline scene notes hidden");
   };
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);
@@ -13665,6 +14349,7 @@ function openBuilder(node) {
   syncZEnhanceSettingsPanel();
   syncI2VVideoSettingsPanel();
   syncVideoModePanel();
+  syncSceneNoteControls();
   updateHistoryButtons();
   render();
 }

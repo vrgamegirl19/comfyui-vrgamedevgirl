@@ -491,10 +491,12 @@ def _save_builder_project_as(payload):
         handle.write("\n")
     with open(_srt_path(target), "w", encoding="utf-8") as handle:
         handle.write(_segments_to_srt(segments))
+    scene_notes_path = _write_scene_notes_json(target, segments)
     return {
         "project_folder": target,
         "session_path": _session_path(target),
         "srt_path": _srt_path(target),
+        "scene_notes_path": scene_notes_path,
         "images_folder": _images_folder(target),
         "prompts_folder": _prompts_folder(target),
         "context_folder": _context_folder(target),
@@ -504,6 +506,10 @@ def _save_builder_project_as(payload):
 
 def _session_path(project_folder):
     return os.path.join(project_folder, "vrgdg_builder_session.json")
+
+
+def _scene_notes_path(project_folder):
+    return os.path.join(project_folder, "SceneNotes.json")
 
 
 def _srt_path(project_folder):
@@ -1446,6 +1452,27 @@ def _parse_location_lines(text):
         seen_names.add(name.lower())
         locations.append({"name": name, "description": description})
     return locations
+
+
+def _parse_subject_lines(text):
+    subjects = []
+    for raw_line in str(text or "").splitlines():
+      line = raw_line.strip().strip("-* ")
+      if not line:
+          continue
+      match = re.match(r"^\s*(?:\d+[\).:\-|]\s*)?([^|:]+?)\s*\|\s*(.+)$", line)
+      if match:
+          name = re.sub(r"\s+", " ", match.group(1).strip())
+          description = re.sub(r"\s+", " ", match.group(2).strip())
+      else:
+          match = re.match(r"^\s*(?:\d+[\).:\-|]\s*)?([^:]+?)\s*:\s*(.+)$", line)
+          if not match:
+              continue
+          name = re.sub(r"\s+", " ", match.group(1).strip())
+          description = re.sub(r"\s+", " ", match.group(2).strip())
+      if name and description:
+          subjects.append({"name": name, "description": description})
+    return subjects
 
 
 def _parse_scene_location_number_map(text, cleaned_scenes, locations):
@@ -3264,6 +3291,100 @@ def _generate_flux_reference_locations(payload):
     }
 
 
+def _generate_flux_reference_subjects(payload):
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+        raise ValueError("Choose a non-vision Gemma model first.")
+    scenes = payload.get("scenes") or []
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("No scenes were provided for subject extraction.")
+    cleaned_scenes = []
+    scene_note_fallbacks = _load_scene_notes_json(payload.get("project_folder", ""))
+    for index, scene in enumerate(scenes, start=1):
+        if not isinstance(scene, dict):
+            continue
+        concept = str(scene.get("concept", "") or "").strip()
+        notes = str(scene.get("notes", "") or "").strip()
+        director_note = str(scene.get("director_note", "") or "").strip() or scene_note_fallbacks.get(index, "")
+        if concept or notes or director_note:
+            cleaned_scenes.append({
+                "id": str(scene.get("id", "") or f"scene_{index}").strip(),
+                "label": str(scene.get("label", "") or f"Scene {index}").strip(),
+                "concept": concept,
+                "notes": notes,
+                "director_note": director_note,
+            })
+    if not cleaned_scenes:
+        raise ValueError("Scenes need concept prompt text, notes, or Director Notes before Gemma can extract subjects.")
+
+    requested_count = max(2, min(12, int(payload.get("requested_count") or 2)))
+    subject_scene = str(payload.get("subject_scene_text", "") or "").strip()
+    existing_subjects = payload.get("existing_subjects") or []
+    existing_lines = []
+    if isinstance(existing_subjects, list):
+        for item in existing_subjects:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "") or "").strip()
+            description = str(item.get("description", "") or "").strip()
+            if name and description:
+                existing_lines.append(f"- {name}: {description}")
+
+    scene_lines = []
+    for index, scene in enumerate(cleaned_scenes, start=1):
+        scene_lines.append(
+            f"Scene {index}: {scene['label']}\n"
+            f"concept: {scene['concept']}\n"
+            f"notes: {scene['notes']}\n"
+            f"director_note: {scene['director_note']}"
+        )
+
+    instruction = (
+        "Extract reusable character/subject identities for reference images.\n\n"
+        "Look at the scene concept prompts, notes, Director Notes, and subject/scene context. "
+        "Find distinct recurring people, creatures, mascots, or main visual subjects that may need separate reference images. "
+        f"The user expects about {requested_count} character references if the project supports that count.\n\n"
+        "Output only simple lines in this exact format:\n"
+        "1|character name|short visual description for a character reference image\n"
+        "2|character name|short visual description for a character reference image\n\n"
+        "Rules:\n"
+        "- Do not output JSON, markdown, bullets, headings, or explanations.\n"
+        "- Keep names short and stable, like blonde woman, masked man, young singer, red android.\n"
+        "- Descriptions must describe identity, face/body, hair, outfit, colors, and visual consistency details.\n"
+        "- Do not describe locations as characters.\n"
+        "- If two characters appear together in a scene, list them as separate characters, not one combined subject.\n\n"
+        f"Subject/scene context:\n{subject_scene or '(none)'}\n\n"
+        f"Existing user subjects:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+        f"Scenes:\n\n{chr(10).join(scene_lines)}"
+    )
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.2),
+        top_p=float(payload.get("top_p") or 0.8),
+        max_new_tokens=int(payload.get("max_new_tokens") or 2200),
+        label="Gemma",
+    )
+    subjects = _parse_subject_lines(text)
+    if not subjects:
+        raise ValueError("Gemma did not return any usable subjects.")
+    deduped = []
+    seen = set()
+    for item in subjects:
+        key = item["name"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return {
+        "subjects": deduped,
+        "raw_text": text,
+        "used_model": run_info.get("used_model", ""),
+        "runner": run_info.get("runner", "builtin"),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
 def _generate_flux_reference_zimage_prompt(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     reference_type = str(payload.get("reference_type", "") or "").strip().lower()
@@ -3413,6 +3534,37 @@ def _load_model_defaults():
     }
 
 
+def _write_scene_notes_json(project_folder, segments):
+    notes = {}
+    for index, segment in enumerate(segments if isinstance(segments, list) else [], start=1):
+        if isinstance(segment, dict):
+            notes[f"SceneNote{index}"] = str(segment.get("timeline_note", "") or "")
+    path = _scene_notes_path(project_folder)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(notes, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    return path
+
+
+def _load_scene_notes_json(project_folder):
+    folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
+    if not folder:
+        return {}
+    path = _scene_notes_path(folder)
+    if not os.path.isfile(path):
+        return {}
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        return {}
+    notes = {}
+    for raw_key, raw_value in data.items():
+        match = re.search(r"(\d+)", str(raw_key or ""))
+        if match:
+            notes[int(match.group(1))] = str(raw_value or "").strip()
+    return notes
+
+
 def _save_builder_session(payload):
     audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
     audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
@@ -3454,6 +3606,7 @@ def _save_builder_session(payload):
     with open(_srt_path(project_folder), "w", encoding="utf-8") as handle:
         handle.write(srt_text)
     model_defaults_path = _save_model_defaults(session)
+    scene_notes_path = _write_scene_notes_json(project_folder, segments)
 
     t2i_lines = []
     i2v_lines = []
@@ -3475,6 +3628,7 @@ def _save_builder_session(payload):
         "prompts_folder": _prompts_folder(project_folder),
         "context_folder": _context_folder(project_folder),
         "model_defaults_path": model_defaults_path,
+        "scene_notes_path": scene_notes_path,
         "session": session,
     }
 
@@ -4408,6 +4562,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_reference_locations, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/flux_reference_extract_subjects")
+    async def vrgdg_music_builder_flux_reference_extract_subjects(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_flux_reference_subjects, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

@@ -673,6 +673,74 @@ def _canonical_segment_mapping(value):
     return {key: fixed[key] for key in sorted(fixed, key=lambda item: int(re.search(r"\d+", item).group(0)))}
 
 
+def _payload_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"true", "1", "yes", "on", "y"}:
+        return True
+    if text in {"false", "0", "no", "off", "n", ""}:
+        return False
+    return default
+
+
+def _format_srt_timestamp(seconds):
+    value = max(0.0, float(seconds or 0))
+    whole = int(math.floor(value))
+    millis = int(round((value - whole) * 1000))
+    if millis >= 1000:
+        whole += 1
+        millis -= 1000
+    hours = whole // 3600
+    minutes = (whole % 3600) // 60
+    secs = whole % 60
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def _parse_srt_timestamp(value):
+    match = re.match(r"^\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})\s*$", str(value or ""))
+    if not match:
+        return None
+    hours, minutes, seconds, millis = [int(part) for part in match.groups()]
+    return (hours * 3600) + (minutes * 60) + seconds + (millis / 1000.0)
+
+
+def _srt_total_duration_hint(srt_text):
+    last_end = None
+    for match in re.finditer(r"-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})", str(srt_text or "")):
+        parsed = _parse_srt_timestamp(match.group(1))
+        if parsed is not None:
+            last_end = parsed
+    return last_end
+
+
+def _fixed_duration_srt_from_segments(segments, fixed_scene_duration=4, total_duration_hint=None):
+    canonical = _canonical_segment_mapping(segments)
+    if not canonical:
+        return ""
+    duration = max(0.05, float(fixed_scene_duration or 4))
+    total_hint = float(total_duration_hint or 0)
+    lines = []
+    start = 0.0
+    items = list(canonical.items())
+    for index, (_key, text) in enumerate(items, start=1):
+        end = start + duration
+        if index == len(items) and total_hint > start:
+            end = total_hint
+        lines.extend([
+            str(index),
+            f"{_format_srt_timestamp(start)} --> {_format_srt_timestamp(end)}",
+            str(text or "Instrumental section."),
+            "",
+        ])
+        start = end
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _canonical_prompt_mapping(value):
     fixed = {}
     for raw_key, raw_value in (value or {}).items():
@@ -1249,7 +1317,7 @@ def _save_prompt_creator_outputs(payload):
         corrected_segments = _canonical_segment_mapping(corrected_segments)
     if concept_prompts:
         concept_prompts = _canonical_prompt_mapping(concept_prompts)
-        if bool(payload.get("append_subject_to_prompts", True)):
+        if _payload_bool(payload.get("append_subject_to_prompts", True), True):
             concept_prompts = _prepend_subject_to_prompts(
                 concept_prompts,
                 str(payload.get("subject", "") or ""),
@@ -1289,7 +1357,15 @@ def _save_prompt_creator_outputs(payload):
             handle.write("\n")
         files["I2VMotionNotes.txt"] = path
 
+    use_srt_durations = _payload_bool(payload.get("use_srt_durations", True), True)
+    fixed_scene_duration = float(payload.get("fixed_scene_duration", 4) or 4)
     srt_text = str(payload.get("srt_text", "") or "")
+    if corrected_segments and not use_srt_durations:
+        srt_text = _fixed_duration_srt_from_segments(
+            corrected_segments,
+            fixed_scene_duration,
+            total_duration_hint=_srt_total_duration_hint(srt_text),
+        )
     if srt_text.strip():
         with open(_srt_path(project_folder), "w", encoding="utf-8") as handle:
             handle.write(srt_text)
@@ -1377,12 +1453,12 @@ def _save_prompt_creator_draft(payload):
         "max_duration": payload.get("max_duration", 10),
         "bias": payload.get("bias", 0.7),
         "duration_preset": str(payload.get("duration_preset", "varied_no_repeat") or "varied_no_repeat"),
-        "use_srt_durations": bool(payload.get("use_srt_durations", True)),
+        "use_srt_durations": _payload_bool(payload.get("use_srt_durations", True), True),
         "fixed_scene_duration": payload.get("fixed_scene_duration", 4),
         "empty_segment_text": str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section."),
         "concept_match_mode": str(payload.get("concept_match_mode", "medium") or "medium"),
-        "append_subject_to_prompts": bool(payload.get("append_subject_to_prompts", True)),
-        "repair_lyric_segments": bool(payload.get("repair_lyric_segments", False)),
+        "append_subject_to_prompts": _payload_bool(payload.get("append_subject_to_prompts", True), True),
+        "repair_lyric_segments": _payload_bool(payload.get("repair_lyric_segments", False), False),
         "text_gemma_runner": str(payload.get("text_gemma_runner") or payload.get("text_runner") or "builtin"),
         "lm_studio_base_url": str(payload.get("lm_studio_base_url") or payload.get("lmstudio_base_url") or "http://127.0.0.1:1234/v1"),
         "lm_studio_model": str(payload.get("lm_studio_model") or payload.get("lmstudio_model") or ""),
@@ -1417,6 +1493,7 @@ def _save_prompt_creator_draft(payload):
             handle.write(str(value or ""))
         files_written[os.path.basename(context_path)] = context_path
 
+    corrected_segments = {}
     if draft["corrected_segments_text"].strip():
         corrected_segments = _canonical_segment_mapping(_extract_json_object(draft["corrected_segments_text"]))
         if corrected_segments:
@@ -1449,10 +1526,26 @@ def _save_prompt_creator_draft(payload):
                 handle.write("\n")
             files_written["I2VMotionNotes.txt"] = motion_path
 
-    if draft["srt_text"].strip():
+    srt_text = draft["srt_text"]
+    regenerated_fixed_srt = False
+    if corrected_segments and not draft["use_srt_durations"]:
+        srt_text = _fixed_duration_srt_from_segments(
+            corrected_segments,
+            draft["fixed_scene_duration"],
+            total_duration_hint=_srt_total_duration_hint(srt_text),
+        )
+        draft["srt_text"] = srt_text
+        regenerated_fixed_srt = True
+
+    if srt_text.strip():
         with open(_srt_path(project_folder), "w", encoding="utf-8") as handle:
-            handle.write(draft["srt_text"])
+            handle.write(srt_text)
         files_written["builder_segments.srt"] = _srt_path(project_folder)
+
+    if regenerated_fixed_srt:
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(draft, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
 
     _write_prompt_creator_pointer(project_folder, _context_folder(project_folder), saved_at, {
         "type": "vrgdg_prompt_creator_output",
@@ -1704,7 +1797,7 @@ def _build_whisper_workflow_prompt(payload):
     max_duration = float(payload.get("max_duration", 10) or 10)
     bias = float(payload.get("bias", 0.7) or 0.7)
     duration_preset = str(payload.get("duration_preset", "varied_no_repeat") or "varied_no_repeat")
-    use_srt_durations = bool(payload.get("use_srt_durations", True))
+    use_srt_durations = _payload_bool(payload.get("use_srt_durations", True), True)
     fixed_scene_duration = float(payload.get("fixed_scene_duration", 4) or 4)
     empty_segment_text = str(payload.get("empty_segment_text", "Instrumental section.") or "Instrumental section.").strip() or "Instrumental section."
     whisper_language = str(payload.get("whisper_language", "english") or "english").strip() or "english"
