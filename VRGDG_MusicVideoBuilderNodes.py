@@ -48,6 +48,7 @@ Each word in brackets should be chosen based on the user input and what best fit
 
 Rules:
 - This is text-to-video
+- Never output square brackets or placeholder text. Replace every bracketed example with concrete scene details.
 - Subject must be physically singing with passion
 - Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color grading, camera photo style, or static image-quality descriptions.
 - Keep it vivid, fast, cinematic, dynamic, and video-ready
@@ -1763,6 +1764,33 @@ def _looks_like_gemma_repeat_failure(text):
     return False
 
 
+def _looks_like_unfilled_prompt_template(text):
+    sample = str(text or "").strip()
+    if not sample:
+        return False
+    bracketed = re.findall(r"\[([^\]]{2,80})\]", sample)
+    if len(bracketed) >= 2:
+        return True
+    placeholder_terms = (
+        "subject",
+        "setting",
+        "environment",
+        "time",
+        "weather",
+        "camera motion",
+        "dynamic performance",
+        "subject visibility",
+        "framing",
+        "reacts dynamically",
+        "clothing",
+        "hair",
+    )
+    lowered = sample.lower()
+    if any(f"[{term}]" in lowered for term in placeholder_terms):
+        return True
+    if re.search(r"\[[^\]]*(?:subject|setting|environment|camera|motion|weather|lighting|dynamic|framing)[^\]]*\]", lowered):
+        return True
+    return False
 def _validate_builder_gemma_prompt(text, label):
     if not str(text or "").strip():
         raise ValueError(f"Gemma returned an empty {label} prompt.")
@@ -1773,6 +1801,11 @@ def _validate_builder_gemma_prompt(text, label):
         raise ValueError(
             f"Gemma returned repeated/thought text for the {label} prompt. "
             f"{hint}"
+        )
+    if _looks_like_unfilled_prompt_template(text):
+        raise ValueError(
+            f"Gemma returned an unfilled template for the {label} prompt. "
+            "Try again or add more specific scene/motion notes."
         )
 
 
@@ -2025,7 +2058,8 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
 
 def _repair_builder_gemma_prompt(payload, text, label):
     original = str(text or "").strip()
-    if not original or not _looks_like_gemma_repeat_failure(original):
+    needs_repair = _looks_like_gemma_repeat_failure(original) or _looks_like_unfilled_prompt_template(original)
+    if not original or not needs_repair:
         return original
 
     repair_payload = dict(payload or {})
@@ -2040,16 +2074,35 @@ def _repair_builder_gemma_prompt(payload, text, label):
     repair_payload["mmproj_file"] = ""
     repair_payload["use_vision"] = False
     broken = original[:5000]
-    instruction = (
-        f"Clean this broken {label} image prompt into one usable final prompt.\n\n"
-        "The broken text may contain internal thoughts, analysis, channel tags, repeated tokens, markdown, or junk.\n"
-        "Do not continue the broken text. Do not explain the repair. Do not mention that it was repaired.\n"
-        "Return exactly one normal image prompt paragraph.\n"
-        "Remove all thought, analysis, channel, role, markdown, labels, and repeated junk.\n"
-        "Keep only usable visual image-generation content. If usable details are scarce, create a concise cinematic prompt from the usable fragments.\n"
-        "Keep it under 120 words.\n\n"
-        f"Broken text:\n{broken}"
-    )
+    label_text = str(label or "").strip()
+    video_repair = label_text.lower() in {"i2v", "t2v"}
+    if video_repair:
+        concept_prompt = str(repair_payload.get("t2i_prompt") or "").strip()[:3000]
+        motion_notes = str(repair_payload.get("user_notes") or "").strip()[:2000]
+        instruction = (
+            f"Clean this broken {label_text} video prompt into one usable final video prompt.\n\n"
+            "The broken text may contain internal thoughts, repeated tokens, markdown, or unfilled square-bracket placeholders.\n"
+            "Use only the concept prompt and motion notes below as context. Do not use project story, lyrics, agent chat, or any other context.\n"
+            "Replace placeholders like [Subject], [setting/environment], [time/weather], and [Camera Motion] with concrete details from the concept prompt and motion notes.\n"
+            "Do not continue the broken text. Do not explain the repair. Do not mention that it was repaired.\n"
+            "Return exactly one normal video prompt paragraph with no square brackets, labels, markdown, or placeholders.\n"
+            "Keep it under 120 words.\n\n"
+            f"Concept/T2I prompt:\n{concept_prompt or '[none provided]'}\n\n"
+            f"I2V/T2V motion notes:\n{motion_notes or '[none provided]'}\n\n"
+            f"Broken video prompt:\n{broken}"
+        )
+    else:
+        instruction = (
+            f"Clean this broken {label_text} image prompt into one usable final prompt.\n\n"
+            "The broken text may contain internal thoughts, analysis, channel tags, repeated tokens, markdown, unfilled square-bracket placeholders, or junk.\n"
+            "Do not continue the broken text. Do not explain the repair. Do not mention that it was repaired.\n"
+            "Return exactly one normal image prompt paragraph.\n"
+            "Remove all thought, analysis, channel, role, markdown, labels, square brackets, placeholder words, and repeated junk.\n"
+            "Replace placeholders like [Subject], [setting/environment], [time/weather], and [Camera Motion] with concrete details inferred from the broken text and user notes.\n"
+            "Keep only usable visual image-generation content. If usable details are scarce, create a concise cinematic prompt from the usable fragments.\n"
+            "Keep it under 120 words.\n\n"
+            f"Broken text:\n{broken}"
+        )
     try:
         repaired, _run_info = _run_builder_text_llm(
             repair_payload,
@@ -2057,15 +2110,14 @@ def _repair_builder_gemma_prompt(payload, text, label):
             temperature=0.25,
             top_p=0.85,
             max_new_tokens=350,
-            label=f"{label} repair Gemma",
+            label=f"{label_text} repair Gemma",
         )
         repaired = _clean_visual_gemma_text(repaired)
-        if repaired and not _looks_like_gemma_repeat_failure(repaired):
+        if repaired and not _looks_like_gemma_repeat_failure(repaired) and not _looks_like_unfilled_prompt_template(repaired):
             return repaired
     except Exception:
         pass
     return original
-
 
 def _repair_and_validate_builder_gemma_prompt(payload, text, label):
     repaired = _repair_builder_gemma_prompt(payload, text, label)
