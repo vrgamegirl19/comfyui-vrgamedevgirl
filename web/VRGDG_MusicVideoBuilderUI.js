@@ -4105,6 +4105,24 @@ function openBuilder(node) {
     return isLikelyVideoPath(path) ? path : "";
   }
 
+  function selectedSegmentVideoCacheKey(segment, videoPath = "") {
+    const path = String(videoPath || selectedSegmentVideoPath(segment) || "").trim();
+    if (!path) return "";
+    return `${path}|${String(segment?.video_cache_bust || "")}`;
+  }
+
+  function setPreviewVideoSource(segment, videoPath) {
+    const cacheKey = selectedSegmentVideoCacheKey(segment, videoPath);
+    if (!videoPath || !cacheKey) return;
+    if (previewVideo.dataset.cacheKey !== cacheKey) {
+      previewVideo.pause();
+      previewVideo.src = makeEditorVideoUrl(videoPath);
+      previewVideo.dataset.path = videoPath;
+      previewVideo.dataset.cacheKey = cacheKey;
+      previewVideo.load();
+    }
+  }
+
   function isLikelyVideoPath(path) {
     const text = String(path || "").trim();
     if (!text) return false;
@@ -4179,10 +4197,7 @@ function openBuilder(node) {
     ensureSegmentRuntimeFields(segment);
     const videoPath = selectedSegmentVideoPath(segment);
     if (segment?.preview_mode !== "image" && videoPath) {
-      if (previewVideo.dataset.path !== videoPath) {
-        previewVideo.src = makeEditorVideoUrl(videoPath);
-        previewVideo.dataset.path = videoPath;
-      }
+      setPreviewVideoSource(segment, videoPath);
       previewVideo.muted = false;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
@@ -4192,6 +4207,7 @@ function openBuilder(node) {
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.dataset.path = "";
+    previewVideo.dataset.cacheKey = "";
     previewVideo.style.display = "none";
     if (segment?.custom_image_data) {
       previewImage.src = segment.custom_image_data;
@@ -4336,9 +4352,8 @@ function openBuilder(node) {
       if (!previewVideo.paused) previewVideo.pause();
       return;
     }
-    if (previewVideo.dataset.path !== videoPath) {
-      previewVideo.src = makeEditorVideoUrl(videoPath);
-      previewVideo.dataset.path = videoPath;
+    if (previewVideo.dataset.cacheKey !== selectedSegmentVideoCacheKey(segment, videoPath)) {
+      setPreviewVideoSource(segment, videoPath);
       previewVideo.muted = false;
       previewVideo.style.display = "block";
       previewImage.style.display = "none";
@@ -8151,6 +8166,7 @@ function openBuilder(node) {
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.dataset.path = "";
+    previewVideo.dataset.cacheKey = "";
     previewVideo.style.display = "none";
   }
 
@@ -8846,6 +8862,7 @@ function openBuilder(node) {
     ensureSegmentRuntimeFields(segment);
     if (!segment || !videoPath || isBackupSceneVideoPath(videoPath)) return;
     segment.video_path = videoPath;
+    segment.video_cache_bust = Date.now();
     normalizeSegmentVideoHistory(segment);
     const currentIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(videoPath));
     if (currentIndex >= 0) segment.video_history_index = currentIndex;
@@ -10498,6 +10515,7 @@ function openBuilder(node) {
     segment.video_output = video;
     segment.video_source_path = videoPath;
     segment.video_path = collected.video_path || videoPath;
+    segment.video_cache_bust = Date.now();
     segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
     normalizeSegmentVideoHistory(segment);
     const currentVideoIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_path));
