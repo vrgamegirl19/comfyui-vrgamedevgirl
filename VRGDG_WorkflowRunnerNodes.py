@@ -661,23 +661,39 @@ def _image_paths_from_payload_ingredients(payload, label="image ingredient"):
     return image_paths
 
 
+def _looks_like_prompt_text(value):
+    text = str(value or "").strip()
+    return len(text) > 20 and any(ch.isspace() for ch in text)
+
+
+def _looks_like_api_key(value):
+    text = str(value or "").strip()
+    return len(text) >= 20 and not any(ch.isspace() for ch in text)
+
+
 def _patch_nb_image_api_prompt(prompt, payload):
     prompt = copy.deepcopy(prompt)
     prompt_text = str(payload.get("prompt", "") or "").strip()
     api_key = str(payload.get("api_key", "") or "").strip()
+    if _looks_like_prompt_text(api_key) and _looks_like_api_key(prompt_text):
+        api_key, prompt_text = prompt_text, api_key
     if not prompt_text:
         raise ValueError("NanoBanana prompt text is empty.")
     if not api_key:
         raise ValueError("NanoBanana needs an API key.")
+    if any(ch.isspace() for ch in api_key):
+        raise ValueError("NanoBanana API key looks invalid. It appears to contain prompt text; paste the Google API key into the NanoBanana API key field.")
 
     image_paths = _image_paths_from_payload_ingredients(payload, "NanoBanana reference image")
     if not image_paths:
         raise ValueError("NanoBanana needs at least one reference image.")
 
-    _set_api_input(prompt, "1", "api_key", api_key)
-    _set_api_input(prompt, "1", "prompt", prompt_text)
-    _set_api_input(prompt, "1", "model", str(payload.get("model", "") or "gemini-3-pro-image-preview"))
-    _set_api_input(prompt, "3", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    nb_node_id = _api_node_id_by_class(prompt, "VRGDG_NanoBananaPro", fallback=1)
+    image_loader_id = _api_node_id_by_class(prompt, "VRGDG_ImageBatchMultiFromPaths", fallback=3)
+    _set_api_input(prompt, nb_node_id, "api_key", api_key)
+    _set_api_input(prompt, nb_node_id, "prompt", prompt_text)
+    _set_api_input(prompt, nb_node_id, "model", str(payload.get("model", "") or "gemini-3-pro-image-preview"))
+    _set_api_input(prompt, image_loader_id, "image_paths", json.dumps(image_paths, ensure_ascii=False))
     return prompt
 
 
