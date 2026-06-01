@@ -48,9 +48,9 @@ The basic idea is:
 
 Add the node named `VRGDG Music Video Builder UI` in ComfyUI.
 
-When the builder opens, it may show a welcome window where you can create a new project or open an existing project.
-
 ![ComfyUI Builder Node](images/ComfyUI%20Builder%20Node.png)
+
+When the builder opens, it may show a welcome window where you can create a new project or open an existing project.
 
 ![Welcome Window](images/Welcome%20Window.png)
 
@@ -158,8 +158,6 @@ Timeline controls:
 | Zoom `-` / `+` | Zoom the timeline view |
 | `Use Frame as Image` | Save the current video frame as the selected scene image |
 | `Delete Image/Video` | Remove selected media from the scene |
-
-![Timeline Controls](images/Timeline%20Controls.png)
 
 ![Timeline With Scenes](images/Timeline%20Scene%20Blocks.png)
 
@@ -318,8 +316,6 @@ Basic Reference Builder workflow:
 5. Map locations to scenes.
 6. Click `Save Reference Builder`.
 7. Generate images normally from the `Image` tab.
-
-![Reference Builder Window](images/Reference%20Builder%20Window.png)
 
 ![Reference Builder Mapping](images/Reference%20Builder%20Mapping.png)
 
@@ -547,31 +543,3 @@ Use this if you are new and just want the first successful video.
 | Audio does not play | Check whether the project uses Global Audio or Scene Audio |
 | Timing changed after import | Enable `Freeze SRT timing` on scenes you do not want changed |
 | Image-to-video prompt looks wrong | Turn `Use image reference for I2V prompt?` on/off depending on whether the image should guide Gemma |
-
-## Screenshot Checklist
-
-Already added:
-
-- Full V7 Video Builder window
-- ComfyUI Builder Node
-- Welcome Window
-- Menu Dropdown
-- Load Project Window
-- Left Scene List
-- Timeline Controls
-- Timeline With Scenes
-- Scene Tab
-- Image Tab Model Chooser
-- ZImage Prompting
-- Flux Reference Images
-- Video Mode Chooser
-- Video Prompting
-- Audio Tab
-- Build Full Video Options
-- Final Video Ready Popup
-- Download Models Window
-
-Still needed:
-
-- None
-
