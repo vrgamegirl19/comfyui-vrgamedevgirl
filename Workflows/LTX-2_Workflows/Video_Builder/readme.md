@@ -1,9 +1,8 @@
-
 # V7 Video Builder Guide
 
 This guide is for someone opening the V7 Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
-<screenshot of the full V7 Video Builder window goes here>
+![Full V7 Video Builder Window](images/Full%20V7%20Video%20Builder%20Window.png)
 
 ## Table of Contents
 
@@ -18,6 +17,10 @@ This guide is for someone opening the V7 Video Builder for the first time. It ex
 - [Image Tab](#image-tab)
 - [Video Tab](#video-tab)
 - [Audio Tab](#audio-tab)
+- [Reference Builder](#reference-builder)
+- [Builder Agent](#builder-agent)
+- [Prompt Options](#prompt-options)
+- [Gemma Runner](#gemma-runner)
 - [Batch Buttons and Full Builds](#batch-buttons-and-full-builds)
 - [Prompt Creator Import](#prompt-creator-import)
 - [Models and Downloads](#models-and-downloads)
@@ -47,9 +50,9 @@ Add the node named `VRGDG Music Video Builder UI` in ComfyUI.
 
 When the builder opens, it may show a welcome window where you can create a new project or open an existing project.
 
-<screenshot of the ComfyUI node and open builder button goes here>
+![ComfyUI Builder Node](images/ComfyUI%20Builder%20Node.png)
 
-<screenshot of the Welcome to Video Creator window goes here>
+![Welcome Window](images/Welcome%20Window.png)
 
 ## The Main Layout
 
@@ -63,7 +66,7 @@ The builder has five main areas:
 | Right panel | Scene settings, split into Scene, Image, Video, and Audio tabs |
 | Bottom timeline | Timing, playback, scene blocks, inserts, notes, beat markers, and selected media tools |
 
-<screenshot of the layout with labels for top bar, scene list, preview, inspector, and timeline goes here>
+The full builder screenshot at the start of this guide shows these areas together.
 
 ## Starting or Loading a Project
 
@@ -82,7 +85,9 @@ Important project options:
 
 Projects are saved under the ComfyUI output folder. A builder project contains the session JSON, SRT, generated images, scene videos, prompt files, reference images, and copied audio assets.
 
-<screenshot of the Menu dropdown goes here>
+![Menu Dropdown](images/Menu%20Dropdown.png)
+
+![Load Project Window](images/Load%20Project%20Window.png)
 
 ## Adding Audio and SRT Timing
 
@@ -109,7 +114,7 @@ To use SRT timing:
 
 Supported audio formats include WAV, MP3, FLAC, M4A, and OGG.
 
-<screenshot of the Audio tab with Timeline Audio expanded goes here>
+The `Audio Tab` section later in this guide shows the audio controls.
 
 ## Working With Scenes
 
@@ -128,7 +133,7 @@ Common scene actions:
 | Edit timing | Right panel `Scene` tab, `Start` and `End` |
 | Prevent timing changes from SRT import | `Freeze SRT timing` |
 
-<screenshot of the left scene list with one scene selected goes here>
+![Left Scene List](images/Left%20Scene%20List.png)
 
 ## Using the Timeline
 
@@ -154,9 +159,9 @@ Timeline controls:
 | `Use Frame as Image` | Save the current video frame as the selected scene image |
 | `Delete Image/Video` | Remove selected media from the scene |
 
-<screenshot of the timeline controls goes here>
+![Timeline Controls](images/Timeline%20Controls.png)
 
-<screenshot of scene blocks on the timeline goes here>
+![Timeline With Scenes](images/Timeline%20Scene%20Blocks.png)
 
 ## Scene Tab
 
@@ -178,7 +183,7 @@ Main fields:
 
 Use this tab first when a scene needs better direction before image or video generation.
 
-<screenshot of the Scene tab goes here>
+![Scene Tab](images/Scene%20Tab.png)
 
 ## Image Tab
 
@@ -213,11 +218,11 @@ Basic image workflow:
 6. Click the create button for that model, such as `Create Z-Image`.
 7. Review the image in the center preview.
 
-<screenshot of the Image tab model chooser goes here>
+![Image Tab Model Chooser](images/Image%20Tab%20Model%20Chooser.png)
 
-<screenshot of ZImage LLM Prompting with Gemma T2I and T2I prompt goes here>
+![ZImage Prompting](images/ZImage%20Prompting.png)
 
-<screenshot of Flux/Klein reference image ingredients goes here>
+![Flux Reference Images](images/Flux%20Reference%20Images.png)
 
 ## Video Tab
 
@@ -255,9 +260,9 @@ Basic Text-to-Video workflow:
 4. Optionally use a reference image for Gemma prompt writing.
 5. Click `Create Scene Video`.
 
-<screenshot of the Video tab mode chooser goes here>
+![Video Mode Chooser](images/Video%20Mode%20Chooser.png)
 
-<screenshot of Video LLM Prompting with motion notes and Gemma I2V goes here>
+![Video Prompting](images/Video%20Prompting.png)
 
 ## Audio Tab
 
@@ -272,7 +277,154 @@ Sections:
 
 Use `Scene Audio` for scene-specific dialogue or clips. Use `Timeline Audio` for music-video timing.
 
-<screenshot of the Audio tab showing Scene Audio and Timeline Audio goes here>
+![Audio Tab](images/Audio%20Tab%20Timeline%20Audio.png)
+
+## Reference Builder
+
+The `Reference Builder` button opens the `Reference Image Builder`. This is for projects where scenes need consistent characters, locations, or visual references across many generated images.
+
+Reference Builder can feed references into `Flux/Klein` or `Nano B`, depending on the current image mode.
+
+Use it when:
+
+| Goal | What to use |
+| --- | --- |
+| Keep the same character across scenes | `Character References` |
+| Keep locations consistent | `Location References` |
+| Connect scenes to specific location images | `Scene Mapping` |
+| Include manually loaded image references too | `Also include manually loaded reference images` |
+
+Main areas:
+
+| Area | What it does |
+| --- | --- |
+| `Use subject reference` | Sends the character/subject reference into supported image generations |
+| `Use mapped location references` | Sends the mapped location image for each scene |
+| `Character References` | Upload or generate subject reference images |
+| `Extract Subjects` | Uses project prompts/director notes to find subjects |
+| `Create Subject with ZImage` | Generates a subject reference image |
+| `Location References` | Add, upload, or generate location reference images |
+| `Extract Locations` | Uses project prompts/director notes to find locations |
+| `Auto Map Locations with Gemma` | Lets Gemma choose which location reference fits each scene |
+| `Scene Mapping` | Manually choose the location reference for each scene |
+| `Save Reference Builder` | Saves the reference setup into the project |
+
+Basic Reference Builder workflow:
+
+1. Choose `Flux Klein` or `Nano B` in the `Image` tab.
+2. Click `Reference Builder` in the top bar.
+3. Turn on `Use subject reference` and/or `Use mapped location references`.
+4. Add character and location references.
+5. Map locations to scenes.
+6. Click `Save Reference Builder`.
+7. Generate images normally from the `Image` tab.
+
+![Reference Builder Window](images/Reference%20Builder%20Window.png)
+
+![Reference Builder Mapping](images/Reference%20Builder%20Mapping.png)
+
+## Builder Agent
+
+The `Agent` button opens the `Builder Agent`, a chat helper for planning, editing, troubleshooting, and optionally applying changes to the project.
+
+The Agent is useful when you want help with:
+
+| Task | Example request |
+| --- | --- |
+| Learning the workflow | `Walk me through what to do next.` |
+| Scene planning | `Rewrite Scene 5 notes to match the previous scene.` |
+| Prompt cleanup | `Make this image prompt more cinematic but keep the subject the same.` |
+| Video motion | `Create stronger camera motion for Scene 8.` |
+| Story planning | `Plan this whole song as a multi-character video.` |
+| Troubleshooting | `Why is this scene not ready to render?` |
+
+Agent controls:
+
+| Control | What it means |
+| --- | --- |
+| `Context sent to Gemma` | How much project context the Agent receives |
+| `Active scene only` | Best for focused changes to the selected scene |
+| `Active scene + neighbors` | Best for continuity around the selected scene |
+| `Project brief` | Best for overall advice without sending every scene |
+| `Full scene plan` | Best for Story Builder and large planning tasks |
+| `Agent mode: Manual` | Suggest only; does not apply changes |
+| `Agent mode: Auto` | Can update fields, switch modes, select scenes, and run supported actions |
+| `Purpose: Walkthrough` | Helps a new user step through setup |
+| `Purpose: Scene work` | Helps with scene notes, prompts, images, and video |
+| `Purpose: Story Builder` | Helps plan a multi-scene story or character structure |
+| `Purpose: Troubleshoot` | Helps diagnose missing setup or failed steps |
+| `Hint` | Shows examples of what the Agent can do |
+| `Pop Out` | Moves the Agent to its own browser window |
+| `Min` | Minimizes the Agent without closing the chat |
+| `Clear Chat` | Clears the current Agent conversation |
+
+Reference and story tools:
+
+| Tool | Use it for |
+| --- | --- |
+| `Drop reference image` | Give the Agent a visual reference for the active scene |
+| `Upload Ref` | Upload one or more reference images |
+| `Add Audio` | Add global/timeline audio while using Story Builder |
+| `Story Source` | Paste or edit lyrics/script/source text for Story Builder |
+| `Upload Story Images` | Add singers, characters, locations, or aesthetic images |
+| `Analyze Images` | Turn story images into compact notes for text-only planning |
+
+Recommended beginner use:
+
+1. Open `Agent`.
+2. Set `Agent mode` to `Manual: suggest only`.
+3. Set `Purpose` to `Walkthrough`.
+4. Ask what to do next.
+5. Switch to `Scene work` when you want help with a selected scene.
+6. Use `Auto: update fields` only when you are comfortable letting it make edits.
+
+![Builder Agent Window](images/Builder%20Agent%20Window.png)
+
+![Builder Agent Hints](images/Builder%20Agent%20Hints.png)
+
+## Prompt Options
+
+The `Prompt Options` button opens tools for editing, creating, reloading, or clearing final prompt text files for the project.
+
+Use this when the scene prompt boxes need to be refreshed from saved prompt files, or when you want to edit generated prompts in a larger text editor-style workflow.
+
+Prompt Options has two groups:
+
+| Group | Buttons |
+| --- | --- |
+| `Image` | `Create Concept Prompts`, `Edit Text to Image Prompts`, `Reload Text to Image Prompts`, `Reload Original T2I Prompts`, `Clear All T2I Prompts` |
+| `Video` | `Create Motion Notes`, `Edit Image to Video Prompts`, `Reload Image to Video Prompts`, `Reload Original I2V Prompts`, `Clear All I2V Prompts` |
+
+If the current image mode is `Flux/Klein` or `Nano B`, the image prompt buttons change names to match that mode.
+
+Use caution with the clear buttons. They remove prompt text from the project stage they describe.
+
+![Prompt Options Window](images/Prompt%20Options%20Window.png)
+
+## Gemma Runner
+
+The `Gemma Runner` button controls which runner is used for text-only Gemma steps.
+
+Options:
+
+| Runner | What it means |
+| --- | --- |
+| `builtin` | Uses the built-in local GGUF runner |
+| `lm_studio` | Uses LM Studio's local server for text-only Gemma calls |
+
+LM Studio is only for text-only Gemma steps. Vision/image-reference Gemma still uses the built-in GGUF runner.
+
+LM Studio setup fields:
+
+| Field | What to enter |
+| --- | --- |
+| `LM Studio base URL` | Usually `http://127.0.0.1:1234/v1` |
+| `Available LM Studio models` | Click `Load LM Studio Models` to fill this |
+| `LM Studio model name` | The loaded chat model name from LM Studio |
+| `API key` | Usually blank for local LM Studio |
+| `Test LM Studio` | Sends a tiny test prompt to confirm it works |
+
+![Gemma Runner Window](images/Gemma%20Runner%20Window.png)
 
 ## Batch Buttons and Full Builds
 
@@ -297,7 +449,11 @@ When prompted, choose the safest option first:
 | Keep prompts, redo images/videos | Make new media but preserve prompt work |
 | Redo prompts and images/videos | Start fresh for the selected stage |
 
-<screenshot of Build Full Video confirmation options goes here>
+![Build Full Video Options](images/Build%20Full%20Video%20Options.png)
+
+When the finished video is stitched, the builder shows a `Final Video Ready` popup. Use `Open Video` to preview it.
+
+![Final Video Ready Popup](images/Final%20Video%20Ready%20Popup.png)
 
 ## Prompt Creator Import
 
@@ -316,7 +472,7 @@ Useful buttons:
 
 Imported data can include audio, SRT, concept prompts, lyric segments, motion notes, theme/style text, story idea text, and subject/scene text.
 
-<screenshot of Prompt Creator import buttons in the top bar goes here>
+![Prompt Creator Import Buttons](images/Prompt%20Creator%20Import%20Buttons.png)
 
 ## Models and Downloads
 
@@ -335,7 +491,7 @@ The model download window includes groups for:
 
 After placing models in the correct ComfyUI model folders, restart ComfyUI if dropdowns do not refresh.
 
-<screenshot of the Download Models window goes here>
+![Download Models Window](images/Download%20Models%20Window.png)
 
 ## Saving Projects
 
@@ -394,22 +550,28 @@ Use this if you are new and just want the first successful video.
 
 ## Screenshot Checklist
 
-Add screenshots in these places when you are ready:
+Already added:
 
 - Full V7 Video Builder window
-- ComfyUI node used to open the builder
-- Welcome window
-- Menu dropdown
-- Top bar buttons
-- Left scene list
-- Timeline controls
-- Scene tab
-- Image tab model chooser
-- ZImage prompt workflow
-- Flux/Klein reference images
-- Video tab mode chooser
-- Video prompt workflow
-- Audio tab
-- Build Full Video options
-- Download Models window
+- ComfyUI Builder Node
+- Welcome Window
+- Menu Dropdown
+- Load Project Window
+- Left Scene List
+- Timeline Controls
+- Timeline With Scenes
+- Scene Tab
+- Image Tab Model Chooser
+- ZImage Prompting
+- Flux Reference Images
+- Video Mode Chooser
+- Video Prompting
+- Audio Tab
+- Build Full Video Options
+- Final Video Ready Popup
+- Download Models Window
+
+Still needed:
+
+- None
 
