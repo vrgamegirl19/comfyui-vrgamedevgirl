@@ -1295,12 +1295,14 @@ def _repair_builder_json_like_text(text):
         repaired,
         flags=re.IGNORECASE,
     )
+    repaired = re.sub(r'([{\[,]\s*)(Scene\s*\d+|Scene\d+)\s*:', lambda m: f'{m.group(1)}"{m.group(2).replace(" ", "")}":', repaired, flags=re.IGNORECASE)
     repaired = re.sub(
         r'(^\s*)(locations|scene_map|name|description|id|label|prompt|runner|used_model)\s*:',
         r'\1"\2":',
         repaired,
         flags=re.IGNORECASE | re.MULTILINE,
     )
+    repaired = re.sub(r'(^\s*)(Scene\s*\d+|Scene\d+)\s*:', lambda m: f'{m.group(1)}"{m.group(2).replace(" ", "")}":', repaired, flags=re.IGNORECASE | re.MULTILINE)
     # Gemma sometimes omits commas between array objects or object properties.
     repaired = re.sub(r'(["}\]])\s*\n\s*(")', r'\1,\n\2', repaired)
     repaired = re.sub(r'(})\s*\n\s*({)', r'\1,\n\2', repaired)
@@ -2159,7 +2161,7 @@ def _generate_builder_agent_reply(payload):
         context = {}
     auto_apply = bool(payload.get("auto_apply"))
     agent_purpose = str(payload.get("agent_purpose") or "scene_work").strip().lower()
-    if agent_purpose not in {"walkthrough", "scene_work", "troubleshoot"}:
+    if agent_purpose not in {"walkthrough", "scene_work", "story_builder", "troubleshoot"}:
         agent_purpose = "scene_work"
     messages = payload.get("messages") or []
     if not isinstance(messages, list):
@@ -2193,9 +2195,11 @@ def _generate_builder_agent_reply(payload):
         "When suggesting prompt text, provide copy-ready text clearly, but keep normal chat friendly.\n"
         "If the context is missing something, say what is missing and make a reasonable suggestion from what is available.\n\n"
         f"Agent purpose: {agent_purpose}.\n"
+        "Read project_status and scene_directory first. If project_status.scene_count is greater than 0, scenes already exist; do not say no scenes have been created and do not ask to create initial scenes from timeline markers unless the user explicitly asks for that.\n"
         "If purpose is walkthrough, act like intake plus step-by-step onboarding. First identify what the user is making: music video, short film, ad/social clip, visualizer, or something else. Use project_status before choosing the next step. If project_status.has_audio is false, ask whether they plan to use custom audio and point them to Choose Audio if yes; do not ask for lyrics/SRT before resolving the audio plan. If audio exists, ask how they want scenes created: import Prompt Creator outputs, load SRT/lyrics, manually create scenes, or plan scenes with the agent. Only ask about lyrics when the user is making a music video or lyric-driven project. For short films/ads, ask for script, scene beats, product/message, or visual outline instead. Tell them one small UI step at a time and why. Do not generate prompts or run models unless the user explicitly asks. Prefer one next step over a full tutorial.\n"
         "If purpose is troubleshoot, focus on diagnosing the user's stated problem from project_status, active scene context, and available get actions.\n"
         "If purpose is scene_work, help create/update scene notes, prompts, images, and videos using the supported actions.\n\n"
+        "If purpose is story_builder, act like a scene planner for complex multi-character projects. This workflow may not use Prompt Creator, SRT, or existing lyric segments. First check project_status.has_audio and story_source.has_source. For music videos/songs, if no audio exists, ask for global/timeline audio before asking for lyrics. If no story source exists, ask the user to paste lyrics/script/story source and use save_story_source in Auto Apply mode when they provide it. Use get_story_source when you need the saved lyrics/script instead of keeping it in chat memory. Help define characters, assign which character(s) appear in each scene, match the lyrics/story beat, and create compact per-scene planning notes. Prefer structured scene plans over long prose. When Auto Apply is enabled, use create_story_scenes_from_source if the user asks to create starter scenes from saved lyrics/script, then use set_scene_plan for requested scenes. Do not generate final image/video prompts unless the user explicitly asks; write planning notes that the existing prompt generators can use.\n\n"
         "Return only valid JSON with this shape:\n"
         "{\n"
         "  \"reply\": \"short message to show the user\",\n"
@@ -2205,10 +2209,29 @@ def _generate_builder_agent_reply(payload):
         "- {\"type\":\"select_scene\",\"scene_id\":\"...\"} or {\"type\":\"select_scene\",\"scene_number\":2}\n"
         "- {\"type\":\"get_scene_lyrics\",\"scene_id\":\"...\"} or {\"type\":\"get_scene_lyrics\",\"scene_number\":2}\n"
         "- {\"type\":\"get_scene_context\",\"scene_id\":\"...\"} or {\"type\":\"get_scene_context\",\"scene_number\":2}\n"
-        "- {\"type\":\"set_scene_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
-        "- {\"type\":\"set_flux_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
-        "- {\"type\":\"set_nb_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
-        "- {\"type\":\"set_video_notes\",\"scene_id\":\"...\",\"text\":\"...\"}\n"
+        "- {\"type\":\"get_story_source\"}\n"
+        "- {\"type\":\"get_context_prompts\",\"context_type\":\"all|theme_style|story_idea|subject_scene\"}\n"
+        "- {\"type\":\"get_selected_timeline_range\"}\n"
+        "- {\"type\":\"save_story_source\",\"text\":\"lyrics/script/story source text\"}\n"
+        "- {\"type\":\"set_context_prompt\",\"context_type\":\"theme_style|story_idea|subject_scene\",\"text\":\"...\",\"mode\":\"replace|append\"}\n"
+        "- {\"type\":\"create_story_scenes_from_source\",\"scene_count\":12}\n"
+        "- {\"type\":\"create_concept_prompts\",\"source_mode\":\"all|director|scene|timeline|director_scene\",\"scope\":\"all|selected|range\",\"batch_size\":5,\"use_story\":true,\"use_theme\":true}\n"
+        "- {\"type\":\"create_motion_notes\",\"source_mode\":\"concept|concept_director|concept_timeline|all\",\"scope\":\"all|selected|range\",\"batch_size\":5,\"use_story\":true,\"use_theme\":true}\n"
+        "- {\"type\":\"set_active_scene_to_selected_range\",\"scene_id\":\"optional target scene\"}\n"
+        "- {\"type\":\"create_scene_from_selected_range\",\"label\":\"...\",\"director_note\":\"...\",\"scene_notes\":\"...\",\"flux_notes\":\"...\",\"nb_notes\":\"...\",\"video_notes\":\"...\"}\n"
+        "- {\"type\":\"split_selected_range_into_scenes\",\"scene_count\":3,\"label_prefix\":\"Scene\",\"director_notes\":[\"...\"],\"scene_notes\":[\"...\"]}\n"
+        "- {\"type\":\"split_scene_into_subscenes\",\"scene_id\":\"...\",\"scene_number\":4,\"scene_count\":3,\"label_prefix\":\"Scene 4\"}\n"
+        "- {\"type\":\"merge_scenes\",\"scene_numbers\":[2,3,4],\"label\":\"Scene 2\"}\n"
+        "- {\"type\":\"renumber_scene_labels\"}\n"
+        "- {\"type\":\"normalize_dual_vocal_director_notes\",\"replacement\":\"male and female\"}\n"
+        "- {\"type\":\"replace_director_note_text\",\"find\":\"male singer and female singer\",\"replace\":\"female and male\"}\n"
+        "- {\"type\":\"assign_selected_range_note\",\"label\":\"Female vocal\",\"marker_type\":\"female vocal|male vocal|chorus|verse|beat|note\",\"note\":\"...\"}\n"
+        "- {\"type\":\"sync_existing_scenes_to_timeline_markers\",\"create_missing\":true}\n"
+        "- {\"type\":\"set_scene_notes\",\"scene_number\":2,\"text\":\"...\"}\n"
+        "- {\"type\":\"set_flux_notes\",\"scene_number\":2,\"text\":\"...\"}\n"
+        "- {\"type\":\"set_nb_notes\",\"scene_number\":2,\"text\":\"...\"}\n"
+        "- {\"type\":\"set_video_notes\",\"scene_number\":2,\"text\":\"...\"}\n"
+        "- {\"type\":\"set_scene_plan\",\"scene_number\":2,\"director_note\":\"...\",\"scene_notes\":\"...\",\"flux_notes\":\"...\",\"nb_notes\":\"...\",\"video_notes\":\"...\"}\n"
         "- {\"type\":\"set_image_model_mode\",\"image_mode\":\"zimage|flux_klein|nano_banana|ernie_image\"}\n"
         "- {\"type\":\"set_video_model_mode\",\"video_mode\":\"i2v|t2v\"}\n"
         "- {\"type\":\"request_reference_images\",\"scene_id\":\"...\",\"image_mode\":\"nano_banana|flux_klein\"}\n"
@@ -2216,13 +2239,19 @@ def _generate_builder_agent_reply(payload):
         "- {\"type\":\"run_image_for_current_mode\",\"scene_id\":\"...\",\"image_mode\":\"optional zimage|flux_klein|nano_banana|ernie_image\"}\n"
         "- {\"type\":\"generate_video_prompt_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|t2v\"}\n\n"
         "- {\"type\":\"run_video_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|t2v\"}\n\n"
-        "Use note actions to capture the creative direction you discuss with the user. Use generate actions when the user asks you to make/create/update the actual image or video prompt. Use run_image_for_current_mode only when the user asks to run/create/generate the actual image, not just the text prompt.\n"
+        "Use note actions to capture the creative direction you discuss with the user. Use set_scene_plan when planning character assignments, story beats, scene concepts, and motion notes for one or more scenes. Keep each set_scene_plan field short and direct.\n"
+        "Use create_concept_prompts when the user asks to create, generate, build, or update concept prompts from director notes, scene notes, timeline notes, story idea, or theme/style. This writes generated concept prompts into scene notes in batches.\n"
+        "Use create_motion_notes when the user asks to create, generate, build, or update I2V/T2V motion notes from concept prompts, director notes, timeline notes, story idea, or theme/style. This writes generated motion notes into the I2V motion notes fields/file in batches.\n"
+        "Use get_context_prompts to read the global Theme/style, Story idea, and Subject/scene context prompts. Use set_context_prompt when the user asks to update those global context prompt files. Choose context_type theme_style for style/mood/look, story_idea for plot/concept/narrative, and subject_scene for characters, subjects, locations, and recurring scene details.\n"
+        "Use selected_timeline_range and timeline_markers when the user is timing vocals, choruses, dialogue, or music sections. If they say this selected range is where someone sings, use assign_selected_range_note. If they ask to make a scene cover it, use set_active_scene_to_selected_range. Only use create_scene_from_selected_range or split_selected_range_into_scenes when selected_timeline_range is not null and the user explicitly asks to create/split the selected in/out range. If the user asks to split one existing scene, such as 'split scene 4 into 3', use split_scene_into_subscenes with that scene number and count. If the user asks to combine, merge, join, or consolidate scenes, use merge_scenes with the scene numbers. If the user asks to update/reword/fix director notes, do note actions only; do not sync or change timings. If they ask to replace director note text, such as 'when a director note says X change it to Y', use replace_director_note_text. If they ask that all both-character or dual-vocal director notes say a specific phrase such as 'male and female' or 'female and male', use normalize_dual_vocal_director_notes with that replacement phrase. If timeline markers already exist and the user asks to update, align, match, sync, or split existing scene segments from those markers, or answers yes after you suggest updating scenes from markers, use sync_existing_scenes_to_timeline_markers. If the user asks to fix missing/skipped/duplicate scene numbers or renumber labels, use renumber_scene_labels. Do not use split_selected_range_into_scenes for marker-based timing, one-scene splits, or merge/combine requests.\n"
+        "Use generate actions when the user asks you to make/create/update the actual image or video prompt. Use run_image_for_current_mode only when the user asks to run/create/generate the actual image, not just the text prompt.\n"
         "If the user asks for multiple steps, include all requested actions in order. Example: prompt, then image, then video means generate_image_prompt_for_current_mode, run_image_for_current_mode, generate_video_prompt_for_current_mode, run_video_for_current_mode.\n"
-        "If the user wants Nano B or Flux/Klein but the target scene has has_reference_images=false or reference_image_count=0, ask the user to add/drop reference images first and include request_reference_images instead of generate_image_prompt_for_current_mode.\n"
+        "Nano B and Flux/Klein can run with or without reference images. If no references exist, use the normal generate/run actions anyway and the app will use text-only prompting. Only request reference images when the user specifically asks to use references or the scene concept requires matching an exact character/location.\n"
         "Do not write final image/video prompts yourself as actions. Do not use unsupported set_image_prompt, set_flux_prompt, set_nb_prompt, or set_video_prompt actions.\n"
+        "Never put JSON, action arrays, code fences, or internal notes inside the reply string. The reply must be a short user-facing sentence; all work must be in the actions array.\n"
         "Do not claim which image/video generator ran. The app will report the actual mode after it runs the action.\n"
         f"Agent mode: {'AUTO APPLY. If the user asks you to do/apply/update/fill/write prompts or notes, include supported note/generate actions for the requested scene fields.' if auto_apply else 'MANUAL. Never include actions. Do not say you applied or updated the project; only suggest copy-ready text.'}\n"
-        "Only target scene IDs that appear in the active context JSON. If the target scene is unclear, ask one short clarifying question and return no actions.\n"
+        "Prefer scene_number for scene-targeted actions. Use scene_id only when copying an exact internal id from the context JSON. If the target scene is unclear, ask one short clarifying question and return no actions.\n"
         "In Auto Apply mode, the application will apply actions after your response. In Manual mode, actions must always be an empty list.\n\n"
         "Active context JSON:\n"
         f"{context_text}\n\n"
@@ -2251,9 +2280,28 @@ def _generate_builder_agent_reply(payload):
     cleaned_actions = []
     allowed_types = {
         "set_scene_notes",
+        "set_scene_plan",
         "select_scene",
         "get_scene_lyrics",
         "get_scene_context",
+        "get_story_source",
+        "get_context_prompts",
+        "get_selected_timeline_range",
+        "save_story_source",
+        "set_context_prompt",
+        "create_story_scenes_from_source",
+        "create_concept_prompts",
+        "create_motion_notes",
+        "set_active_scene_to_selected_range",
+        "create_scene_from_selected_range",
+        "split_selected_range_into_scenes",
+        "split_scene_into_subscenes",
+        "merge_scenes",
+        "renumber_scene_labels",
+        "normalize_dual_vocal_director_notes",
+        "replace_director_note_text",
+        "assign_selected_range_note",
+        "sync_existing_scenes_to_timeline_markers",
         "set_flux_notes",
         "set_nb_notes",
         "set_video_notes",
@@ -2267,20 +2315,72 @@ def _generate_builder_agent_reply(payload):
     }
     allowed_image_modes = {"zimage", "flux_klein", "nano_banana", "ernie_image"}
     allowed_video_modes = {"i2v", "t2v"}
-    for action in actions[:12]:
+    max_actions = 60 if agent_purpose == "story_builder" else 12
+    plan_fields = {"director_note", "scene_notes", "flux_notes", "nb_notes", "video_notes"}
+    for action in actions[:max_actions]:
         if not isinstance(action, dict):
             continue
         action_type = str(action.get("type") or "").strip()
         scene_id = str(action.get("scene_id") or "").strip()
-        action_text = str(action.get("text") or "").strip()
+        action_text_raw = str(action.get("text") or "").strip()
         image_mode = str(action.get("image_mode") or "").strip()
         video_mode = str(action.get("video_mode") or "").strip()
+        context_type = str(action.get("context_type") or "").strip().lower()
+        context_mode = str(action.get("mode") or "").strip().lower()
+        scene_count = action.get("scene_count")
+        try:
+            scene_count = int(scene_count) if scene_count is not None else None
+        except Exception:
+            scene_count = None
+        plan_values = {
+            field: str(action.get(field) or "").strip()[:5000]
+            for field in plan_fields
+            if str(action.get(field) or "").strip()
+        }
         scene_number = action.get("scene_number")
+        if scene_number is None:
+            scene_target_text = " ".join(
+                str(action.get(field) or "")
+                for field in (
+                    "scene_id",
+                    "scene",
+                    "scene_label",
+                    "scene_name",
+                    "target_scene",
+                    "target",
+                    "label",
+                    "name",
+                    "title",
+                )
+            )
+            scene_match = re.search(r"\bscene\s*(\d+)(?:\b|\s|\.|:|-)", scene_target_text, re.I)
+            if scene_match:
+                scene_number = scene_match.group(1)
         try:
             scene_number = int(scene_number) if scene_number is not None else None
         except Exception:
             scene_number = None
-        if action_type in allowed_types and (scene_id or scene_number is not None or action_type in {"set_image_model_mode", "set_video_model_mode"}):
+        no_scene_actions = {
+            "set_image_model_mode",
+            "set_video_model_mode",
+            "get_story_source",
+            "get_context_prompts",
+            "save_story_source",
+            "set_context_prompt",
+            "create_story_scenes_from_source",
+            "create_concept_prompts",
+            "create_motion_notes",
+            "get_selected_timeline_range",
+            "create_scene_from_selected_range",
+            "split_selected_range_into_scenes",
+            "merge_scenes",
+            "renumber_scene_labels",
+            "normalize_dual_vocal_director_notes",
+            "replace_director_note_text",
+            "assign_selected_range_note",
+            "sync_existing_scenes_to_timeline_markers",
+        }
+        if action_type in allowed_types and (scene_id or scene_number is not None or action_type in no_scene_actions):
             if action_type == "request_reference_images" and not scene_id:
                 continue
             cleaned_action = {
@@ -2290,24 +2390,562 @@ def _generate_builder_agent_reply(payload):
                 cleaned_action["scene_id"] = scene_id[:160]
             if scene_number is not None:
                 cleaned_action["scene_number"] = scene_number
-            if action_text:
-                cleaned_action["text"] = action_text[:5000]
+            if action_text_raw:
+                cleaned_action["text"] = action_text_raw[:50000 if action_type == "save_story_source" else 5000]
             if image_mode in allowed_image_modes:
                 cleaned_action["image_mode"] = image_mode
             if video_mode in allowed_video_modes:
                 cleaned_action["video_mode"] = video_mode
-            if action_type.startswith("set_") and not action_text:
+            if scene_count is not None:
+                cleaned_action["scene_count"] = max(1, min(120, scene_count))
+            if action_type == "get_context_prompts":
+                if context_type not in {"all", "theme_style", "story_idea", "subject_scene"}:
+                    context_type = "all"
+                cleaned_action["context_type"] = context_type
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "set_context_prompt":
+                if context_type not in {"theme_style", "story_idea", "subject_scene"}:
+                    continue
+                if not action_text_raw:
+                    continue
+                cleaned_action["context_type"] = context_type
+                cleaned_action["text"] = action_text_raw[:50000]
+                cleaned_action["mode"] = context_mode if context_mode in {"replace", "append"} else "replace"
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "assign_selected_range_note":
+                for field in ("label", "marker_type", "note"):
+                    value = str(action.get(field) or "").strip()
+                    if value:
+                        cleaned_action[field] = value[:1000]
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "create_scene_from_selected_range":
+                for field in ("label", "director_note", "scene_notes", "flux_notes", "nb_notes", "video_notes", "note"):
+                    value = str(action.get(field) or "").strip()
+                    if value:
+                        cleaned_action[field] = value[:5000]
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "split_selected_range_into_scenes":
+                label_prefix = str(action.get("label_prefix") or "").strip()
+                if label_prefix:
+                    cleaned_action["label_prefix"] = label_prefix[:160]
+                for field in ("director_notes", "scene_notes"):
+                    values = action.get(field)
+                    if isinstance(values, list):
+                        cleaned_action[field] = [str(value or "").strip()[:5000] for value in values[:120]]
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "split_scene_into_subscenes":
+                label_prefix = str(action.get("label_prefix") or "").strip()
+                if label_prefix:
+                    cleaned_action["label_prefix"] = label_prefix[:160]
+                for field in ("director_notes", "scene_notes"):
+                    values = action.get(field)
+                    if isinstance(values, list):
+                        cleaned_action[field] = [str(value or "").strip()[:5000] for value in values[:120]]
+                if scene_count is None or scene_count < 2:
+                    continue
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "merge_scenes":
+                numbers = action.get("scene_numbers") or action.get("scenes") or []
+                cleaned_numbers = []
+                if isinstance(numbers, list):
+                    for value in numbers[:120]:
+                        try:
+                            number = int(value)
+                        except Exception:
+                            continue
+                        if number > 0 and number not in cleaned_numbers:
+                            cleaned_numbers.append(number)
+                for src, dst in (("start_scene_number", "start_scene_number"), ("end_scene_number", "end_scene_number")):
+                    try:
+                        value = int(action.get(src))
+                    except Exception:
+                        value = None
+                    if value is not None and value > 0:
+                        cleaned_action[dst] = value
+                label = str(action.get("label") or "").strip()
+                if label:
+                    cleaned_action["label"] = label[:160]
+                if cleaned_numbers:
+                    cleaned_action["scene_numbers"] = cleaned_numbers
+                if len(cleaned_numbers) < 2 and not (cleaned_action.get("start_scene_number") and cleaned_action.get("end_scene_number")):
+                    continue
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "renumber_scene_labels":
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "normalize_dual_vocal_director_notes":
+                replacement = str(action.get("replacement") or "male and female").strip()
+                cleaned_action["replacement"] = (replacement or "male and female")[:160]
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "replace_director_note_text":
+                find_text = str(action.get("find") or action.get("from") or "").strip()
+                replace_text = str(action.get("replace") or action.get("to") or "").strip()
+                if not find_text or not replace_text:
+                    continue
+                cleaned_action["find"] = find_text[:500]
+                cleaned_action["replace"] = replace_text[:500]
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "get_story_source":
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type in {"save_story_source", "create_story_scenes_from_source"} and action_type == "save_story_source" and not action_text_raw:
+                continue
+            if action_type == "save_story_source":
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "create_story_scenes_from_source":
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "create_concept_prompts":
+                source_mode = str(action.get("source_mode") or action.get("source") or "all").strip().lower()
+                scope = str(action.get("scope") or "all").strip().lower()
+                if source_mode not in {"all", "director", "scene", "timeline", "director_scene"}:
+                    source_mode = "all"
+                if scope not in {"all", "selected", "range"}:
+                    scope = "all"
+                try:
+                    batch_size = int(action.get("batch_size") or action.get("batch") or 5)
+                except Exception:
+                    batch_size = 5
+                cleaned_action["source_mode"] = source_mode
+                cleaned_action["scope"] = scope
+                cleaned_action["batch_size"] = max(1, min(10, batch_size))
+                cleaned_action["use_story"] = action.get("use_story") is not False
+                cleaned_action["use_theme"] = action.get("use_theme") is not False
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "create_motion_notes":
+                source_mode = str(action.get("source_mode") or action.get("source") or "concept").strip().lower()
+                scope = str(action.get("scope") or "all").strip().lower()
+                if source_mode not in {"concept", "concept_director", "concept_timeline", "all"}:
+                    source_mode = "concept"
+                if scope not in {"all", "selected", "range"}:
+                    scope = "all"
+                try:
+                    batch_size = int(action.get("batch_size") or action.get("batch") or 5)
+                except Exception:
+                    batch_size = 5
+                cleaned_action["source_mode"] = source_mode
+                cleaned_action["scope"] = scope
+                cleaned_action["batch_size"] = max(1, min(10, batch_size))
+                cleaned_action["use_story"] = action.get("use_story") is not False
+                cleaned_action["use_theme"] = action.get("use_theme") is not False
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "sync_existing_scenes_to_timeline_markers":
+                cleaned_action["create_missing"] = action.get("create_missing") is not False
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type == "set_scene_plan":
+                for field, value in plan_values.items():
+                    cleaned_action[field] = value
+                if not plan_values and not action_text_raw:
+                    continue
+                cleaned_actions.append(cleaned_action)
+                continue
+            if action_type in {"set_scene_notes", "set_flux_notes", "set_nb_notes", "set_video_notes"} and not cleaned_action.get("text"):
+                alias_fields = {
+                    "set_scene_notes": ("scene_notes", "notes", "concept", "concept_prompt", "prompt"),
+                    "set_flux_notes": ("flux_notes", "notes", "prompt"),
+                    "set_nb_notes": ("nb_notes", "nano_banana_notes", "notes", "prompt"),
+                    "set_video_notes": ("video_notes", "i2v_notes", "motion_notes", "notes", "prompt"),
+                }[action_type]
+                for field in alias_fields:
+                    value = str(action.get(field) or "").strip()
+                    if value:
+                        cleaned_action["text"] = value[:5000]
+                        break
+            if action_type.startswith("set_") and not action_text_raw:
                 if action_type == "set_image_model_mode" and cleaned_action.get("image_mode"):
                     cleaned_actions.append(cleaned_action)
                     continue
                 if action_type == "set_video_model_mode" and cleaned_action.get("video_mode"):
                     cleaned_actions.append(cleaned_action)
                     continue
+                if action_type in {"set_scene_notes", "set_flux_notes", "set_nb_notes", "set_video_notes"} and cleaned_action.get("text"):
+                    cleaned_actions.append(cleaned_action)
+                    continue
                 continue
             cleaned_actions.append(cleaned_action)
+    action_hint_text = "\n\n".join(
+        [item.get("content", "") for item in cleaned_messages[-6:]]
+        + ([reply] if reply else [])
+    )
+    latest_user_text = str(latest_user or cleaned_messages[-1].get("content", "") if cleaned_messages else "").strip()
+    latest_merge_intent = re.search(r"\b(combine|merge|join|consolidate)\b", latest_user_text, re.I)
+    latest_split_intent = re.search(r"\b(split|break|divide|sub[-\s]?scenes?|sub[-\s]?segments?)\b", latest_user_text, re.I)
+    latest_director_note_text_intent = re.search(r"\b(director\s+notes?|notes?|reword|rename|text)\b", latest_user_text, re.I)
+    latest_dual_vocal_note_intent = (
+        latest_director_note_text_intent and
+        re.search(r"\b(male\s+and\s+female|both\s+(?:characters|singers|vocals?)|dual[-\s]?vocal)\b", latest_user_text, re.I)
+    )
+    if auto_apply and latest_director_note_text_intent:
+        cleaned_actions = [
+            action for action in cleaned_actions
+            if action.get("type") not in {
+                "sync_existing_scenes_to_timeline_markers",
+                "split_selected_range_into_scenes",
+                "split_scene_into_subscenes",
+                "merge_scenes",
+            }
+        ]
+    if auto_apply and latest_dual_vocal_note_intent and not any(action.get("type") == "normalize_dual_vocal_director_notes" for action in cleaned_actions):
+        exact_replace_match = re.search(r"\b(?:director\s+notes?|director\s+note|note)\s+says?\s+[\"']([^\"']+)[\"'].*?\b(?:changed?\s+to|to|instead)\s+[\"']([^\"']+)[\"']", latest_user_text, re.I)
+        if exact_replace_match and not any(action.get("type") == "replace_director_note_text" for action in cleaned_actions):
+            cleaned_actions.append(
+                {
+                    "type": "replace_director_note_text",
+                    "find": exact_replace_match.group(1).strip(),
+                    "replace": exact_replace_match.group(2).strip(),
+                }
+            )
+        replacement_match = re.search(r"\b(?:says?|to|instead|changed?\s+to)\s+[\"']?((?:fe)?male\s+and\s+(?:fe)?male)[\"']?", latest_user_text, re.I)
+        replacement = replacement_match.group(1).strip().lower() if replacement_match else "male and female"
+        cleaned_actions.append({"type": "normalize_dual_vocal_director_notes", "replacement": replacement})
+    if auto_apply and latest_split_intent:
+        cleaned_actions = [
+            action for action in cleaned_actions
+            if action.get("type") != "merge_scenes"
+        ]
+    if auto_apply and latest_merge_intent:
+        cleaned_actions = [
+            action for action in cleaned_actions
+            if action.get("type") not in {"split_scene_into_subscenes", "split_selected_range_into_scenes"}
+        ]
+    merge_intent = latest_merge_intent or (
+        not latest_split_intent and
+        re.fullmatch(r"\s*(yes|yep|yeah|ok|okay|please do it|do it|go ahead|sure)\.?\s*", latest_user_text, re.I) and
+        re.search(r"\b(combine|merge|join|consolidate)\b", action_hint_text, re.I)
+    )
+    if auto_apply and merge_intent:
+        cleaned_actions = [
+            action for action in cleaned_actions
+            if action.get("type") not in {"split_scene_into_subscenes", "split_selected_range_into_scenes"}
+        ]
+        has_merge_action = any(action.get("type") == "merge_scenes" for action in cleaned_actions)
+        if not has_merge_action:
+            range_match = re.search(r"\bscenes?\s+(\d+)\s*(?:-|to|through)\s*(\d+)\b", action_hint_text, re.I)
+            scene_numbers = []
+            if range_match:
+                start_num = int(range_match.group(1))
+                end_num = int(range_match.group(2))
+                if start_num <= end_num:
+                    scene_numbers = list(range(start_num, end_num + 1))
+            if not scene_numbers:
+                sequence_match = re.search(r"\bscenes?\s+((?:\d+\s*(?:,|and)?\s*){2,})", action_hint_text, re.I)
+                if sequence_match:
+                    scene_numbers = [int(value) for value in re.findall(r"\d+", sequence_match.group(1))]
+            if len(scene_numbers) >= 2:
+                scene_numbers = list(dict.fromkeys(scene_numbers))
+                cleaned_actions.append(
+                    {
+                        "type": "merge_scenes",
+                        "scene_numbers": scene_numbers,
+                        "label": f"Scene {scene_numbers[0]}",
+                    }
+                )
+                if not reply:
+                    reply = f"Merging scenes {', '.join(str(value) for value in scene_numbers)}."
+    if auto_apply and not cleaned_actions:
+        split_hint_text = latest_user_text if latest_split_intent else action_hint_text
+        if not merge_intent and re.search(r"\b(split|break|divide|sub[-\s]?scenes?|sub[-\s]?segments?)\b", split_hint_text, re.I):
+            scene_matches = re.findall(r"\bscene\s+(\d+)\b", split_hint_text, re.I)
+            count_matches = []
+            count_matches.extend(
+                int(match)
+                for match in re.findall(r"\b(?:into|in|to)\s+(\d+)\s*(?:sub[-\s]?scenes?|scenes?|segments?)\b", split_hint_text, re.I)
+                if str(match).isdigit()
+            )
+            count_matches.extend(
+                int(match)
+                for match in re.findall(r"\b(\d+)\s*(?:sub[-\s]?scenes?|sub[-\s]?segments?)\b", split_hint_text, re.I)
+                if str(match).isdigit()
+            )
+            latest_user_number = re.fullmatch(r"\s*(\d{1,2})\s*", latest_user or "")
+            if latest_user_number:
+                count_matches.append(int(latest_user_number.group(1)))
+            if scene_matches and count_matches:
+                inferred_scene = int(scene_matches[-1])
+                inferred_count = max(2, min(24, int(count_matches[-1])))
+                cleaned_actions.append(
+                    {
+                        "type": "split_scene_into_subscenes",
+                        "scene_number": inferred_scene,
+                        "scene_count": inferred_count,
+                        "label_prefix": f"Scene {inferred_scene}",
+                    }
+                )
+                if not reply:
+                    reply = f"Splitting Scene {inferred_scene} into {inferred_count} sub-scenes."
     if not reply:
         reply = "Done." if cleaned_actions else "I can help with that."
     return {"reply": reply, "actions": cleaned_actions, **info}
+
+
+def _generate_builder_concept_prompts(payload):
+    source_mode = str(payload.get("source_mode") or "all").strip().lower()
+    story_idea = str(payload.get("story_idea") or "").strip()
+    theme_style = str(payload.get("theme_style") or "").strip()
+    previous_summary = str(payload.get("previous_summary") or "").strip()
+    scenes = payload.get("scenes") or []
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("No scenes were provided for concept prompt creation.")
+
+    cleaned_scenes = []
+    for scene in scenes[:20]:
+        if not isinstance(scene, dict):
+            continue
+        try:
+            number = int(scene.get("scene_number") or scene.get("number") or len(cleaned_scenes) + 1)
+        except Exception:
+            number = len(cleaned_scenes) + 1
+        timeline_notes = scene.get("timeline_notes") or []
+        if not isinstance(timeline_notes, list):
+            timeline_notes = []
+        cleaned_scenes.append({
+            "scene_number": max(1, number),
+            "label": str(scene.get("label") or f"Scene {number}").strip()[:160],
+            "lyric_text": str(scene.get("lyric_text") or "").strip()[:1200],
+            "director_note": str(scene.get("director_note") or "").strip()[:1200],
+            "scene_note": str(scene.get("scene_note") or "").strip()[:1200],
+            "timeline_notes": [
+                {
+                    "label": str(item.get("label") or item.get("type") or "note").strip()[:160],
+                    "note": str(item.get("note") or "").strip()[:800],
+                    "start": item.get("start"),
+                    "end": item.get("end"),
+                }
+                for item in timeline_notes[:8]
+                if isinstance(item, dict)
+            ],
+            "subject_reference_mode": str(scene.get("subject_reference_mode") or "none").strip()[:80],
+            "location_reference_mode": str(scene.get("location_reference_mode") or "none").strip()[:80],
+        })
+    if not cleaned_scenes:
+        raise ValueError("No valid scenes were provided for concept prompt creation.")
+
+    source_note = {
+        "director": "Use director notes as the main scene notes.",
+        "scene": "Use raw scene notes as the main scene notes.",
+        "timeline": "Use overlapping timeline notes as the main scene notes.",
+        "director_scene": "Use director notes and raw scene notes as the main scene notes.",
+        "all": "Use all available notes: director notes, raw scene notes, and overlapping timeline notes.",
+    }.get(source_mode, "Use all available notes: director notes, raw scene notes, and overlapping timeline notes.")
+
+    instruction = (
+        "You will create concept prompts from scene notes and/or director notes, timeline notes, story idea, and style/theme.\n"
+        "Return only valid JSON in this exact flat format:\n"
+        "{\n"
+        "  \"Scene1\": \"\",\n"
+        "  \"Scene2\": \"\"\n"
+        "}\n\n"
+        f"Source mode: {source_mode}. {source_note}\n\n"
+        "The story idea explains the overall music video concept, emotional arc, setting, and visual direction. Use it to make the prompts feel connected and to make each scene flow naturally like a music video.\n"
+        "The style/theme explains the visual language, mood, palette, texture, and production design. Use it for consistency.\n"
+        "Character descriptions or character reference images may be provided separately. Do not describe characters' hair, face, clothing, makeup, or exact appearance in the concept prompts.\n\n"
+        "Create one prompt for each provided scene.\n"
+        "Each concept prompt must include who is in the scene, shot type, Location:, and scene details that fit the story world.\n\n"
+        "Subject rules:\n"
+        "- If the scene note says female, start with \"Female only\".\n"
+        "- If the scene note says male, start with \"Male only\".\n"
+        "- If the scene note says female and male, start with \"Female and male together in frame\".\n"
+        "- If the scene note is instrumental only or has no clear subject, start with \"No main subject\".\n\n"
+        "Music video flow rules:\n"
+        "- Make the prompts feel like connected shots from the same music video.\n"
+        "- Let locations and details progress with the story instead of feeling random.\n"
+        "- Instrumental scenes can be establishing shots, transitions, symbolic visuals, or world-building.\n"
+        "- Character scenes should feel like performance, duet, reaction, memory, confrontation, longing, or story moments.\n"
+        "- Keep the visual world consistent across all prompts.\n\n"
+        "Shot rules:\n"
+        "- Instrumental scenes should usually be wide establishing shots or wide environment shots.\n"
+        "- Female-only or male-only scenes should usually be close-up, upper body, or medium shot.\n"
+        "- Female and male together should usually be full body, two-shot, medium-wide, or wide shot.\n"
+        "- Make the shot type fit the scene note and story moment.\n\n"
+        "Location rules:\n"
+        "- Include \"Location:\" in every prompt.\n"
+        "- Pick locations that fit the story idea, mood, and style/theme.\n"
+        "- If a location reference is available for that scene, use it as the location identity instead of inventing an unrelated location.\n"
+        "- If no location reference is available, create the location from the story idea, style/theme, and notes.\n"
+        "- Keep locations visually connected so the scenes feel like one continuous music video world.\n\n"
+        "Style rules:\n"
+        "- Do not write full text-to-image prompts.\n"
+        "- Do not include character descriptions.\n"
+        "- Do not include camera settings, aspect ratio, render style, or quality tags.\n"
+        "- Keep each prompt as one clear sentence or short paragraph.\n"
+        "- Make prompts detailed enough for another LLM to expand into image prompts.\n"
+        "- Return only the JSON object.\n\n"
+        f"Story idea:\n{story_idea or '[none provided]'}\n\n"
+        f"Style/theme:\n{theme_style or '[none provided]'}\n\n"
+        f"Previous batch visual progression summary:\n{previous_summary or '[none yet]'}\n\n"
+        "Scenes:\n"
+        f"{json.dumps(cleaned_scenes, ensure_ascii=False, indent=2)}"
+    )
+    text, info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.45),
+        top_p=float(payload.get("top_p") or 0.95),
+        max_new_tokens=int(payload.get("max_new_tokens") or 1200),
+        label="Concept Prompt Creator",
+        preserve_paragraphs=True,
+    )
+    raw = _clean_lm_studio_plain_text(text)
+    prompts = {}
+    try:
+        parsed = _extract_json_object_from_text(raw)
+        if isinstance(parsed, dict):
+            for key, value in parsed.items():
+                match = re.search(r"scene\s*(\d+)", str(key), re.I)
+                if not match:
+                    continue
+                prompt_text = str(value or "").strip()
+                if prompt_text:
+                    prompts[f"Scene{int(match.group(1))}"] = prompt_text
+    except Exception:
+        prompts = {}
+    if not prompts:
+        for match in re.finditer(r'"?\bScene\s*(\d+)"?\s*:\s*"([^"]+)"', raw, re.I | re.S):
+            prompt_text = match.group(2).strip()
+            if prompt_text:
+                prompts[f"Scene{int(match.group(1))}"] = prompt_text
+    if not prompts:
+        raise ValueError("Gemma did not return any SceneN concept prompts.")
+    summary_lines = []
+    for key in sorted(prompts.keys(), key=lambda item: int(re.search(r"\d+", item).group(0))):
+        text_value = prompts[key]
+        summary_lines.append(f"{key}: {text_value[:180]}")
+    return {
+        "prompts": prompts,
+        "raw": raw,
+        "summary": "\n".join(summary_lines)[:1200],
+        "run_info": info,
+    }
+
+
+def _generate_builder_motion_notes(payload):
+    source_mode = str(payload.get("source_mode") or "concept").strip().lower()
+    story_idea = str(payload.get("story_idea") or "").strip()
+    theme_style = str(payload.get("theme_style") or "").strip()
+    previous_summary = str(payload.get("previous_summary") or "").strip()
+    video_mode = str(payload.get("video_mode") or "i2v").strip().lower()
+    scenes = payload.get("scenes") or []
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("No scenes were provided for motion note creation.")
+
+    cleaned_scenes = []
+    for scene in scenes[:20]:
+        if not isinstance(scene, dict):
+            continue
+        try:
+            number = int(scene.get("scene_number") or scene.get("number") or len(cleaned_scenes) + 1)
+        except Exception:
+            number = len(cleaned_scenes) + 1
+        timeline_notes = scene.get("timeline_notes") or []
+        if not isinstance(timeline_notes, list):
+            timeline_notes = []
+        cleaned_scenes.append({
+            "scene_number": max(1, number),
+            "label": str(scene.get("label") or f"Scene {number}").strip()[:160],
+            "concept_prompt": str(scene.get("concept_prompt") or "").strip()[:1600],
+            "director_note": str(scene.get("director_note") or "").strip()[:1200],
+            "timeline_notes": [
+                {
+                    "label": str(item.get("label") or item.get("type") or "note").strip()[:160],
+                    "note": str(item.get("note") or "").strip()[:800],
+                    "start": item.get("start"),
+                    "end": item.get("end"),
+                }
+                for item in timeline_notes[:8]
+                if isinstance(item, dict)
+            ],
+        })
+    if not cleaned_scenes:
+        raise ValueError("No valid scenes were provided for motion note creation.")
+
+    source_note = {
+        "concept": "Use only concept prompts.",
+        "concept_director": "Use concept prompts and director notes.",
+        "concept_timeline": "Use concept prompts and overlapping timeline notes.",
+        "all": "Use concept prompts, director notes, and overlapping timeline notes.",
+    }.get(source_mode, "Use concept prompts.")
+
+    instruction = (
+        "You will create concise I2V/T2V motion notes for scene-by-scene music video generation.\n"
+        "Return only valid JSON in this exact flat format:\n"
+        "{\n"
+        "  \"Motion1\": \"\",\n"
+        "  \"Motion2\": \"\"\n"
+        "}\n\n"
+        f"Source mode: {source_mode}. {source_note}\n"
+        f"Target video mode: {video_mode.upper()}.\n\n"
+        "Write one motion note for each provided scene.\n"
+        "Each motion note should describe camera motion, subject movement or interaction, environmental motion, and emotional pacing.\n"
+        "Use the concept prompt as the main visual action source. Use director notes and timeline notes only when provided by the source mode.\n\n"
+        "Rules:\n"
+        "- Keep each motion note one sentence or one short paragraph.\n"
+        "- Do not write a full video prompt.\n"
+        "- Do not repeat character appearance details.\n"
+        "- Do not include camera settings, frame rate, aspect ratio, render quality, or model tags.\n"
+        "- For instrumental/no-subject scenes, focus on environmental movement, transitions, symbolic motion, light, particles, atmosphere, or camera drift.\n"
+        "- For solo character scenes, include performance/reaction movement, facial/emotional energy, body motion, and camera movement.\n"
+        "- For two-character scenes, include interaction, blocking, distance, reaction, duet/confrontation energy, and camera movement.\n"
+        "- Keep motion connected across the batch like shots from the same music video.\n"
+        "- Return only the JSON object.\n\n"
+        f"Story idea:\n{story_idea or '[none provided]'}\n\n"
+        f"Style/theme:\n{theme_style or '[none provided]'}\n\n"
+        f"Previous batch motion summary:\n{previous_summary or '[none yet]'}\n\n"
+        "Scenes:\n"
+        f"{json.dumps(cleaned_scenes, ensure_ascii=False, indent=2)}"
+    )
+    text, info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.45),
+        top_p=float(payload.get("top_p") or 0.95),
+        max_new_tokens=int(payload.get("max_new_tokens") or 1200),
+        label="Motion Note Creator",
+        preserve_paragraphs=True,
+    )
+    raw = _clean_lm_studio_plain_text(text)
+    notes = {}
+    try:
+        parsed = _extract_json_object_from_text(raw)
+        if isinstance(parsed, dict):
+            for key, value in parsed.items():
+                match = re.search(r"(?:motion|scene)\s*(\d+)", str(key), re.I)
+                if not match:
+                    continue
+                note_text = str(value or "").strip()
+                if note_text:
+                    notes[f"Motion{int(match.group(1))}"] = note_text
+    except Exception:
+        notes = {}
+    if not notes:
+        for match in re.finditer(r'"?\b(?:Motion|Scene)\s*(\d+)"?\s*:\s*"([^"]+)"', raw, re.I | re.S):
+            note_text = match.group(2).strip()
+            if note_text:
+                notes[f"Motion{int(match.group(1))}"] = note_text
+    if not notes:
+        raise ValueError("Gemma did not return any MotionN notes.")
+    summary_lines = []
+    for key in sorted(notes.keys(), key=lambda item: int(re.search(r"\d+", item).group(0))):
+        text_value = notes[key]
+        summary_lines.append(f"{key}: {text_value[:180]}")
+    return {
+        "notes": notes,
+        "raw": raw,
+        "summary": "\n".join(summary_lines)[:1200],
+        "run_info": info,
+    }
 
 
 def _generate_builder_t2i_prompt(payload):
@@ -2817,6 +3455,29 @@ def _combine_flux_ingredient_images(images):
     return canvas
 
 
+def _combine_story_reference_batch(images, cell_size=512):
+    if not images:
+        raise ValueError("At least one Story reference image is required.")
+    batch = list(images[:4])
+    gap = 16
+    columns = 1 if len(batch) == 1 else 2
+    rows = int(math.ceil(len(batch) / columns))
+    resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+    canvas = Image.new("RGB", ((columns * cell_size) + (gap * (columns - 1)), (rows * cell_size) + (gap * (rows - 1))), (20, 20, 20))
+    for index, image in enumerate(batch):
+        image = image.convert("RGB")
+        scale = min(cell_size / max(1, image.width), cell_size / max(1, image.height))
+        width = max(1, int(image.width * scale))
+        height = max(1, int(image.height * scale))
+        resized = image.resize((width, height), resample)
+        column = index % columns
+        row = index // columns
+        cell_x = column * (cell_size + gap)
+        cell_y = row * (cell_size + gap)
+        canvas.paste(resized, (cell_x + ((cell_size - width) // 2), cell_y + ((cell_size - height) // 2)))
+    return canvas
+
+
 def _clear_comfy_model_memory():
     try:
         import comfy.model_management as model_management
@@ -2983,6 +3644,96 @@ def _generate_flux_klein_prompt(payload):
             _clear_comfy_model_memory()
 
 
+def _analyze_builder_story_references(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
+    user_notes = str(payload.get("user_notes", "") or "").strip()
+    if not model_file:
+        raise ValueError("Choose a Gemma vision model first.")
+    ingredients = payload.get("image_ingredients") or []
+    if isinstance(ingredients, str):
+        try:
+            ingredients = json.loads(ingredients)
+        except Exception:
+            ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
+    if not isinstance(ingredients, list):
+        raise ValueError("Story reference images must be a list.")
+    images = []
+    for index, item in enumerate(ingredients, start=1):
+        if isinstance(item, str):
+            item = {"path": item}
+        if not isinstance(item, dict):
+            continue
+        images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"Story reference image {index}"))
+    if not images:
+        raise ValueError("Add at least one Story Builder reference image first.")
+    batches = [images[index:index + 4] for index in range(0, len(images), 4)]
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+    n_ctx = int(payload.get("n_ctx") or 4096)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.95)
+    max_new_tokens = int(payload.get("max_new_tokens") or 500)
+    unload_after = bool(payload.get("unload_after", True))
+    try:
+        _clear_comfy_model_memory()
+        _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+            mmproj_path=mmproj_path,
+        )
+        batch_notes = []
+        for batch_index, batch in enumerate(batches, start=1):
+            combined_image = _combine_story_reference_batch(batch, cell_size=512)
+            instruction = (
+                "Analyze these reference images for a music video Story Builder. "
+                "Each image has been resized into a 512px tile; this batch contains at most four images. "
+                "Write compact reusable planning notes for a text-only agent. "
+                "Identify likely singers/characters, clothing, faces/hair/body details, location ideas, props, color palette, lighting, mood, genre, and overall aesthetic. "
+                "Do not write an image generation prompt. Do not mention image grids or panels. "
+                "Use short labeled lines. Keep it under 180 words.\n\n"
+                f"Batch {batch_index} of {len(batches)}.\n"
+                f"User notes:\n{user_notes or 'Summarize the characters, locations, style, and aesthetic shown in the images.'}"
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[combined_image],
+                instruction_text=instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            text = _clean_visual_gemma_text(text)
+            if _looks_like_gemma_repeat_failure(text):
+                raise ValueError(f"Gemma returned repeated/thought junk instead of usable Story reference notes for batch {batch_index}.")
+            if text.strip():
+                prefix = f"Reference batch {batch_index}: " if len(batches) > 1 else ""
+                batch_notes.append(prefix + text.strip())
+        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after, "batches": len(batches)}
+    finally:
+        if unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            _clear_comfy_model_memory()
+
+
 def _generate_nb_image_prompt(payload):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -3008,10 +3759,6 @@ def _generate_nb_image_prompt(payload):
         if not isinstance(item, dict):
             continue
         images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"NanoBanana reference image {index}"))
-    if not images:
-        raise ValueError("NanoBanana Gemma prompting needs at least one reference image.")
-    combined_image = _combine_flux_ingredient_images(images)
-
     reference_context = payload.get("reference_context") or {}
     if not isinstance(reference_context, dict):
         reference_context = {}
@@ -3038,29 +3785,79 @@ def _generate_nb_image_prompt(payload):
     if reference_flags:
         context_parts.append("\n".join(reference_flags))
 
+    has_images = bool(images)
+    has_unmapped_reference_images = has_images and not has_subject_reference and not has_location_reference
+    if has_subject_reference and has_location_reference:
+        reference_prompt_rules = (
+            "- Start by mentioning both the provided character reference and location reference.\n"
+            "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
+            "- Preserve the location identity from the location reference: environment, architecture, layout, atmosphere, and major visible setting details.\n"
+            "- Use the user's scene/concept notes for action, pose, camera, mood, and story beat.\n"
+            "- Do not paste the character into the location image.\n"
+            "- Do not copy the exact pose, crop, camera angle, perspective, or composition from either reference.\n"
+        )
+        example_text = (
+            "Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. "
+            "Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. "
+            "Use a new pose, new camera angle, soft bokeh, atmospheric haze, and dramatic rim lighting."
+        )
+    elif has_subject_reference:
+        reference_prompt_rules = (
+            "- Start by mentioning only the provided character reference. Do not mention a location reference.\n"
+            "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
+            "- Create the setting, background, atmosphere, and location from the user's scene/concept notes.\n"
+            "- Do not copy the character reference pose, studio background, crop, camera angle, or lens distance.\n"
+        )
+        example_text = (
+            "Using the provided character reference, create an intimate upper body shot of the woman in a misty white forest built from the scene concept. "
+            "Preserve her identity, blonde hair, lace outfit, and delicate facial details while placing her among pale gnarled trees, soft fog, shallow depth of field, and ethereal rim lighting."
+        )
+    elif has_location_reference:
+        reference_prompt_rules = (
+            "- Start by mentioning only the provided location reference. Do not mention a character reference.\n"
+            "- Use the location reference for environment, architecture, layout, atmosphere, and major visible setting details.\n"
+            "- Create any subject, pose, outfit, camera, and story details from the user's scene/concept notes.\n"
+            "- Do not copy the exact location reference camera angle, framing, perspective, or composition.\n"
+        )
+        example_text = (
+            "Using the provided location reference, create a cinematic medium shot of the scene's subject moving through the misty forest. "
+            "Preserve the pale fibrous trees, narrow fog-covered path, and eerie atmosphere from the location reference while creating a new camera angle, new subject pose, soft bokeh, and dramatic haze."
+        )
+    elif has_unmapped_reference_images:
+        reference_prompt_rules = (
+            "- You may use the provided reference image or images only as loose visual guidance.\n"
+            "- Do not call them character references or location references unless the context explicitly says that.\n"
+            "- Use the user's scene/concept notes as the main source of subject, setting, action, pose, and mood.\n"
+            "- Create a new camera angle, new pose, and new composition.\n"
+        )
+        example_text = (
+            "Create a cinematic medium close-up from the scene concept, using the provided visual reference only as loose style guidance. "
+            "Build the subject, setting, lighting, and atmosphere from the notes, with soft bokeh, layered haze, a new composition, and high cinematic detail."
+        )
+    else:
+        reference_prompt_rules = (
+            "- Do not mention provided references or reference images.\n"
+            "- Treat this as normal text-to-image prompt writing from the user's scene/concept notes.\n"
+            "- Create the subject, setting, action, pose, camera, lighting, and atmosphere from the notes.\n"
+        )
+        example_text = (
+            "Create a cinematic medium close-up in a vast cosmic void filled with drifting pearlescent particles and soft ethereal light. "
+            "Use a new composition, shallow depth of field, gentle atmospheric haze, luminous highlights, and a quiet dreamlike mood."
+        )
     instruction = (
         "Create one concise NanoBanana image prompt from the user input and available reference context.\n"
         "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
         "Prompt style:\n"
-        "- Start with: Using the provided character reference and location reference, create...\n"
-        "- If only a character reference is available, start with: Using the provided character reference, create...\n"
-        "- If only a location reference is available, start with: Using the provided location reference, create...\n"
+        f"{reference_prompt_rules}"
         "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
         "- Use the user's scene/concept notes as the main creative direction.\n"
-        "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
-        "- Preserve the location identity from the location reference: environment, architecture, layout, atmosphere, and major visible setting details.\n"
         "- Create a new camera angle, new pose, and new composition.\n"
-        "- Do not paste the character into the location image.\n"
-        "- Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.\n"
-        "- Do not copy the exact location reference camera angle, framing, perspective, or composition.\n"
         "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
         "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
         "- Keep the prompt visually specific and practical for image generation.\n"
         "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n\n"
-        "Good output examples:\n"
-        "Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.\n"
-        "Using the provided character reference and location reference, create an intimate upper body shot of the woman framed by gnarled forest branches. Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. New pose, new camera angle, soft bokeh, high cinematic quality.\n\n"
-        f"{chr(10).join(context_parts) if context_parts else 'User input: Create a new image using the available reference images.'}"
+        f"Good output example:\n{example_text}\n\n"
+        f"{chr(10).join(context_parts) if context_parts else 'User input: Create a new image from the notes.'}"
     )
 
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -3073,6 +3870,23 @@ def _generate_nb_image_prompt(payload):
     seed = payload.get("seed")
     clear_before_load = bool(payload.get("clear_before_load", True))
     unload_after = bool(payload.get("unload_after", True))
+    if not has_images:
+        text, info = _run_builder_text_llm(
+            payload,
+            instruction,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+            label="NanoBanana text Gemma",
+            preserve_paragraphs=False,
+        )
+        text = _clean_lm_studio_plain_text(text)
+        if not text:
+            raise ValueError("NanoBanana Gemma returned an empty prompt.")
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
+        return {"prompt": text, **info}
+
+    combined_image = _combine_flux_ingredient_images(images)
     llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
@@ -4575,6 +5389,24 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/generate_concept_prompts")
+    async def vrgdg_music_builder_generate_concept_prompts(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_builder_concept_prompts, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/generate_motion_notes")
+    async def vrgdg_music_builder_generate_motion_notes(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_builder_motion_notes, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/music_builder/generate_i2v")
     async def vrgdg_music_builder_generate_i2v(request):
         try:
@@ -4598,6 +5430,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_klein_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/analyze_story_references")
+    async def vrgdg_music_builder_analyze_story_references(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_analyze_builder_story_references, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

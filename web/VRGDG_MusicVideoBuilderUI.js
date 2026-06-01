@@ -17,6 +17,8 @@ const TIMELINE_SCENE_AUDIO_HEIGHT = 28;
 const TIMELINE_NOTE_HEIGHT = 58;
 const TIMELINE_NOTE_GAP = 12;
 const TIMELINE_WAVE_TOP = 98;
+const TIMELINE_MARKER_HEIGHT = 58;
+const TIMELINE_MARKER_MIN_WIDTH = 110;
 const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_NON_VISION_GEMMA_MODEL = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf";
 const NB_IMAGE_MODELS = ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"];
@@ -1321,6 +1323,20 @@ function newSegment(start = 0, end = 4) {
   };
 }
 
+function newTimelineMarker(start = 0, end = null) {
+  const now = Date.now();
+  const cleanStart = Math.max(0, Number(start || 0));
+  const cleanEnd = Number.isFinite(Number(end)) && Number(end) > cleanStart ? Number(end) : null;
+  return {
+    id: `mark_${now}_${Math.floor(Math.random() * 10000)}`,
+    start: cleanStart,
+    end: cleanEnd,
+    type: "note",
+    label: "Timeline note",
+    note: "",
+  };
+}
+
 function sortSegments(segments) {
   segments.sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
 }
@@ -2086,6 +2102,14 @@ function openBuilder(node) {
   const globalAudioSummary = document.createElement("div");
   globalAudioSummary.style.cssText = audioSummary.style.cssText;
   const openSceneAudioOptionsButton = makeButton("Open Scene Audio Options", "primary");
+  const globalAudioDrop = document.createElement("div");
+  globalAudioDrop.dataset.vrgdgFileDropZone = "true";
+  globalAudioDrop.textContent = "Drop global/timeline audio here";
+  globalAudioDrop.style.cssText = "border:1px dashed #06b6d4;border-radius:7px;background:#082f49;color:#cffafe;padding:14px;text-align:center;font-size:12px;font-weight:900;";
+  const chooseGlobalAudioButton = makeButton("Choose Global Audio", "primary");
+  const globalAudioGuide = document.createElement("div");
+  globalAudioGuide.style.cssText = "font-size:12px;color:#a1a1aa;line-height:1.45;";
+  globalAudioGuide.innerHTML = "<strong>Pick one audio style:</strong> use Scene Audio for per-scene dialogue/short films/ads, or Global Audio for music videos, songs, visualizers, and other timeline-driven projects.";
   const inspectorTabs = document.createElement("div");
   inspectorTabs.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;position:sticky;top:0;z-index:3;background:#202024;padding-bottom:2px;";
   const sceneTabButton = makeButton("Scene");
@@ -2450,6 +2474,9 @@ function openBuilder(node) {
     ]),
     makeSettingsSection("Timeline Audio", [
       globalAudioSummary,
+      globalAudioDrop,
+      chooseGlobalAudioButton,
+      globalAudioGuide,
     ], false),
   );
   inspector.append(inspectorTabs, noSceneNotice, scenePanel, imagePanel, videoPanel, audioPanel);
@@ -2463,6 +2490,10 @@ function openBuilder(node) {
   timelineHeader.style.cssText = "display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid #27272a;font-size:12px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;";
   const bulkSegmentsButton = makeButton("Bulk Segments");
   const sceneNoteButton = makeButton("+ Scene Note");
+  const setInButton = makeButton("Set In");
+  const setOutButton = makeButton("Set Out");
+  const clearRangeButton = makeButton("Clear Range");
+  const addTimelineMarkerButton = makeButton("+ Timeline Note");
   const addSegmentButton = makeButton("Add Segment", "primary");
   const addOverlaySegmentButton = makeButton("Add Insert", "primary");
   const undoButton = makeButton("Undo");
@@ -2476,6 +2507,10 @@ function openBuilder(node) {
   const zoomInButton = makeButton("+");
   bulkSegmentsButton.title = "Create many manual timeline scenes from pasted durations or start/end times.";
   sceneNoteButton.title = "Show editable note boxes under each base scene in the timeline.";
+  setInButton.title = "Set the selected timeline range start at the playhead.";
+  setOutButton.title = "Set the selected timeline range end at the playhead.";
+  clearRangeButton.title = "Clear the selected timeline range.";
+  addTimelineMarkerButton.title = "Add a free timeline note/song marker at the playhead or selected In/Out range.";
   addSegmentButton.title = "Add segment";
   addOverlaySegmentButton.title = "Add an insert/overlay segment at the playhead without changing the base timeline.";
   undoButton.title = "Undo";
@@ -2499,13 +2534,17 @@ function openBuilder(node) {
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
   }
   bulkSegmentsButton.style.width = "max-content";
   sceneNoteButton.style.width = "max-content";
+  setInButton.style.width = "max-content";
+  setOutButton.style.width = "max-content";
+  clearRangeButton.style.width = "max-content";
+  addTimelineMarkerButton.style.width = "max-content";
   addSegmentButton.style.width = "max-content";
   addOverlaySegmentButton.style.width = "max-content";
   for (const button of [undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
@@ -2543,6 +2582,9 @@ function openBuilder(node) {
   const timelineInfo = document.createElement("div");
   timelineInfo.textContent = "No audio loaded";
   timelineInfo.style.cssText = "color:#67e8f9;font-variant-numeric:tabular-nums;min-width:180px;flex:1 0 180px;";
+  const timelineRangeInfo = document.createElement("div");
+  timelineRangeInfo.textContent = "Range: none";
+  timelineRangeInfo.style.cssText = "color:#a5f3fc;font-variant-numeric:tabular-nums;min-width:220px;flex:0 0 auto;";
   const selectedMediaTools = document.createElement("div");
   selectedMediaTools.style.cssText = "margin-left:auto;display:flex;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:6px 8px;";
   const selectedMediaLabel = document.createElement("span");
@@ -2559,7 +2601,7 @@ function openBuilder(node) {
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(bulkSegmentsButton, sceneNoteButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(bulkSegmentsButton, sceneNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -2725,6 +2767,9 @@ function openBuilder(node) {
     inspectorTab: "scene",
     pxPerSecond: 45,
     timelineZoom: 45,
+    selectedTimelineRange: { in: null, out: null },
+    timelineMarkers: [],
+    activeTimelineMarkerId: "",
     waveformMode: "medium",
     snapToBeats: true,
     showBeatMarkers: false,
@@ -2772,6 +2817,11 @@ function openBuilder(node) {
     builderAgentAutoApply: false,
     builderAgentPurpose: "scene_work",
     builderAgentReferenceImages: [],
+    builderStorySourcePath: "",
+    builderStorySourcePreview: "",
+    builderStoryReferenceImages: [],
+    builderStoryReferenceNotes: "",
+    builderAgentFloating: null,
     undoStack: [],
     redoStack: [],
     isRestoringHistory: false,
@@ -3024,7 +3074,152 @@ function openBuilder(node) {
     const segmentEnd = state.segments.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
     const overlayEnd = state.overlaySegments.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
     const sceneAudioEnd = state.segments.reduce((max, segment) => Math.max(max, segment.custom_audio_path ? audioTimelineEnd(segment) : 0), 0);
-    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, Number(state.duration || 0), Number(audio.duration || 0));
+    const markerEnd = normalizeTimelineMarkers(state.timelineMarkers).reduce((max, marker) => Math.max(max, Number(marker.end ?? marker.start ?? 0)), 0);
+    const range = normalizeTimelineRange(state.selectedTimelineRange);
+    const rangeEnd = Number.isFinite(Number(range.out)) ? Number(range.out) : 0;
+    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, markerEnd, rangeEnd, Number(state.duration || 0), Number(audio.duration || 0));
+  }
+
+  function normalizeTimelineRange(range) {
+    const input = range && typeof range === "object" ? range : {};
+    const start = Number(input.in ?? input.start);
+    const end = Number(input.out ?? input.end);
+    const hasStart = Number.isFinite(start);
+    const hasEnd = Number.isFinite(end);
+    if (!hasStart && !hasEnd) return { in: null, out: null };
+    if (hasStart && hasEnd && end < start) return { in: Math.max(0, end), out: Math.max(0, start) };
+    return {
+      in: hasStart ? Math.max(0, start) : null,
+      out: hasEnd ? Math.max(0, end) : null,
+    };
+  }
+
+  function selectedTimelineRangeInfo() {
+    const range = normalizeTimelineRange(state.selectedTimelineRange);
+    if (!Number.isFinite(Number(range.in)) || !Number.isFinite(Number(range.out)) || Number(range.out) <= Number(range.in)) return null;
+    const start = Number(range.in);
+    const end = Number(range.out);
+    return {
+      start,
+      end,
+      duration: end - start,
+      overlapping_scenes: allEditableSegments()
+        .filter((segment) => Number(segment.end || 0) > start && Number(segment.start || 0) < end)
+        .map((segment) => ({
+          id: segment.id || "",
+          number: segmentIndexInfo(segment).index + 1,
+          label: sceneDisplayName(segment, segmentIndexInfo(segment).index),
+          start: Number(segment.start || 0),
+          end: Number(segment.end || 0),
+        })),
+      overlapping_markers: normalizeTimelineMarkers(state.timelineMarkers)
+        .filter((marker) => markerOverlapsRange(marker, start, end))
+        .map(markerContext),
+    };
+  }
+
+  function normalizeTimelineMarkers(markers) {
+    return (Array.isArray(markers) ? markers : [])
+      .map((marker) => {
+        const start = Math.max(0, Number(marker?.start || 0));
+        const rawEnd = Number(marker?.end);
+        const end = Number.isFinite(rawEnd) && rawEnd > start ? rawEnd : null;
+        return {
+          id: String(marker?.id || `mark_${Date.now()}_${Math.floor(Math.random() * 10000)}`),
+          start,
+          end,
+          type: String(marker?.type || "note").trim() || "note",
+          label: String(marker?.label || "Timeline note").trim() || "Timeline note",
+          note: String(marker?.note || "").trim(),
+        };
+      })
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+  }
+
+  function markerEnd(marker) {
+    return Number.isFinite(Number(marker?.end)) ? Number(marker.end) : Number(marker?.start || 0);
+  }
+
+  function markerVisualDuration(marker) {
+    const start = Number(marker?.start || 0);
+    const actual = Math.max(0.15, markerEnd(marker) - start);
+    const visual = TIMELINE_MARKER_MIN_WIDTH / Math.max(1, Number(state.pxPerSecond || 1));
+    return Math.max(actual, visual);
+  }
+
+  function markerVisualEnd(marker) {
+    return Number(marker?.start || 0) + markerVisualDuration(marker);
+  }
+
+  function markerOverlapsRange(marker, start, end) {
+    const markerStart = Number(marker?.start || 0);
+    const markerStop = Math.max(markerStart + 0.05, markerEnd(marker));
+    return markerStop > start && markerStart < end;
+  }
+
+  function markerContext(marker) {
+    return {
+      id: marker.id || "",
+      start: Number(marker.start || 0),
+      end: marker.end == null ? null : Number(marker.end),
+      duration: marker.end == null ? 0 : Math.max(0, Number(marker.end || 0) - Number(marker.start || 0)),
+      type: marker.type || "note",
+      label: marker.label || "Timeline note",
+      note: marker.note || "",
+    };
+  }
+
+  function nextFreeTimelineMarkerRange(start, duration = 4) {
+    const cleanDuration = Math.max(0.15, TIMELINE_MARKER_MIN_WIDTH / Math.max(1, Number(state.pxPerSecond || 1)), Number(duration || 4));
+    let nextStart = Math.max(0, Number(start || 0));
+    const markers = normalizeTimelineMarkers(state.timelineMarkers);
+    let changed = true;
+    let guard = 0;
+    while (changed && guard < 200) {
+      changed = false;
+      guard += 1;
+      const nextEnd = nextStart + cleanDuration;
+      for (const marker of markers) {
+        const markerStart = Number(marker.start || 0);
+        const markerStop = Math.max(markerStart + 0.15, markerVisualEnd(marker));
+        if (nextEnd > markerStart && nextStart < markerStop) {
+          nextStart = markerStop + 0.05;
+          changed = true;
+        }
+      }
+    }
+    return { start: Number(nextStart.toFixed(3)), end: Number((nextStart + cleanDuration).toFixed(3)) };
+  }
+
+  function timelineMarkerBounds(markerId) {
+    const markers = normalizeTimelineMarkers(state.timelineMarkers).filter((item) => item.id !== markerId);
+    const marker = state.timelineMarkers.find((item) => item.id === markerId);
+    const currentStart = Number(marker?.start || 0);
+    let minStart = 0;
+    let maxEnd = Infinity;
+    for (const item of markers) {
+      const itemStart = Number(item.start || 0);
+      const itemEnd = Math.max(itemStart + 0.15, markerVisualEnd(item));
+      if (itemEnd <= currentStart) minStart = Math.max(minStart, itemEnd + 0.05);
+      if (itemStart >= currentStart) maxEnd = Math.min(maxEnd, itemStart - 0.05);
+    }
+    return { minStart, maxEnd };
+  }
+
+  function clampTimelineMarkerToNonOverlap(marker, desiredStart, desiredEnd) {
+    const minDuration = Math.max(0.15, TIMELINE_MARKER_MIN_WIDTH / Math.max(1, Number(state.pxPerSecond || 1)));
+    const bounds = timelineMarkerBounds(marker.id);
+    const duration = Math.max(minDuration, Number(desiredEnd || 0) - Number(desiredStart || 0));
+    let start = Math.max(bounds.minStart, Number(desiredStart || 0));
+    let end = start + duration;
+    if (Number.isFinite(bounds.maxEnd) && end > bounds.maxEnd) {
+      end = Math.max(bounds.minStart + minDuration, bounds.maxEnd);
+      start = Math.max(bounds.minStart, end - duration);
+    }
+    return {
+      start: Number(Math.max(0, start).toFixed(3)),
+      end: Number(Math.max(start + minDuration, end).toFixed(3)),
+    };
   }
 
   function currentGlobalTime() {
@@ -3446,6 +3641,9 @@ function openBuilder(node) {
       snapToBeats: state.snapToBeats,
       showBeatMarkers: state.showBeatMarkers,
       showTimelineSceneNotes: state.showTimelineSceneNotes,
+      selectedTimelineRange: state.selectedTimelineRange,
+      timelineMarkers: state.timelineMarkers,
+      activeTimelineMarkerId: state.activeTimelineMarkerId,
       leftPanelWidth: state.leftPanelWidth,
       rightPanelWidth: state.rightPanelWidth,
       timelinePanelHeight: state.timelinePanelHeight,
@@ -3490,6 +3688,9 @@ function openBuilder(node) {
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
     state.showTimelineSceneNotes = data.showTimelineSceneNotes ?? state.showTimelineSceneNotes ?? false;
+    state.selectedTimelineRange = normalizeTimelineRange(data.selectedTimelineRange || data.selected_timeline_range || state.selectedTimelineRange);
+    state.timelineMarkers = normalizeTimelineMarkers(data.timelineMarkers || data.timeline_markers || state.timelineMarkers);
+    state.activeTimelineMarkerId = data.activeTimelineMarkerId || data.active_timeline_marker_id || "";
     state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
     state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
     setBeatMarkersVisible(data.showBeatMarkers ?? state.showBeatMarkers ?? false);
@@ -4280,7 +4481,7 @@ function openBuilder(node) {
     globalAudioSummary.innerHTML = `
       <div><strong>Global audio:</strong> ${escapeHtml(audioInput.value || "Not loaded")}</div>
       <div style="margin-top:6px;"><strong>SRT:</strong> ${escapeHtml(srtInput.value || "Not loaded")}</div>
-      <div style="margin-top:6px;color:#a1a1aa;">Use the Settings button to load or change these files.</div>
+      <div style="margin-top:6px;color:#a1a1aa;">Global audio drives the whole timeline. Use this for music videos, songs, visualizers, and beat/lyric timing.</div>
     `;
     syncInspectorPanels();
     if (!segment) {
@@ -5392,18 +5593,21 @@ function openBuilder(node) {
 
   function timelineHeight() {
     const baseHeight = WAVEFORM_MODES[state.waveformMode]?.height || WAVEFORM_MODES.medium.height;
-    return state.showTimelineSceneNotes ? baseHeight + TIMELINE_NOTE_HEIGHT + TIMELINE_NOTE_GAP + 36 : baseHeight;
+    const waveExtra = Math.max(48, baseHeight - 140);
+    return timelineWaveTop() + waveExtra + 10;
+  }
+
+  function timelineMarkerTop() {
+    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + TIMELINE_NOTE_GAP;
   }
 
   function timelineNoteTop() {
-    return TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + TIMELINE_NOTE_GAP;
+    return timelineMarkerTop() + TIMELINE_MARKER_HEIGHT + TIMELINE_NOTE_GAP;
   }
 
   function timelineWaveTop() {
     if (state.showTimelineSceneNotes) return timelineNoteTop() + TIMELINE_NOTE_HEIGHT + 14;
-    return usingSceneAudioMode()
-      ? TIMELINE_SCENE_AUDIO_TOP + TIMELINE_SCENE_AUDIO_HEIGHT + 14
-      : TIMELINE_SEGMENT_TOP + TIMELINE_SEGMENT_HEIGHT + 14;
+    return timelineMarkerTop() + TIMELINE_MARKER_HEIGHT + 14;
   }
 
   function snapTimeToBeat(time) {
@@ -5501,9 +5705,288 @@ function openBuilder(node) {
     }
   }
 
+  function renderSelectedTimelineRangeOverlay() {
+    const info = selectedTimelineRangeInfo();
+    if (!info) return;
+    const left = info.start * state.pxPerSecond;
+    const width = Math.max(3, info.duration * state.pxPerSecond);
+    const band = document.createElement("div");
+    band.title = `Selected range ${formatTime(info.start)} - ${formatTime(info.end)} (${info.duration.toFixed(2)}s)`;
+    band.style.cssText = `
+      position:absolute;left:${left}px;top:0;width:${width}px;height:${timelineCanvas.height}px;
+      z-index:0;pointer-events:none;background:rgba(34,211,238,.14);
+      border-left:2px solid rgba(103,232,249,.9);border-right:2px solid rgba(103,232,249,.9);
+      box-sizing:border-box;
+    `;
+    const inTag = document.createElement("div");
+    inTag.textContent = "IN";
+    inTag.style.cssText = "position:absolute;left:2px;top:2px;background:#0891b2;color:#ecfeff;font-size:10px;font-weight:900;padding:1px 4px;border-radius:3px;";
+    const outTag = document.createElement("div");
+    outTag.textContent = "OUT";
+    outTag.style.cssText = "position:absolute;right:2px;top:2px;background:#0891b2;color:#ecfeff;font-size:10px;font-weight:900;padding:1px 4px;border-radius:3px;";
+    band.append(inTag, outTag);
+    segmentLayer.append(band);
+  }
+
+  function timelineMarkerColor(type) {
+    const value = String(type || "").toLowerCase();
+    if (value.includes("female")) return { bg: "rgba(190,24,93,.88)", border: "#f9a8d4", text: "#fce7f3" };
+    if (value.includes("male")) return { bg: "rgba(37,99,235,.88)", border: "#93c5fd", text: "#dbeafe" };
+    if (value.includes("chorus")) return { bg: "rgba(126,34,206,.88)", border: "#d8b4fe", text: "#f3e8ff" };
+    if (value.includes("verse")) return { bg: "rgba(21,128,61,.88)", border: "#86efac", text: "#dcfce7" };
+    if (value.includes("beat")) return { bg: "rgba(217,119,6,.88)", border: "#fcd34d", text: "#fffbeb" };
+    return { bg: "rgba(8,47,73,.9)", border: "#67e8f9", text: "#ecfeff" };
+  }
+
+  function renderTimelineMarkersOverlay() {
+    state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+    const markers = state.timelineMarkers;
+    const timelineTotal = timelineDuration();
+    const markerTop = timelineMarkerTop();
+    const laneLabel = document.createElement("div");
+    laneLabel.textContent = "TIMELINE NOTES";
+    laneLabel.style.cssText = `position:absolute;left:4px;top:${markerTop - 12}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
+    segmentLayer.append(laneLabel);
+    for (const marker of markers) {
+      const start = Number(marker.start || 0);
+      const end = marker.end == null ? Math.min(start + 4, Math.max(start + 4, timelineTotal || start + 4)) : Number(marker.end);
+      const left = start * state.pxPerSecond;
+      const width = Math.max(TIMELINE_MARKER_MIN_WIDTH, (end - start) * state.pxPerSecond);
+      const colors = timelineMarkerColor(marker.type);
+      const item = document.createElement("div");
+      item.title = `${marker.label || "Timeline note"}\n${formatTime(start)}${marker.end == null ? "" : ` - ${formatTime(end)}`}\n${marker.note || ""}`;
+      const active = state.activeTimelineMarkerId === marker.id;
+      item.style.cssText = `
+        position:absolute;left:${left}px;top:${markerTop}px;width:${width}px;height:${TIMELINE_MARKER_HEIGHT}px;
+        z-index:6;pointer-events:auto;cursor:grab;overflow:hidden;box-sizing:border-box;
+        border:${active ? "2px" : "1px"} solid ${active ? "#f4f4f5" : colors.border};border-radius:4px;
+        background:${colors.bg};color:${colors.text};font-size:11px;font-weight:800;
+        box-shadow:${active ? "0 0 0 2px rgba(244,244,245,.18),0 0 10px rgba(103,232,249,.55)" : "none"};
+      `;
+      const header = document.createElement("div");
+      header.textContent = `${marker.type || "note"} | ${formatTime(start)}${marker.end == null ? "" : ` - ${formatTime(end)}`}`;
+      header.style.cssText = "height:18px;display:flex;align-items:center;padding:0 10px 0 12px;box-sizing:border-box;background:rgba(2,6,23,.45);font-size:10px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      header.title = "Drag to move this timeline note. Double-click the note for exact timing and type.";
+      const noteBox = document.createElement("textarea");
+      noteBox.value = marker.note || marker.label || "";
+      noteBox.placeholder = "Timeline note...";
+      noteBox.style.cssText = `
+        width:100%;height:${TIMELINE_MARKER_HEIGHT - 18}px;box-sizing:border-box;resize:none;display:block;
+        border:0;border-top:1px solid rgba(255,255,255,.18);border-radius:0;background:rgba(2,6,23,.38);
+        color:${colors.text};padding:5px 8px 5px 12px;font-size:11px;line-height:1.25;outline:none;
+      `;
+      noteBox.onpointerdown = (event) => event.stopPropagation();
+      noteBox.onclick = (event) => event.stopPropagation();
+      noteBox.onkeydown = (event) => event.stopPropagation();
+      noteBox.onfocus = () => {
+        noteBox.dataset.previousValue = noteBox.value;
+        noteBox.dataset.historyPushed = "0";
+        state.activeTimelineMarkerId = marker.id;
+      };
+      noteBox.oninput = () => {
+        if (noteBox.dataset.historyPushed !== "1" && noteBox.dataset.previousValue !== noteBox.value) {
+          pushHistory();
+          noteBox.dataset.historyPushed = "1";
+        }
+        marker.note = noteBox.value || "";
+        if (!String(marker.label || "").trim() || marker.label === "Timeline note" || marker.label === "Selected range") {
+          marker.label = String(noteBox.value || "").trim().split(/\r?\n/)[0].slice(0, 44) || "Timeline note";
+        }
+      };
+      noteBox.onchange = () => {
+        marker.note = noteBox.value || "";
+        autoSaveSessionQuiet("timeline note edited").catch(() => null);
+      };
+      const leftHandle = document.createElement("span");
+      leftHandle.title = "Drag to adjust note start";
+      leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.24);cursor:ew-resize;z-index:3;";
+      const rightHandle = document.createElement("span");
+      rightHandle.title = "Drag to adjust note end";
+      rightHandle.style.cssText = "position:absolute;right:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.24);cursor:ew-resize;z-index:3;";
+      item.append(header, noteBox, leftHandle, rightHandle);
+      item.onclick = (event) => {
+        event.stopPropagation();
+        state.activeTimelineMarkerId = marker.id;
+        render();
+      };
+      item.ondblclick = (event) => {
+        event.stopPropagation();
+        state.activeTimelineMarkerId = marker.id;
+        openTimelineMarkerEditor(marker);
+      };
+      item.oncontextmenu = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        state.activeTimelineMarkerId = marker.id;
+        openTimelineMarkerEditor(marker);
+      };
+      makeTimelineMarkerDragHandle(item, marker, "move", item, header);
+      makeTimelineMarkerDragHandle(header, marker, "move", item, header);
+      makeTimelineMarkerDragHandle(leftHandle, marker, "start", item, header);
+      makeTimelineMarkerDragHandle(rightHandle, marker, "end", item, header);
+      segmentLayer.append(item);
+    }
+  }
+
+  function makeTimelineMarkerDragHandle(handle, marker, mode, item = null, header = null) {
+    handle.onpointerdown = (event) => {
+      if (event.button !== 0) return;
+      if (event.target?.tagName === "TEXTAREA") return;
+      event.preventDefault();
+      event.stopPropagation();
+      handle.setPointerCapture?.(event.pointerId);
+      const markerId = marker.id;
+      state.activeTimelineMarkerId = markerId;
+      const startX = event.clientX;
+      const startStart = Number(marker.start || 0);
+      const startEnd = marker.end == null ? null : Number(marker.end);
+      const minDuration = 0.15;
+      const sorted = normalizeTimelineMarkers(state.timelineMarkers);
+      const markerIndex = sorted.findIndex((item) => item.id === markerId);
+      const previousMarker = markerIndex > 0 ? sorted[markerIndex - 1] : null;
+      const nextMarker = markerIndex >= 0 && markerIndex < sorted.length - 1 ? sorted[markerIndex + 1] : null;
+      const visualMinDuration = TIMELINE_MARKER_MIN_WIDTH / Math.max(1, Number(state.pxPerSecond || 1));
+      const dragMinDuration = Math.max(minDuration, visualMinDuration);
+      const minStart = previousMarker ? Math.max(0, markerVisualEnd(previousMarker) + 0.05) : 0;
+      const maxEnd = nextMarker ? Math.max(minStart + minDuration, Number(nextMarker.start || 0) - 0.05) : Infinity;
+      const startDuration = startEnd == null ? Math.max(4, dragMinDuration) : Math.max(dragMinDuration, startEnd - startStart);
+      const visualDuration = Math.max(startDuration, visualMinDuration);
+      const paintMarker = (liveMarker) => {
+        if (!item) return;
+        const liveStart = Number(liveMarker.start || 0);
+        const liveEnd = markerEnd(liveMarker);
+        item.style.left = `${liveStart * state.pxPerSecond}px`;
+        item.style.width = `${Math.max(TIMELINE_MARKER_MIN_WIDTH, (liveEnd - liveStart) * state.pxPerSecond)}px`;
+        if (header) header.textContent = `${liveMarker.type || "note"} | ${formatTime(liveStart)} - ${formatTime(liveEnd)}`;
+      };
+      let historySaved = false;
+      const move = (moveEvent) => {
+        const liveMarker = state.timelineMarkers.find((item) => item.id === markerId) || marker;
+        if (!historySaved) {
+          pushHistory();
+          historySaved = true;
+        }
+        const delta = (moveEvent.clientX - startX) / state.pxPerSecond;
+        if (mode === "start") {
+          const desiredEnd = startEnd ?? Math.max(startStart + dragMinDuration, Number(liveMarker.end || startStart + 4));
+          liveMarker.start = Math.max(minStart, Math.min(desiredEnd - dragMinDuration, startStart + delta));
+          liveMarker.start = Number(liveMarker.start.toFixed(3));
+        } else if (mode === "end") {
+          liveMarker.end = Math.max(startStart + dragMinDuration, (startEnd ?? startStart + dragMinDuration) + delta);
+          if (Number.isFinite(maxEnd)) liveMarker.end = Math.min(liveMarker.end, maxEnd);
+          liveMarker.end = Number(liveMarker.end.toFixed(3));
+        } else {
+          let nextStart = Math.max(minStart, startStart + delta);
+          if (Number.isFinite(maxEnd)) nextStart = Math.min(nextStart, maxEnd - visualDuration);
+          nextStart = Math.max(minStart, nextStart);
+          liveMarker.start = Number(nextStart.toFixed(3));
+          liveMarker.end = Number((liveMarker.start + startDuration).toFixed(3));
+        }
+        paintMarker(liveMarker);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+        render();
+        autoSaveSessionQuiet("timeline marker moved").catch(() => null);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    };
+  }
+
+  function openTimelineMarkerEditor(marker) {
+    const target = marker || newTimelineMarker(currentGlobalTime(), null);
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100008;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:16px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(520px,calc(100vw - 32px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:14px;display:grid;gap:10px;";
+    const title = document.createElement("div");
+    title.textContent = target.id ? "Timeline Note" : "New Timeline Note";
+    title.style.cssText = "font-size:15px;font-weight:900;color:#cffafe;";
+    const typeInput = makeInput("note");
+    typeInput.value = target.type || "note";
+    const labelInput = makeInput("Timeline note");
+    labelInput.value = target.label || "";
+    const startInput = makeInput("0");
+    startInput.value = formatTime(target.start || 0);
+    const endInput = makeInput("optional");
+    endInput.value = target.end == null ? "" : formatTime(target.end);
+    const noteInput = document.createElement("textarea");
+    noteInput.value = target.note || "";
+    noteInput.placeholder = "What happens here? Singer, chorus, verse, camera idea, story beat...";
+    noteInput.style.cssText = "min-height:96px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;";
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const row = (label, input) => {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = "display:grid;gap:5px;color:#e4e4e7;font-size:12px;font-weight:800;";
+      const text = document.createElement("span");
+      text.textContent = label;
+      wrap.append(text, input);
+      return wrap;
+    };
+    grid.append(row("Type", typeInput), row("Label", labelInput), row("Start", startInput), row("End", endInput));
+    const noteWrap = row("Note", noteInput);
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
+    const save = makeButton("Save", "primary");
+    const del = makeButton("Delete");
+    const cancel = makeButton("Cancel");
+    del.style.borderColor = "#7f1d1d";
+    del.style.color = "#fecaca";
+    buttons.append(del, cancel, save);
+    box.append(title, grid, noteWrap, buttons);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const close = () => backdrop.remove();
+    cancel.onclick = close;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) close();
+    });
+    del.onclick = () => {
+      pushHistory();
+      state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers).filter((item) => item.id !== target.id);
+      if (state.activeTimelineMarkerId === target.id) state.activeTimelineMarkerId = "";
+      render();
+      autoSaveSessionQuiet("timeline marker deleted").catch(() => null);
+      close();
+    };
+    save.onclick = () => {
+      const start = parseBulkTimeValue(startInput.value);
+      const end = String(endInput.value || "").trim() ? parseBulkTimeValue(endInput.value) : NaN;
+      if (!Number.isFinite(start) || start < 0) {
+        toast("Timeline note start time is invalid.", true);
+        return;
+      }
+      if (Number.isFinite(end) && end <= start) {
+        toast("Timeline note end must be after start.", true);
+        return;
+      }
+      pushHistory();
+      target.start = start;
+      target.end = Number.isFinite(end) ? end : null;
+      target.type = String(typeInput.value || "note").trim() || "note";
+      target.label = String(labelInput.value || target.type || "Timeline note").trim() || "Timeline note";
+      target.note = String(noteInput.value || "").trim();
+      if (!state.timelineMarkers.some((item) => item.id === target.id)) state.timelineMarkers.push(target);
+      const clamped = clampTimelineMarkerToNonOverlap(target, target.start, target.end ?? target.start + 4);
+      target.start = clamped.start;
+      target.end = clamped.end;
+      state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+      state.activeTimelineMarkerId = target.id;
+      render();
+      autoSaveSessionQuiet("timeline marker edited").catch(() => null);
+      close();
+    };
+  }
+
   function renderSegments() {
     segmentLayer.textContent = "";
     ensureAllSegmentRuntimeFields();
+    renderSelectedTimelineRangeOverlay();
+    renderTimelineMarkersOverlay();
     const overlayLabel = document.createElement("div");
     overlayLabel.textContent = "INSERTS";
     overlayLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_OVERLAY_TOP - 11}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
@@ -5624,9 +6107,11 @@ function openBuilder(node) {
           segment[noteField] = noteBox.value || "";
         };
         noteBox.onchange = () => {
+          if (noteBox.dataset.deleted === "1") return;
           segment[noteField] = noteBox.value || "";
           autoSaveSessionQuiet("timeline scene note edited");
         };
+        noteBox.oncontextmenu = (event) => openDirectorNoteContextMenu(event, segment, noteBox);
         segmentLayer.append(noteBox);
       }
       if (!isOverlay && segment.custom_audio_peaks?.length) {
@@ -5940,6 +6425,98 @@ function openBuilder(node) {
       }
     };
     setTimeout(() => window.addEventListener("pointerdown", close), 0);
+  }
+
+  function clearDirectorNote(segment, noteBox = null) {
+    const segmentId = segment?.id || "";
+    const target = allEditableSegments().find((item) => item.id === segmentId) || segment;
+    if (!target) return false;
+    if (noteBox) {
+      noteBox.dataset.deleted = "1";
+      noteBox.value = "";
+    }
+    target.timeline_note = "";
+    if (segment && segment !== target) segment.timeline_note = "";
+    if (target.id === activeSegment()?.id) syncInspector();
+    render();
+    return true;
+  }
+
+  function openDirectorNoteContextMenu(event, segment, noteBox = null) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!segment) return;
+    if (noteBox) segment.timeline_note = noteBox.value || "";
+    setActiveSegment(segment);
+    document.querySelector(".vrgdg-builder-context-menu")?.remove();
+    const menu = document.createElement("div");
+    menu.className = "vrgdg-builder-context-menu";
+    menu.style.cssText = "position:fixed;z-index:100010;min-width:220px;border:1px solid #155e75;border-radius:7px;background:#111827;color:#f8fafc;box-shadow:0 16px 50px rgba(0,0,0,.55);padding:6px;display:flex;flex-direction:column;gap:4px;";
+    menu.style.left = `${Math.min(window.innerWidth - 230, event.clientX)}px`;
+    menu.style.top = `${Math.min(window.innerHeight - 150, event.clientY)}px`;
+    const addItem = (label, action, disabled = false) => {
+      const button = makeButton(label);
+      button.disabled = disabled;
+      button.style.justifyContent = "flex-start";
+      button.style.textAlign = "left";
+      button.onpointerdown = (buttonEvent) => {
+        buttonEvent.stopPropagation();
+      };
+      button.onclick = (buttonEvent) => {
+        buttonEvent.preventDefault();
+        buttonEvent.stopPropagation();
+        closeMenu();
+        action();
+      };
+      menu.append(button);
+    };
+    const noteText = String(noteBox?.value ?? segment.timeline_note ?? "").trim();
+    addItem("Copy to Timeline Note", () => {
+      const start = Number(segment.start || 0);
+      const end = Math.max(start + 0.15, Number(segment.end || start + 4));
+      pushHistory();
+      const marker = newTimelineMarker(start, end);
+      marker.type = "director note";
+      marker.label = `${segment.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)} note`;
+      marker.note = noteText;
+      const clamped = clampTimelineMarkerToNonOverlap(marker, marker.start, marker.end ?? marker.start + 4);
+      marker.start = clamped.start;
+      marker.end = clamped.end;
+      state.timelineMarkers.push(marker);
+      state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+      state.activeTimelineMarkerId = marker.id;
+      render();
+      autoSaveSessionQuiet("director note copied to timeline note").catch(() => null);
+      toast("Director note copied into a Timeline Note.");
+    }, !noteText);
+    addItem("Delete Director Note", () => {
+      pushHistory();
+      clearDirectorNote(segment, noteBox);
+      autoSaveSessionQuiet("director note deleted").catch(() => null);
+      toast("Director note deleted.");
+    }, !noteText);
+    addItem("Open Scene Options", () => openSceneOptions(segment));
+    document.body.append(menu);
+    const closeMenu = () => {
+      menu.remove();
+      window.removeEventListener("pointerdown", closeOnPointer, true);
+      window.removeEventListener("click", closeOnPointer, true);
+      window.removeEventListener("contextmenu", closeOnPointer, true);
+      window.removeEventListener("keydown", closeOnKey, true);
+    };
+    const closeOnPointer = (closeEvent) => {
+      if (menu.contains(closeEvent.target)) return;
+      closeMenu();
+    };
+    const closeOnKey = (keyEvent) => {
+      if (keyEvent.key === "Escape") closeMenu();
+    };
+    setTimeout(() => {
+      window.addEventListener("pointerdown", closeOnPointer, true);
+      window.addEventListener("click", closeOnPointer, true);
+      window.addEventListener("contextmenu", closeOnPointer, true);
+      window.addEventListener("keydown", closeOnKey, true);
+    }, 0);
   }
 
   function makeDragHandle(element, segment, mode) {
@@ -6355,6 +6932,80 @@ function openBuilder(node) {
     }
   }
 
+  function builderStorySourcePath() {
+    if (String(state.builderStorySourcePath || "").trim()) return String(state.builderStorySourcePath || "").trim();
+    return projectContextPath("AgentStorySource.txt");
+  }
+
+  async function loadBuilderStorySource() {
+    const path = builderStorySourcePath();
+    if (!path) return "";
+    const text = await loadContextTextQuiet(path);
+    state.builderStorySourcePreview = text.slice(0, 500);
+    if (text && !state.builderStorySourcePath) state.builderStorySourcePath = path;
+    return text;
+  }
+
+  async function saveBuilderStorySource(text) {
+    const path = builderStorySourcePath();
+    if (!path) throw new Error("Create or load a project first, then save the Story Builder source.");
+    const result = await postJson("/vrgdg/music_builder/save_text_file", { path, content: String(text || "") });
+    state.builderStorySourcePath = result.path || path;
+    state.builderStorySourcePreview = String(text || "").trim().slice(0, 500);
+    await autoSaveSessionQuiet("Story Builder source saved");
+    return result.path || path;
+  }
+
+  function splitStorySourceIntoChunks(text, count) {
+    const cleaned = String(text || "").replace(/\r\n/g, "\n").trim();
+    if (!cleaned) return [];
+    const stanzas = cleaned.split(/\n\s*\n+/).map((item) => item.trim()).filter(Boolean);
+    let units = stanzas.length >= count ? stanzas : cleaned.split("\n").map((item) => item.trim()).filter(Boolean);
+    if (!units.length) units = [cleaned];
+    const chunkCount = Math.max(1, Math.min(120, Number(count || units.length || 1)));
+    const chunks = [];
+    for (let index = 0; index < chunkCount; index += 1) {
+      const start = Math.floor(index * units.length / chunkCount);
+      const end = Math.max(start + 1, Math.floor((index + 1) * units.length / chunkCount));
+      chunks.push(units.slice(start, end).join("\n"));
+    }
+    return chunks;
+  }
+
+  async function createStoryScenesFromSource(sceneCount = 0) {
+    const source = await loadBuilderStorySource();
+    if (!source.trim()) throw new Error("Add Story Source lyrics/script first.");
+    const requestedCount = Number(sceneCount || 0);
+    const chunks = splitStorySourceIntoChunks(source, requestedCount > 0 ? requestedCount : 12);
+    const totalDuration = Math.max(Number(state.duration || 0), chunks.length * 4);
+    const sceneDuration = Math.max(1, totalDuration / Math.max(1, chunks.length));
+    const newScenes = chunks.map((chunk, index) => {
+      const start = index * sceneDuration;
+      const end = index === chunks.length - 1 ? totalDuration : (index + 1) * sceneDuration;
+      const segment = newSegment(Number(start.toFixed(3)), Number(end.toFixed(3)));
+      segment.label = `Scene ${index + 1}`;
+      segment.lyric_text = chunk;
+      segment.timeline_note = "";
+      segment.notes = "";
+      segment.source = "agent_story_builder";
+      return segment;
+    });
+    pushHistory();
+    state.segments = newScenes;
+    state.overlaySegments = [];
+    state.activeTrack = "base";
+    state.activeId = newScenes[0]?.id || "";
+    state.srtMode = false;
+    state.timingFrozen = false;
+    state.duration = Math.max(totalDuration, ...newScenes.map((item) => Number(item.end || 0)));
+    syncInspector();
+    render();
+    await syncPromptJsonFromSegments("Story Builder scenes created");
+    await syncI2VMotionJsonFromSegments("Story Builder scenes created");
+    autoSaveSessionQuiet("Story Builder scenes created");
+    return newScenes.length;
+  }
+
   async function editContextTextFile(input, title, filename, gemmaTarget, options = {}) {
     let path = String(input.value || "").trim();
     if (!path) {
@@ -6507,6 +7158,36 @@ function openBuilder(node) {
     return kind === "i2v" ? "image-to-video" : "text-to-image";
   }
 
+  function promptImageModeForEdit() {
+    return state.imageModelMode || "zimage";
+  }
+
+  function segmentPromptForEdit(segment, kind) {
+    if (kind === "i2v") return segment?.i2v_prompt || "";
+    const mode = promptImageModeForEdit();
+    if (mode === "nano_banana") return segment?.nb_prompt || segment?.t2i_prompt || "";
+    if (mode === "flux_klein") return segment?.flux_prompt || segment?.t2i_prompt || "";
+    return segment?.t2i_prompt || "";
+  }
+
+  function setSegmentPromptForEdit(segment, kind, value) {
+    const text = String(value || "").trim();
+    if (kind === "i2v") {
+      segment.i2v_prompt = text;
+      return;
+    }
+    const mode = promptImageModeForEdit();
+    segment.t2i_prompt = text;
+    if (mode === "nano_banana") {
+      segment.nb_prompt = text;
+    } else if (mode === "flux_klein") {
+      segment.flux_prompt = text;
+    } else {
+      segment.flux_prompt = text;
+      segment.nb_prompt = text;
+    }
+  }
+
   function promptKindFile(kind) {
     return projectPromptsPath(kind === "i2v" ? "i2v_prompts.txt" : "t2i_prompts.txt");
   }
@@ -6518,7 +7199,7 @@ function openBuilder(node) {
   function formatPromptBlocks(kind, prompts = null) {
     const values = Array.isArray(prompts)
       ? prompts
-      : allEditableSegments().map((segment) => kind === "i2v" ? segment.i2v_prompt : (segment.t2i_prompt || segment.flux_prompt));
+      : allEditableSegments().map((segment) => segmentPromptForEdit(segment, kind));
     return values.map((item) => String(item || "").trim()).join("\n\n").replace(/\s+$/g, "") + "\n";
   }
 
@@ -6568,12 +7249,7 @@ function openBuilder(node) {
     pushHistory();
     for (let index = 0; index < segments.length && index < values.length; index += 1) {
       const value = String(values[index] || "").trim();
-      if (kind === "i2v") {
-        segments[index].i2v_prompt = value;
-      } else {
-        segments[index].t2i_prompt = value;
-        segments[index].flux_prompt = value;
-      }
+      setSegmentPromptForEdit(segments[index], kind, value);
     }
     syncInspector();
     render();
@@ -7833,6 +8509,348 @@ function openBuilder(node) {
     renderAll();
   }
 
+  function conceptPromptTimelineNotesForSegment(segment) {
+    const start = Number(segment?.start || 0);
+    const end = Number(segment?.end || start);
+    const duration = Math.max(0.01, end - start);
+    return normalizeTimelineMarkers(state.timelineMarkers)
+      .filter((marker) => {
+        const markerStart = Number(marker.start || 0);
+        const markerEnd = Number(marker.end || markerStart);
+        const overlap = Math.max(0, Math.min(end, markerEnd) - Math.max(start, markerStart));
+        return overlap >= 0.25 || overlap / duration >= 0.1;
+      })
+      .slice(0, 8)
+      .map((marker) => ({
+        type: String(marker.type || "note"),
+        label: String(marker.label || ""),
+        note: String(marker.note || ""),
+        start: Number(marker.start || 0),
+        end: Number(marker.end || marker.start || 0),
+      }));
+  }
+
+  function conceptPromptReferenceModes(segment) {
+    const context = fluxReferenceContextForSegment(segment);
+    return {
+      subject_reference_mode: context.has_subject_reference ? "subject reference available" : "no subject reference",
+      location_reference_mode: context.has_location_reference ? "location reference available" : "no location reference",
+    };
+  }
+
+  function conceptPromptScenePayload(segment, index, sourceMode = "all") {
+    const includeDirector = ["director", "director_scene", "all"].includes(sourceMode);
+    const includeScene = ["scene", "director_scene", "all"].includes(sourceMode);
+    const includeTimeline = ["timeline", "all"].includes(sourceMode);
+    return {
+      scene_number: index + 1,
+      label: sceneDisplayName(segment, index),
+      lyric_text: String(segment.lyric_text || "").trim(),
+      director_note: includeDirector ? String(segment.timeline_note || "").trim() : "",
+      scene_note: includeScene ? String(segment.notes || "").trim() : "",
+      timeline_notes: includeTimeline ? conceptPromptTimelineNotesForSegment(segment) : [],
+      ...conceptPromptReferenceModes(segment),
+    };
+  }
+
+  function conceptPromptTargets(scope = "all") {
+    const baseScenes = state.segments.map((segment, index) => ({ segment, index }));
+    if (scope === "selected") {
+      const active = activeSegment();
+      const activeIndex = state.segments.findIndex((segment) => segment.id === active?.id);
+      return active && activeIndex >= 0 ? [{ segment: active, index: activeIndex }] : [];
+    }
+    if (scope === "range") {
+      const range = selectedTimelineRangeInfo();
+      if (!range) return [];
+      return baseScenes.filter(({ segment }) => {
+        const overlap = Math.max(0, Math.min(Number(segment.end || 0), range.end) - Math.max(Number(segment.start || 0), range.start));
+        return overlap >= 0.25;
+      });
+    }
+    return baseScenes;
+  }
+
+  async function runConceptPromptCreator(options = {}) {
+    updateActiveFromInputs();
+    const sourceMode = String(options.sourceMode || "all").trim() || "all";
+    const scope = String(options.scope || "all").trim() || "all";
+    const batchSize = Math.max(1, Math.min(10, Math.floor(Number(options.batchSize || 5))));
+    const targets = conceptPromptTargets(scope);
+    if (!targets.length) {
+      toast(scope === "range" ? "No scenes overlap the selected timeline range." : "No scenes found for concept prompt creation.", true);
+      return { updated: 0, skipped: ["no scenes"] };
+    }
+    const progress = options.progress || createProgressWindow("Concept Prompt Creator");
+    const closeProgress = !options.progress;
+    const useStory = options.useStory !== false;
+    const useTheme = options.useTheme !== false;
+    const storyIdea = useStory ? await loadContextTextQuiet(storyIdeaInput.value || state.storyIdeaPath) : "";
+    const themeStyle = useTheme ? await loadContextTextQuiet(themeStyleInput.value || state.themeStylePath) : "";
+    let previousSummary = "";
+    let updated = 0;
+    const appliedKeys = [];
+    try {
+      pushHistory();
+      for (let offset = 0; offset < targets.length; offset += batchSize) {
+        if (state.batchCancelled) throw new Error("Stopped by user.");
+        const batch = targets.slice(offset, offset + batchSize);
+        progress.set(`Creating concept prompts for scenes ${batch[0].index + 1}-${batch[batch.length - 1].index + 1}...`, 10 + Math.round((offset / targets.length) * 80));
+        const data = await postJson("/vrgdg/music_builder/generate_concept_prompts", {
+          ...textGemmaRunnerPayload(),
+          model_file: t2iTextGemmaModelSelect.value,
+          source_mode: sourceMode,
+          story_idea: storyIdea,
+          theme_style: themeStyle,
+          previous_summary: previousSummary,
+          scenes: batch.map(({ segment, index }) => conceptPromptScenePayload(segment, index, sourceMode)),
+          temperature: options.temperature ?? 0.45,
+          top_p: options.topP ?? 0.95,
+          max_new_tokens: options.maxNewTokens ?? 1200,
+        }, 180000);
+        const prompts = data.prompts || {};
+        for (const { segment, index } of batch) {
+          const promptText = String(prompts[`Scene${index + 1}`] || prompts[`Scene ${index + 1}`] || "").trim();
+          if (!promptText) continue;
+          segment.notes = promptText;
+          if (segment.id === activeSegment()?.id) {
+            notesInput.value = promptText;
+            ernieNotesInput.value = promptText;
+          }
+          appliedKeys.push(`Scene${index + 1}`);
+          updated += 1;
+        }
+        previousSummary = String(data.summary || previousSummary || "").slice(0, 1200);
+        render();
+      }
+      await syncPromptJsonFromSegments("Concept Prompt Creator").catch(() => null);
+      await autoSaveSessionQuiet("Concept Prompt Creator").catch(() => null);
+      progress.set(`Updated ${updated} scene note${updated === 1 ? "" : "s"} with generated concept prompts.`, 100);
+      if (closeProgress) progress.close(1200);
+      toast(`Concept prompts updated: ${updated}`);
+      return { updated, applied: appliedKeys };
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+      return { updated, error: String(error?.message || error) };
+    }
+  }
+
+  function openConceptPromptCreatorModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(620px,calc(100vw - 36px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Concept Prompt Creator";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const note = document.createElement("div");
+    note.textContent = "Creates batched concept prompts from notes and writes them into the scene notes fields.";
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const source = makeSelect(["all", "director", "scene", "timeline", "director_scene"], "all");
+    source.options[0].textContent = "All available notes";
+    source.options[1].textContent = "Director notes";
+    source.options[2].textContent = "Scene notes";
+    source.options[3].textContent = "Timeline notes";
+    source.options[4].textContent = "Director + scene notes";
+    const scope = makeSelect(["all", "selected", "range"], "all");
+    scope.options[0].textContent = "All scenes";
+    scope.options[1].textContent = "Selected scene";
+    scope.options[2].textContent = "Selected timeline range";
+    const batchSize = makeInput("5");
+    batchSize.type = "number";
+    batchSize.min = "1";
+    batchSize.max = "10";
+    const useStory = makeCheckbox("Use Story idea", true);
+    const useTheme = makeCheckbox("Use Theme/style", true);
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    grid.append(makeField("Source", source), makeField("Scope", scope), makeField("Scenes per batch", batchSize), useStory.wrapper, useTheme.wrapper);
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const run = makeButton("Create Concept Prompts", "primary");
+    actions.append(cancel, run);
+    box.append(header, note, grid, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const dismiss = () => backdrop.remove();
+    close.onclick = dismiss;
+    cancel.onclick = dismiss;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) dismiss();
+    });
+    run.onclick = async () => {
+      dismiss();
+      await runConceptPromptCreator({
+        sourceMode: source.value,
+        scope: scope.value,
+        batchSize: batchSize.value,
+        useStory: useStory.input.checked,
+        useTheme: useTheme.input.checked,
+      });
+    };
+  }
+
+  function motionNoteScenePayload(segment, index, sourceMode = "concept") {
+    const includeDirector = ["concept_director", "all"].includes(sourceMode);
+    const includeTimeline = ["concept_timeline", "all"].includes(sourceMode);
+    return {
+      scene_number: index + 1,
+      label: sceneDisplayName(segment, index),
+      concept_prompt: String(segment.notes || "").trim(),
+      director_note: includeDirector ? String(segment.timeline_note || "").trim() : "",
+      timeline_notes: includeTimeline ? conceptPromptTimelineNotesForSegment(segment) : [],
+    };
+  }
+
+  function validateMotionNoteInputs(targets, sourceMode) {
+    const needsConcept = true;
+    const needsDirector = ["concept_director", "all"].includes(sourceMode);
+    const needsTimeline = ["concept_timeline", "all"].includes(sourceMode);
+    if (needsConcept && !targets.some(({ segment }) => String(segment.notes || "").trim())) {
+      return "You do not have any concept prompts in the selected scenes yet. Create/update concept prompts first, then try again.";
+    }
+    if (needsDirector && !targets.some(({ segment }) => String(segment.timeline_note || "").trim())) {
+      return "You chose director notes, but the selected scenes do not have director notes. Add/update director notes, then try again.";
+    }
+    if (needsTimeline && !targets.some(({ segment }) => conceptPromptTimelineNotesForSegment(segment).length)) {
+      return "You chose timeline notes, but no timeline notes overlap the selected scenes. Add/update timeline notes, then try again.";
+    }
+    return "";
+  }
+
+  async function runMotionNoteCreator(options = {}) {
+    updateActiveFromInputs();
+    const sourceMode = String(options.sourceMode || "concept").trim() || "concept";
+    const scope = String(options.scope || "all").trim() || "all";
+    const batchSize = Math.max(1, Math.min(10, Math.floor(Number(options.batchSize || 5))));
+    const targets = conceptPromptTargets(scope);
+    if (!targets.length) {
+      toast(scope === "range" ? "No scenes overlap the selected timeline range." : "No scenes found for motion note creation.", true);
+      return { updated: 0, skipped: ["no scenes"] };
+    }
+    const validation = validateMotionNoteInputs(targets, sourceMode);
+    if (validation) {
+      toast(validation, true);
+      return { updated: 0, error: validation };
+    }
+    const progress = options.progress || createProgressWindow("Motion Note Creator");
+    const closeProgress = !options.progress;
+    const useStory = options.useStory !== false;
+    const useTheme = options.useTheme !== false;
+    const storyIdea = useStory ? await loadContextTextQuiet(storyIdeaInput.value || state.storyIdeaPath) : "";
+    const themeStyle = useTheme ? await loadContextTextQuiet(themeStyleInput.value || state.themeStylePath) : "";
+    let previousSummary = "";
+    let updated = 0;
+    const appliedKeys = [];
+    try {
+      pushHistory();
+      for (let offset = 0; offset < targets.length; offset += batchSize) {
+        if (state.batchCancelled) throw new Error("Stopped by user.");
+        const batch = targets.slice(offset, offset + batchSize);
+        progress.set(`Creating motion notes for scenes ${batch[0].index + 1}-${batch[batch.length - 1].index + 1}...`, 10 + Math.round((offset / targets.length) * 80));
+        const data = await postJson("/vrgdg/music_builder/generate_motion_notes", {
+          ...textGemmaRunnerPayload(),
+          model_file: t2iTextGemmaModelSelect.value,
+          source_mode: sourceMode,
+          story_idea: storyIdea,
+          theme_style: themeStyle,
+          previous_summary: previousSummary,
+          video_mode: currentVideoMode(),
+          scenes: batch.map(({ segment, index }) => motionNoteScenePayload(segment, index, sourceMode)),
+          temperature: options.temperature ?? 0.45,
+          top_p: options.topP ?? 0.95,
+          max_new_tokens: options.maxNewTokens ?? 1200,
+        }, 180000);
+        const notes = data.notes || {};
+        for (const { segment, index } of batch) {
+          const noteText = String(notes[`Motion${index + 1}`] || notes[`Motion ${index + 1}`] || notes[`Scene${index + 1}`] || "").trim();
+          if (!noteText) continue;
+          segment.i2v_notes = noteText;
+          if (segment.id === activeSegment()?.id) i2vNotesInput.value = noteText;
+          appliedKeys.push(`Motion${index + 1}`);
+          updated += 1;
+        }
+        previousSummary = String(data.summary || previousSummary || "").slice(0, 1200);
+        render();
+      }
+      await syncI2VMotionJsonFromSegments("Motion Note Creator").catch(() => null);
+      await autoSaveSessionQuiet("Motion Note Creator").catch(() => null);
+      progress.set(`Updated ${updated} I2V/T2V motion note${updated === 1 ? "" : "s"}.`, 100);
+      if (closeProgress) progress.close(1200);
+      toast(`Motion notes updated: ${updated}`);
+      return { updated, applied: appliedKeys };
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+      return { updated, error: String(error?.message || error) };
+    }
+  }
+
+  function openMotionNoteCreatorModal() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(620px,calc(100vw - 36px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Motion Note Creator";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(heading, close);
+    const note = document.createElement("div");
+    note.textContent = "Creates batched I2V/T2V motion notes and writes them into the I2V motion notes fields/file.";
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const source = makeSelect(["concept", "concept_director", "concept_timeline", "all"], "concept");
+    source.options[0].textContent = "Concept prompts only";
+    source.options[1].textContent = "Concept prompts + director notes";
+    source.options[2].textContent = "Concept prompts + timeline notes";
+    source.options[3].textContent = "All three";
+    const scope = makeSelect(["all", "selected", "range"], "all");
+    scope.options[0].textContent = "All scenes";
+    scope.options[1].textContent = "Selected scene";
+    scope.options[2].textContent = "Selected timeline range";
+    const batchSize = makeInput("5");
+    batchSize.type = "number";
+    batchSize.min = "1";
+    batchSize.max = "10";
+    const useStory = makeCheckbox("Use Story idea", true);
+    const useTheme = makeCheckbox("Use Theme/style", true);
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    grid.append(makeField("Source", source), makeField("Scope", scope), makeField("Scenes per batch", batchSize), useStory.wrapper, useTheme.wrapper);
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const run = makeButton("Create Motion Notes", "primary");
+    actions.append(cancel, run);
+    box.append(header, note, grid, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const dismiss = () => backdrop.remove();
+    close.onclick = dismiss;
+    cancel.onclick = dismiss;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) dismiss();
+    });
+    run.onclick = async () => {
+      dismiss();
+      await runMotionNoteCreator({
+        sourceMode: source.value,
+        scope: scope.value,
+        batchSize: batchSize.value,
+        useStory: useStory.input.checked,
+        useTheme: useTheme.input.checked,
+      });
+    };
+  }
+
   function openPromptOptionsModal() {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
@@ -7861,19 +8879,21 @@ function openBuilder(node) {
     videoHeading.textContent = "Video";
     videoHeading.style.cssText = imageHeading.style.cssText;
     const editT2I = makeButton("Edit Text to Image Prompts", "primary");
+    const createConceptPrompts = makeButton("Create Concept Prompts", "primary");
     const reloadT2I = makeButton("Reload Text to Image Prompts");
     const originalT2I = makeButton("Reload Original T2I Prompts");
     const clearT2I = makeButton("Clear All T2I Prompts");
     clearT2I.style.borderColor = "#7f1d1d";
     clearT2I.style.color = "#fecaca";
     const editI2V = makeButton("Edit Image to Video Prompts", "primary");
+    const createMotionNotes = makeButton("Create Motion Notes", "primary");
     const reloadI2V = makeButton("Reload Image to Video Prompts");
     const originalI2V = makeButton("Reload Original I2V Prompts");
     const clearI2V = makeButton("Clear All I2V Prompts");
     clearI2V.style.borderColor = "#7f1d1d";
     clearI2V.style.color = "#fecaca";
-    imageGroup.append(imageHeading, editT2I, reloadT2I, originalT2I, clearT2I);
-    videoGroup.append(videoHeading, editI2V, reloadI2V, originalI2V, clearI2V);
+    imageGroup.append(imageHeading, createConceptPrompts, editT2I, reloadT2I, originalT2I, clearT2I);
+    videoGroup.append(videoHeading, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V);
     grid.append(imageGroup, videoGroup);
     box.append(header, note, grid);
     backdrop.append(box);
@@ -7886,6 +8906,17 @@ function openBuilder(node) {
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) backdrop.remove();
     });
+    if (state.imageModelMode === "nano_banana") {
+      editT2I.textContent = "Edit Nano B Prompts";
+      reloadT2I.textContent = "Reload Nano B Prompts";
+      clearT2I.textContent = "Clear All Nano B Prompts";
+    } else if (state.imageModelMode === "flux_klein") {
+      editT2I.textContent = "Edit Flux/Klein Prompts";
+      reloadT2I.textContent = "Reload Flux/Klein Prompts";
+      clearT2I.textContent = "Clear All Flux/Klein Prompts";
+    }
+    createConceptPrompts.onclick = () => run(() => openConceptPromptCreatorModal());
+    createMotionNotes.onclick = () => run(() => openMotionNoteCreatorModal());
     editT2I.onclick = () => run(() => editFinalPromptList("t2i"));
     reloadT2I.onclick = () => run(() => reloadFinalPromptList("t2i", false));
     originalT2I.onclick = () => run(() => reloadFinalPromptList("t2i", true));
@@ -7903,6 +8934,10 @@ function openBuilder(node) {
     updateSelectedMediaTools();
     updateMultiSelectButton();
     timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} insert${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
+    const rangeInfo = selectedTimelineRangeInfo();
+    timelineRangeInfo.textContent = rangeInfo
+      ? `Range: ${formatTime(rangeInfo.start)} -> ${formatTime(rangeInfo.end)}  ${rangeInfo.duration.toFixed(2)}s`
+      : "Range: none";
   }
 
   async function loadAudio() {
@@ -8386,6 +9421,9 @@ function openBuilder(node) {
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
       show_timeline_scene_notes: state.showTimelineSceneNotes,
+      selected_timeline_range: normalizeTimelineRange(state.selectedTimelineRange),
+      timeline_markers: normalizeTimelineMarkers(state.timelineMarkers),
+      active_timeline_marker_id: state.activeTimelineMarkerId || "",
       audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
       beat_markers: Array.isArray(state.beats) ? state.beats : [],
       left_panel_width: state.leftPanelWidth,
@@ -8405,6 +9443,13 @@ function openBuilder(node) {
       video_model_mode: state.videoModelMode || "i2v",
       i2v_video_settings: state.i2vVideoSettings,
       prompt_tools_hint_prefs: state.promptToolsHintPrefs || {},
+      builder_agent_messages: Array.isArray(state.builderAgentMessages) ? state.builderAgentMessages : [],
+      builder_agent_auto_apply: Boolean(state.builderAgentAutoApply),
+      builder_agent_purpose: state.builderAgentPurpose || "scene_work",
+      builder_agent_reference_images: Array.isArray(state.builderAgentReferenceImages) ? state.builderAgentReferenceImages : [],
+      builder_story_source_path: state.builderStorySourcePath || "",
+      builder_story_reference_images: Array.isArray(state.builderStoryReferenceImages) ? state.builderStoryReferenceImages : [],
+      builder_story_reference_notes: state.builderStoryReferenceNotes || "",
     };
   }
 
@@ -8478,6 +9523,13 @@ function openBuilder(node) {
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
         state.storyIdeaPath = data.session.story_idea_path || state.storyIdeaPath;
         state.subjectScenePath = data.session.subject_scene_path || state.subjectScenePath;
+        state.builderAgentMessages = Array.isArray(data.session.builder_agent_messages) ? data.session.builder_agent_messages : state.builderAgentMessages || [];
+        state.builderAgentAutoApply = data.session.builder_agent_auto_apply ?? state.builderAgentAutoApply ?? false;
+        state.builderAgentPurpose = data.session.builder_agent_purpose || state.builderAgentPurpose || "scene_work";
+        state.builderAgentReferenceImages = Array.isArray(data.session.builder_agent_reference_images) ? data.session.builder_agent_reference_images : state.builderAgentReferenceImages || [];
+        state.builderStorySourcePath = data.session.builder_story_source_path || state.builderStorySourcePath || "";
+        state.builderStoryReferenceImages = Array.isArray(data.session.builder_story_reference_images) ? data.session.builder_story_reference_images : state.builderStoryReferenceImages || [];
+        state.builderStoryReferenceNotes = data.session.builder_story_reference_notes || state.builderStoryReferenceNotes || "";
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
@@ -8485,6 +9537,9 @@ function openBuilder(node) {
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
         state.showTimelineSceneNotes = data.session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
+        state.selectedTimelineRange = normalizeTimelineRange(data.session.selected_timeline_range || state.selectedTimelineRange);
+        state.timelineMarkers = normalizeTimelineMarkers(data.session.timeline_markers || state.timelineMarkers);
+        state.activeTimelineMarkerId = data.session.active_timeline_marker_id || state.activeTimelineMarkerId || "";
         state.peaks = Array.isArray(data.session.audio_peaks) ? data.session.audio_peaks : state.peaks;
         state.beats = Array.isArray(data.session.beat_markers) ? data.session.beat_markers : state.beats;
         setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
@@ -8619,6 +9674,13 @@ function openBuilder(node) {
       state.themeStylePath = session.theme_style_path || "";
       state.storyIdeaPath = session.story_idea_path || "";
       state.subjectScenePath = session.subject_scene_path || "";
+      state.builderAgentMessages = Array.isArray(session.builder_agent_messages) ? session.builder_agent_messages : [];
+      state.builderAgentAutoApply = Boolean(session.builder_agent_auto_apply);
+      state.builderAgentPurpose = session.builder_agent_purpose || "scene_work";
+      state.builderAgentReferenceImages = Array.isArray(session.builder_agent_reference_images) ? session.builder_agent_reference_images : [];
+      state.builderStorySourcePath = session.builder_story_source_path || projectContextPath("AgentStorySource.txt") || "";
+      state.builderStoryReferenceImages = Array.isArray(session.builder_story_reference_images) ? session.builder_story_reference_images : [];
+      state.builderStoryReferenceNotes = session.builder_story_reference_notes || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
@@ -8626,6 +9688,9 @@ function openBuilder(node) {
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
       state.showTimelineSceneNotes = session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
+      state.selectedTimelineRange = normalizeTimelineRange(session.selected_timeline_range || {});
+      state.timelineMarkers = normalizeTimelineMarkers(session.timeline_markers || []);
+      state.activeTimelineMarkerId = session.active_timeline_marker_id || "";
       state.peaks = Array.isArray(session.audio_peaks) ? session.audio_peaks : state.peaks;
       state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
@@ -9236,11 +10301,7 @@ function openBuilder(node) {
   async function createFluxKleinPromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
-    const settings = saveFluxKleinSettingsFromPanel();
-    if (!settings.use_text_only_gemma_prompt && (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length)) {
-      toast("Load at least one image ingredient first.", true);
-      return;
-    }
+    saveFluxKleinSettingsFromPanel();
     let progress = null;
     try {
       createFluxPromptButton.disabled = true;
@@ -9294,11 +10355,8 @@ function openBuilder(node) {
     render();
     const settings = fluxKleinSettingsForSegment(segment);
     const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
-    if (settings.use_text_only_gemma_prompt) {
+    if (settings.use_text_only_gemma_prompt || !Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "flux_klein", userNotes });
-    }
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
     }
     progress?.set(`${label}: combining global and scene image ingredients for Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
@@ -9327,9 +10385,6 @@ function openBuilder(node) {
     const settings = fluxKleinSettingsForSegment(segment);
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "flux_klein", settings.prompt || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flux/Klein prompt is missing.`);
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one global or scene Flux/Klein image ingredient.`);
-    }
     progress?.set(`${label}: building hidden Flux/Klein workflow...`, percentBase + percentSpan * 0.25);
     const built = await postJson("/vrgdg/workflow_runner/build_flux_klein_prompt", {
       prompt,
@@ -9381,11 +10436,7 @@ function openBuilder(node) {
   async function createNBPromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
-    const settings = saveNBImageSettingsFromPanel();
-    if (!settings.use_text_only_gemma_prompt && (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length)) {
-      toast("Load at least one NanoBanana reference image first.", true);
-      return;
-    }
+    saveNBImageSettingsFromPanel();
     let progress = null;
     try {
       createNBPromptButton.disabled = true;
@@ -9414,11 +10465,8 @@ function openBuilder(node) {
     render();
     const settings = nbImageSettingsForSegment(segment);
     const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
-    if (settings.use_text_only_gemma_prompt) {
+    if (settings.use_text_only_gemma_prompt || !Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "nano_banana", userNotes });
-    }
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one NanoBanana reference image.`);
     }
     progress?.set(`${label}: creating structured NanoBanana prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_nb_image_prompt", {
@@ -9429,7 +10477,7 @@ function openBuilder(node) {
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
       image_ingredients: settings.image_ingredients || [],
-      reference_context: {},
+      reference_context: settings.reference_context || {},
       repair_model_file: t2iTextGemmaModelSelect.value,
       user_notes: userNotes,
       clear_before_load: options.clearBeforeLoad !== false,
@@ -9454,9 +10502,6 @@ function openBuilder(node) {
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "nano_banana", settings.prompt || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: NanoBanana prompt is missing.`);
     if (!String(settings.api_key || "").trim()) throw new Error("NanoBanana API key is missing.");
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: add at least one NanoBanana reference image.`);
-    }
     progress?.set(`${label}: building hidden NanoBanana workflow...`, percentBase + percentSpan * 0.25);
     const built = await postJson("/vrgdg/workflow_runner/build_nb_image_prompt", {
       api_key: settings.api_key || "",
@@ -9500,10 +10545,6 @@ function openBuilder(node) {
       toast("NanoBanana API key is missing.", true);
       return;
     }
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      toast("Hey, you need at least one NanoBanana reference image first.", true);
-      return;
-    }
     let progress = null;
     try {
       setButtonGroupState(nbCreateButtons, { disabled: true, text: "Creating..." });
@@ -9530,10 +10571,6 @@ function openBuilder(node) {
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "flux_klein", settings.prompt || fluxPrompt.value || "");
     if (!prompt) {
       toast("Hey, you need a Flux/Klein prompt first. Click Gemma Flux Prompt or type one into the Flux/Klein prompt box.", true);
-      return;
-    }
-    if (!Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      toast("Hey, you need at least one image ingredient first. Load or drop character, background, or reference images.", true);
       return;
     }
     let progress = null;
@@ -10002,17 +11039,9 @@ function openBuilder(node) {
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
     targetScenes.forEach(({ segment, index }) => {
       if (imageMode === "flux_klein") {
-        const settings = fluxKleinSettingsForSegment(segment);
-        const ingredients = settings.image_ingredients || [];
-        if (!settings.use_text_only_gemma_prompt && (!Array.isArray(ingredients) || !ingredients.length)) {
-          missing.push(`${sceneDisplayName(segment, index)}: add at least one global or scene Flux/Klein image ingredient.`);
-        }
+        return;
       } else if (imageMode === "nano_banana") {
-        const settings = nbImageSettingsForSegment(segment);
-        const ingredients = settings.image_ingredients || [];
-        if (!settings.use_text_only_gemma_prompt && (!Array.isArray(ingredients) || !ingredients.length)) {
-          missing.push(`${sceneDisplayName(segment, index)}: add at least one NanoBanana reference image.`);
-        }
+        return;
       } else {
         const reason = t2iMissingReason(segment);
         if (reason) missing.push(`${sceneDisplayName(segment, index)}: ${reason}`);
@@ -11071,13 +12100,6 @@ function openBuilder(node) {
     const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("Flux/Klein All Scenes");
-    if (!allEditableSegments().some((segment) => mergedFluxImageIngredients(segment).length)) {
-      const message = "Flux/Klein All needs at least one Reference Builder, global, or scene image ingredient.";
-      progress.set(message, 100);
-      toast(message, true);
-      if (options.throwOnError) throw new Error(message);
-      return;
-    }
     try {
       state.batchCancelled = false;
       zImageAllButton.disabled = true;
@@ -11182,14 +12204,6 @@ function openBuilder(node) {
     const imageRunMode = options.imageRunMode || "resume_missing";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("NanoBanana All Scenes");
-    const allHaveReferences = allEditableSegments().some((segment) => mergedFluxImageIngredients(segment).length);
-    if (!allHaveReferences) {
-      const message = "NanoBanana All needs at least one Reference Builder, global, or scene reference image.";
-      progress.set(message, 100);
-      toast(message, true);
-      if (options.throwOnError) throw new Error(message);
-      return;
-    }
     if (!String((state.nbImageSettings || {}).api_key || "").trim() && !allEditableSegments().some((segment) => String(segment.nb_image_settings?.api_key || "").trim())) {
       const message = "NanoBanana All needs a NanoBanana API key in the NB Models tab.";
       progress.set(message, 100);
@@ -11643,6 +12657,45 @@ function openBuilder(node) {
     autoSaveSessionQuiet("segment added");
   }
 
+  function setTimelineRangePoint(which) {
+    const time = Math.max(0, currentGlobalTime());
+    const range = normalizeTimelineRange(state.selectedTimelineRange);
+    pushHistory();
+    if (which === "in") range.in = time;
+    else range.out = time;
+    state.selectedTimelineRange = normalizeTimelineRange(range);
+    render();
+    autoSaveSessionQuiet(`timeline range ${which}`).catch(() => null);
+  }
+
+  function clearSelectedTimelineRange() {
+    pushHistory();
+    state.selectedTimelineRange = { in: null, out: null };
+    render();
+    autoSaveSessionQuiet("timeline range cleared").catch(() => null);
+  }
+
+  function addTimelineMarkerFromSelection() {
+    const range = selectedTimelineRangeInfo();
+    const start = currentGlobalTime();
+    const freeRange = nextFreeTimelineMarkerRange(start, 4);
+    const marker = range
+      ? newTimelineMarker(range.start, range.end)
+      : newTimelineMarker(freeRange.start, freeRange.end);
+    marker.label = range ? "Selected range" : "Timeline note";
+    marker.note = range ? `Range ${formatTime(range.start)} - ${formatTime(range.end)}` : "";
+    if (range) {
+      openTimelineMarkerEditor(marker);
+      return;
+    }
+    pushHistory();
+    state.timelineMarkers.push(marker);
+    state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+    state.activeTimelineMarkerId = marker.id;
+    render();
+    autoSaveSessionQuiet("timeline note added").catch(() => null);
+  }
+
   function parseBulkTimeValue(raw) {
     const text = String(raw || "").trim().replace(",", ".");
     if (!text) return NaN;
@@ -11956,6 +13009,9 @@ function openBuilder(node) {
     setBeatMarkersVisible(false);
     state.srtMode = false;
     state.timingFrozen = false;
+    state.selectedTimelineRange = { in: null, out: null };
+    state.timelineMarkers = [];
+    state.activeTimelineMarkerId = "";
     state.promptJsonPath = contextPath("ConceptPrompts.txt");
     state.i2vMotionJsonPath = contextPath("I2VMotionNotes.txt");
     state.imageTriggerPhrase = "";
@@ -11963,6 +13019,14 @@ function openBuilder(node) {
     state.themeStylePath = contextPath("themestyle.txt");
     state.storyIdeaPath = contextPath("storyconcept.txt");
     state.subjectScenePath = contextPath("subjectsandscenes.txt");
+    state.builderAgentMessages = [];
+    state.builderAgentAutoApply = false;
+    state.builderAgentPurpose = "scene_work";
+    state.builderAgentReferenceImages = [];
+    state.builderStorySourcePath = "";
+    state.builderStorySourcePreview = "";
+    state.builderStoryReferenceImages = [];
+    state.builderStoryReferenceNotes = "";
     state.useVrgdgTextContext = true;
     state.projectFolder = cleanProjectFolder;
     state.sessionPath = sessionPath || "";
@@ -12306,6 +13370,7 @@ function openBuilder(node) {
       start: Number(segment.start || 0),
       end: Number(segment.end || 0),
       lyric_text: String(segment.lyric_text || "").trim(),
+      director_note: String(segment.timeline_note || "").trim(),
       scene_notes: String(segment.notes || "").trim(),
       image_prompt: String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "").trim(),
       flux_notes: String(segment.flux_notes || "").trim(),
@@ -12318,6 +13383,10 @@ function openBuilder(node) {
       video_model_mode: state.videoModelMode || "i2v",
       reference_image_count: mergedRefs.length,
       has_reference_images: mergedRefs.length > 0,
+      timeline_markers: normalizeTimelineMarkers(state.timelineMarkers)
+        .filter((marker) => markerOverlapsRange(marker, Number(segment.start || 0), Number(segment.end || 0)))
+        .slice(0, 10)
+        .map(markerContext),
     };
   }
 
@@ -12330,9 +13399,13 @@ function openBuilder(node) {
     const withImages = scenes.filter((segment) => Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data)).length;
     const withVideoPrompts = scenes.filter((segment) => String(segment.i2v_prompt || "").trim()).length;
     const withVideos = scenes.filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim()).length;
+    const selectedRange = selectedTimelineRangeInfo();
     return {
       has_project_folder: Boolean(String(state.projectFolder || projectInput.value || "").trim()),
       has_audio: Boolean(String(audioInput.value || "").trim()),
+      has_story_source: Boolean(String(state.builderStorySourcePreview || "").trim()),
+      has_selected_timeline_range: Boolean(selectedRange),
+      timeline_marker_count: normalizeTimelineMarkers(state.timelineMarkers).length,
       scene_count: count,
       scenes_with_lyrics: withLyrics,
       scenes_with_notes: withNotes,
@@ -12347,19 +13420,41 @@ function openBuilder(node) {
 
   function builderAgentContext(scope = "active_scene") {
     const segment = activeSegment();
+    const storySourcePath = String(state.builderStorySourcePath || projectContextPath("AgentStorySource.txt") || "").trim();
+    const timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+    const activeTimelineMarker = timelineMarkers.find((marker) => marker.id === state.activeTimelineMarkerId);
     const context = {
-      project_folder: state.projectFolder || "",
-      image_model_mode: state.imageModelMode || "zimage",
-      video_model_mode: state.videoModelMode || "i2v",
       project_status: builderAgentProjectStatus(),
       active_scene: builderAgentSceneContext(segment),
-      agent_reference_stash_count: Array.isArray(state.builderAgentReferenceImages) ? state.builderAgentReferenceImages.length : 0,
       scene_directory: allEditableSegments().map((item) => ({
         id: item.id || "",
         index: segmentIndexInfo(item).index,
         number: segmentIndexInfo(item).index + 1,
         label: sceneDisplayName(item, segmentIndexInfo(item).index),
       })),
+      selected_timeline_range: selectedTimelineRangeInfo(),
+      active_timeline_marker: activeTimelineMarker ? markerContext(activeTimelineMarker) : null,
+      project_folder: state.projectFolder || "",
+      image_model_mode: state.imageModelMode || "zimage",
+      video_model_mode: state.videoModelMode || "i2v",
+      story_source: {
+        path: storySourcePath,
+        has_source: Boolean(String(state.builderStorySourcePreview || "").trim()),
+        preview: String(state.builderStorySourcePreview || "").slice(0, 500),
+      },
+      story_references: {
+        image_count: Array.isArray(state.builderStoryReferenceImages) ? state.builderStoryReferenceImages.length : 0,
+        notes: String(state.builderStoryReferenceNotes || "").slice(0, 1800),
+      },
+      context_prompts: {
+        theme_style_path: state.themeStylePath || "",
+        story_idea_path: state.storyIdeaPath || "",
+        subject_scene_path: state.subjectScenePath || "",
+      },
+      timeline_markers: timelineMarkers
+        .slice(0, 60)
+        .map(markerContext),
+      agent_reference_stash_count: Array.isArray(state.builderAgentReferenceImages) ? state.builderAgentReferenceImages.length : 0,
     };
     if (scope === "neighbors" && segment) {
       const index = state.segments.findIndex((item) => item.id === segment.id);
@@ -12374,7 +13469,31 @@ function openBuilder(node) {
         index: segmentIndexInfo(item).index,
         label: sceneDisplayName(item, segmentIndexInfo(item).index),
         lyric_text: String(item.lyric_text || "").trim(),
+        director_note: String(item.timeline_note || "").trim(),
         scene_notes: String(item.notes || "").trim(),
+        timeline_markers: normalizeTimelineMarkers(state.timelineMarkers)
+          .filter((marker) => markerOverlapsRange(marker, Number(item.start || 0), Number(item.end || 0)))
+          .slice(0, 8)
+          .map(markerContext),
+      }));
+    }
+    if (scope === "full_scene_plan") {
+      context.scene_count = state.segments.length;
+      context.full_scene_plan = state.segments.slice(0, 120).map((item) => ({
+        id: item.id || "",
+        index: segmentIndexInfo(item).index,
+        number: segmentIndexInfo(item).index + 1,
+        label: sceneDisplayName(item, segmentIndexInfo(item).index),
+        lyric_text: String(item.lyric_text || "").trim(),
+        director_note: String(item.timeline_note || "").trim(),
+        scene_notes: String(item.notes || "").trim(),
+        flux_notes: String(item.flux_notes || "").trim(),
+        nb_notes: String(item.nb_notes || "").trim(),
+        video_notes: String(item.i2v_notes || "").trim(),
+        timeline_markers: normalizeTimelineMarkers(state.timelineMarkers)
+          .filter((marker) => markerOverlapsRange(marker, Number(item.start || 0), Number(item.end || 0)))
+          .slice(0, 8)
+          .map(markerContext),
       }));
     }
     return context;
@@ -12450,15 +13569,82 @@ function openBuilder(node) {
       }
       return added;
     };
+    const agentSceneNumberFromValue = (value) => {
+      if (Number.isFinite(Number(value)) && Number(value) > 0) return Math.floor(Number(value));
+      const text = String(value || "").trim();
+      if (!text) return 0;
+      const match = text.match(/\bscene\s*(\d+)(?:\b|\s|\.|:|-)/i);
+      if (match) return Number(match[1]);
+      const wordMatch = text.toLowerCase().match(/\bscene\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/);
+      if (wordMatch) {
+        return {
+          one: 1,
+          two: 2,
+          three: 3,
+          four: 4,
+          five: 5,
+          six: 6,
+          seven: 7,
+          eight: 8,
+          nine: 9,
+          ten: 10,
+          eleven: 11,
+          twelve: 12,
+        }[wordMatch[1]] || 0;
+      }
+      return 0;
+    };
+    const agentSceneNumberFromAction = (action) => {
+      let number = agentSceneNumberFromValue(action?.scene_number);
+      if (number) return number;
+      const sceneFields = [
+        "scene_id",
+        "scene",
+        "scene_label",
+        "scene_name",
+        "scene_title",
+        "target_scene",
+        "target_scene_label",
+        "target",
+        "label",
+        "name",
+        "title",
+        "instruction",
+        "summary",
+        "reason",
+      ];
+      for (const key of sceneFields) {
+        number = agentSceneNumberFromValue(action?.[key]);
+        if (number) return number;
+      }
+      const sceneIndex = Number(action?.scene_index ?? action?.index);
+      if (Number.isFinite(sceneIndex) && sceneIndex >= 0) return Math.floor(sceneIndex) + 1;
+      try {
+        number = agentSceneNumberFromValue(JSON.stringify(action || {}));
+      } catch {
+        number = 0;
+      }
+      return number || 0;
+    };
     const findAgentScene = (action) => {
       const sceneId = String(action?.scene_id || "").trim();
       if (sceneId) {
         const byId = allEditableSegments().find((item) => item.id === sceneId);
         if (byId) return byId;
       }
-      const number = Number(action?.scene_number);
+      const number = agentSceneNumberFromAction(action);
       if (Number.isFinite(number) && number > 0) {
-        return allEditableSegments().find((item) => segmentIndexInfo(item).index + 1 === number) || null;
+        const labelPattern = new RegExp(`(?:^|\\b|\\.)\\s*scene\\s*${number}(?:\\b|\\s|\\.|:|-)`, "i");
+        const byLabel = allEditableSegments().find((item) => {
+          const info = segmentIndexInfo(item);
+          return labelPattern.test(String(item.label || "")) || labelPattern.test(sceneDisplayName(item, info.index));
+        });
+        if (byLabel) return byLabel;
+        const byIndex = state.segments[number - 1] || null;
+        if (byIndex) return byIndex;
+        const byAnyIndex = allEditableSegments()[number - 1] || null;
+        if (byAnyIndex) return byAnyIndex;
+        return allEditableSegments().find((item) => segmentIndexInfo(item).index + 1 === number || sceneSlotNumber(item) === number) || null;
       }
       return null;
     };
@@ -12469,10 +13655,335 @@ function openBuilder(node) {
         historyPushed = true;
       }
     };
+    const renumberGenericBaseSceneLabels = () => {
+      sortSegments(state.segments);
+      let changed = false;
+      state.segments.forEach((segment, index) => {
+        const current = String(segment.label || "").trim();
+        if (!current || /^scene\s+\d+(?:\.\d+)?$/i.test(current)) {
+          const nextLabel = `Scene ${index + 1}`;
+          if (segment.label !== nextLabel) {
+            segment.label = nextLabel;
+            changed = true;
+          }
+        }
+      });
+      return changed;
+    };
+    const mergeSceneValues = (items, key) => {
+      const values = [];
+      for (const item of items) {
+        const value = String(item?.[key] || "").trim();
+        if (value && !values.includes(value)) values.push(value);
+      }
+      return values.join("\n\n");
+    };
+    const contextPromptInfo = (contextType = "") => {
+      const type = String(contextType || "").trim();
+      if (type === "theme_style") return { type, label: "Theme/style", filename: "themestyle.txt", input: themeStyleInput, stateKey: "themeStylePath" };
+      if (type === "story_idea") return { type, label: "Story idea", filename: "storyconcept.txt", input: storyIdeaInput, stateKey: "storyIdeaPath" };
+      if (type === "subject_scene") return { type, label: "Subject/scene", filename: "subjectsandscenes.txt", input: subjectSceneInput, stateKey: "subjectScenePath" };
+      return null;
+    };
+    const ensureContextPromptPath = (info) => {
+      if (!info) return "";
+      const existing = String(state[info.stateKey] || info.input.value || "").trim();
+      if (existing) return existing;
+      const path = projectContextPath(info.filename);
+      if (path) {
+        state[info.stateKey] = path;
+        info.input.value = path;
+      }
+      return path;
+    };
+    const setContextPromptText = async (contextType, text, modeValue = "replace") => {
+      const info = contextPromptInfo(contextType);
+      if (!info) {
+        skipped.push("unknown context prompt");
+        return false;
+      }
+      const path = ensureContextPromptPath(info);
+      if (!path) {
+        skipped.push("create or load a project before updating context prompts");
+        return false;
+      }
+      const modeName = String(modeValue || "replace").trim().toLowerCase();
+      const nextText = String(text || "").trim();
+      if (!nextText) {
+        skipped.push(`${info.label} text missing`);
+        return false;
+      }
+      let content = nextText;
+      if (modeName === "append") {
+        const current = await loadContextTextQuiet(path);
+        content = [current, nextText].filter(Boolean).join("\n\n");
+      }
+      markChanging();
+      const result = await postJson("/vrgdg/music_builder/save_text_file", { path, content });
+      info.input.value = result.path || path;
+      state[info.stateKey] = info.input.value;
+      applied.push(`${info.label} context ${modeName === "append" ? "appended" : "updated"}`);
+      return true;
+    };
+    const getContextPromptText = async (contextType = "all") => {
+      const types = contextType === "all" || !contextType
+        ? ["theme_style", "story_idea", "subject_scene"]
+        : [contextType];
+      const parts = [];
+      for (const type of types) {
+        const info = contextPromptInfo(type);
+        if (!info) continue;
+        const path = ensureContextPromptPath(info);
+        const text = path ? await loadContextTextQuiet(path) : "";
+        parts.push(`${info.label} context:\n${text || "[empty]"}`);
+      }
+      if (parts.length) applied.push(parts.join("\n\n"));
+      else skipped.push("context prompt not found");
+    };
+    const normalizeDualVocalDirectorNotes = (replacement = "male and female") => {
+      const nextText = String(replacement || "male and female").trim() || "male and female";
+      const dualPattern = /\b(?:male(?:\s+(?:singer|vocalist|character))?\s+and\s+female(?:\s+(?:singer|vocalist|character))?|female(?:\s+(?:singer|vocalist|character))?\s+and\s+male(?:\s+(?:singer|vocalist|character))?|both\s+(?:characters|singers|vocals?|vocalists)|dual[-\s]?vocal|two\s+(?:characters|singers|vocalists))\b/i;
+      let changed = 0;
+      markChanging();
+      for (const segment of state.segments) {
+        const note = String(segment.timeline_note || "").trim();
+        if (!note || !dualPattern.test(note)) continue;
+        if (note !== nextText) {
+          segment.timeline_note = nextText;
+          changed += 1;
+        }
+      }
+      if (changed) applied.push(`updated ${changed} dual-vocal director note${changed === 1 ? "" : "s"} to ${nextText}`);
+      else applied.push(`dual-vocal director notes already use ${nextText}`);
+      return changed;
+    };
+    const replaceDirectorNoteText = (findText = "", replaceText = "") => {
+      const findValue = String(findText || "").trim();
+      const replaceValue = String(replaceText || "").trim();
+      if (!findValue || !replaceValue) {
+        skipped.push("director note replacement text missing");
+        return 0;
+      }
+      let changed = 0;
+      markChanging();
+      const escaped = findValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(escaped, "gi");
+      for (const segment of state.segments) {
+        const note = String(segment.timeline_note || "");
+        if (!note || !pattern.test(note)) continue;
+        pattern.lastIndex = 0;
+        const nextNote = note.replace(pattern, replaceValue).trim();
+        if (nextNote !== note) {
+          segment.timeline_note = nextNote;
+          changed += 1;
+        }
+      }
+      if (changed) applied.push(`replaced director note text in ${changed} scene${changed === 1 ? "" : "s"}`);
+      else applied.push(`no director notes contained ${findValue}`);
+      return changed;
+    };
+    const syncScenesToTimelineMarkers = (action = {}, sourceLabel = "timeline note timing") => {
+      const markers = normalizeTimelineMarkers(state.timelineMarkers)
+        .filter((marker) => Number.isFinite(Number(marker.start)) && Number.isFinite(Number(marker.end)) && Number(marker.end) > Number(marker.start))
+        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      if (!markers.length) {
+        skipped.push("no timeline notes to sync");
+        return false;
+      }
+      const baseScenes = state.segments.filter((item) => segmentTrack(item) !== "overlay").sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      const createMissing = action?.create_missing !== false;
+      let synced = 0;
+      let created = 0;
+      let locked = 0;
+      let firstSyncedId = "";
+      markChanging();
+      for (let index = 0; index < markers.length; index += 1) {
+        const marker = markers[index];
+        let targetScene = baseScenes[index] || null;
+        if (!targetScene && createMissing) {
+          targetScene = newSegment(Number(marker.start || 0), Number(marker.end || marker.start || 0));
+          targetScene.label = `Scene ${state.segments.length + created + 1}`;
+          targetScene.source = "agent_timeline_marker";
+          state.segments.push(targetScene);
+          baseScenes.push(targetScene);
+          created += 1;
+        }
+        if (!targetScene) {
+          skipped.push(`timeline note ${index + 1}: no scene available`);
+          continue;
+        }
+        if (hasLockedVideo(targetScene)) {
+          locked += 1;
+          continue;
+        }
+        const markerStart = Number(marker.start || 0);
+        const markerStop = Number(marker.end || markerStart);
+        targetScene.start = Number(markerStart.toFixed(3));
+        targetScene.end = Number(Math.max(markerStart + 0.05, markerStop).toFixed(3));
+        if (Number.isFinite(Number(targetScene.custom_audio_timeline_start))) targetScene.custom_audio_timeline_start = targetScene.start;
+        const markerText = [marker.type, marker.label, marker.note]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean)
+          .join(": ");
+        if (markerText) targetScene.timeline_note = markerText;
+        if (!firstSyncedId) firstSyncedId = targetScene.id || "";
+        synced += 1;
+      }
+      sortSegments(state.segments);
+      renumberGenericBaseSceneLabels();
+      state.duration = Math.max(Number(state.duration || 0), ...state.segments.map((item) => Number(item.end || 0)), ...markers.map((marker) => Number(marker.end || marker.start || 0)));
+      if (synced) {
+        state.activeId = firstSyncedId || state.activeId;
+        applied.push(`synced ${synced} scene${synced === 1 ? "" : "s"} to ${sourceLabel}${created ? `, created ${created} missing scene${created === 1 ? "" : "s"}` : ""}`);
+      }
+      if (locked) skipped.push(`${locked} scene${locked === 1 ? "" : "s"} skipped because generated video timing is locked`);
+      return synced > 0;
+    };
+    const splitSceneIntoSubscenes = (targetScene, action = {}) => {
+      if (!targetScene) {
+        skipped.push("scene not found");
+        return false;
+      }
+      if (hasLockedVideo(targetScene)) {
+        skipped.push(`${sceneDisplayName(targetScene, segmentIndexInfo(targetScene).index)} has generated video, so timing is locked`);
+        return false;
+      }
+      const count = Math.max(2, Math.min(24, Math.floor(Number(action?.scene_count || action?.count || 0))));
+      if (!count) {
+        skipped.push("scene count missing");
+        return false;
+      }
+      const start = Number(targetScene.start || 0);
+      const end = Number(targetScene.end || start);
+      const total = Math.max(0, end - start);
+      if (total <= 0.1) {
+        skipped.push(`${sceneDisplayName(targetScene, segmentIndexInfo(targetScene).index)} is too short to split`);
+        return false;
+      }
+      const track = segmentTrack(targetScene);
+      const listToUpdate = track === "overlay" ? state.overlaySegments : state.segments;
+      const originalIndex = listToUpdate.findIndex((item) => item.id === targetScene.id);
+      if (originalIndex < 0) {
+        skipped.push("scene not found");
+        return false;
+      }
+      markChanging();
+      const labelPrefix = String(action?.label_prefix || targetScene.label || sceneDisplayName(targetScene, segmentIndexInfo(targetScene).index)).trim() || "Scene";
+      const sceneNotes = Array.isArray(action?.scene_notes) ? action.scene_notes : [];
+      const directorNotes = Array.isArray(action?.director_notes) ? action.director_notes : [];
+      const originalTimelineNote = String(targetScene.timeline_note || "").trim();
+      const originalSceneNotes = String(targetScene.notes || "").trim();
+      const originalFluxNotes = String(targetScene.flux_notes || "").trim();
+      const originalNBNotes = String(targetScene.nb_notes || "").trim();
+      const originalVideoNotes = String(targetScene.i2v_notes || "").trim();
+      const duration = total / count;
+      const created = [];
+      for (let index = 0; index < count; index += 1) {
+        const itemStart = Number((start + duration * index).toFixed(3));
+        const itemEnd = Number((index === count - 1 ? end : start + duration * (index + 1)).toFixed(3));
+        const segment = index === 0 ? targetScene : newSegment(itemStart, itemEnd);
+        segment.start = itemStart;
+        segment.end = itemEnd;
+        segment.track = track;
+        segment.label = `${labelPrefix}.${index + 1}`;
+        segment.source = "agent_scene_split";
+        segment.timeline_note = String(directorNotes[index] || originalTimelineNote).trim();
+        segment.notes = String(sceneNotes[index] || originalSceneNotes).trim();
+        segment.flux_notes = originalFluxNotes;
+        segment.nb_notes = originalNBNotes;
+        segment.i2v_notes = originalVideoNotes;
+        if (index > 0) created.push(segment);
+      }
+      listToUpdate.splice(originalIndex + 1, 0, ...created);
+      sortSegments(listToUpdate);
+      if (track !== "overlay") renumberGenericBaseSceneLabels();
+      state.activeId = targetScene.id;
+      applied.push(`split ${labelPrefix} into ${count} sub-scene${count === 1 ? "" : "s"}`);
+      return true;
+    };
+    const mergeScenes = (action = {}) => {
+      let sceneNumbers = Array.isArray(action?.scene_numbers) ? action.scene_numbers.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0) : [];
+      const startNumber = Number(action?.start_scene_number);
+      const endNumber = Number(action?.end_scene_number);
+      if (!sceneNumbers.length && Number.isFinite(startNumber) && Number.isFinite(endNumber) && startNumber > 0 && endNumber >= startNumber) {
+        sceneNumbers = Array.from({ length: endNumber - startNumber + 1 }, (_, index) => startNumber + index);
+      }
+      if (!sceneNumbers.length && Number(action?.scene_number) > 0) sceneNumbers = [Number(action.scene_number)];
+      sceneNumbers = Array.from(new Set(sceneNumbers)).sort((a, b) => a - b);
+      const scenes = sceneNumbers.map((number) => findAgentScene({ scene_number: number })).filter(Boolean);
+      const uniqueScenes = Array.from(new Map(scenes.map((segment) => [segment.id, segment])).values())
+        .filter((segment) => segmentTrack(segment) !== "overlay")
+        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      if (uniqueScenes.length < 2) {
+        skipped.push("merge needs at least two base scenes");
+        return false;
+      }
+      const locked = uniqueScenes.filter((segment) => hasLockedVideo(segment));
+      if (locked.length) {
+        skipped.push(`${locked.length} scene${locked.length === 1 ? "" : "s"} skipped because generated video timing is locked`);
+        return false;
+      }
+      markChanging();
+      const target = uniqueScenes[0];
+      const start = Math.min(...uniqueScenes.map((segment) => Number(segment.start || 0)));
+      const end = Math.max(...uniqueScenes.map((segment) => Number(segment.end || 0)));
+      target.start = Number(start.toFixed(3));
+      target.end = Number(Math.max(start + 0.05, end).toFixed(3));
+      target.label = String(action?.label || target.label || `Scene ${sceneNumbers[0] || segmentIndexInfo(target).index + 1}`).trim();
+      target.timeline_note = mergeSceneValues(uniqueScenes, "timeline_note");
+      target.notes = mergeSceneValues(uniqueScenes, "notes");
+      target.flux_notes = mergeSceneValues(uniqueScenes, "flux_notes");
+      target.nb_notes = mergeSceneValues(uniqueScenes, "nb_notes");
+      target.i2v_notes = mergeSceneValues(uniqueScenes, "i2v_notes");
+      const removeIds = new Set(uniqueScenes.slice(1).map((segment) => segment.id));
+      state.segments = state.segments.filter((segment) => !removeIds.has(segment.id));
+      sortSegments(state.segments);
+      renumberGenericBaseSceneLabels();
+      state.activeId = target.id;
+      applied.push(`merged scenes ${sceneNumbers.join(", ")} into ${target.label || sceneDisplayName(target, segmentIndexInfo(target).index)}`);
+      return true;
+    };
     for (const action of list) {
       const type = String(action?.type || "").trim();
       const sceneId = String(action?.scene_id || "").trim();
-      const text = String(action?.text || "").trim();
+      const actionTextForType = () => {
+        if (String(action?.text || "").trim()) return String(action.text).trim();
+        const aliases = {
+          set_scene_notes: ["scene_notes", "notes", "concept", "concept_prompt", "prompt"],
+          set_flux_notes: ["flux_notes", "notes", "prompt", "concept", "concept_prompt"],
+          set_nb_notes: ["nb_notes", "nano_banana_notes", "notes", "prompt", "concept", "concept_prompt"],
+          set_video_notes: ["video_notes", "i2v_notes", "motion_notes", "notes", "prompt", "concept", "concept_prompt"],
+        }[type] || [];
+        for (const key of [...aliases, "note", "value", "content", "description", "new_text", "updated_text"]) {
+          const value = String(action?.[key] || "").trim();
+          if (value) return value;
+        }
+        return "";
+      };
+      const text = actionTextForType();
+      if (type === "sync_existing_scenes_to_timeline_markers") {
+        syncScenesToTimelineMarkers(action, "timeline note timing");
+        continue;
+      }
+      if (type === "renumber_scene_labels") {
+        markChanging();
+        const changed = renumberGenericBaseSceneLabels();
+        if (changed) applied.push("renumbered generic scene labels");
+        else applied.push("scene labels already sequential");
+        continue;
+      }
+      if (type === "normalize_dual_vocal_director_notes") {
+        normalizeDualVocalDirectorNotes(action?.replacement || "male and female");
+        continue;
+      }
+      if (type === "replace_director_note_text") {
+        replaceDirectorNoteText(action?.find || action?.from || "", action?.replace || action?.to || "");
+        continue;
+      }
+      if (type === "merge_scenes") {
+        mergeScenes(action);
+        continue;
+      }
       if (type === "select_scene") {
         const nextScene = findAgentScene(action);
         if (nextScene) {
@@ -12504,6 +14015,188 @@ function openBuilder(node) {
         }
         continue;
       }
+      if (type === "get_story_source") {
+        const storySource = await loadBuilderStorySource();
+        if (storySource.trim()) {
+          applied.push(`Story Source:\n${storySource.slice(0, 12000)}`);
+        } else {
+          skipped.push("Story Source is empty");
+        }
+        continue;
+      }
+      if (type === "get_context_prompts") {
+        await getContextPromptText(String(action?.context_type || "all").trim() || "all");
+        continue;
+      }
+      if (type === "set_context_prompt") {
+        await setContextPromptText(action?.context_type, action?.text || "", action?.mode || "replace");
+        continue;
+      }
+      if (type === "get_selected_timeline_range") {
+        const range = selectedTimelineRangeInfo();
+        if (range) applied.push(`Selected timeline range:\n${JSON.stringify(range, null, 2)}`);
+        else skipped.push("no selected timeline range");
+        continue;
+      }
+      if (type === "assign_selected_range_note") {
+        const range = selectedTimelineRangeInfo();
+        if (!range) {
+          skipped.push("no selected timeline range");
+          continue;
+        }
+        const noteText = String(action?.note || action?.text || "").trim();
+        const labelText = String(action?.label || action?.type_label || "").trim() || "Timeline note";
+        const markerType = String(action?.marker_type || action?.category || "note").trim() || "note";
+        if (!noteText && !labelText) {
+          skipped.push("timeline note text missing");
+          continue;
+        }
+        markChanging();
+        const marker = newTimelineMarker(range.start, range.end);
+        marker.type = markerType;
+        marker.label = labelText;
+        marker.note = noteText;
+        state.timelineMarkers.push(marker);
+        state.timelineMarkers = normalizeTimelineMarkers(state.timelineMarkers);
+        state.activeTimelineMarkerId = marker.id;
+        applied.push(`timeline note: ${labelText} (${formatTime(range.start)} - ${formatTime(range.end)})`);
+        continue;
+      }
+      if (type === "create_scene_from_selected_range") {
+        const range = selectedTimelineRangeInfo();
+        if (!range) {
+          skipped.push("no selected timeline range");
+          continue;
+        }
+        markChanging();
+        const segment = newSegment(range.start, range.end);
+        segment.label = String(action?.label || `Scene ${state.segments.length + 1}`).trim() || `Scene ${state.segments.length + 1}`;
+        segment.timeline_note = String(action?.director_note || action?.note || action?.text || "").trim();
+        segment.notes = String(action?.scene_notes || "").trim();
+        segment.flux_notes = String(action?.flux_notes || "").trim();
+        segment.nb_notes = String(action?.nb_notes || "").trim();
+        segment.i2v_notes = String(action?.video_notes || "").trim();
+        segment.source = "agent_range";
+        state.segments.push(segment);
+        sortSegments(state.segments);
+        state.activeId = segment.id;
+        applied.push(`created scene from selected range (${formatTime(range.start)} - ${formatTime(range.end)})`);
+        continue;
+      }
+      if (type === "set_active_scene_to_selected_range") {
+        const range = selectedTimelineRangeInfo();
+        const targetScene = findAgentScene(action) || activeSegment();
+        if (!range) {
+          skipped.push("no selected timeline range");
+          continue;
+        }
+        if (!targetScene) {
+          skipped.push("no scene selected");
+          continue;
+        }
+        markChanging();
+        targetScene.start = range.start;
+        targetScene.end = range.end;
+        if (Number.isFinite(Number(targetScene.custom_audio_timeline_start))) targetScene.custom_audio_timeline_start = range.start;
+        sortSegments(segmentTrack(targetScene) === "overlay" ? state.overlaySegments : state.segments);
+        state.activeId = targetScene.id;
+        applied.push(`${sceneDisplayName(targetScene, segmentIndexInfo(targetScene).index)} timing set to selected range`);
+        continue;
+      }
+      if (type === "split_scene_into_subscenes") {
+        splitSceneIntoSubscenes(findAgentScene(action), action);
+        continue;
+      }
+      if (type === "split_selected_range_into_scenes") {
+        const range = selectedTimelineRangeInfo();
+        const count = Math.max(1, Math.min(24, Math.floor(Number(action?.scene_count || action?.count || 0))));
+        if (!range) {
+          const targetScene = findAgentScene(action);
+          if (targetScene && count > 1) {
+            splitSceneIntoSubscenes(targetScene, action);
+          } else if (!count && normalizeTimelineMarkers(state.timelineMarkers).some((marker) => Number(marker.end || 0) > Number(marker.start || 0))) {
+            syncScenesToTimelineMarkers({ ...action, create_missing: action?.create_missing !== false }, "timeline note timing");
+          } else {
+            skipped.push("no selected timeline range or target scene");
+          }
+          continue;
+        }
+        if (!count) {
+          skipped.push("scene count missing");
+          continue;
+        }
+        markChanging();
+        const labelPrefix = String(action?.label_prefix || "Scene").trim() || "Scene";
+        const sceneNotes = Array.isArray(action?.scene_notes) ? action.scene_notes : [];
+        const directorNotes = Array.isArray(action?.director_notes) ? action.director_notes : [];
+        const duration = range.duration / count;
+        const created = [];
+        for (let index = 0; index < count; index += 1) {
+          const start = range.start + duration * index;
+          const end = index === count - 1 ? range.end : range.start + duration * (index + 1);
+          const segment = newSegment(Number(start.toFixed(3)), Number(end.toFixed(3)));
+          segment.label = `${labelPrefix} ${state.segments.length + created.length + 1}`;
+          segment.source = "agent_range_split";
+          segment.notes = String(sceneNotes[index] || "").trim();
+          segment.timeline_note = String(directorNotes[index] || "").trim();
+          created.push(segment);
+        }
+        state.segments.push(...created);
+        sortSegments(state.segments);
+        state.activeId = created[0]?.id || state.activeId;
+        applied.push(`split selected range into ${created.length} scene${created.length === 1 ? "" : "s"}`);
+        continue;
+      }
+      if (type === "save_story_source") {
+        try {
+          const savedPath = await saveBuilderStorySource(text);
+          applied.push(`Story Source saved: ${savedPath}`);
+        } catch (error) {
+          skipped.push(`Story Source save failed (${String(error?.message || error)})`);
+        }
+        continue;
+      }
+      if (type === "create_story_scenes_from_source") {
+        try {
+          const count = await createStoryScenesFromSource(action?.scene_count || 12);
+          applied.push(`created ${count} Story Builder scene${count === 1 ? "" : "s"}`);
+        } catch (error) {
+          skipped.push(`Story Builder scene creation failed (${String(error?.message || error)})`);
+        }
+        continue;
+      }
+      if (type === "create_concept_prompts") {
+        try {
+          const result = await runConceptPromptCreator({
+            sourceMode: action?.source_mode || "all",
+            scope: action?.scope || "all",
+            batchSize: action?.batch_size || 5,
+            useStory: action?.use_story !== false,
+            useTheme: action?.use_theme !== false,
+          });
+          if (result?.updated) applied.push(`created ${result.updated} concept prompt${result.updated === 1 ? "" : "s"}`);
+          else skipped.push(result?.error || "concept prompt creation did not update any scenes");
+        } catch (error) {
+          skipped.push(`concept prompt creation failed (${String(error?.message || error)})`);
+        }
+        continue;
+      }
+      if (type === "create_motion_notes") {
+        try {
+          const result = await runMotionNoteCreator({
+            sourceMode: action?.source_mode || "concept",
+            scope: action?.scope || "all",
+            batchSize: action?.batch_size || 5,
+            useStory: action?.use_story !== false,
+            useTheme: action?.use_theme !== false,
+          });
+          if (result?.updated) applied.push(`created ${result.updated} motion note${result.updated === 1 ? "" : "s"}`);
+          else skipped.push(result?.error || "motion note creation did not update any scenes");
+        } catch (error) {
+          skipped.push(`motion note creation failed (${String(error?.message || error)})`);
+        }
+        continue;
+      }
       if (type === "set_image_model_mode") {
         const nextMode = setAgentImageMode(action?.image_mode || text);
         if (nextMode) applied.push(`image mode: ${imageModeLabel(nextMode)}`);
@@ -12516,10 +14209,26 @@ function openBuilder(node) {
         else skipped.push("unknown video mode");
         continue;
       }
-      const segment = findAgentScene(action) || state.segments.find((item) => item.id === sceneId);
-      const needsText = type.startsWith("set_");
-      if (!segment || !type || (needsText && !text)) {
-        skipped.push(type || "unknown action");
+      const setActionTypes = new Set(["set_scene_notes", "set_flux_notes", "set_nb_notes", "set_video_notes", "set_scene_plan"]);
+      const hasSceneTarget = Boolean(
+        String(action?.scene_id || "").trim()
+        || agentSceneNumberFromAction(action)
+      );
+      const segment = findAgentScene(action)
+        || state.segments.find((item) => item.id === sceneId)
+        || (setActionTypes.has(type) && !hasSceneTarget ? activeSegment() : null)
+        || (setActionTypes.has(type) && agentSceneNumberFromAction(action) === 1 ? state.segments[0] || allEditableSegments()[0] || null : null);
+      const needsText = type.startsWith("set_") && type !== "set_scene_plan";
+      if (!type) {
+        skipped.push("unknown action");
+        continue;
+      }
+      if (!segment) {
+        skipped.push(`${type}: scene not found`);
+        continue;
+      }
+      if (needsText && !text) {
+        skipped.push(`${type}: text missing`);
         continue;
       }
       const label = sceneDisplayName(segment, segmentIndexInfo(segment).index);
@@ -12546,6 +14255,42 @@ function openBuilder(node) {
         segment.i2v_notes = text;
         if (segment.id === activeSegment()?.id) i2vNotesInput.value = text;
         applied.push(`${label}: video notes`);
+      } else if (type === "set_scene_plan") {
+        const updates = [];
+        const directorNote = String(action?.director_note || "").trim();
+        const sceneNotes = String(action?.scene_notes || action?.text || "").trim();
+        const nextFluxNotes = String(action?.flux_notes || "").trim();
+        const nextNBNotes = String(action?.nb_notes || "").trim();
+        const nextVideoNotes = String(action?.video_notes || "").trim();
+        markChanging();
+        if (directorNote) {
+          segment.timeline_note = directorNote;
+          updates.push("director note");
+        }
+        if (sceneNotes) {
+          segment.notes = sceneNotes;
+          updates.push("scene notes");
+        }
+        if (nextFluxNotes) {
+          segment.flux_notes = nextFluxNotes;
+          updates.push("Flux notes");
+        }
+        if (nextNBNotes) {
+          segment.nb_notes = nextNBNotes;
+          updates.push("Nano B notes");
+        }
+        if (nextVideoNotes) {
+          segment.i2v_notes = nextVideoNotes;
+          updates.push("video notes");
+        }
+        if (segment.id === activeSegment()?.id) {
+          notesInput.value = segment.notes || "";
+          ernieNotesInput.value = segment.notes || "";
+          fluxNotes.value = segment.flux_notes || "";
+          nbNotes.value = segment.nb_notes || "";
+          i2vNotesInput.value = segment.i2v_notes || "";
+        }
+        applied.push(`${label}: scene plan${updates.length ? ` (${updates.join(", ")})` : ""}`);
       } else if (type === "request_reference_images") {
         const requestedMode = normalizeImageMode(action?.image_mode) || "nano_banana";
         setAgentImageMode(requestedMode);
@@ -12553,8 +14298,8 @@ function openBuilder(node) {
         syncInspector();
         setInspectorTab("image");
         const modeName = imageModeLabel(requestedMode);
-        applied.push(`${label}: waiting for ${modeName} reference images`);
-        toast(`${modeName} needs reference images. Drop or upload them in the Image panel, then ask the agent to continue.`);
+        applied.push(`${label}: ready for optional ${modeName} reference images`);
+        toast(`${modeName} reference images are optional. Drop/upload them if you want reference guidance, or ask the agent to continue text-only.`);
       } else if (type === "generate_image_prompt_for_current_mode") {
         const previousActiveId = state.activeId;
         const requestedMode = normalizeImageMode(action?.image_mode);
@@ -12662,6 +14407,8 @@ function openBuilder(node) {
     if (applied.length) {
       syncInspector();
       render();
+      await syncPromptJsonFromSegments("Builder Agent auto apply").catch(() => null);
+      await syncI2VMotionJsonFromSegments("Builder Agent auto apply").catch(() => null);
       autoSaveSessionQuiet("Builder Agent auto apply").catch(() => null);
     }
     return { applied, skipped };
@@ -12671,19 +14418,24 @@ function openBuilder(node) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:transparent;display:flex;align-items:center;justify-content:flex-end;pointer-events:none;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(620px,calc(100vw - 28px));height:calc(100vh - 28px);margin:14px;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:grid;grid-template-rows:auto auto auto minmax(0,1fr) auto;overflow:hidden;pointer-events:auto;";
-    const header = document.createElement("div");
-    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px 10px;border-bottom:1px solid #1f2937;";
+    box.style.cssText = "width:min(620px,calc(100vw - 28px));height:calc(100vh - 48px);margin:34px 14px 14px;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;min-height:360px;";
+    const agentTopbar = document.createElement("div");
+    agentTopbar.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:28px;box-sizing:border-box;cursor:move;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Builder Agent</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Local chat for scene planning, prompt help, continuity, and workflow questions.</div>`;
+    heading.style.cssText = "min-width:0;flex:1 1 auto;";
+    heading.innerHTML = `<div style="font-size:13px;font-weight:900;color:#cffafe;line-height:1.1;">Builder Agent</div>`;
     const headerActions = document.createElement("div");
-    headerActions.style.cssText = "display:flex;align-items:center;gap:8px;flex:0 0 auto;";
+    headerActions.style.cssText = "display:flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap;";
     const hint = makeButton("Hint");
+    const dock = makeButton("Dock");
+    const popout = makeButton("Pop Out");
     const minimize = makeButton("Min");
     minimize.title = "Minimize Builder Agent without closing the chat.";
     const close = makeButton("Close");
-    headerActions.append(hint, minimize, close);
-    header.append(heading, headerActions);
+    dock.title = "Dock Builder Agent back to the right side of the editor.";
+    popout.title = "Move Builder Agent to a separate browser window for another monitor.";
+    headerActions.append(hint, dock, popout, minimize, close);
+    agentTopbar.append(heading, headerActions);
     const restore = document.createElement("button");
     restore.type = "button";
     restore.textContent = "Builder Agent";
@@ -12691,29 +14443,45 @@ function openBuilder(node) {
     restore.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:100006;display:none;pointer-events:auto;border:1px solid #155e75;border-radius:8px;background:#083344;color:#cffafe;padding:10px 13px;font-size:12px;font-weight:900;box-shadow:0 14px 40px rgba(0,0,0,.5);cursor:pointer;";
 
     const controls = document.createElement("div");
-    controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;padding:10px 14px;border-bottom:1px solid #1f2937;background:#0f172a;";
-    const scope = makeSelect(["active_scene", "neighbors", "project_brief"], "active_scene");
+    controls.style.cssText = "display:flex;flex-direction:column;gap:8px;padding:8px 14px 10px;border-bottom:1px solid #1f2937;background:#0f172a;flex:0 0 auto;box-sizing:border-box;";
+    const controlGrid = document.createElement("div");
+    controlGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;min-width:0;";
+    const scope = makeSelect(["active_scene", "neighbors", "project_brief", "full_scene_plan"], "active_scene");
     const scopeLabels = {
       active_scene: "Active scene only",
       neighbors: "Active scene + neighbors",
       project_brief: "Project brief",
+      full_scene_plan: "Full scene plan",
     };
     for (const option of scope.options) option.textContent = scopeLabels[option.value] || option.value;
     const mode = makeSelect(["manual", "auto"], state.builderAgentAutoApply ? "auto" : "manual");
     mode.options[0].textContent = "Manual: suggest only";
     mode.options[1].textContent = "Auto: update fields";
-    const purpose = makeSelect(["walkthrough", "scene_work", "troubleshoot"], state.builderAgentPurpose || "scene_work");
+    const purpose = makeSelect(["walkthrough", "scene_work", "story_builder", "troubleshoot"], state.builderAgentPurpose || "scene_work");
     purpose.options[0].textContent = "Walkthrough";
     purpose.options[1].textContent = "Scene work";
-    purpose.options[2].textContent = "Troubleshoot";
+    purpose.options[2].textContent = "Story Builder";
+    purpose.options[3].textContent = "Troubleshoot";
+    if (purpose.value === "story_builder" && scope.value === "active_scene") {
+      scope.value = "full_scene_plan";
+    }
     const clear = makeButton("Clear Chat");
-    controls.append(makeField("Context sent to Gemma", scope), makeField("Agent mode", mode), makeField("Purpose", purpose), clear);
+    controlGrid.append(makeField("Context sent to Gemma", scope), makeField("Agent mode", mode), makeField("Purpose", purpose), clear);
+    controls.append(agentTopbar, controlGrid);
+    purpose.addEventListener("change", () => {
+      state.builderAgentPurpose = purpose.value || "scene_work";
+      if (purpose.value === "story_builder" && scope.value === "active_scene") {
+        scope.value = "full_scene_plan";
+      }
+      syncAgentStoryBuilderTools();
+      renderMessages();
+    });
 
     function openAgentHintPopup() {
       const hintBackdrop = document.createElement("div");
       hintBackdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:18px;";
       const panel = document.createElement("div");
-      panel.style.cssText = "width:min(540px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#e5e7eb;box-shadow:0 18px 60px rgba(0,0,0,.58);";
+      panel.style.cssText = "width:min(760px,calc(100vw - 36px));max-height:calc(100vh - 36px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#e5e7eb;box-shadow:0 18px 60px rgba(0,0,0,.58);";
       const top = document.createElement("div");
       top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid #1f2937;";
       const title = document.createElement("div");
@@ -12730,6 +14498,7 @@ function openBuilder(node) {
             "Active scene only: sends the selected scene details. Best when you want focused edits.",
             "Active scene + neighbors: also sends nearby scenes. Best for continuity between scenes.",
             "Project brief: sends a smaller overall project summary. Best for broad direction without stuffing the chat.",
+            "Full scene plan: sends lyrics and planning fields for up to 120 scenes. Best when assigning characters across a whole video.",
           ],
         },
         {
@@ -12744,7 +14513,76 @@ function openBuilder(node) {
           lines: [
             "Walkthrough: helps a new user step through the workflow and asks what they are making first.",
             "Scene work: helps plan scenes, update notes, generate prompts, and keep creative continuity.",
+            "Story Builder: plans multi-character projects scene by scene, assigning characters, concepts, and motion notes.",
             "Troubleshoot: focuses on setup problems, missing refs, wrong mode, failed prompts, or blocked runs.",
+          ],
+        },
+        {
+          title: "Scene Timing",
+          lines: [
+            "Try: split Scene 12 into 3.",
+            "Try: merge Scenes 2, 3, and 4 into Scene 2.",
+            "Try: sync existing scenes to the timeline notes.",
+            "Try: renumber scene labels.",
+            "The agent can change scene timing, split one scene, merge multiple scenes, and repair generic scene numbers.",
+          ],
+        },
+        {
+          title: "Director Notes",
+          lines: [
+            "Try: set Scene 8 director note to male and female.",
+            "Try: change all dual-vocal director notes to male and female.",
+            "Try: get the notes for Scene 14.",
+            "Director notes are the best place for subject mapping, who is singing, continuity, and story beats.",
+          ],
+        },
+        {
+          title: "Prompt Fields",
+          lines: [
+            "Try: update Scene 5 Flux notes to low angle, harsh stage light, male vocalist.",
+            "Try: write Nano B notes for Scene 9 using the director note.",
+            "Try: rewrite video motion notes for Scene 3.",
+            "Try: generate the image prompt for Scene 10.",
+            "The agent should update notes first, then use the normal prompt generator for the selected image/video mode.",
+          ],
+        },
+        {
+          title: "Images And Video",
+          lines: [
+            "Try: run Flux image for Scene 4.",
+            "Try: run Nano B for Scene 6.",
+            "Try: generate the video prompt for Scene 10.",
+            "Try: run video for Scene 10.",
+            "Flux/Klein and Nano B can run with or without reference images. Drop refs only when you want character/location/style guidance.",
+          ],
+        },
+        {
+          title: "Project Lookup",
+          lines: [
+            "Try: get lyrics for Scene 12.",
+            "Try: what context does Scene 7 have?",
+            "Try: select Scene 18.",
+            "Try: what should I do next for this scene?",
+            "Lookup requests do not edit the project. They let the agent fetch a slice of project data instead of keeping everything in chat memory.",
+          ],
+        },
+        {
+          title: "Context Prompts",
+          lines: [
+            "Try: show me the current context prompts.",
+            "Try: update the Theme/style context to neon courtroom, harsh spotlights, VHS grit.",
+            "Try: append this to Subject/scene context: the male rapper wears a black jacket and gold chain.",
+            "Try: update the Story idea context to a rap battle between two rivals in a dreamlike city.",
+            "Context prompts are global project files used by the prompt generators, separate from per-scene notes.",
+          ],
+        },
+        {
+          title: "Good Phrasing",
+          lines: [
+            "Be specific about the target: say Scene 12, selected scene, all scenes, or timeline notes.",
+            "Be specific about the field: director note, scene notes, Flux notes, Nano B notes, video notes, image prompt, or video prompt.",
+            "For Auto mode, use action words like set, update, split, merge, sync, generate, run, select, or get.",
+            "If you only want advice, switch to Manual mode or say do not update anything yet.",
           ],
         },
       ];
@@ -12774,34 +14612,203 @@ function openBuilder(node) {
     }
 
     const refTools = document.createElement("div");
-    refTools.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid #1f2937;background:#111827;";
+    refTools.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid #1f2937;background:#111827;";
     const agentRefDrop = document.createElement("div");
     agentRefDrop.dataset.vrgdgFileDropZone = "true";
     agentRefDrop.style.cssText = "border:1px dashed #155e75;border-radius:7px;background:#020617;color:#cffafe;padding:10px;text-align:center;font-size:12px;line-height:1.4;";
-    agentRefDrop.textContent = "Drop reference image for active scene";
+    agentRefDrop.textContent = "Drop reference image or global audio";
     const agentRefUpload = makeButton("Upload Ref");
+    const agentAudioUpload = makeButton("Add Audio");
+    agentAudioUpload.title = "Load global/timeline audio for music videos, songs, and visualizers.";
+    const storySourceButton = makeButton("Story Source");
+    storySourceButton.title = "Paste or edit lyrics/script/source text saved to the project for Story Builder.";
     const agentRefInput = document.createElement("input");
     agentRefInput.type = "file";
     agentRefInput.accept = "image/png,image/jpeg,image/webp";
     agentRefInput.multiple = true;
     agentRefInput.style.display = "none";
     shell.append(agentRefInput);
-    refTools.append(agentRefDrop, agentRefUpload);
+    const storyRefInput = document.createElement("input");
+    storyRefInput.type = "file";
+    storyRefInput.accept = "image/png,image/jpeg,image/webp";
+    storyRefInput.multiple = true;
+    storyRefInput.style.display = "none";
+    shell.append(storyRefInput);
+    refTools.append(agentRefDrop, agentRefUpload, agentAudioUpload, storySourceButton);
+
+    const storyRefTools = document.createElement("div");
+    storyRefTools.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid #1f2937;background:#0f172a;";
+    const storyRefDrop = document.createElement("div");
+    storyRefDrop.dataset.vrgdgFileDropZone = "true";
+    storyRefDrop.style.cssText = "border:1px dashed #155e75;border-radius:7px;background:#020617;color:#cffafe;padding:10px;text-align:center;font-size:12px;line-height:1.4;";
+    const renderStoryRefDropLabel = () => {
+      const count = Array.isArray(state.builderStoryReferenceImages) ? state.builderStoryReferenceImages.length : 0;
+      storyRefDrop.textContent = count
+        ? `${count} Story/Style image${count === 1 ? "" : "s"} loaded`
+        : "Drop singers, characters, locations, or aesthetic images";
+    };
+    const storyRefUpload = makeButton("Upload Story Images");
+    const storyRefAnalyze = makeButton("Analyze Images");
+    storyRefAnalyze.title = "Use the selected vision Gemma model once to turn these images into compact notes for the text-only agent.";
+    renderStoryRefDropLabel();
+    storyRefTools.append(storyRefDrop, storyRefUpload, storyRefAnalyze);
+    const syncAgentStoryBuilderTools = () => {
+      const isStoryBuilder = purpose.value === "story_builder";
+      agentAudioUpload.style.display = isStoryBuilder ? "" : "none";
+      storySourceButton.style.display = isStoryBuilder ? "" : "none";
+      storyRefTools.style.display = isStoryBuilder ? "grid" : "none";
+      agentRefDrop.textContent = isStoryBuilder ? "Drop reference image or global audio" : "Drop reference image for active scene";
+    };
+    syncAgentStoryBuilderTools();
 
     const log = document.createElement("div");
-    log.style.cssText = "overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#111827;";
+    log.style.cssText = "min-height:0;overflow-y:auto;overflow-x:hidden;padding:14px;display:flex;flex-direction:column;gap:10px;background:#111827;";
     const composer = document.createElement("div");
-    composer.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:12px 14px;border-top:1px solid #1f2937;background:#0f172a;";
+    composer.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-height:98px;box-sizing:border-box;padding:12px 14px;border-top:1px solid #1f2937;background:#0f172a;flex:0 0 auto;";
     const input = document.createElement("textarea");
     input.placeholder = "Ask the agent about this scene, lyrics, image prompt, video motion, continuity, or what to do next...";
     input.style.cssText = "min-height:72px;max-height:170px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;";
     const send = makeButton("Send", "primary");
     send.style.minWidth = "92px";
     composer.append(input, send);
-    box.append(header, controls, refTools, log, composer);
+    box.append(controls, refTools, storyRefTools, log, composer);
+    const ensureAgentChromeVisible = () => {
+      if (controls.parentNode !== box || box.firstElementChild !== controls) {
+        box.insertBefore(controls, box.firstElementChild || null);
+      }
+      if (agentTopbar.parentNode !== controls || controls.firstElementChild !== agentTopbar) {
+        controls.insertBefore(agentTopbar, controls.firstElementChild || null);
+      }
+      if (controlGrid.parentNode !== controls || controlGrid.previousElementSibling !== agentTopbar) {
+        controls.insertBefore(controlGrid, agentTopbar.nextElementSibling || null);
+      }
+      if (composer.parentNode !== box || box.lastElementChild !== composer) {
+        box.append(composer);
+      }
+      controls.style.display = "flex";
+      controls.style.flexDirection = "column";
+      controls.style.visibility = "visible";
+      controls.style.opacity = "1";
+      agentTopbar.style.display = "flex";
+      agentTopbar.style.visibility = "visible";
+      agentTopbar.style.opacity = "1";
+      controlGrid.style.display = "grid";
+      controlGrid.style.visibility = "visible";
+      controlGrid.style.opacity = "1";
+      composer.style.display = "grid";
+      composer.style.visibility = "visible";
+      composer.style.opacity = "1";
+      log.style.minHeight = "0";
+      log.style.overflowY = "auto";
+    };
+    ensureAgentChromeVisible();
     backdrop.append(box);
     backdrop.append(restore);
     document.body.append(backdrop);
+    let agentPopout = null;
+    let agentPopoutBeforeUnload = null;
+    let agentDockParent = backdrop;
+    const resetDockedAgentStyle = () => {
+      box.style.position = "";
+      box.style.left = "";
+      box.style.top = "";
+      box.style.right = "";
+      box.style.bottom = "";
+      box.style.width = "min(620px,calc(100vw - 28px))";
+      box.style.height = "calc(100vh - 48px)";
+      box.style.margin = "34px 14px 14px";
+      state.builderAgentFloating = null;
+    };
+    const reattachFromPopout = () => {
+      const popup = agentPopout;
+      if (popup && agentPopoutBeforeUnload) {
+        try { popup.removeEventListener("beforeunload", agentPopoutBeforeUnload); } catch {}
+      }
+      agentPopout = null;
+      agentPopoutBeforeUnload = null;
+      if (!document.body.contains(backdrop)) document.body.append(backdrop);
+      if (box.ownerDocument !== document) {
+        try { document.adoptNode(box); } catch {}
+      }
+      if (box.parentNode !== agentDockParent) agentDockParent.insertBefore(box, restore);
+      ensureAgentChromeVisible();
+      backdrop.style.display = "flex";
+      return popup;
+    };
+    const dockAgent = () => {
+      const popup = reattachFromPopout();
+      resetDockedAgentStyle();
+      if (popup && !popup.closed) {
+        try { popup.close(); } catch {}
+      }
+      input.focus();
+    };
+    const floatAgentAt = (left, top) => {
+      const width = Math.min(620, Math.max(360, window.innerWidth - 28));
+      const height = Math.max(360, window.innerHeight - 28);
+      const nextLeft = Math.max(8, Math.min(window.innerWidth - 120, Number(left || 0)));
+      const nextTop = Math.max(8, Math.min(window.innerHeight - 80, Number(top || 0)));
+      box.style.position = "fixed";
+      box.style.left = `${nextLeft}px`;
+      box.style.top = `${nextTop}px`;
+      box.style.right = "auto";
+      box.style.bottom = "auto";
+      box.style.width = `min(${width}px,calc(100vw - 16px))`;
+      box.style.height = `min(${height}px,calc(100vh - 16px))`;
+      box.style.margin = "0";
+      state.builderAgentFloating = { left: nextLeft, top: nextTop };
+    };
+    if (state.builderAgentFloating) {
+      floatAgentAt(state.builderAgentFloating.left, state.builderAgentFloating.top);
+    }
+    agentTopbar.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.target?.closest?.("button,select,input,textarea")) return;
+      if (agentPopout && !agentPopout.closed) return;
+      event.preventDefault();
+      const rect = box.getBoundingClientRect();
+      const offsetX = event.clientX - rect.left;
+      const offsetY = event.clientY - rect.top;
+      floatAgentAt(rect.left, rect.top);
+      const move = (moveEvent) => {
+        floatAgentAt(moveEvent.clientX - offsetX, moveEvent.clientY - offsetY);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    const popOutAgent = () => {
+      if (agentPopout && !agentPopout.closed) {
+        try { agentPopout.focus(); } catch {}
+        return;
+      }
+      const popup = window.open("", "vrgdg_builder_agent", "width=680,height=900,resizable=yes,scrollbars=no");
+      if (!popup) {
+        toast("Popup was blocked. Allow popups for ComfyUI, then try Pop Out again.", true);
+        return;
+      }
+      agentPopout = popup;
+      popup.document.open();
+      popup.document.write(`<!doctype html><html><head><title>Builder Agent</title></head><body style="margin:0;background:#0f172a;overflow:hidden;"></body></html>`);
+      popup.document.close();
+      popup.document.body.appendChild(box);
+      ensureAgentChromeVisible();
+      box.style.position = "";
+      box.style.left = "";
+      box.style.top = "";
+      box.style.width = "100vw";
+      box.style.height = "100vh";
+      box.style.margin = "0";
+      backdrop.style.display = "none";
+      agentPopoutBeforeUnload = () => {
+        reattachFromPopout();
+        resetDockedAgentStyle();
+      };
+      popup.addEventListener("beforeunload", agentPopoutBeforeUnload);
+      popup.focus();
+    };
 
     const renderMessages = (pending = "") => {
       log.textContent = "";
@@ -12811,6 +14818,8 @@ function openBuilder(node) {
         empty.style.cssText = "border:1px dashed #334155;border-radius:8px;color:#94a3b8;padding:18px;text-align:center;font-size:13px;line-height:1.5;";
         empty.textContent = purpose.value === "walkthrough"
           ? "Walkthrough gives one setup step at a time based on the current project state."
+          : purpose.value === "story_builder"
+          ? "Story Builder can turn lyrics and your story idea into per-scene character assignments, concept notes, and motion notes."
           : mode.value === "auto"
           ? "Auto mode can update scene notes, image prompts, Flux/Nano B prompts, and video prompts when you ask it to."
           : "Manual mode only suggests text. It will not edit the project.";
@@ -12839,6 +14848,9 @@ function openBuilder(node) {
         toast("Choose a non-vision text Gemma model first, or use LM Studio in Gemma Runner.", true);
         return;
       }
+      if (purpose.value === "story_builder") {
+        await loadBuilderStorySource().catch(() => "");
+      }
       const history = (state.builderAgentMessages || []).slice(-8);
       const autoApply = mode.value === "auto";
       state.builderAgentAutoApply = autoApply;
@@ -12858,15 +14870,67 @@ function openBuilder(node) {
           auto_apply: allowActions,
           agent_purpose: purpose.value || "scene_work",
           unload_after: true,
-          n_ctx: scope.value === "project_brief" ? 12000 : 8000,
-          max_new_tokens: allowActions ? 700 : 450,
+          n_ctx: scope.value === "project_brief" || scope.value === "full_scene_plan" ? 12000 : 8000,
+          max_new_tokens: purpose.value === "story_builder" && allowActions ? 1800 : allowActions ? 700 : 450,
           temperature: 0.55,
           top_p: 0.95,
         });
         let data = await postJson("/vrgdg/music_builder/agent_chat", makeAgentPayload(), 180000);
-        const result = autoApply ? await applyBuilderAgentActions(data.actions || []) : { applied: [], skipped: [] };
+        if (autoApply && /\b(director\s+notes?|notes?|reword|rename|text)\b/i.test(message) && /\b(male(?:\s+(?:singer|vocalist|character))?\s+and\s+female|female(?:\s+(?:singer|vocalist|character))?\s+and\s+male|both\s+(?:characters|singers|vocals?|vocalists)|dual[-\s]?vocal)\b/i.test(message)) {
+          data.actions = (Array.isArray(data.actions) ? data.actions : [])
+            .filter((action) => !["sync_existing_scenes_to_timeline_markers", "split_selected_range_into_scenes", "split_scene_into_subscenes", "merge_scenes"].includes(String(action?.type || "")));
+          const exactReplaceMatch = message.match(/\b(?:director\s+notes?|director\s+note|note)\s+says?\s+["']([^"']+)["'].*?\b(?:changed?\s+to|to|instead)\s+["']([^"']+)["']/i);
+          if (exactReplaceMatch && !data.actions.some((action) => String(action?.type || "") === "replace_director_note_text")) {
+            data.actions.push({ type: "replace_director_note_text", find: exactReplaceMatch[1].trim(), replace: exactReplaceMatch[2].trim() });
+          }
+          const replacementMatch = message.match(/\b(?:says?|to|instead|changed?\s+to)\s+["']?((?:fe)?male\s+and\s+(?:fe)?male)["']?/i);
+          const replacement = replacementMatch ? replacementMatch[1].trim().toLowerCase() : "male and female";
+          if (!data.actions.some((action) => String(action?.type || "") === "normalize_dual_vocal_director_notes")) {
+            data.actions.push({ type: "normalize_dual_vocal_director_notes", replacement });
+          }
+        }
+        let result = autoApply ? await applyBuilderAgentActions(data.actions || []) : { applied: [], skipped: [] };
         let reply = String(data.reply || "").trim() || "(No reply.)";
-        const fetchedResults = result.applied.filter((item) => /\b(?:lyrics|context):\n/.test(item));
+        if (autoApply && !result.applied.length && !result.skipped.length) {
+          const combinedIntent = `${message}\n${reply}`;
+          const fallbackActions = [];
+          const mergeIntent = /\b(combine|merge|join|consolidate)\b/i.test(message);
+          const splitIntent = /\b(split|break|divide|sub[-\s]?scenes?|sub[-\s]?segments?)\b/i.test(message) || /\b(split|break|divide|sub[-\s]?scenes?|sub[-\s]?segments?)\b/i.test(reply);
+          if (mergeIntent) {
+            const rangeMatch = message.match(/\bscenes?\s+(\d+)\s*(?:-|to|through)\s*(\d+)\b/i);
+            let sceneNumbers = [];
+            if (rangeMatch) {
+              const startNumber = Number(rangeMatch[1]);
+              const endNumber = Number(rangeMatch[2]);
+              if (Number.isFinite(startNumber) && Number.isFinite(endNumber) && endNumber >= startNumber) {
+                sceneNumbers = Array.from({ length: endNumber - startNumber + 1 }, (_, index) => startNumber + index);
+              }
+            }
+            if (!sceneNumbers.length) {
+              const sequenceMatch = message.match(/\bscenes?\s+((?:\d+\s*(?:,|and)?\s*){2,})/i);
+              if (sequenceMatch) sceneNumbers = (sequenceMatch[1].match(/\d+/g) || []).map((value) => Number(value)).filter(Boolean);
+            }
+            if (sceneNumbers.length >= 2) {
+              fallbackActions.push({ type: "merge_scenes", scene_numbers: Array.from(new Set(sceneNumbers)), label: `Scene ${sceneNumbers[0]}` });
+            }
+          } else if (splitIntent) {
+            const sceneMatch = combinedIntent.match(/\bscene\s+(\d+)\b/i);
+            const countMatch = combinedIntent.match(/\b(?:into|in|to)\s+(\d+)\s*(?:sub[-\s]?scenes?|scenes?|segments?)\b/i)
+              || combinedIntent.match(/\b(\d+)\s*(?:sub[-\s]?scenes?|sub[-\s]?segments?)\b/i);
+            if (sceneMatch && countMatch) {
+              const sceneNumber = Number(sceneMatch[1]);
+              const sceneCount = Math.max(2, Math.min(24, Number(countMatch[1])));
+              if (Number.isFinite(sceneNumber) && Number.isFinite(sceneCount)) {
+                fallbackActions.push({ type: "split_scene_into_subscenes", scene_number: sceneNumber, scene_count: sceneCount, label_prefix: `Scene ${sceneNumber}` });
+              }
+            }
+          }
+          if (fallbackActions.length) {
+            result = await applyBuilderAgentActions(fallbackActions);
+            data.actions = fallbackActions;
+          }
+        }
+        const fetchedResults = result.applied.filter((item) => /\b(?:lyrics|context):\n/.test(item) || /^Story Source:\n/.test(item));
         if (fetchedResults.length) {
           renderMessages("Builder Agent is reading the fetched scene data...");
           const toolMessage = [
@@ -12905,6 +14969,7 @@ function openBuilder(node) {
       } finally {
         send.disabled = false;
         send.textContent = "Send";
+        autoSaveSessionQuiet("Builder Agent chat").catch(() => null);
         renderMessages();
       }
     };
@@ -12943,11 +15008,117 @@ function openBuilder(node) {
       reader.onerror = () => toast("Failed to read the Agent reference image.", true);
       reader.readAsDataURL(file);
     };
+    const rememberStoryReferenceFile = (file) => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (!Array.isArray(state.builderStoryReferenceImages)) state.builderStoryReferenceImages = [];
+        const item = { data: String(reader.result || ""), name: file.name || "story_reference.png" };
+        const key = item.data || item.name;
+        if (!state.builderStoryReferenceImages.some((existing) => String(existing.data || existing.path || existing.name || "") === key)) {
+          state.builderStoryReferenceImages.push(item);
+          state.builderStoryReferenceImages = state.builderStoryReferenceImages.slice(-24);
+        }
+        renderStoryRefDropLabel();
+        state.builderAgentMessages.push({ role: "assistant", content: `Added Story/Style image: ${item.name}. Use Analyze Images when you want me to turn these into compact notes.` });
+        renderMessages();
+        autoSaveSessionQuiet("Story Builder reference image added").catch(() => null);
+      };
+      reader.onerror = () => toast("Failed to read the Story/Style reference image.", true);
+      reader.readAsDataURL(file);
+    };
+    const analyzeStoryReferences = async () => {
+      const refs = Array.isArray(state.builderStoryReferenceImages) ? state.builderStoryReferenceImages : [];
+      if (!refs.length) {
+        toast("Drop or upload Story/Style images first.", true);
+        return;
+      }
+      const modelFile = String(gemmaModelSelect.value || fluxGemmaModelSelect.value || nbGemmaModelSelect.value || i2vGemmaModelSelect.value || "").trim();
+      const mmprojFile = String(mmprojSelect.value || fluxMmprojSelect.value || nbMmprojSelect.value || i2vMmprojSelect.value || "").trim();
+      if (!modelFile) {
+        toast("Choose a vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      try {
+        storyRefAnalyze.disabled = true;
+        storyRefAnalyze.textContent = "Analyzing...";
+        progress = createProgressWindow("Story Builder reference images");
+        progress.set("Compressing Story/Style images into 512px tiles and running vision Gemma...", 18);
+        const data = await postJson("/vrgdg/music_builder/analyze_story_references", {
+          model_file: modelFile,
+          mmproj_file: mmprojFile,
+          image_ingredients: refs,
+          user_notes: "These are singer, character, location, and aesthetic references for the whole project.",
+          unload_after: true,
+          n_ctx: 4096,
+          max_new_tokens: 500,
+          temperature: 0.25,
+          top_p: 0.95,
+        }, 10 * 60 * 1000);
+        state.builderStoryReferenceNotes = String(data.notes || "").trim();
+        await autoSaveSessionQuiet("Story Builder reference notes analyzed");
+        progress.set(data.unloaded ? "Story/Style notes saved. Vision model unloaded." : "Story/Style notes saved.", 100);
+        progress.close(1200);
+        state.builderAgentMessages.push({
+          role: "assistant",
+          content: `Story/Style image notes saved for the text-only agent:\n${state.builderStoryReferenceNotes || "(empty)"}`,
+        });
+        renderMessages();
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        storyRefAnalyze.disabled = false;
+        storyRefAnalyze.textContent = "Analyze Images";
+      }
+    };
+    const openStorySourceEditor = () => {
+      const storyInput = document.createElement("input");
+      storyInput.value = builderStorySourcePath();
+      editContextTextFile(storyInput, "Edit Story Builder Source", "AgentStorySource.txt", null, {
+        showGemma: false,
+        helpText: "Paste lyrics, script, battle verses, shot outline, or story source here. Story Builder saves this to the project and fetches it only when needed.",
+        afterSave: async (result, content) => {
+          state.builderStorySourcePath = result.path || storyInput.value || builderStorySourcePath();
+          state.builderStorySourcePreview = String(content || "").trim().slice(0, 500);
+          state.builderAgentMessages.push({ role: "assistant", content: `Story Source saved. I can fetch it when you ask me to split scenes or plan the video.` });
+          renderMessages();
+        },
+      });
+    };
     agentRefUpload.onclick = () => agentRefInput.click();
+    agentAudioUpload.onclick = () => projectAudioFileInput.click();
+    storySourceButton.onclick = openStorySourceEditor;
+    storyRefUpload.onclick = () => storyRefInput.click();
+    storyRefAnalyze.onclick = analyzeStoryReferences;
     agentRefInput.addEventListener("change", () => {
       const files = Array.from(agentRefInput.files || []).filter((file) => file.type?.startsWith?.("image/"));
       files.forEach(attachAgentReferenceFile);
       agentRefInput.value = "";
+    });
+    storyRefInput.addEventListener("change", () => {
+      const files = Array.from(storyRefInput.files || []).filter((file) => file.type?.startsWith?.("image/"));
+      files.forEach(rememberStoryReferenceFile);
+      storyRefInput.value = "";
+    });
+    storyRefDrop.addEventListener("dragover", (event) => {
+      const types = Array.from(event.dataTransfer?.types || []).map((item) => String(item).toLowerCase());
+      if (!types.includes("files")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      storyRefDrop.style.borderColor = "#67e8f9";
+    });
+    storyRefDrop.addEventListener("dragleave", () => {
+      storyRefDrop.style.borderColor = "#155e75";
+    });
+    storyRefDrop.addEventListener("drop", (event) => {
+      const files = Array.from(event.dataTransfer?.files || []).filter((file) => file.type?.startsWith?.("image/"));
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      storyRefDrop.style.borderColor = "#155e75";
+      files.forEach(rememberStoryReferenceFile);
     });
     agentRefDrop.addEventListener("dragover", (event) => {
       const types = Array.from(event.dataTransfer?.types || []).map((item) => String(item).toLowerCase());
@@ -12961,11 +15132,21 @@ function openBuilder(node) {
     });
     agentRefDrop.addEventListener("drop", (event) => {
       const sceneSource = droppedSceneImageSource(event);
-      const files = Array.from(event.dataTransfer?.files || []).filter((file) => file.type?.startsWith?.("image/"));
-      if (!sceneSource && !files.length) return;
+      const droppedFiles = Array.from(event.dataTransfer?.files || []);
+      const audioFile = purpose.value === "story_builder"
+        ? droppedFiles.find((file) => file.type?.startsWith?.("audio/") || /\.(wav|mp3|flac|m4a|ogg)$/i.test(file.name || ""))
+        : null;
+      const files = droppedFiles.filter((file) => file.type?.startsWith?.("image/"));
+      if (!sceneSource && !files.length && !audioFile) return;
       event.preventDefault();
       event.stopPropagation();
       agentRefDrop.style.borderColor = "#155e75";
+      if (audioFile) {
+        chooseProjectAudioFile(audioFile);
+        state.builderAgentMessages.push({ role: "assistant", content: `Global audio added from ${audioFile.name || "audio file"}. For music videos, I will use that as the timeline audio.` });
+        renderMessages();
+        return;
+      }
       const segment = activeSegment();
       if (!segment) {
         toast("Select a scene before attaching an Agent reference image.", true);
@@ -12982,27 +15163,50 @@ function openBuilder(node) {
       files.forEach(attachAgentReferenceFile);
     });
 
-    hint.onclick = openAgentHintPopup;
-    minimize.onclick = () => {
+    const minimizeAgent = () => {
+      const popup = agentPopout && !agentPopout.closed ? reattachFromPopout() : null;
+      if (popup && !popup.closed) {
+        try { popup.close(); } catch {}
+      }
       box.style.display = "none";
       restore.style.display = "block";
     };
+    const closeAgent = () => {
+      autoSaveSessionQuiet("Builder Agent closed").catch(() => null);
+      const popup = agentPopout && !agentPopout.closed ? reattachFromPopout() : null;
+      if (popup && !popup.closed) {
+        try { popup.close(); } catch {}
+      }
+      backdrop.remove();
+    };
+    hint.onclick = openAgentHintPopup;
+    minimize.onclick = minimizeAgent;
     restore.onclick = () => {
       restore.style.display = "none";
-      box.style.display = "grid";
+      box.style.display = "flex";
+      ensureAgentChromeVisible();
       input.focus();
     };
-    close.onclick = () => backdrop.remove();
+    dock.onclick = dockAgent;
+    popout.onclick = popOutAgent;
+    close.onclick = closeAgent;
     mode.onchange = () => {
       state.builderAgentAutoApply = mode.value === "auto";
+      autoSaveSessionQuiet("Builder Agent mode").catch(() => null);
       renderMessages();
     };
     purpose.onchange = () => {
       state.builderAgentPurpose = purpose.value || "scene_work";
+      if (purpose.value === "story_builder" && scope.value === "active_scene") {
+        scope.value = "full_scene_plan";
+      }
+      syncAgentStoryBuilderTools();
+      autoSaveSessionQuiet("Builder Agent purpose").catch(() => null);
       renderMessages();
     };
     clear.onclick = () => {
       state.builderAgentMessages = [];
+      autoSaveSessionQuiet("Builder Agent chat cleared").catch(() => null);
       renderMessages();
     };
     send.onclick = sendMessage;
@@ -13232,12 +15436,12 @@ function openBuilder(node) {
       {
         value: "flux_klein",
         label: "Flux/Klein",
-        description: "Use Flux/Klein and its image ingredients/reference images.",
+        description: "Use Flux/Klein. Reference images are optional.",
       },
       {
         value: "nano_banana",
         label: "Nano B",
-        description: "Use Nano B and its required reference images/API key.",
+        description: "Use Nano B. Reference images are optional; API key is still required.",
       },
       {
         value: "ernie_image",
@@ -13649,6 +15853,25 @@ function openBuilder(node) {
     const segment = requireActiveSegment();
     if (segment) openSceneOptions(segment);
   };
+  chooseGlobalAudioButton.onclick = () => projectAudioFileInput.click();
+  globalAudioDrop.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    globalAudioDrop.style.borderColor = "#a3e635";
+    globalAudioDrop.style.background = "#064e3b";
+  });
+  globalAudioDrop.addEventListener("dragleave", () => {
+    globalAudioDrop.style.borderColor = "#06b6d4";
+    globalAudioDrop.style.background = "#082f49";
+  });
+  globalAudioDrop.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    globalAudioDrop.style.borderColor = "#06b6d4";
+    globalAudioDrop.style.background = "#082f49";
+    const file = Array.from(event.dataTransfer?.files || []).find((item) => item.type?.startsWith?.("audio/") || /\.(wav|mp3|flac|m4a|ogg)$/i.test(item.name || ""));
+    if (file) chooseProjectAudioFile(file);
+    else toast("Drop a WAV, MP3, FLAC, M4A, or OGG audio file for global timeline audio.", true);
+  });
   pickAudioButton.onclick = () => projectAudioFileInput.click();
   pickSrtButton.onclick = () => projectSrtFileInput.click();
   projectAudioFileInput.onchange = () => {
@@ -13663,6 +15886,10 @@ function openBuilder(node) {
   importPromptJsonButton.onclick = importPromptJson;
   importI2VMotionJsonButton.onclick = importI2VMotionJson;
   bulkSegmentsButton.onclick = openBulkSegmentsModal;
+  setInButton.onclick = () => setTimelineRangePoint("in");
+  setOutButton.onclick = () => setTimelineRangePoint("out");
+  clearRangeButton.onclick = clearSelectedTimelineRange;
+  addTimelineMarkerButton.onclick = addTimelineMarkerFromSelection;
   addSegmentButton.onclick = addSegment;
   addOverlaySegmentButton.onclick = addOverlaySegment;
   createT2IButton.onclick = createT2IPromptWithGemma;

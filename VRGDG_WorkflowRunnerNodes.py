@@ -597,9 +597,6 @@ def _patch_flux_klein_api_prompt(prompt, payload):
         elif raw_path:
             image_paths.append(os.path.abspath(_resolve_existing_file(raw_path, f"Flux/Klein ingredient image {index}")))
 
-    if not image_paths:
-        raise ValueError("Flux/Klein needs at least one image ingredient.")
-
     width = _int_payload(payload, "width", 1024, 64, 4096)
     height = _int_payload(payload, "height", 576, 64, 4096)
     seed = _int_payload(payload, "seed", 100, 0, 0xFFFFFFFFFFFFFFFF)
@@ -629,7 +626,14 @@ def _patch_flux_klein_api_prompt(prompt, payload):
     for slot in range(1, _MAX_LORA_SLOTS + 1):
         _set_api_input(prompt, lora_node_id, f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
         _set_api_input(prompt, lora_node_id, f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
-    _set_api_input(prompt, "1072", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    if image_paths:
+        _set_api_input(prompt, "1072", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    else:
+        if "1053" in prompt:
+            _set_api_input(prompt, "1053", "positive", ["1067", 0])
+            _set_api_input(prompt, "1053", "negative", ["1058", 0])
+        prompt.pop("1072", None)
+        prompt.pop("1059", None)
     return prompt
 
 
@@ -685,15 +689,17 @@ def _patch_nb_image_api_prompt(prompt, payload):
         raise ValueError("NanoBanana API key looks invalid. It appears to contain prompt text; paste the Google API key into the NanoBanana API key field.")
 
     image_paths = _image_paths_from_payload_ingredients(payload, "NanoBanana reference image")
-    if not image_paths:
-        raise ValueError("NanoBanana needs at least one reference image.")
 
     nb_node_id = _api_node_id_by_class(prompt, "VRGDG_NanoBananaPro", fallback=1)
     image_loader_id = _api_node_id_by_class(prompt, "VRGDG_ImageBatchMultiFromPaths", fallback=3)
     _set_api_input(prompt, nb_node_id, "api_key", api_key)
     _set_api_input(prompt, nb_node_id, "prompt", prompt_text)
     _set_api_input(prompt, nb_node_id, "model", str(payload.get("model", "") or "gemini-3-pro-image-preview"))
-    _set_api_input(prompt, image_loader_id, "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    if image_paths:
+        _set_api_input(prompt, image_loader_id, "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    else:
+        prompt.get(str(nb_node_id), {}).get("inputs", {}).pop("image1", None)
+        prompt.pop(str(image_loader_id), None)
     return prompt
 
 
