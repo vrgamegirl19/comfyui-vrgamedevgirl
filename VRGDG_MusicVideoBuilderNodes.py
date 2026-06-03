@@ -19,6 +19,7 @@ from aiohttp import web
 from PIL import Image
 from server import PromptServer
 
+from .VRGDG_ModelPathSettings import register_custom_model_root
 from .VRGDG_VideoEditorNodes import (
     _clean_gemma_prompt_text,
     _clean_visual_gemma_text,
@@ -4338,6 +4339,7 @@ def _generate_flux_reference_zimage_prompt(payload):
 
 
 def _gemma_choices():
+    register_custom_model_root()
     from .LLM import VRGDG_SuperGemmaGGUFChat
 
     return {

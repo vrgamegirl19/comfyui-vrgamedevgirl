@@ -13,6 +13,13 @@ import folder_paths
 from aiohttp import web
 from server import PromptServer
 
+from .VRGDG_ModelPathSettings import (
+    custom_model_root_subfolders,
+    load_custom_model_root,
+    register_custom_model_root,
+    save_custom_model_root,
+)
+
 
 _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = False
 _MAX_LORA_SLOTS = 20
@@ -126,6 +133,7 @@ def _clear_memory_api_template_path():
 
 
 def _lora_choices():
+    register_custom_model_root()
     try:
         loras = folder_paths.get_filename_list("loras")
     except Exception:
@@ -134,6 +142,7 @@ def _lora_choices():
 
 
 def _folder_choices(category):
+    register_custom_model_root()
     if isinstance(category, (list, tuple)):
         values = []
         for item in category:
@@ -180,6 +189,7 @@ def _manual_model_folder_choices(category):
         roots.extend(folder_paths.get_folder_paths(category) or [])
     except Exception:
         pass
+    roots.extend(custom_model_root_subfolders(category))
     base = getattr(folder_paths, "models_dir", None)
     if base:
         roots.append(os.path.join(base, category))
@@ -1932,6 +1942,24 @@ def _ensure_workflow_runner_routes():
             "clip": _folder_choices(("clip", "text_encoders")),
             "upscale_models": _folder_choices("upscale_models"),
         })
+
+    @server_instance.routes.get("/vrgdg/workflow_runner/model_root")
+    async def vrgdg_workflow_runner_model_root(request):
+        result = load_custom_model_root()
+        result["registered"] = register_custom_model_root(result.get("models_root", ""))
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/model_root")
+    async def vrgdg_workflow_runner_save_model_root(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = save_custom_model_root(payload.get("models_root", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/workflow_runner/build_zimage_prompt")
     async def vrgdg_workflow_runner_build_zimage_prompt(request):

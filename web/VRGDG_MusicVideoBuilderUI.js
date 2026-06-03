@@ -2801,6 +2801,7 @@ function openBuilder(node) {
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
+    customModelsRoot: "",
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     fluxKleinSettings: defaultFluxKleinSettings(),
@@ -9104,10 +9105,17 @@ function openBuilder(node) {
     header.append(title, modalClose);
     const pathGrid = document.createElement("div");
     pathGrid.style.cssText = "display:grid;grid-template-columns:1fr;gap:10px;";
+    const customModelsRootInput = makeInput(state.customModelsRoot || "");
+    customModelsRootInput.placeholder = "Optional custom models root, e.g. H:\\AIStuff\\models";
+    const saveCustomModelsRootButton = makeButton("Save Models Root", "primary");
+    const customModelsRootRow = document.createElement("div");
+    customModelsRootRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;";
+    customModelsRootRow.append(makeField("Custom ComfyUI models root", customModelsRootInput, "Optional. Point this at the folder that contains diffusion_models, text_encoders, vae, loras, LLM, and other Comfy model folders."), saveCustomModelsRootButton);
     pathGrid.append(
       makePickerField("Audio file path", audioInput, pickAudioButton),
       makeField("Project folder", projectInput),
       makePickerField("SRT path", srtInput, pickSrtButton),
+      customModelsRootRow,
     );
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:8px;";
@@ -9119,6 +9127,25 @@ function openBuilder(node) {
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
+    saveCustomModelsRootButton.onclick = async () => {
+      try {
+        saveCustomModelsRootButton.disabled = true;
+        saveCustomModelsRootButton.textContent = "Saving...";
+        const data = await postJson("/vrgdg/workflow_runner/model_root", {
+          models_root: customModelsRootInput.value,
+        });
+        state.customModelsRoot = data.models_root || "";
+        customModelsRootInput.value = state.customModelsRoot;
+        await Promise.all([refreshGemmaChoices(), refreshLoraChoices(), refreshModelChoices()]);
+        const registeredCount = Array.isArray(data.registered) ? data.registered.length : 0;
+        toast(`Custom models root saved.${registeredCount ? `\nRegistered ${registeredCount} model folder mapping${registeredCount === 1 ? "" : "s"}.` : ""}`);
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        saveCustomModelsRootButton.disabled = false;
+        saveCustomModelsRootButton.textContent = "Save Models Root";
+      }
+    };
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) backdrop.remove();
     });
@@ -16277,7 +16304,8 @@ function openBuilder(node) {
   overlay.tabIndex = -1;
   setTimeout(() => overlay.focus(), 0);
 
-  getJson("/vrgdg/music_builder/gemma_choices").then((data) => {
+  async function refreshGemmaChoices() {
+    const data = await getJson("/vrgdg/music_builder/gemma_choices");
     const models = data.models || [];
     const mmproj = data.mmproj || [];
     const validMmproj = mmproj.filter((item) => item && !/^\[No mmproj/i.test(item));
@@ -16315,9 +16343,7 @@ function openBuilder(node) {
         select.value = singleMmproj;
       }
     }
-  }).catch((error) => {
-    toast(`Could not load Gemma model choices:\n${String(error?.message || error)}`, true);
-  });
+  }
 
   function renderSearchableSuggestions(picker, onSelect = null) {
     const query = String(picker.input.value || "").trim().toLowerCase();
@@ -16427,18 +16453,18 @@ function openBuilder(node) {
     return values[0] || "";
   }
 
-  getJson("/vrgdg/workflow_runner/lora_list").then((data) => {
+  async function refreshLoraChoices() {
+    const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
     for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
     }
-  }).catch((error) => {
-    toast(`Could not load LoRA choices:\n${String(error?.message || error)}`, true);
-  });
+  }
 
-  getJson("/vrgdg/workflow_runner/i2v_choices").then((data) => {
+  async function refreshModelChoices() {
+    const data = await getJson("/vrgdg/workflow_runner/i2v_choices");
     const setOptions = (picker, options, preferred = []) => {
       const preferredList = Array.isArray(preferred) ? preferred : [preferred];
       const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
@@ -16464,8 +16490,27 @@ function openBuilder(node) {
     setOptions(ernieUnetPicker, data.unets, ["ernie\\ernie-image-turbo.safetensors", "ernie-image-turbo.safetensors"]);
     setOptions(ernieClipPicker, data.clip, ["ministral-3-3b.safetensors", "ernie\\ministral-3-3b.safetensors"]);
     setOptions(ernieVaePicker, data.vae, ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"]);
-  }).catch((error) => {
-    toast(`Could not load I2V model choices:\n${String(error?.message || error)}`, true);
+  }
+
+  async function loadCustomModelRootSetting() {
+    try {
+      const data = await getJson("/vrgdg/workflow_runner/model_root");
+      state.customModelsRoot = data.models_root || "";
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Could not load custom models root:", error);
+    }
+  }
+
+  loadCustomModelRootSetting().finally(() => {
+    refreshGemmaChoices().catch((error) => {
+      toast(`Could not load Gemma model choices:\n${String(error?.message || error)}`, true);
+    });
+    refreshLoraChoices().catch((error) => {
+      toast(`Could not load LoRA choices:\n${String(error?.message || error)}`, true);
+    });
+    refreshModelChoices().catch((error) => {
+      toast(`Could not load I2V model choices:\n${String(error?.message || error)}`, true);
+    });
   });
 
   for (const control of [zFirstWidth, zFirstHeight, zSecondWidth, zSecondHeight, zSeed, zSeedMode, zBatchSize, zLoraCount, zI2IStartStep, zI2IPath]) {
