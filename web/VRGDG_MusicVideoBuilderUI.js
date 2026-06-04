@@ -8245,15 +8245,41 @@ function openBuilder(node) {
         return;
       }
       try {
-        progress.set(`Sending scene concepts to Gemma...\n${gemmaRunnerLine()}`, 10);
-        const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
-          ...textGemmaRunnerPayload(),
-          model_file: modelFile,
-          scenes: usableScenes,
-          subject_scene_text: subjectSceneInput.value || "",
-          existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-          unload_after: true,
-        }, 10 * 60 * 1000);
+        const compactText = (value, limit) => {
+          const text = String(value || "").replace(/\s+/g, " ").trim();
+          return text.length > limit ? `${text.slice(0, Math.max(0, limit - 3)).trim()}...` : text;
+        };
+        const compactScenes = usableScenes.map((scene) => ({
+          ...scene,
+          concept: compactText(scene.concept, 900),
+          notes: compactText(scene.notes, 450),
+        }));
+        const compactLocations = refs.locations.map((item) => ({
+          name: compactText(item.name, 80),
+          description: compactText(item.description, 650),
+        }));
+        const locationMapBatchSize = 8;
+        const batches = [];
+        for (let index = 0; index < compactScenes.length; index += locationMapBatchSize) {
+          batches.push(compactScenes.slice(index, index + locationMapBatchSize));
+        }
+        const mergedData = { locations: [], scene_map: {} };
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+          progress.set(`Sending scene concepts to Gemma...\nBatch ${batchIndex + 1}/${batches.length}\n${gemmaRunnerLine()}`, 10 + Math.round((batchIndex / Math.max(1, batches.length)) * 55));
+          const batchData = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
+            ...textGemmaRunnerPayload(),
+            model_file: modelFile,
+            scenes: batches[batchIndex],
+            subject_scene_text: compactText(subjectSceneInput.value || "", 1600),
+            existing_locations: compactLocations,
+            unload_after: batchIndex === batches.length - 1,
+            n_ctx: 8000,
+            max_new_tokens: 1200,
+          }, 10 * 60 * 1000);
+          mergedData.locations = batchData.locations || mergedData.locations || [];
+          Object.assign(mergedData.scene_map, batchData.scene_map || {});
+        }
+        const data = mergedData;
         progress.set("Applying location map...", 80);
         const nameToId = new Map();
         for (const item of data.locations || []) {
