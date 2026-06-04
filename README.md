@@ -10,6 +10,12 @@ Includes HUMO-based multi-scene workflows, audio splitting, video combining, and
 
 ---
 
+## V7 Video Builder Guide
+
+New to the V7 builder? Start here: [V7 Video Builder Guide](docs/V7_VIDEO_BUILDER_GUIDE.md)
+
+---
+
 # 🎬 AI Music Video Workflow (ComfyUI)
 
 Turn a **reference image** and an **audio track** into a fully **AI-generated music video**.  

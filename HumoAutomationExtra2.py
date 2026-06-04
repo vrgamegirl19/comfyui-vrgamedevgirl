@@ -1924,6 +1924,690 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
 
 
 
+class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced):
+    """
+    Transcribes or aligns full audio and preserves lyric timestamps as JSON.
+
+    Use this when the UI needs to create timeline scenes before an SRT exists.
+    """
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("timestamped_lyrics_json",)
+    FUNCTION = "extract_timestamped_lyrics"
+    CATEGORY = "VRGDG"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        language_input = VRGDG_ManualLyricsExtractor_SRT_Advanced.INPUT_TYPES()["required"]["language"]
+        return {
+            "required": {
+                "audio": ("AUDIO",),
+                "reference_lyrics": ("STRING", {"multiline": True, "default": ""}),
+                "model_name": ("STRING", {"default": "large-v3"}),
+                "language": language_input,
+                "segment_mode": (
+                    ["whisper_chunks", "reference_lines", "reference_stanzas"],
+                    {"default": "whisper_chunks"}
+                ),
+                "include_instrumental_gaps": ("BOOLEAN", {"default": True}),
+                "instrumental_text": ("STRING", {"default": "[instrumental]"}),
+                "min_gap_seconds": ("FLOAT", {"default": 2.0, "min": 0.0, "max": 30.0}),
+                "min_scene_seconds": ("FLOAT", {"default": 2.0, "min": 0.1, "max": 30.0}),
+                "max_scene_seconds": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 60.0}),
+                "vocal_tail_padding_seconds": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 3.0}),
+            }
+        }
+
+    def _segment_words(self, seg):
+        words = []
+        for word in getattr(seg, "words", None) or []:
+            text = self._clean_lyric(getattr(word, "word", "") or "")
+            if not text:
+                continue
+            start = float(getattr(word, "start", 0.0) or 0.0)
+            end = float(getattr(word, "end", start) or start)
+            words.append({
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "text": text,
+            })
+        return words
+
+    def _segments_from_stable_result(self, result):
+        segments = []
+        for seg in getattr(result, "segments", []) or []:
+            text = self._clean_lyric(getattr(seg, "text", "") or "")
+            words = self._segment_words(seg)
+            if words:
+                start = float(words[0]["start"])
+                end = float(words[-1]["end"])
+                if not text:
+                    text = self._clean_lyric(" ".join(w["text"] for w in words))
+            else:
+                start = float(getattr(seg, "start", 0.0) or 0.0)
+                end = float(getattr(seg, "end", start) or start)
+
+            if not text:
+                continue
+            if end < start:
+                end = start
+            segments.append({
+                "type": "vocal",
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "duration": round(max(0.0, end - start), 3),
+                "text": text,
+                "words": words,
+            })
+
+        segments.sort(key=lambda item: (item["start"], item["end"]))
+        return segments
+
+    def _is_reference_marker_line(self, text):
+        clean = str(text or "").strip()
+        return bool(re.fullmatch(r"\[[^\]]+\]", clean))
+
+    def _is_instrumental_marker_line(self, text):
+        clean = str(text or "").strip().lower()
+        if not self._is_reference_marker_line(clean):
+            return False
+        return bool(re.search(r"\b(instrumental|intro|outro|break|interlude|solo|no\s*vocal|no\s*lyrics|silence|b-?roll)\b", clean))
+
+    def _reference_units(self, reference_lyrics, segment_mode, instrumental_text):
+        mode = str(segment_mode or "whisper_chunks")
+        raw_lines = str(reference_lyrics or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        units = []
+        stanza = []
+
+        def flush_stanza():
+            nonlocal stanza
+            if stanza:
+                text = self._clean_lyric(" ".join(stanza))
+                if text:
+                    units.append({"type": "vocal", "text": text})
+                stanza = []
+
+        for raw in raw_lines:
+            line = raw.strip()
+            if not line:
+                if mode == "reference_stanzas":
+                    flush_stanza()
+                continue
+
+            if self._is_instrumental_marker_line(line):
+                if mode == "reference_stanzas":
+                    flush_stanza()
+                units.append({"type": "instrumental", "text": self._clean_lyric(line) or instrumental_text})
+                continue
+
+            if self._is_reference_marker_line(line):
+                continue
+
+            clean = self._clean_lyric(line)
+            if not clean:
+                continue
+            if mode == "reference_stanzas":
+                stanza.append(clean)
+            else:
+                units.append({"type": "vocal", "text": clean})
+
+        if mode == "reference_stanzas":
+            flush_stanza()
+
+        return units
+
+    def _word_items_from_segments(self, segments):
+        items = []
+        for segment in segments:
+            for word in segment.get("words", []) or []:
+                text = self._clean_lyric(word.get("text", ""))
+                norm = self._normalize_for_match(text)
+                if not text or not norm:
+                    continue
+                items.append({
+                    "start": float(word.get("start", 0.0)),
+                    "end": float(word.get("end", word.get("start", 0.0))),
+                    "text": text,
+                    "norm": norm.split()[0],
+                })
+        items.sort(key=lambda item: (item["start"], item["end"]))
+        return items
+
+    def _align_reference_unit(self, unit_text, word_items, cursor):
+        tokens = self._normalize_for_match(unit_text).split()
+        if not tokens or not word_items:
+            return None, cursor
+
+        start_idx = None
+        token_idx = 0
+        matched_indices = []
+        i = max(0, int(cursor))
+        while i < len(word_items) and token_idx < len(tokens):
+            if word_items[i]["norm"] == tokens[token_idx]:
+                if start_idx is None:
+                    start_idx = i
+                matched_indices.append(i)
+                token_idx += 1
+            elif start_idx is not None and word_items[i]["norm"] in tokens[token_idx:token_idx + 3]:
+                # Allow small skips when stable-ts splits or drops a short word.
+                while token_idx < len(tokens) and word_items[i]["norm"] != tokens[token_idx]:
+                    token_idx += 1
+                if token_idx < len(tokens):
+                    matched_indices.append(i)
+                    token_idx += 1
+            i += 1
+
+        min_required = max(1, min(len(tokens), math.ceil(len(tokens) * 0.55)))
+        if start_idx is None or len(matched_indices) < min_required:
+            return None, cursor
+
+        first = word_items[matched_indices[0]]
+        last = word_items[matched_indices[-1]]
+        words = [
+            {
+                "start": round(float(word_items[idx]["start"]), 3),
+                "end": round(float(word_items[idx]["end"]), 3),
+                "text": word_items[idx]["text"],
+            }
+            for idx in matched_indices
+        ]
+        return {
+            "type": "vocal",
+            "start": round(float(first["start"]), 3),
+            "end": round(float(last["end"]), 3),
+            "duration": round(max(0.0, float(last["end"]) - float(first["start"])), 3),
+            "text": self._clean_lyric(unit_text),
+            "words": words,
+        }, matched_indices[-1] + 1
+
+    def _segments_from_reference_units(
+        self,
+        units,
+        stable_segments,
+        total_duration,
+        instrumental_text,
+        min_gap_seconds,
+        include_instrumental_gaps=True,
+        min_scene_seconds=1.0,
+        max_scene_seconds=8.0,
+        vocal_tail_padding_seconds=0.6,
+    ):
+        word_items = self._word_items_from_segments(stable_segments)
+        aligned_by_unit = {}
+        cursor = 0
+
+        for idx, unit in enumerate(units):
+            if unit.get("type") != "vocal":
+                continue
+            segment, cursor = self._align_reference_unit(unit.get("text", ""), word_items, cursor)
+            if segment is not None:
+                aligned_by_unit[idx] = segment
+
+        output = []
+        min_gap = max(0.0, float(min_gap_seconds))
+        min_scene = max(0.1, float(min_scene_seconds))
+        max_scene = max(min_scene, float(max_scene_seconds))
+        vocal_tail = max(0.0, float(vocal_tail_padding_seconds))
+        label = self._clean_lyric(instrumental_text) or "[instrumental]"
+
+        def split_instrumental_segment(segment):
+            start = float(segment.get("start", 0.0))
+            end = float(segment.get("end", start))
+            duration = max(0.0, end - start)
+            if duration <= max_scene:
+                return [segment]
+            splits = []
+            current = start
+            part = 1
+            while current < end - 0.001:
+                next_end = min(end, current + max_scene)
+                remaining = end - next_end
+                if 0 < remaining < min_scene and next_end > current:
+                    next_end = end
+                split = dict(segment)
+                split["start"] = round(current, 3)
+                split["end"] = round(next_end, 3)
+                split["duration"] = round(max(0.0, next_end - current), 3)
+                split["words"] = []
+                if part > 1:
+                    split["timing_warning"] = "Long instrumental section split by max scene duration."
+                splits.append(split)
+                current = next_end
+                part += 1
+            return splits
+
+        def split_vocal_segment(segment):
+            start = float(segment.get("start", 0.0))
+            end = float(segment.get("end", start))
+            duration = max(0.0, end - start)
+            words = segment.get("words", []) or []
+            if not words:
+                if duration <= max_scene:
+                    return [segment]
+                split = dict(segment)
+                split["start"] = round(max(start, end - max_scene), 3)
+                split["end"] = round(end, 3)
+                split["duration"] = round(max(0.0, float(split["end"]) - float(split["start"])), 3)
+                split["timing_warning"] = "Long vocal section was limited by max scene duration because no word timing was available."
+                if include_instrumental_gaps and float(split["start"]) - start >= min_gap:
+                    return split_instrumental_segment({
+                        "type": "instrumental",
+                        "start": round(start, 3),
+                        "end": round(float(split["start"]), 3),
+                        "duration": round(max(0.0, float(split["start"]) - start), 3),
+                        "text": label,
+                        "words": [],
+                        "timing_warning": "Inserted before a long approximate vocal section.",
+                    }) + [split]
+                return [split]
+
+            sorted_words = sorted(words, key=lambda word: (float(word.get("start", 0.0)), float(word.get("end", word.get("start", 0.0)))))
+            groups = []
+            current_group = []
+            previous_end = None
+            for word in sorted_words:
+                word_start = float(word.get("start", start))
+                word_end = float(word.get("end", word_start))
+                if current_group and previous_end is not None and word_start - previous_end >= min_gap:
+                    groups.append(current_group)
+                    current_group = []
+                current_group.append(word)
+                previous_end = word_end
+            if current_group:
+                groups.append(current_group)
+
+            if not groups:
+                return [segment]
+
+            pieces = []
+            first_word_start = max(start, min(float(group[0].get("start", start)) for group in groups if group))
+            if include_instrumental_gaps and first_word_start - start >= min_gap:
+                pieces.extend(split_instrumental_segment({
+                    "type": "instrumental",
+                    "start": round(start, 3),
+                    "end": round(first_word_start, 3),
+                    "duration": round(max(0.0, first_word_start - start), 3),
+                    "text": label,
+                    "words": [],
+                    "timing_warning": "Inserted before timed vocal words inside a long scene.",
+                }))
+
+            for group_index, group in enumerate(groups):
+                group_start = max(start, float(group[0].get("start", start)))
+                raw_group_end = float(group[-1].get("end", group[-1].get("start", group_start)))
+                next_group_start = None
+                if group_index + 1 < len(groups):
+                    next_group_start = max(start, float(groups[group_index + 1][0].get("start", raw_group_end)))
+                group_end_limit = next_group_start if next_group_start is not None else max(end, raw_group_end + vocal_tail)
+                group_end = min(group_end_limit, raw_group_end + vocal_tail)
+                if group_index > 0:
+                    previous_group = groups[group_index - 1]
+                    previous_raw_end = min(end, float(previous_group[-1].get("end", previous_group[-1].get("start", group_start))))
+                    previous_group_end = min(group_start, previous_raw_end + vocal_tail)
+                    if include_instrumental_gaps and group_start - previous_group_end >= min_gap:
+                        pieces.extend(split_instrumental_segment({
+                            "type": "instrumental",
+                            "start": round(previous_group_end, 3),
+                            "end": round(group_start, 3),
+                            "duration": round(max(0.0, group_start - previous_group_end), 3),
+                            "text": label,
+                            "words": [],
+                            "timing_warning": "Inserted between separated timed vocal words.",
+                        }))
+
+                group_cursor = group_start
+                group_chunks = []
+                current_chunk = []
+                current_chunk_start = group_start
+                previous_word_end = group_start
+                for word in group:
+                    word_start = float(word.get("start", current_chunk_start))
+                    word_end = float(word.get("end", word_start))
+                    if current_chunk and word_end - current_chunk_start > max_scene:
+                        group_chunks.append((current_chunk_start, min(group_end, previous_word_end + vocal_tail), current_chunk))
+                        current_chunk = []
+                        current_chunk_start = word_start
+                    current_chunk.append(word)
+                    group_cursor = word_end
+                    previous_word_end = word_end
+                if current_chunk:
+                    group_chunks.append((current_chunk_start, group_end, current_chunk))
+
+                for chunk_start, chunk_end, chunk_words in group_chunks:
+                    if chunk_end - chunk_start < min_scene:
+                        chunk_end = min(end, chunk_start + min_scene)
+                    vocal = dict(segment)
+                    vocal["start"] = round(chunk_start, 3)
+                    vocal["end"] = round(chunk_end, 3)
+                    vocal["duration"] = round(max(0.0, chunk_end - chunk_start), 3)
+                    vocal["words"] = chunk_words
+                    if len(groups) > 1 or len(group_chunks) > 1 or duration > max_scene:
+                        vocal["text"] = self._clean_lyric(" ".join(str(word.get("text", "")).strip() for word in chunk_words))
+                        vocal["timing_warning"] = "Vocal scene split by timed word gaps or max scene duration."
+                    pieces.append(vocal)
+
+            raw_last_word_end = max(float(group[-1].get("end", group[-1].get("start", end))) for group in groups if group)
+            last_word_end = raw_last_word_end + vocal_tail
+            if include_instrumental_gaps and end - last_word_end >= min_gap:
+                pieces.extend(split_instrumental_segment({
+                    "type": "instrumental",
+                    "start": round(last_word_end, 3),
+                    "end": round(end, 3),
+                    "duration": round(max(0.0, end - last_word_end), 3),
+                    "text": label,
+                    "words": [],
+                    "timing_warning": "Inserted after timed vocal words inside a long scene.",
+                }))
+            return pieces
+
+        def append_piece(piece):
+            piece_start = float(piece.get("start", 0.0))
+            if output:
+                previous = output[-1]
+                previous_end = float(previous.get("end", 0.0))
+                if piece_start - previous_end > 0.001:
+                    if include_instrumental_gaps and piece_start - previous_end >= min_gap:
+                        for gap_piece in split_instrumental_segment({
+                            "type": "instrumental",
+                            "start": round(previous_end, 3),
+                            "end": round(piece_start, 3),
+                            "duration": round(piece_start - previous_end, 3),
+                            "text": label,
+                            "words": [],
+                            "timing_warning": "Inserted to close a timeline gap.",
+                        }):
+                            output.append(gap_piece)
+                    else:
+                        previous["end"] = round(piece_start, 3)
+                        previous["duration"] = round(max(0.0, piece_start - float(previous.get("start", 0.0))), 3)
+                elif previous_end - piece_start > 0.001:
+                    piece = dict(piece)
+                    piece["start"] = round(previous_end, 3)
+                    piece["duration"] = round(max(0.0, float(piece.get("end", previous_end)) - previous_end), 3)
+            elif piece_start > 0.001 and include_instrumental_gaps:
+                for gap_piece in split_instrumental_segment({
+                    "type": "instrumental",
+                    "start": 0.0,
+                    "end": round(piece_start, 3),
+                    "duration": round(piece_start, 3),
+                    "text": label,
+                    "words": [],
+                    "timing_warning": "Inserted before the first timed segment.",
+                }):
+                    output.append(gap_piece)
+            if float(piece.get("end", piece.get("start", 0.0))) - float(piece.get("start", 0.0)) > 0.001:
+                output.append(piece)
+
+        def append_timed_segment(segment):
+            if segment.get("type") == "instrumental":
+                pieces = split_instrumental_segment(segment)
+            elif segment.get("type") == "vocal":
+                pieces = split_vocal_segment(segment)
+            else:
+                pieces = [segment]
+            for piece in pieces:
+                append_piece(piece)
+
+        for idx, unit in enumerate(units):
+            if unit.get("type") == "vocal":
+                segment = aligned_by_unit.get(idx)
+                if segment is None:
+                    prev_end = float(output[-1]["end"]) if output else 0.0
+                    next_start = None
+                    for next_idx in range(idx + 1, len(units)):
+                        next_seg = aligned_by_unit.get(next_idx)
+                        if next_seg is not None:
+                            next_start = float(next_seg["start"])
+                            break
+                    end = next_start if next_start is not None and next_start > prev_end else min(float(total_duration), prev_end + max(min_scene, min_gap, 1.0))
+                    start = prev_end
+                    if end - start > max_scene:
+                        vocal_start = max(start, end - max_scene)
+                        if include_instrumental_gaps and vocal_start - start >= min_gap:
+                            append_timed_segment({
+                                "type": "instrumental",
+                                "start": round(start, 3),
+                                "end": round(vocal_start, 3),
+                                "duration": round(max(0.0, vocal_start - start), 3),
+                                "text": label,
+                                "words": [],
+                                "timing_warning": "Inserted because the lyric line timing was approximate and exceeded the max scene duration.",
+                            })
+                        start = vocal_start
+                    segment = {
+                        "type": "vocal",
+                        "start": round(start, 3),
+                        "end": round(end, 3),
+                        "duration": round(max(0.0, end - start), 3),
+                        "text": self._clean_lyric(unit.get("text", "")),
+                        "words": [],
+                        "timing_warning": "Could not align this reference lyric line; approximate timing was used.",
+                    }
+                elif include_instrumental_gaps:
+                    prev_end = float(output[-1]["end"]) if output else 0.0
+                    start = float(segment.get("start", prev_end))
+                    if start - prev_end >= min_gap:
+                        append_timed_segment({
+                            "type": "instrumental",
+                            "start": round(prev_end, 3),
+                            "end": round(start, 3),
+                            "duration": round(max(0.0, start - prev_end), 3),
+                            "text": label,
+                            "words": [],
+                        })
+                append_timed_segment(segment)
+                continue
+
+            prev_end = float(output[-1]["end"]) if output else 0.0
+            next_start = None
+            for next_idx in range(idx + 1, len(units)):
+                next_seg = aligned_by_unit.get(next_idx)
+                if next_seg is not None:
+                    next_start = float(next_seg["start"])
+                    break
+
+            if next_start is None:
+                next_start = float(total_duration)
+
+            start = prev_end
+            end = max(start, min(float(total_duration), next_start))
+            warning = ""
+            if end <= start:
+                end = min(float(total_duration), start + max(min_gap, 1.0))
+                warning = "No clear instrumental gap was found; approximate timing was used."
+
+            append_timed_segment({
+                "type": "instrumental",
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "duration": round(max(0.0, end - start), 3),
+                "text": self._clean_lyric(unit.get("text", "")) or instrumental_text,
+                "words": [],
+                **({"timing_warning": warning} if warning else {}),
+            })
+
+        if include_instrumental_gaps:
+            cursor_end = float(output[-1]["end"]) if output else 0.0
+            total = float(total_duration)
+            if total - cursor_end >= min_gap:
+                append_timed_segment({
+                    "type": "instrumental",
+                    "start": round(cursor_end, 3),
+                    "end": round(total, 3),
+                    "duration": round(max(0.0, total - cursor_end), 3),
+                    "text": label,
+                    "words": [],
+                    "timing_warning": "Inserted after the final timed lyric to cover the remaining audio.",
+                })
+
+        return output
+
+    def _with_instrumental_gaps(self, segments, total_duration, instrumental_text, min_gap_seconds, min_scene_seconds=1.0, max_scene_seconds=8.0):
+        output = []
+        cursor = 0.0
+        min_gap = max(0.0, float(min_gap_seconds))
+        min_scene = max(0.1, float(min_scene_seconds))
+        max_scene = max(min_scene, float(max_scene_seconds))
+        label = self._clean_lyric(instrumental_text) or "[instrumental]"
+
+        def append_instrumental(start, end):
+            current = float(start)
+            end = float(end)
+            while current < end - 0.001:
+                next_end = min(end, current + max_scene)
+                remaining = end - next_end
+                if 0 < remaining < min_scene and next_end > current:
+                    next_end = end
+                output.append({
+                    "type": "instrumental",
+                    "start": round(current, 3),
+                    "end": round(next_end, 3),
+                    "duration": round(next_end - current, 3),
+                    "text": label,
+                    "words": [],
+                })
+                current = next_end
+
+        for segment in segments:
+            start = float(segment.get("start", 0.0))
+            end = float(segment.get("end", start))
+            if start - cursor >= min_gap:
+                append_instrumental(cursor, start)
+            output.append(segment)
+            cursor = max(cursor, end)
+
+        if float(total_duration) - cursor >= min_gap:
+            append_instrumental(cursor, float(total_duration))
+
+        return output
+
+    def extract_timestamped_lyrics(
+        self,
+        audio,
+        reference_lyrics="",
+        model_name="large-v3",
+        language="english",
+        segment_mode="whisper_chunks",
+        include_instrumental_gaps=True,
+        instrumental_text="[instrumental]",
+        min_gap_seconds=1.0,
+        min_scene_seconds=1.0,
+        max_scene_seconds=8.0,
+        vocal_tail_padding_seconds=0.6,
+        **kwargs
+    ):
+        try:
+            import stable_whisper
+        except ImportError:
+            raise RuntimeError(
+                "stable-ts is not installed. Install with: pip install -U stable-ts"
+            )
+
+        waveform = audio["waveform"]
+        sample_rate = int(audio["sample_rate"])
+        if waveform.ndim == 2:
+            waveform = waveform.unsqueeze(0)
+
+        mono = waveform.mean(dim=1).squeeze().detach().cpu()
+        total_samples = mono.shape[-1]
+        total_duration = float(total_samples) / float(sample_rate)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        lang = self._normalize_language(language)
+
+        print(f"[TimestampedLyrics] Processing audio: {total_duration:.2f}s @ {sample_rate}Hz")
+        print(f"[TimestampedLyrics] Loading stable-ts model: {model_name} ({device})")
+        model = stable_whisper.load_model(model_name, device=device)
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_wav_path = tmp.name
+
+        try:
+            torchaudio.save(tmp_wav_path, mono.unsqueeze(0), sample_rate)
+            reference_lines = self._split_reference_lyrics(reference_lyrics) if str(reference_lyrics or "").strip() else []
+            cleaned_reference_lyrics = "\n".join(reference_lines)
+            segment_mode = str(segment_mode or "whisper_chunks")
+            if segment_mode not in {"whisper_chunks", "reference_lines", "reference_stanzas"}:
+                segment_mode = "whisper_chunks"
+            reference_units = self._reference_units(reference_lyrics, segment_mode, instrumental_text) if segment_mode != "whisper_chunks" else []
+            alignable_reference_text = "\n".join(
+                unit["text"] for unit in reference_units if unit.get("type") == "vocal"
+            ) if reference_units else cleaned_reference_lyrics
+
+            result = None
+            mode = "transcribe"
+            if alignable_reference_text:
+                print("[TimestampedLyrics] Running stable-ts reference alignment...")
+                try:
+                    result = model.align(
+                        tmp_wav_path,
+                        alignable_reference_text,
+                        language=lang,
+                        verbose=False,
+                    )
+                    mode = "align"
+                except Exception as align_err:
+                    print(f"[TimestampedLyrics] Reference alignment failed, falling back to transcription: {align_err}")
+
+            if result is None:
+                print("[TimestampedLyrics] Running stable-ts transcription...")
+                result = model.transcribe(
+                    tmp_wav_path,
+                    language=lang,
+                    word_timestamps=True,
+                    verbose=False,
+                )
+
+            stable_segments = self._segments_from_stable_result(result)
+            if reference_units:
+                segments = self._segments_from_reference_units(
+                    reference_units,
+                    stable_segments,
+                    total_duration,
+                    instrumental_text,
+                    min_gap_seconds,
+                    include_instrumental_gaps,
+                    min_scene_seconds,
+                    max_scene_seconds,
+                    vocal_tail_padding_seconds,
+                )
+            else:
+                segments = stable_segments
+
+            if include_instrumental_gaps and not reference_units:
+                segments = self._with_instrumental_gaps(
+                    segments,
+                    total_duration,
+                    instrumental_text,
+                    min_gap_seconds,
+                    min_scene_seconds,
+                    max_scene_seconds,
+                )
+
+            for i, segment in enumerate(segments, 1):
+                segment["index"] = i
+
+            payload = {
+                "version": 1,
+                "mode": mode,
+                "segment_mode": segment_mode,
+                "model_name": str(model_name or ""),
+                "language": str(language or "auto"),
+                "duration": round(total_duration, 3),
+                "segment_count": len(segments),
+                "segments": segments,
+            }
+
+            print(f"[TimestampedLyrics] Extraction complete: {len(segments)} segments")
+            return (json.dumps(payload, ensure_ascii=False, indent=2),)
+
+        finally:
+            try:
+                if os.path.exists(tmp_wav_path):
+                    os.remove(tmp_wav_path)
+            except Exception:
+                pass
+
+
 NODE_CLASS_MAPPINGS = {
 
      "VRGDG_ManualLyricsExtractor": VRGDG_ManualLyricsExtractor,
@@ -1939,7 +2623,8 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_PromptTemplateBuilder":VRGDG_PromptTemplateBuilder,
      "VRGDG_SmartSplitTextTwo":VRGDG_SmartSplitTextTwo,
      "VRGDG_ManualLyricsExtractor_SRT": VRGDG_ManualLyricsExtractor_SRT,
-     "VRGDG_ManualLyricsExtractor_SRT_Advanced": VRGDG_ManualLyricsExtractor_SRT_Advanced
+     "VRGDG_ManualLyricsExtractor_SRT_Advanced": VRGDG_ManualLyricsExtractor_SRT_Advanced,
+     "VRGDG_TimestampedLyricsExtractor": VRGDG_TimestampedLyricsExtractor
     
     
     
@@ -1961,7 +2646,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_PromptTemplateBuilder":"VRGDG_PromptTemplateBuilder",
     "VRGDG_SmartSplitTextTwo":"VRGDG_SmartSplitTextTwo",
     "VRGDG_ManualLyricsExtractor_SRT": "Manual Lyrics Extractor (SRT Segments)",
-    "VRGDG_ManualLyricsExtractor_SRT_Advanced": "Manual Lyrics Extractor (SRT Advanced - stable-ts)"
+    "VRGDG_ManualLyricsExtractor_SRT_Advanced": "Manual Lyrics Extractor (SRT Advanced - stable-ts)",
+    "VRGDG_TimestampedLyricsExtractor": "Timestamped Lyrics Extractor (stable-ts)"
     
     
     

@@ -88,11 +88,12 @@ Add fast, cinematic motion by giving the subject a clear action sequence, expres
 
 Output one polished paragraph using this structure:
 
-The [Subject] who is singing with passion in [setting/environment] during [time/weather]. The subject [dynamic performance action]. Their clothing/hair [reacts to movement]. The camera [Camera Motion] while maintaining [subject visibility]. The environment [reacts dynamically].
+The [Subject] in [setting/environment] during [time/weather]. The subject [dynamic performance action]. Their clothing/hair [reacts to movement]. The camera [Camera Motion] while maintaining [subject visibility]. The environment [reacts dynamically].
 
 Each word in brackets should be chosen based on user input that would best fit the scene.
 NOTE: DO NOT USE ORBIT TYPE CAMERA MOTION, DO NOT USE THE WORD "SPIN" SUBJECT SHOULD NEVER SPIN.
-Subject should always be physically singing!
+
+Do not invent or quote lyric/dialogue text. If the user notes mention singing, speaking, lip-sync, instrumental, or b-roll/no-lip-sync, follow that performance direction visually. Exact lyric/dialogue text may be added by the UI after this prompt.
 
 Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color style, lighting style, or image-quality descriptions. Keep it vivid, fast, cinematic, dynamic, and video-ready.
 

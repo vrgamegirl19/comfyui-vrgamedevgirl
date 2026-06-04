@@ -43,14 +43,15 @@ Add fast, cinematic motion by giving the subject a clear action sequence, expres
 
 Output one polished paragraph using this structure:
 
-The [Subject] who is singing with passion and in sync with the audio, in [setting/environment] during [time/weather]. The subject [dynamic performance action with expressive face, body movement, and strong gestures]. Their clothing/hair [reacts to movement, wind, or performance energy]. The lighting [changes or reacts naturally within the scene]. The camera [Camera Motion] while maintaining [subject visibility and framing]. The environment [reacts dynamically].
+The [Subject] in [setting/environment] during [time/weather]. The subject [dynamic performance action with expressive face, body movement, and strong gestures]. Their clothing/hair [reacts to movement, wind, or performance energy]. The lighting [changes or reacts naturally within the scene]. The camera [Camera Motion] while maintaining [subject visibility and framing]. The environment [reacts dynamically].
 
 Each word in brackets should be chosen based on the user input and what best fits the scene.
 
 Rules:
 - This is text-to-video
 - Never output square brackets or placeholder text. Replace every bracketed example with concrete scene details.
-- Subject must be physically singing with passion
+- Do not force singing. Follow user notes for singing, speaking, narration, instrumental, b-roll, or no-lip-sync behavior.
+- Do not invent or quote lyric/dialogue text. Exact vocal/lyric directives are added by the UI after Gemma output.
 - Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color grading, camera photo style, or static image-quality descriptions.
 - Keep it vivid, fast, cinematic, dynamic, and video-ready
 - Use one location inferred by the user's concept prompt. If one is not listed use one from the location list.
@@ -3396,6 +3397,117 @@ def _generate_builder_t2v_prompt(payload):
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
+def _video_prompt_enhancement_instructions(payload):
+    mode_label = str(payload.get("mode_label") or "I2V").strip().upper()
+    draft_prompt = str(payload.get("draft_prompt") or "").strip()
+    scene_prompt = str(payload.get("t2i_prompt") or payload.get("scene_prompt") or "").strip()
+    user_notes = str(payload.get("user_notes") or "").strip()
+    lyric_text = str(payload.get("lyric_text") or "").strip()
+    singers_raw = payload.get("singers") or []
+    if isinstance(singers_raw, str):
+        singers = [item.strip() for item in singers_raw.split(",") if item.strip()]
+    elif isinstance(singers_raw, list):
+        singers = [str(item or "").strip() for item in singers_raw if str(item or "").strip()]
+    else:
+        singers = []
+    no_vocal = bool(payload.get("no_vocal") or payload.get("instrumental") or payload.get("broll"))
+    has_multiple_singers = len(singers) > 1
+    has_one_singer = len(singers) == 1
+    singer_text = ", ".join(singers)
+
+    if no_vocal:
+        template = (
+            "Use this final prompt shape:\n"
+            "The [subject or main visual focus] in [location/environment] during [time/weather/lighting]. "
+            "[Subject or main visual focus] [visible action only]. [Clothing, hair, objects, or props] move naturally if visible. "
+            "The camera [camera motion] while keeping the main visual focus clearly framed and visible. "
+            "The environment [visible motion/reaction].\n\n"
+            "No-vocal rule: do not mention singing, lip-syncing, vocals, lyric, mouth movement, instrumental status, or no-vocal status in the final prompt."
+        )
+    elif has_multiple_singers:
+        template = (
+            "Use this final prompt shape:\n"
+            f"The [subjects: {singer_text}] in [location/environment] during [time/weather/lighting]. "
+            f"[Subjects] are singing with passion, clearly moving their mouths in sync with the lyric \"{lyric_text}\", "
+            "with expressive facial emotion, head movement, and strong visible performance gestures. "
+            "[Clothing/hair] moves naturally with their body motion. "
+            "The camera [camera motion] while keeping all singers clearly framed and visible. "
+            "The environment [visible motion/reaction]."
+        )
+    elif has_one_singer:
+        template = (
+            "Use this final prompt shape:\n"
+            f"The [subject: {singer_text}] in [location/environment] during [time/weather/lighting]. "
+            f"[Subject] is singing with passion, clearly moving their mouth in sync with the lyric \"{lyric_text}\", "
+            "with expressive facial emotion, head movement, and strong visible performance gestures. "
+            "[Clothing/hair] moves naturally with their body motion. "
+            "The camera [camera motion] while keeping the subject clearly framed and visible. "
+            "The environment [visible motion/reaction]."
+        )
+    elif lyric_text:
+        template = (
+            "Use this final prompt shape:\n"
+            f"The [visible subject] in [location/environment] during [time/weather/lighting]. "
+            f"The visible subject is singing with passion, clearly moving their mouth in sync with the lyric \"{lyric_text}\", "
+            "with expressive facial emotion, head movement, and strong visible performance gestures. "
+            "[Clothing/hair] moves naturally with their body motion. "
+            "The camera [camera motion] while keeping the subject clearly framed and visible. "
+            "The environment [visible motion/reaction]."
+        )
+    else:
+        template = (
+            "Use this final prompt shape:\n"
+            "The [subject or main visual focus] in [location/environment] during [time/weather/lighting]. "
+            "[Subject or main visual focus] [clear visible action]. [Clothing, hair, objects, or props] move naturally if visible. "
+            "The camera [camera motion] while keeping the main visual focus clearly framed and visible. "
+            "The environment [visible motion/reaction]."
+        )
+
+    return (
+        f"Rewrite this draft {mode_label} video prompt into one stronger LTX-ready paragraph.\n\n"
+        "Use the requested sentence shape, but replace every bracketed phrase with concrete details. Never output brackets or placeholder words.\n"
+        "Preserve the subject, location, outfit, scene identity, and any user-requested camera/motion notes from the inputs.\n"
+        "Only describe visible physical actions or visible scene motion. Do not mention invisible sensations, internal thoughts, symbolism, breath, heartbeat, sound-only details, or audio instructions.\n"
+        "Do not use the word lip-sync. Use singing language only when this is a vocal scene.\n"
+        "Do not add microphones unless they are visible or explicitly requested.\n"
+        "Do not add captions, text overlays, dialogue explanations, unrelated characters, new locations, markdown, labels, or explanations.\n"
+        "Output one polished paragraph only.\n\n"
+        f"{template}\n\n"
+        f"Draft prompt:\n{draft_prompt}\n\n"
+        f"Scene/T2I context:\n{scene_prompt or '(none)'}\n\n"
+        f"User/video notes:\n{user_notes or '(none)'}\n\n"
+        f"Lyric text:\n{lyric_text or '(none)'}\n\n"
+        f"Singer(s):\n{singer_text or '(none)'}"
+    )
+
+
+def _enhance_builder_video_prompt(payload):
+    draft_prompt = str(payload.get("draft_prompt") or "").strip()
+    if not draft_prompt:
+        raise ValueError("Draft video prompt is empty.")
+    model_file = str(payload.get("model_file") or payload.get("repair_model_file") or "").strip()
+    if model_file:
+        payload = dict(payload)
+        payload["model_file"] = model_file
+    instruction = _video_prompt_enhancement_instructions(payload)
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("enhance_temperature") or 0.25),
+        top_p=float(payload.get("enhance_top_p") or 0.9),
+        max_new_tokens=int(payload.get("enhance_max_new_tokens") or 1200),
+        label="I2V prompt enhancement",
+    )
+    text = _clean_gemma_prompt_text(text)
+    text = _repair_and_validate_builder_gemma_prompt(payload, text, str(payload.get("mode_label") or "I2V"))
+    return {
+        "prompt": text,
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", bool(payload.get("unload_after", True))),
+    }
+
+
 def _image_from_prompt_payload(path, data, label):
     raw_data = str(data or "").strip()
     raw_path = str(path or "").strip().strip('"')
@@ -4715,19 +4827,21 @@ def _save_single_scene_srt(payload):
         raise ValueError("Project folder is empty.")
     scene_number = int(payload.get("scene_number") or 1)
     duration = max(0.1, float(payload.get("duration") or 4))
+    start_time = max(0.0, float(payload.get("start_time") or 0))
+    end_time = start_time + duration
     label = str(payload.get("label") or f"Scene {scene_number}").strip()
     folder = os.path.join(project_folder, "scene_srt")
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, f"scene_{scene_number:04d}.srt")
     text = "\n".join([
         "1",
-        f"{_format_srt_time(0)} --> {_format_srt_time(duration)}",
+        f"{_format_srt_time(start_time)} --> {_format_srt_time(end_time)}",
         label,
         "",
     ])
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(text)
-    return {"srt_path": path, "scene_number": scene_number, "duration": duration}
+    return {"srt_path": path, "scene_number": scene_number, "start_time": start_time, "duration": duration}
 
 
 def _trim_scene_audio(payload):
@@ -5423,6 +5537,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _generate_builder_t2v_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/enhance_video_prompt")
+    async def vrgdg_music_builder_enhance_video_prompt(request):
+        try:
+            payload = await request.json()
+            result = _enhance_builder_video_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

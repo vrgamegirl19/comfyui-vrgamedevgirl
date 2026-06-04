@@ -147,6 +147,42 @@
       "title": "VRGDG_GetStems"
     }
   },
+  "28:818": {
+    "inputs": {
+      "text": [
+        "958",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - preview style/theme"
+    }
+  },
+  "28:927": {
+    "inputs": {
+      "text": [
+        "959",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText - Preview subject"
+    }
+  },
+  "28:946": {
+    "inputs": {
+      "text": [
+        "959",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
   "28:817": {
     "inputs": {
       "text": [
@@ -169,57 +205,6 @@
     "class_type": "VRGDG_ShowText",
     "_meta": {
       "title": "VRGDG_ShowText - Preview story Idea"
-    }
-  },
-  "28:818": {
-    "inputs": {
-      "text": [
-        "958",
-        0
-      ]
-    },
-    "class_type": "VRGDG_ShowText",
-    "_meta": {
-      "title": "VRGDG_ShowText - preview style/theme"
-    }
-  },
-  "28:945": {
-    "inputs": {
-      "model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
-      "mmproj_file": "mmproj-BF16.gguf",
-      "task_preset": "custom",
-      "custom_instructions": "Extract only the subject from the user input.\n\nReturn one clean sentence in this format:\nA/An [subject].\n\nRules:\n- Ignore locations and all other fields.\n- Preserve the subject details.\n- Add commas only where they improve readability.\n- End with a period.\n- Do not add extra text.\n\nExample input:\nsubject: female with blond hair wearing a red dress\nlocations:\nwoods\nkitchen\nvan\nbeach\n\nExample output:\nA female with blond hair, wearing a red dress.\n\nuser input:\n",
-      "user_input": [
-        "959",
-        0
-      ],
-      "trigger_word": "",
-      "image_count": 0,
-      "advanced": true,
-      "unload_after_run": true,
-      "n_ctx": 14848,
-      "n_gpu_layers": 99,
-      "n_threads": 8,
-      "chat_format": "",
-      "temperature": 0.3,
-      "top_p": 0.8,
-      "max_new_tokens": 32000
-    },
-    "class_type": "VRGDG_SuperGemmaGGUFChat",
-    "_meta": {
-      "title": "🧠 VRGDG SuperGemma GGUF Chat 🧠"
-    }
-  },
-  "28:927": {
-    "inputs": {
-      "text": [
-        "959",
-        0
-      ]
-    },
-    "class_type": "VRGDG_ShowText",
-    "_meta": {
-      "title": "VRGDG_ShowText - Preview subject"
     }
   },
   "28:82": {
@@ -248,18 +233,6 @@
     "class_type": "BeatImpactAnalysisNode",
     "_meta": {
       "title": "BeatImpactAnalysisNode"
-    }
-  },
-  "28:946": {
-    "inputs": {
-      "text": [
-        "959",
-        0
-      ]
-    },
-    "class_type": "VRGDG_ShowText",
-    "_meta": {
-      "title": "VRGDG_ShowText"
     }
   },
   "28:80": {
@@ -365,57 +338,6 @@
       "title": "VRGDG_ShowText(whisper transcription)"
     }
   },
-  "28:854": {
-    "inputs": {
-      "text": [
-        "28:849",
-        0
-      ]
-    },
-    "class_type": "VRGDG_ShowText",
-    "_meta": {
-      "title": "VRGDG_ShowText"
-    }
-  },
-  "28:892": {
-    "inputs": {
-      "model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
-      "mmproj_file": "mmproj-BF16.gguf",
-      "task_preset": "custom",
-      "custom_instructions": [
-        "28:849",
-        0
-      ],
-      "user_input": "",
-      "trigger_word": "",
-      "image_count": 0,
-      "advanced": true,
-      "unload_after_run": true,
-      "n_ctx": 13056,
-      "n_gpu_layers": 99,
-      "n_threads": 8,
-      "chat_format": "",
-      "temperature": 0.3,
-      "top_p": 0.8,
-      "max_new_tokens": 32000
-    },
-    "class_type": "VRGDG_SuperGemmaGGUFChat",
-    "_meta": {
-      "title": "🧠 VRGDG SuperGemma GGUF Chat 🧠"
-    }
-  },
-  "28:890": {
-    "inputs": {
-      "text": [
-        "28:892",
-        0
-      ]
-    },
-    "class_type": "VRGDG_LyricSegmentJsonFixer",
-    "_meta": {
-      "title": "VRGDG_LyricSegmentJsonFixer"
-    }
-  },
   "28:915": {
     "inputs": {
       "text": [
@@ -426,25 +348,6 @@
     "class_type": "VRGDG_ShowText",
     "_meta": {
       "title": "VRGDG_ShowText"
-    }
-  },
-  "28:887": {
-    "inputs": {
-      "srt_text": [
-        "28:80",
-        0
-      ],
-      "segments_json": [
-        "28:890",
-        0
-      ],
-      "strict_count_match": true,
-      "decimal_places": 3,
-      "use_srt_durations": true
-    },
-    "class_type": "VRGDG_LyricSegmentDurationMerger",
-    "_meta": {
-      "title": "VRGDG_LyricSegmentDurationMerger"
     }
   },
   "28:886": {
@@ -513,6 +416,30 @@
       "title": "VRGDG_PromptTemplateBuilder"
     }
   },
+  "28:948": {
+    "inputs": {
+      "text": [
+        "28:949",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:854": {
+    "inputs": {
+      "text": [
+        "28:849",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
   "28:940": {
     "inputs": {
       "string_count": 2,
@@ -546,31 +473,16 @@
       "title": "VRGDG_MultiStringConcat"
     }
   },
-  "28:909": {
+  "28:890": {
     "inputs": {
-      "model_file": "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf",
-      "mmproj_file": "mmproj-BF16.gguf",
-      "task_preset": "custom",
-      "custom_instructions": "You are a lyric-to-visual-concept converter.\n\nINPUTS\nYou will receive:\n1. LYRIC_SEGMENT_JSON: corrected lyric segments in order.\n2. STORY: the overall story arc.\n3. THEME_STYLE: visual style, mood, genre, world, and atmosphere.\n4. SUBJECT: the main subject details, provided for downstream use only.\n5. LOCATIONS: an optional list of locations or settings that should be used for the visual concepts.\n\nTASK\nCreate one visual concept for each lyric segment.\nThese concepts will be sent to another LLM that writes the final text-to-image prompt.\nDo not write the final image prompt here.\n\nIMPORTANT\nDo not describe the main subject.\nDo not include character gender, hair, clothing, face, body, age, identity, or repeated subject details.\nThe SUBJECT input is provided for downstream use only and must be ignored when writing the concepts.\nIf a LOCATIONS list is provided, each concept must use one location from that list as its primary setting.\nDo not invent a different primary location when LOCATIONS is provided.\n\nSTORY FLOW\nMake the concepts feel like one continuous story sequence.\nEach concept should feel like the next small beat after the previous one.\nShow progression in action, location, emotion, stakes, or visual transformation.\nWhen a LOCATIONS list is provided, build the story using locations from that list.\nPrefer moving through the listed locations across the sequence in a way that feels like a journey or evolving story.\nAvoid making every segment a disconnected literal illustration.\nDo not repeat the same scene idea unless the lyrics repeat and the story beat needs to echo.\n\nCONCEPT RULES\nUse the matching lyric segment as the main source for the moment.\nUse STORY to keep the scene connected across segments.\nUse THEME_STYLE for mood, lighting, setting, color, genre, and surreal details.\nEach concept must be one sentence.\nEach concept must include a clear setting.\nIf LOCATIONS is provided, that setting must be one of the locations from the LOCATIONS list.\nFocus on visible action, environment, emotional tone, props, symbols, and motion.\nMake each concept useful for both image generation and later image-to-video motion.\nDo not mention camera moves unless the lyric clearly needs motion.\nDo not quote the lyric directly unless it is necessary.\nDo not explain anything.\n\nLOCATION RULES\nIf LOCATIONS is provided, every Prompt value must begin with one exact location phrase copied from the LOCATIONS list, followed by a colon.\nDo not use a location unless it appears in LOCATIONS.\nDo not shorten, rename, paraphrase, or replace the location.\nIf the story needs to stay in the same place, reuse the same exact location phrase.\n\nOUTPUT KEYS\nReturn one key for every input segment.\nUse keys named \"Prompt1\", \"Prompt2\", \"Prompt3\", etc.\nNever use \"lyricSegment\" keys.\nNever skip, merge, split, or reorder prompts.\n\nOUTPUT\nReturn valid JSON only.\nNo markdown.\nNo explanation.\nUse double quotes.\nNo trailing commas.\nNo line breaks inside string values.\n\nFORMAT\n{\n  \"Prompt1\": \"A short visual story beat using one provided location as the setting, with action, mood, and image-to-video friendly motion, without describing the subject.\",\n  \"Prompt2\": \"The next connected visual story beat using one provided location as the setting, continuing the previous moment without repeating subject details.\"\n}\n\n",
-      "user_input": [
-        "28:910",
+      "text": [
+        "28:849",
         0
-      ],
-      "trigger_word": "",
-      "image_count": 0,
-      "advanced": true,
-      "unload_after_run": true,
-      "n_ctx": 14848,
-      "n_gpu_layers": 99,
-      "n_threads": 8,
-      "chat_format": "",
-      "temperature": 0.3,
-      "top_p": 0.8,
-      "max_new_tokens": 32000
+      ]
     },
-    "class_type": "VRGDG_SuperGemmaGGUFChat",
+    "class_type": "VRGDG_LyricSegmentJsonFixer",
     "_meta": {
-      "title": "🧠 VRGDG SuperGemma GGUF Chat 🧠"
+      "title": "VRGDG_LyricSegmentJsonFixer"
     }
   },
   "28:923": {
@@ -587,10 +499,7 @@
   },
   "28:920": {
     "inputs": {
-      "text": [
-        "28:909",
-        0
-      ],
+      "text": "",
       "use_srt_file": true,
       "srt_file": [
         "28:80",
@@ -602,24 +511,28 @@
       "title": "VRGDG_PromptMapJsonFixer"
     }
   },
-  "28:948": {
+  "28:887": {
     "inputs": {
-      "text": [
-        "28:949",
+      "srt_text": [
+        "28:80",
         0
-      ]
+      ],
+      "segments_json": [
+        "28:890",
+        0
+      ],
+      "strict_count_match": true,
+      "decimal_places": 3,
+      "use_srt_durations": true
     },
-    "class_type": "VRGDG_ShowText",
+    "class_type": "VRGDG_LyricSegmentDurationMerger",
     "_meta": {
-      "title": "VRGDG_ShowText"
+      "title": "VRGDG_LyricSegmentDurationMerger"
     }
   },
   "28:947": {
     "inputs": {
-      "subject": [
-        "28:945",
-        0
-      ],
+      "subject": "",
       "separator": " ",
       "skip_if_already_starts_with_subject": "",
       "prompt_json": [

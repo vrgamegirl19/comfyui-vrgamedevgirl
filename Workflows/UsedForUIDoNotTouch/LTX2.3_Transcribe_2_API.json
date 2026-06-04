@@ -1,0 +1,44 @@
+{
+  "962": {
+    "inputs": {
+      "reference_lyrics": "",
+      "model_name": "large-v3",
+      "language": "english",
+      "segment_mode": "reference_lines",
+      "include_instrumental_gaps": "[instrumental]",
+      "instrumental_text": "instrumental",
+      "min_gap_seconds": 1,
+      "audio": [
+        "28:114",
+        0
+      ]
+    },
+    "class_type": "VRGDG_TimestampedLyricsExtractor",
+    "_meta": {
+      "title": "Timestamped Lyrics Extractor (stable-ts)"
+    }
+  },
+  "963": {
+    "inputs": {
+      "text": [
+        "962",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:114": {
+    "inputs": {
+      "model_name": "htdemucs_ft",
+      "device": "auto",
+      "audio_file_path": "Z:\\ComfyUI\\ComfyUI_windows_portable\\ComfyUI\\output\\Circuit Teeth.mp3"
+    },
+    "class_type": "VRGDG_GetStems",
+    "_meta": {
+      "title": "VRGDG_GetStems"
+    }
+  }
+}

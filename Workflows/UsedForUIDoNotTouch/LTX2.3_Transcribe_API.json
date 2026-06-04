@@ -1,0 +1,47 @@
+{
+  "960": {
+    "inputs": {
+      "scene_duration_seconds": 4,
+      "fps": 24,
+      "srt_path": "",
+      "reference_lyrics": "",
+      "strict_reference_text": true,
+      "fill_aggressiveness": 1,
+      "preserve_nonvocal_segments": true,
+      "alignment_min_words": 1,
+      "model_name": "large-v3",
+      "language": "english",
+      "audio": [
+        "28:114",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ManualLyricsExtractor_SRT_Advanced",
+    "_meta": {
+      "title": "Manual Lyrics Extractor (SRT Advanced - stable-ts)"
+    }
+  },
+  "961": {
+    "inputs": {
+      "text": [
+        "960",
+        0
+      ]
+    },
+    "class_type": "VRGDG_ShowText",
+    "_meta": {
+      "title": "VRGDG_ShowText"
+    }
+  },
+  "28:114": {
+    "inputs": {
+      "model_name": "htdemucs_ft",
+      "device": "auto",
+      "audio_file_path": ""
+    },
+    "class_type": "VRGDG_GetStems",
+    "_meta": {
+      "title": "VRGDG_GetStems"
+    }
+  }
+}

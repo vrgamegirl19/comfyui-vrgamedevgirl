@@ -499,8 +499,9 @@ class VRGDG_LoadAudioSplit_SRTOnly:
         PRE_FRAMES  = pre_frames
         TAIL_FRAMES = tail_loss_frames
 
-        # chunk 0 should never have preroll
-        if chunk_index == 0:
+        # First chunk can only use preroll when the SRT starts after 0.
+        # Single-scene UI renders trim audio with preroll before the SRT start.
+        if chunk_index == 0 and start_frame <= 0:
             PRE_FRAMES = 0
 
         truth_frames = frames_per_scene
@@ -779,7 +780,7 @@ class VRGDG_TrimImageBatch_SRTOnly:
         print(f"[TRIM] frames_per_scene= {frames_per_scene}")
         print(f"[TRIM] pre_frames      = {pre_frames}")
 
-        expected_min = (0 if chunk_index == 0 else pre_frames) + frames_per_scene
+        expected_min = pre_frames + frames_per_scene
         print(f"[TRIM] expected_min_frames_from_LTX = {expected_min}")
 
         extra = total_frames - expected_min
@@ -788,9 +789,9 @@ class VRGDG_TrimImageBatch_SRTOnly:
         if total_frames < expected_min:
             print("[TRIM] ❌ LTX returned TOO FEW frames!")
 
-        if chunk_index == 0:
+        if chunk_index == 0 and pre_frames <= 0:
             end = min(frames_per_scene, total_frames)
-            print(f"[TRIM] FIRST CHUNK → slicing [0:{end}]")
+            print(f"[TRIM] FIRST CHUNK WITHOUT PREROLL -> slicing [0:{end}]")
             out = images[:end]
             print(f"[TRIM] output_frames = {out.shape[0]}")
             return (out,)
