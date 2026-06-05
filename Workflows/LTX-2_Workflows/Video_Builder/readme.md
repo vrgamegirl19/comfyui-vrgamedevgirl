@@ -2,7 +2,7 @@
 
 This guide is for someone opening the Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
-![Full Video Builder Window](../images/Full%20V7%20Video%20Builder%20Window.png)
+![Full Video Builder Window](../images/Full%20V8%20Video%20Builder%20window.png)
 
 ## Table of Contents
 
@@ -97,6 +97,8 @@ The top bar contains project-wide tools. These are not tied to only one scene.
 | `Close` | Closes the builder UI |
 
 If a button opens a modal, use that modal's `Close` button to return to the main builder.
+
+![Top bar buttons](../images/Top%20bar%20buttons%20screenshot.png)
 
 ## Starting or Loading a Project
 
@@ -207,6 +209,8 @@ Use `Video Notes` when you want to describe what should happen in motion. Use `D
 ![Timeline Controls](../images/Timeline%20Controls.png)
 
 ![Timeline With Scenes](../images/Timeline%20Scene%20Blocks.png)
+
+![Video Notes lane on the timeline](../images/Video%20Notes%20lane%20on%20the%20timeline.png)
 
 ## Scene Tab
 
@@ -368,6 +372,12 @@ Use it for model-specific trigger words, LoRA trigger phrases, or a short global
 ![ZImage Prompting](../images/ZImage%20Prompting.png)
 
 ![Flux Reference Images](../images/Flux%20Reference%20Images.png)
+
+![Nano B model settings](../images/Nano%20B%20model%20settings.png)
+
+![Nano B image settings](../images/Nano%20B%20image%20settings.png)
+
+![Nano B LLM Prompting settings](../images/Nano%20B%20LLM%20Prompting%20settings.png)
 
 ## Video Tab
 
@@ -561,6 +571,8 @@ The usual flow is:
 7. Save the lyric mapping.
 8. Run Gemma video prompting.
 
+![Lyric Mapping Step 1 window](../images/Lyric%20Mapping%20Step%201%20window.png)
+
 ### Step 1: Transcribe Lyrics Or Create Scenes
 
 The first Lyric Mapping screen has two starting options.
@@ -614,6 +626,8 @@ The Create Scenes window includes these controls:
 | `Vocal tail padding` | Adds a little extra time after vocal chunks so last words are less likely to get cut off |
 | `Create Timeline Scenes` | Runs the timestamped transcription workflow and replaces the current base timeline with generated lyric scenes |
 | `?` hint | Explains the timestamped lyric settings |
+
+![Create Scenes From Lyrics window](../images/Create%20Scenes%20From%20Lyrics%20window.png)
 
 Important notes:
 
@@ -691,6 +705,8 @@ Padding helps, but it does not replace manual review. Always check the timing in
 `Review Lyrics + Map Singers` is the main cleanup window after transcription.
 
 This is where you listen scene by scene, fix lyric text, correct timing, choose singers, mark instrumental/B-roll scenes, and save the data that Gemma uses for video prompting.
+
+![Review Lyrics and Map Singers window](../images/Review%20Lyrics%20%20Map%20Singers%20window.png)
 
 ### Top Controls
 
@@ -993,7 +1009,7 @@ It does not overwrite your lyric text. It only helps connect scene references to
 
 ![Reference Builder Window](../images/Reference%20Builder%20Window.png)
 
-![Reference Builder Mapping](../images/Reference%20Builder%20Window.png)
+![Reference Builder with character and location mappings](../images/Reference%20Builder%20with%20character%20and%20location%20mappings.png)
 
 ## Builder Agent
 
@@ -1133,6 +1149,8 @@ Clearing prompts does not delete images, videos, LoRAs, reference images, model 
 
 ![Prompt Options Window](../images/Prompt%20Options%20Window.png)
 
+![Prompt Options image and video groups](../images/Prompt%20Options%20image%20and%20video%20groups.png)
+
 ## Gemma Runner
 
 The `Gemma Runner` button controls which runner is used for text-only Gemma steps.
@@ -1167,6 +1185,8 @@ If LM Studio does not list models:
 5. Return to the builder and click `Load LM Studio Models`.
 
 ![Gemma Runner Window](../images/Gemma%20Runner%20Window.png)
+
+![Gemma Runner with LM Studio model dropdown](../images/Gemma%20Runner%20with%20LM%20Studio%20model%20dropdown.png)
 
 ## Batch Buttons and Full Builds
 
@@ -1381,6 +1401,8 @@ Use them for:
 - custom success/failure sounds
 
 Browsers may block sound until you have clicked somewhere in the page at least once.
+
+![Settings window with custom model root and audio notifications](../images/Settings%20window%20with%20custom%20model%20root%20and%20audio%20notifications.png)
 
 ## Models and Downloads
 
