@@ -4,8 +4,6 @@ This guide is for someone opening the Video Builder for the first time. It expla
 
 ![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20V8%20Video%20Builder%20window.png)
 
-Guide video walkthrough files are stored here: [Video walkthrough MP4 folder](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/tree/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video).
-
 ## Table of Contents
 
 - [What the V8 Video Builder Does](#what-the-v8-video-builder-does)
@@ -103,7 +101,7 @@ When the builder opens, it may show a welcome window where you can create a new 
 
 Video walkthrough:
 
-[Watch: Opening the Video Builder node and welcome window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.mp4)
+[![Opening the Video Builder node and welcome window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.mp4)
 
 ## The Main Layout
 
@@ -165,13 +163,13 @@ Projects are saved under the ComfyUI output folder. A builder project contains t
 
 Project menu walkthroughs:
 
-[Watch: Create a new project](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20Start%20new%20Project%20window%20display.mp4)
+[![Create a new project](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Menu%20Start%20new%20Project%20window%20display.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20Start%20new%20Project%20window%20display.mp4)
 
-[Watch: Load an existing project](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20load%20project.mp4)
+[![Load an existing project](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/menu%20load%20project.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20load%20project.mp4)
 
-[Watch: Quick Save and Save Project As](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/quicksave%20and%20save%20project%20as.mp4)
+[![Quick Save and Save Project As](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/quicksave%20and%20save%20project%20as.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/quicksave%20and%20save%20project%20as.mp4)
 
-[Watch: Save Project As window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20save%20project%20as%20window%20display.mp4)
+[![Save Project As window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/menu%20save%20project%20as%20window%20display.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20save%20project%20as%20window%20display.mp4)
 
 ## Adding Audio and SRT Timing
 
@@ -266,21 +264,21 @@ Use `Video Notes` when you want to describe what should happen in motion. Use `D
 
 ### Timeline Video Walkthroughs
 
-GitHub does not reliably show embedded video players inside Markdown files, so these are direct MP4 links. Click a link to open the clip in the browser.
+Click a GIF preview to open the full MP4 walkthrough.
 
-| Clip | What it shows |
+| Preview | What it shows |
 | --- | --- |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20base%20and%20insert%20clips.mp4) | Base timeline clips and insert clips |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20showing%20all%20note%20lanes%20.mp4) | Scene notes, video notes, lyric notes, and timeline lanes |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/adding%20segmnets%20and%20bulk%20segments.mp4) | Adding normal segments and using Bulk Segments |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/hide%20notes.mp4) | Showing and hiding note lanes |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.mp4) | Freezing/unfreezing timing and editing scene timing |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20segment.mp4) | Deleting a segment |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20image.mp4) | Deleting an image |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20video.mp4) | Deleting a video |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/select%20multi.mp4) | Using Select Multi |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/waveform%20settings.mp4) | Waveform display settings |
-| [Watch clip](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/beat%20markers%20and%20snap%20to%20beats.mp4) | Beat markers and Snap Beats |
+| [![Timeline base and insert clips](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/timeline%20base%20and%20insert%20clips.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20base%20and%20insert%20clips.mp4) | Base timeline clips and insert clips |
+| [![Timeline showing all note lanes](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/timeline%20showing%20all%20note%20lanes%20.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20showing%20all%20note%20lanes%20.mp4) | Scene notes, video notes, lyric notes, and timeline lanes |
+| [![Adding segments and bulk segments](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/adding%20segmnets%20and%20bulk%20segments.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/adding%20segmnets%20and%20bulk%20segments.mp4) | Adding normal segments and using Bulk Segments |
+| [![Hide notes](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/hide%20notes.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/hide%20notes.mp4) | Showing and hiding note lanes |
+| [![Freeze and timeline edits](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.mp4) | Freezing/unfreezing timing and editing scene timing |
+| [![Delete a segment](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20a%20segment.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20segment.mp4) | Deleting a segment |
+| [![Delete image](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20image.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20image.mp4) | Deleting an image |
+| [![Delete video](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20a%20video.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20video.mp4) | Deleting a video |
+| [![Select multi](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/select%20multi.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/select%20multi.mp4) | Using Select Multi |
+| [![Waveform settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/waveform%20settings.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/waveform%20settings.mp4) | Waveform display settings |
+| [![Beat markers and snap to beats](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/beat%20markers%20and%20snap%20to%20beats.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/beat%20markers%20and%20snap%20to%20beats.mp4) | Beat markers and Snap Beats |
 
 ## Scene Tab
 
@@ -1478,7 +1476,7 @@ Browsers may block sound until you have clicked somewhere in the page at least o
 
 Settings walkthrough:
 
-[Watch: Settings and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20settings%2C%20all%20settings.mp4)
+[![Settings and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Menu%20settings%2C%20all%20settings.gif)](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20settings%2C%20all%20settings.mp4)
 
 ## Models and Downloads
 
