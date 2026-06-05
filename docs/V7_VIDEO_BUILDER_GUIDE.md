@@ -7,6 +7,7 @@ This guide is for someone opening the Video Builder for the first time. It expla
 ## Table of Contents
 
 - [What the V8 Video Builder Does](#what-the-v8-video-builder-does)
+- [Switching to the V8 Branch](#switching-to-the-v8-branch)
 - [Opening the Builder](#opening-the-builder)
 - [The Main Layout](#the-main-layout)
 - [Top Bar Buttons](#top-bar-buttons)
@@ -53,6 +54,41 @@ The basic idea is:
 
 V8 adds more tools for lyric-driven music videos, including Lyric Mapping, timeline lyric notes, video notes, better singer/no-lip-sync handling, and audio notifications.
 
+## Switching to the V8 Branch
+
+If you are already using another branch, stop ComfyUI first, save any open project, and back up anything important before switching.
+
+If you use Git, open a terminal in your `comfyui-vrgamedevgirl` custom node folder and run:
+
+```bash
+git fetch origin
+git switch dev/music-video-builder-ui-test-v8
+git pull
+```
+
+If Git says the branch does not exist locally yet, run:
+
+```bash
+git fetch origin dev/music-video-builder-ui-test-v8:dev/music-video-builder-ui-test-v8
+git switch dev/music-video-builder-ui-test-v8
+```
+
+To confirm you are on the right branch:
+
+```bash
+git branch --show-current
+```
+
+It should show:
+
+```bash
+dev/music-video-builder-ui-test-v8
+```
+
+If you download from GitHub instead of using Git, use the branch dropdown on the repository page, choose `dev/music-video-builder-ui-test-v8`, then download that branch as a ZIP.
+
+After switching branches, restart ComfyUI and hard refresh the browser page so the new JavaScript UI files load.
+
 ## Opening the Builder
 
 Add the node named `VRGDG Music Video Builder UI` in ComfyUI.
@@ -62,6 +98,10 @@ When the builder opens, it may show a welcome window where you can create a new 
 ![ComfyUI Builder Node](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/ComfyUI%20Builder%20Node.png)
 
 ![Welcome Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Welcome%20Window.png)
+
+Video walkthrough:
+
+<video controls width="420" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.mp4"></video>
 
 ## The Main Layout
 
@@ -120,6 +160,16 @@ Projects are saved under the ComfyUI output folder. A builder project contains t
 ![Menu Dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Menu%20Dropdown.png)
 
 ![Load Project Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Load%20Project%20Window.png)
+
+Project menu walkthroughs:
+
+<video controls width="420" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20Start%20new%20Project%20window%20display.mp4"></video>
+
+<video controls width="420" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20load%20project.mp4"></video>
+
+<video controls width="420" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/quicksave%20and%20save%20project%20as.mp4"></video>
+
+<video controls width="420" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20save%20project%20as%20window%20display.mp4"></video>
 
 ## Adding Audio and SRT Timing
 
@@ -211,6 +261,24 @@ Use `Video Notes` when you want to describe what should happen in motion. Use `D
 ![Timeline With Scenes](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Timeline%20Scene%20Blocks.png)
 
 ![Video Notes lane on the timeline](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Notes%20lane%20on%20the%20timeline.png)
+
+### Timeline Video Walkthroughs
+
+The clips below are small inline previews. Use the video player's fullscreen button to view them larger.
+
+| Clip | What it shows |
+| --- | --- |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20base%20and%20insert%20clips.mp4"></video> | Base timeline clips and insert clips |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20showing%20all%20note%20lanes%20.mp4"></video> | Scene notes, video notes, lyric notes, and timeline lanes |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/adding%20segmnets%20and%20bulk%20segments.mp4"></video> | Adding normal segments and using Bulk Segments |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/hide%20notes.mp4"></video> | Showing and hiding note lanes |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.mp4"></video> | Freezing/unfreezing timing and editing scene timing |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20segment.mp4"></video> | Deleting a segment |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20image.mp4"></video> | Deleting an image |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20video.mp4"></video> | Deleting a video |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/select%20multi.mp4"></video> | Using Select Multi |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/waveform%20settings.mp4"></video> | Waveform display settings |
+| <video controls width="360" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/beat%20markers%20and%20snap%20to%20beats.mp4"></video> | Beat markers and Snap Beats |
 
 ## Scene Tab
 
@@ -1091,6 +1159,8 @@ Use caution with the clear buttons. They remove prompt text from the project sta
 
 The editor accepts several formats:
 
+Important: after you edit and save T2I or I2V prompt text in the Prompt Options editor, use the matching reload button before running builds. Saving updates the prompt file on disk. Reloading copies the saved prompt file back into the scene prompt boxes the builder uses.
+
 Blank-line format:
 
 ```text
@@ -1138,10 +1208,10 @@ For I2V prompts:
 
 | Button | What it changes |
 | --- | --- |
-| `Reload Text to Image Prompts` | Loads the current T2I prompt file into scene prompt boxes |
+| `Reload Text to Image Prompts` | Loads the current T2I prompt file into scene prompt boxes after editing/saving |
 | `Reload Original T2I Prompts` | Restores the first backup made by the prompt editor |
 | `Clear All T2I Prompts` | Clears saved image prompts only |
-| `Reload Image to Video Prompts` | Loads the current I2V prompt file into scene prompt boxes |
+| `Reload Image to Video Prompts` | Loads the current I2V prompt file into scene prompt boxes after editing/saving |
 | `Reload Original I2V Prompts` | Restores the first backup made by the prompt editor |
 | `Clear All I2V Prompts` | Clears saved video prompts only |
 
@@ -1403,6 +1473,10 @@ Use them for:
 Browsers may block sound until you have clicked somewhere in the page at least once.
 
 ![Settings window with custom model root and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Settings%20window%20with%20custom%20model%20root%20and%20audio%20notifications.png)
+
+Settings walkthrough:
+
+<video controls width="420" src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20settings%2C%20all%20settings.mp4"></video>
 
 ## Models and Downloads
 

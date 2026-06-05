@@ -740,7 +740,7 @@ function showSaveProjectAsModal(defaultName = "") {
   });
 }
 
-function showWelcomeProjectModal(projects = []) {
+function showWelcomeProjectModal(projects = [], projectsLoader = null) {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
@@ -763,8 +763,10 @@ function showWelcomeProjectModal(projects = []) {
     listTitle.style.cssText = "font-size:12px;font-weight:900;color:#bae6fd;margin-top:4px;";
     const list = document.createElement("div");
     list.style.cssText = "display:flex;flex-direction:column;gap:7px;overflow:auto;max-height:min(420px,46vh);padding-right:3px;";
+    let finished = false;
 
     const finish = (result) => {
+      finished = true;
       backdrop.remove();
       resolve(result);
     };
@@ -774,13 +776,21 @@ function showWelcomeProjectModal(projects = []) {
       if (event.key === "Escape") finish(null);
     });
 
-    if (!projects.length) {
+    const showEmpty = (text = "No existing projects were found in the ComfyUI output folder.") => {
+      list.replaceChildren();
       const empty = document.createElement("div");
-      empty.textContent = "No existing projects were found in the ComfyUI output folder.";
+      empty.textContent = text;
       empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;padding:14px;color:#a1a1aa;font-size:12px;text-align:center;";
       list.append(empty);
-    } else {
-      for (const project of projects) {
+    };
+
+    const renderProjects = (items = []) => {
+      list.replaceChildren();
+      if (!items.length) {
+        showEmpty();
+        return;
+      }
+      for (const project of items) {
         const row = document.createElement("div");
         row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #3f3f46;border-radius:7px;background:#18181b;padding:10px;";
         const info = document.createElement("div");
@@ -826,13 +836,28 @@ function showWelcomeProjectModal(projects = []) {
         row.append(info, open, del);
         list.append(row);
       }
-    }
+    };
 
     box.append(heading, note, actions, listTitle, list);
     backdrop.append(box);
     document.body.append(backdrop);
     backdrop.tabIndex = -1;
     backdrop.focus();
+
+    if (projectsLoader && typeof projectsLoader.then === "function") {
+      showEmpty("Loading existing projects...");
+      projectsLoader
+        .then((loadedProjects) => {
+          if (finished) return;
+          renderProjects(Array.isArray(loadedProjects) ? loadedProjects : []);
+        })
+        .catch((error) => {
+          console.warn("[VRGDG Music Builder] Could not list existing projects:", error);
+          if (!finished) showEmpty("Could not load existing projects. You can still create a new project.");
+        });
+    } else {
+      renderProjects(projects);
+    }
   });
 }
 
@@ -12307,14 +12332,9 @@ function openBuilder(node) {
       state.overlaySegments = [];
       state.activeId = state.segments[0]?.id || "";
     }
-    let projects = [];
-    try {
-      const data = await getJson("/vrgdg/music_builder/list_projects");
-      projects = Array.isArray(data.projects) ? data.projects : [];
-    } catch (error) {
-      console.warn("[VRGDG Music Builder] Could not list existing projects:", error);
-    }
-    const choice = await showWelcomeProjectModal(projects);
+    const projectsLoader = getJson("/vrgdg/music_builder/list_projects")
+      .then((data) => Array.isArray(data.projects) ? data.projects : []);
+    const choice = await showWelcomeProjectModal([], projectsLoader);
     if (!choice) return false;
     if (choice.action === "new") {
       const mode = await window.VRGDGMusicVideoPromptCreator?.chooseNewProjectMode?.();
