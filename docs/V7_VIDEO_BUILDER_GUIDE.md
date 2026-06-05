@@ -4,6 +4,8 @@ This guide is for someone opening the Video Builder for the first time. It expla
 
 ![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20V8%20Video%20Builder%20window.png)
 
+Guide video walkthrough files are stored here: [Video walkthrough MP4 folder](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/tree/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video).
+
 ## Table of Contents
 
 - [What the V8 Video Builder Does](#what-the-v8-video-builder-does)
