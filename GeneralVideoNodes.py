@@ -2996,7 +2996,7 @@ class VRGDG_LatestSRTAutoLoader:
     @staticmethod
     def _get_srt_dir():
         node_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(node_dir, "srt_files")
+        return os.path.join(node_dir, "SRT_Files")
 
     @classmethod
     def _get_latest_srt_info(cls):
