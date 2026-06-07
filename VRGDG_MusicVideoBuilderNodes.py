@@ -1524,8 +1524,8 @@ def _resolve_editable_text_file(path):
     if not raw_path:
         raise ValueError("Text file path is empty.")
     file_path = os.path.normpath(os.path.abspath(raw_path))
-    if os.path.splitext(file_path)[1].lower() != ".txt":
-        raise ValueError("Only .txt files can be edited here.")
+    if os.path.splitext(file_path)[1].lower() not in {".txt", ".json"}:
+        raise ValueError("Only .txt or .json files can be edited here.")
     return file_path
 
 
@@ -2717,6 +2717,14 @@ def _generate_builder_concept_prompts(payload):
             "scene_number": max(1, number),
             "label": str(scene.get("label") or f"Scene {number}").strip()[:160],
             "lyric_text": str(scene.get("lyric_text") or "").strip()[:1200],
+            "lyric_singers": [
+                str(item or "").strip()[:160]
+                for item in (scene.get("lyric_singers") if isinstance(scene.get("lyric_singers"), list) else [])
+                if str(item or "").strip()
+            ][:8],
+            "lyric_instrumental": bool(scene.get("lyric_instrumental")),
+            "lyric_no_lip_sync": bool(scene.get("lyric_no_lip_sync")),
+            "mapped_subjects": str(scene.get("mapped_subjects") or "").strip()[:1600],
             "director_note": str(scene.get("director_note") or "").strip()[:1200],
             "scene_note": str(scene.get("scene_note") or "").strip()[:1200],
             "timeline_notes": [
@@ -2739,9 +2747,12 @@ def _generate_builder_concept_prompts(payload):
         "director": "Use director notes as the main scene notes.",
         "scene": "Use raw scene notes as the main scene notes.",
         "timeline": "Use overlapping timeline notes as the main scene notes.",
+        "lyrics": "Use lyric notes as the main scene notes.",
+        "subjects": "Use subject and singer mapping as the main scene notes.",
+        "lyrics_subjects": "Use lyric notes plus subject and singer mapping as the main scene notes.",
         "director_scene": "Use director notes and raw scene notes as the main scene notes.",
-        "all": "Use all available notes: director notes, raw scene notes, and overlapping timeline notes.",
-    }.get(source_mode, "Use all available notes: director notes, raw scene notes, and overlapping timeline notes.")
+        "all": "Use all available notes: director notes, raw scene notes, lyric notes, subject/singer mapping, and overlapping timeline notes.",
+    }.get(source_mode, "Use all available notes: director notes, raw scene notes, lyric notes, subject/singer mapping, and overlapping timeline notes.")
 
     instruction = (
         "You will create concept prompts from scene notes and/or director notes, timeline notes, story idea, and style/theme.\n"
@@ -2757,6 +2768,9 @@ def _generate_builder_concept_prompts(payload):
         "Create one prompt for each provided scene.\n"
         "Each concept prompt must include who is in the scene, shot type, Location:, and scene details that fit the story world.\n\n"
         "Subject rules:\n"
+        "- If lyric_singers contains names, those are the subjects/performers for that scene.\n"
+        "- If mapped_subjects contains character reference names, use those as the visible subjects for that scene.\n"
+        "- If lyric_no_lip_sync is true or lyric_instrumental is true, the scene should not be treated as a singing/lip-sync performance scene.\n"
         "- If the scene note says female, start with \"Female only\".\n"
         "- If the scene note says male, start with \"Male only\".\n"
         "- If the scene note says female and male, start with \"Female and male together in frame\".\n"
@@ -3900,6 +3914,62 @@ def _generate_nb_image_prompt(payload):
 
     has_images = bool(images)
     has_unmapped_reference_images = has_images and not has_subject_reference and not has_location_reference
+
+    def _cleanup_nb_reference_claims(text):
+        text = str(text or "")
+        fallback_reference = "Using the provided reference image" if has_images else "Create"
+        if not has_subject_reference and not has_location_reference:
+            text = re.sub(
+                r"\bUsing the provided character reference and location reference\b",
+                fallback_reference,
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"\bUsing the provided location reference and character reference\b",
+                fallback_reference,
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"\bUsing the provided (?:character|location|scene) reference\b",
+                fallback_reference,
+                text,
+                flags=re.IGNORECASE,
+            )
+        elif not has_location_reference:
+            text = re.sub(
+                r"\bUsing the provided character reference and location reference\b",
+                "Using the provided character reference",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"\bUsing the provided location reference and character reference\b",
+                "Using the provided character reference",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(r"\s+and (?:the\s+)?(?:provided\s+)?(?:location|scene) reference(?: image)?\b", "", text, flags=re.IGNORECASE)
+        elif not has_subject_reference:
+            text = re.sub(
+                r"\bUsing the provided character reference and location reference\b",
+                "Using the provided location reference",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(
+                r"\bUsing the provided location reference and character reference\b",
+                "Using the provided location reference",
+                text,
+                flags=re.IGNORECASE,
+            )
+            text = re.sub(r"\s+and (?:the\s+)?(?:provided\s+)?character reference(?: image)?\b", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"\bcharacter reference(?: image)?\s+and\s+", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+,", ",", text)
+        text = re.sub(r"\s{2,}", " ", text)
+        return text.strip()
+
     if has_subject_reference and has_location_reference:
         reference_prompt_rules = (
             "- Start by mentioning both the provided character reference and location reference.\n"
@@ -3996,6 +4066,7 @@ def _generate_nb_image_prompt(payload):
         text = _clean_lm_studio_plain_text(text)
         if not text:
             raise ValueError("NanoBanana Gemma returned an empty prompt.")
+        text = _cleanup_nb_reference_claims(text)
         text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
         return {"prompt": text, **info}
 
@@ -4064,6 +4135,7 @@ def _generate_nb_image_prompt(payload):
     text = re.sub(r"(?im)^SCE+NE\s+REFEREN[CC]E\b", "SCENE REFERENCE", text)
     text = re.sub(r"\breference\s+imagae\b", "reference image", text, flags=re.IGNORECASE)
     text = re.sub(r"\breference\s+imagaes\b", "reference images", text, flags=re.IGNORECASE)
+    text = _cleanup_nb_reference_claims(text)
     if not text:
         raise ValueError("NanoBanana Gemma returned an empty prompt.")
     text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
