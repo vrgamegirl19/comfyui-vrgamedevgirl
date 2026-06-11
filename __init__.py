@@ -26,6 +26,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_StoryboardBuilderNodes",
     ".VRGDG_MusicVideoPromptCreatorNodes",
     ".VRGDG_ImageCompareNode",
+    ".vrgdg_ltx_msr_reference_builder",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (
