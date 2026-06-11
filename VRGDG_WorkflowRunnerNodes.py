@@ -24,6 +24,7 @@ from .VRGDG_ModelPathSettings import (
 _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = False
 _MAX_LORA_SLOTS = 20
 _NONE_LORA = "[none]"
+_REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors"
 _I2V_UNET_ALIASES = {
     "LTX-2.3-22B-distilled-11-Q6_K.gguf": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
 }
@@ -120,6 +121,15 @@ def _t2v_api_template_path():
         "Workflows",
         "UsedForUIDoNotTouch",
         "Singlet2vForUI_API.json",
+    )
+
+
+def _rtv_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "SingleRef2VidForUI_API.json",
     )
 
 
@@ -334,6 +344,23 @@ def _clean_lora_name(value):
     return text
 
 
+def _clean_msr_lora_name(value):
+    text = str(value or _REQUIRED_LTX_MSR_LORA).strip()
+    choices = set(_lora_choices())
+    candidates = [
+        text,
+        text.replace("/", "\\"),
+        text.replace("\\", "/"),
+        _REQUIRED_LTX_MSR_LORA,
+        _REQUIRED_LTX_MSR_LORA.replace("\\", "/"),
+        "LTX-2.3-Licon-MSR-V1.safetensors",
+    ]
+    for candidate in candidates:
+        if candidate in choices:
+            return candidate
+    return _clean_lora_name(text)
+
+
 def _patch_zimage_workflow(workflow, payload):
     workflow = copy.deepcopy(workflow)
     prompt_text = str(payload.get("prompt", "") or "").strip()
@@ -421,6 +448,36 @@ def _prepare_load_image_name(path="", data="", name="image.png"):
         return target_name
 
     return ""
+
+
+def _prepare_optional_input_image_name(image_info):
+    if not isinstance(image_info, dict):
+        return "(none)"
+
+    raw_path = str(image_info.get("path") or image_info.get("filename") or "").strip().strip('"')
+    if raw_path:
+        if os.path.isabs(raw_path):
+            return _prepare_load_image_name(raw_path, "", image_info.get("name") or "reference.png") or "(none)"
+        clean_path = raw_path.replace("\\", "/")
+        if "/" not in clean_path:
+            return clean_path
+        candidate_bases = [folder_paths.get_input_directory(), folder_paths.get_output_directory()]
+        get_temp_directory = getattr(folder_paths, "get_temp_directory", None)
+        if callable(get_temp_directory):
+            candidate_bases.append(get_temp_directory())
+        for base_dir in candidate_bases:
+            candidate_path = os.path.abspath(os.path.join(base_dir, clean_path))
+            try:
+                if os.path.commonpath([os.path.abspath(base_dir), candidate_path]) != os.path.abspath(base_dir):
+                    continue
+            except ValueError:
+                continue
+            if os.path.isfile(candidate_path):
+                return _prepare_load_image_name(candidate_path, "", image_info.get("name") or os.path.basename(clean_path)) or "(none)"
+
+    image_name = str(image_info.get("name") or "reference.png")
+    prepared = _prepare_load_image_name("", image_info.get("data") or "", image_name)
+    return prepared or "(none)"
 
 
 def _resolve_existing_file(raw_path, label="file"):
@@ -895,6 +952,15 @@ def _set_api_input(prompt, node_id, input_name, value):
     inputs[input_name] = value
 
 
+def _set_optional_api_input(prompt, node_id, input_name, value):
+    node = prompt.get(str(node_id))
+    if not isinstance(node, dict):
+        return False
+    inputs = node.setdefault("inputs", {})
+    inputs[input_name] = value
+    return True
+
+
 def _patch_i2v_api_prompt(prompt, payload):
     prompt = copy.deepcopy(prompt)
     i2v_prompt = str(payload.get("i2v_prompt", "") or "").strip()
@@ -1023,6 +1089,116 @@ def _patch_t2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "927", "duration", 0)
     _set_api_input(prompt, "930", "value", prompt_number)
     _set_api_input(prompt, "933", "text", t2v_prompt)
+    _set_api_input(prompt, "933", "output_mode", "string")
+    _set_api_input(prompt, "935", "value", srt_path)
+    _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
+    _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
+    _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    _set_api_input(prompt, "437", "value", output_folder)
+    return prompt, output_folder
+
+
+def _rtv_reference_strength(value):
+    text = str(value or "").strip().lower()
+    if text.startswith("17"):
+        return "17 - light"
+    if text.startswith("25"):
+        return "25 - balanced"
+    if text.startswith("33"):
+        return "33 - strong"
+    if text.startswith("41"):
+        return "41 - strongest"
+    return "auto - based on subject count"
+
+
+def _rtv_background_mode(value, has_background):
+    text = str(value or "").strip().lower()
+    if "neutral" in text or "placeholder" in text:
+        return "neutral_placeholder_wip"
+    if has_background:
+        return "use_uploaded_background"
+    return "neutral_placeholder_wip"
+
+
+def _patch_rtv_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    rtv_prompt = str(payload.get("t2v_prompt", payload.get("i2v_prompt", "")) or "").strip()
+    if not rtv_prompt:
+        raise ValueError("Reference-to-video prompt is empty.")
+
+    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"Audio file was not found: {audio_path}")
+    srt_path = os.path.abspath(str(payload.get("srt_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(srt_path):
+        raise FileNotFoundError(f"SRT file was not found: {srt_path}")
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = os.path.join(project_folder, "reference_to_video_clips")
+    os.makedirs(output_folder, exist_ok=True)
+
+    prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+    width = _int_payload(payload, "width", 1920, 64, 4096)
+    height = _int_payload(payload, "height", 1080, 64, 4096)
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
+    pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
+
+    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
+    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    _set_optional_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
+    _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
+
+    _set_api_input(prompt, "736:424", "value", fps)
+    _set_api_input(prompt, "736:425", "value", width)
+    _set_api_input(prompt, "736:426", "value", height)
+    _set_api_input(prompt, "736:449", "value", seed)
+    _set_api_input(prompt, "736:551", "value", 0)
+
+    msr_lora_name = _clean_msr_lora_name(payload.get("msr_lora_name", _REQUIRED_LTX_MSR_LORA))
+    use_user_loras = _bool_payload(payload, "use_custom_loras", False)
+    user_lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS)
+    _set_api_input(prompt, "937", "use_custom_loras", use_user_loras)
+    _set_api_input(prompt, "937", "lora_count", user_lora_count if use_user_loras else 0)
+    for slot in range(1, _MAX_LORA_SLOTS + 1):
+        if use_user_loras and slot <= user_lora_count:
+            legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
+            first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
+            second_pass_strength = 0.0
+            lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+        else:
+            first_pass_strength = 1.0
+            second_pass_strength = 0.0
+            lora_name = _NONE_LORA
+        _set_api_input(prompt, "937", f"lora_{slot}", lora_name)
+        _set_api_input(prompt, "937", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "937", f"second_pass_strength_{slot}", second_pass_strength)
+    _set_api_input(prompt, "953", "lora_name", msr_lora_name)
+    _set_api_input(prompt, "953", "strength_model", _float_payload(payload, "msr_first_pass_strength", 1.0))
+
+    references = payload.get("rtv_references") if isinstance(payload.get("rtv_references"), dict) else {}
+    subjects = references.get("subjects") if isinstance(references.get("subjects"), list) else []
+    subject_images = [_prepare_optional_input_image_name(item) for item in subjects[:4]]
+    while len(subject_images) < 4:
+        subject_images.append("(none)")
+    background_image = _prepare_optional_input_image_name(references.get("background"))
+    has_background = background_image != "(none)"
+
+    for index, image_name in enumerate(subject_images, start=1):
+        _set_api_input(prompt, "951", f"subject_{index}", image_name)
+    _set_api_input(prompt, "951", "background_image", background_image)
+    _set_api_input(prompt, "951", "background_mode", _rtv_background_mode(payload.get("msr_background_mode"), has_background))
+    _set_api_input(prompt, "951", "reference_strength", _rtv_reference_strength(payload.get("msr_reference_strength")))
+
+    _set_api_input(prompt, "927", "audio_file", audio_path)
+    _set_api_input(prompt, "927", "seek_seconds", 0)
+    _set_api_input(prompt, "927", "duration", 0)
+    _set_api_input(prompt, "930", "value", prompt_number)
+    _set_api_input(prompt, "933", "text", rtv_prompt)
     _set_api_input(prompt, "933", "output_mode", "string")
     _set_api_input(prompt, "935", "value", srt_path)
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
@@ -1338,6 +1514,16 @@ def _build_t2v_api_prompt(payload):
     }
 
 
+def _build_rtv_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_rtv_api_template_path())
+    patched_prompt, output_folder = _patch_rtv_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": patched_prompt,
+    }
+
+
 def _build_flux_klein_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_flux_klein_api_template_path())
     patched_prompt = _patch_flux_klein_api_prompt(prompt, payload)
@@ -1536,6 +1722,47 @@ def _find_ffmpeg_path():
             raise RuntimeError(f"FFmpeg was not found: {exc}") from exc
 
 
+def _scene_video_thumbnail_path(video_path):
+    root, _ext = os.path.splitext(os.path.abspath(str(video_path or "")))
+    return f"{root}.jpg"
+
+
+def _create_scene_video_thumbnail(video_path, thumbnail_path=None):
+    video_path = os.path.abspath(str(video_path or "").strip().strip('"'))
+    if not os.path.isfile(video_path):
+        return ""
+    thumbnail_path = os.path.abspath(str(thumbnail_path or _scene_video_thumbnail_path(video_path)).strip().strip('"'))
+    os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
+    ffmpeg_path = _find_ffmpeg_path()
+
+    def _run_extract(timestamp):
+        cmd = [
+            ffmpeg_path,
+            "-y",
+            "-ss",
+            str(timestamp),
+            "-i",
+            video_path,
+            "-frames:v",
+            "1",
+            "-vf",
+            "scale=480:-2",
+            "-q:v",
+            "3",
+            thumbnail_path,
+        ]
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    result = _run_extract(0.5)
+    if result.returncode != 0 or not os.path.isfile(thumbnail_path):
+        result = _run_extract(0)
+    if result.returncode != 0 or not os.path.isfile(thumbnail_path):
+        error_text = (result.stderr or result.stdout or "ffmpeg could not extract a thumbnail.").strip()
+        print(f"[VRGDG WorkflowRunner] Could not create scene video thumbnail for '{video_path}': {error_text}")
+        return ""
+    return thumbnail_path
+
+
 def _safe_project_subfolder(project_folder, folder_name):
     project = os.path.abspath(str(project_folder or "").strip().strip('"'))
     if not project:
@@ -1691,7 +1918,9 @@ def _collect_scene_video(payload):
             source_dir = os.path.abspath(os.path.dirname(source_path))
 
     target_path = os.path.join(target_dir, f"video_{scene_number:04d}-audio.mp4")
+    target_thumbnail_path = _scene_video_thumbnail_path(target_path)
     backup_path = ""
+    backup_thumbnail_path = ""
     if os.path.abspath(source_path) != os.path.abspath(target_path):
         if os.path.exists(target_path):
             if existing_action == "backup":
@@ -1707,21 +1936,38 @@ def _collect_scene_video(payload):
                     lambda: shutil.move(target_path, backup_path),
                     f"Backing up existing scene video '{target_path}'",
                 )
+                if os.path.exists(target_thumbnail_path):
+                    backup_thumbnail_path = _scene_video_thumbnail_path(backup_path)
+                    _retry_file_op(
+                        lambda: shutil.move(target_thumbnail_path, backup_thumbnail_path),
+                        f"Backing up existing scene video thumbnail '{target_thumbnail_path}'",
+                    )
             else:
                 _retry_file_op(
                     lambda: os.remove(target_path),
                     f"Removing existing scene video '{target_path}'",
                 )
+                if os.path.exists(target_thumbnail_path):
+                    try:
+                        _retry_file_op(
+                            lambda: os.remove(target_thumbnail_path),
+                            f"Removing existing scene video thumbnail '{target_thumbnail_path}'",
+                        )
+                    except Exception as exc:
+                        print(f"[VRGDG WorkflowRunner] Could not remove old scene video thumbnail '{target_thumbnail_path}': {exc}")
         _replace_file_with_retry(source_path, target_path)
 
+    thumbnail_path = _create_scene_video_thumbnail(target_path, target_thumbnail_path)
     removed_files = []
     removed_folder = ""
     removed_scratch_folders = []
 
     return {
         "video_path": target_path,
+        "thumbnail_path": thumbnail_path,
         "video_folder": target_dir,
         "backup_path": backup_path,
+        "backup_thumbnail_path": backup_thumbnail_path,
         "existing_action": existing_action,
         "source_path": source_path,
         "removed_files": removed_files,
@@ -2099,6 +2345,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_t2v_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_rtv_prompt")
+    async def vrgdg_workflow_runner_build_rtv_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_rtv_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

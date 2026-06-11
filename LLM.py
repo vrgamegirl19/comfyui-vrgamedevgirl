@@ -22,24 +22,49 @@ import time
 
 _HF_PIPELINE_CACHE: dict[tuple, tuple] = {}
 _GGUF_MODEL_CACHE: dict[tuple, object] = {}
+_GGUF_CHAT_HANDLER_CACHE: dict[tuple, object] = {}
+
+
+def _close_possible_resource(obj) -> None:
+    if obj is None:
+        return
+    for name in ("close", "free"):
+        close_fn = getattr(obj, name, None)
+        if callable(close_fn):
+            try:
+                close_fn()
+            except Exception:
+                pass
+            return
+
+
+def _close_gguf_cached_resources(model, chat_handler=None) -> None:
+    _close_possible_resource(model)
+    _close_possible_resource(chat_handler)
+    for attr in ("clip_model", "_clip_model", "clip_ctx", "_clip_ctx", "model"):
+        try:
+            _close_possible_resource(getattr(chat_handler, attr, None))
+        except Exception:
+            pass
 
 
 def _clear_vrgdg_llm_caches(clear_cuda_cache: bool = True, clear_hf_pipeline_cache: bool = False) -> dict:
     gguf_count = len(_GGUF_MODEL_CACHE)
     hf_count = len(_HF_PIPELINE_CACHE) if clear_hf_pipeline_cache else 0
 
-    for model in list(_GGUF_MODEL_CACHE.values()):
-        close_fn = getattr(model, "close", None)
-        if callable(close_fn):
-            try:
-                close_fn()
-            except Exception:
-                pass
+    for key, model in list(_GGUF_MODEL_CACHE.items()):
+        chat_handler = _GGUF_CHAT_HANDLER_CACHE.pop(key, None)
+        _close_gguf_cached_resources(model, chat_handler)
         try:
             del model
         except Exception:
             pass
+        try:
+            del chat_handler
+        except Exception:
+            pass
     _GGUF_MODEL_CACHE.clear()
+    _GGUF_CHAT_HANDLER_CACHE.clear()
 
     if clear_hf_pipeline_cache:
         for cached in list(_HF_PIPELINE_CACHE.values()):
@@ -3167,6 +3192,7 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
         if chat_format_value:
             kwargs["chat_format"] = chat_format_value
         mmproj_value = str(mmproj_path or "").strip()
+        chat_handler = None
         if mmproj_value:
             class Gemma4MTMDChatHandler(Llava15ChatHandler):
                 DEFAULT_SYSTEM_MESSAGE = None
@@ -3201,10 +3227,11 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                     "<start_of_turn>model\n"
                 )
 
-            kwargs["chat_handler"] = Gemma4MTMDChatHandler(
+            chat_handler = Gemma4MTMDChatHandler(
                 clip_model_path=mmproj_value,
                 verbose=False,
             )
+            kwargs["chat_handler"] = chat_handler
 
         def load_once():
             return Llama(**kwargs)
@@ -3232,6 +3259,8 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
                     f"Retry error: {second_error}"
                 ) from second_error
         _GGUF_MODEL_CACHE[key] = model
+        if chat_handler is not None:
+            _GGUF_CHAT_HANDLER_CACHE[key] = chat_handler
         return model
 
     def _unload_gguf_model(
@@ -3252,15 +3281,15 @@ class VRGDG_GeneralGGUF(VRGDG_Qwen25):
             mmproj_path=mmproj_path,
         )
         model = _GGUF_MODEL_CACHE.pop(key, None)
-        if model is not None:
-            close_fn = getattr(model, "close", None)
-            if callable(close_fn):
-                try:
-                    close_fn()
-                except Exception:
-                    pass
+        chat_handler = _GGUF_CHAT_HANDLER_CACHE.pop(key, None)
+        if model is not None or chat_handler is not None:
+            _close_gguf_cached_resources(model, chat_handler)
             try:
                 del model
+            except Exception:
+                pass
+            try:
+                del chat_handler
             except Exception:
                 pass
         gc.collect()

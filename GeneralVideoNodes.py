@@ -2513,19 +2513,27 @@ class BeatSceneDurationNode:
         )
 
         # Keep SRT clock aligned with absolute beat times. If first beat starts later
-        # than 0, add a small intro scene so current_time matches beat start.
+        # than 0, add intro scene(s) so current_time matches beat start.
+        # Long intros with no detected beats must still respect max_duration.
         if first_beat > 1e-6:
-            srt_lines.append(str(scene_index))
-            srt_lines.append(
-                f"{format_time(0.0)} --> {format_time(first_beat)}"
-            )
-            srt_lines.append(f"SCENE {scene_index}")
-            srt_lines.append("")
-            print(
-                "[BeatSceneDurationNode] Intro scene added: "
-                f"scene={scene_index}, start=0.000, end={first_beat:.3f}, duration={first_beat:.3f}"
-            )
-            scene_index += 1
+            intro_start = 0.0
+            while intro_start < first_beat - 1e-6:
+                intro_end = min(intro_start + max_duration, first_beat)
+                duration = intro_end - intro_start
+                if duration <= 1e-6:
+                    break
+                srt_lines.append(str(scene_index))
+                srt_lines.append(
+                    f"{format_time(intro_start)} --> {format_time(intro_end)}"
+                )
+                srt_lines.append(f"SCENE {scene_index}")
+                srt_lines.append("")
+                print(
+                    "[BeatSceneDurationNode] Intro scene added: "
+                    f"scene={scene_index}, start={intro_start:.3f}, end={intro_end:.3f}, duration={duration:.3f}"
+                )
+                scene_index += 1
+                intro_start = intro_end
             current_time = first_beat
             intro_scene_added = True
 

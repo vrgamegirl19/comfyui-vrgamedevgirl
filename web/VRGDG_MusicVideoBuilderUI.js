@@ -1,12 +1,14 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import "./VRGDG_MusicVideoPromptCreatorUI.js";
+import "./VRGDG_StoryboardBuilderUI.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
+const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
 const TIMELINE_HEIGHT = 210;
 const TIMELINE_OVERLAY_TOP = 24;
 const TIMELINE_OVERLAY_HEIGHT = 50;
@@ -1023,6 +1025,9 @@ async function postJson(url, payload, timeoutMs = 120000) {
   }
 }
 
+const GEMMA_VIDEO_PROMPT_TIMEOUT_MS = 600000;
+const GEMMA_VIDEO_ENHANCE_TIMEOUT_MS = 300000;
+
 async function getJson(url) {
   const response = await api.fetchApi(url);
   const data = await response.json().catch(() => ({}));
@@ -1322,7 +1327,11 @@ function newSegment(start = 0, end = 4) {
     image_history_index: -1,
     preview_mode: "image",
     video_path: "",
+    video_thumbnail_path: "",
     video_history: [],
+    video_thumbnail_history: [],
+    video_backup_paths: [],
+    video_backup_thumbnail_paths: [],
     video_history_index: -1,
     video_output: null,
     video_status: "none",
@@ -1464,6 +1473,7 @@ function openBuilder(node) {
   };
   const promptCreatorButton = makeButton("Prompt Creator");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
+  const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const lyricMapperButton = makeButton("Lyric Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
@@ -1504,7 +1514,7 @@ function openBuilder(node) {
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
   importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  importActions.append(fluxReferenceBuilderButton, lyricMapperButton, sendToPromptCreatorButton, gemmaRunnerButton, builderAgentButton, promptOptionsButton);
+  importActions.append(storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, sendToPromptCreatorButton, gemmaRunnerButton, builderAgentButton, promptOptionsButton);
   const utilityActions = document.createElement("div");
   utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
@@ -2064,10 +2074,11 @@ function openBuilder(node) {
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
   const videoModeChooser = document.createElement("div");
-  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;";
   const imageToVideoCard = makeImageModelCard("Image to Video", "i2v");
   const textToVideoCard = makeImageModelCard("Text to Video", "t2v");
-  videoModeChooser.append(imageToVideoCard, textToVideoCard);
+  const referenceToVideoCard = makeImageModelCard("Reference to Video", "rtv");
+  videoModeChooser.append(imageToVideoCard, textToVideoCard, referenceToVideoCard);
   const i2vUnetPicker = makeSearchableLoraPicker("");
   const i2vVaePicker = makeSearchableLoraPicker("");
   const i2vClip1Picker = makeSearchableLoraPicker("");
@@ -2093,7 +2104,7 @@ function openBuilder(node) {
   const i2vLoraHintRow = document.createElement("div");
   i2vLoraHintRow.style.cssText = "display:flex;justify-content:flex-end;";
   const i2vLoraHintButton = makeButton("?", "neutral");
-  i2vLoraHintButton.title = "Why use different strengths per pass?";
+  i2vLoraHintButton.title = "Optional extra video LoRAs use one strength in this workflow.";
   i2vLoraHintButton.style.cssText += "width:34px;padding:7px 0;";
   i2vLoraHintRow.append(i2vLoraHintButton);
   const i2vLoraCount = makeInput("0", "number");
@@ -2104,7 +2115,7 @@ function openBuilder(node) {
   const i2vLoraSlots = [];
   for (let slot = 1; slot <= 4; slot++) {
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 84px 84px;gap:8px;";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
     const picker = makeSearchableLoraPicker("[none]");
     const firstPassStrength = makeInput("1", "number");
     firstPassStrength.step = "0.01";
@@ -2112,12 +2123,42 @@ function openBuilder(node) {
     secondPassStrength.step = "0.01";
     row.append(
       makeField(`Video LoRA ${slot}`, picker.wrapper),
-      makeField("Pass 1", firstPassStrength),
-      makeField("Pass 2", secondPassStrength)
+      makeField("Strength", firstPassStrength)
     );
     i2vLoraRows.append(row);
     i2vLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength });
   }
+  const ltxMsrRequiredPanel = document.createElement("div");
+  ltxMsrRequiredPanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #155e75;border-radius:8px;background:#082f49;padding:10px;";
+  const ltxMsrRequiredNote = document.createElement("div");
+  ltxMsrRequiredNote.textContent = "Required for Reference to Video. This LoRA is always applied before optional video LoRAs; tune its strength here.";
+  ltxMsrRequiredNote.style.cssText = "font-size:11px;color:#bae6fd;line-height:1.35;";
+  const ltxMsrLoraPicker = makeSearchableLoraPicker(REQUIRED_LTX_MSR_LORA);
+  const ltxMsrFirstPassStrength = makeInput("1", "number");
+  ltxMsrFirstPassStrength.step = "0.01";
+  const ltxMsrSecondPassStrength = makeInput("1", "number");
+  ltxMsrSecondPassStrength.step = "0.01";
+  const ltxMsrReferenceStrength = makeSelect([
+    "auto - based on subject count",
+    "17 - light",
+    "25 - balanced",
+    "33 - strong",
+    "41 - strongest",
+  ], "auto - based on subject count");
+  const ltxMsrBackgroundMode = makeSelect([
+    "neutral placeholder (WIP/testing)",
+    "use location/background reference",
+  ], "neutral placeholder (WIP/testing)");
+  const ltxMsrStrengthGrid = document.createElement("div");
+  ltxMsrStrengthGrid.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
+  ltxMsrStrengthGrid.append(
+    makeField("Required MSR LoRA", ltxMsrLoraPicker.wrapper),
+    makeField("Strength", ltxMsrFirstPassStrength)
+  );
+  const ltxMsrReferenceGrid = document.createElement("div");
+  ltxMsrReferenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  ltxMsrReferenceGrid.append(makeField("Reference strength", ltxMsrReferenceStrength), makeField("Background", ltxMsrBackgroundMode));
+  ltxMsrRequiredPanel.append(ltxMsrRequiredNote, ltxMsrStrengthGrid, ltxMsrReferenceGrid);
   i2vLoraPanel.append(i2vLoraHintRow, makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
@@ -2505,6 +2546,7 @@ function openBuilder(node) {
           makeField("Vision Gemma model", i2vGemmaModelSelect),
           makeField("Vision mmproj", i2vMmprojSelect),
         ]),
+        ltxMsrRequiredPanel,
         i2vUseLora.wrapper,
         i2vLoraPanel,
         createSceneVideoButton,
@@ -2839,6 +2881,11 @@ function openBuilder(node) {
       seed: 69,
       tail_loss_frames: 25,
       pre_frames: 50,
+      msr_lora_name: REQUIRED_LTX_MSR_LORA,
+      msr_first_pass_strength: 1,
+      msr_second_pass_strength: 0,
+      msr_reference_strength: "auto - based on subject count",
+      msr_background_mode: "neutral placeholder (WIP/testing)",
       use_loras: false,
       lora_count: 0,
       loras: [],
@@ -3244,9 +3291,26 @@ function openBuilder(node) {
     const currentPath = String(segment.video_path || "").trim();
     const currentKey = mediaPathKey(currentPath);
     const previousHistory = Array.isArray(segment.video_history) ? segment.video_history : [];
+    const previousThumbnailHistory = Array.isArray(segment.video_thumbnail_history) ? segment.video_thumbnail_history : [];
     const previousIndex = Number(segment.video_history_index);
     const previousSelectedPath = Number.isFinite(previousIndex) && previousIndex >= 0 ? String(previousHistory[previousIndex] || "").trim() : "";
     const previousSelectedKey = mediaPathKey(previousSelectedPath);
+    const thumbnailByVideoKey = new Map();
+    previousHistory.forEach((path, index) => {
+      const key = mediaPathKey(path);
+      const thumbnail = String(previousThumbnailHistory[index] || "").trim();
+      if (key && thumbnail) thumbnailByVideoKey.set(key, thumbnail);
+    });
+    if (Array.isArray(segment.video_backup_paths) && Array.isArray(segment.video_backup_thumbnail_paths)) {
+      segment.video_backup_paths.forEach((path, index) => {
+        const key = mediaPathKey(path);
+        const thumbnail = String(segment.video_backup_thumbnail_paths[index] || "").trim();
+        if (key && thumbnail) thumbnailByVideoKey.set(key, thumbnail);
+      });
+    }
+    if (currentKey && String(segment.video_thumbnail_path || "").trim()) {
+      thumbnailByVideoKey.set(currentKey, String(segment.video_thumbnail_path || "").trim());
+    }
     const seen = new Set();
     const cleaned = [];
     const candidates = [
@@ -3263,6 +3327,7 @@ function openBuilder(node) {
     }
     segment.video_backup_paths = cleaned.filter(isBackupSceneVideoPath);
     segment.video_history = cleaned;
+    segment.video_thumbnail_history = cleaned.map((path) => thumbnailByVideoKey.get(mediaPathKey(path)) || "");
     if (!cleaned.length) {
       segment.video_history_index = -1;
     } else if (previousSelectedKey) {
@@ -3272,6 +3337,7 @@ function openBuilder(node) {
       const currentIndex = currentKey ? cleaned.findIndex((item) => mediaPathKey(item) === currentKey) : -1;
       segment.video_history_index = currentIndex >= 0 ? currentIndex : Math.max(0, Math.min(cleaned.length - 1, Number(segment.video_history_index || 0)));
     }
+    segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || "";
     return cleaned;
   }
 
@@ -3587,8 +3653,12 @@ function openBuilder(node) {
     if (segment.i2v_video_settings && typeof segment.i2v_video_settings !== "object") segment.i2v_video_settings = null;
     if (!["image", "video"].includes(segment.preview_mode)) segment.preview_mode = segment.video_path ? "video" : "image";
     if (segment.video_path == null) segment.video_path = "";
+    if (segment.video_thumbnail_path == null) segment.video_thumbnail_path = "";
     if (segment.video_folder == null) segment.video_folder = "";
     if (!Array.isArray(segment.video_history)) segment.video_history = [];
+    if (!Array.isArray(segment.video_thumbnail_history)) segment.video_thumbnail_history = [];
+    if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+    if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
     if (segment.video_output == null) segment.video_output = null;
     if (segment.video_status == null) segment.video_status = segment.video_path ? "done" : "none";
     if (!segment.video_path && segment.video_output && typeof segment.video_output === "object") {
@@ -3641,8 +3711,8 @@ function openBuilder(node) {
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
         first_pass_strength: Number(item?.first_pass_strength ?? item?.strength ?? 0.5),
-        second_pass_strength: Number(item?.second_pass_strength ?? item?.strength ?? 1),
-        strength: Number(item?.second_pass_strength ?? item?.strength ?? 1),
+        second_pass_strength: 0,
+        strength: Number(item?.first_pass_strength ?? item?.strength ?? 1),
       })) : [],
       use_image_to_image: Boolean(source.use_image_to_image),
       image_to_image_start_at_step: Math.max(1, Math.min(8, Number(source.image_to_image_start_at_step || 5))),
@@ -3715,8 +3785,8 @@ function openBuilder(node) {
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
         first_pass_strength: Number(item?.first_pass_strength ?? item?.strength ?? 1),
-        second_pass_strength: Number(item?.second_pass_strength ?? item?.strength ?? 1),
-        strength: Number(item?.second_pass_strength ?? item?.strength ?? 1),
+        second_pass_strength: 0,
+        strength: Number(item?.first_pass_strength ?? item?.strength ?? 1),
       })) : [],
       video_trigger_phrase: source.video_trigger_phrase || state.videoTriggerPhrase || "",
     };
@@ -3829,9 +3899,9 @@ function openBuilder(node) {
   }
 
   function videoVisionReferenceEnabled(segment) {
-    return currentVideoMode() === "t2v"
-      ? Boolean(segment?.use_t2v_vision_reference)
-      : segment?.use_i2v_vision_reference !== false;
+    const mode = currentVideoMode();
+    if (mode === "rtv") return false;
+    return mode === "t2v" ? Boolean(segment?.use_t2v_vision_reference) : segment?.use_i2v_vision_reference !== false;
   }
 
   function setVideoVisionReferenceEnabled(segment, enabled) {
@@ -4228,7 +4298,10 @@ function openBuilder(node) {
   function applyTriggerPhrase(prompt, trigger, options = {}) {
     const promptText = cleanGeneratedPromptText(prompt);
     if (options.validateJunk !== false && looksLikeGeneratedPromptJunk(promptText)) {
-      throw new Error("Gemma returned repeated/thought junk instead of a usable prompt. Try again or shorten the notes.");
+      const error = new Error("Gemma returned repeated/thought junk instead of a usable prompt. Try again or shorten the notes.");
+      error.rawGemmaPrompt = String(prompt || "");
+      error.cleanedGemmaPrompt = promptText;
+      throw error;
     }
     const triggerText = String(trigger || "").trim().replace(/\s+/g, " ");
     if (!triggerText) return promptText;
@@ -4332,7 +4405,14 @@ function openBuilder(node) {
 
   function isInstrumentalLyricText(text) {
     const value = String(text || "").trim().toLowerCase().replace(/\s+/g, " ");
-    return value === "instrumental" || value === "[instrumental]" || value === "instrumental section" || value === "instrumental section.";
+    if (!value) return false;
+    if (value === "instrumental" || value === "[instrumental]" || value === "instrumental section" || value === "instrumental section.") return true;
+    const stripped = value
+      .replace(/\[(?:intro|outro|bridge|verse|chorus|pre-chorus|prechorus|hook|refrain|interlude|break|section|instrumental|music|no vocals?|no singing|silence)\]/gi, " ")
+      .replace(/\b(?:intro|outro|bridge|verse|chorus|pre-chorus|prechorus|hook|refrain|interlude|break|section|instrumental|music|no vocals?|no singing|silence)\b/gi, " ")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+    return /\binstrumental|no vocals?|no singing|silence\b/i.test(value) && !stripped;
   }
 
   function isNoLipSyncSingerChoice(value) {
@@ -4426,7 +4506,16 @@ function openBuilder(node) {
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
     const directive = vocalDirectiveForSegment(segment);
-    if (!directive) return base;
+    if (!directive) {
+      const rawLyricText = String(segment?.lyric_text || "").trim();
+      const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
+      if (segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText)) {
+        return base
+          .replace(/^\s*(?:the visible subject|the subject|[^.]{1,90}?)\s+(?:visibly\s+)?(?:sings?|singing|lip-syncs?|lip syncs?|lip-syncing)\s+(?:"[^"]*"|'[^']*'|“[^”]*”)?\s*(?:in sync with the audio)?\.\s*/i, "")
+          .trim();
+      }
+      return base;
+    }
     if (base.toLowerCase().startsWith(directive.toLowerCase())) return base;
     const vocalClause = vocalClauseForSegment(segment);
     if (vocalClause) {
@@ -4583,7 +4672,6 @@ function openBuilder(node) {
       const lyric = String(segment.lyric_text || "").trim();
       if (!lyric) {
         segment.lyric_text = "[instrumental]";
-        segment.lyric_singers = [];
         segment.lyric_no_lip_sync = true;
         applied += 1;
         continue;
@@ -4600,12 +4688,13 @@ function openBuilder(node) {
       if (!best || bestScore < 0.32) continue;
       if (best.instrumental) {
         if (overwriteSingers || !String(segment.lyric_text || "").trim()) segment.lyric_text = "[instrumental]";
-        segment.lyric_singers = [];
+        const singers = Array.isArray(best.singers) ? best.singers.filter((value) => !isNoLipSyncSingerChoice(value)) : [];
+        if (overwriteSingers && singers.length) segment.lyric_singers = [...singers];
         segment.lyric_no_lip_sync = true;
       } else if (overwriteSingers || !Array.isArray(segment.lyric_singers) || !segment.lyric_singers.length) {
         const singers = Array.isArray(best.singers) ? [...best.singers] : [];
         if (best.no_lip_sync || singers.some(isNoLipSyncSingerChoice)) {
-          segment.lyric_singers = [];
+          segment.lyric_singers = singers.filter((value) => !isNoLipSyncSingerChoice(value));
           segment.lyric_no_lip_sync = true;
         } else {
           segment.lyric_singers = singers;
@@ -4741,6 +4830,7 @@ function openBuilder(node) {
 
   function setActiveSegment(segment) {
     if (state.activeId && state.activeId !== segment?.id) {
+      updateActiveFromInputs({ skipHistory: true });
       saveI2VVideoSettingsFromPanel();
     }
     state.activeId = segment?.id || "";
@@ -4862,7 +4952,14 @@ function openBuilder(node) {
   }
 
   function selectedSegmentVideoThumbnailPath(segment) {
-    return selectedSegmentVideoPath(segment);
+    if (!segment) return "";
+    if (!Array.isArray(segment.video_history)) normalizeSegmentVideoHistory(segment);
+    const thumbnails = Array.isArray(segment?.video_thumbnail_history) ? segment.video_thumbnail_history : [];
+    const videos = Array.isArray(segment?.video_history) ? segment.video_history : [];
+    const index = Math.max(0, Math.min(videos.length - 1, Number(segment?.video_history_index || 0)));
+    const selectedVideo = String(videos[index] || "").trim();
+    const currentThumbnail = mediaPathKey(selectedVideo) === mediaPathKey(segment?.video_path) ? segment?.video_thumbnail_path : "";
+    return String(thumbnails[index] || currentThumbnail || "").trim();
   }
 
   function mediaThumbnailHtml(segment, height = 56) {
@@ -4870,21 +4967,31 @@ function openBuilder(node) {
     if (imagePath) {
       return `<img src="${escapeHtml(makeEditorImageUrl(imagePath))}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
     }
-    const videoPath = selectedSegmentVideoThumbnailPath(segment);
+    const videoPath = selectedSegmentVideoPath(segment);
     if (!videoPath) return "";
+    const thumbnailPath = selectedSegmentVideoThumbnailPath(segment);
+    if (thumbnailPath) {
+      return `<img src="${escapeHtml(makeEditorImageUrl(thumbnailPath))}" title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
+    }
     return `<div title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;box-sizing:border-box;border:1px solid #155e75;border-radius:4px;margin-top:6px;background:#020617;display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:11px;font-weight:900;letter-spacing:0;">VIDEO</div>`;
   }
 
   function appendTimelineVideoThumbnail(block, segment) {
-    const videoPath = selectedSegmentVideoThumbnailPath(segment);
+    const videoPath = selectedSegmentVideoPath(segment);
     if (!videoPath) return;
-    const badge = document.createElement("span");
-    badge.title = videoPath;
-    badge.textContent = "VIDEO";
-    badge.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#020617;color:#67e8f9;font-size:10px;font-weight:900;letter-spacing:0;pointer-events:none;z-index:0;opacity:.78;";
+    const thumbnailPath = selectedSegmentVideoThumbnailPath(segment);
+    const visual = document.createElement("span");
+    visual.title = videoPath;
+    if (thumbnailPath) {
+      const thumbnailUrl = makeEditorImageUrl(thumbnailPath).replace(/"/g, "%22");
+      visual.style.cssText = `position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),url("${thumbnailUrl}") center / auto 100% repeat-x;pointer-events:none;z-index:0;`;
+    } else {
+      visual.textContent = "VIDEO";
+      visual.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#020617;color:#67e8f9;font-size:10px;font-weight:900;letter-spacing:0;pointer-events:none;z-index:0;opacity:.78;";
+    }
     const shade = document.createElement("span");
     shade.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.18);pointer-events:none;z-index:1;";
-    block.append(badge, shade);
+    block.append(visual, shade);
   }
 
   function selectedMediaForDelete() {
@@ -5602,6 +5709,50 @@ function openBuilder(node) {
     return ingredients;
   }
 
+  function rtvReferenceImagePayload(image = {}) {
+    const source = image && typeof image === "object" ? image : {};
+    return {
+      path: String(source.path || ""),
+      data: String(source.data || ""),
+      name: String(source.name || ""),
+    };
+  }
+
+  function rtvReferencesForSegment(segment = activeSegment()) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const references = { subjects: [], background: {} };
+    const addSubject = (item) => {
+      const image = item?.image || {};
+      if (!image.path && !image.data) return;
+      references.subjects.push({
+        ...rtvReferenceImagePayload(image),
+        label: String(item?.name || item?.description || ""),
+      });
+    };
+    if (refs.use_subject_reference) {
+      if (refs.subject_count > 1 && segment) {
+        const subjectIds = refs.subject_scene_map?.[segment.id] || refs.subject_scene_map?.[String(segmentIndexInfo(segment).index + 1)] || [];
+        const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
+        refs.subjects.filter((item) => idSet.has(item.id)).forEach(addSubject);
+      } else {
+        addSubject({ ...refs.subjects?.[0], image: refs.subject?.image || refs.subjects?.[0]?.image || {} });
+      }
+    }
+    references.subjects = references.subjects.slice(0, 4);
+    if (refs.use_location_references && segment) {
+      const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
+      const location = refs.locations.find((item) => item.id === locId);
+      const image = location?.image || {};
+      if (image.path || image.data) {
+        references.background = {
+          ...rtvReferenceImagePayload(image),
+          label: String(location?.name || location?.description || ""),
+        };
+      }
+    }
+    return references;
+  }
+
   function fluxReferenceContextForSegment(segment = activeSegment()) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const context = {
@@ -5931,6 +6082,11 @@ function openBuilder(node) {
     i2vSeedInput.value = settings.seed || 69;
     i2vTailLossFramesInput.value = Math.max(0, Number(settings.tail_loss_frames ?? 25));
     i2vPreFramesInput.value = Math.max(0, Number(settings.pre_frames ?? 50));
+    ltxMsrLoraPicker.input.value = settings.msr_lora_name || REQUIRED_LTX_MSR_LORA;
+    ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength ?? 1);
+    ltxMsrSecondPassStrength.value = 0;
+    ltxMsrReferenceStrength.value = settings.msr_reference_strength || "auto - based on subject count";
+    ltxMsrBackgroundMode.value = settings.msr_background_mode || "neutral placeholder (WIP/testing)";
     i2vUseLora.input.checked = Boolean(settings.use_loras);
     i2vLoraCount.value = Number(settings.lora_count || 0);
     i2vLoraSlots.forEach((slot, index) => {
@@ -5938,7 +6094,7 @@ function openBuilder(node) {
       slot.picker.input.value = config.name || "[none]";
       const legacyStrength = config.strength ?? 1;
       slot.firstPassStrength.value = config.first_pass_strength ?? legacyStrength;
-      slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength;
+      slot.secondPassStrength.value = 0;
     });
     updateI2VLoraVisibility();
   }
@@ -5960,12 +6116,17 @@ function openBuilder(node) {
       tail_loss_frames: Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
       pre_frames: Math.max(0, Number(i2vPreFramesInput.value || 0)),
       video_trigger_phrase: videoTriggerInput.value || "",
+      msr_lora_name: ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA,
+      msr_first_pass_strength: Number(ltxMsrFirstPassStrength.value || 1),
+      msr_second_pass_strength: 0,
+      msr_reference_strength: ltxMsrReferenceStrength.value || "auto - based on subject count",
+      msr_background_mode: ltxMsrBackgroundMode.value || "neutral placeholder (WIP/testing)",
       use_loras: Boolean(i2vUseLora.input.checked),
       lora_count: count,
       loras: i2vLoraSlots.map((slot) => ({
         name: slot.picker.input.value || "[none]",
         first_pass_strength: Number(slot.firstPassStrength.value || 1),
-        second_pass_strength: Number(slot.secondPassStrength.value || 1),
+        second_pass_strength: 0,
       })),
     };
     if (segment?.use_scene_i2v_video_settings || hasMultiSceneBatchSelection()) {
@@ -5984,13 +6145,15 @@ function openBuilder(node) {
   }
 
   function currentVideoMode() {
-    return state.videoModelMode === "t2v" ? "t2v" : "i2v";
+    if (state.videoModelMode === "t2v") return "t2v";
+    if (state.videoModelMode === "rtv") return "rtv";
+    return "i2v";
   }
 
   function syncVideoModePanel() {
     const mode = currentVideoMode();
     state.videoModelMode = mode;
-    for (const card of [imageToVideoCard, textToVideoCard]) {
+    for (const card of [imageToVideoCard, textToVideoCard, referenceToVideoCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#71717a" : "#3f3f46";
       card.style.background = active ? "#52525b" : "#27272a";
@@ -5998,23 +6161,28 @@ function openBuilder(node) {
       card.style.boxShadow = active ? "inset 0 0 0 1px rgba(244,244,245,.12)" : "none";
     }
     const isT2V = mode === "t2v";
+    const isRTV = mode === "rtv";
+    const isT2VLike = isT2V || isRTV;
     useI2VPromptEnhancementPass.input.checked = Boolean(state.useI2VPromptEnhancementPass);
-    useI2VVisionReference.wrapper.style.display = isT2V ? "none" : "flex";
-    i2vReferenceNote.style.display = isT2V ? "none" : "";
+    useI2VVisionReference.wrapper.style.display = isT2VLike ? "none" : "flex";
+    i2vReferenceNote.style.display = isT2VLike ? "none" : "";
     useT2VVisionReference.wrapper.style.display = isT2V ? "flex" : "none";
     t2vReferenceNote.style.display = isT2V ? "" : "none";
     t2vRefImagePanel.style.display = isT2V && useT2VVisionReference.input.checked ? "flex" : "none";
-    createI2VButton.textContent = isT2V ? "Gemma T2V" : "Gemma I2V";
+    ltxMsrRequiredPanel.style.display = isRTV ? "flex" : "none";
+    createI2VButton.textContent = isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
     i2vNotesInput.placeholder = isT2V
       ? "Extra text-to-video motion notes, camera movement, character movement..."
+      : isRTV
+        ? "Extra reference-to-video motion notes, camera movement, subject actions..."
       : "Extra video motion notes, camera movement, character movement...";
-    i2vPrompt.placeholder = isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+    i2vPrompt.placeholder = isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
   }
 
-  function updateActiveFromInputs() {
+  function updateActiveFromInputs(options = {}) {
     const segment = activeSegment();
     if (!segment) return;
-    pushHistory();
+    if (!options.skipHistory) pushHistory();
     segment.label = labelInput.value || "Scene";
     const isOverlay = segmentTrack(segment) === "overlay";
     if ((!state.timingFrozen || isOverlay) && !hasLockedVideo(segment)) {
@@ -6571,7 +6739,7 @@ function openBuilder(node) {
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
       const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
       const thumb = previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
-      const videoThumbPath = thumb ? "" : selectedSegmentVideoThumbnailPath(segment);
+      const hasVideoPreview = Boolean(selectedSegmentVideoPath(segment));
       const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
@@ -6586,7 +6754,7 @@ function openBuilder(node) {
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
         box-shadow:${shadow};
       `;
-      if (!thumb && videoThumbPath) appendTimelineVideoThumbnail(block, segment);
+      if (!thumb && hasVideoPreview) appendTimelineVideoThumbnail(block, segment);
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -6738,7 +6906,6 @@ function openBuilder(node) {
         lyricBox.onchange = () => {
           segment.lyric_text = lyricBox.value || "";
           segment.lyric_no_lip_sync = isInstrumentalLyricText(segment.lyric_text);
-          if (segment.lyric_no_lip_sync) segment.lyric_singers = [];
           if (segment.id === state.activeId) syncInspector();
           autoSaveSessionQuiet("timeline lyric note edited");
         };
@@ -7864,6 +8031,59 @@ function openBuilder(node) {
     return `${folder}${separator}prompts${separator}${filename}`;
   }
 
+  function projectGemmaDebugPath(filename) {
+    const folder = String(projectInput.value || state.projectFolder || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") ? "\\" : "/";
+    return `${folder}${separator}prompts${separator}gemma_debug${separator}${filename}`;
+  }
+
+  async function saveGemmaJunkDebug(error, context = {}) {
+    const raw = String(error?.rawGemmaPrompt ?? error?.rawPrompt ?? "").trim();
+    const cleaned = String(error?.cleanedGemmaPrompt ?? error?.cleanedPrompt ?? "").trim();
+    if (!raw && !cleaned) return "";
+    const path = projectGemmaDebugPath(`gemma_junk_${promptTimestamp()}.txt`);
+    if (!path) return "";
+    const segment = context.segment || activeSegment();
+    const info = segment ? segmentIndexInfo(segment) : { index: -1 };
+    const content = [
+      "VRGDG Gemma junk/debug output",
+      `Saved: ${new Date().toISOString()}`,
+      `Context: ${context.label || ""}`,
+      `Mode: ${currentVideoMode() === "t2v" ? "T2V" : "I2V"}`,
+      `Scene: ${segment ? sceneDisplayName(segment, info.index) : ""}`,
+      `Error: ${String(error?.message || error || "")}`,
+      "",
+      "===== RAW GEMMA OUTPUT =====",
+      raw || "(empty)",
+      "",
+      "===== CLEANED OUTPUT SEEN BY VALIDATOR =====",
+      cleaned || "(empty)",
+      "",
+      "===== SCENE INPUTS =====",
+      `T2I/concept prompt:\n${sceneConceptPromptText(segment) || ""}`,
+      "",
+      `I2V/T2V notes:\n${String(segment?.i2v_notes || "").trim()}`,
+      "",
+      `Lyrics/vocal line:\n${String(segment?.lyric_text || "").trim()}`,
+      "",
+      `Singer(s):\n${Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.join(", ") : String(segment?.lyric_singers || "")}`,
+    ].join("\n");
+    try {
+      const result = await savePromptTextFile(path, content);
+      const savedPath = result?.path || path;
+      try {
+        error.gemmaDebugPath = savedPath;
+      } catch (_) {
+        // Some thrown values are not extensible; returning the path is enough.
+      }
+      return savedPath;
+    } catch (saveError) {
+      console.warn("[VRGDG Music Builder] Failed to save Gemma junk debug output:", saveError);
+      return "";
+    }
+  }
+
   function projectPromptBackupPath(kind, name) {
     const folder = String(projectInput.value || state.projectFolder || "").trim().replace(/[\\/]+$/, "");
     if (!folder) return "";
@@ -8711,7 +8931,6 @@ function openBuilder(node) {
       segment.timeline_note = String(item?.timing_warning || "").trim();
       segment.lyric_text = String(item?.text || "").trim() || "[instrumental]";
       segment.lyric_no_lip_sync = String(item?.type || "").toLowerCase() === "instrumental" || isInstrumentalLyricText(segment.lyric_text);
-      segment.lyric_singers = segment.lyric_no_lip_sync ? [] : segment.lyric_singers;
       created.push(segment);
     }
     sortSegments(created);
@@ -8840,7 +9059,6 @@ function openBuilder(node) {
         if (!options.replaceAll && String(segments[index].lyric_text || "").trim()) continue;
         segments[index].lyric_text = value;
         segments[index].lyric_no_lip_sync = isInstrumentalLyricText(value);
-        if (segments[index].lyric_no_lip_sync) segments[index].lyric_singers = [];
         applied += 1;
       }
       const mapped = applyLyricMapperToSegments({ overwriteSingers: true });
@@ -8876,7 +9094,7 @@ function openBuilder(node) {
 
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
-    note.textContent = "Paste clean lyrics, split them into lines, then choose one or more singers for each line. Instrumental and B-roll mean no one should lip-sync. After timeline transcription, Apply To Timeline matches scene lyric notes to these mapped lines.";
+    note.textContent = "Paste clean lyrics, split them into lines, then choose one or more singers for each line. Instrumental and B-roll mean no one should lip-sync, but selected characters can still appear in the shot. After timeline transcription, Apply To Timeline matches scene lyric notes to these mapped lines.";
 
     const initialChoices = referenceBuilderSubjectChoices();
     const subjectWarning = document.createElement("div");
@@ -9397,6 +9615,22 @@ function openBuilder(node) {
       .map((input) => input.value)
       .filter(Boolean));
 
+    const refreshReviewRowLabels = () => {
+      const rows = reviewRows();
+      rows.forEach((row, index) => {
+        const segment = reviewSegmentForRow(row);
+        const label = `Scene ${index + 1}`;
+        if (segment) segment.label = label;
+        const labelEl = row.querySelector("[data-review-scene-label]");
+        if (labelEl) labelEl.textContent = segment?.label || label;
+        updateReviewTimingDisplay(row);
+        rememberReviewRowTiming(row);
+      });
+      state.segments.forEach((segment, index) => {
+        segment.label = `Scene ${index + 1}`;
+      });
+    };
+
     const mergeReviewRows = (targetRow, absorbedRow) => {
       const targetSegment = reviewSegmentForRow(targetRow);
       const absorbedSegment = reviewSegmentForRow(absorbedRow);
@@ -9439,6 +9673,7 @@ function openBuilder(node) {
       if (refs.subject_scene_map) delete refs.subject_scene_map[absorbedSegment.id];
       state.fluxReferenceBuilder = refs;
       absorbedRow.remove();
+      refreshReviewRowLabels();
       updateReviewTimingDisplay(targetRow);
       rememberReviewRowTiming(targetRow);
       toast("Merged the two lyric review scenes. Save to apply the updated timeline.");
@@ -9454,6 +9689,54 @@ function openBuilder(node) {
       const sceneName = segment?.label || "This scene";
       const shouldMerge = await showShortReviewSceneConfirm(sceneName, seconds, mergeText);
       if (shouldMerge && mergeTargetRow && mergeAbsorbedRow) mergeReviewRows(mergeTargetRow, mergeAbsorbedRow);
+    };
+
+    const showMergeWithNextConfirm = (currentLabel, nextLabel) => new Promise((resolve) => {
+      const confirmBackdrop = document.createElement("div");
+      confirmBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const confirmBox = document.createElement("div");
+      confirmBox.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #7f1d1d;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const confirmHeading = document.createElement("div");
+      confirmHeading.textContent = "Merge With Next Scene?";
+      confirmHeading.style.cssText = "font-size:16px;font-weight:900;color:#fecaca;";
+      const confirmBody = document.createElement("div");
+      confirmBody.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+      confirmBody.textContent = `This will combine ${currentLabel || "this scene"} and ${nextLabel || "the next scene"} into one lyric review scene. The merged scene keeps the earliest start, latest end, combined lyric text, selected characters, and location mapping. Save the lyric review after merging to apply it to the timeline.`;
+      const confirmActions = document.createElement("div");
+      confirmActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const merge = makeButton("Merge Scenes", "danger");
+      cancel.onclick = () => {
+        confirmBackdrop.remove();
+        resolve(false);
+      };
+      merge.onclick = () => {
+        confirmBackdrop.remove();
+        resolve(true);
+      };
+      confirmBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === confirmBackdrop) cancel.click();
+      });
+      confirmActions.append(cancel, merge);
+      confirmBox.append(confirmHeading, confirmBody, confirmActions);
+      confirmBackdrop.append(confirmBox);
+      document.body.append(confirmBackdrop);
+      cancel.focus();
+    });
+
+    const mergeReviewRowWithNext = async (row) => {
+      const rows = reviewRows();
+      const rowIndex = rows.indexOf(row);
+      const nextRow = rows[rowIndex + 1] || null;
+      if (!nextRow) {
+        toast("There is no next scene to merge with.", true);
+        return;
+      }
+      const currentSegment = reviewSegmentForRow(row);
+      const nextSegment = reviewSegmentForRow(nextRow);
+      const confirmed = await showMergeWithNextConfirm(currentSegment?.label, nextSegment?.label);
+      if (!confirmed) return;
+      mergeReviewRows(row, nextRow);
     };
 
     const handleReviewStartEdited = async (row) => {
@@ -9572,7 +9855,7 @@ function openBuilder(node) {
       const lyricText = row.querySelector("[data-review-lyric-text]")?.value || "";
       segment.lyric_text = instrumental ? "[instrumental]" : lyricText;
       segment.lyric_no_lip_sync = instrumental || broll;
-      segment.lyric_singers = segment.lyric_no_lip_sync ? [] : [...row.querySelectorAll("[data-review-singer-choice='1']")]
+      segment.lyric_singers = [...row.querySelectorAll("[data-review-singer-choice='1']")]
         .filter((input) => input.checked)
         .map((input) => input.value)
         .filter(Boolean);
@@ -9689,14 +9972,13 @@ function openBuilder(node) {
         input.dataset.reviewSubjectId = choice.id;
         input.value = choiceLabel;
         input.checked = selected.has(choiceLabel) || selected.has(choice.label) || selected.has(choice.id);
-        input.disabled = instrumentalInput.checked || brollInput.checked;
         input.style.cssText = "margin:0;";
         const name = document.createElement("span");
         name.dataset.reviewSubjectLabel = choice.id;
         name.textContent = choiceLabel;
         label.append(input, name);
         const global = makeButton("All");
-        global.title = `Use ${choiceLabel} as a scene character everywhere. Non-instrumental scenes also get it as a singer.`;
+        global.title = `Use ${choiceLabel} as a visible scene character everywhere. Instrumental and B-roll scenes still stay no-lip-sync.`;
         global.style.cssText = "padding:4px 6px;min-width:0;font-size:10px;line-height:1;border-radius:999px;";
         global.onclick = async (event) => {
           event.preventDefault();
@@ -9713,9 +9995,6 @@ function openBuilder(node) {
               state.fluxReferenceBuilder = reviewReferenceBuilder;
             }
             for (const row of reviewRows()) {
-              const rowInstrumental = Boolean(row.querySelector("[data-review-instrumental='1']")?.checked);
-              const rowBroll = Boolean(row.querySelector("[data-review-broll='1']")?.checked);
-              if (rowInstrumental || rowBroll) continue;
               for (const singerInput of row.querySelectorAll("[data-review-singer-choice='1']")) {
                 if (singerInput.dataset.reviewSubjectId === choice.id || singerInput.value === choiceLabel) singerInput.checked = true;
               }
@@ -9730,8 +10009,8 @@ function openBuilder(node) {
             showInfoModal({
               title: "Lyric Review Saved",
               lines: [subjectIds.length
-                ? `${reviewChoiceLabel(choice)} was assigned as a scene character everywhere. Scenes that can lip-sync were also updated as singers.`
-                : `${reviewChoiceLabel(choice)} was added to every scene that can lip-sync.`],
+                ? `${reviewChoiceLabel(choice)} was assigned as a visible scene character everywhere. Instrumental and B-roll scenes remain no-lip-sync.`
+                : `${reviewChoiceLabel(choice)} was added to every scene.`],
               confirmLabel: "OK",
             });
           } catch (error) {
@@ -9752,7 +10031,7 @@ function openBuilder(node) {
       row.dataset.reviewSegmentId = segment.id;
       row.style.cssText = "display:grid;grid-template-columns:112px minmax(150px,180px) minmax(240px,1fr) minmax(220px,290px) minmax(160px,220px) 150px 86px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
       const meta = document.createElement("div");
-      meta.innerHTML = `<div style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
+      meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
       const timing = document.createElement("div");
       timing.style.cssText = "display:flex;flex-direction:column;gap:6px;";
       const startInput = makeInput(formatTime(segment.start));
@@ -9762,19 +10041,23 @@ function openBuilder(node) {
       startInput.style.fontSize = "11px";
       endInput.style.fontSize = "11px";
       const splitButton = makeButton("Split At Playhead");
+      const mergeNextButton = makeButton("Merge With Next");
       const setStartButton = makeButton("Set Start");
       const setEndButton = makeButton("Set End");
       setStartButton.title = "Set this scene start to the lyric review audio playhead. The previous scene end moves with it; later scenes stay locked.";
       setEndButton.title = "Set this scene end to the lyric review audio playhead. Lock mode only moves the next scene start; Ripple mode shifts later scenes.";
+      mergeNextButton.title = "Merge this scene with the next lyric review scene. This removes the next row and combines timing, lyrics, selected characters, and location.";
       setStartButton.style.padding = "7px 8px";
       setEndButton.style.padding = "7px 8px";
       splitButton.style.padding = "7px 8px";
+      mergeNextButton.style.padding = "7px 8px";
       setStartButton.onclick = () => setReviewRowStartToPlayhead(row);
       setEndButton.onclick = () => setReviewRowEndToPlayhead(row);
       splitButton.onclick = () => splitReviewRowAtPlayhead(row, segment);
+      mergeNextButton.onclick = () => mergeReviewRowWithNext(row);
       startInput.onchange = () => handleReviewStartEdited(row);
       endInput.onchange = () => handleReviewEndEdited(row);
-      timing.append(makeField("Start", startInput), makeField("End", endInput), setStartButton, setEndButton, splitButton);
+      timing.append(makeField("Start", startInput), makeField("End", endInput), setStartButton, setEndButton, splitButton, mergeNextButton);
       const text = document.createElement("textarea");
       text.dataset.reviewLyricText = "1";
       text.value = String(segment.lyric_text || "");
@@ -9793,10 +10076,6 @@ function openBuilder(node) {
         if (instrumental.input.checked) {
           text.value = "[instrumental]";
           broll.input.checked = false;
-        }
-        for (const input of singerPanel.querySelectorAll("[data-review-singer-choice='1']")) {
-          input.disabled = instrumental.input.checked || broll.input.checked;
-          if (input.disabled) input.checked = false;
         }
       };
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
@@ -9909,12 +10188,13 @@ function openBuilder(node) {
     warning.textContent = "No Reference Builder subjects found. Set up Reference Builder first for best singer mapping. If you skip that, Review + Map Singers uses fallback singer choices.";
 
     const tabBar = document.createElement("div");
-    tabBar.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+    tabBar.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
     const pane = document.createElement("div");
     pane.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:14px;min-height:260px;";
     const tabs = [
       { id: "transcribe", label: "Step 1: Transcribe" },
       { id: "review", label: "Step 2: Review + Map Singers" },
+      { id: "manual_timing", label: "Manual Timing" },
     ];
     const tabButtons = new Map();
     const makeStepButton = (label, kind = "") => {
@@ -9931,7 +10211,66 @@ function openBuilder(node) {
       const singerCount = scenes.filter((segment) => (Array.isArray(segment.lyric_singers) && segment.lyric_singers.length) || segment.lyric_no_lip_sync).length;
       statusLine.textContent = `${lyricCount}/${scenes.length} scenes have lyric notes. ${singerCount}/${scenes.length} scenes have singer/no-lip-sync mapping.`;
     };
+    let activeLyricMappingTab = "transcribe";
+    let manualTimingAudio = null;
+    let manualTimingSplits = [];
+    const manualTimingDuration = () => {
+      const audioDuration = Number(manualTimingAudio?.duration || 0);
+      if (Number.isFinite(audioDuration) && audioDuration > 0) return audioDuration;
+      const timeline = timelineDuration();
+      return timeline > 0 ? timeline : Number(state.duration || 0);
+    };
+    const sortedManualTimingSplits = () => Array.from(new Set(manualTimingSplits
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isFinite(value) && value > 0.01)))
+      .sort((a, b) => a - b);
+    const addManualTimingSplit = (time, minSeconds = 0.25) => {
+      const duration = manualTimingDuration();
+      const value = Math.max(0, Math.min(duration > 0 ? duration : Number.MAX_SAFE_INTEGER, Number(time || 0)));
+      if (!Number.isFinite(value) || value <= 0.01) {
+        toast("Play the audio and add a split after the start.", true);
+        return false;
+      }
+      if (duration > 0 && value >= duration - 0.05) {
+        toast("That split is too close to the end of the song.", true);
+        return false;
+      }
+      const existing = sortedManualTimingSplits();
+      if (existing.some((split) => Math.abs(split - value) < minSeconds)) {
+        toast("That split is too close to an existing split.", true);
+        return false;
+      }
+      manualTimingSplits = [...existing, value].sort((a, b) => a - b);
+      return true;
+    };
+    const createManualTimingSegments = (minSceneSeconds = 0.5) => {
+      const duration = manualTimingDuration();
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Could not read the audio duration yet. Play or load the audio first.");
+      const points = [0, ...sortedManualTimingSplits(), duration];
+      const created = [];
+      for (let index = 0; index < points.length - 1; index += 1) {
+        const start = points[index];
+        const end = points[index + 1];
+        if (end - start < minSceneSeconds) continue;
+        const segment = newSegment(start, end);
+        segment.label = `Scene ${created.length + 1}`;
+        segment.source = "manual_timing";
+        created.push(segment);
+      }
+      if (!created.length) throw new Error("No usable scenes were created. Add at least one split or lower the minimum scene length.");
+      return created;
+    };
+    const onLyricMappingKeydown = (event) => {
+      if (activeLyricMappingTab !== "manual_timing") return;
+      if (event.key !== "ArrowDown") return;
+      const tag = String(event.target?.tagName || "").toLowerCase();
+      if (["input", "textarea", "select"].includes(tag)) return;
+      event.preventDefault();
+      const button = pane.querySelector("[data-manual-timing-add-split]");
+      button?.click();
+    };
     const setActiveTab = (id) => {
+      activeLyricMappingTab = id;
       for (const [tabId, button] of tabButtons.entries()) {
         const active = tabId === id;
         button.style.background = active ? "#0891b2" : "#27272a";
@@ -10017,6 +10356,110 @@ function openBuilder(node) {
         };
         actions.append(review, showNotes, autoMap);
         pane.append(title, copy, actions);
+      } else if (id === "manual_timing") {
+        const title = document.createElement("div");
+        title.style.cssText = "font-size:15px;font-weight:900;color:#cffafe;margin-bottom:8px;";
+        title.textContent = "Manual Timing: tap scene splits while listening";
+        const copy = document.createElement("div");
+        copy.style.cssText = "font-size:13px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;";
+        copy.textContent = "Use this when you want to create scene timing by ear. Press Down Arrow or click Add Split At Playhead while the song plays. Nothing changes on the timeline until you click Create Scenes From Splits.";
+        const audioPath = String(audioInput.value || state.audioPath || "").trim();
+        const audioPanel = document.createElement("div");
+        audioPanel.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;margin-bottom:10px;";
+        manualTimingAudio = document.createElement("audio");
+        manualTimingAudio.controls = true;
+        manualTimingAudio.preload = "metadata";
+        manualTimingAudio.style.cssText = "width:100%;height:34px;";
+        if (audioPath) manualTimingAudio.src = audioUrl(audioPath);
+        const addSplit = makeStepButton("Add Split At Playhead", "primary");
+        addSplit.dataset.manualTimingAddSplit = "1";
+        const undoSplit = makeStepButton("Undo Last Split");
+        audioPanel.append(manualTimingAudio, addSplit, undoSplit);
+        const controls = document.createElement("div");
+        controls.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;";
+        const minScene = makeInput("0.5");
+        minScene.type = "number";
+        minScene.step = "0.1";
+        minScene.min = "0.05";
+        const clearSplits = makeStepButton("Clear Splits");
+        const createScenes = makeStepButton("Create Scenes From Splits", "primary");
+        controls.append(makeField("Minimum scene length", minScene), clearSplits, createScenes);
+        const splitList = document.createElement("div");
+        splitList.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;";
+        const renderSplitList = () => {
+          splitList.textContent = "";
+          const duration = manualTimingDuration();
+          const splits = sortedManualTimingSplits();
+          const points = [0, ...splits, duration].filter((value, index, arr) => index === 0 || value > arr[index - 1]);
+          const header = document.createElement("div");
+          header.style.cssText = "font-size:12px;color:#a5f3fc;font-weight:900;";
+          header.textContent = splits.length
+            ? `${splits.length} split marker${splits.length === 1 ? "" : "s"} | ${Math.max(1, points.length - 1)} scene${points.length - 1 === 1 ? "" : "s"} preview`
+            : "No split markers yet. Press Down Arrow or Add Split At Playhead while the audio plays.";
+          splitList.append(header);
+          if (!duration) {
+            const wait = document.createElement("div");
+            wait.style.cssText = "font-size:12px;color:#fbbf24;line-height:1.4;";
+            wait.textContent = "Audio duration is not available yet. Load/play the audio first.";
+            splitList.append(wait);
+            return;
+          }
+          for (let index = 0; index < points.length - 1; index += 1) {
+            const row = document.createElement("div");
+            row.style.cssText = "display:grid;grid-template-columns:72px 1fr;gap:8px;border:1px solid #1f2937;border-radius:6px;background:#0f172a;padding:7px;font-size:12px;color:#e5e7eb;";
+            const label = document.createElement("div");
+            label.style.cssText = "font-weight:900;color:#cffafe;";
+            label.textContent = `Scene ${index + 1}`;
+            const time = document.createElement("div");
+            time.textContent = `${formatTime(points[index])} - ${formatTime(points[index + 1])} | ${formatDurationSeconds(points[index], points[index + 1])}s`;
+            row.append(label, time);
+            splitList.append(row);
+          }
+        };
+        addSplit.onclick = () => {
+          if (!audioPath) {
+            toast("Load an audio file first.", true);
+            return;
+          }
+          const minSeconds = Math.max(0.05, Number(minScene.value || 0.5));
+          if (addManualTimingSplit(Number(manualTimingAudio.currentTime || 0), minSeconds)) renderSplitList();
+        };
+        undoSplit.onclick = () => {
+          const splits = sortedManualTimingSplits();
+          splits.pop();
+          manualTimingSplits = splits;
+          renderSplitList();
+        };
+        clearSplits.onclick = () => {
+          manualTimingSplits = [];
+          renderSplitList();
+        };
+        manualTimingAudio.onloadedmetadata = renderSplitList;
+        createScenes.onclick = async () => {
+          try {
+            if (!audioPath) throw new Error("Load an audio file first.");
+            const minSeconds = Math.max(0.05, Number(minScene.value || 0.5));
+            const created = createManualTimingSegments(minSeconds);
+            pushHistory();
+            state.segments = created;
+            state.overlaySegments = [];
+            state.activeTrack = "base";
+            state.activeId = created[0]?.id || "";
+            state.duration = Math.max(manualTimingDuration(), ...created.map((segment) => Number(segment.end || 0)));
+            syncInspector();
+            render();
+            await saveSession({ quiet: true, throwOnError: true });
+            setStatusText();
+            toast(`Created ${created.length} manual timing scene${created.length === 1 ? "" : "s"}.`);
+          } catch (error) {
+            toast(String(error?.message || error), true);
+          }
+        };
+        const hint = document.createElement("div");
+        hint.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.45;margin-top:8px;";
+        hint.textContent = "Keyboard shortcut: Down Arrow adds a split only while this tab is open and your cursor is not inside a text field.";
+        pane.append(title, copy, audioPanel, controls, splitList, hint);
+        renderSplitList();
       }
       pane.append(statusLine);
     };
@@ -10026,18 +10469,24 @@ function openBuilder(node) {
       tabButtons.set(tab.id, button);
       tabBar.append(button);
     }
-    close.onclick = () => backdrop.remove();
+    document.addEventListener("keydown", onLyricMappingKeydown);
+    const closeModal = () => {
+      document.removeEventListener("keydown", onLyricMappingKeydown);
+      manualTimingAudio?.pause?.();
+      backdrop.remove();
+    };
+    close.onclick = closeModal;
     box.append(header, warning, tabBar, pane);
     backdrop.append(box);
     document.body.append(backdrop);
     setActiveTab("transcribe");
     backdrop.addEventListener("pointerdown", (event) => {
-      if (event.target === backdrop) backdrop.remove();
+      if (event.target === backdrop) closeModal();
     });
   }
 
   function openFluxReferenceBuilderModal() {
-    const referenceBuilderTargetLabel = state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein";
+    const referenceBuilderTargetLabel = currentVideoMode() === "rtv" ? "LTX Reference to Video" : state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     const backdrop = document.createElement("div");
@@ -10393,7 +10842,7 @@ function openBuilder(node) {
       return mapped;
     };
     const subjectIdsFromLyricSingers = (segment) => {
-      if (!segment || segment.lyric_no_lip_sync || isInstrumentalLyricText(segment.lyric_text)) return [];
+      if (!segment) return [];
       const singers = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
       if (!singers.length) return [];
       const selected = [];
@@ -11087,6 +11536,38 @@ function openBuilder(node) {
       if (event.target === backdrop) backdrop.remove();
     });
     renderAll();
+  }
+
+  function openReferenceBuilderTargetChooser() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(520px,calc(100vw - 32px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder Target</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose which workflow these reference images should feed.</div>`;
+    const choices = document.createElement("div");
+    choices.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const imageRefsButton = makeButton(state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein", "primary");
+    const ltxRefsButton = makeButton("LTX Reference to Video", "primary");
+    const close = makeButton("Cancel", "neutral");
+    choices.append(imageRefsButton, ltxRefsButton);
+    box.append(title, choices, close);
+    backdrop.append(box);
+    const openAndClose = (target) => {
+      backdrop.remove();
+      if (target === "rtv") {
+        state.videoModelMode = "rtv";
+        syncVideoModePanel();
+      }
+      openFluxReferenceBuilderModal();
+    };
+    imageRefsButton.onclick = () => openAndClose("image");
+    ltxRefsButton.onclick = () => openAndClose("rtv");
+    close.onclick = () => backdrop.remove();
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
+    document.body.append(backdrop);
   }
 
   function conceptPromptTimelineNotesForSegment(segment) {
@@ -12488,12 +12969,16 @@ function openBuilder(node) {
           project_folder: state.projectFolder,
         });
         const videos = scan.videos || {};
+        const videoThumbnails = scan.video_thumbnails || {};
         const videoBackups = scan.video_backups || {};
+        const videoBackupThumbnails = scan.video_backup_thumbnails || {};
         let restored = 0;
         for (const [index, segment] of state.segments.entries()) {
           const sceneKey = String(index + 1);
           const videoPath = videos[sceneKey] || "";
           segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
+          segment.video_backup_thumbnail_paths = Array.isArray(videoBackupThumbnails[sceneKey]) ? videoBackupThumbnails[sceneKey] : [];
+          segment.video_thumbnail_path = videoThumbnails[sceneKey] || segment.video_thumbnail_path || "";
           if (!videoPath) continue;
           segment.video_path = videoPath;
           segment.video_folder = scan.video_folder || segment.video_folder || "";
@@ -12505,6 +12990,8 @@ function openBuilder(node) {
           const sceneKey = String(10000 + index + 1);
           const videoPath = videos[sceneKey] || "";
           segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
+          segment.video_backup_thumbnail_paths = Array.isArray(videoBackupThumbnails[sceneKey]) ? videoBackupThumbnails[sceneKey] : [];
+          segment.video_thumbnail_path = videoThumbnails[sceneKey] || segment.video_thumbnail_path || "";
           if (!videoPath) continue;
           segment.video_path = videoPath;
           segment.video_folder = scan.video_folder || segment.video_folder || "";
@@ -12676,6 +13163,7 @@ function openBuilder(node) {
     normalizeSegmentVideoHistory(segment);
     const currentIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(videoPath));
     if (currentIndex >= 0) segment.video_history_index = currentIndex;
+    segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || segment.video_thumbnail_path || "";
   }
 
   function cycleSegmentVideoHistory(segment) {
@@ -12685,6 +13173,7 @@ function openBuilder(node) {
     const nextIndex = (Math.max(-1, Number(segment.video_history_index ?? -1)) + 1) % segment.video_history.length;
     segment.video_history_index = nextIndex;
     segment.video_path = segment.video_history[nextIndex] || segment.video_path || "";
+    segment.video_thumbnail_path = segment.video_thumbnail_history[nextIndex] || "";
     segment.preview_mode = "video";
     setActiveSegment(segment);
     syncPreview(segment);
@@ -13552,9 +14041,11 @@ function openBuilder(node) {
 
   async function enhanceVideoPromptForSegment(segment, draftPrompt, progress = null, percent = 80, label = "I2V prompt enhancement", options = {}) {
     const base = String(draftPrompt || "").trim();
-    if (!state.useI2VPromptEnhancementPass || !base) return base;
-    const isT2V = currentVideoMode() === "t2v";
-    const modeLabel = isT2V ? "T2V" : "I2V";
+    if ((!state.useI2VPromptEnhancementPass && !options.force) || !base) return base;
+    const videoMode = currentVideoMode();
+    const isT2V = videoMode === "t2v";
+    const isRTV = videoMode === "rtv";
+    const modeLabel = videoModeDisplayLabel(videoMode, true);
     const lyricText = quoteOrderedLyricCues(String(segment?.lyric_text || "").trim()).trim();
     const noVocal = Boolean(segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText));
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
@@ -13573,7 +14064,7 @@ function openBuilder(node) {
       unload_after: options.unloadAfter !== false,
       n_ctx: 8000,
       max_new_tokens: 1200,
-    }, 300000);
+    }, GEMMA_VIDEO_ENHANCE_TIMEOUT_MS);
     return String(data.prompt || "").trim() || base;
   }
 
@@ -13583,13 +14074,62 @@ function openBuilder(node) {
     return applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment);
   }
 
+  function finalizeVideoPromptDraftOnly(segment, rawPrompt) {
+    const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment);
+    return applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(draft, videoTriggerPhraseForSegment(segment)), segment);
+  }
+
+  async function runVideoPromptEnhancementBatch(segments, progress = null, options = {}) {
+    const modeLabel = videoModeDisplayLabel(currentVideoMode(), true);
+    const sceneScope = options.sceneScope || "all";
+    const force = Boolean(options.force);
+    const targets = (segments || []).filter((segment) => String(segment?.i2v_prompt || "").trim());
+    if (!targets.length) {
+      progress?.set(`No existing ${modeLabel} prompts found to enhance.`, 100);
+      return 0;
+    }
+    for (let index = 0; index < targets.length; index += 1) {
+      assertBatchNotStopped();
+      const segment = targets[index];
+      const displayIndex = segmentIndexInfo(segment).index;
+      state.activeId = segment.id;
+      syncInspector();
+      render();
+      const percent = Math.min(98, Number(options.percentBase || 0) + Math.floor(((index + 1) / targets.length) * Number(options.percentSpan || 90)));
+      progress?.set(`Gemma ${modeLabel} enhancement ${index + 1}/${targets.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\n${gemmaRunnerLine()}`, percent);
+      pushHistory();
+      try {
+        segment.i2v_prompt = await finalizeVideoPromptForSegment(
+          segment,
+          segment.i2v_prompt,
+          progress,
+          percent,
+          `Gemma ${modeLabel} enhancement ${index + 1}/${targets.length}`,
+          { force, unloadAfter: index === targets.length - 1 },
+        );
+      } catch (error) {
+        await saveGemmaJunkDebug(error, {
+          label: `Gemma ${modeLabel} enhancement ${index + 1}/${targets.length}`,
+          segment,
+        });
+        throw error;
+      }
+      if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
+      render();
+      await autoSaveSessionQuiet(`Gemma ${modeLabel} enhancement ${sceneDisplayName(segment, displayIndex)}`);
+    }
+    return targets.length;
+  }
+
   async function createI2VPromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
-    const isT2V = currentVideoMode() === "t2v";
-    const modeLabel = isT2V ? "T2V" : "I2V";
-    const useImageReference = isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+    const videoMode = currentVideoMode();
+    const isT2V = videoMode === "t2v";
+    const isRTV = videoMode === "rtv";
+    const modeLabel = videoModeDisplayLabel(videoMode, true);
+    const useImageReference = isRTV ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const conceptPrompt = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -13598,8 +14138,8 @@ function openBuilder(node) {
         : "Hey, you need a scene image first. Save/load an image, or turn off image reference to create I2V from the T2I prompt instead.", true);
       return;
     }
-    if ((isT2V || !useImageReference) && !conceptPrompt) {
-      toast(isT2V
+    if ((isT2V || isRTV || !useImageReference) && !conceptPrompt) {
+      toast(isT2V || isRTV
         ? "Hey, you need a T2I/concept prompt first so Gemma has scene content to turn into a text-to-video prompt."
         : "Hey, you need a T2I prompt first. Create/type one, or turn image reference back on and use a saved/custom image.", true);
       return;
@@ -13615,20 +14155,20 @@ function openBuilder(node) {
       progress.set(useImageReference
         ? `Running Gemma vision ${modeLabel} prompt generation...\n${gemmaRunnerLine({ vision: true })}`
         : `Running Gemma text-only ${modeLabel} prompt generation...\n${gemmaRunnerLine()}`, 50);
-      const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+      const data = await postJson(isT2V || isRTV ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
         ...textGemmaRunnerPayload(),
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-        t2i_prompt: isT2V ? conceptPrompt : useImageReference ? "" : conceptPrompt,
+        t2i_prompt: isT2V || isRTV ? conceptPrompt : useImageReference ? "" : conceptPrompt,
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: videoGemmaNotesForSegment(segment),
-        theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-        story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-        subject_scene_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        theme_style_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+        story_idea_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+        subject_scene_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
         unload_after: !state.useI2VPromptEnhancementPass || useImageReference,
-      });
+      }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
       segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true });
       i2vPrompt.value = segment.i2v_prompt;
@@ -13638,7 +14178,8 @@ function openBuilder(node) {
       progress.close(900);
       toast(data.used_image_reference ? "Gemma created I2V prompt from the image reference." : `Gemma created ${modeLabel} prompt from the T2I prompt.`);
     } catch (error) {
-      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `single ${modeLabel} prompt`, segment });
+      progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
       toast(String(error?.message || error), true);
     } finally {
       createI2VButton.disabled = false;
@@ -13663,10 +14204,12 @@ function openBuilder(node) {
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
-      unload_after: state.useI2VPromptEnhancementPass ? false : options.unloadAfter !== false,
-    });
+      unload_after: options.deferEnhancement ? options.unloadAfter !== false : state.useI2VPromptEnhancementPass ? false : options.unloadAfter !== false,
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     pushHistory();
-    segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: options.unloadAfter !== false });
+    segment.i2v_prompt = options.deferEnhancement
+      ? finalizeVideoPromptDraftOnly(segment, data.prompt)
+      : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: options.unloadAfter !== false });
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
@@ -13675,38 +14218,42 @@ function openBuilder(node) {
 
   async function generateI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
     if (!segment) throw new Error("Scene is missing.");
-    const isT2V = currentVideoMode() === "t2v";
-    const modeLabel = isT2V ? "T2V" : "I2V";
+    const videoMode = currentVideoMode();
+    const isT2V = videoMode === "t2v";
+    const isRTV = videoMode === "rtv";
+    const modeLabel = videoModeDisplayLabel(videoMode, true);
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
-    const useImageReference = forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+    const useImageReference = forceVision ? true : forceTextOnly || isRTV ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
-    if ((isT2V || !useImageReference) && !t2iText) {
+    if ((isT2V || isRTV || !useImageReference) && !t2iText) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I/concept prompt is missing.`);
     }
     progress?.set(useImageReference
       ? `${label}: creating ${modeLabel} prompt from reference image, concept, and motion notes...\n${gemmaRunnerLine({ vision: true })}`
       : `${label}: converting T2I prompt to ${modeLabel} prompt without vision...\n${gemmaRunnerLine()}`, percent);
-    const data = await postJson(isT2V ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+    const data = await postJson(isT2V || isRTV ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
       ...textGemmaRunnerPayload(),
       model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
       mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-      t2i_prompt: isT2V ? t2iText : useImageReference ? "" : t2iText,
+      t2i_prompt: isT2V || isRTV ? t2iText : useImageReference ? "" : t2iText,
       image_reference_path: imageReference.path,
       image_reference_data: imageReference.data,
       repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
-      theme_style_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-      story_idea_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-      subject_scene_path: useImageReference && !isT2V ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
-      unload_after: state.useI2VPromptEnhancementPass ? useImageReference : options.unloadAfter !== false,
-    });
+      theme_style_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+      story_idea_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+      subject_scene_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+      unload_after: options.deferEnhancement ? options.unloadAfter !== false : state.useI2VPromptEnhancementPass ? useImageReference : options.unloadAfter !== false,
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     pushHistory();
-    segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: useImageReference ? true : options.unloadAfter !== false });
+    segment.i2v_prompt = options.deferEnhancement
+      ? finalizeVideoPromptDraftOnly(segment, data.prompt)
+      : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: useImageReference ? true : options.unloadAfter !== false });
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty ${modeLabel} prompt.`);
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
@@ -13714,8 +14261,10 @@ function openBuilder(node) {
   }
 
   async function i2vAllScenes(options = {}) {
-    const isT2V = currentVideoMode() === "t2v";
-    const modeLabel = isT2V ? "T2V" : "I2V";
+    const videoMode = currentVideoMode();
+    const isT2V = videoMode === "t2v";
+    const isRTV = videoMode === "rtv";
+    const modeLabel = videoModeDisplayLabel(videoMode, true);
     const progress = options.progress || createProgressWindow(`Gemma ${modeLabel} All Scenes`);
     const closeProgress = !options.progress;
     const sceneScope = options.sceneScope || "all";
@@ -13723,6 +14272,7 @@ function openBuilder(node) {
     const redoPrompts = options.i2vRunMode === "redo_prompts";
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
+    const deferEnhancement = Boolean(state.useI2VPromptEnhancementPass);
     if (redoPrompts) {
       allScenes.forEach((segment) => {
         segment.i2v_prompt = "";
@@ -13738,7 +14288,7 @@ function openBuilder(node) {
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
-      if ((isT2V || !useImageReference) && !sceneConceptPromptText(segment)) {
+      if ((isT2V || isRTV || !useImageReference) && !sceneConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: T2I/concept prompt is missing.`);
       }
     });
@@ -13769,19 +14319,28 @@ function openBuilder(node) {
         state.activeId = segment.id;
         syncInspector();
         render();
-        const base = Math.floor((index / scenes.length) * 100);
+        const base = Math.floor((index / scenes.length) * (deferEnhancement ? 68 : 100));
         const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
         const displayIndex = segmentIndexInfo(segment).index;
         progress.set(`Gemma ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly, forceVision });
+        await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly, forceVision, deferEnhancement });
         await autoSaveSessionQuiet(`Gemma ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
+      }
+      if (deferEnhancement) {
+        await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} draft prompt pass`, 72);
+        await runVideoPromptEnhancementBatch(scenes, progress, {
+          sceneScope,
+          percentBase: 72,
+          percentSpan: 23,
+        });
       }
       await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} prompt pass`, 96);
       await autoSaveSessionQuiet(`Gemma ${modeLabel} All complete`);
       progress.set(`Gemma ${modeLabel} All complete.`, 100);
       if (closeProgress) progress.close(1800);
     } catch (error) {
-      progress.set(`Stopped/Error:\n${String(error?.message || error)}`, 100);
+      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `Gemma ${modeLabel} All` });
+      progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
       if (options.throwOnError) throw error;
       toast(String(error?.message || error), true);
     } finally {
@@ -13918,9 +14477,40 @@ function openBuilder(node) {
     updateActiveFromInputs();
     gemmaVideoAllButton.disabled = true;
     const changedReferenceFlags = [];
+    const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+    const sceneScope = options.sceneScope || "all";
     try {
+      if (options.promptRunMode === "enhance_existing") {
+        const progress = createProgressWindow(`Gemma ${videoLabel} Enhancement All`);
+        try {
+          const targets = batchTargetItems(sceneScope).map(({ segment }) => segment).filter((segment) => String(segment?.i2v_prompt || "").trim());
+          if (!targets.length) {
+            progress.set(`No existing ${videoLabel} prompts found to enhance.`, 100);
+            progress.close(1800);
+            toast(`No existing ${videoLabel} prompts found to enhance.`, true);
+            return;
+          }
+          await saveSessionForSceneVideo();
+          await runVideoPromptEnhancementBatch(targets, progress, {
+            force: true,
+            sceneScope,
+            percentBase: 5,
+            percentSpan: 88,
+          });
+          await runClearMemoryWorkflowQuiet(progress, `Gemma ${videoLabel} enhancement pass`, 96);
+          await autoSaveSessionQuiet(`Gemma ${videoLabel} enhancement complete`);
+          progress.set(`Gemma ${videoLabel} enhancement pass complete.`, 100);
+          progress.close(1800);
+          toast(`Gemma ${videoLabel} enhancement pass complete.`);
+        } catch (error) {
+          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `Gemma ${videoLabel} Enhancement All` });
+          progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
+          toast(String(error?.message || error), true);
+        }
+        return;
+      }
       if (options.gemmaInputMode === "vision") {
-        batchTargetItems(options.sceneScope || "all").forEach(({ segment }) => {
+        batchTargetItems(sceneScope).forEach(({ segment }) => {
           const previous = videoVisionReferenceEnabled(segment);
           if (!previous) {
             changedReferenceFlags.push({ segment, previous });
@@ -13932,8 +14522,8 @@ function openBuilder(node) {
         i2vRunMode: options.promptRunMode === "missing_only" ? "missing_only" : "redo_prompts",
         forceTextOnly: options.gemmaInputMode !== "vision",
         forceVision: options.gemmaInputMode === "vision",
-        sceneScope: options.sceneScope || "all",
-      });
+        sceneScope,
+      }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     } finally {
       changedReferenceFlags.forEach(({ segment, previous }) => setVideoVisionReferenceEnabled(segment, previous));
       gemmaVideoAllButton.disabled = false;
@@ -13952,7 +14542,18 @@ function openBuilder(node) {
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\text_to_video_clips`;
   }
 
+  function rtvVideoOutputFolder() {
+    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\reference_to_video_clips`;
+  }
+
+  function videoModeDisplayLabel(mode = currentVideoMode(), compact = false) {
+    if (mode === "rtv") return compact ? "RTV" : "Reference to Video";
+    if (mode === "t2v") return compact ? "T2V" : "Text to Video";
+    return compact ? "I2V" : "Image to Video";
+  }
+
   function activeVideoOutputFolder(mode = currentVideoMode()) {
+    if (mode === "rtv") return rtvVideoOutputFolder();
     return mode === "t2v" ? t2vVideoOutputFolder() : i2vVideoOutputFolder();
   }
 
@@ -13961,7 +14562,7 @@ function openBuilder(node) {
   }
 
   function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden video workflow...", details = {}) {
-    const videoMode = details.videoMode === "t2v" ? "t2v" : "i2v";
+    const videoMode = details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
     const promptNumber = Number(details.promptNumber || sceneIndex + 1);
     const imageIndex = sceneSlotNumber(segment) - 1;
     const imageSource = segmentImageSource(segment);
@@ -13975,7 +14576,7 @@ function openBuilder(node) {
         ${videoMode === "i2v" && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
         <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:5px 10px;font-size:11px;">
           <div style="color:#67e8f9;font-weight:900;">Scene</div><div>${escapeHtml(segment.label || `Scene ${promptNumber}`)}</div>
-          <div style="color:#67e8f9;font-weight:900;">Video mode</div><div>${videoMode === "t2v" ? "Text to Video" : "Image to Video"}</div>
+          <div style="color:#67e8f9;font-weight:900;">Video mode</div><div>${videoModeDisplayLabel(videoMode)}</div>
           ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image index</div><div>${imageIndex} (0 based)</div>` : ""}
           <div style="color:#67e8f9;font-weight:900;">SRT prompt #</div><div>${promptNumber} (1 based)</div>
           <div style="color:#67e8f9;font-weight:900;">Audio mode</div><div>${escapeHtml(audioMode)}</div>
@@ -13987,7 +14588,7 @@ function openBuilder(node) {
           <div style="color:#67e8f9;font-weight:900;">Collected clips</div><div style="overflow-wrap:anywhere;">${escapeHtml(collectedSceneVideoFolder())}</div>
         </div>
         <div>
-          <div style="color:#67e8f9;font-weight:900;margin-bottom:4px;">${videoMode === "t2v" ? "T2V prompt" : "I2V prompt"}</div>
+          <div style="color:#67e8f9;font-weight:900;margin-bottom:4px;">${videoModeDisplayLabel(videoMode, true)} prompt</div>
           <div style="border:1px solid #155e75;border-radius:6px;background:#020617;color:#e0f2fe;padding:8px;max-height:130px;overflow:auto;white-space:pre-wrap;">${escapeHtml(segment.i2v_prompt || "")}</div>
         </div>
       </div>
@@ -14021,6 +14622,11 @@ function openBuilder(node) {
       seed: Number(settings.seed || 1),
       tail_loss_frames: Math.max(0, Number(settings.tail_loss_frames ?? 25)),
       pre_frames: Math.max(0, Number(settings.pre_frames ?? 50)),
+      msr_lora_name: settings.msr_lora_name || REQUIRED_LTX_MSR_LORA,
+      msr_first_pass_strength: Number(settings.msr_first_pass_strength ?? 1),
+      msr_second_pass_strength: 0,
+      msr_reference_strength: settings.msr_reference_strength || "auto - based on subject count",
+      msr_background_mode: settings.msr_background_mode || "neutral placeholder (WIP/testing)",
       use_custom_loras: useLoras,
       lora_count: useLoras ? count : 0,
     };
@@ -14028,7 +14634,7 @@ function openBuilder(node) {
       const lora = settings.loras?.[index] || {};
       payload[`lora_${index + 1}`] = useLoras && index < count ? (lora.name || "[none]") : "[none]";
       payload[`first_pass_strength_${index + 1}`] = Number(lora.first_pass_strength ?? lora.strength ?? 1);
-      payload[`second_pass_strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 1);
+      payload[`second_pass_strength_${index + 1}`] = 0;
     }
     return payload;
   }
@@ -14043,12 +14649,219 @@ function openBuilder(node) {
     return `${index + 1}. ${segment?.label || `Scene ${index + 1}`}`;
   }
 
+  function storyboardPromptForSegment(segment) {
+    const imageMode = state.imageModelMode || "zimage";
+    const candidates = [
+      imageMode === "flux_klein" ? segment?.flux_klein_prompt : "",
+      imageMode === "nano_banana" ? segment?.nb_prompt : "",
+      imageMode === "ernie_image" ? segment?.ernie_t2i_prompt : "",
+      segment?.t2i_prompt,
+      segment?.flux_klein_prompt,
+      segment?.nb_prompt,
+      segment?.ernie_t2i_prompt,
+    ];
+    return String(candidates.find((item) => String(item || "").trim()) || "").trim();
+  }
+
+  function storyboardSubjectsForSegment(segment) {
+    const singers = Array.isArray(segment?.lyric_singers)
+      ? segment.lyric_singers
+      : String(segment?.lyric_singers || segment?.singers || "").split(/[,;\n]+/);
+    const mapped = String(segment?.mapped_subjects || segment?.subject || "").split(/[,;\n]+/);
+    return [...singers, ...mapped].map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  function storyboardReferenceDataForSegment(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const info = segmentIndexInfo(segment);
+    const sceneKey = segment?.id || "";
+    const numberKey = String((info.index >= 0 ? info.index : allEditableSegments().indexOf(segment)) + 1);
+    const subjectIds = Array.isArray(refs.subject_scene_map?.[sceneKey])
+      ? refs.subject_scene_map[sceneKey]
+      : (Array.isArray(refs.subject_scene_map?.[numberKey]) ? refs.subject_scene_map[numberKey] : []);
+    let subjectRefs = subjectIds
+      .map((id) => refs.subjects.find((subject) => subject.id === id))
+      .filter(Boolean);
+    if (!subjectRefs.length && refs.use_subject_reference && refs.subjects.length === 1) {
+      subjectRefs = [refs.subjects[0]];
+    }
+    const locId = refs.scene_map?.[sceneKey] || refs.scene_map?.[numberKey] || "";
+    const locationRef = refs.locations.find((location) => location.id === locId) || null;
+    const locationName = String(locationRef?.name || segment?.mapped_location || segment?.location || "").trim();
+    const locationDescription = String(locationRef?.description || segment?.location_description || "").trim();
+    return {
+      subject_refs: subjectRefs.map((subject) => ({
+        id: subject.id,
+        name: subject.name,
+        description: subject.description,
+        image: { ...(subject.image || {}) },
+      })),
+      location_ref: locationRef ? {
+        id: locationRef.id,
+        name: locationRef.name,
+        description: locationRef.description,
+        image: { ...(locationRef.image || {}) },
+      } : (locationName || locationDescription ? {
+        id: "",
+        name: locationName,
+        description: locationDescription,
+        image: { path: "", data: "", name: "" },
+      } : null),
+    };
+  }
+
+  function storyboardSummaryForSegment(segment, imagePrompt = "", videoPrompt = "", referenceData = {}) {
+    const parts = [
+      String(segment?.notes || segment?.director_note || "").trim(),
+      String(segment?.timeline_note || "").trim(),
+      String(segment?.i2v_notes || segment?.video_notes || "").trim(),
+      String(referenceData?.location_ref?.description || "").trim(),
+      String(segment?.lyric_text || segment?.lyric_note || segment?.lyrics || "").trim(),
+      String(imagePrompt || "").trim(),
+      String(videoPrompt || "").trim(),
+    ].filter(Boolean);
+    return parts[0] || "";
+  }
+
+  function storyboardScenePayload() {
+    return allEditableSegments()
+      .slice()
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0))
+      .map((segment, sortedIndex) => {
+        const info = segmentIndexInfo(segment);
+        const index = info.index >= 0 ? info.index : sortedIndex;
+        const label = sceneDisplayName(segment, index).replace(/^\d+\.\s*/, "");
+        const lyric = String(segment.lyric_text || segment.lyric_note || segment.lyrics || "").trim();
+        const videoNotes = String(segment.video_notes || segment.i2v_notes || "").trim();
+        const sceneNotes = String(segment.notes || segment.director_note || "").trim();
+        const imagePrompt = storyboardPromptForSegment(segment);
+        const videoPrompt = String(segment.i2v_prompt || segment.t2v_prompt || "").trim();
+        const referenceData = storyboardReferenceDataForSegment(segment);
+        const promptSummary = storyboardSummaryForSegment(segment, imagePrompt, videoPrompt, referenceData);
+        const subjectRefNames = (referenceData.subject_refs || [])
+          .map((subject) => String(subject?.name || "").trim())
+          .filter(Boolean);
+        const subjects = subjectRefNames.length
+          ? Array.from(new Set(subjectRefNames))
+          : Array.from(new Set(storyboardSubjectsForSegment(segment).map((item) => String(item || "").trim()).filter(Boolean)));
+        return {
+          id: segment.id || `scene_${sortedIndex + 1}`,
+          scene_number: sortedIndex + 1,
+          label,
+          lyrics: lyric,
+          prompt_summary: promptSummary,
+          motion_summary: videoNotes || videoPrompt,
+          video_prompt_type: ["i2v", "t2v", "rtv"].includes(String(segment.video_prompt_type || "").trim())
+            ? String(segment.video_prompt_type || "").trim()
+            : currentVideoMode(),
+          subjects,
+          subject_refs: referenceData.subject_refs,
+          setting: String(referenceData.location_ref?.description || referenceData.location_ref?.name || segment.location || segment.mapped_location || "").trim(),
+          location_ref: referenceData.location_ref,
+          shot_type: String(segment.shot_type || "").trim(),
+          camera_motion: String(segment.camera_motion || segment.motion_preset || "").trim(),
+          image_prompt: imagePrompt,
+          video_prompt: videoPrompt,
+          image_path: selectedSegmentImagePath(segment),
+          notes: sceneNotes,
+        };
+      });
+  }
+
+  function openStoryboardBuilderFromProject() {
+    if (!window.VRGDGStoryboardBuilder?.open) {
+      toast("Storyboard Builder UI is not loaded yet. Refresh ComfyUI and try again.", true);
+      return;
+    }
+    updateActiveFromInputs();
+    saveI2VVideoSettingsFromPanel();
+    const applyStoryboardReferenceMappings = (updates = {}) => {
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+      const segments = allEditableSegments();
+      for (const item of Array.isArray(updates.scenes) ? updates.scenes : []) {
+        const segment = segments.find((candidate) => candidate.id === item.id)
+          || segments.find((candidate, index) => Number(index + 1) === Number(item.scene_number));
+        if (!segment) continue;
+        const subjectIds = Array.isArray(item.subject_ids) ? item.subject_ids.map(String).filter(Boolean) : [];
+        if (subjectIds.length) refs.subject_scene_map[segment.id] = subjectIds;
+        else delete refs.subject_scene_map[segment.id];
+        const locationId = String(item.location_id || "").trim();
+        if (locationId) refs.scene_map[segment.id] = locationId;
+        else delete refs.scene_map[segment.id];
+      }
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      render();
+      autoSaveSessionQuiet("Storyboard reference mapping update");
+    };
+    const applyStoryboardPrompts = (updates = {}) => {
+      const segments = allEditableSegments()
+        .slice()
+        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      let applied = 0;
+      for (const scene of Array.isArray(updates.scenes) ? updates.scenes : []) {
+        const segment = segments.find((candidate) => candidate.id === scene.id)
+          || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
+        if (!segment) continue;
+        const imagePrompt = String(scene.image_prompt || "").trim();
+        const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
+        const videoType = String(scene.video_prompt_type || "").trim();
+        if (imagePrompt) {
+          setSegmentPromptForEdit(segment, "t2i", imagePrompt);
+          applied += 1;
+        }
+        if (videoPrompt) {
+          setSegmentPromptForEdit(segment, "i2v", videoPrompt);
+          applied += 1;
+        }
+        if (["i2v", "t2v", "rtv"].includes(videoType)) segment.video_prompt_type = videoType;
+        if (String(scene.shot_type || "").trim()) segment.shot_type = String(scene.shot_type || "").trim();
+        if (String(scene.camera_motion || "").trim()) segment.camera_motion = String(scene.camera_motion || "").trim();
+      }
+      if (applied) {
+        syncInspector();
+        render();
+        autoSaveSessionQuiet("Storyboard prompt export");
+        toast(`Storyboard prompts copied into Video Builder for ${applied} prompt field${applied === 1 ? "" : "s"}.`);
+      }
+    };
+    window.VRGDGStoryboardBuilder.open({
+      projectFolder: projectInput.value || state.projectFolder || "",
+      scenes: storyboardScenePayload(),
+      referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+      gemmaSettings: {
+        text_runner: state.textGemmaRunner || "builtin",
+        model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+        lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+        lmstudio_model: state.lmStudioModel || "",
+        lmstudio_api_key: state.lmStudioApiKey || "",
+        n_ctx: 8000,
+        n_gpu_layers: 99,
+        n_threads: 8,
+        unload_after: true,
+      },
+      onReferenceMappingsChanged: applyStoryboardReferenceMappings,
+      onPromptsExported: applyStoryboardPrompts,
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+  }
+
   function validateSceneReadyForVideo(segment, sceneIndex) {
     const name = sceneDisplayName(segment, sceneIndex);
     const missing = [];
     const mode = currentVideoMode();
-    if (mode !== "t2v" && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
-    if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${mode === "t2v" ? "T2V" : "I2V"} prompt is missing.`);
+    const promptLabel = mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
+    if (mode === "i2v" && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
+    if (mode === "rtv") {
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const hasSubjectReference = Boolean(refs.use_subject_reference && (
+        refs.subject?.image?.path ||
+        refs.subject?.image?.data ||
+        (refs.subjects || []).some((subject) => subject?.image?.path || subject?.image?.data)
+      ));
+      if (!hasSubjectReference) missing.push(`${name}: Reference to Video needs a subject image in Reference Builder.`);
+    }
+    if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${promptLabel} prompt is missing.`);
     return missing;
   }
 
@@ -14216,7 +15029,7 @@ function openBuilder(node) {
     syncInspector();
     updateActiveFromInputs();
     const videoMode = currentVideoMode();
-    const modeLabel = videoMode === "t2v" ? "T2V" : "I2V";
+    const modeLabel = videoModeDisplayLabel(videoMode, true);
     const missing = validateSceneReadyForVideo(segment, sceneIndex);
     if (missing.length) throw new Error(missing.join("\n"));
     segment.video_status = "running";
@@ -14295,6 +15108,9 @@ function openBuilder(node) {
       payload.image_folder = i2vImagesFolder();
       payload.image_index_zero_based = slotNumber - 1;
     }
+    if (videoMode === "rtv") {
+      payload.rtv_references = rtvReferencesForSegment(segment);
+    }
     const workflowDetails = {
       audioPath: audioPathForScene,
       promptNumber: promptNumberForScene,
@@ -14302,7 +15118,11 @@ function openBuilder(node) {
       videoMode,
     };
     const defaultOutputFolder = activeVideoOutputFolder(videoMode);
-    const buildEndpoint = videoMode === "t2v" ? "/vrgdg/workflow_runner/build_t2v_prompt" : "/vrgdg/workflow_runner/build_i2v_prompt";
+    const buildEndpoint = videoMode === "rtv"
+      ? "/vrgdg/workflow_runner/build_rtv_prompt"
+      : videoMode === "t2v"
+        ? "/vrgdg/workflow_runner/build_t2v_prompt"
+        : "/vrgdg/workflow_runner/build_i2v_prompt";
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, defaultOutputFolder, `${batchLabel}Preparing hidden ${modeLabel} workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`, workflowDetails), pct(15));
     const built = await postJson(buildEndpoint, payload);
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queueing hidden ${modeLabel} workflow...`, workflowDetails), pct(40));
@@ -14332,14 +15152,22 @@ function openBuilder(node) {
         segment.video_backup_paths.push(collected.backup_path);
       }
     }
+    if (collected.backup_thumbnail_path) {
+      if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
+      if (!segment.video_backup_thumbnail_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_thumbnail_path))) {
+        segment.video_backup_thumbnail_paths.push(collected.backup_thumbnail_path);
+      }
+    }
     segment.video_output = video;
     segment.video_source_path = videoPath;
     segment.video_path = collected.video_path || videoPath;
+    segment.video_thumbnail_path = collected.thumbnail_path || "";
     segment.video_cache_bust = Date.now();
     segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
     normalizeSegmentVideoHistory(segment);
     const currentVideoIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_path));
     if (currentVideoIndex >= 0) segment.video_history_index = currentVideoIndex;
+    segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || segment.video_thumbnail_path || "";
     segment.preview_mode = "video";
     segment.video_status = "done";
     syncPreview(segment);
@@ -15176,8 +16004,8 @@ function openBuilder(node) {
         progress = createProgressWindow(attempt > 1 ? `Build Full Video retry ${attempt}/${maxAutoRetries + 1}` : "Build Full Video");
         try {
           const videoMode = currentVideoMode();
-          if (videoMode === "t2v") {
-            progress.set("Stage 1/3: Text-to-video mode skips image generation.", 20);
+          if (videoMode === "t2v" || videoMode === "rtv") {
+            progress.set(`Stage 1/3: ${videoModeDisplayLabel(videoMode)} mode skips image generation.`, 20);
           } else {
             const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "nano_banana" ? "NanoBanana image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
             progress.set(`Stage 1/3: ${imageStage}...`, 5);
@@ -15194,7 +16022,12 @@ function openBuilder(node) {
             }
           }
           assertBatchNotStopped();
-          const videoPromptStage = currentVideoMode() === "t2v" ? "creating T2V prompts" : "creating I2V prompts";
+          const activeVideoMode = currentVideoMode();
+          const videoPromptStage = activeVideoMode === "t2v"
+            ? "creating T2V prompts"
+            : activeVideoMode === "rtv"
+              ? "creating Reference-to-Video prompts"
+              : "creating I2V prompts";
           progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
           await i2vAllScenes({
             throwOnError: true,
@@ -15302,8 +16135,20 @@ function openBuilder(node) {
     return playbackSegmentAtTime(current) || activeSegment();
   }
 
+  function frameImageTargetSegments() {
+    return allEditableSegments()
+      .slice()
+      .sort((a, b) => {
+        const startDelta = Number(a.start || 0) - Number(b.start || 0);
+        if (Math.abs(startDelta) > 0.0001) return startDelta;
+        const trackA = segmentTrack(a) === "overlay" ? 0 : 1;
+        const trackB = segmentTrack(b) === "overlay" ? 0 : 1;
+        return trackA - trackB;
+      });
+  }
+
   function chooseFrameImageTargetScene(defaultSegment = activeSegment()) {
-    const segments = allEditableSegments();
+    const segments = frameImageTargetSegments();
     if (!segments.length) {
       toast("No scenes found to receive the captured frame.", true);
       return Promise.resolve(null);
@@ -15318,16 +16163,18 @@ function openBuilder(node) {
       header.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Use Frame as Image</div><div style="font-size:12px;color:#bae6fd;margin-top:4px;">Choose which scene should receive the captured video frame.</div>`;
       const body = document.createElement("div");
       body.style.cssText = "padding:14px 16px;display:flex;flex-direction:column;gap:10px;";
-      const sceneSelect = makeSelect(segments.map((segment) => segment.id), defaultSegment?.id || segments[0]?.id || "");
+      const defaultTarget = segments.some((segment) => segment.id === defaultSegment?.id) ? defaultSegment : segments[0];
+      const sceneSelect = makeSelect(segments.map((segment) => segment.id), defaultTarget?.id || segments[0]?.id || "");
       for (const option of sceneSelect.options) {
         const segment = segments.find((item) => item.id === option.value);
         const info = segmentIndexInfo(segment);
         const prefix = info.track === "overlay" ? `Insert ${info.index + 1}` : `Scene ${info.index + 1}`;
-        option.textContent = `${prefix}: ${segment?.label || prefix}`;
+        const timing = `${formatTime(Number(segment?.start || 0))} - ${formatTime(Number(segment?.end || 0))}`;
+        option.textContent = `${prefix}: ${segment?.label || prefix} (${timing})`;
       }
       const note = document.createElement("div");
       note.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
-      note.textContent = "This captures the frame currently visible in the video preview, then saves it as the selected scene image.";
+      note.textContent = "This captures the frame currently visible in the video preview, then saves it as the selected base scene or insert image.";
       body.append(makeField("Save captured frame to", sceneSelect), note);
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 16px;border-top:1px solid #1f2937;";
@@ -15360,7 +16207,8 @@ function openBuilder(node) {
       toast("The current preview does not have a selected video frame to use.", true);
       return;
     }
-    const targetSegment = await chooseFrameImageTargetScene(sourceSegment);
+    const targetDefault = playbackSegmentAtTime(currentGlobalTime()) || sourceSegment;
+    const targetSegment = await chooseFrameImageTargetScene(targetDefault);
     if (!targetSegment) return;
     const previousText = useFrameAsImageButton.textContent;
     useFrameAsImageButton.disabled = true;
@@ -15736,6 +16584,7 @@ function openBuilder(node) {
       toast("No selected image or video to delete.", true);
       return;
     }
+    const mediaThumbnailPath = media.type === "video" ? selectedSegmentVideoThumbnailPath(media.segment) : "";
     const ok = await confirmDeleteMediaAction(media.type, media.path);
     if (!ok) return;
     try {
@@ -15745,17 +16594,34 @@ function openBuilder(node) {
         project_folder: projectInput.value,
         path: media.path,
       });
+      if (mediaThumbnailPath) {
+        await postJson("/vrgdg/music_builder/delete_project_media", {
+          project_folder: projectInput.value,
+          path: mediaThumbnailPath,
+        }).catch(() => null);
+      }
       pushHistory();
       if (media.type === "video") {
-        media.segment.video_history = (media.segment.video_history || []).filter((item) => item !== media.path);
+        const removedIndex = (media.segment.video_history || []).findIndex((item) => mediaPathKey(item) === mediaPathKey(media.path));
+        media.segment.video_history = (media.segment.video_history || []).filter((item) => mediaPathKey(item) !== mediaPathKey(media.path));
+        if (removedIndex >= 0 && Array.isArray(media.segment.video_thumbnail_history)) {
+          media.segment.video_thumbnail_history.splice(removedIndex, 1);
+        }
+        media.segment.video_backup_paths = (media.segment.video_backup_paths || []).filter((item) => mediaPathKey(item) !== mediaPathKey(media.path));
+        if (mediaThumbnailPath) {
+          media.segment.video_backup_thumbnail_paths = (media.segment.video_backup_thumbnail_paths || []).filter((item) => mediaPathKey(item) !== mediaPathKey(mediaThumbnailPath));
+        }
         media.segment.video_history_index = Math.min(Math.max(0, Number(media.segment.video_history_index || 0)), media.segment.video_history.length - 1);
         if (media.segment.video_history_index < 0) media.segment.video_history_index = -1;
         if (media.segment.video_path === media.path) {
           media.segment.video_path = media.segment.video_history[media.segment.video_history_index] || "";
+          media.segment.video_thumbnail_path = media.segment.video_thumbnail_history?.[media.segment.video_history_index] || "";
           media.segment.video_source_path = "";
           media.segment.video_output = null;
         }
+        if (!media.segment.video_path) media.segment.video_thumbnail_path = "";
         if (!media.segment.video_path) media.segment.video_status = "none";
+        normalizeSegmentVideoHistory(media.segment);
         media.segment.preview_mode = media.segment.image_history?.length ? "image" : "video";
       } else {
         media.segment.image_history = (media.segment.image_history || []).filter((item) => item !== media.path);
@@ -18386,7 +19252,7 @@ function openBuilder(node) {
           choices: orderedImageModeChoices,
         },
       ],
-    });
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     if (!action?.mode) return;
     const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(action.imageMode) ? action.imageMode : imageMode;
     const sceneScope = action.sceneScope === "selected" ? "selected" : "all";
@@ -18449,6 +19315,13 @@ function openBuilder(node) {
         description: "Replace every scene's saved video prompt using the selected text runner. Images and videos stay untouched.",
       },
     ];
+    const enhanceChoices = [
+      {
+        value: "enhance_existing",
+        label: "Enhance existing prompts only",
+        description: `Do not create new ${videoLabel} drafts. Load the text Gemma runner once, rewrite existing video prompts with the enhancement pass, then unload at the end.`,
+      },
+    ];
     const visionChoices = [
       {
         value: "missing_vision",
@@ -18467,7 +19340,7 @@ function openBuilder(node) {
       intro: `This only creates ${videoLabel} prompts for review. It will not render videos or stitch the final video. ${hasVisionTargets ? "Image-reference scenes were detected, so vision options are listed first." : "No image-reference scenes were detected, so text-only options are listed first."}`,
       confirmLabel: `Run Gemma ${videoLabel} All`,
       defaultValue: hasVisionTargets ? "missing_vision" : "missing_text",
-      choices: hasVisionTargets ? [...visionChoices, ...textChoices] : [...textChoices, ...visionChoices],
+      choices: hasVisionTargets ? [...visionChoices, ...textChoices, ...enhanceChoices] : [...textChoices, ...visionChoices, ...enhanceChoices],
       returnAll: true,
       extraGroups: scopeChoices.length ? [{
         key: "sceneScope",
@@ -18477,6 +19350,13 @@ function openBuilder(node) {
       }] : [],
     });
     if (!action?.mode) return;
+    if (action.mode === "enhance_existing") {
+      await gemmaVideoAllTextOnly({
+        promptRunMode: "enhance_existing",
+        sceneScope: action.sceneScope === "selected" ? "selected" : "all",
+      });
+      return;
+    }
     await gemmaVideoAllTextOnly({
       promptRunMode: action.mode.startsWith("missing") ? "missing_only" : "redo_all",
       gemmaInputMode: action.mode.endsWith("vision") ? "vision" : "text",
@@ -18528,12 +19408,16 @@ function openBuilder(node) {
   }
 
   async function confirmAndRunFullBuild() {
-    const t2vMode = currentVideoMode() === "t2v";
+    const videoMode = currentVideoMode();
+    const t2vMode = videoMode === "t2v";
+    const rtvMode = videoMode === "rtv";
+    const videoOnlyMode = t2vMode || rtvMode;
+    const videoPromptLabel = t2vMode ? "T2V" : rtvMode ? "Reference-to-Video" : "I2V";
     const scopeChoices = batchScopeChoices();
     const options = await chooseBatchModeAction({
       title: "Build Full Video?",
-      intro: t2vMode
-        ? "Build Full Video is in Text-to-Video mode. It skips image generation, creates T2V prompts, renders scene videos, and stitches the final video. Model selections, LoRAs, notes, and project paths are not reset."
+      intro: videoOnlyMode
+        ? `Build Full Video is in ${videoModeDisplayLabel(videoMode)} mode. It skips image generation, creates ${videoPromptLabel} prompts, renders scene videos, and stitches the final video. Model selections, LoRAs, notes, and project paths are not reset.`
         : "Build Full Video can run the whole pipeline: image prompts, images, I2V prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.",
       confirmLabel: "Build Full Video",
       returnAll: true,
@@ -18546,22 +19430,22 @@ function openBuilder(node) {
         {
           value: "fresh_rebuild",
           label: "Fresh full rebuild",
-          description: t2vMode
-            ? "Start fresh for generated video outputs. Regenerate T2V prompts and videos. Video seeds can be randomized below."
+          description: videoOnlyMode
+            ? `Start fresh for generated video outputs. Regenerate ${videoPromptLabel} prompts and videos. Video seeds can be randomized below.`
             : "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image seeds are randomized.",
         },
         {
           value: "redo_i2v_prompts_videos",
-          label: t2vMode ? "Redo T2V prompts and videos" : "Keep images, redo I2V prompts and videos",
-          description: t2vMode
-            ? "Regenerate T2V prompts with Gemma, then create new video versions."
+          label: videoOnlyMode ? `Redo ${videoPromptLabel} prompts and videos` : "Keep images, redo I2V prompts and videos",
+          description: videoOnlyMode
+            ? `Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`
             : "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions.",
         },
         {
           value: "redo_videos",
-          label: t2vMode ? "Keep prompts, redo videos" : "Keep images and prompts, redo videos",
-          description: t2vMode
-            ? "Use existing T2V prompts. Only create new video versions, then stitch."
+          label: videoOnlyMode ? "Keep prompts, redo videos" : "Keep images and prompts, redo videos",
+          description: videoOnlyMode
+            ? `Use existing ${videoPromptLabel} prompts. Only create new video versions, then stitch.`
             : "Use the current selected images and existing I2V prompts. Only create new video versions, then stitch.",
         },
       ],
@@ -18794,7 +19678,8 @@ function openBuilder(node) {
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
   promptCreatorButton.onclick = openPromptCreatorPanel;
-  fluxReferenceBuilderButton.onclick = openFluxReferenceBuilderModal;
+  storyboardBuilderButton.onclick = openStoryboardBuilderFromProject;
+  fluxReferenceBuilderButton.onclick = openReferenceBuilderTargetChooser;
   lyricMapperButton.onclick = openLyricMappingWorkflowModal;
   sendToPromptCreatorButton.onclick = sendCurrentProjectToPromptCreator;
   promptOptionsButton.onclick = openPromptOptionsModal;
@@ -18929,6 +19814,11 @@ function openBuilder(node) {
   textToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "t2v";
+    syncVideoModePanel();
+  };
+  referenceToVideoCard.onclick = () => {
+    pushHistory();
+    state.videoModelMode = "rtv";
     syncVideoModePanel();
   };
   fluxIngredientFileInput.addEventListener("change", () => {
@@ -19414,6 +20304,8 @@ function openBuilder(node) {
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
     }
+    ltxMsrLoraPicker.options = loras;
+    if (!ltxMsrLoraPicker.input.value) ltxMsrLoraPicker.input.value = REQUIRED_LTX_MSR_LORA;
   }
 
   async function refreshModelChoices() {
@@ -19541,10 +20433,10 @@ function openBuilder(node) {
   }
   i2vLoraHintButton.addEventListener("click", () => {
     showInfoModal({
-      title: "Two-Pass LoRA Strengths",
+      title: "Video LoRA Strengths",
       lines: [
-        "Some LoRAs can affect motion when they are too strong on the first pass. Using a lower Pass 1 value can help preserve motion, then a stronger Pass 2 value can bring back the LoRA details.",
-        "Style LoRAs trained on images often work better around 0.5 on Pass 1 and 1.0 on Pass 2.",
+        "Reference to Video uses one sampler pass, so each optional video LoRA uses one visible strength.",
+        "If a LoRA hurts motion or identity, lower the strength and render another test.",
       ],
     });
   });
@@ -19586,6 +20478,11 @@ function openBuilder(node) {
   i2vUseLora.input.addEventListener("change", saveI2VVideoSettingsFromPanel);
   i2vLoraCount.addEventListener("input", saveI2VVideoSettingsFromPanel);
   i2vLoraCount.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  wireSearchablePicker(ltxMsrLoraPicker, saveI2VVideoSettingsFromPanel);
+  for (const control of [ltxMsrFirstPassStrength, ltxMsrSecondPassStrength, ltxMsrReferenceStrength, ltxMsrBackgroundMode]) {
+    control.addEventListener("input", saveI2VVideoSettingsFromPanel);
+    control.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  }
   for (const slot of i2vLoraSlots) {
     wireSearchablePicker(slot.picker, saveI2VVideoSettingsFromPanel);
     slot.firstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);

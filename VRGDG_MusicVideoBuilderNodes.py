@@ -3970,6 +3970,24 @@ def _generate_nb_image_prompt(payload):
         text = re.sub(r"\s{2,}", " ", text)
         return text.strip()
 
+    def _ensure_nb_reference_opening(text):
+        text = str(text or "").strip()
+        if not text:
+            return text
+        if has_subject_reference and has_location_reference:
+            opening = "Using the provided character reference and location reference"
+        elif has_subject_reference:
+            opening = "Using the provided character reference"
+        elif has_location_reference:
+            opening = "Using the provided location reference"
+        else:
+            return text
+        if re.search(r"\bUsing the provided (?:character|location|scene|reference image)", text, flags=re.IGNORECASE):
+            return text
+        if re.match(r"^(?:create|make|generate)\b", text, flags=re.IGNORECASE):
+            text = re.sub(r"^(?:create|make|generate)\b\s*", "", text, count=1, flags=re.IGNORECASE)
+        return f"{opening}, create {text[:1].lower()}{text[1:] if len(text) > 1 else ''}".strip()
+
     if has_subject_reference and has_location_reference:
         reference_prompt_rules = (
             "- Start by mentioning both the provided character reference and location reference.\n"
@@ -4067,6 +4085,7 @@ def _generate_nb_image_prompt(payload):
         if not text:
             raise ValueError("NanoBanana Gemma returned an empty prompt.")
         text = _cleanup_nb_reference_claims(text)
+        text = _ensure_nb_reference_opening(text)
         text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
         return {"prompt": text, **info}
 
@@ -4136,6 +4155,7 @@ def _generate_nb_image_prompt(payload):
     text = re.sub(r"\breference\s+imagae\b", "reference image", text, flags=re.IGNORECASE)
     text = re.sub(r"\breference\s+imagaes\b", "reference images", text, flags=re.IGNORECASE)
     text = _cleanup_nb_reference_claims(text)
+    text = _ensure_nb_reference_opening(text)
     if not text:
         raise ValueError("NanoBanana Gemma returned an empty prompt.")
     text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
@@ -5214,6 +5234,46 @@ def _delete_builder_project(payload):
     return {"deleted": True, "project_folder": project_folder}
 
 
+def _builder_scene_video_thumbnail_path(video_path):
+    root, _ext = os.path.splitext(os.path.abspath(str(video_path or "")))
+    return f"{root}.jpg"
+
+
+def _ensure_builder_scene_video_thumbnail(video_path):
+    video_path = os.path.abspath(str(video_path or "").strip().strip('"'))
+    if not os.path.isfile(video_path):
+        return ""
+    thumbnail_path = _builder_scene_video_thumbnail_path(video_path)
+    if os.path.isfile(thumbnail_path):
+        return thumbnail_path
+    try:
+        ffmpeg_path = _find_ffmpeg_path()
+        for timestamp in ("0.5", "0"):
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-ss",
+                timestamp,
+                "-i",
+                video_path,
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=480:-2",
+                "-q:v",
+                "3",
+                thumbnail_path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0 and os.path.isfile(thumbnail_path):
+                return thumbnail_path
+        error_text = (result.stderr or result.stdout or "ffmpeg could not extract a thumbnail.").strip()
+        print(f"[VRGDG Music Builder] Could not create scene video thumbnail for '{video_path}': {error_text}")
+    except Exception as exc:
+        print(f"[VRGDG Music Builder] Could not create scene video thumbnail for '{video_path}': {exc}")
+    return ""
+
+
 def _scan_builder_scene_videos(project_folder):
     folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
     if not folder:
@@ -5221,9 +5281,18 @@ def _scan_builder_scene_videos(project_folder):
     video_folder = os.path.join(folder, "rendered_scene_videos")
     backup_root = os.path.join(folder, "rendered_scene_videos_backup")
     videos = {}
+    video_thumbnails = {}
     video_backups = {}
+    video_backup_thumbnails = {}
     if not os.path.isdir(video_folder):
-        return {"project_folder": folder, "video_folder": video_folder, "videos": videos, "video_backups": video_backups}
+        return {
+            "project_folder": folder,
+            "video_folder": video_folder,
+            "videos": videos,
+            "video_thumbnails": video_thumbnails,
+            "video_backups": video_backups,
+            "video_backup_thumbnails": video_backup_thumbnails,
+        }
     pattern = re.compile(r"^video_(\d+)-audio\.mp4$", re.IGNORECASE)
     for name in os.listdir(video_folder):
         match = pattern.match(name)
@@ -5231,7 +5300,11 @@ def _scan_builder_scene_videos(project_folder):
             continue
         path = os.path.join(video_folder, name)
         if os.path.isfile(path):
-            videos[str(int(match.group(1)))] = path
+            key = str(int(match.group(1)))
+            videos[key] = path
+            thumb = _ensure_builder_scene_video_thumbnail(path)
+            if thumb:
+                video_thumbnails[key] = thumb
     if os.path.isdir(backup_root):
         backup_pattern = re.compile(r"^video_(\d+)-audio_.*\.mp4$", re.IGNORECASE)
         for root, _, names in os.walk(backup_root):
@@ -5243,10 +5316,20 @@ def _scan_builder_scene_videos(project_folder):
                 if not os.path.isfile(path):
                     continue
                 key = str(int(match.group(1)))
-                video_backups.setdefault(key, []).append(path)
-        for paths in video_backups.values():
-            paths.sort(key=lambda item: os.path.getmtime(item))
-    return {"project_folder": folder, "video_folder": video_folder, "videos": videos, "video_backups": video_backups}
+                thumb = _ensure_builder_scene_video_thumbnail(path)
+                video_backups.setdefault(key, []).append((path, thumb))
+        for key, pairs in list(video_backups.items()):
+            pairs.sort(key=lambda item: os.path.getmtime(item[0]))
+            video_backups[key] = [item[0] for item in pairs]
+            video_backup_thumbnails[key] = [item[1] for item in pairs]
+    return {
+        "project_folder": folder,
+        "video_folder": video_folder,
+        "videos": videos,
+        "video_thumbnails": video_thumbnails,
+        "video_backups": video_backups,
+        "video_backup_thumbnails": video_backup_thumbnails,
+    }
 
 
 def _ensure_music_builder_routes():
