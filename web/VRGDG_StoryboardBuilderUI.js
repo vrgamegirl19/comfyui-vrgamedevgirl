@@ -530,6 +530,155 @@ const CHARACTER_MOTION_GROUPS = [
   },
 ];
 
+const STORYBOARD_CAMERA_FLOW_PRESETS = {
+  off: {
+    label: "Off",
+    description: "Do not auto-fill missing shot or camera motion fields.",
+    sequence: [],
+  },
+  balanced: {
+    label: "Balanced cinematic flow",
+    description: "Alternates wide, medium, close, tracking, reveal, and reset shots. Good default for most music videos.",
+    sequence: [
+      { shot: "wide shot", camera: "slow push in" },
+      { shot: "medium close-up shot", camera: "pull back" },
+      { shot: "tracking shot", camera: "side-follow shot" },
+      { shot: "close-up shot", camera: "slow orbit left" },
+      { shot: "medium wide shot", camera: "dolly in" },
+      { shot: "profile shot", camera: "track forward" },
+      { shot: "low-angle shot", camera: "crane up" },
+      { shot: "intimate close-up shot", camera: "slow zoom out" },
+      { shot: "over-the-shoulder shot", camera: "reveal right" },
+      { shot: "full-body shot", camera: "track backward" },
+    ],
+  },
+  music_video: {
+    label: "Music video movement",
+    description: "More performance energy with tracking, handheld, whip, reveal, and orbit changes.",
+    sequence: [
+      { shot: "hero shot", camera: "push in" },
+      { shot: "medium shot", camera: "handheld follow" },
+      { shot: "wide shot", camera: "whip pan transition" },
+      { shot: "close-up shot", camera: "orbit right" },
+      { shot: "low-angle shot", camera: "dolly in" },
+      { shot: "side shot", camera: "track left" },
+      { shot: "full-body shot", camera: "smooth follow" },
+      { shot: "reaction shot", camera: "rack focus" },
+      { shot: "dramatic low-angle shot", camera: "crane reveal" },
+      { shot: "moody close-up shot", camera: "slow zoom in" },
+    ],
+  },
+  quiet: {
+    label: "Quiet dramatic",
+    description: "Slower restrained camera choices for emotional, eerie, or cinematic scenes.",
+    sequence: [
+      { shot: "establishing shot", camera: "slow cinematic drift" },
+      { shot: "medium wide shot", camera: "slow push in" },
+      { shot: "profile shot", camera: "subtle handheld movement" },
+      { shot: "intimate close-up shot", camera: "slow zoom in" },
+      { shot: "reflection shot", camera: "focus pull" },
+      { shot: "centered shot", camera: "pull back" },
+      { shot: "silhouette shot", camera: "tilt up" },
+      { shot: "close-up shot", camera: "drifting camera move" },
+    ],
+  },
+  energetic: {
+    label: "Fast energetic",
+    description: "Bigger changes between scenes with fast moves, reveals, tracking, and punchier reframing.",
+    sequence: [
+      { shot: "wide shot", camera: "crash zoom" },
+      { shot: "medium shot", camera: "track forward" },
+      { shot: "close-up shot", camera: "whip right" },
+      { shot: "low-angle shot", camera: "orbit reveal" },
+      { shot: "full-body shot", camera: "dolly left" },
+      { shot: "Dutch angle shot", camera: "push-through transition" },
+      { shot: "hero shot", camera: "crane up" },
+      { shot: "reaction shot", camera: "snap zoom" },
+      { shot: "tracking shot", camera: "chase shot" },
+      { shot: "detail shot", camera: "rack focus" },
+    ],
+  },
+};
+
+const PERFORMANCE_STYLE_PRESETS = [
+  {
+    value: "",
+    label: "Default cinematic",
+    direction: "Use a natural cinematic music-video performance with visible emotion, expressive face, motivated body language, and camera energy that fits the scene.",
+  },
+  {
+    value: "rock_punk",
+    label: "Rock / punk",
+    direction: "Use raw rock performance energy: intense facial emotion, stronger mouth shapes, head movement, sharp gestures, defiant posture, and gritty stage-like body language.",
+  },
+  {
+    value: "metal_screaming",
+    label: "Metal / screaming",
+    direction: "Use aggressive high-intensity performance energy: fierce expression, open-mouth belting or screaming, powerful stance, forceful gestures, hair and clothing reacting to motion, and heavy dramatic presence.",
+  },
+  {
+    value: "rap_hiphop",
+    label: "Rap / hip-hop",
+    direction: "Use rap-style delivery instead of soft singing: rhythmic mouth movement, confident direct-to-camera energy, expressive hand gestures, head nods, shoulder movement, and sharper body language.",
+  },
+  {
+    value: "pop_performance",
+    label: "Pop performance",
+    direction: "Use polished pop performance energy: expressive singing, clean confident movement, controlled gestures, direct eye contact, stylish body language, and camera-friendly emotion.",
+  },
+  {
+    value: "ballad_emotional",
+    label: "Ballad / emotional",
+    direction: "Use emotional ballad performance energy: vulnerable facial expression, slower gestures, longing eyes, subtle hand movement, restrained body language, and intimate camera presence.",
+  },
+  {
+    value: "rnb_smooth",
+    label: "R&B / smooth",
+    direction: "Use smooth R&B performance energy: relaxed confident expression, controlled sensual movement, gentle hand gestures, soft rhythmic body motion, and close emotional delivery.",
+  },
+  {
+    value: "edm_club",
+    label: "EDM / club",
+    direction: "Use energetic club performance energy: rhythmic movement, dance-like gestures, bright reactive expression, beat-driven body language, and dynamic camera motion.",
+  },
+  {
+    value: "spoken_word",
+    label: "Spoken word",
+    direction: "Use spoken-word delivery instead of singing: clear speech-like mouth movement, focused eyes, intentional gestures, restrained intensity, and poetic performance energy.",
+  },
+  {
+    value: "no_vocals_broll",
+    label: "No vocals / B-roll",
+    direction: "Do not include singing, rapping, speaking, lip-sync, mouth movement, microphones, or vocal performance. Use visual action, environment interaction, and mood-driven movement only.",
+  },
+];
+
+function storyboardPerformancePreset(value = "") {
+  return PERFORMANCE_STYLE_PRESETS.find((item) => item.value === value) || PERFORMANCE_STYLE_PRESETS[0];
+}
+
+function storyboardMotionFamily(motion = "") {
+  const text = String(motion || "").toLowerCase();
+  if (/push|dolly in|zoom in|track forward|crash zoom|snap zoom/.test(text)) return "in";
+  if (/pull|dolly out|zoom out|track backward/.test(text)) return "out";
+  if (/orbit|arc|circle|rotation|rotate/.test(text)) return "orbit";
+  if (/track|follow|dolly left|dolly right|truck/.test(text)) return "track";
+  if (/reveal|tilt|crane|jib|rise|descend/.test(text)) return "reveal";
+  if (/focus|rack/.test(text)) return "focus";
+  return text.split(/\s+/).slice(0, 2).join(" ");
+}
+
+function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "") {
+  const preset = STORYBOARD_CAMERA_FLOW_PRESETS[profileKey] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
+  const sequence = preset.sequence || [];
+  if (!sequence.length) return null;
+  let entry = sequence[sceneIndex % sequence.length];
+  if (previousMotion && storyboardMotionFamily(entry.camera) === storyboardMotionFamily(previousMotion)) {
+    entry = sequence[(sceneIndex + 1) % sequence.length] || entry;
+  }
+  return entry;
+}
+
 function referenceChipHtml(ref, fallbackLabel = "Reference") {
   const image = storyboardReferenceImageSrc(ref?.image);
   const label = String(ref?.name || fallbackLabel || "Reference").trim();
@@ -628,6 +777,8 @@ function normalizeScene(scene = {}, index = 0) {
     shot_type: scene.shot_type || "",
     camera_motion: scene.camera_motion || scene.motion_preset || "",
     character_motion: scene.character_motion || scene.character_motion_preset || scene.subject_motion || "",
+    performance_style: scene.performance_style || scene.song_style || scene.music_style || "",
+    include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
     status: scene.status || "draft",
     image_prompt: scene.image_prompt || scene.t2i_prompt || "",
     video_prompt: scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "",
@@ -653,10 +804,12 @@ function scenesFromBuilderPayload(payload = {}) {
     setting: scene.location || scene.location_ref?.description || scene.location_ref?.name || "",
     location_ref: scene.location_ref || null,
     video_prompt_type: scene.video_prompt_type || scene.video_type || "",
-    shot_type: scene.shot_type || "",
-    camera_motion: scene.camera_motion || scene.motion_preset || "",
-    character_motion: scene.character_motion || scene.character_motion_preset || scene.subject_motion || "",
-    image_prompt: scene.t2i_prompt || "",
+      shot_type: scene.shot_type || "",
+      camera_motion: scene.camera_motion || scene.motion_preset || "",
+      character_motion: scene.character_motion || scene.character_motion_preset || scene.subject_motion || "",
+      performance_style: scene.performance_style || scene.song_style || scene.music_style || "",
+      include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
+      image_prompt: scene.t2i_prompt || "",
     video_prompt: scene.i2v_prompt || scene.t2v_prompt || "",
     image_path: scene.image_path || scene.approved_image_path || "",
     notes: scene.notes || "",
@@ -706,6 +859,7 @@ function slimSceneForRequest(scene, index = 0) {
 function slimStoryboardForRequest(state) {
   return {
     mode: state.mode,
+    camera_flow: state.cameraFlow || "balanced",
     scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
   };
 }
@@ -729,8 +883,13 @@ function storyboardVideoPromptTypeLabel(type) {
 }
 
 function storyboardScenesForGpt(state) {
+  let previousCameraMotion = "";
   return state.scenes.map((scene, index) => {
     const normalized = normalizeScene(scene, index);
+    const cameraFallback = storyboardCameraFlowEntry(state.cameraFlow || "balanced", index, previousCameraMotion);
+    const shotType = normalized.shot_type || cameraFallback?.shot || "";
+    const cameraMotion = normalized.camera_motion || cameraFallback?.camera || "";
+    previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync);
@@ -772,6 +931,14 @@ function storyboardScenesForGpt(state) {
       },
       scene_summary: normalized.prompt_summary,
       motion_summary: normalized.motion_summary,
+      performance_style: storyboardPerformancePreset(normalized.performance_style).label,
+      performance_direction: storyboardPerformancePreset(normalized.performance_style).direction,
+      microphone: {
+        include: Boolean(normalized.include_microphone),
+        instruction: normalized.include_microphone
+          ? "A microphone may be included if it naturally fits the scene, stage, or performance setup."
+          : "Do not mention or add a microphone, mic stand, headset mic, studio mic, or any microphone prop unless the scene notes explicitly ask for one.",
+      },
       subject_count: subjectCount,
       subject_instruction: subjectCount === 1
         ? "This scene has exactly one subject. Treat the listed subject as one individual person even if the label sounds plural. Do not create a group, duplicates, backup singers, or multiple versions of the subject. Use singular wording and do not use they/them/their for this one subject."
@@ -781,8 +948,8 @@ function storyboardScenesForGpt(state) {
         name: String(normalized.setting || "").trim(),
         description: String(normalized.setting || "").trim(),
       },
-      shot_type: normalized.shot_type,
-      camera_motion: normalized.camera_motion,
+      shot_type: shotType,
+      camera_motion: cameraMotion,
       character_motion: normalized.character_motion,
       text_to_image_prompt: normalized.image_prompt,
       video_prompt: normalized.video_prompt,
@@ -834,6 +1001,7 @@ function openStoryboardBuilder(payload = {}) {
     selected: new Set(),
     saving: false,
     gemmaSettings: payload.gemmaSettings || payload.gemma_settings || {},
+    cameraFlow: String(payload.cameraFlow || payload.camera_flow || "balanced"),
   };
 
   const backdrop = document.createElement("div");
@@ -883,6 +1051,21 @@ function openStoryboardBuilder(payload = {}) {
   const note = document.createElement("div");
   note.style.cssText = "margin:18px 24px 0;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;";
 
+  const cameraFlowBar = document.createElement("div");
+  cameraFlowBar.style.cssText = "margin:10px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:10px 12px;display:grid;grid-template-columns:auto minmax(220px,360px) auto 1fr;gap:10px;align-items:center;color:#cbd5e1;font-size:12px;";
+  const cameraFlowLabel = document.createElement("div");
+  cameraFlowLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;";
+  cameraFlowLabel.textContent = "Auto camera flow";
+  const cameraFlowSelect = makeSelect(
+    Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
+    state.cameraFlow,
+  );
+  const cameraFlowApply = makeButton("Fill Missing", "primary");
+  cameraFlowApply.title = "Fill only blank shot type and camera motion fields. Existing manual choices are kept.";
+  const cameraFlowInfo = document.createElement("div");
+  cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  cameraFlowBar.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowInfo);
+
   const tableWrap = document.createElement("div");
   tableWrap.style.cssText = "margin:18px 24px;overflow:auto;border:1px solid #334155;border-radius:10px;background:#0b1220;";
 
@@ -897,7 +1080,7 @@ function openStoryboardBuilder(payload = {}) {
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
-  shell.append(header, note, tableWrap, footer);
+  shell.append(header, note, cameraFlowBar, tableWrap, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
 
@@ -915,6 +1098,45 @@ function openStoryboardBuilder(payload = {}) {
       ? "Video prep mode supports I2V, T2V, and Reference to Video per scene. Open a scene card to choose the video prompt type, shot direction, and motion notes."
       : "Storyboard prompt mode is the planning space. Build stronger scene cards first, then export prompt text files for the existing Video Creator.";
     renderTable();
+  };
+
+  const cameraFlowEntryForScene = (profileKey, sceneIndex, previousMotion = "") => {
+    return storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion);
+  };
+
+  const refreshCameraFlowInfo = () => {
+    const preset = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
+    const count = preset.sequence?.length || 0;
+    cameraFlowInfo.textContent = state.cameraFlow === "off"
+      ? preset.description
+      : `${preset.description} For any scene count, it cycles through ${count} camera beats and only fills blank fields.`;
+  };
+
+  const applyCameraFlowToMissing = () => {
+    const profileKey = state.cameraFlow || "balanced";
+    if (profileKey === "off") {
+      createToast("Auto camera flow is off.");
+      return;
+    }
+    let previousMotion = "";
+    let changed = 0;
+    state.scenes.forEach((scene, index) => {
+      const entry = cameraFlowEntryForScene(profileKey, index, previousMotion);
+      if (!entry) return;
+      const hadShot = Boolean(String(scene.shot_type || "").trim());
+      const hadCamera = Boolean(String(scene.camera_motion || "").trim());
+      if (!hadShot && entry.shot) {
+        scene.shot_type = entry.shot;
+        changed += 1;
+      }
+      if (!hadCamera && entry.camera) {
+        scene.camera_motion = entry.camera;
+        changed += 1;
+      }
+      previousMotion = String(scene.camera_motion || entry.camera || previousMotion);
+    });
+    renderTable();
+    createToast(changed ? `Auto camera flow filled ${changed} blank field${changed === 1 ? "" : "s"}.` : "No blank shot or camera fields needed filling.");
   };
 
   const currentRows = () => {
@@ -975,6 +1197,13 @@ function openStoryboardBuilder(payload = {}) {
     const characterMotionValue = scene.character_motion || characterMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
     const characterMotionPreset = makeGroupedSelect(CHARACTER_MOTION_GROUPS, characterMotionValue);
     const customCharacterMotion = makeInput(scene.character_motion || "", "Custom character motion");
+    const performanceStyle = makeSelect(PERFORMANCE_STYLE_PRESETS, scene.performance_style || "");
+    const includeMicLabel = document.createElement("label");
+    includeMicLabel.style.cssText = "display:flex;align-items:center;gap:8px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:9px 10px;font-size:12px;font-weight:900;";
+    const includeMic = document.createElement("input");
+    includeMic.type = "checkbox";
+    includeMic.checked = Boolean(scene.include_microphone);
+    includeMicLabel.append(includeMic, document.createTextNode("Include microphone in prompt"));
     const videoPromptType = makeSelect([
       { value: "i2v", label: "Image to Video" },
       { value: "t2v", label: "Text to Video" },
@@ -1026,10 +1255,11 @@ function openStoryboardBuilder(payload = {}) {
     const cameraMotionField = field("Camera motion preset", cameraMotionPreset);
     const characterMotionField = field("Character motion preset", characterMotionPreset);
     const customCharacterMotionField = field("Custom character motion", customCharacterMotion);
+    const performanceStyleField = field("Performance / song style", performanceStyle);
     const imagePathField = field("Image path", imagePath);
     const motionField = field("Motion / video summary", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
-    grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField);
+    grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField);
     const referenceGrid = document.createElement("div");
     referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:10px;";
     if (state.referenceBuilder.subjects.length || state.referenceBuilder.locations.length) {
@@ -1157,6 +1387,8 @@ function openStoryboardBuilder(payload = {}) {
       scene.shot_type = shot.value.trim();
       scene.camera_motion = cameraMotionPreset.value.trim();
       scene.character_motion = customCharacterMotion.value.trim() || characterMotionPreset.value.trim();
+      scene.performance_style = performanceStyle.value || "";
+      scene.include_microphone = Boolean(includeMic.checked);
       scene.image_prompt = imagePrompt.value.trim();
       scene.video_prompt = videoPrompt.value.trim();
       scene.image_path = imagePath.value.trim();
@@ -1293,6 +1525,11 @@ function openStoryboardBuilder(payload = {}) {
         });
       }
       state.mode = saved.mode || state.mode;
+      if (saved.camera_flow && STORYBOARD_CAMERA_FLOW_PRESETS[saved.camera_flow]) {
+        state.cameraFlow = saved.camera_flow;
+        cameraFlowSelect.value = state.cameraFlow;
+      }
+      refreshCameraFlowInfo();
       setMode(state.mode);
     } catch (error) {
       createToast(String(error?.message || error), true);
@@ -1432,6 +1669,12 @@ function openStoryboardBuilder(payload = {}) {
     state.query = search.value || "";
     renderTable();
   };
+  cameraFlowSelect.onchange = () => {
+    state.cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowSelect.value] ? cameraFlowSelect.value : "balanced";
+    cameraFlowSelect.value = state.cameraFlow;
+    refreshCameraFlowInfo();
+  };
+  cameraFlowApply.onclick = applyCameraFlowToMissing;
   add.onclick = () => {
     const next = normalizeScene({ scene_number: state.scenes.length + 1, label: `Scene ${state.scenes.length + 1}` }, state.scenes.length);
     state.scenes.push(next);
@@ -1452,6 +1695,7 @@ function openStoryboardBuilder(payload = {}) {
   backdrop.addEventListener("pointerdown", (event) => {
     if (event.target === backdrop) backdrop.remove();
   });
+  refreshCameraFlowInfo();
   setMode(state.scenes.some((scene) => scene.image_path) ? "image_to_video_prep" : "storyboard_prompts");
   loadExisting();
 }

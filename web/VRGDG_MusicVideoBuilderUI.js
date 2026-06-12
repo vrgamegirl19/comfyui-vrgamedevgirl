@@ -1283,10 +1283,10 @@ async function queueWorkflowPrompt(prompt, options = {}) {
 }
 
 function formatTime(value) {
-  const total = Math.max(0, Number(value || 0));
-  const minutes = Math.floor(total / 60);
-  const seconds = Math.floor(total % 60);
-  const hundredths = Math.floor((total - Math.floor(total)) * 100);
+  const totalHundredths = Math.max(0, Math.round(Number(value || 0) * 100));
+  const minutes = Math.floor(totalHundredths / 6000);
+  const seconds = Math.floor((totalHundredths % 6000) / 100);
+  const hundredths = totalHundredths % 100;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(hundredths).padStart(2, "0")}`;
 }
 
@@ -8527,6 +8527,125 @@ function openBuilder(node) {
     }).join("\n") + "\n";
   }
 
+  function cleanTimestampedLyricText(text) {
+    return String(text || "")
+      .replace(/\s+/g, " ")
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .replace(/([([{])\s+/g, "$1")
+      .replace(/\s+([)\]}])/g, "$1")
+      .trim();
+  }
+
+  function timestampedWordsFromPayload(payload) {
+    const words = [];
+    for (const segment of Array.isArray(payload?.segments) ? payload.segments : []) {
+      if (String(segment?.type || "").toLowerCase() === "instrumental") continue;
+      for (const word of Array.isArray(segment?.words) ? segment.words : []) {
+        const text = String(word?.text || "").trim();
+        const start = Number(word?.start);
+        if (!text || !Number.isFinite(start)) continue;
+        const end = Number.isFinite(Number(word?.end)) ? Number(word.end) : start;
+        words.push({ text, start: Math.max(0, start), end: Math.max(start, end) });
+      }
+    }
+    words.sort((a, b) => a.start - b.start || a.end - b.end);
+    return words;
+  }
+
+  function timestampedTextForExistingScene(payload, scene, words = null, options = {}) {
+    const sceneStart = Number(scene?.start || 0);
+    const sceneEnd = Number(scene?.end || sceneStart);
+    const safeEnd = Math.max(sceneStart, sceneEnd);
+    const timedWords = words || timestampedWordsFromPayload(payload);
+    const tailPadding = Math.max(0, Number(options?.tailPaddingSeconds || 0));
+    const claimedWords = options?.claimedWords instanceof Set ? options.claimedWords : null;
+    if (timedWords.length) {
+      const selected = timedWords.filter((word) => (
+        !claimedWords?.has(word)
+        && word.start >= sceneStart - 0.03
+        && word.start < safeEnd + tailPadding - 0.01
+      ));
+      if (claimedWords) selected.forEach((word) => claimedWords.add(word));
+      return cleanTimestampedLyricText(selected.map((word) => word.text).join(" "));
+    }
+
+    let best = null;
+    let bestOverlap = 0;
+    for (const item of Array.isArray(payload?.segments) ? payload.segments : []) {
+      if (String(item?.type || "").toLowerCase() === "instrumental") continue;
+      const start = Number(item?.start);
+      const end = Number(item?.end);
+      const text = cleanTimestampedLyricText(item?.text);
+      if (!text || !Number.isFinite(start) || !Number.isFinite(end)) continue;
+      const overlap = Math.max(0, Math.min(safeEnd, end) - Math.max(sceneStart, start));
+      if (overlap > bestOverlap) {
+        best = text;
+        bestOverlap = overlap;
+      }
+    }
+    return bestOverlap > 0.05 ? best : "";
+  }
+
+  function snapExistingSceneBoundariesToTimestampedWords(segments, words = [], options = {}) {
+    const items = Array.isArray(segments) ? segments : [];
+    const timedWords = Array.isArray(words) ? words : [];
+    if (items.length < 2 || !timedWords.length) return 0;
+    const tailPadding = Math.max(0, Number(options?.tailPaddingSeconds || 0));
+    const maxShift = Math.max(0.18, Math.min(1.5, tailPadding + 0.45));
+    const wordLeadIn = 0.04;
+    const minScene = 0.2;
+    let adjusted = 0;
+
+    for (let index = 0; index < items.length - 1; index += 1) {
+      const current = items[index];
+      const next = items[index + 1];
+      const currentStart = Number(current?.start);
+      const currentEnd = Number(current?.end);
+      const nextStart = Number(next?.start);
+      const nextEnd = Number(next?.end);
+      if (![currentStart, currentEnd, nextStart, nextEnd].every(Number.isFinite)) continue;
+      if (nextEnd <= currentStart + minScene) continue;
+
+      const boundary = Math.max(currentStart, currentEnd);
+      const sharedBoundary = Math.abs(nextStart - currentEnd) <= 0.25;
+      if (!sharedBoundary) continue;
+
+      const nextFirstWord = timedWords.find((word) => (
+        Number(word.start) >= nextStart - maxShift
+        && Number(word.start) < nextEnd + Math.min(tailPadding, 0.35)
+      ));
+      const crossingWord = timedWords.find((word) => (
+        Number(word.start) < boundary + 0.03
+        && Number(word.end) > boundary - 0.03
+      ));
+
+      let candidate = null;
+      if (crossingWord && Math.abs(Number(crossingWord.start) - boundary) <= maxShift) {
+        candidate = Number(crossingWord.start) - wordLeadIn;
+      } else if (nextFirstWord && Math.abs(Number(nextFirstWord.start) - boundary) <= maxShift) {
+        candidate = Number(nextFirstWord.start) - wordLeadIn;
+      } else {
+        const previousWords = timedWords.filter((word) => (
+          Number(word.start) >= currentStart - 0.05
+          && Number(word.start) < boundary + Math.min(tailPadding, 0.35)
+        ));
+        const previousLastWord = previousWords[previousWords.length - 1];
+        if (previousLastWord && Number(previousLastWord.end) > boundary - maxShift && Number(previousLastWord.end) < nextEnd) {
+          candidate = Number(previousLastWord.end) + 0.03;
+        }
+      }
+
+      if (!Number.isFinite(candidate)) continue;
+      candidate = Math.max(currentStart + minScene, Math.min(nextEnd - minScene, candidate));
+      if (Math.abs(candidate - boundary) < 0.015 || Math.abs(candidate - boundary) > maxShift) continue;
+
+      current.end = candidate;
+      next.start = candidate;
+      adjusted += 1;
+    }
+    return adjusted;
+  }
+
   function segmentSingerSubjectText(segment) {
     if (Array.isArray(segment?.lyric_singers)) {
       return segment.lyric_singers.map((item) => String(item || "").trim()).filter(Boolean).join(", ");
@@ -8732,15 +8851,27 @@ function openBuilder(node) {
       const mode = makeSelect(["fill_missing", "replace_all"], "fill_missing");
       mode.options[0].textContent = "Fill missing only";
       mode.options[1].textContent = "Replace all lyric notes";
+      const vocalTail = makeInput("0.6");
+      const snapWordBoundaries = makeCheckbox("Snap scene cuts to word boundaries", true);
+      const snapNote = document.createElement("div");
+      snapNote.textContent = "When enabled, shared scene cuts can move slightly so the next scene starts before its first word instead of cutting through it.";
+      snapNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.4;margin-top:-4px;";
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
-      grid.append(makeField("Language", language), makeField("Apply mode", mode));
+      grid.append(
+        makeField("Language", language),
+        makeField("Apply mode", mode),
+        makeField("Vocal tail padding", vocalTail),
+      );
+      const snapRow = document.createElement("div");
+      snapRow.style.cssText = "display:flex;flex-direction:column;gap:6px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
+      snapRow.append(snapWordBoundaries.wrapper, snapNote);
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
       const cancel = makeButton("Cancel");
       const run = makeButton("Transcribe Lyrics", "primary");
       actions.append(cancel, run);
-      box.append(header, note, makeField("Reference lyrics", lyrics), grid, actions);
+      box.append(header, note, makeField("Reference lyrics", lyrics), grid, snapRow, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -8753,6 +8884,8 @@ function openBuilder(node) {
         referenceLyrics: lyrics.value || "",
         language: language.value || "english",
         replaceAll: mode.value === "replace_all",
+        vocalTailPaddingSeconds: Number(vocalTail.value || 0.6),
+        snapWordBoundaries: Boolean(snapWordBoundaries.input.checked),
       });
       backdrop.addEventListener("pointerdown", (event) => {
         if (event.target === backdrop) finish(null);
@@ -9022,16 +9155,18 @@ function openBuilder(node) {
       await autoSaveSessionQuiet("timeline lyric transcription");
       const srtPath = state.srtPath || srtInput.value || "";
       if (!srtPath) throw new Error("Current builder SRT was not saved. Save the project/timeline first.");
-      progress.set("Building hidden transcription workflow...", 12);
-      const built = await postJson("/vrgdg/workflow_runner/build_transcribe_prompt", {
+      progress.set("Building hidden timestamp transcription workflow...", 12);
+      const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
         audio_path: audioInput.value || state.audioPath || "",
-        srt_path: srtPath,
         reference_lyrics: options.referenceLyrics || "",
         language: options.language || "english",
-        strict_reference_text: true,
-        fill_aggressiveness: 1,
-        preserve_nonvocal_segments: true,
-        alignment_min_words: 1,
+        segment_mode: String(options.referenceLyrics || "").trim() ? "reference_lines" : "whisper_chunks",
+        include_instrumental_gaps: false,
+        instrumental_text: "[instrumental]",
+        min_gap_seconds: 2.0,
+        min_scene_seconds: 1.0,
+        max_scene_seconds: 30.0,
+        vocal_tail_padding_seconds: Number(options.vocalTailPaddingSeconds || 0.6),
         model_name: "large-v3",
       }, 60000);
       progress.set("Queueing transcription workflow...", 18);
@@ -9048,13 +9183,21 @@ function openBuilder(node) {
         45 * 60 * 1000,
       );
       const rawText = textValues.join("\n");
-      const lyrics = parseLyricSegmentOutput(rawText);
-      if (!lyrics.length) throw new Error("Transcription finished, but no lyricSegment lines were found.");
+      const payload = parseTimestampedLyricsOutput(rawText);
       pushHistory();
       const segments = allEditableSegments();
+      const words = timestampedWordsFromPayload(payload);
+      const claimedWords = new Set();
+      const tailPaddingSeconds = Number(options.vocalTailPaddingSeconds || 0.6);
+      const snappedBoundaries = options.snapWordBoundaries
+        ? snapExistingSceneBoundariesToTimestampedWords(segments, words, { tailPaddingSeconds })
+        : 0;
       let applied = 0;
       for (let index = 0; index < segments.length; index += 1) {
-        const rawValue = String(lyrics[index] || "").trim();
+        const rawValue = timestampedTextForExistingScene(payload, segments[index], words, {
+          claimedWords,
+          tailPaddingSeconds,
+        });
         const value = rawValue || "[instrumental]";
         if (!options.replaceAll && String(segments[index].lyric_text || "").trim()) continue;
         segments[index].lyric_text = value;
@@ -9069,9 +9212,9 @@ function openBuilder(node) {
       syncInspector();
       render();
       await saveSession({ quiet: true, throwOnError: true });
-      progress.set(`Transcribed timeline lyrics.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
+      progress.set(`Transcribed timeline lyrics.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nSnapped ${snappedBoundaries} scene boundary${snappedBoundaries === 1 ? "" : "ies"} to word timing.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
       progress.close(1800);
-      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
+      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"}; snapped ${snappedBoundaries} boundary${snappedBoundaries === 1 ? "" : "ies"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -9739,6 +9882,34 @@ function openBuilder(node) {
       mergeReviewRows(row, nextRow);
     };
 
+    const syncReviewSharedBoundaryPreview = (row, field) => {
+      const rows = reviewRows();
+      const rowIndex = rows.indexOf(row);
+      if (rowIndex < 0) return;
+      const start = parseBulkTimeValue(row.querySelector("[data-review-start]")?.value);
+      const end = parseBulkTimeValue(row.querySelector("[data-review-end]")?.value);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start + 0.05) {
+        updateReviewTimingDisplay(row);
+        return;
+      }
+      if (field === "start") {
+        const prevRow = rows[rowIndex - 1] || null;
+        const prevEnd = prevRow?.querySelector("[data-review-end]");
+        if (prevEnd) {
+          prevEnd.value = formatTime(start);
+          updateReviewTimingDisplay(prevRow);
+        }
+      } else if (field === "end" && timingModeSelect.value !== "ripple") {
+        const nextRow = rows[rowIndex + 1] || null;
+        const nextStart = nextRow?.querySelector("[data-review-start]");
+        if (nextStart) {
+          nextStart.value = formatTime(end);
+          updateReviewTimingDisplay(nextRow);
+        }
+      }
+      updateReviewTimingDisplay(row);
+    };
+
     const handleReviewStartEdited = async (row) => {
       const startInput = row.querySelector("[data-review-start]");
       const endInput = row.querySelector("[data-review-end]");
@@ -10055,8 +10226,38 @@ function openBuilder(node) {
       setEndButton.onclick = () => setReviewRowEndToPlayhead(row);
       splitButton.onclick = () => splitReviewRowAtPlayhead(row, segment);
       mergeNextButton.onclick = () => mergeReviewRowWithNext(row);
-      startInput.onchange = () => handleReviewStartEdited(row);
-      endInput.onchange = () => handleReviewEndEdited(row);
+      const commitStartInput = () => {
+        const start = parseBulkTimeValue(startInput.value);
+        const previousStart = Number(row.dataset.reviewLastStart);
+        if (!Number.isFinite(start) || !Number.isFinite(previousStart) || Math.abs(start - previousStart) > 0.0001) {
+          handleReviewStartEdited(row);
+        }
+      };
+      const commitEndInput = () => {
+        const end = parseBulkTimeValue(endInput.value);
+        const previousEnd = Number(row.dataset.reviewLastEnd);
+        if (!Number.isFinite(end) || !Number.isFinite(previousEnd) || Math.abs(end - previousEnd) > 0.0001) {
+          handleReviewEndEdited(row, previousEnd);
+        }
+      };
+      startInput.addEventListener("input", () => syncReviewSharedBoundaryPreview(row, "start"));
+      endInput.addEventListener("input", () => syncReviewSharedBoundaryPreview(row, "end"));
+      startInput.addEventListener("change", commitStartInput);
+      endInput.addEventListener("change", commitEndInput);
+      startInput.addEventListener("blur", commitStartInput);
+      endInput.addEventListener("blur", commitEndInput);
+      startInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          startInput.blur();
+        }
+      });
+      endInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          endInput.blur();
+        }
+      });
       timing.append(makeField("Start", startInput), makeField("End", endInput), setStartButton, setEndButton, splitButton, mergeNextButton);
       const text = document.createElement("textarea");
       text.dataset.reviewLyricText = "1";
@@ -10596,10 +10797,11 @@ function openBuilder(node) {
     locationsTitle.style.cssText = subjectTitle.style.cssText;
     const extractLocations = makeButton("Extract Locations", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
+    const importLocations = makeButton("Import Location List", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const locationActions = document.createElement("div");
     locationActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    locationActions.append(extractLocations, autoMapLocations, addLocation);
+    locationActions.append(extractLocations, autoMapLocations, importLocations, addLocation);
     locationsHeader.append(locationsTitle, locationActions);
     const locationsList = document.createElement("div");
     locationsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
@@ -10907,6 +11109,263 @@ function openBuilder(node) {
       };
       refs.locations.push(location);
       return location;
+    };
+    const normalizeImportedLocation = (item) => {
+      if (!item || typeof item !== "object") return null;
+      const name = String(item.location ?? item.name ?? item.title ?? item.label ?? "").trim();
+      const description = String(item.description ?? item.prompt ?? item.details ?? item.notes ?? "").trim();
+      if (!name && !description) return null;
+      return { name: name || `Location ${refs.locations.length + 1}`, description };
+    };
+    const parseLocationImportText = (rawText) => {
+      const text = String(rawText || "").trim();
+      if (!text) return [];
+      const fromJsonValue = (value) => {
+        const items = [];
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const normalized = normalizeImportedLocation(item);
+            if (normalized) items.push(normalized);
+          }
+          return items;
+        }
+        if (value && typeof value === "object") {
+          const list = value.locations || value.LocationList || value.location_list;
+          if (Array.isArray(list)) return fromJsonValue(list);
+          for (const [key, entry] of Object.entries(value)) {
+            if (entry && typeof entry === "object") {
+              const normalized = normalizeImportedLocation({ name: key, ...entry });
+              if (normalized) items.push(normalized);
+            } else if (typeof entry === "string") {
+              const sceneLikeKey = sceneNumberFromImportKey(key) > 0;
+              items.push(sceneLikeKey
+                ? { name: entry.trim(), description: "" }
+                : { name: String(key || "").trim(), description: entry.trim() });
+            }
+          }
+        }
+        return items.filter((item) => item.name);
+      };
+      try {
+        const parsed = JSON.parse(text);
+        const jsonItems = fromJsonValue(parsed);
+        if (jsonItems.length) return jsonItems;
+      } catch {
+        // Fall through to plain-text formats.
+      }
+      const blockItems = text.split(/\n\s*\n+/)
+        .map((block) => block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))
+        .filter((lines) => lines.length >= 2)
+        .map((lines) => ({ name: lines[0].replace(/^[-*]\s*/, "").trim(), description: lines.slice(1).join(" ").trim() }))
+        .filter((item) => item.name && item.description);
+      if (blockItems.length) return blockItems;
+      return text.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const clean = line.replace(/^[-*]\s*/, "");
+          const match = clean.match(/^(.+?)\s*(?:=>|=|:|\s+-\s+)\s*(.+)$/);
+          return match ? { name: match[1].trim(), description: match[2].trim() } : null;
+        })
+        .filter((item) => item?.name && item.description);
+    };
+    const sceneNumberFromImportKey = (key) => {
+      const text = String(key || "").trim();
+      const match = text.match(/(?:scene|segment|prompt|motion|location)?\s*#?\s*(\d+)/i);
+      return match ? Number(match[1]) : 0;
+    };
+    const parseLocationSceneMapImportText = (rawText) => {
+      const text = String(rawText || "").trim();
+      if (!text) return [];
+      const normalizedEntry = (entry, fallbackSceneNumber = 0, fallbackKey = "") => {
+        if (typeof entry === "string") {
+          const location = entry.trim();
+          return location ? { sceneNumber: fallbackSceneNumber, key: fallbackKey, location, description: "" } : null;
+        }
+        if (!entry || typeof entry !== "object") return null;
+        const sceneNumber = Number(
+          entry.scene_number
+          ?? entry.sceneNumber
+          ?? entry.scene
+          ?? entry.segment
+          ?? entry.segment_number
+          ?? entry.segmentNumber
+          ?? entry.number
+          ?? fallbackSceneNumber
+          ?? 0
+        );
+        const location = String(
+          entry.location
+          ?? entry.location_name
+          ?? entry.locationName
+          ?? entry.name
+          ?? entry.setting
+          ?? ""
+        ).trim();
+        const description = String(
+          entry.description
+          ?? entry.location_description
+          ?? entry.locationDescription
+          ?? entry.prompt
+          ?? entry.details
+          ?? ""
+        ).trim();
+        return location ? { sceneNumber, key: fallbackKey, location, description } : null;
+      };
+      const fromJsonValue = (value) => {
+        const mappings = [];
+        if (Array.isArray(value)) {
+          value.forEach((entry, index) => {
+            const normalized = normalizedEntry(entry, index + 1, String(index + 1));
+            if (normalized) mappings.push(normalized);
+          });
+          return mappings;
+        }
+        if (value && typeof value === "object") {
+          const explicitMap = value.scene_map || value.sceneMap || value.location_map || value.locationMap || value.locations_by_scene || value.locationsByScene;
+          if (explicitMap && typeof explicitMap === "object") return fromJsonValue(explicitMap);
+          for (const [key, entry] of Object.entries(value)) {
+            const sceneNumber = sceneNumberFromImportKey(key);
+            const normalized = normalizedEntry(entry, sceneNumber, key);
+            if (normalized) mappings.push(normalized);
+          }
+        }
+        return mappings;
+      };
+      try {
+        return fromJsonValue(JSON.parse(text)).filter((item) => item.location);
+      } catch {
+        return [];
+      }
+    };
+    const importLocationItems = (items) => {
+      let added = 0;
+      let updated = 0;
+      const seen = new Set();
+      for (const item of items) {
+        const name = String(item?.name || "").trim();
+        const description = String(item?.description || "").trim();
+        const key = locationKey(name);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const existing = locationByName(name);
+        if (existing) {
+          existing.name = name;
+          if (description) existing.description = description;
+          updated += 1;
+        } else {
+          createLocation(name, description);
+          added += 1;
+        }
+      }
+      return { added, updated };
+    };
+    const applyImportedLocationSceneMap = (mappings) => {
+      if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+      let mapped = 0;
+      let created = 0;
+      const segments = allEditableSegments();
+      const segmentForMapping = (mapping, index) => {
+        const sceneNumber = Number(mapping.sceneNumber || 0);
+        if (sceneNumber > 0) {
+          const byIndex = segments[sceneNumber - 1];
+          if (byIndex) return byIndex;
+          const bySlot = segments.find((segment) => sceneSlotNumber(segment) === sceneNumber);
+          if (bySlot) return bySlot;
+        }
+        if (mapping.key) {
+          const byId = segments.find((segment) => String(segment.id) === String(mapping.key));
+          if (byId) return byId;
+        }
+        return segments[index] || null;
+      };
+      mappings.forEach((mapping, index) => {
+        const locationName = String(mapping?.location || "").trim();
+        if (!locationName) return;
+        let location = locationByName(locationName);
+        if (!location) {
+          location = createLocation(locationName, mapping.description || "");
+          created += 1;
+        } else if (!String(location.description || "").trim() && mapping.description) {
+          location.description = String(mapping.description || "").trim();
+        }
+        const segment = segmentForMapping(mapping, index);
+        if (!segment) return;
+        refs.scene_map[segment.id] = location.id;
+        mapped += 1;
+      });
+      return { mapped, created };
+    };
+    const openImportLocationsDialog = () => {
+      const importBackdrop = document.createElement("div");
+      importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const importBox = document.createElement("div");
+      importBox.style.cssText = "width:min(760px,calc(100vw - 34px));max-height:calc(100vh - 40px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);display:flex;flex-direction:column;overflow:hidden;";
+      const importHeader = document.createElement("div");
+      importHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;background:#083f4f;border-bottom:1px solid #155e75;padding:12px 14px;";
+      const importTitle = document.createElement("div");
+      importTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import Location List / Scene Map</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste locations to create cards, or scene-to-location JSON to auto-map scenes.</div>`;
+      const importClose = makeButton("Close");
+      importHeader.append(importTitle, importClose);
+      const importBody = document.createElement("div");
+      importBody.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;";
+      const help = document.createElement("div");
+      help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;font-size:12px;color:#dbeafe;line-height:1.45;";
+      help.innerHTML = `
+        <div style="font-weight:900;color:#cffafe;margin-bottom:6px;">Accepted formats</div>
+        <div>JSON array:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">[
+  { "location": "Glass hallway", "description": "A long mirrored corridor..." },
+  { "name": "Chrome vault corridor", "description": "A sealed industrial passage..." }
+]</pre>
+        <div>Scene map JSON:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">{
+  "scene1": { "location": "Glass hallway" },
+  "scene2": { "location": "Chrome vault corridor" }
+}</pre>
+        <div>Array scene map:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">[
+  { "scene": 1, "location": "Glass hallway" },
+  { "lyricSegment": "[instrumental]", "location": "Chrome vault corridor" }
+]</pre>
+        <div>Quick text:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">Glass hallway = A long mirrored corridor...
+Chrome vault corridor: A sealed industrial passage...</pre>
+        <div style="margin-top:8px;color:#94a3b8;">Scene map imports use scene numbers first. If an array item has no scene number, its order maps to Scene 1, Scene 2, and so on. Missing location cards are created automatically.</div>`;
+      const input = document.createElement("textarea");
+      input.spellcheck = false;
+      input.placeholder = "Paste JSON, scene map JSON, or Name = Description lines here...";
+      input.style.cssText = "min-height:280px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+      const importActions = document.createElement("div");
+      importActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+      const importCancel = makeButton("Cancel");
+      const importApply = makeButton("Import Locations / Map", "primary");
+      importActions.append(importCancel, importApply);
+      importBody.append(help, input, importActions);
+      importBox.append(importHeader, importBody);
+      importBackdrop.append(importBox);
+      document.body.append(importBackdrop);
+      importClose.onclick = () => importBackdrop.remove();
+      importCancel.onclick = () => importBackdrop.remove();
+      importBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === importBackdrop) importBackdrop.remove();
+      });
+      importApply.onclick = () => {
+        const items = parseLocationImportText(input.value);
+        const mappings = parseLocationSceneMapImportText(input.value);
+        if (!items.length && !mappings.length) {
+          toast("No locations found. Paste location JSON, scene map JSON, or Name = Description lines.", true);
+          return;
+        }
+        const { added, updated } = importLocationItems(items);
+        const { mapped, created } = applyImportedLocationSceneMap(mappings);
+        refs.use_location_references = true;
+        useLocations.input.checked = true;
+        renderAll();
+        toast(`Imported locations. Added: ${added + created}. Updated: ${updated}. Scene mappings: ${mapped}. Review, then Save Reference Builder.`);
+        importBackdrop.remove();
+      };
+      input.focus();
     };
 
     const currentZImageReferenceSettings = () => {
@@ -11491,6 +11950,7 @@ function openBuilder(node) {
     extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
     autoMapLocations.onclick = autoMapLocationsWithGemma;
+    importLocations.onclick = openImportLocationsDialog;
     mapSubjectsFromLyrics.onclick = () => {
       const mapped = autoMapSubjectsFromLyrics();
       refs.use_subject_reference = true;

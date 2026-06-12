@@ -20,17 +20,17 @@ Use `vocal_status` to decide which opening structure to use.
 
 If `vocal_status.should_lip_sync` is true, use this structure:
 
-[Shot type] on [main subject] as [main subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Face/expression/emotion detail], with [hair/costume/appearance detail] catching the light or motion. [Main subject] is in [location/setting], surrounded by [key environmental perspective/detail].
+[Shot type] on [main subject] as [main subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/mouth/jaw/cheeks/gaze], with clear singing mouth shapes and expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [Main subject] is in [location/setting], surrounded by [key environmental perspective/detail].
 
-[Main subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [secondary camera move or reframing]. It then [final push-in / reveal / close-up / transition], capturing [specific visual detail, reflection, silhouette, texture, or emotional beat].
+[Main subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [secondary camera move or reframing]. It then [final push-in / reveal / close-up / transition], capturing [specific facial detail, eye emotion, lip movement, reflection, silhouette, texture, or emotional beat].
 
 [Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
 
 If `vocal_status.instrumental` is true, `vocal_status.no_lip_sync` is true, or `vocal_status.should_lip_sync` is false, use this structure:
 
-[Shot type] on [main subject] in [location/setting], framed by [key environmental perspective/detail]. [Face/expression/emotion detail], with [hair/costume/appearance detail] catching the light or motion.
+[Shot type] on [main subject] in [location/setting], framed by [key environmental perspective/detail]. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/mouth/jaw/cheeks/gaze], with [hair/costume/appearance detail] catching the light or motion.
 
-[Main subject] [performs a clear motivated action that fits the scene mood, character status, and environment] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the action], then [secondary camera move or reframing]. It then [final push-in / reveal / close-up / transition], capturing [specific visual detail, reflection, silhouette, texture, or emotional beat].
+[Main subject] [performs a clear motivated action that fits the scene mood, character status, and environment] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the action], then [secondary camera move or reframing]. It then [final push-in / reveal / close-up / transition], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
 [Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
 
@@ -45,8 +45,16 @@ Rules:
 * Use `shot_type` from the scene when available.
 * Use `motion_video_summary` or `camera_motion` for camera movement.
 * If `camera_motion` is empty, use `motion_video_summary`.
+* Use `performance_style` and `performance_direction` to choose the vocal wording, facial emotion, body language, gesture intensity, and camera energy. For rap/hip-hop, describe rapping or performing the lyric with rhythmic mouth movement and hand gestures instead of soft singing. For rock, punk, or metal, use stronger facial intensity and performance energy.
 * If the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
 * If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
+* Do not mention or add a microphone, mic stand, headset mic, studio mic, or microphone prop unless `microphone.include` is true or the user's scene notes explicitly ask for a microphone.
+* If `microphone.include` is true, include a handheld microphone or stand microphone only when it naturally fits the scene, stage, studio, club, or live performance setup.
+* Every prompt must include visible facial emotion or facial performance. Describe what the eyes, brows, mouth, jaw, cheeks, gaze, or expression are doing.
+* Singing prompts must include expressive singing mouth shapes plus an emotion that fits the lyric, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
+* Non-singing prompts must still include visible emotional expression or restrained facial tension. Do not leave the subject blank-faced.
+* Do not use "expressionless", "blank expression", "empty face", "emotionless", "unreadable face", "deadpan", or "perfectly still face" unless the user's scene notes explicitly ask for that exact effect.
+* If the character is described as calm, silent, stoic, robotic, alien, or controlled, translate that into visible restrained emotion: tense jaw, focused eyes, slight parted lips, narrowed gaze, lifted brow, suppressed tears, soft smile, or subtle unease.
 * Do not copy reference image composition unless the scene card explicitly asks for it.
 * Keep the prompt cinematic, visual, and video-friendly.
 * Do not mention JSON, IDs, file paths, image names, or metadata.
@@ -250,6 +258,9 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     shot_type = _clean_scene_text(scene.get("shot_type") or scene.get("shot") or "", 200)
     camera_motion = _clean_scene_text(scene.get("camera_motion") or scene.get("motion_preset") or "", 200)
     character_motion = _clean_scene_text(scene.get("character_motion") or scene.get("character_motion_preset") or scene.get("subject_motion") or "", 240)
+    performance_style = _clean_scene_text(scene.get("performance_style") or scene.get("song_style") or scene.get("music_style") or "", 120)
+    performance_direction = _clean_scene_text(scene.get("performance_direction") or "", 1000)
+    include_microphone = bool(scene.get("include_microphone") or scene.get("use_microphone") or scene.get("microphone"))
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
     if video_prompt_type not in {"i2v", "t2v", "rtv"}:
         video_prompt_type = "i2v"
@@ -268,6 +279,9 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "shot_type": shot_type,
         "camera_motion": camera_motion,
         "character_motion": character_motion,
+        "performance_style": performance_style,
+        "performance_direction": performance_direction,
+        "include_microphone": include_microphone,
         "video_prompt_type": video_prompt_type,
         "status": status,
         "image_prompt": image_prompt,
@@ -288,6 +302,7 @@ def _default_storyboard(payload):
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
         "mode": "image_to_video_prep" if any(scene.get("image_path") for scene in normalized) else "storyboard_prompts",
+        "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
         "scenes": normalized,
     }
 
@@ -323,6 +338,7 @@ def _save_storyboard(payload):
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": project_folder,
         "mode": storyboard.get("mode") or "storyboard_prompts",
+        "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
         "scenes": [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)],
     }
     path = _storyboard_path(project_folder)
