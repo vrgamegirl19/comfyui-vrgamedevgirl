@@ -824,6 +824,49 @@ function createToast(message, error = false) {
   setTimeout(() => toast.remove(), error ? 8500 : 4200);
 }
 
+function createStoryboardProgressWindow(title = "Storyboard Gemma") {
+  const backdrop = document.createElement("div");
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100030;background:rgba(0,0,0,.18);pointer-events:none;display:flex;align-items:flex-start;justify-content:center;padding-top:72px;";
+  const box = document.createElement("div");
+  box.style.cssText = "width:min(760px,calc(100vw - 48px));border:1px solid #0891b2;border-radius:9px;background:#0f172a;color:#e5e7eb;box-shadow:0 22px 70px rgba(0,0,0,.55);overflow:hidden;pointer-events:auto;";
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:#083f4f;border-bottom:1px solid #0891b2;";
+  const titleEl = document.createElement("div");
+  titleEl.textContent = title;
+  titleEl.style.cssText = "font-weight:900;color:#cffafe;";
+  const close = makeButton("Close");
+  close.style.padding = "8px 12px";
+  header.append(titleEl, close);
+  const body = document.createElement("div");
+  body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:12px;";
+  const message = document.createElement("div");
+  message.style.cssText = "white-space:pre-wrap;line-height:1.45;font-size:13px;color:#e2e8f0;min-height:38px;";
+  const track = document.createElement("div");
+  track.style.cssText = "height:8px;border-radius:999px;background:#155e75;overflow:hidden;";
+  const fill = document.createElement("div");
+  fill.style.cssText = "height:100%;width:0%;background:#22d3ee;border-radius:999px;transition:width .18s ease;";
+  track.append(fill);
+  body.append(message, track);
+  box.append(header, body);
+  backdrop.append(box);
+  document.body.append(backdrop);
+  close.onclick = () => backdrop.remove();
+  return {
+    set(text, percent = 0) {
+      message.textContent = String(text || "");
+      const pct = Number.isFinite(Number(percent)) ? Math.max(0, Math.min(100, Number(percent))) : 0;
+      fill.style.width = `${pct}%`;
+    },
+    close(delay = 0) {
+      if (delay > 0) {
+        setTimeout(() => backdrop.remove(), delay);
+      } else {
+        backdrop.remove();
+      }
+    },
+  };
+}
+
 function storyboardPayloadFromBuilder(payload = {}) {
   return {
     project_folder: payload.projectFolder || payload.project_folder || "",
@@ -860,6 +903,7 @@ function slimStoryboardForRequest(state) {
   return {
     mode: state.mode,
     camera_flow: state.cameraFlow || "balanced",
+    performance_style_default: state.performanceStyle || "",
     scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
   };
 }
@@ -931,8 +975,8 @@ function storyboardScenesForGpt(state) {
       },
       scene_summary: normalized.prompt_summary,
       motion_summary: normalized.motion_summary,
-      performance_style: storyboardPerformancePreset(normalized.performance_style).label,
-      performance_direction: storyboardPerformancePreset(normalized.performance_style).direction,
+      performance_style: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).label,
+      performance_direction: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).direction,
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone
@@ -1002,6 +1046,7 @@ function openStoryboardBuilder(payload = {}) {
     saving: false,
     gemmaSettings: payload.gemmaSettings || payload.gemma_settings || {},
     cameraFlow: String(payload.cameraFlow || payload.camera_flow || "balanced"),
+    performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
   };
 
   const backdrop = document.createElement("div");
@@ -1052,19 +1097,37 @@ function openStoryboardBuilder(payload = {}) {
   note.style.cssText = "margin:18px 24px 0;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;";
 
   const cameraFlowBar = document.createElement("div");
-  cameraFlowBar.style.cssText = "margin:10px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:10px 12px;display:grid;grid-template-columns:auto minmax(220px,360px) auto 1fr;gap:10px;align-items:center;color:#cbd5e1;font-size:12px;";
+  cameraFlowBar.style.cssText = "margin:10px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:10px 12px;display:grid;grid-template-columns:auto minmax(280px,1fr);gap:8px 12px;align-items:center;color:#cbd5e1;font-size:12px;";
+  const cameraFlowControls = document.createElement("div");
+  cameraFlowControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const cameraFlowLabel = document.createElement("div");
-  cameraFlowLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;";
+  cameraFlowLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   cameraFlowLabel.textContent = "Auto camera flow";
   const cameraFlowSelect = makeSelect(
     Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
     state.cameraFlow,
   );
+  cameraFlowSelect.style.width = "max-content";
+  cameraFlowSelect.style.minWidth = "180px";
   const cameraFlowApply = makeButton("Fill Missing", "primary");
   cameraFlowApply.title = "Fill only blank shot type and camera motion fields. Existing manual choices are kept.";
+  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply);
   const cameraFlowInfo = document.createElement("div");
   cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
-  cameraFlowBar.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowInfo);
+  const performanceControls = document.createElement("div");
+  performanceControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const performanceLabel = document.createElement("div");
+  performanceLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  performanceLabel.textContent = "Global performance style";
+  const performanceSelect = makeSelect(PERFORMANCE_STYLE_PRESETS, state.performanceStyle);
+  performanceSelect.style.width = "max-content";
+  performanceSelect.style.minWidth = "180px";
+  const performanceApply = makeButton("Fill Missing", "primary");
+  performanceApply.title = "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
+  performanceControls.append(performanceLabel, performanceSelect, performanceApply);
+  const performanceInfo = document.createElement("div");
+  performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  cameraFlowBar.append(cameraFlowControls, cameraFlowInfo, performanceControls, performanceInfo);
 
   const tableWrap = document.createElement("div");
   tableWrap.style.cssText = "margin:18px 24px;overflow:auto;border:1px solid #334155;border-radius:10px;background:#0b1220;";
@@ -1112,6 +1175,13 @@ function openStoryboardBuilder(payload = {}) {
       : `${preset.description} For any scene count, it cycles through ${count} camera beats and only fills blank fields.`;
   };
 
+  const refreshPerformanceInfo = () => {
+    const preset = storyboardPerformancePreset(state.performanceStyle);
+    performanceInfo.textContent = state.performanceStyle
+      ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene performance style.`
+      : `${preset.description} Pick a style here to use it as the default for blank scenes.`;
+  };
+
   const applyCameraFlowToMissing = () => {
     const profileKey = state.cameraFlow || "balanced";
     if (profileKey === "off") {
@@ -1137,6 +1207,22 @@ function openStoryboardBuilder(payload = {}) {
     });
     renderTable();
     createToast(changed ? `Auto camera flow filled ${changed} blank field${changed === 1 ? "" : "s"}.` : "No blank shot or camera fields needed filling.");
+  };
+
+  const applyPerformanceStyleToMissing = () => {
+    const value = String(state.performanceStyle || "").trim();
+    if (!value) {
+      createToast("Choose a global performance style first.");
+      return;
+    }
+    let changed = 0;
+    state.scenes.forEach((scene) => {
+      if (String(scene.performance_style || "").trim()) return;
+      scene.performance_style = value;
+      changed += 1;
+    });
+    renderTable();
+    createToast(changed ? `Performance style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank performance style fields needed filling.");
   };
 
   const currentRows = () => {
@@ -1399,10 +1485,16 @@ function openStoryboardBuilder(payload = {}) {
       const previous = gemma.textContent;
       gemma.disabled = true;
       gemma.textContent = "Running Gemma...";
+      const progress = createStoryboardProgressWindow("Storyboard Gemma");
       try {
         saveEditorFieldsToScene();
-        await createSceneVideoPromptWithGemma(scene);
+        progress.set(`Preparing ${scene.label || "scene"} for Gemma...`, 12);
+        await createSceneVideoPromptWithGemma(scene, { progress, progressPercent: 32 });
+        progress.set("Storyboard video prompt ready.", 100);
+        progress.close(1200);
         videoPrompt.value = scene.video_prompt || "";
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
       } finally {
         gemma.disabled = false;
         gemma.textContent = previous;
@@ -1476,7 +1568,17 @@ function openStoryboardBuilder(payload = {}) {
         `;
       }
       tr.querySelector('[data-action="edit"]')?.addEventListener("click", () => openSceneEditor(scene));
-      tr.querySelector('[data-action="gemma"]')?.addEventListener("click", () => createSceneVideoPromptWithGemma(scene));
+      tr.querySelector('[data-action="gemma"]')?.addEventListener("click", async () => {
+        const progress = createStoryboardProgressWindow("Storyboard Gemma");
+        try {
+          progress.set(`Preparing ${scene.label || "scene"} for Gemma...`, 12);
+          await createSceneVideoPromptWithGemma(scene, { progress, progressPercent: 32 });
+          progress.set("Storyboard video prompt ready.", 100);
+          progress.close(1200);
+        } catch (error) {
+          progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        }
+      });
       tr.querySelector('[data-action="gpt"]')?.addEventListener("click", () => copySceneForGpt(scene));
       tr.querySelector('[data-action="select"]')?.addEventListener("change", (event) => {
         if (event.target.checked) state.selected.add(scene.id);
@@ -1529,7 +1631,10 @@ function openStoryboardBuilder(payload = {}) {
         state.cameraFlow = saved.camera_flow;
         cameraFlowSelect.value = state.cameraFlow;
       }
+      state.performanceStyle = String(saved.performance_style_default || saved.performance_style || state.performanceStyle || "");
+      performanceSelect.value = state.performanceStyle;
       refreshCameraFlowInfo();
+      refreshPerformanceInfo();
       setMode(state.mode);
     } catch (error) {
       createToast(String(error?.message || error), true);
@@ -1617,10 +1722,12 @@ function openStoryboardBuilder(payload = {}) {
     };
   }
 
-  async function createSceneVideoPromptWithGemma(scene, { quiet = false, unloadAfter = true } = {}) {
+  async function createSceneVideoPromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
     const normalized = normalizeScene(scene, 0);
     try {
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to Gemma...\nThis can take a minute depending on runner/model speed.`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), 240000);
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: Gemma response received.\nRunner: ${data.runner || "Gemma"}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const prompt = String(data.prompt || "").trim();
       if (!prompt) throw new Error("Gemma returned an empty Storyboard video prompt.");
       scene.video_prompt = prompt;
@@ -1643,18 +1750,27 @@ function openStoryboardBuilder(payload = {}) {
     }
     gemmaAllButton.disabled = true;
     const previousText = gemmaAllButton.textContent;
+    const progress = createStoryboardProgressWindow("Storyboard Gemma All");
     let created = 0;
     try {
       const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
+      progress.set(`Starting Storyboard Gemma All...\nScenes: ${scenes.length}\nKeep Gemma loaded: ${keepLoaded ? "yes" : "no"}`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         gemmaAllButton.textContent = `Gemma ${index + 1}/${scenes.length}`;
         const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
-        await createSceneVideoPromptWithGemma(scenes[index], { quiet: true, unloadAfter });
+        const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
+        const label = `Gemma All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
+        progress.set(`${label}\nCreating storyboard video prompt...`, base);
+        await createSceneVideoPromptWithGemma(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
         created += 1;
       }
+      progress.set("Saving storyboard prompts...", 96);
       await saveStoryboard();
+      progress.set(`Gemma All complete.\nCreated ${created} storyboard video prompt${created === 1 ? "" : "s"}.`, 100);
+      progress.close(1800);
       createToast(`Gemma created ${created} storyboard video prompt${created === 1 ? "" : "s"}.`);
     } catch (error) {
+      progress.set(`Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
       createToast(`Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
     } finally {
       gemmaAllButton.disabled = false;
@@ -1675,6 +1791,11 @@ function openStoryboardBuilder(payload = {}) {
     refreshCameraFlowInfo();
   };
   cameraFlowApply.onclick = applyCameraFlowToMissing;
+  performanceSelect.onchange = () => {
+    state.performanceStyle = String(performanceSelect.value || "");
+    refreshPerformanceInfo();
+  };
+  performanceApply.onclick = applyPerformanceStyleToMissing;
   add.onclick = () => {
     const next = normalizeScene({ scene_number: state.scenes.length + 1, label: `Scene ${state.scenes.length + 1}` }, state.scenes.length);
     state.scenes.push(next);
@@ -1696,6 +1817,7 @@ function openStoryboardBuilder(payload = {}) {
     if (event.target === backdrop) backdrop.remove();
   });
   refreshCameraFlowInfo();
+  refreshPerformanceInfo();
   setMode(state.scenes.some((scene) => scene.image_path) ? "image_to_video_prep" : "storyboard_prompts");
   loadExisting();
 }
