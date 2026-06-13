@@ -556,8 +556,8 @@ const STORYBOARD_CAMERA_FLOW_PRESETS = {
     label: "Music video movement",
     description: "More performance energy with tracking, handheld, whip, reveal, and orbit changes.",
     sequence: [
-      { shot: "hero shot", camera: "push in" },
-      { shot: "medium shot", camera: "handheld follow" },
+      { shot: "medium shot", camera: "push in" },
+      { shot: "medium close-up shot", camera: "handheld follow" },
       { shot: "wide shot", camera: "whip pan transition" },
       { shot: "close-up shot", camera: "orbit right" },
       { shot: "low-angle shot", camera: "dolly in" },
@@ -930,7 +930,8 @@ function storyboardScenesForGpt(state) {
   let previousCameraMotion = "";
   return state.scenes.map((scene, index) => {
     const normalized = normalizeScene(scene, index);
-    const cameraFallback = storyboardCameraFlowEntry(state.cameraFlow || "balanced", index, previousCameraMotion);
+    const sceneNumberIndex = Math.max(0, Number(normalized.scene_number || index + 1) - 1);
+    const cameraFallback = storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion);
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
     const cameraMotion = normalized.camera_motion || cameraFallback?.camera || "";
     previousCameraMotion = cameraMotion || previousCameraMotion;

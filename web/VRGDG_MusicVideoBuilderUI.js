@@ -11547,6 +11547,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           scenes: usableScenes,
           subject_scene_text: subjectSceneInput.value || "",
           existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+          n_ctx: 10000,
           unload_after: true,
         }, 10 * 60 * 1000);
         progress.set("Adding extracted locations to the Reference Builder...", 78);
@@ -14766,7 +14767,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
-      if ((isT2V || isRTV || !useImageReference) && !sceneConceptPromptText(segment)) {
+      if (isRTV && !sceneConceptPromptText(segment)) {
+        missing.push(`${sceneDisplayName(segment, index)}: Reference-to-Video prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running Gemma.`);
+      } else if ((isT2V || !useImageReference) && !sceneConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: T2I/concept prompt is missing.`);
       }
     });
@@ -16502,17 +16505,21 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           }
           assertBatchNotStopped();
           const activeVideoMode = currentVideoMode();
-          const videoPromptStage = activeVideoMode === "t2v"
-            ? "creating T2V prompts"
-            : activeVideoMode === "rtv"
-              ? "creating Reference-to-Video prompts"
-              : "creating I2V prompts";
-          progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
-          await i2vAllScenes({
-            throwOnError: true,
-            i2vRunMode: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" ? "redo_prompts" : "resume_missing",
-            sceneScope,
-          });
+          if (buildMode === "redo_videos") {
+            progress.set("Stage 2/3: keeping existing video prompts...", 38);
+          } else {
+            const videoPromptStage = activeVideoMode === "t2v"
+              ? "creating T2V prompts"
+              : activeVideoMode === "rtv"
+                ? "creating Reference-to-Video prompts"
+                : "creating I2V prompts";
+            progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
+            await i2vAllScenes({
+              throwOnError: true,
+              i2vRunMode: buildMode === "fresh_rebuild" || buildMode === "redo_i2v_prompts_videos" ? "redo_prompts" : "resume_missing",
+              sceneScope,
+            });
+          }
           assertBatchNotStopped();
           progress.set("Stage 3/3: rendering and stitching scene videos...", 68);
           progress.close(300);
