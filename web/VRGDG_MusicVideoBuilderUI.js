@@ -3498,6 +3498,41 @@ function openBuilder(node) {
     return Number(audio.currentTime || 0);
   }
 
+  function currentProjectAudioPath() {
+    return String(audioInput.value || state.audioPath || "").trim();
+  }
+
+  function seekAudioWhenReady(targetTime) {
+    const time = Math.max(0, Number(targetTime || 0));
+    const apply = () => {
+      try {
+        audio.currentTime = time;
+      } catch {
+        // Some browsers need metadata first; the once listener below will retry.
+      }
+    };
+    if (audio.readyState >= 1) {
+      apply();
+    } else {
+      audio.addEventListener("loadedmetadata", apply, { once: true });
+    }
+  }
+
+  function ensureGlobalTimelineAudioSource(targetTime = audio.currentTime) {
+    const path = currentProjectAudioPath();
+    if (!path) return false;
+    if (audio.dataset.path !== path || !audio.src) {
+      const wasMuted = audio.muted;
+      audio.pause();
+      audio.src = audioUrl(path);
+      audio.dataset.path = path;
+      audio.muted = wasMuted;
+      audio.load();
+    }
+    seekAudioWhenReady(targetTime);
+    return true;
+  }
+
   function isTimelinePlaying() {
     return (audio.src && !audio.paused) || (sceneAudio.src && !sceneAudio.paused);
   }
@@ -5255,8 +5290,8 @@ function openBuilder(node) {
         sceneAudio.removeAttribute("src");
         state.sceneAudioSegmentId = "";
       }
-    } else if (audio.src) {
-      audio.currentTime = time;
+    } else {
+      ensureGlobalTimelineAudioSource(time);
     }
   }
 
@@ -6882,7 +6917,7 @@ function openBuilder(node) {
         lyricBox.placeholder = "Lyrics / vocal line...";
         lyricBox.title = "Lyric text for this scene. Gemma uses this for lip-sync and no-vocal behavior.";
         lyricBox.style.cssText = `
-          position:absolute;left:${left}px;top:${timelineLyricNoteTop()}px;width:${Math.max(86, width)}px;height:${TIMELINE_NOTE_HEIGHT}px;
+          position:absolute;left:${left}px;top:${timelineLyricNoteTop()}px;width:${Math.max(24, width)}px;height:${TIMELINE_NOTE_HEIGHT}px;
           box-sizing:border-box;resize:none;z-index:3;pointer-events:auto;
           border:1px solid ${isActive ? "#ef4444" : "#7e22ce"};border-radius:5px;
           background:rgba(59,7,100,.86);color:#fae8ff;padding:6px;font-size:11px;line-height:1.25;
@@ -8851,27 +8886,18 @@ function openBuilder(node) {
       const mode = makeSelect(["fill_missing", "replace_all"], "fill_missing");
       mode.options[0].textContent = "Fill missing only";
       mode.options[1].textContent = "Replace all lyric notes";
-      const vocalTail = makeInput("0.6");
-      const snapWordBoundaries = makeCheckbox("Snap scene cuts to word boundaries", true);
-      const snapNote = document.createElement("div");
-      snapNote.textContent = "When enabled, shared scene cuts can move slightly so the next scene starts before its first word instead of cutting through it.";
-      snapNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.4;margin-top:-4px;";
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
       grid.append(
         makeField("Language", language),
         makeField("Apply mode", mode),
-        makeField("Vocal tail padding", vocalTail),
       );
-      const snapRow = document.createElement("div");
-      snapRow.style.cssText = "display:flex;flex-direction:column;gap:6px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
-      snapRow.append(snapWordBoundaries.wrapper, snapNote);
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
       const cancel = makeButton("Cancel");
       const run = makeButton("Transcribe Lyrics", "primary");
       actions.append(cancel, run);
-      box.append(header, note, makeField("Reference lyrics", lyrics), grid, snapRow, actions);
+      box.append(header, note, makeField("Reference lyrics", lyrics), grid, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -8884,8 +8910,6 @@ function openBuilder(node) {
         referenceLyrics: lyrics.value || "",
         language: language.value || "english",
         replaceAll: mode.value === "replace_all",
-        vocalTailPaddingSeconds: Number(vocalTail.value || 0.6),
-        snapWordBoundaries: Boolean(snapWordBoundaries.input.checked),
       });
       backdrop.addEventListener("pointerdown", (event) => {
         if (event.target === backdrop) finish(null);
@@ -9155,18 +9179,16 @@ function openBuilder(node) {
       await autoSaveSessionQuiet("timeline lyric transcription");
       const srtPath = state.srtPath || srtInput.value || "";
       if (!srtPath) throw new Error("Current builder SRT was not saved. Save the project/timeline first.");
-      progress.set("Building hidden timestamp transcription workflow...", 12);
-      const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
+      progress.set("Building hidden scene-window transcription workflow...", 12);
+      const built = await postJson("/vrgdg/workflow_runner/build_transcribe_prompt", {
         audio_path: audioInput.value || state.audioPath || "",
+        srt_path: srtPath,
         reference_lyrics: options.referenceLyrics || "",
         language: options.language || "english",
-        segment_mode: String(options.referenceLyrics || "").trim() ? "reference_lines" : "whisper_chunks",
-        include_instrumental_gaps: false,
-        instrumental_text: "[instrumental]",
-        min_gap_seconds: 2.0,
-        min_scene_seconds: 1.0,
-        max_scene_seconds: 30.0,
-        vocal_tail_padding_seconds: Number(options.vocalTailPaddingSeconds || 0.6),
+        strict_reference_text: true,
+        fill_aggressiveness: 1,
+        preserve_nonvocal_segments: true,
+        alignment_min_words: 1,
         model_name: "large-v3",
       }, 60000);
       progress.set("Queueing transcription workflow...", 18);
@@ -9183,23 +9205,16 @@ function openBuilder(node) {
         45 * 60 * 1000,
       );
       const rawText = textValues.join("\n");
-      const payload = parseTimestampedLyricsOutput(rawText);
+      const lyricValues = parseLyricSegmentOutput(rawText);
+      if (!lyricValues.length) {
+        throw new Error("Scene-window transcription finished, but no lyricSegment lines were found.");
+      }
       pushHistory();
       const segments = allEditableSegments();
-      const words = timestampedWordsFromPayload(payload);
-      const claimedWords = new Set();
-      const tailPaddingSeconds = Number(options.vocalTailPaddingSeconds || 0.6);
-      const snappedBoundaries = options.snapWordBoundaries
-        ? snapExistingSceneBoundariesToTimestampedWords(segments, words, { tailPaddingSeconds })
-        : 0;
       let applied = 0;
       for (let index = 0; index < segments.length; index += 1) {
-        const rawValue = timestampedTextForExistingScene(payload, segments[index], words, {
-          claimedWords,
-          tailPaddingSeconds,
-        });
-        const value = rawValue || "[instrumental]";
         if (!options.replaceAll && String(segments[index].lyric_text || "").trim()) continue;
+        const value = cleanTimestampedLyricText(lyricValues[index]) || "[instrumental]";
         segments[index].lyric_text = value;
         segments[index].lyric_no_lip_sync = isInstrumentalLyricText(value);
         applied += 1;
@@ -9212,9 +9227,9 @@ function openBuilder(node) {
       syncInspector();
       render();
       await saveSession({ quiet: true, throwOnError: true });
-      progress.set(`Transcribed timeline lyrics.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nSnapped ${snappedBoundaries} scene boundary${snappedBoundaries === 1 ? "" : "ies"} to word timing.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
+      progress.set(`Transcribed timeline lyrics from existing scene windows.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
       progress.close(1800);
-      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"}; snapped ${snappedBoundaries} boundary${snappedBoundaries === 1 ? "" : "ies"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
+      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"} from existing scene windows; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -12500,7 +12515,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       state.peaks = data.peaks || [];
       state.beats = data.beats || [];
       showBeatMarkersIfAvailable();
-      audio.src = audioUrl(data.audio_path || audioInput.value);
+      audio.dataset.path = data.audio_path || audioInput.value;
+      audio.src = audioUrl(audio.dataset.path);
       audio.load();
       globalScrub.max = String(Math.max(0, state.duration));
       setWidgetValue(node, "audio_path", data.audio_path || audioInput.value);
@@ -12582,6 +12598,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         state.peaks = data.peaks || [];
         state.beats = data.beats || [];
         state.sceneAudioGlobalTime = 0;
+        audio.dataset.path = audioInput.value;
         audio.src = audioUrl(audioInput.value);
         audio.load();
         setWidgetValue(node, "audio_path", audioInput.value);
@@ -13418,6 +13435,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           state.peaks = Array.isArray(audioData.peaks) && audioData.peaks.length ? audioData.peaks : state.peaks;
           state.beats = Array.isArray(audioData.beats) && audioData.beats.length ? audioData.beats : state.beats;
           showBeatMarkersIfAvailable();
+          audio.dataset.path = audioInput.value;
           audio.src = audioUrl(audioInput.value);
           audio.load();
         } catch (error) {
@@ -15459,6 +15477,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     if (data.audio_path) {
       audioInput.value = data.audio_path;
       setWidgetValue(node, "audio_path", data.audio_path);
+      audio.dataset.path = data.audio_path;
       audio.src = audioUrl(data.audio_path);
       audio.load();
       state.duration = Math.max(state.duration || 0, Number(data.duration || 0));
@@ -17187,6 +17206,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     setWidgetValue(node, "session_path", state.sessionPath);
     setWidgetValue(node, "srt_path", state.srtPath);
     audioInput.value = "";
+    audio.dataset.path = "";
+    audio.removeAttribute("src");
+    audio.load();
     promptJsonInput.value = state.promptJsonPath;
     i2vMotionJsonInput.value = state.i2vMotionJsonPath;
     imageTriggerInput.value = "";
@@ -20464,7 +20486,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       updatePlayPauseButton();
       return;
     }
-    if (!audio.src) {
+    if (!ensureGlobalTimelineAudioSource(currentGlobalTime())) {
       toast("Load audio first, or add custom audio to scenes.", true);
       return;
     }
