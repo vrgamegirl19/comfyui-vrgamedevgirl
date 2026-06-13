@@ -9582,8 +9582,16 @@ function openBuilder(node) {
       audioPanel.append(noAudio);
     }
     let reviewStopAt = null;
+    let reviewStopTimer = null;
+    let reviewStopRaf = null;
     let activeReviewPlayButton = null;
     let activeReviewPlayLabel = "";
+    const clearReviewStopGuards = () => {
+      if (reviewStopTimer != null) window.clearTimeout(reviewStopTimer);
+      if (reviewStopRaf != null) window.cancelAnimationFrame(reviewStopRaf);
+      reviewStopTimer = null;
+      reviewStopRaf = null;
+    };
     const resetReviewPlayButton = () => {
       if (activeReviewPlayButton) activeReviewPlayButton.textContent = activeReviewPlayLabel || "Play";
       activeReviewPlayButton = null;
@@ -9595,15 +9603,46 @@ function openBuilder(node) {
       activeReviewPlayLabel = label || "";
       if (activeReviewPlayButton) activeReviewPlayButton.textContent = "Pause";
     };
+    const stopReviewAtBoundary = () => {
+      const end = reviewStopAt;
+      clearReviewStopGuards();
+      reviewStopAt = null;
+      reviewAudio.pause();
+      if (Number.isFinite(end)) {
+        try {
+          reviewAudio.currentTime = end;
+        } catch {
+          // Some browsers reject seeks while media metadata is still settling.
+        }
+      }
+    };
+    const armReviewStopGuard = (start, end) => {
+      clearReviewStopGuards();
+      const safeStart = Math.max(0, Number(start) || 0);
+      const safeEnd = Math.max(safeStart + 0.1, Number(end) || safeStart + 0.1);
+      reviewStopTimer = window.setTimeout(stopReviewAtBoundary, Math.max(40, (safeEnd - safeStart) * 1000 + 30));
+      const tick = () => {
+        if (reviewStopAt == null) return;
+        if (reviewAudio.currentTime >= reviewStopAt - 0.012) {
+          stopReviewAtBoundary();
+          return;
+        }
+        reviewStopRaf = window.requestAnimationFrame(tick);
+      };
+      reviewStopRaf = window.requestAnimationFrame(tick);
+    };
     reviewAudio.addEventListener("timeupdate", () => {
       if (reviewStopAt == null) return;
-      if (reviewAudio.currentTime >= reviewStopAt) {
-        reviewAudio.pause();
-        reviewStopAt = null;
-      }
+      if (reviewAudio.currentTime >= reviewStopAt - 0.012) stopReviewAtBoundary();
     });
-    reviewAudio.addEventListener("pause", resetReviewPlayButton);
-    reviewAudio.addEventListener("ended", resetReviewPlayButton);
+    reviewAudio.addEventListener("pause", () => {
+      clearReviewStopGuards();
+      resetReviewPlayButton();
+    });
+    reviewAudio.addEventListener("ended", () => {
+      clearReviewStopGuards();
+      resetReviewPlayButton();
+    });
     const reviewTimingForSegment = (segment) => {
       const fallbackStart = Math.max(0, Number(segment?.start || 0));
       const fallbackEnd = Math.max(fallbackStart + 0.1, Number(segment?.end || fallbackStart + 4));
@@ -9623,16 +9662,30 @@ function openBuilder(node) {
         return;
       }
       if (button && activeReviewPlayButton === button && !reviewAudio.paused) {
+        clearReviewStopGuards();
         reviewAudio.pause();
         reviewStopAt = null;
         resetReviewPlayButton();
         return;
       }
       const timing = reviewTimingForSegment(segment);
-      reviewStopAt = Math.max(timing.start + 0.1, timing.end);
-      reviewAudio.currentTime = Math.max(0, timing.start);
+      const start = Math.max(0, timing.start);
+      const end = Math.max(start + 0.1, timing.end);
+      let started = false;
+      const beginPlayback = () => {
+        if (started) return;
+        started = true;
+        reviewStopAt = end;
+        armReviewStopGuard(start, end);
+        reviewAudio.play().catch((error) => toast(String(error?.message || error), true));
+      };
+      clearReviewStopGuards();
+      reviewAudio.pause();
+      reviewStopAt = end;
+      reviewAudio.currentTime = start;
       if (button) setReviewPlayButton(button, button.dataset.playLabel || button.textContent || "Play Scene");
-      reviewAudio.play().catch((error) => toast(String(error?.message || error), true));
+      reviewAudio.addEventListener("seeked", beginPlayback, { once: true });
+      window.setTimeout(beginPlayback, 45);
     };
     const playFromSegment = (segment, button = null) => {
       if (!reviewAudio.src) {
@@ -9640,12 +9693,15 @@ function openBuilder(node) {
         return;
       }
       if (button && activeReviewPlayButton === button && !reviewAudio.paused) {
+        clearReviewStopGuards();
         reviewAudio.pause();
         reviewStopAt = null;
         resetReviewPlayButton();
         return;
       }
       const timing = reviewTimingForSegment(segment);
+      clearReviewStopGuards();
+      reviewAudio.pause();
       reviewStopAt = null;
       reviewAudio.currentTime = Math.max(0, timing.start);
       if (button) setReviewPlayButton(button, button.dataset.playLabel || button.textContent || "Play From Here");
@@ -10342,6 +10398,7 @@ function openBuilder(node) {
     backdrop.append(box);
     document.body.append(backdrop);
     const closeModal = () => {
+      clearReviewStopGuards();
       reviewAudio.pause();
       backdrop.remove();
     };
@@ -10772,7 +10829,11 @@ function openBuilder(node) {
     subjectTitle.textContent = "Character References";
     subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
     const extractSubjects = makeButton("Extract Subjects", "primary");
-    subjectHeader.append(subjectTitle, extractSubjects);
+    const removeAllSubjects = makeButton("Remove All Subjects");
+    const subjectActions = document.createElement("div");
+    subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
+    subjectActions.append(extractSubjects, removeAllSubjects);
+    subjectHeader.append(subjectTitle, subjectActions);
     const subjectCountInput = makeInput(String(refs.subject_count || 1), "number");
     subjectCountInput.min = "1";
     subjectCountInput.max = "12";
@@ -10813,14 +10874,18 @@ function openBuilder(node) {
     const extractLocations = makeButton("Extract Locations", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
     const importLocations = makeButton("Import Location List", "primary");
+    const createAllMissingLocationZImages = makeButton("ZImage Missing Locations", "primary");
     const addLocation = makeButton("Add Location", "primary");
+    const removeAllLocations = makeButton("Remove All Locations");
     const locationActions = document.createElement("div");
     locationActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    locationActions.append(extractLocations, autoMapLocations, importLocations, addLocation);
+    locationActions.append(extractLocations, autoMapLocations, importLocations, createAllMissingLocationZImages, addLocation, removeAllLocations);
     locationsHeader.append(locationsTitle, locationActions);
+    const keepGemmaLoadedForLocations = makeCheckbox("Keep Gemma loaded while creating location prompts", true);
+    keepGemmaLoadedForLocations.wrapper.style.cssText += "border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
     const locationsList = document.createElement("div");
     locationsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
-    locationsCard.append(locationsHeader, locationsList);
+    locationsCard.append(locationsHeader, keepGemmaLoadedForLocations.wrapper, locationsList);
 
     const mappingCard = document.createElement("div");
     mappingCard.style.cssText = cardStyle;
@@ -10867,12 +10932,22 @@ function openBuilder(node) {
         : `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
     };
     const updateSubjectDrop = () => renderDrop(subjectDrop, refs.subject.image, "Drop subject reference image here");
-    const setImageTargetFromSource = (target, source = {}) => {
-      if (!target) return;
+    const imageTargetFor = (owner, key = "image") => ({ owner, key });
+    const resolveImageTarget = (target) => {
+      if (!target) return null;
+      if (target.owner && target.key) {
+        if (!target.owner[target.key]) target.owner[target.key] = { path: "", data: "", name: "" };
+        return target.owner[target.key];
+      }
       if (!target.image) target.image = { path: "", data: "", name: "" };
-      target.image.path = source.path || "";
-      target.image.data = source.data || "";
-      target.image.name = source.name || source.path?.split?.(/[\\/]/)?.pop?.() || "reference.png";
+      return target.image;
+    };
+    const setImageTargetFromSource = (target, source = {}) => {
+      const image = resolveImageTarget(target);
+      if (!image) return;
+      image.path = source.path || "";
+      image.data = source.data || "";
+      image.name = source.name || source.path?.split?.(/[\\/]/)?.pop?.() || "reference.png";
       renderAll();
     };
     const setImageTarget = (target, file) => {
@@ -11506,6 +11581,117 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function createMissingLocationReferencesWithZImage() {
+      const missingLocations = refs.locations
+        .map((location, index) => ({ location, index }))
+        .filter(({ location }) => {
+          const image = location?.image || {};
+          return String(location?.name || location?.description || "").trim()
+            && !String(image.path || image.data || "").trim();
+        });
+      if (!missingLocations.length) {
+        toast("All listed locations already have images, or no usable locations were found.");
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      const progress = createProgressWindow("Creating location references", { zIndex: 100008 });
+      createAllMissingLocationZImages.disabled = true;
+      extractLocations.disabled = true;
+      autoMapLocations.disabled = true;
+      createAllMissingLocationZImages.textContent = "Creating...";
+      const keepGemmaLoaded = Boolean(keepGemmaLoadedForLocations.input.checked);
+      let ranZImage = false;
+      try {
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptJobs = [];
+        for (let index = 0; index < missingLocations.length; index += 1) {
+          const { location } = missingLocations[index];
+          const sourceText = `${location.name || ""}\n${location.description || ""}`.trim();
+          const isLastPrompt = index === missingLocations.length - 1;
+          const percent = 6 + Math.round((index / Math.max(1, missingLocations.length)) * 34);
+          const message = `Creating location prompts with Gemma...\n${index + 1}/${missingLocations.length}: ${location.name || `Location ${index + 1}`}\n${gemmaRunnerLine()}`;
+          setInlineProgress(message, percent);
+          progress.set(message, percent);
+          const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+            ...textGemmaRunnerPayload(),
+            model_file: modelFile,
+            reference_type: "location",
+            source_text: sourceText,
+            style_theme: styleTheme,
+            unload_after: keepGemmaLoaded ? isLastPrompt : true,
+          }, 3 * 60 * 1000);
+          promptJobs.push({ location, prompt: promptData.prompt });
+        }
+
+        let zSettings = currentZImageReferenceSettings();
+        for (let index = 0; index < promptJobs.length; index += 1) {
+          const { location, prompt } = promptJobs[index];
+          const label = location.name || `Location ${index + 1}`;
+          const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
+          setInlineProgress(`Building ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          progress.set(`Building ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (Number.isFinite(Number(built.used_seed))) {
+            zSettings.seed = Number(built.used_seed);
+            state.zimageSettings = zSettings;
+            zSeed.value = String(zSettings.seed);
+          }
+          setInlineProgress(`Queueing ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
+          progress.set(`Queueing ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
+          const queued = await queueWorkflowPrompt(built.prompt);
+          const promptId = queued?.prompt_id;
+          if (!promptId) throw new Error(`ComfyUI queued ${label} but did not return a prompt_id.`);
+          ranZImage = true;
+          const images = await waitForImages(promptId, (message) => {
+            setInlineProgress(`${index + 1}/${promptJobs.length}: ${label}\n${message}\nPrompt ID: ${promptId}`, basePercent + 6);
+            progress.set(`${index + 1}/${promptJobs.length}: ${label}\n${message}\nPrompt ID: ${promptId}`, basePercent + 6);
+          });
+          const image = images[images.length - 1];
+          if (!image) throw new Error(`ZImage did not return a reference image for ${label}.`);
+          const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+            project_folder: projectInput.value || state.projectFolder,
+            reference_type: "location",
+            name: location.name || `location_${index + 1}`,
+            image,
+          });
+          if (!location.image) location.image = { path: "", data: "", name: "" };
+          location.image.path = saved.saved_path || "";
+          location.image.data = "";
+          location.image.name = `${location.name || `location_${index + 1}`}.png`;
+          advanceZImageSeedAfterRun(zSettings);
+          zSettings = cloneZImageSettings(state.zimageSettings);
+          syncZImageSettingsPanel();
+          renderAll();
+        }
+        refs.use_location_references = true;
+        useLocations.input.checked = true;
+        setInlineProgress("Cleaning memory after location references...", 94);
+        await runImageMemoryCleanupQuiet(progress, "location references", 94);
+        setInlineProgress("Location reference images ready.", 100);
+        progress.set(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"}.`, 100);
+        progress.close(1800);
+        hideInlineProgress();
+        toast(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"} with ZImage.`);
+      } catch (error) {
+        if (ranZImage) {
+          setInlineProgress("Cleaning memory after failed location reference batch...", 100);
+          await runImageMemoryCleanupQuiet(progress, "failed location references", 100);
+        }
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        createAllMissingLocationZImages.disabled = false;
+        extractLocations.disabled = false;
+        autoMapLocations.disabled = false;
+        createAllMissingLocationZImages.textContent = "ZImage Missing Locations";
+      }
+    }
+
     async function extractLocationsWithGemma() {
       let progress = null;
       extractLocations.disabled = true;
@@ -11797,7 +11983,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         used.style.cssText = "font-size:11px;color:#a5f3fc;";
         const drop = document.createElement("div");
         drop.style.cssText = subjectDrop.style.cssText;
-        const target = { image: subject.image };
+        const target = imageTargetFor(subject);
         renderDrop(drop, subject.image, "Drop character image here");
         wireDrop(drop, target);
         const buttons = document.createElement("div");
@@ -11860,7 +12046,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         used.style.cssText = "font-size:11px;color:#a5f3fc;";
         const drop = document.createElement("div");
         drop.style.cssText = subjectDrop.style.cssText;
-        const target = { image: location.image };
+        const target = imageTargetFor(location);
         renderDrop(drop, location.image, "Drop location image here");
         wireDrop(drop, target);
         const buttons = document.createElement("div");
@@ -11952,9 +12138,41 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.subject.image = { path: "", data: "", name: "" };
       renderAll();
     };
+    removeAllSubjects.onclick = () => {
+      if (refs.subjects.length && !window.confirm("Remove all subject references and clear subject scene mappings?")) return;
+      refs.subject_count = 1;
+      refs.subject = {
+        name: "the singer",
+        description: "",
+        image: { path: "", data: "", name: "" },
+      };
+      refs.subjects = [{
+        id: `subj_${Date.now()}_0_${Math.floor(Math.random() * 10000)}`,
+        name: "Character 1",
+        description: "",
+        image: { path: "", data: "", name: "" },
+      }];
+      refs.subject_scene_map = {};
+      refs.use_subject_reference = false;
+      useSubject.input.checked = false;
+      subjectCountInput.value = "1";
+      subjectNameInput.value = "the singer";
+      subjectDescription.value = "";
+      renderAll();
+      toast("Removed all subject references.");
+    };
     addLocation.onclick = () => {
       createLocation();
       renderAll();
+    };
+    removeAllLocations.onclick = () => {
+      if (refs.locations.length && !window.confirm("Remove all location references and clear location scene mappings?")) return;
+      refs.locations = [];
+      refs.scene_map = {};
+      refs.use_location_references = false;
+      useLocations.input.checked = false;
+      renderAll();
+      toast("Removed all location references.");
     };
     subjectCountInput.addEventListener("change", () => {
       ensureSubjectCount();
@@ -11966,6 +12184,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
     autoMapLocations.onclick = autoMapLocationsWithGemma;
+    createAllMissingLocationZImages.onclick = createMissingLocationReferencesWithZImage;
     importLocations.onclick = openImportLocationsDialog;
     mapSubjectsFromLyrics.onclick = () => {
       const mapped = autoMapSubjectsFromLyrics();
