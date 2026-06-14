@@ -4827,6 +4827,123 @@ def _save_flux_reference_image(payload):
     }
 
 
+def _import_reference_subjects_from_project(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        raise ValueError("Create or load a project first so the subject folder can be found.")
+
+    subject_dir = os.path.join(project_folder, "subject_location", "subject")
+    if not os.path.isdir(subject_dir):
+        raise FileNotFoundError(f"Subject folder does not exist:\n{subject_dir}")
+
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    subjects = []
+    missing_descriptions = []
+    for filename in sorted(os.listdir(subject_dir), key=lambda item: item.lower()):
+        image_path = os.path.join(subject_dir, filename)
+        if not os.path.isfile(image_path):
+            continue
+        stem, ext = os.path.splitext(filename)
+        if ext.lower() not in image_exts:
+            continue
+        text_path = os.path.join(subject_dir, f"{stem}.txt")
+        description = ""
+        if os.path.isfile(text_path):
+            with open(text_path, "r", encoding="utf-8", errors="ignore") as handle:
+                description = handle.read().strip()
+        else:
+            missing_descriptions.append(f"{stem}.txt")
+        preview_data = ""
+        try:
+            with Image.open(image_path) as preview_image:
+                preview_data = _pil_image_to_data_url(preview_image, max_height=220, quality=72)
+        except Exception:
+            preview_data = ""
+        safe_id = re.sub(r"[^a-zA-Z0-9_]+", "_", stem).strip("_") or f"subject_{len(subjects) + 1}"
+        subjects.append({
+            "id": f"subj_import_{len(subjects) + 1}_{safe_id}",
+            "name": stem,
+            "description": description,
+            "image": {
+                "path": image_path,
+                "data": preview_data,
+                "name": filename,
+            },
+        })
+
+    if not subjects:
+        raise ValueError(f"No subject images were found in:\n{subject_dir}")
+
+    return {
+        "folder": subject_dir,
+        "subjects": subjects,
+        "missing_descriptions": missing_descriptions,
+    }
+
+
+def _import_reference_locations_from_project(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        raise ValueError("Create or load a project first so the location folder can be found.")
+
+    base_dir = os.path.join(project_folder, "subject_location")
+    location_dir = os.path.join(base_dir, "location")
+    typo_location_dir = os.path.join(base_dir, "locaton")
+    if not os.path.isdir(location_dir) and os.path.isdir(typo_location_dir):
+        location_dir = typo_location_dir
+    if not os.path.isdir(location_dir):
+        raise FileNotFoundError(
+            "Location folder does not exist:\n"
+            f"{os.path.join(base_dir, 'location')}\n\n"
+            "Expected folder layout:\n"
+            "subject_location/location"
+        )
+
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    locations = []
+    missing_descriptions = []
+    for filename in sorted(os.listdir(location_dir), key=lambda item: item.lower()):
+        image_path = os.path.join(location_dir, filename)
+        if not os.path.isfile(image_path):
+            continue
+        stem, ext = os.path.splitext(filename)
+        if ext.lower() not in image_exts:
+            continue
+        text_path = os.path.join(location_dir, f"{stem}.txt")
+        description = ""
+        if os.path.isfile(text_path):
+            with open(text_path, "r", encoding="utf-8", errors="ignore") as handle:
+                description = handle.read().strip()
+        else:
+            missing_descriptions.append(f"{stem}.txt")
+        preview_data = ""
+        try:
+            with Image.open(image_path) as preview_image:
+                preview_data = _pil_image_to_data_url(preview_image, max_height=220, quality=72)
+        except Exception:
+            preview_data = ""
+        safe_id = re.sub(r"[^a-zA-Z0-9_]+", "_", stem).strip("_") or f"location_{len(locations) + 1}"
+        locations.append({
+            "id": f"loc_import_{len(locations) + 1}_{safe_id}",
+            "name": stem,
+            "description": description,
+            "image": {
+                "path": image_path,
+                "data": preview_data,
+                "name": filename,
+            },
+        })
+
+    if not locations:
+        raise ValueError(f"No location images were found in:\n{location_dir}")
+
+    return {
+        "folder": location_dir,
+        "locations": locations,
+        "missing_descriptions": missing_descriptions,
+    }
+
+
 def _audio_bytes_from_data_url(audio_data):
     raw = str(audio_data or "").strip()
     if not raw:
@@ -5424,6 +5541,24 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _save_flux_reference_image(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/import_reference_subjects")
+    async def vrgdg_music_builder_import_reference_subjects(request):
+        try:
+            payload = await request.json()
+            result = _import_reference_subjects_from_project(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/import_reference_locations")
+    async def vrgdg_music_builder_import_reference_locations(request):
+        try:
+            payload = await request.json()
+            result = _import_reference_locations_from_project(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

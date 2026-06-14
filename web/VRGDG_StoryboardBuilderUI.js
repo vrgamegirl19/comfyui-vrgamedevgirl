@@ -153,6 +153,28 @@ function storyboardSubjectNamesFromRefs(subjectRefs = []) {
   ));
 }
 
+function storyboardReferenceId(prefix, name = "") {
+  const slug = String(name || prefix || "reference")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48) || prefix;
+  return `${prefix}_story_${Date.now()}_${slug}`;
+}
+
+function readStoryboardImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !String(file.type || "").startsWith("image/")) {
+      reject(new Error("Choose an image file."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read that image file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 const IMAGE_SHOT_TYPES = [
   "close-up shot",
   "extreme close-up shot",
@@ -730,6 +752,37 @@ function normalizeReferenceBuilderCatalog(value = {}) {
   return { subjects, locations };
 }
 
+function mergeReferenceBuilderCatalog(base = {}, incoming = {}) {
+  const normalizedBase = normalizeReferenceBuilderCatalog(base);
+  const normalizedIncoming = normalizeReferenceBuilderCatalog(incoming);
+  const mergeList = (left, right) => {
+    const byKey = new Map();
+    const keyFor = (item) => String(item.id || item.name || "").trim().toLowerCase();
+    for (const item of left) {
+      const key = keyFor(item);
+      if (key) byKey.set(key, { ...item, image: { ...(item.image || {}) } });
+    }
+    for (const item of right) {
+      const key = keyFor(item);
+      if (!key) continue;
+      const existing = byKey.get(key) || {};
+      byKey.set(key, {
+        ...existing,
+        ...item,
+        image: {
+          ...(existing.image || {}),
+          ...(item.image || {}),
+        },
+      });
+    }
+    return Array.from(byKey.values());
+  };
+  return {
+    subjects: mergeList(normalizedBase.subjects, normalizedIncoming.subjects),
+    locations: mergeList(normalizedBase.locations, normalizedIncoming.locations),
+  };
+}
+
 function statusMeta(scene) {
   const hasImage = Boolean(String(scene.image_path || "").trim());
   const hasImagePrompt = Boolean(String(scene.image_prompt || "").trim());
@@ -904,6 +957,10 @@ function slimStoryboardForRequest(state) {
     mode: state.mode,
     camera_flow: state.cameraFlow || "balanced",
     performance_style_default: state.performanceStyle || "",
+    reference_builder: {
+      subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
+      locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
+    },
     scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
   };
 }
@@ -1248,6 +1305,7 @@ function openStoryboardBuilder(payload = {}) {
   function syncReferenceMappingsToVideoCreator() {
     if (!state.onReferenceMappingsChanged) return;
     state.onReferenceMappingsChanged({
+      reference_builder: normalizeReferenceBuilderCatalog(state.referenceBuilder),
       scenes: state.scenes.map((scene) => ({
         id: scene.id,
         scene_number: scene.scene_number,
@@ -1273,11 +1331,161 @@ function openStoryboardBuilder(payload = {}) {
     return "I2V already has a first frame, so use this mostly for camera movement, framing, and continuity.";
   };
 
+  const chooseStoryboardImageFile = () => new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.style.display = "none";
+    document.body.append(input);
+    input.onchange = () => {
+      const file = input.files?.[0] || null;
+      input.remove();
+      resolve(file);
+    };
+    input.click();
+  });
+
+  const promptStoryboardReferenceDetails = ({ kind, file, defaultName = "", defaultDescription = "" } = {}) => new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #155e75;border-radius:12px;background:#0f172a;color:#e5e7eb;box-shadow:0 24px 80px rgba(0,0,0,.58);overflow:hidden;";
+    const title = kind === "location" ? "Add Location Reference" : "Add Subject Reference";
+    box.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;background:#083344;border-bottom:1px solid #155e75;">
+        <div>
+          <div style="font-size:18px;font-weight:900;color:#cffafe;">${escapeHtml(title)}</div>
+          <div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Name and describe this image so Storyboard Builder and Reference Builder can both use it.</div>
+        </div>
+      </div>
+    `;
+    const body = document.createElement("div");
+    body.style.cssText = "padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const name = makeInput(defaultName || String(file?.name || "").replace(/\.[^.]+$/, ""), kind === "location" ? "Location name" : "Subject name");
+    const description = makeTextarea(defaultDescription, kind === "location" ? "Location description..." : "Subject description...", 5);
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Use Image", "primary");
+    actions.append(cancel, save);
+    body.append(
+      (() => {
+        const preview = document.createElement("div");
+        preview.style.cssText = "height:150px;border:1px dashed #155e75;border-radius:10px;background:#07111f center/contain no-repeat;";
+        return preview;
+      })(),
+      (() => {
+        const wrap = document.createElement("label");
+        wrap.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:900;color:#cbd5e1;";
+        wrap.append("Name", name);
+        return wrap;
+      })(),
+      (() => {
+        const wrap = document.createElement("label");
+        wrap.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:900;color:#cbd5e1;";
+        wrap.append("Description", description);
+        return wrap;
+      })(),
+      actions,
+    );
+    box.append(body);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    const preview = body.firstChild;
+    readStoryboardImageFile(file)
+      .then((dataUrl) => {
+        preview.style.backgroundImage = `url("${dataUrl}")`;
+        save.onclick = () => {
+          const cleanName = String(name.value || "").trim();
+          if (!cleanName) {
+            createToast("Give this reference a name first.", true);
+            return;
+          }
+          backdrop.remove();
+          resolve({
+            name: cleanName,
+            description: String(description.value || "").trim(),
+            image: { path: "", data: dataUrl, name: String(file?.name || cleanName) },
+          });
+        };
+      })
+      .catch((error) => {
+        backdrop.remove();
+        createToast(String(error?.message || error), true);
+        resolve(null);
+      });
+    cancel.onclick = () => {
+      backdrop.remove();
+      resolve(null);
+    };
+  });
+
+  const upsertStoryboardReference = (kind, reference) => {
+    if (!reference) return null;
+    const list = kind === "location" ? state.referenceBuilder.locations : state.referenceBuilder.subjects;
+    const name = String(reference.name || "").trim();
+    const existing = list.find((item) => String(item.name || "").trim().toLowerCase() === name.toLowerCase());
+    const merged = {
+      ...(existing || {}),
+      ...reference,
+      id: existing?.id || reference.id || storyboardReferenceId(kind === "location" ? "loc" : "subj", name),
+      name,
+      description: String(reference.description || existing?.description || ""),
+      image: reference.image || existing?.image || { path: "", data: "", name: "" },
+    };
+    if (existing) {
+      Object.assign(existing, merged);
+      return existing;
+    }
+    list.push(merged);
+    return merged;
+  };
+
+  const addStoryboardReferenceFromFile = async (kind, scene) => {
+    const file = await chooseStoryboardImageFile();
+    if (!file) return null;
+    const details = await promptStoryboardReferenceDetails({ kind, file });
+    if (!details) return null;
+    let reference = details;
+    if (state.projectFolder) {
+      try {
+        const saved = await postJson("/vrgdg/storyboard/import_reference_image", {
+          project_folder: state.projectFolder,
+          kind,
+          name: details.name,
+          description: details.description,
+          image_data: details.image?.data || "",
+          file_name: details.image?.name || file.name || details.name,
+        }, 120000);
+        reference = saved.reference || reference;
+      } catch (error) {
+        createToast(`Could not save this reference image into the project folder. It will stay in this session only.\n${String(error?.message || error)}`, true);
+      }
+    } else {
+      createToast("Save the Video Creator project first if you want imported Storyboard references to persist.", true);
+    }
+    const ref = upsertStoryboardReference(kind, reference);
+    if (!ref || !scene) return ref;
+    if (kind === "location") {
+      scene.location_ref = ref;
+      scene.setting = ref.description || ref.name || scene.setting || "";
+    } else {
+      const refs = Array.isArray(scene.subject_refs) ? scene.subject_refs.slice() : [];
+      if (!refs.some((item) => String(item.id || "") === String(ref.id || ""))) refs.push(ref);
+      scene.subject_refs = refs;
+      scene.subjects = storyboardSubjectNamesFromRefs(refs);
+    }
+    syncReferenceMappingsToVideoCreator();
+    renderTable();
+    createToast(`${kind === "location" ? "Location" : "Subject"} reference added to ${scene.label || `Scene ${scene.scene_number}`}.`);
+    return ref;
+  };
+
   const openSceneEditor = (scene) => {
     const editorBackdrop = document.createElement("div");
-    editorBackdrop.style.cssText = "position:fixed;inset:0;z-index:100012;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;padding:18px;";
+    editorBackdrop.style.cssText = "position:fixed;inset:0;z-index:100012;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
     const editor = document.createElement("div");
-    editor.style.cssText = "width:min(920px,calc(100vw - 42px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.62);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    editor.style.cssText = "width:min(1420px,calc(100vw - 42px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #0e7490;border-radius:16px;background:linear-gradient(135deg,#07111f,#0f172a 46%,#071827);color:#f8fafc;box-shadow:0 28px 90px rgba(0,0,0,.68);padding:18px;display:flex;flex-direction:column;gap:12px;";
     const label = makeInput(scene.label, "Scene label");
     const lyrics = makeTextarea(scene.lyrics, "Lyrics, script, or beat for this scene...", 4);
     const summary = makeTextarea(scene.prompt_summary, "Image prompt summary...", 3);
@@ -1285,6 +1493,7 @@ function openStoryboardBuilder(payload = {}) {
     const cameraMotionOptions = CAMERA_MOTION_GROUPS.flatMap((group) => group.options || []);
     const cameraMotionValue = scene.camera_motion || cameraMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
     const cameraMotionPreset = makeGroupedSelect(CAMERA_MOTION_GROUPS, cameraMotionValue);
+    const customCameraMotion = makeInput(scene.camera_motion || "", "Custom camera motion");
     const characterMotionOptions = CHARACTER_MOTION_GROUPS.flatMap((group) => group.options || []);
     const characterMotionValue = scene.character_motion || characterMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
     const characterMotionPreset = makeGroupedSelect(CHARACTER_MOTION_GROUPS, characterMotionValue);
@@ -1338,6 +1547,49 @@ function openStoryboardBuilder(payload = {}) {
       wrap.append(control);
       return wrap;
     };
+    const section = (number, title, content, { collapsible = false, open = false } = {}) => {
+      const wrap = collapsible ? document.createElement("details") : document.createElement("section");
+      if (collapsible) wrap.open = open;
+      wrap.style.cssText = "border:1px solid #1f3b46;border-radius:10px;background:linear-gradient(135deg,rgba(8,51,68,.34),rgba(15,23,42,.9));padding:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);";
+      const heading = collapsible ? document.createElement("summary") : document.createElement("div");
+      heading.style.cssText = "display:flex;align-items:center;gap:12px;color:#e2e8f0;font-size:20px;font-weight:900;cursor:pointer;list-style:none;";
+      const badge = document.createElement("span");
+      badge.textContent = String(number);
+      badge.style.cssText = "width:30px;height:30px;border-radius:999px;background:#155e75;color:#cffafe;display:grid;place-items:center;font-size:15px;flex:0 0 auto;";
+      const text = document.createElement("span");
+      text.textContent = title;
+      heading.append(badge, text);
+      if (collapsible) {
+        const chevron = document.createElement("span");
+        chevron.textContent = "⌄";
+        chevron.style.cssText = "margin-left:auto;color:#cbd5e1;font-size:22px;";
+        heading.append(chevron);
+      }
+      const body = document.createElement("div");
+      body.style.cssText = "margin-top:12px;";
+      body.append(content);
+      wrap.append(heading, body);
+      return wrap;
+    };
+    const twoCol = () => {
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;";
+      return grid;
+    };
+    const threeCol = () => {
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px 28px;";
+      return grid;
+    };
+    const iconField = (icon, control) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:44px 1fr;gap:8px;align-items:center;";
+      const ico = document.createElement("div");
+      ico.textContent = icon;
+      ico.style.cssText = "width:42px;height:42px;border:1px solid #155e75;border-radius:8px;background:#083344;color:#22d3ee;display:grid;place-items:center;font-size:20px;";
+      row.append(ico, control);
+      return row;
+    };
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
     const videoTypeHint = document.createElement("div");
@@ -1353,7 +1605,7 @@ function openStoryboardBuilder(payload = {}) {
     const t2iPromptField = field("T2I prompt", imagePrompt);
     grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField);
     const referenceGrid = document.createElement("div");
-    referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:10px;";
+    referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;";
     if (state.referenceBuilder.subjects.length || state.referenceBuilder.locations.length) {
       referenceGrid.append(
         field("Reference Builder characters", subjectSelect),
@@ -1364,14 +1616,78 @@ function openStoryboardBuilder(payload = {}) {
     }
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;";
-    const gemma = makeButton("Gemma Video Prompt", "primary");
+    const gemma = makeButton("Generate Prompt", "purple");
     const cancel = makeButton("Cancel");
     const apply = makeButton("Save Scene Card", "primary");
     actions.append(cancel, gemma, apply);
-    editor.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;"><div style="font-size:18px;font-weight:900;color:#cffafe;">Edit Storyboard Scene ${scene.scene_number}</div></div>`;
-    editor.append(field("Scene label", label), field("Scene / lyrics", lyrics), field("Prompt summary", summary), motionField, grid, field("Character details", subjectDetails), referenceGrid, t2iPromptField, field("Video prompt", videoPrompt), field("Notes", notes), actions);
+    const closeEditor = makeButton("×");
+    closeEditor.style.cssText += "font-size:26px;line-height:1;width:44px;height:44px;padding:0;border-radius:8px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;";
+    const headerIcon = document.createElement("div");
+    headerIcon.textContent = "▣";
+    headerIcon.style.cssText = "width:54px;height:54px;border-radius:14px;background:#164e63;color:#67e8f9;display:grid;place-items:center;font-size:28px;";
+    const headerText = document.createElement("div");
+    headerText.innerHTML = `<div style="font-size:28px;font-weight:900;color:#f8fafc;">Edit Scene Card</div><div style="color:#cbd5e1;margin-top:3px;">Define the details for this scene to generate a rich video prompt.</div>`;
+    header.append(headerIcon, headerText, closeEditor);
+
+    const basicsGrid = twoCol();
+    basicsGrid.append(field("Scene label", label), field("Scene / lyrics", lyrics), field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), includeMicLabel, videoTypeHint);
+
+    const addSubject = makeButton("+ Add subject");
+    addSubject.style.background = "#0f172a";
+    addSubject.style.borderStyle = "dashed";
+    const addLocation = makeButton("+ Add location");
+    addLocation.style.background = "#0f172a";
+    addLocation.style.borderStyle = "dashed";
+    const subjectChip = document.createElement("div");
+    const locationChip = document.createElement("div");
+    const refreshReferenceChips = () => {
+      const selectedSubjects = Array.from(subjectSelect.selectedOptions).map((option) => state.referenceBuilder.subjects.find((subject) => subject.id === option.value)).filter(Boolean);
+      const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
+      subjectChip.innerHTML = selectedSubjects.length
+        ? selectedSubjects.map((ref) => referenceChipHtml(ref, "Subject")).join("")
+        : `<span style="color:#94a3b8;">No subject selected</span>`;
+      locationChip.innerHTML = selectedLocation
+        ? referenceChipHtml(selectedLocation, "Location")
+        : `<span style="color:#94a3b8;">No location selected</span>`;
+    };
+    const referencesGrid = twoCol();
+    const subjectPick = document.createElement("div");
+    subjectPick.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;";
+    subjectPick.append(field("Subject(s)", subjectChip), addSubject);
+    const locationPick = document.createElement("div");
+    locationPick.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;";
+    locationPick.append(field("Setting / Location", locationChip), addLocation);
+    referencesGrid.append(subjectPick, locationPick, ...Array.from(referenceGrid.children));
+    refreshReferenceChips();
+
+    const motionGrid = threeCol();
+    motionGrid.append(
+      field("Starting shot preset", iconField("▣", shotPreset)),
+      field("Camera motion preset", iconField("▣", cameraMotionPreset)),
+      field("Character motion preset", iconField("♟", characterMotionPreset)),
+      field("Custom starting shot (optional)", shot),
+      field("Custom camera motion (optional)", customCameraMotion),
+      field("Custom character motion (optional)", customCharacterMotion),
+    );
+
+    const advancedGrid = twoCol();
+    advancedGrid.append(field("Prompt summary", summary), field("Motion / video prompt summary", motion), field("Character details", subjectDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
+    const notesWrap = document.createElement("div");
+    notesWrap.append(notes);
+    editor.replaceChildren(
+      header,
+      section(1, "Scene Basics", basicsGrid),
+      section(2, "References", referencesGrid),
+      section(3, "Camera & Motion", motionGrid),
+      section(4, "Advanced Options", advancedGrid, { collapsible: true, open: false }),
+      section(5, "Notes", notesWrap),
+      actions,
+    );
     editorBackdrop.append(editor);
     document.body.append(editorBackdrop);
+    closeEditor.onclick = () => editorBackdrop.remove();
     const refreshShotPresetForVideoType = () => {
       const type = videoPromptType.value || "i2v";
       const options = type === "i2v" ? VIDEO_SHOT_TYPES : Array.from(new Set([...IMAGE_SHOT_TYPES, ...VIDEO_SHOT_TYPES]));
@@ -1417,12 +1733,14 @@ function openStoryboardBuilder(payload = {}) {
         .join("\n\n");
     };
     subjectSelect.addEventListener("change", refreshSubjectDetailsFromSelection);
+    subjectSelect.addEventListener("change", refreshReferenceChips);
     shotPreset.addEventListener("change", () => {
       if (shotPreset.value && shotPreset.value !== "__custom__") shot.value = shotPreset.value;
     });
     cameraMotionPreset.addEventListener("change", () => {
       const selectedMotion = String(cameraMotionPreset.value || "").trim();
       if (!selectedMotion) return;
+      customCameraMotion.value = selectedMotion;
       const currentMotion = String(motion.value || "").trim();
       if (currentMotion.toLowerCase().includes(selectedMotion.toLowerCase())) return;
       motion.value = currentMotion ? `${currentMotion}\nCamera motion: ${selectedMotion}.` : `Camera motion: ${selectedMotion}.`;
@@ -1438,7 +1756,38 @@ function openStoryboardBuilder(payload = {}) {
     locationSelect.addEventListener("change", () => {
       const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
       if (selectedLocation) setting.value = selectedLocation.description || selectedLocation.name || "";
+      refreshReferenceChips();
     });
+    addSubject.onclick = async () => {
+      saveEditorFieldsToScene();
+      const ref = await addStoryboardReferenceFromFile("subject", scene);
+      if (!ref) return;
+      let option = Array.from(subjectSelect.options).find((item) => item.value === ref.id);
+      if (!option) {
+        option = document.createElement("option");
+        option.value = ref.id;
+        option.textContent = ref.name;
+        subjectSelect.append(option);
+      }
+      option.selected = true;
+      refreshSubjectDetailsFromSelection();
+      refreshReferenceChips();
+    };
+    addLocation.onclick = async () => {
+      saveEditorFieldsToScene();
+      const ref = await addStoryboardReferenceFromFile("location", scene);
+      if (!ref) return;
+      let option = Array.from(locationSelect.options).find((item) => item.value === ref.id);
+      if (!option) {
+        option = document.createElement("option");
+        option.value = ref.id;
+        option.textContent = ref.name;
+        locationSelect.append(option);
+      }
+      locationSelect.value = ref.id;
+      setting.value = ref.description || ref.name || "";
+      refreshReferenceChips();
+    };
     const saveEditorFieldsToScene = () => {
       scene.label = label.value.trim() || scene.label;
       scene.lyrics = lyrics.value.trim();
@@ -1473,11 +1822,11 @@ function openStoryboardBuilder(payload = {}) {
       }
       if (state.referenceBuilder.locations.length) {
         const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
-      scene.location_ref = selectedLocation;
+        scene.location_ref = selectedLocation;
         if (selectedLocation) scene.setting = selectedLocation.description || selectedLocation.name || scene.setting;
       }
       scene.shot_type = shot.value.trim();
-      scene.camera_motion = cameraMotionPreset.value.trim();
+      scene.camera_motion = customCameraMotion.value.trim() || cameraMotionPreset.value.trim();
       scene.character_motion = customCharacterMotion.value.trim() || characterMotionPreset.value.trim();
       scene.performance_style = performanceStyle.value || "";
       scene.include_microphone = Boolean(includeMic.checked);
@@ -1543,8 +1892,9 @@ function openStoryboardBuilder(payload = {}) {
           <button data-action="gpt" style="${sceneGptStyle}" title="Copy only this scene card as GPT JSON.">GPT</button>
         </div>`;
       const status = `<span style="display:inline-flex;align-items:center;gap:6px;color:${meta.color};font-weight:900;"><span style="width:8px;height:8px;border-radius:999px;background:${meta.color};display:inline-block;"></span>${escapeHtml(meta.label)}</span>`;
-      const subjectCell = subjectRefsHtml(scene);
-      const settingCell = settingRefHtml(scene);
+      const miniRefButtonStyle = "margin-top:7px;border:1px dashed #155e75;border-radius:6px;background:#07111f;color:#a5f3fc;padding:5px 7px;font-size:11px;font-weight:900;cursor:pointer;";
+      const subjectCell = `<div>${subjectRefsHtml(scene)}</div><button data-action="load-subject-ref" title="Load a subject image for this scene" style="${miniRefButtonStyle}">+ Subject</button>`;
+      const settingCell = `<div>${settingRefHtml(scene)}</div><button data-action="load-location-ref" title="Load a location image for this scene" style="${miniRefButtonStyle}">+ Location</button>`;
       const videoType = videoPromptTypeLabel(scene.video_prompt_type || "i2v");
       const shotCell = `<div style="display:flex;flex-direction:column;gap:4px;"><span style="align-self:flex-start;border:1px solid #155e75;border-radius:999px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;padding:2px 7px;">${escapeHtml(videoType)}</span><strong style="color:#f8fafc;">${escapeHtml(scene.shot_type || "-")}</strong></div>`;
       if (mode === "image_to_video_prep") {
@@ -1574,6 +1924,8 @@ function openStoryboardBuilder(payload = {}) {
         `;
       }
       tr.querySelector('[data-action="edit"]')?.addEventListener("click", () => openSceneEditor(scene));
+      tr.querySelector('[data-action="load-subject-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("subject", scene));
+      tr.querySelector('[data-action="load-location-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("location", scene));
       tr.querySelector('[data-action="gemma"]')?.addEventListener("click", async () => {
         const progress = createStoryboardProgressWindow("Storyboard Gemma");
         try {
@@ -1609,6 +1961,10 @@ function openStoryboardBuilder(payload = {}) {
       const incomingScenes = state.scenes.map((scene) => normalizeScene(scene));
       const data = await postJson("/vrgdg/storyboard/load", { project_folder: state.projectFolder });
       const saved = data.storyboard || {};
+      const savedReferences = normalizeReferenceBuilderCatalog(saved.reference_builder || saved.referenceBuilder || {});
+      if (savedReferences.subjects.length || savedReferences.locations.length) {
+        state.referenceBuilder = mergeReferenceBuilderCatalog(state.referenceBuilder, savedReferences);
+      }
       if (Array.isArray(saved.scenes) && saved.scenes.length) {
         state.scenes = saved.scenes.map((scene, index) => {
           const normalized = normalizeScene(scene, index);
@@ -1642,6 +1998,7 @@ function openStoryboardBuilder(payload = {}) {
       refreshCameraFlowInfo();
       refreshPerformanceInfo();
       setMode(state.mode);
+      syncReferenceMappingsToVideoCreator();
     } catch (error) {
       createToast(String(error?.message || error), true);
       renderTable();

@@ -2104,7 +2104,7 @@ function openBuilder(node) {
   const i2vLoraHintRow = document.createElement("div");
   i2vLoraHintRow.style.cssText = "display:flex;justify-content:flex-end;";
   const i2vLoraHintButton = makeButton("?", "neutral");
-  i2vLoraHintButton.title = "Optional extra video LoRAs use one strength in this workflow.";
+  i2vLoraHintButton.title = "Optional extra video LoRAs use one strength for Reference to Video, or separate pass strengths for I2V/T2V.";
   i2vLoraHintButton.style.cssText += "width:34px;padding:7px 0;";
   i2vLoraHintRow.append(i2vLoraHintButton);
   const i2vLoraCount = makeInput("0", "number");
@@ -2115,18 +2115,22 @@ function openBuilder(node) {
   const i2vLoraSlots = [];
   for (let slot = 1; slot <= 4; slot++) {
     const row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
+    row.style.cssText = "display:grid;grid-template-columns:1fr 84px 84px;gap:8px;";
     const picker = makeSearchableLoraPicker("[none]");
     const firstPassStrength = makeInput("1", "number");
     firstPassStrength.step = "0.01";
     const secondPassStrength = makeInput("1", "number");
     secondPassStrength.step = "0.01";
+    const firstPassField = makeField("Pass 1", firstPassStrength);
+    const firstPassLabel = firstPassField.querySelector("span");
+    const secondPassField = makeField("Pass 2", secondPassStrength);
     row.append(
       makeField(`Video LoRA ${slot}`, picker.wrapper),
-      makeField("Strength", firstPassStrength)
+      firstPassField,
+      secondPassField
     );
     i2vLoraRows.append(row);
-    i2vLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength });
+    i2vLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength, firstPassLabel, secondPassField });
   }
   const ltxMsrRequiredPanel = document.createElement("div");
   ltxMsrRequiredPanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #155e75;border-radius:8px;background:#082f49;padding:10px;";
@@ -3820,8 +3824,8 @@ function openBuilder(node) {
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
         first_pass_strength: Number(item?.first_pass_strength ?? item?.strength ?? 1),
-        second_pass_strength: 0,
-        strength: Number(item?.first_pass_strength ?? item?.strength ?? 1),
+        second_pass_strength: Number(item?.second_pass_strength ?? item?.strength ?? 1),
+        strength: Number(item?.second_pass_strength ?? item?.first_pass_strength ?? item?.strength ?? 1),
       })) : [],
       video_trigger_phrase: source.video_trigger_phrase || state.videoTriggerPhrase || "",
     };
@@ -6129,7 +6133,7 @@ function openBuilder(node) {
       slot.picker.input.value = config.name || "[none]";
       const legacyStrength = config.strength ?? 1;
       slot.firstPassStrength.value = config.first_pass_strength ?? legacyStrength;
-      slot.secondPassStrength.value = 0;
+      slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength;
     });
     updateI2VLoraVisibility();
   }
@@ -6161,7 +6165,7 @@ function openBuilder(node) {
       loras: i2vLoraSlots.map((slot) => ({
         name: slot.picker.input.value || "[none]",
         first_pass_strength: Number(slot.firstPassStrength.value || 1),
-        second_pass_strength: 0,
+        second_pass_strength: Number(slot.secondPassStrength.value || 1),
       })),
     };
     if (segment?.use_scene_i2v_video_settings || hasMultiSceneBatchSelection()) {
@@ -6212,6 +6216,7 @@ function openBuilder(node) {
         ? "Extra reference-to-video motion notes, camera movement, subject actions..."
       : "Extra video motion notes, camera movement, character movement...";
     i2vPrompt.placeholder = isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+    updateI2VLoraVisibility();
   }
 
   function updateActiveFromInputs(options = {}) {
@@ -10829,10 +10834,12 @@ function openBuilder(node) {
     subjectTitle.textContent = "Character References";
     subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
     const extractSubjects = makeButton("Extract Subjects", "primary");
+    const importSubjects = makeButton("Import Subjects", "primary");
     const removeAllSubjects = makeButton("Remove All Subjects");
     const subjectActions = document.createElement("div");
     subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    subjectActions.append(extractSubjects, removeAllSubjects);
+    importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
+    subjectActions.append(extractSubjects, importSubjects, removeAllSubjects);
     subjectHeader.append(subjectTitle, subjectActions);
     const subjectCountInput = makeInput(String(refs.subject_count || 1), "number");
     subjectCountInput.min = "1";
@@ -11504,6 +11511,105 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         importBackdrop.remove();
       };
       input.focus();
+    };
+
+    const importLocationsFromProjectFolder = async () => {
+      const projectFolder = String(state.projectFolder || "").trim();
+      const progress = createProgressWindow("Importing Locations", { zIndex: 100008 });
+      try {
+        if (!projectFolder) throw new Error("Create or load a project first so the location folder can be found.");
+        progress.set(`Looking for location images and descriptions...\n${projectFolder}\\subject_location\\location`, 20);
+        const data = await postJson("/vrgdg/music_builder/import_reference_locations", {
+          project_folder: projectFolder,
+        }, 60000);
+        const imported = Array.isArray(data.locations) ? data.locations.map((location, index) => {
+          const name = String(location?.name || `Location ${index + 1}`).trim() || `Location ${index + 1}`;
+          const image = location?.image && typeof location.image === "object" ? location.image : {};
+          return {
+            id: String(location?.id || `loc_import_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+            name,
+            description: String(location?.description || "").trim(),
+            image: {
+              path: String(image.path || ""),
+              data: String(image.data || ""),
+              name: String(image.name || ""),
+            },
+          };
+        }).filter((location) => location.name) : [];
+        if (!imported.length) throw new Error("No location images were returned from the import.");
+        let added = 0;
+        let updated = 0;
+        for (const location of imported) {
+          const existing = locationByName(location.name);
+          if (existing) {
+            existing.description = location.description || existing.description || "";
+            existing.image = location.image || existing.image || { path: "", data: "", name: "" };
+            updated += 1;
+          } else {
+            refs.locations.push(location);
+            added += 1;
+          }
+        }
+        refs.use_location_references = true;
+        useLocations.input.checked = true;
+        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+        renderAll();
+        renderFluxIngredientList(activeSegment());
+        renderNBIngredientList(activeSegment());
+        render();
+        await autoSaveSessionQuiet("imported reference locations");
+        const missingCount = Array.isArray(data.missing_descriptions) ? data.missing_descriptions.length : 0;
+        const message = `Imported locations from subject_location/location. Added: ${added}. Updated: ${updated}.${missingCount ? `\n${missingCount} location${missingCount === 1 ? " is" : "s are"} missing matching .txt descriptions.` : ""}`;
+        progress.set(message, 100);
+        toast(message);
+        progress.close(2400);
+      } catch (error) {
+        const message = String(error?.message || error || "Could not import locations.");
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+      }
+    };
+
+    const openImportLocationSourceDialog = () => {
+      const choiceBackdrop = document.createElement("div");
+      choiceBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const choiceBox = document.createElement("div");
+      choiceBox.style.cssText = "width:min(620px,calc(100vw - 34px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);display:flex;flex-direction:column;overflow:hidden;";
+      const choiceHeader = document.createElement("div");
+      choiceHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;background:#083f4f;border-bottom:1px solid #155e75;padding:12px 14px;";
+      const choiceTitle = document.createElement("div");
+      choiceTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import Locations</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Choose how you want to add location references.</div>`;
+      const choiceClose = makeButton("Close");
+      choiceHeader.append(choiceTitle, choiceClose);
+      const choiceBody = document.createElement("div");
+      choiceBody.style.cssText = "padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px;";
+      const jsonButton = makeButton("Paste JSON / Text", "primary");
+      const folderButton = makeButton("Import Folder", "primary");
+      const jsonCard = document.createElement("div");
+      jsonCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+      jsonCard.innerHTML = `<div style="font-weight:900;color:#cffafe;">JSON or text list</div><div style="font-size:12px;color:#cbd5e1;line-height:1.45;">Paste location cards, scene maps, or combined scene + location JSON. This is the current importer.</div>`;
+      jsonCard.append(jsonButton);
+      const folderCard = document.createElement("div");
+      folderCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+      folderCard.innerHTML = `<div style="font-weight:900;color:#cffafe;">Project folder</div><div style="font-size:12px;color:#cbd5e1;line-height:1.45;">Imports image files and matching .txt descriptions from:<br><code>subject_location/location</code></div>`;
+      folderCard.append(folderButton);
+      choiceBody.append(jsonCard, folderCard);
+      choiceBox.append(choiceHeader, choiceBody);
+      choiceBackdrop.append(choiceBox);
+      document.body.append(choiceBackdrop);
+      const closeChoice = () => choiceBackdrop.remove();
+      choiceClose.onclick = closeChoice;
+      choiceBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === choiceBackdrop) closeChoice();
+      });
+      jsonButton.onclick = () => {
+        closeChoice();
+        openImportLocationsDialog();
+      };
+      folderButton.onclick = () => {
+        closeChoice();
+        importLocationsFromProjectFolder();
+      };
     };
 
     const currentZImageReferenceSettings = () => {
@@ -12209,6 +12315,60 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       renderAll();
       toast("Removed all subject references.");
     };
+    importSubjects.onclick = async () => {
+      const projectFolder = String(state.projectFolder || "").trim();
+      const progress = createProgressWindow("Importing Subjects", { zIndex: 100008 });
+      try {
+        if (!projectFolder) throw new Error("Create or load a project first so the subject folder can be found.");
+        progress.set(`Looking for subject images and descriptions...\n${projectFolder}\\subject_location\\subject`, 20);
+        const data = await postJson("/vrgdg/music_builder/import_reference_subjects", {
+          project_folder: projectFolder,
+        }, 60000);
+        const imported = Array.isArray(data.subjects) ? data.subjects.map((subject, index) => {
+          const name = String(subject?.name || `Subject ${index + 1}`).trim() || `Subject ${index + 1}`;
+          const image = subject?.image && typeof subject.image === "object" ? subject.image : {};
+          return {
+            id: String(subject?.id || `subj_import_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+            name,
+            description: String(subject?.description || "").trim(),
+            image: {
+              path: String(image.path || ""),
+              data: String(image.data || ""),
+              name: String(image.name || ""),
+            },
+          };
+        }).filter((subject) => subject.name) : [];
+        if (!imported.length) throw new Error("No subject images were returned from the import.");
+        refs.subjects = imported;
+        refs.subject_count = imported.length;
+        refs.subject_scene_map = {};
+        refs.use_subject_reference = true;
+        refs.subject = {
+          name: imported[0].name || "the singer",
+          description: imported[0].description || "",
+          image: imported[0].image || { path: "", data: "", name: "" },
+        };
+        useSubject.input.checked = true;
+        subjectCountInput.value = String(refs.subject_count);
+        subjectNameInput.value = refs.subject.name || "the singer";
+        subjectDescription.value = refs.subject.description || "";
+        state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+        renderAll();
+        renderFluxIngredientList(activeSegment());
+        renderNBIngredientList(activeSegment());
+        render();
+        await autoSaveSessionQuiet("imported reference subjects");
+        const missingCount = Array.isArray(data.missing_descriptions) ? data.missing_descriptions.length : 0;
+        const message = `Imported ${imported.length} subject${imported.length === 1 ? "" : "s"} from subject_location/subject.${missingCount ? `\n${missingCount} subject${missingCount === 1 ? " is" : "s are"} missing matching .txt descriptions.` : ""}`;
+        progress.set(message, 100);
+        toast(message);
+        progress.close(2200);
+      } catch (error) {
+        const message = String(error?.message || error || "Could not import subjects.");
+        progress.set(`Error:\n${message}`, 100);
+        toast(message, true);
+      }
+    };
     addLocation.onclick = () => {
       createLocation();
       renderAll();
@@ -12233,7 +12393,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     extractLocations.onclick = extractLocationsWithGemma;
     autoMapLocations.onclick = autoMapLocationsWithGemma;
     createAllMissingLocationZImages.onclick = createMissingLocationReferencesWithZImage;
-    importLocations.onclick = openImportLocationsDialog;
+    importLocations.onclick = openImportLocationSourceDialog;
     mapSubjectsFromLyrics.onclick = () => {
       const mapped = autoMapSubjectsFromLyrics();
       refs.use_subject_reference = true;
@@ -15357,6 +15517,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const settings = i2vVideoSettingsForSegment(segment);
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    const segmentMode = String(segment?.video_prompt_type || "").trim();
+    const videoMode = ["i2v", "t2v", "rtv"].includes(segmentMode) ? segmentMode : currentVideoMode();
+    const singlePassLoras = videoMode === "rtv";
     const payload = {
       unet_name: settings.unet_name || "",
       vae_name: settings.vae_name || "",
@@ -15382,7 +15545,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const lora = settings.loras?.[index] || {};
       payload[`lora_${index + 1}`] = useLoras && index < count ? (lora.name || "[none]") : "[none]";
       payload[`first_pass_strength_${index + 1}`] = Number(lora.first_pass_strength ?? lora.strength ?? 1);
-      payload[`second_pass_strength_${index + 1}`] = 0;
+      payload[`second_pass_strength_${index + 1}`] = singlePassLoras ? 0 : Number(lora.second_pass_strength ?? lora.strength ?? 1);
     }
     return payload;
   }
@@ -15525,6 +15688,57 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     saveI2VVideoSettingsFromPanel();
     const applyStoryboardReferenceMappings = (updates = {}) => {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const incomingSource = updates.reference_builder || updates.referenceBuilder || {};
+      const normalizeIncomingRefList = (items = []) => Array.isArray(items)
+        ? items
+          .filter((item) => item && typeof item === "object")
+          .map((item, index) => {
+            const image = item.image && typeof item.image === "object" ? item.image : {};
+            return {
+              id: String(item.id || item.name || `storyboard_ref_${index + 1}`),
+              name: String(item.name || `Reference ${index + 1}`),
+              description: String(item.description || ""),
+              image: {
+                path: String(image.path || ""),
+                data: String(image.data || ""),
+                name: String(image.name || ""),
+              },
+            };
+          })
+        : [];
+      const incomingRefs = {
+        subjects: normalizeIncomingRefList(incomingSource.subjects),
+        locations: normalizeIncomingRefList(incomingSource.locations),
+      };
+      const mergeReferenceList = (current = [], incoming = []) => {
+        const byKey = new Map();
+        const keyFor = (item) => String(item?.id || item?.name || "").trim().toLowerCase();
+        for (const item of current) {
+          const key = keyFor(item);
+          if (key) byKey.set(key, { ...item, image: { ...(item.image || {}) } });
+        }
+        for (const item of incoming) {
+          const key = keyFor(item);
+          if (!key) continue;
+          const existing = byKey.get(key) || {};
+          byKey.set(key, {
+            ...existing,
+            ...item,
+            image: {
+              ...(existing.image || {}),
+              ...(item.image || {}),
+            },
+          });
+        }
+        return Array.from(byKey.values());
+      };
+      if (incomingRefs.subjects.length) {
+        refs.subjects = mergeReferenceList(refs.subjects, incomingRefs.subjects);
+        refs.subject_count = Math.max(1, refs.subjects.length);
+      }
+      if (incomingRefs.locations.length) {
+        refs.locations = mergeReferenceList(refs.locations, incomingRefs.locations);
+      }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
       if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
       const segments = allEditableSegments();
@@ -21191,18 +21405,23 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     showInfoModal({
       title: "Video LoRA Strengths",
       lines: [
-        "Reference to Video uses one sampler pass, so each optional video LoRA uses one visible strength.",
-        "If a LoRA hurts motion or identity, lower the strength and render another test.",
+        "Image to Video and Text to Video use separate Pass 1 and Pass 2 strengths.",
+        "Reference to Video uses one LoRA strength only; Pass 2 is hidden and ignored in that mode.",
+        "If a LoRA hurts I2V/T2V motion, lower Pass 1. If you want more LoRA detail in the final result, raise Pass 2.",
       ],
     });
   });
 
   function updateI2VLoraVisibility() {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
+    const isReferenceToVideo = currentVideoMode() === "rtv";
     i2vLoraPanel.style.display = i2vUseLora.input.checked ? "flex" : "none";
     i2vLoraRows.style.display = i2vUseLora.input.checked && count > 0 ? "flex" : "none";
     i2vLoraSlots.forEach((slot, index) => {
       slot.row.style.display = index < count ? "grid" : "none";
+      slot.row.style.gridTemplateColumns = isReferenceToVideo ? "1fr 84px" : "1fr 84px 84px";
+      if (slot.firstPassLabel) slot.firstPassLabel.textContent = isReferenceToVideo ? "Strength" : "Pass 1";
+      if (slot.secondPassField) slot.secondPassField.style.display = isReferenceToVideo ? "none" : "flex";
     });
   }
 

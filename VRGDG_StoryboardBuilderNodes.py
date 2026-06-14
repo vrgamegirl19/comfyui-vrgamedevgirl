@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import re
@@ -245,6 +246,86 @@ def _normalize_reference_items(value):
     return refs
 
 
+def _normalize_reference_catalog(value):
+    source = value if isinstance(value, dict) else {}
+
+    def normalize_list(items, fallback_name, fallback_id):
+        if not isinstance(items, list):
+            return []
+        refs = []
+        for index, item in enumerate(items[:180]):
+            if not isinstance(item, dict):
+                continue
+            refs.append(_normalize_reference_item(item, f"{fallback_name} {index + 1}", f"{fallback_id}_{index + 1}"))
+        return refs
+
+    return {
+        "subjects": normalize_list(source.get("subjects"), "Subject", "subject"),
+        "locations": normalize_list(source.get("locations"), "Location", "location"),
+    }
+
+
+def _safe_file_stem(value, fallback="reference"):
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip()).strip("._")
+    return (text[:90] or fallback).strip("._") or fallback
+
+
+def _decode_image_data_url(value):
+    text = str(value or "").strip()
+    match = re.match(r"^data:image/([A-Za-z0-9.+-]+);base64,(.*)$", text, flags=re.S)
+    if match:
+        ext = match.group(1).lower()
+        payload = match.group(2)
+    else:
+        ext = "png"
+        payload = text
+    if ext == "jpeg":
+        ext = "jpg"
+    if ext not in {"png", "jpg", "webp"}:
+        ext = "png"
+    try:
+        data = base64.b64decode(payload, validate=False)
+    except Exception as exc:
+        raise ValueError("Reference image data could not be decoded.") from exc
+    if not data:
+        raise ValueError("Reference image data is empty.")
+    if len(data) > 30 * 1024 * 1024:
+        raise ValueError("Reference image is too large.")
+    return data, ext
+
+
+def _import_storyboard_reference_image(payload):
+    project_folder = _safe_project_folder(payload.get("project_folder", ""))
+    kind = str(payload.get("kind") or "subject").strip().lower()
+    if kind not in {"subject", "location"}:
+        kind = "subject"
+    name = _clean_scene_text(payload.get("name") or ("Location" if kind == "location" else "Subject"), 240)
+    description = _clean_scene_text(payload.get("description") or "", 4000)
+    raw, ext = _decode_image_data_url(payload.get("image_data") or payload.get("data") or "")
+    reference_dir = os.path.join(_storyboard_folder(project_folder), "references", "locations" if kind == "location" else "subjects")
+    os.makedirs(reference_dir, exist_ok=True)
+    stem = _safe_file_stem(name, kind)
+    path = os.path.join(reference_dir, f"{stem}.{ext}")
+    suffix = 2
+    while os.path.exists(path):
+        path = os.path.join(reference_dir, f"{stem}_{suffix}.{ext}")
+        suffix += 1
+    with open(path, "wb") as handle:
+        handle.write(raw)
+    ref_id = _clean_scene_text(payload.get("id") or f"{kind}_{stem}_{datetime.now().strftime('%Y%m%d%H%M%S')}", 160)
+    reference = _normalize_reference_item({
+        "id": ref_id,
+        "name": name,
+        "description": description,
+        "image": {
+            "path": path,
+            "name": os.path.basename(path),
+            "data": "",
+        },
+    }, name, ref_id)
+    return {"reference": reference, "path": path}
+
+
 def _normalize_storyboard_scene(scene, fallback_number=1):
     if not isinstance(scene, dict):
         scene = {}
@@ -308,6 +389,7 @@ def _default_storyboard(payload):
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
         "mode": "image_to_video_prep" if any(scene.get("image_path") for scene in normalized) else "storyboard_prompts",
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
+        "reference_builder": _normalize_reference_catalog(payload.get("reference_builder") or payload.get("referenceBuilder") or {}),
         "scenes": normalized,
     }
 
@@ -322,6 +404,7 @@ def _load_storyboard(payload):
         if not isinstance(scenes, list):
             scenes = []
         data["scenes"] = [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)]
+        data["reference_builder"] = _normalize_reference_catalog(data.get("reference_builder") or data.get("referenceBuilder") or {})
         data["path"] = path
         return data
     data = _default_storyboard(payload)
@@ -344,6 +427,7 @@ def _save_storyboard(payload):
         "project_folder": project_folder,
         "mode": storyboard.get("mode") or "storyboard_prompts",
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
+        "reference_builder": _normalize_reference_catalog(storyboard.get("reference_builder") or storyboard.get("referenceBuilder") or {}),
         "scenes": [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)],
     }
     path = _storyboard_path(project_folder)
@@ -446,6 +530,15 @@ def _ensure_storyboard_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, "storyboard": result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/import_reference_image")
+    async def vrgdg_storyboard_import_reference_image(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_import_storyboard_reference_image, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/storyboard/export_prompts")
     async def vrgdg_storyboard_export_prompts(request):
