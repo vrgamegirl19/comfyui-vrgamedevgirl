@@ -20,15 +20,15 @@ Use `vocal_status` to decide which opening structure to use.
 
 If `vocal_status.should_lip_sync` is true, use this structure:
 
-[Shot type] on [main subject] as [main subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/mouth/jaw/cheeks/gaze], with clear singing mouth shapes and expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [Main subject] is in [location/setting], surrounded by [key environmental perspective/detail].
+[Shot type] on [main subject] as [main subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [Main subject] is in [location/setting], surrounded by [key environmental perspective/detail].
 
-[Main subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, lip movement, reflection, silhouette, texture, or emotional beat].
+[Main subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
 [Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
 
 If `vocal_status.instrumental` is true, `vocal_status.no_lip_sync` is true, or `vocal_status.should_lip_sync` is false, use this structure:
 
-[Shot type] on [main subject] in [location/setting], framed by [key environmental perspective/detail]. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/mouth/jaw/cheeks/gaze], with [hair/costume/appearance detail] catching the light or motion.
+[Shot type] on [main subject] in [location/setting], framed by [key environmental perspective/detail]. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with [hair/costume/appearance detail] catching the light or motion.
 
 [Main subject] [performs a clear motivated action that fits the scene mood, character status, and environment] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the action], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
@@ -49,16 +49,17 @@ Rules:
 * Do not default to zoom-in, push-in, dolly-in, crash-zoom, or close-up endings. Use those inward camera moves only when `camera_motion`, `shot_type`, or the user notes explicitly ask for them.
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
-* Use `performance_style` and `performance_direction` to choose the vocal wording, facial emotion, body language, gesture intensity, and camera energy. For rap/hip-hop, describe rapping or performing the lyric with rhythmic mouth movement and hand gestures instead of soft singing. For rock, punk, or metal, use stronger facial intensity and performance energy.
+* Use `performance_style` and `performance_direction` to choose the vocal wording, facial emotion, body language, gesture intensity, and camera energy. For rap/hip-hop, describe rapping or performing the lyric with rhythmic delivery, hand gestures, head nods, and confident body language instead of soft singing. For rock, punk, or metal, use stronger facial intensity and performance energy.
 * If the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
 * If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
 * Do not mention or add a microphone, mic stand, headset mic, studio mic, or microphone prop unless `microphone.include` is true or the user's scene notes explicitly ask for a microphone.
 * If `microphone.include` is true, include a handheld microphone or stand microphone only when it naturally fits the scene, stage, studio, club, or live performance setup.
-* Every prompt must include visible facial emotion or facial performance. Describe what the eyes, brows, mouth, jaw, cheeks, gaze, or expression are doing.
-* Singing prompts must include expressive singing mouth shapes plus an emotion that fits the lyric, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
+* Every prompt must include visible facial emotion or facial performance. Describe what the eyes, brows, jaw, cheeks, gaze, posture, or expression are doing.
+* Singing prompts must identify the exact lyric line and include visible emotion, body language, gestures, and performance energy that fit the lyric, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
+* Do not describe open mouth, parted lips, mouth shapes, lip movement, or mouth position. Lip sync is handled by LTX/audio, not prompt wording.
 * Non-singing prompts must still include visible emotional expression or restrained facial tension. Do not leave the subject blank-faced.
 * Do not use "expressionless", "blank expression", "empty face", "emotionless", "unreadable face", "deadpan", or "perfectly still face" unless the user's scene notes explicitly ask for that exact effect.
-* If the character is described as calm, silent, stoic, robotic, alien, or controlled, translate that into visible restrained emotion: tense jaw, focused eyes, slight parted lips, narrowed gaze, lifted brow, suppressed tears, soft smile, or subtle unease.
+* If the character is described as calm, silent, stoic, robotic, alien, or controlled, translate that into visible restrained emotion: tense jaw, focused eyes, narrowed gaze, lifted brow, suppressed tears, soft smile, or subtle unease.
 * Do not copy reference image composition unless the scene card explicitly asks for it.
 * Keep the prompt cinematic, visual, and video-friendly.
 * Do not mention JSON, IDs, file paths, image names, or metadata.

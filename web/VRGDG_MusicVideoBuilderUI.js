@@ -10867,7 +10867,7 @@ function openBuilder(node) {
     const locationsCard = document.createElement("div");
     locationsCard.style.cssText = cardStyle;
     const locationsHeader = document.createElement("div");
-    locationsHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+    locationsHeader.style.cssText = "display:flex;flex-direction:column;gap:10px;";
     const locationsTitle = document.createElement("div");
     locationsTitle.textContent = "Location References";
     locationsTitle.style.cssText = subjectTitle.style.cssText;
@@ -10877,9 +10877,42 @@ function openBuilder(node) {
     const createAllMissingLocationZImages = makeButton("ZImage Missing Locations", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const removeAllLocations = makeButton("Remove All Locations");
+    extractLocations.textContent = "Extract";
+    autoMapLocations.textContent = "Auto Map";
+    importLocations.textContent = "Import List";
+    createAllMissingLocationZImages.textContent = "ZImage";
+    addLocation.textContent = "Add";
+    removeAllLocations.textContent = "Remove";
+    extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
+    autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
+    importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
+    createAllMissingLocationZImages.title = "Create ZImage references for locations that do not have images yet.";
+    addLocation.title = "Add one location card manually.";
+    removeAllLocations.title = "Remove every location card and clear location mappings.";
     const locationActions = document.createElement("div");
-    locationActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    locationActions.append(extractLocations, autoMapLocations, importLocations, createAllMissingLocationZImages, addLocation, removeAllLocations);
+    locationActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:10px;";
+    const locationActionGroup = (label, buttons) => {
+      const group = document.createElement("div");
+      group.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0b1220;padding:10px 12px;display:flex;flex-direction:column;gap:9px;";
+      const rowLabel = document.createElement("div");
+      rowLabel.textContent = label;
+      rowLabel.style.cssText = "border-bottom:1px solid #273449;padding-bottom:8px;font-size:12px;font-weight:900;color:#cbd5e1;text-transform:uppercase;letter-spacing:.08em;";
+      const buttonWrap = document.createElement("div");
+      buttonWrap.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
+      for (const button of buttons) {
+        button.style.minHeight = "32px";
+        button.style.padding = "6px 11px";
+        button.style.flex = "0 0 auto";
+        button.style.minWidth = "82px";
+        buttonWrap.append(button);
+      }
+      group.append(rowLabel, buttonWrap);
+      return group;
+    };
+    locationActions.append(
+      locationActionGroup("Gemma", [extractLocations, autoMapLocations]),
+      locationActionGroup("Manage", [importLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
+    );
     locationsHeader.append(locationsTitle, locationActions);
     const keepGemmaLoadedForLocations = makeCheckbox("Keep Gemma loaded while creating location prompts", true);
     keepGemmaLoadedForLocations.wrapper.style.cssText += "border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
@@ -11273,7 +11306,7 @@ function openBuilder(node) {
           return location ? { sceneNumber: fallbackSceneNumber, key: fallbackKey, location, description: "" } : null;
         }
         if (!entry || typeof entry !== "object") return null;
-        const sceneNumber = Number(
+        const rawScene =
           entry.scene_number
           ?? entry.sceneNumber
           ?? entry.scene
@@ -11282,8 +11315,10 @@ function openBuilder(node) {
           ?? entry.segmentNumber
           ?? entry.number
           ?? fallbackSceneNumber
-          ?? 0
-        );
+          ?? 0;
+        const sceneNumber = typeof rawScene === "number"
+          ? rawScene
+          : (sceneNumberFromImportKey(rawScene) || Number(rawScene) || fallbackSceneNumber || 0);
         const location = String(
           entry.location
           ?? entry.location_name
@@ -11403,10 +11438,23 @@ function openBuilder(node) {
       help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;font-size:12px;color:#dbeafe;line-height:1.45;";
       help.innerHTML = `
         <div style="font-weight:900;color:#cffafe;margin-bottom:6px;">Accepted formats</div>
-        <div>JSON array:</div>
+        <div>Location list JSON:</div>
         <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">[
   { "location": "Glass hallway", "description": "A long mirrored corridor..." },
   { "name": "Chrome vault corridor", "description": "A sealed industrial passage..." }
+]</pre>
+        <div>Combined location + scene map JSON:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">[
+  {
+    "scene": "scene1",
+    "location": "Glass hallway",
+    "description": "A long mirrored corridor with black glass walls..."
+  },
+  {
+    "scene": "scene2",
+    "location": "Chrome vault corridor",
+    "description": "A sealed industrial passage lined with circular vault doors..."
+  }
 ]</pre>
         <div>Scene map JSON:</div>
         <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">{

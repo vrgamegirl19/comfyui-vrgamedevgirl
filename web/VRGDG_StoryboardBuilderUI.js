@@ -444,7 +444,7 @@ const CHARACTER_MOTION_GROUPS = [
     label: "Facial Expression / Head Movement",
     options: [
       "smiling", "laughing", "crying", "frowning", "smirking", "shouting",
-      "whispering", "lip-syncing", "looking at camera", "looking away",
+      "whispering", "looking at camera", "looking away",
       "looking down", "looking up", "turning head", "tilting head", "nodding",
       "shaking head", "closing eyes", "opening eyes", "blinking",
       "staring intensely",
@@ -609,17 +609,17 @@ const PERFORMANCE_STYLE_PRESETS = [
   {
     value: "rock_punk",
     label: "Rock / punk",
-    direction: "Use raw rock performance energy: intense facial emotion, stronger mouth shapes, head movement, sharp gestures, defiant posture, and gritty stage-like body language.",
+    direction: "Use raw rock performance energy: intense facial emotion, head movement, sharp gestures, defiant posture, and gritty stage-like body language.",
   },
   {
     value: "metal_screaming",
     label: "Metal / screaming",
-    direction: "Use aggressive high-intensity performance energy: fierce expression, open-mouth belting or screaming, powerful stance, forceful gestures, hair and clothing reacting to motion, and heavy dramatic presence.",
+    direction: "Use aggressive high-intensity performance energy: fierce expression, powerful stance, forceful gestures, hair and clothing reacting to motion, and heavy dramatic presence.",
   },
   {
     value: "rap_hiphop",
     label: "Rap / hip-hop",
-    direction: "Use rap-style delivery instead of soft singing: rhythmic mouth movement, confident direct-to-camera energy, expressive hand gestures, head nods, shoulder movement, and sharper body language.",
+    direction: "Use rap-style delivery instead of soft singing: confident direct-to-camera energy, expressive hand gestures, head nods, shoulder movement, and sharper body language.",
   },
   {
     value: "pop_performance",
@@ -644,7 +644,7 @@ const PERFORMANCE_STYLE_PRESETS = [
   {
     value: "spoken_word",
     label: "Spoken word",
-    direction: "Use spoken-word delivery instead of singing: clear speech-like mouth movement, focused eyes, intentional gestures, restrained intensity, and poetic performance energy.",
+    direction: "Use spoken-word delivery instead of singing: focused eyes, intentional gestures, restrained intensity, and poetic performance energy.",
   },
   {
     value: "no_vocals_broll",
@@ -971,7 +971,7 @@ function storyboardScenesForGpt(state) {
         lyric_line: lyricText,
         singers,
         instruction: shouldLipSync
-          ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with clear mouth movement and expressive performance."
+          ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Do not describe mouth shapes or mouth position."
           : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene.",
       },
       scene_summary: normalized.prompt_summary,
