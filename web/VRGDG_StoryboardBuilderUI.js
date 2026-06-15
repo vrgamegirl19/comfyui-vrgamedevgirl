@@ -1154,6 +1154,10 @@ function openStoryboardBuilder(payload = {}) {
   gptButton.title = "Copy all Storyboard scene-card inputs as JSON for your custom GPT.";
   const gemmaAllButton = makeButton("Gemma All", "primary");
   gemmaAllButton.title = "Use Gemma4 to create video prompts for every storyboard scene.";
+  const clearPromptsButton = makeButton("Clear Prompts");
+  clearPromptsButton.title = "Clear Storyboard scene-card prompt summaries, generated prompts, and extra notes without changing subjects, locations, camera, motion, or lyrics.";
+  clearPromptsButton.style.borderColor = "#991b1b";
+  clearPromptsButton.style.background = "#3f0808";
   const keepGemmaLoadedLabel = document.createElement("label");
   keepGemmaLoadedLabel.style.cssText = "display:flex;align-items:center;gap:6px;color:#cbd5e1;font-size:12px;font-weight:800;white-space:nowrap;";
   const keepGemmaLoadedInput = document.createElement("input");
@@ -1163,7 +1167,7 @@ function openStoryboardBuilder(payload = {}) {
   keepGemmaLoadedLabel.title = "When checked, Gemma All keeps the text model loaded until the batch finishes. Turn this off for lower VRAM systems.";
   const add = makeButton("+ Add Scene", "purple");
   const close = makeButton("Close");
-  headerActions.append(gptButton, gemmaAllButton, keepGemmaLoadedLabel, search, add, close);
+  headerActions.append(gptButton, gemmaAllButton, clearPromptsButton, keepGemmaLoadedLabel, search, add, close);
   header.append(titleBlock, steps, headerActions);
 
   const note = document.createElement("div");
@@ -1307,6 +1311,82 @@ function openStoryboardBuilder(payload = {}) {
       createToast(changed ? `Performance style replaced ${changed} scene${changed === 1 ? "" : "s"}.` : "No performance style fields were changed.");
     } else {
       createToast(changed ? `Performance style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank performance style fields needed filling.");
+    }
+  };
+
+  const confirmClearStoryboardPrompts = () => new Promise((resolve) => {
+    const confirmBackdrop = document.createElement("div");
+    confirmBackdrop.style.cssText = "position:fixed;inset:0;z-index:100040;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:22px;";
+    const panel = document.createElement("div");
+    panel.style.cssText = "width:min(620px,calc(100vw - 44px));border:1px solid #991b1b;border-radius:9px;background:#0f172a;color:#e5e7eb;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "padding:14px 16px;background:#3f0808;border-bottom:1px solid #991b1b;font-weight:900;color:#fecaca;";
+    header.textContent = "Clear all Storyboard prompts and notes?";
+    const body = document.createElement("div");
+    body.style.cssText = "padding:16px;line-height:1.45;color:#e2e8f0;font-size:13px;";
+    body.textContent = "This clears prompt summaries, generated image/video prompts, and extra notes inside every scene card. It keeps lyrics, subjects, locations, reference images, shot type, camera motion, character motion, performance style, and microphone settings.";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px;";
+    const cancel = makeButton("Cancel");
+    const clear = makeButton("Yes, clear prompts", "primary");
+    clear.style.borderColor = "#991b1b";
+    clear.style.background = "#991b1b";
+    actions.append(cancel, clear);
+    panel.append(header, body, actions);
+    confirmBackdrop.append(panel);
+    document.body.append(confirmBackdrop);
+    const closeConfirm = (value) => {
+      confirmBackdrop.remove();
+      resolve(value);
+    };
+    cancel.onclick = () => closeConfirm(false);
+    clear.onclick = () => closeConfirm(true);
+    confirmBackdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === confirmBackdrop) closeConfirm(false);
+    });
+  });
+
+  const clearAllStoryboardPrompts = async () => {
+    const confirmed = await confirmClearStoryboardPrompts();
+    if (!confirmed) return;
+    let changed = 0;
+    for (const scene of state.scenes) {
+      const before = [
+        scene.prompt_summary,
+        scene.motion_summary,
+        scene.image_prompt,
+        scene.video_prompt,
+        scene.notes,
+      ].map((value) => String(value || "")).join("\n");
+      scene.prompt_summary = "";
+      scene.motion_summary = "";
+      scene.image_prompt = "";
+      scene.video_prompt = "";
+      scene.notes = "";
+      if (scene.status && scene.status !== "draft") scene.status = "draft";
+      const after = [
+        scene.prompt_summary,
+        scene.motion_summary,
+        scene.image_prompt,
+        scene.video_prompt,
+        scene.notes,
+      ].map((value) => String(value || "")).join("\n");
+      if (before !== after) changed += 1;
+    }
+    renderTable();
+    syncReferenceMappingsToVideoCreator();
+    if (state.projectFolder) {
+      try {
+        await postJson("/vrgdg/storyboard/save", {
+          project_folder: state.projectFolder,
+          storyboard: slimStoryboardForRequest(state),
+        });
+        createToast(`Cleared prompts/notes in ${changed} scene${changed === 1 ? "" : "s"} and saved Storyboard.`);
+      } catch (error) {
+        createToast(`Cleared prompts/notes in this session, but could not save Storyboard:\n${String(error?.message || error)}`, true);
+      }
+    } else {
+      createToast(`Cleared prompts/notes in ${changed} scene${changed === 1 ? "" : "s"}. Save the project to keep this change.`);
     }
   };
 
@@ -2191,6 +2271,7 @@ function openStoryboardBuilder(payload = {}) {
   };
   gptButton.onclick = copyStoryboardForGpt;
   gemmaAllButton.onclick = createAllVideoPromptsWithGemma;
+  clearPromptsButton.onclick = clearAllStoryboardPrompts;
   keepGemmaLoadedInput.onchange = () => {
     state.gemmaSettings = {
       ...(state.gemmaSettings || {}),

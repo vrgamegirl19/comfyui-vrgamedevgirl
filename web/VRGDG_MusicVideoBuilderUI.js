@@ -5026,17 +5026,37 @@ function openBuilder(node) {
     return String(thumbnails[index] || currentThumbnail || "").trim();
   }
 
+  function clearSegmentTextFields(segment, fields = []) {
+    if (!segment) return;
+    for (const field of fields) {
+      if (field in segment || segment[field] != null) segment[field] = "";
+    }
+  }
+
   function clearConceptPromptNotesFromSegments() {
+    const conceptFields = [
+      "notes",
+      "flux_notes",
+      "nb_notes",
+      "prompt_summary",
+      "scene_summary",
+      "image_prompt",
+      "text_to_image_prompt",
+    ];
     for (const segment of allEditableSegments()) {
-      segment.notes = "";
-      segment.flux_notes = "";
-      segment.nb_notes = "";
+      clearSegmentTextFields(segment, conceptFields);
     }
   }
 
   function clearI2VMotionNotesFromSegments() {
+    const motionFields = [
+      "i2v_notes",
+      "video_notes",
+      "motion_summary",
+      "motion_video_summary",
+    ];
     for (const segment of allEditableSegments()) {
-      segment.i2v_notes = "";
+      clearSegmentTextFields(segment, motionFields);
     }
   }
 
@@ -15690,8 +15710,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       String(segment?.i2v_notes || segment?.video_notes || "").trim(),
       String(referenceData?.location_ref?.description || "").trim(),
       String(segment?.lyric_text || segment?.lyric_note || segment?.lyrics || "").trim(),
-      String(imagePrompt || "").trim(),
-      String(videoPrompt || "").trim(),
     ].filter(Boolean);
     return parts[0] || "";
   }
@@ -15723,7 +15741,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           label,
           lyrics: lyric,
           prompt_summary: promptSummary,
-          motion_summary: videoNotes || videoPrompt,
+          motion_summary: videoNotes,
           video_prompt_type: ["i2v", "t2v", "rtv"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
