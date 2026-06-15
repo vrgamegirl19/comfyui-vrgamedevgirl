@@ -1174,7 +1174,9 @@ function openStoryboardBuilder(payload = {}) {
   cameraFlowSelect.style.minWidth = "180px";
   const cameraFlowApply = makeButton("Fill Missing", "primary");
   cameraFlowApply.title = "Fill only blank shot type and camera motion fields. Existing manual choices are kept.";
-  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply);
+  const cameraFlowReplace = makeButton("Replace All");
+  cameraFlowReplace.title = "Replace every scene's shot type and camera motion with the selected auto camera flow.";
+  cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowReplace);
   const cameraFlowInfo = document.createElement("div");
   cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const performanceControls = document.createElement("div");
@@ -1187,7 +1189,9 @@ function openStoryboardBuilder(payload = {}) {
   performanceSelect.style.minWidth = "180px";
   const performanceApply = makeButton("Fill Missing", "primary");
   performanceApply.title = "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
-  performanceControls.append(performanceLabel, performanceSelect, performanceApply);
+  const performanceReplace = makeButton("Replace All");
+  performanceReplace.title = "Replace every scene's performance/song style with the selected global style.";
+  performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace);
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   cameraFlowBar.append(cameraFlowControls, cameraFlowInfo, performanceControls, performanceInfo);
@@ -1245,7 +1249,7 @@ function openStoryboardBuilder(payload = {}) {
       : `${preset.description} Pick a style here to use it as the default for blank scenes.`;
   };
 
-  const applyCameraFlowToMissing = () => {
+  const applyCameraFlow = ({ overwrite = false } = {}) => {
     const profileKey = state.cameraFlow || "balanced";
     if (profileKey === "off") {
       createToast("Auto camera flow is off.");
@@ -1258,21 +1262,25 @@ function openStoryboardBuilder(payload = {}) {
       if (!entry) return;
       const hadShot = Boolean(String(scene.shot_type || "").trim());
       const hadCamera = Boolean(String(scene.camera_motion || "").trim());
-      if (!hadShot && entry.shot) {
+      if ((overwrite || !hadShot) && entry.shot) {
         scene.shot_type = entry.shot;
         changed += 1;
       }
-      if (!hadCamera && entry.camera) {
+      if ((overwrite || !hadCamera) && entry.camera) {
         scene.camera_motion = entry.camera;
         changed += 1;
       }
       previousMotion = String(scene.camera_motion || entry.camera || previousMotion);
     });
     renderTable();
-    createToast(changed ? `Auto camera flow filled ${changed} blank field${changed === 1 ? "" : "s"}.` : "No blank shot or camera fields needed filling.");
+    if (overwrite) {
+      createToast(changed ? `Auto camera flow replaced ${changed} field${changed === 1 ? "" : "s"}.` : "No camera fields were changed.");
+    } else {
+      createToast(changed ? `Auto camera flow filled ${changed} blank field${changed === 1 ? "" : "s"}.` : "No blank shot or camera fields needed filling.");
+    }
   };
 
-  const applyPerformanceStyleToMissing = () => {
+  const applyPerformanceStyle = ({ overwrite = false } = {}) => {
     const value = String(state.performanceStyle || "").trim();
     if (!value) {
       createToast("Choose a global performance style first.");
@@ -1280,12 +1288,16 @@ function openStoryboardBuilder(payload = {}) {
     }
     let changed = 0;
     state.scenes.forEach((scene) => {
-      if (String(scene.performance_style || "").trim()) return;
+      if (!overwrite && String(scene.performance_style || "").trim()) return;
       scene.performance_style = value;
       changed += 1;
     });
     renderTable();
-    createToast(changed ? `Performance style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank performance style fields needed filling.");
+    if (overwrite) {
+      createToast(changed ? `Performance style replaced ${changed} scene${changed === 1 ? "" : "s"}.` : "No performance style fields were changed.");
+    } else {
+      createToast(changed ? `Performance style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank performance style fields needed filling.");
+    }
   };
 
   const currentRows = () => {
@@ -2153,12 +2165,14 @@ function openStoryboardBuilder(payload = {}) {
     cameraFlowSelect.value = state.cameraFlow;
     refreshCameraFlowInfo();
   };
-  cameraFlowApply.onclick = applyCameraFlowToMissing;
+  cameraFlowApply.onclick = () => applyCameraFlow({ overwrite: false });
+  cameraFlowReplace.onclick = () => applyCameraFlow({ overwrite: true });
   performanceSelect.onchange = () => {
     state.performanceStyle = String(performanceSelect.value || "");
     refreshPerformanceInfo();
   };
-  performanceApply.onclick = applyPerformanceStyleToMissing;
+  performanceApply.onclick = () => applyPerformanceStyle({ overwrite: false });
+  performanceReplace.onclick = () => applyPerformanceStyle({ overwrite: true });
   add.onclick = () => {
     const next = normalizeScene({ scene_number: state.scenes.length + 1, label: `Scene ${state.scenes.length + 1}` }, state.scenes.length);
     state.scenes.push(next);
