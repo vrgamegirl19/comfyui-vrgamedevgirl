@@ -3732,6 +3732,36 @@ function openBuilder(node) {
     sortSegments(state.overlaySegments);
   }
 
+  function importedSrtTextFromSegment(segment) {
+    if (!segment || typeof segment !== "object") return "";
+    const candidates = [
+      segment.lyric_text,
+      segment.text,
+      segment.caption,
+      segment.subtitle,
+      segment.srt_text,
+      segment.prompt,
+      segment.notes,
+    ];
+    return String(candidates.find((value) => String(value || "").trim()) || "").trim();
+  }
+
+  function normalizeImportedSrtSegments(segments) {
+    return (Array.isArray(segments) ? segments : []).map((segment, index) => {
+      const normalized = ensureSegmentRuntimeFields(segment && typeof segment === "object" ? segment : newSegment(0, 4));
+      const text = importedSrtTextFromSegment(normalized);
+      if (text) {
+        normalized.lyric_text = text;
+        normalized.lyric_no_lip_sync = isInstrumentalLyricText(text);
+      }
+      if (!String(normalized.label || "").trim() || /^prompt\s+\d+$/i.test(String(normalized.label || ""))) {
+        normalized.label = `Scene ${index + 1}`;
+      }
+      normalized.source = normalized.source || "srt_import";
+      return normalized;
+    });
+  }
+
   function cloneZImageSettings(settings) {
     const source = settings || {};
     return {
@@ -4994,6 +5024,20 @@ function openBuilder(node) {
     const selectedVideo = String(videos[index] || "").trim();
     const currentThumbnail = mediaPathKey(selectedVideo) === mediaPathKey(segment?.video_path) ? segment?.video_thumbnail_path : "";
     return String(thumbnails[index] || currentThumbnail || "").trim();
+  }
+
+  function clearConceptPromptNotesFromSegments() {
+    for (const segment of allEditableSegments()) {
+      segment.notes = "";
+      segment.flux_notes = "";
+      segment.nb_notes = "";
+    }
+  }
+
+  function clearI2VMotionNotesFromSegments() {
+    for (const segment of allEditableSegments()) {
+      segment.i2v_notes = "";
+    }
   }
 
   function mediaThumbnailHtml(segment, height = 56) {
@@ -10560,7 +10604,7 @@ function openBuilder(node) {
         copy.style.cssText = "font-size:13px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;";
         copy.textContent = "Choose the workflow that matches where you are. If scenes already exist, transcribe lyrics into those scene windows. If the project has no scenes yet, create scenes from timestamped lyrics first.";
         const actions = document.createElement("div");
-        actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+        actions.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;";
         const existingCard = document.createElement("div");
         existingCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#111827;padding:12px;display:flex;flex-direction:column;gap:8px;";
         const existingTitle = document.createElement("div");
@@ -10581,7 +10625,17 @@ function openBuilder(node) {
         timestampText.textContent = "Use this when the project is blank. It uses stable-ts timestamps to create timeline scenes and lyric notes from the audio.";
         const createScenes = makeStepButton("Create Scenes From Lyrics", "primary");
         timestampCard.append(timestampTitle, timestampText, createScenes);
-        actions.append(existingCard, timestampCard);
+        const srtCard = document.createElement("div");
+        srtCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#111827;padding:12px;display:flex;flex-direction:column;gap:8px;";
+        const srtTitle = document.createElement("div");
+        srtTitle.style.cssText = "font-weight:900;color:#cffafe;";
+        srtTitle.textContent = "Option 3: Import SRT file";
+        const srtText = document.createElement("div");
+        srtText.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+        srtText.textContent = "Use this when you already have an SRT. It creates timeline scenes from the SRT timestamps and fills the Lyric Notes lane with each subtitle line.";
+        const importSrt = makeStepButton("Import SRT File", "primary");
+        srtCard.append(srtTitle, srtText, importSrt);
+        actions.append(existingCard, timestampCard, srtCard);
         const utilityActions = document.createElement("div");
         utilityActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;";
         const showNotes = makeStepButton(state.showTimelineLyricNotes ? "Hide Timeline Lyric Notes" : "Show Timeline Lyric Notes");
@@ -10593,6 +10647,9 @@ function openBuilder(node) {
         createScenes.onclick = async () => {
           await createScenesFromTimestampedLyrics();
           setStatusText();
+        };
+        importSrt.onclick = () => {
+          projectSrtFileInput.click();
         };
         hint.onclick = async () => {
           await showTimestampedLyricsHintModal();
@@ -12971,15 +13028,20 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         srt_path: srtInput.value,
       });
       pushHistory();
-      state.segments = data.segments || [];
+      state.segments = normalizeImportedSrtSegments(data.segments || []);
       state.overlaySegments = [];
       state.srtPath = data.srt_path || "";
       state.activeId = state.segments[0]?.id || "";
       state.timingFrozen = true;
       state.srtMode = true;
+      state.showTimelineLyricNotes = true;
       freezeTimingControl.input.checked = true;
+      syncLyricNoteControls();
+      const lyricPath = projectLyricNotesPath();
+      if (lyricPath) await syncLyricAndSubjectNoteFiles("SRT path load");
       syncInspector();
       render();
+      if (activeProjectFolderForSave()) await saveSession({ quiet: true, throwOnError: true });
       toast(`Loaded ${state.segments.length} SRT segment${state.segments.length === 1 ? "" : "s"}.\nTiming is frozen.`);
     } catch (error) {
       if (options.throwOnError) throw error;
@@ -13052,14 +13114,19 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         pushHistory();
         srtInput.value = data.srt_path || "";
         state.srtPath = srtInput.value;
-        state.segments = data.segments || [];
+        state.segments = normalizeImportedSrtSegments(data.segments || []);
         state.overlaySegments = [];
         state.activeId = state.segments[0]?.id || "";
         state.timingFrozen = true;
         state.srtMode = true;
+        state.showTimelineLyricNotes = true;
         setWidgetValue(node, "srt_path", state.srtPath);
+        syncLyricNoteControls();
+        const lyricPath = projectLyricNotesPath();
+        if (lyricPath) await syncLyricAndSubjectNoteFiles("SRT file import");
         syncInspector();
         render();
+        if (activeProjectFolderForSave()) await saveSession({ quiet: true, throwOnError: true });
         toast(`Loaded ${state.segments.length} SRT segment${state.segments.length === 1 ? "" : "s"}.\n${state.srtPath}`);
       } catch (error) {
         toast(String(error?.message || error), true);
@@ -20526,19 +20593,33 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   });
   editPromptJsonButton.onclick = () => editContextTextFile(promptJsonInput, "Edit Prompt JSON", "ConceptPrompts.txt", null, {
     showGemma: false,
-    helpText: "Save this file to re-import the updated concept prompts into the scene notes.",
-    afterSave: async () => {
+    helpText: "Save this file to re-import the updated concept prompts into the scene notes. To clear all concept notes, delete everything in this editor and save.",
+    afterSave: async (_result, text) => {
       state.promptJsonPath = promptJsonInput.value || "";
-      await importPromptJson();
+      if (!String(text || "").trim()) {
+        clearConceptPromptNotesFromSegments();
+        syncInspector();
+        render();
+        toast("Cleared ConceptPrompts and scene concept notes.");
+      } else {
+        await importPromptJson();
+      }
       await autoSaveSessionQuiet("prompt JSON edited");
     },
   });
   editI2VMotionJsonButton.onclick = () => editContextTextFile(i2vMotionJsonInput, "Edit I2V Motion Notes JSON", "I2VMotionNotes.txt", null, {
     showGemma: false,
-    helpText: "Save this file to re-import the updated I2V motion notes into the scene motion boxes.",
-    afterSave: async () => {
+    helpText: "Save this file to re-import the updated I2V motion notes into the scene motion boxes. To clear all motion notes, delete everything in this editor and save.",
+    afterSave: async (_result, text) => {
       state.i2vMotionJsonPath = i2vMotionJsonInput.value || "";
-      await importI2VMotionJson();
+      if (!String(text || "").trim()) {
+        clearI2VMotionNotesFromSegments();
+        syncInspector();
+        render();
+        toast("Cleared I2VMotionNotes and scene motion notes.");
+      } else {
+        await importI2VMotionJson();
+      }
       await autoSaveSessionQuiet("I2V motion notes edited");
     },
   });
