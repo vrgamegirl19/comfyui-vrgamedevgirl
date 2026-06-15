@@ -4748,34 +4748,34 @@ function openBuilder(node) {
   function normalizeFluxReferenceBuilder(value = {}) {
     const source = value && typeof value === "object" ? value : {};
     const normalized = defaultFluxReferenceBuilder();
+    const normalizeRefImage = (item = {}) => {
+      const sourceItem = item && typeof item === "object" ? item : {};
+      const image = sourceItem.image && typeof sourceItem.image === "object" ? sourceItem.image : sourceItem;
+      const hasTopLevelImage = Boolean(sourceItem.path || sourceItem.data || sourceItem.image_path || sourceItem.imagePath || sourceItem.image_data || sourceItem.imageData);
+      return {
+        path: String(image.path || sourceItem.image_path || sourceItem.imagePath || sourceItem.path || ""),
+        data: String(image.data || sourceItem.image_data || sourceItem.imageData || sourceItem.data || ""),
+        name: String(image.name || sourceItem.image_name || sourceItem.imageName || (hasTopLevelImage ? sourceItem.name : "") || ""),
+      };
+    };
     normalized.use_subject_reference = Boolean(source.use_subject_reference);
     normalized.use_location_references = Boolean(source.use_location_references);
     normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
     const rawSubjects = Array.isArray(source.subjects) ? source.subjects : [];
     normalized.subject_count = Math.max(1, Math.min(12, Number(source.subject_count || rawSubjects.length || 1)));
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
-    const subjectImage = subject.image && typeof subject.image === "object" ? subject.image : {};
     normalized.subject = {
       description: String(subject.description || ""),
-      image: {
-        path: String(subjectImage.path || ""),
-        data: String(subjectImage.data || ""),
-        name: String(subjectImage.name || ""),
-      },
+      image: normalizeRefImage(subject),
     };
     normalized.subjects = rawSubjects.length ? rawSubjects
       .filter((item) => item && typeof item === "object")
       .map((item, index) => {
-        const image = item.image && typeof item.image === "object" ? item.image : {};
         return {
           id: String(item.id || `subj_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
           name: String(item.name || `Character ${index + 1}`),
           description: String(item.description || ""),
-          image: {
-            path: String(image.path || ""),
-            data: String(image.data || ""),
-            name: String(image.name || ""),
-          },
+          image: normalizeRefImage(item),
         };
       }) : [];
     if (!normalized.subjects.length && (normalized.subject.description || normalized.subject.image.path || normalized.subject.image.data || normalized.subject.image.name)) {
@@ -4804,16 +4804,11 @@ function openBuilder(node) {
     normalized.locations = Array.isArray(source.locations) ? source.locations
       .filter((item) => item && typeof item === "object")
       .map((item, index) => {
-        const image = item.image && typeof item.image === "object" ? item.image : {};
         return {
           id: String(item.id || `loc_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
           name: String(item.name || `Location ${index + 1}`),
           description: String(item.description || ""),
-          image: {
-            path: String(image.path || ""),
-            data: String(image.data || ""),
-            name: String(image.name || ""),
-          },
+          image: normalizeRefImage(item),
         };
       }) : [];
     normalized.scene_map = source.scene_map && typeof source.scene_map === "object" ? { ...source.scene_map } : {};
@@ -15689,20 +15684,34 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const applyStoryboardReferenceMappings = (updates = {}) => {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const incomingSource = updates.reference_builder || updates.referenceBuilder || {};
+      const normalizeIncomingImage = (item = {}) => {
+        const sourceItem = item && typeof item === "object" ? item : {};
+        const image = sourceItem.image && typeof sourceItem.image === "object" ? sourceItem.image : sourceItem;
+        const hasTopLevelImage = Boolean(sourceItem.path || sourceItem.data || sourceItem.image_path || sourceItem.imagePath || sourceItem.image_data || sourceItem.imageData);
+        return {
+          path: String(image.path || sourceItem.image_path || sourceItem.imagePath || sourceItem.path || ""),
+          data: String(image.data || sourceItem.image_data || sourceItem.imageData || sourceItem.data || ""),
+          name: String(image.name || sourceItem.image_name || sourceItem.imageName || (hasTopLevelImage ? sourceItem.name : "") || ""),
+        };
+      };
+      const mergeIncomingImage = (existing = {}, incoming = {}) => {
+        const left = normalizeIncomingImage(existing);
+        const right = normalizeIncomingImage(incoming);
+        return {
+          path: right.path || left.path,
+          data: right.data || left.data,
+          name: right.name || left.name,
+        };
+      };
       const normalizeIncomingRefList = (items = []) => Array.isArray(items)
         ? items
           .filter((item) => item && typeof item === "object")
           .map((item, index) => {
-            const image = item.image && typeof item.image === "object" ? item.image : {};
             return {
               id: String(item.id || item.name || `storyboard_ref_${index + 1}`),
               name: String(item.name || `Reference ${index + 1}`),
               description: String(item.description || ""),
-              image: {
-                path: String(image.path || ""),
-                data: String(image.data || ""),
-                name: String(image.name || ""),
-              },
+              image: normalizeIncomingImage(item),
             };
           })
         : [];
@@ -15724,10 +15733,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           byKey.set(key, {
             ...existing,
             ...item,
-            image: {
-              ...(existing.image || {}),
-              ...(item.image || {}),
-            },
+            image: mergeIncomingImage(existing.image, item.image),
           });
         }
         return Array.from(byKey.values());

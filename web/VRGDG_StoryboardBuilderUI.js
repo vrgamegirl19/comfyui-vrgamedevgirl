@@ -133,6 +133,27 @@ function storyboardReferenceImageSrc(image) {
   return path ? makeStoryboardImageUrl(path) : "";
 }
 
+function normalizeReferenceImage(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const image = source.image && typeof source.image === "object" ? source.image : source;
+  const hasTopLevelImage = Boolean(source.path || source.data || source.image_path || source.imagePath || source.image_data || source.imageData);
+  return {
+    path: String(image.path || source.image_path || source.imagePath || source.path || "").trim(),
+    data: String(image.data || source.image_data || source.imageData || source.data || "").trim(),
+    name: String(image.name || source.image_name || source.imageName || (hasTopLevelImage ? source.name : "") || "").trim(),
+  };
+}
+
+function mergeReferenceImages(existing = {}, incoming = {}) {
+  const left = normalizeReferenceImage(existing);
+  const right = normalizeReferenceImage(incoming);
+  return {
+    path: right.path || left.path,
+    data: right.data || left.data,
+    name: right.name || left.name,
+  };
+}
+
 function truncate(text, length = 130) {
   const clean = String(text || "").trim();
   if (clean.length <= length) return clean;
@@ -731,11 +752,7 @@ function normalizeReferenceBuilderCatalog(value = {}) {
       id: String(item.id || `subject_${index + 1}`),
       name: String(item.name || `Character ${index + 1}`),
       description: String(item.description || ""),
-      image: item.image && typeof item.image === "object" ? {
-        path: String(item.image.path || ""),
-        data: String(item.image.data || ""),
-        name: String(item.image.name || ""),
-      } : { path: "", data: "", name: "" },
+      image: normalizeReferenceImage(item),
     })) : [];
   const locations = Array.isArray(source.locations) ? source.locations
     .filter((item) => item && typeof item === "object")
@@ -743,11 +760,7 @@ function normalizeReferenceBuilderCatalog(value = {}) {
       id: String(item.id || `location_${index + 1}`),
       name: String(item.name || `Location ${index + 1}`),
       description: String(item.description || ""),
-      image: item.image && typeof item.image === "object" ? {
-        path: String(item.image.path || ""),
-        data: String(item.image.data || ""),
-        name: String(item.image.name || ""),
-      } : { path: "", data: "", name: "" },
+      image: normalizeReferenceImage(item),
     })) : [];
   return { subjects, locations };
 }
@@ -769,10 +782,7 @@ function mergeReferenceBuilderCatalog(base = {}, incoming = {}) {
       byKey.set(key, {
         ...existing,
         ...item,
-        image: {
-          ...(existing.image || {}),
-          ...(item.image || {}),
-        },
+        image: mergeReferenceImages(existing.image, item.image),
       });
     }
     return Array.from(byKey.values());
