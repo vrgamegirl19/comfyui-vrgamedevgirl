@@ -3204,28 +3204,69 @@ function openBuilder(node) {
 
   function batchScopeChoices() {
     const selectedCount = selectedSegmentsForBatch().length;
-    if (selectedCount <= 1) return [];
-    return [
+    const active = activeSegment();
+    const choices = [
       {
         value: "all",
         label: "All scenes",
         description: "Run the normal batch across every scene.",
       },
-      {
+    ];
+    if (active) {
+      choices.push({
+        value: "from_selected",
+        label: `From ${sceneDisplayName(active, segmentIndexInfo(active).index)}`,
+        description: "Start at the currently selected clip and run every clip after it in timeline order.",
+      });
+    }
+    if (selectedCount > 1) {
+      choices.push({
         value: "selected",
         label: `Selected scenes only (${selectedCount})`,
         description: "Only run the scenes currently selected with Select Multi. Scenes do not need to be next to each other.",
-      },
-    ];
+      });
+    }
+    return choices.length > 1 ? choices : [];
+  }
+
+  function normalizeBatchScope(sceneScope = "all") {
+    return ["all", "selected", "from_selected"].includes(sceneScope) ? sceneScope : "all";
   }
 
   function batchTargetItems(sceneScope = "all", { baseOnly = false } = {}) {
-    const source = sceneScope === "selected" ? selectedSegmentsForBatch({ baseOnly }) : allEditableSegments();
+    const scope = normalizeBatchScope(sceneScope);
+    let source = scope === "selected" ? selectedSegmentsForBatch({ baseOnly }) : allEditableSegments();
+    if (baseOnly) source = source.filter((segment) => segmentTrack(segment) !== "overlay");
+    if (scope === "from_selected") {
+      const active = activeSegment();
+      if (!active) return [];
+      const activeStart = audioTimelineStart(active);
+      const activeTrack = segmentTrack(active);
+      const activeIndex = segmentIndexInfo(active).index;
+      source = source.filter((segment) => {
+        const start = audioTimelineStart(segment);
+        if (start > activeStart + 0.001) return true;
+        if (Math.abs(start - activeStart) > 0.001) return false;
+        if (segment.id === active.id) return true;
+        if (segmentTrack(segment) !== activeTrack) return true;
+        return segmentIndexInfo(segment).index >= activeIndex;
+      });
+    }
     return source.map((segment) => ({ segment, index: segmentIndexInfo(segment).index }));
   }
 
   function batchScopeLabel(sceneScope = "all") {
-    return sceneScope === "selected" ? "selected scenes" : "all scenes";
+    const scope = normalizeBatchScope(sceneScope);
+    if (scope === "selected") return "selected scenes";
+    if (scope === "from_selected") return "from selected scene";
+    return "all scenes";
+  }
+
+  function batchEmptyMessage(sceneScope = "all") {
+    const scope = normalizeBatchScope(sceneScope);
+    if (scope === "selected") return "No selected scenes found. Turn on Select Multi and choose scenes first.";
+    if (scope === "from_selected") return "No selected clip found. Select the clip you want to start from first.";
+    return "No scenes found. Add or load scenes first.";
   }
 
   function applyVideoSettingsToMultiSelection(settings) {
@@ -3788,7 +3829,7 @@ function openBuilder(node) {
       image_to_image_path: source.image_to_image_path || "",
       image_to_image_data: source.image_to_image_data || "",
       image_to_image_name: source.image_to_image_name || "",
-      image_trigger_phrase: source.image_trigger_phrase || state.imageTriggerPhrase || "",
+      image_trigger_phrase: source.image_trigger_phrase || "",
     };
   }
 
@@ -3803,7 +3844,7 @@ function openBuilder(node) {
       batch_size: Math.max(1, Math.min(16, Number(source.batch_size || 1))),
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({ name: item?.name || "[none]", strength: Number(item?.strength ?? 1) })) : [],
-      image_trigger_phrase: source.image_trigger_phrase || state.imageTriggerPhrase || "",
+      image_trigger_phrase: source.image_trigger_phrase || "",
     };
   }
 
@@ -3835,7 +3876,7 @@ function openBuilder(node) {
         name: item?.name || "[none]",
         strength: Number(item?.strength ?? 1),
       })) : [],
-      image_trigger_phrase: source.image_trigger_phrase || state.imageTriggerPhrase || "",
+      image_trigger_phrase: source.image_trigger_phrase || "",
     };
   }
 
@@ -3857,7 +3898,7 @@ function openBuilder(node) {
         second_pass_strength: Number(item?.second_pass_strength ?? item?.strength ?? 1),
         strength: Number(item?.second_pass_strength ?? item?.first_pass_strength ?? item?.strength ?? 1),
       })) : [],
-      video_trigger_phrase: source.video_trigger_phrase || state.videoTriggerPhrase || "",
+      video_trigger_phrase: source.video_trigger_phrase || "",
     };
   }
 
@@ -3920,6 +3961,19 @@ function openBuilder(node) {
       console.warn("[VRGDG Music Builder] Could not load global model defaults:", error);
       return false;
     }
+  }
+
+  function clearTriggerPhrasesForFreshProject() {
+    state.imageTriggerPhrase = "";
+    state.videoTriggerPhrase = "";
+    if (state.zimageSettings) state.zimageSettings.image_trigger_phrase = "";
+    if (state.fluxKleinSettings) state.fluxKleinSettings.image_trigger_phrase = "";
+    if (state.ernieImageSettings) state.ernieImageSettings.image_trigger_phrase = "";
+    if (state.i2vVideoSettings) state.i2vVideoSettings.video_trigger_phrase = "";
+    imageTriggerInput.value = "";
+    ernieImageTriggerInput.value = "";
+    fluxImageTriggerInput.value = "";
+    videoTriggerInput.value = "";
   }
 
   function activeZImageSettings() {
@@ -4381,10 +4435,10 @@ function openBuilder(node) {
 
   function imageTriggerPhraseForSegment(segment = activeSegment(), imageMode = state.imageModelMode) {
     if (!segment) return state.imageTriggerPhrase || "";
-    if (imageMode === "flux_klein") return fluxKleinSettingsForSegment(segment).image_trigger_phrase || state.imageTriggerPhrase || "";
+    if (imageMode === "flux_klein") return fluxKleinSettingsForSegment(segment).image_trigger_phrase || "";
     if (imageMode === "nano_banana") return "";
-    if (imageMode === "ernie_image") return (segment.use_scene_ernie_image_settings ? segment.ernie_image_settings?.image_trigger_phrase : state.ernieImageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
-    return (segment.use_scene_zimage_settings ? segment.zimage_settings?.image_trigger_phrase : state.zimageSettings?.image_trigger_phrase) || state.imageTriggerPhrase || "";
+    if (imageMode === "ernie_image") return segment.use_scene_ernie_image_settings ? (segment.ernie_image_settings?.image_trigger_phrase || "") : (state.ernieImageSettings?.image_trigger_phrase || "");
+    return segment.use_scene_zimage_settings ? (segment.zimage_settings?.image_trigger_phrase || "") : (state.zimageSettings?.image_trigger_phrase || "");
   }
 
   function applyImageTriggerToPrompt(prompt, segment = activeSegment(), imageMode = state.imageModelMode, options = {}) {
@@ -4422,7 +4476,7 @@ function openBuilder(node) {
 
   function videoTriggerPhraseForSegment(segment = activeSegment()) {
     if (!segment) return state.videoTriggerPhrase || "";
-    return (segment.use_scene_i2v_video_settings ? segment.i2v_video_settings?.video_trigger_phrase : state.i2vVideoSettings?.video_trigger_phrase) || state.videoTriggerPhrase || "";
+    return segment.use_scene_i2v_video_settings ? (segment.i2v_video_settings?.video_trigger_phrase || "") : (state.i2vVideoSettings?.video_trigger_phrase || "");
   }
 
   function conceptPromptsTextFromSegments() {
@@ -5275,6 +5329,7 @@ function openBuilder(node) {
     const videoPath = selectedSegmentVideoPath(segment);
     if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
+      previewVideo.muted = false;
       return;
     }
     if (previewVideo.dataset.cacheKey !== selectedSegmentVideoCacheKey(segment, videoPath)) {
@@ -5293,9 +5348,13 @@ function openBuilder(node) {
       }
     }
     if (isTimelinePlaying()) {
+      // The timeline uses the project/global audio as the audible source.
+      // Keep the synced preview video silent so rendered MP4 audio cannot double or drift against it.
+      previewVideo.muted = true;
       previewVideo.play().catch(() => {});
     } else if (!previewVideo.paused) {
       previewVideo.pause();
+      previewVideo.muted = false;
     }
   }
 
@@ -5316,7 +5375,7 @@ function openBuilder(node) {
     globalScrub.max = String(Math.max(0, maxTime));
     if (!state.isScrubbing) globalScrub.value = String(current);
     globalScrubTime.textContent = `${formatTime(current)} / ${formatTime(maxTime)}`;
-    playhead.style.left = `${12 + current * state.pxPerSecond}px`;
+    playhead.style.left = `${current * state.pxPerSecond}px`;
     syncPreviewPlayback(current);
   }
 
@@ -5416,7 +5475,7 @@ function openBuilder(node) {
     const segment = activeSegment();
     useSceneZImageSettings.input.checked = Boolean(segment?.use_scene_zimage_settings);
     const settings = activeZImageSettings() || {};
-    imageTriggerInput.value = settings.image_trigger_phrase || state.imageTriggerPhrase || "";
+    imageTriggerInput.value = settings.image_trigger_phrase || "";
     zUnetPicker.input.value = settings.unet_name || "z_image_turbo_bf16.safetensors";
     zClipPicker.input.value = settings.clip_name || "qwen_3_4b.safetensors";
     zVaePicker.input.value = settings.vae_name || "ae.safetensors";
@@ -5528,7 +5587,7 @@ function openBuilder(node) {
     const segment = activeSegment();
     useSceneErnieImageSettings.input.checked = Boolean(segment?.use_scene_ernie_image_settings);
     const settings = activeErnieImageSettings() || {};
-    ernieImageTriggerInput.value = settings.image_trigger_phrase || state.imageTriggerPhrase || "";
+    ernieImageTriggerInput.value = settings.image_trigger_phrase || "";
     ernieUnetPicker.input.value = chooseModelValue(
       ernieUnetPicker.options || [],
       settings.unet_name || "ernie\\ernie-image-turbo.safetensors",
@@ -5910,7 +5969,7 @@ function openBuilder(node) {
     const segment = activeSegment();
     const settings = activeFluxKleinSettings() || {};
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
-    fluxImageTriggerInput.value = settings.image_trigger_phrase || state.imageTriggerPhrase || "";
+    fluxImageTriggerInput.value = settings.image_trigger_phrase || "";
     const mode = state.imageModelMode || settings.image_model_mode || "zimage";
     state.imageModelMode = mode;
     settings.image_model_mode = mode;
@@ -6167,7 +6226,7 @@ function openBuilder(node) {
       ? "This scene is using custom video models, settings, and LoRAs from the Models tab."
       : "This scene is using global video models, settings, and LoRAs. Enable custom scene video settings in the Models tab.";
     const settings = activeI2VVideoSettings() || {};
-    videoTriggerInput.value = settings.video_trigger_phrase || state.videoTriggerPhrase || "";
+    videoTriggerInput.value = settings.video_trigger_phrase || "";
     i2vUnetPicker.input.value = BAD_I2V_UNET_ALIASES.has(settings.unet_name) ? DEFAULT_I2V_UNET : settings.unet_name || "";
     i2vVaePicker.input.value = settings.vae_name || "";
     i2vClip1Picker.input.value = settings.clip_name1 || "";
@@ -6866,10 +6925,12 @@ function openBuilder(node) {
       }
       const hasPreviewImage = Boolean(segmentImageSource(segment));
       const hasPreviewVideo = Boolean(selectedSegmentVideoPath(segment));
-      if ((segment.preview_mode === "video" && segment.video_history.length) || (segment.preview_mode !== "video" && segment.image_history.length)) {
+      const imageHistory = Array.isArray(segment?.image_history) ? segment.image_history : [];
+      const videoHistory = Array.isArray(segment?.video_history) ? segment.video_history : [];
+      if ((segment.preview_mode === "video" && videoHistory.length) || (segment.preview_mode !== "video" && imageHistory.length)) {
         const historyButton = document.createElement("span");
         const isVideoMode = segment.preview_mode === "video";
-        const count = isVideoMode ? segment.video_history.length : segment.image_history.length;
+        const count = isVideoMode ? videoHistory.length : imageHistory.length;
         const index = isVideoMode ? Number(segment.video_history_index || 0) : Number(segment.image_history_index || 0);
         historyButton.textContent = `${Math.max(1, index + 1)}/${count}`;
         historyButton.title = isVideoMode ? "Cycle generated video previews for this scene." : "Cycle generated image previews for this scene.";
@@ -9140,19 +9201,68 @@ function openBuilder(node) {
     throw new Error("Timestamped transcription finished, but no timestamped lyrics JSON was found.");
   }
 
-  function createSegmentsFromTimestampedLyricsPayload(payload) {
+  function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
     const sourceSegments = Array.isArray(payload?.segments) ? payload.segments : [];
+    const ordered = sourceSegments
+      .map((item) => ({
+        item,
+        start: Math.max(0, Number(item?.start || 0)),
+        end: Math.max(0, Number(item?.end || 0)),
+      }))
+      .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end) && end > start + 0.01)
+      .sort((a, b) => a.start - b.start || a.end - b.end);
     const created = [];
-    for (const item of sourceSegments) {
-      const start = Math.max(0, Number(item?.start || 0));
-      const end = Math.max(start + 0.05, Number(item?.end || start + 4));
-      const segment = newSegment(start, end);
+    const instrumentalText = String(options.instrumentalText || payload?.instrumental_text || payload?.instrumentalText || "[instrumental]").trim() || "[instrumental]";
+    const shouldFillGaps = options.includeInstrumentalGaps !== false && payload?.include_instrumental_gaps !== false && payload?.includeInstrumentalGaps !== false;
+    const minGap = Math.max(0, Number(options.minGapSeconds ?? payload?.min_gap_seconds ?? payload?.minGapSeconds ?? 0.25) || 0);
+    const maxScene = Math.max(0.5, Number(options.maxSceneSeconds ?? payload?.max_scene_seconds ?? payload?.maxSceneSeconds ?? 8) || 8);
+    const epsilon = 0.03;
+    let cursor = 0;
+    const addTimestampedSegment = (start, end, item = null, forcedText = "") => {
+      const cleanStart = Math.max(0, Number(start || 0));
+      const cleanEnd = Math.max(cleanStart + 0.05, Number(end || cleanStart + 4));
+      const segment = newSegment(cleanStart, cleanEnd);
       segment.label = `SCENE ${created.length + 1}`;
       segment.source = "timestamped_lyrics";
-      segment.timeline_note = String(item?.timing_warning || "").trim();
-      segment.lyric_text = String(item?.text || "").trim() || "[instrumental]";
-      segment.lyric_no_lip_sync = String(item?.type || "").toLowerCase() === "instrumental" || isInstrumentalLyricText(segment.lyric_text);
+      segment.timeline_note = item ? String(item?.timing_warning || "").trim() : "";
+      segment.lyric_text = cleanTimestampedLyricText(forcedText || item?.text || "") || instrumentalText;
+      segment.lyric_no_lip_sync = !item || String(item?.type || "").toLowerCase() === "instrumental" || isInstrumentalLyricText(segment.lyric_text);
       created.push(segment);
+    };
+    const addInstrumentalGap = (start, end) => {
+      if (!shouldFillGaps) return false;
+      const cleanStart = Math.max(0, Number(start || 0));
+      const cleanEnd = Math.max(cleanStart, Number(end || cleanStart));
+      if (cleanEnd - cleanStart < Math.max(minGap, epsilon)) return false;
+      let gapStart = cleanStart;
+      let added = false;
+      while (gapStart < cleanEnd - epsilon) {
+        const gapEnd = Math.min(cleanEnd, gapStart + maxScene);
+        addTimestampedSegment(gapStart, gapEnd, null, instrumentalText);
+        added = true;
+        gapStart = gapEnd;
+      }
+      return added;
+    };
+    for (const { item, start, end } of ordered) {
+      let segmentStart = start;
+      if (start > cursor + epsilon) {
+        const filledGap = addInstrumentalGap(cursor, start);
+        if (!filledGap) {
+          if (created.length) {
+            created[created.length - 1].end = start;
+          } else {
+            segmentStart = cursor;
+          }
+        }
+      }
+      addTimestampedSegment(segmentStart, end, item);
+      cursor = Math.max(cursor, end);
+    }
+    const duration = Number(payload?.duration || 0);
+    if (Number.isFinite(duration) && duration > cursor + epsilon) {
+      const filledTail = addInstrumentalGap(cursor, duration);
+      if (!filledTail && created.length) created[created.length - 1].end = duration;
     }
     sortSegments(created);
     created.forEach((segment, index) => {
@@ -9199,7 +9309,7 @@ function openBuilder(node) {
         45 * 60 * 1000,
       );
       const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
-      const created = createSegmentsFromTimestampedLyricsPayload(payload);
+      const created = createSegmentsFromTimestampedLyricsPayload(payload, options);
       if (!created.length) throw new Error("Timestamped lyrics did not produce any usable scene segments.");
       pushHistory();
       state.segments = created;
@@ -9570,6 +9680,8 @@ function openBuilder(node) {
         "Split At Playhead cuts that scene into two scenes at the current audio playhead. It copies lyrics, singers, B-roll/instrumental state, motion notes, and location mapping into both pieces.",
         "Instrumental means nobody should sing or lip-sync in that scene. B-roll / no lip-sync means the scene can have visuals or movement, but visible people should not mouth the lyric.",
         "Singer choices tell Gemma who should visibly sing the lyric. Location connects the scene to a Reference Builder location image.",
+        "Copy boundary words is optional. It appends the first word or words from the next vocal scene onto the current scene, which can help LTX warm-up and cooldown frames keep lyric context.",
+        "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next lyric scene when the transcript split landed too early.",
         "Save Lyrics + Timing + Singers + Locations applies the edited rows to the real timeline and saves the project.",
       ],
     });
@@ -9614,7 +9726,7 @@ function openBuilder(node) {
     });
 
     const timingModePanel = document.createElement("div");
-    timingModePanel.style.cssText = "display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr);gap:10px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
+    timingModePanel.style.cssText = "display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr) minmax(300px,380px) minmax(170px,230px);gap:10px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
     const timingModeSelect = makeSelect(["lock", "ripple"], "lock");
     timingModeSelect.options[0].textContent = "Lock rest of timeline";
     timingModeSelect.options[1].textContent = "Ripple following scenes";
@@ -9627,7 +9739,43 @@ function openBuilder(node) {
     };
     timingModeSelect.onchange = updateTimingModeHelp;
     updateTimingModeHelp();
-    timingModePanel.append(makeField("Timing edit mode", timingModeSelect), timingModeHelp);
+    const boundaryOverlapCheckbox = makeCheckbox("Copy boundary words", false);
+    const boundaryOverlapCount = makeInput("1", "number");
+    boundaryOverlapCount.min = "1";
+    boundaryOverlapCount.max = "5";
+    boundaryOverlapCount.step = "1";
+    boundaryOverlapCount.disabled = true;
+    boundaryOverlapCount.title = "How many words to copy from the start of the next vocal scene.";
+    const boundaryOverlapApply = makeButton("Apply");
+    boundaryOverlapApply.style.cssText = "padding:7px 8px;min-width:68px;";
+    const boundaryOverlapWrap = document.createElement("div");
+    boundaryOverlapWrap.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 70px auto;gap:6px;align-items:end;";
+    boundaryOverlapWrap.append(boundaryOverlapCheckbox.wrapper, makeField("Words", boundaryOverlapCount), boundaryOverlapApply);
+    const moveTailWordsCheckbox = makeCheckbox("Move end words to next", false);
+    const moveTailWordsCount = makeInput("1", "number");
+    moveTailWordsCount.min = "1";
+    moveTailWordsCount.max = "8";
+    moveTailWordsCount.step = "1";
+    moveTailWordsCount.disabled = true;
+    moveTailWordsCount.title = "How many words to move from each scene end to the next scene start.";
+    const moveTailWordsApply = makeButton("Apply");
+    moveTailWordsApply.style.cssText = "padding:7px 8px;min-width:68px;";
+    const moveTailWordsWrap = document.createElement("div");
+    moveTailWordsWrap.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 70px auto;gap:6px;align-items:end;";
+    moveTailWordsWrap.append(moveTailWordsCheckbox.wrapper, makeField("Words", moveTailWordsCount), moveTailWordsApply);
+    const lyricWordToolsWrap = document.createElement("div");
+    lyricWordToolsWrap.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+    lyricWordToolsWrap.append(boundaryOverlapWrap, moveTailWordsWrap);
+    const boundaryOverlapHelp = document.createElement("div");
+    boundaryOverlapHelp.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    boundaryOverlapHelp.textContent = "Copy duplicates next-scene starter words for warm-up/cooldown context. Move removes end words from one scene and puts them at the start of the next scene. Both are text-only.";
+    boundaryOverlapCheckbox.input.onchange = () => {
+      boundaryOverlapCount.disabled = !boundaryOverlapCheckbox.input.checked;
+    };
+    moveTailWordsCheckbox.input.onchange = () => {
+      moveTailWordsCount.disabled = !moveTailWordsCheckbox.input.checked;
+    };
+    timingModePanel.append(makeField("Timing edit mode", timingModeSelect), timingModeHelp, lyricWordToolsWrap, boundaryOverlapHelp);
 
     const audioPanel = document.createElement("div");
     audioPanel.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) repeat(3,auto);gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
@@ -9806,6 +9954,22 @@ function openBuilder(node) {
     };
 
     const reviewRows = () => [...rowList.querySelectorAll("[data-review-segment-id]")];
+    const liveReviewSegmentForRow = (row) => state.segments.find((item) => item.id === row?.dataset?.reviewSegmentId) || null;
+
+    const syncReviewRowFromSegment = (row) => {
+      const segment = liveReviewSegmentForRow(row);
+      if (!segment) return;
+      const startInput = row.querySelector("[data-review-start]");
+      const endInput = row.querySelector("[data-review-end]");
+      if (startInput) startInput.value = formatTime(segment.start);
+      if (endInput) endInput.value = formatTime(segment.end);
+      updateReviewTimingDisplay(row);
+      rememberReviewRowTiming(row);
+    };
+
+    const syncAllReviewRowsFromSegments = () => {
+      for (const row of reviewRows()) syncReviewRowFromSegment(row);
+    };
 
     const updateReviewTimingDisplay = (row) => {
       const start = parseBulkTimeValue(row.querySelector("[data-review-start]")?.value);
@@ -9829,14 +9993,12 @@ function openBuilder(node) {
       const rows = reviewRows();
       const rowIndex = rows.indexOf(row);
       for (const nextRow of rows.slice(rowIndex + 1)) {
-        const nextStartInput = nextRow.querySelector("[data-review-start]");
-        const nextEndInput = nextRow.querySelector("[data-review-end]");
-        const nextStart = parseBulkTimeValue(nextStartInput?.value);
-        const nextEnd = parseBulkTimeValue(nextEndInput?.value);
-        if (nextStartInput && Number.isFinite(nextStart)) nextStartInput.value = formatTime(Math.max(0, nextStart + delta));
-        if (nextEndInput && Number.isFinite(nextEnd)) nextEndInput.value = formatTime(Math.max(0.05, nextEnd + delta));
-        updateReviewTimingDisplay(nextRow);
-        rememberReviewRowTiming(nextRow);
+        const nextSegment = liveReviewSegmentForRow(nextRow);
+        if (nextSegment) {
+          nextSegment.start = Math.max(0, Number(nextSegment.start || 0) + delta);
+          nextSegment.end = Math.max(nextSegment.start + 0.05, Number(nextSegment.end || nextSegment.start + 0.05) + delta);
+        }
+        syncReviewRowFromSegment(nextRow);
       }
     };
 
@@ -9881,6 +10043,148 @@ function openBuilder(node) {
       return String(row.querySelector("[data-review-lyric-text]")?.value || "").trim();
     };
 
+    const reviewRowRawLyricText = (row) => {
+      const instrumental = Boolean(row.querySelector("[data-review-instrumental='1']")?.checked);
+      if (instrumental) return "[instrumental]";
+      const text = row.querySelector("[data-review-lyric-text]");
+      return String(text?.dataset?.reviewRawLyricText ?? text?.value ?? "").trim();
+    };
+
+    const reviewRowBlocksLipSync = (row) => {
+      return Boolean(row.querySelector("[data-review-instrumental='1']")?.checked || row.querySelector("[data-review-broll='1']")?.checked);
+    };
+
+    const lyricWords = (value) => String(value || "").trim().split(/\s+/).filter(Boolean);
+    const normalizeLyricWord = (value) => String(value || "").toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    const lyricEndsWithWords = (text, words) => {
+      const textWords = lyricWords(text);
+      if (!words.length || textWords.length < words.length) return false;
+      const tail = textWords.slice(-words.length).map(normalizeLyricWord);
+      const compare = words.map(normalizeLyricWord);
+      return tail.every((word, index) => word && word === compare[index]);
+    };
+    const lyricStartsWithWords = (text, words) => {
+      const textWords = lyricWords(text);
+      if (!words.length || textWords.length < words.length) return false;
+      const head = textWords.slice(0, words.length).map(normalizeLyricWord);
+      const compare = words.map(normalizeLyricWord);
+      return head.every((word, index) => word && word === compare[index]);
+    };
+
+    const boundaryWordCountValue = () => {
+      const count = Math.floor(Number(boundaryOverlapCount.value || 1));
+      return Math.max(1, Math.min(5, Number.isFinite(count) ? count : 1));
+    };
+    const moveTailWordCountValue = () => {
+      const count = Math.floor(Number(moveTailWordsCount.value || 1));
+      return Math.max(1, Math.min(8, Number.isFinite(count) ? count : 1));
+    };
+
+    const setReviewRowRawLyricText = (row, value) => {
+      const text = row?.querySelector("[data-review-lyric-text]");
+      if (!text) return;
+      const nextValue = String(value || "").trim();
+      text.dataset.reviewRawLyricText = nextValue;
+      text.value = nextValue;
+    };
+
+    const restoreReviewRowsToRawLyricText = () => {
+      applyingBoundaryOverlapPreview = true;
+      try {
+        for (const row of reviewRows()) {
+          const text = row.querySelector("[data-review-lyric-text]");
+          if (!text) continue;
+          text.value = reviewRowRawLyricText(row);
+        }
+      } finally {
+        applyingBoundaryOverlapPreview = false;
+      }
+    };
+
+    const collectBoundaryOverlapLyricOverrides = () => {
+      const rows = reviewRows();
+      const overrides = new Map();
+      const entries = rows.map((row) => {
+        const segment = reviewSegmentForRow(row);
+        const text = reviewRowRawLyricText(row);
+        const blocked = reviewRowBlocksLipSync(row) || isInstrumentalLyricText(text);
+        if (segment) overrides.set(segment.id, text);
+        return { row, segment, text, blocked };
+      });
+      if (!boundaryOverlapCheckbox.input.checked) return overrides;
+      const count = boundaryWordCountValue();
+      for (let index = 0; index < entries.length - 1; index++) {
+        const current = entries[index];
+        const next = entries[index + 1];
+        if (!current.segment || current.blocked || !current.text || !next || next.blocked || !next.text) continue;
+        const words = lyricWords(next.text).slice(0, count);
+        if (!words.length || lyricEndsWithWords(current.text, words)) continue;
+        overrides.set(current.segment.id, `${current.text.trim()} ${words.join(" ")}`.trim());
+      }
+      return overrides;
+    };
+
+    let applyingBoundaryOverlapPreview = false;
+    const refreshBoundaryOverlapPreview = () => {
+      const overrides = collectBoundaryOverlapLyricOverrides();
+      applyingBoundaryOverlapPreview = true;
+      try {
+        for (const row of reviewRows()) {
+          const segment = reviewSegmentForRow(row);
+          const text = row.querySelector("[data-review-lyric-text]");
+          if (!segment || !text) continue;
+          const nextText = overrides.get(segment.id);
+          text.value = nextText == null ? reviewRowRawLyricText(row) : nextText;
+        }
+      } finally {
+        applyingBoundaryOverlapPreview = false;
+      }
+    };
+
+    const applyMoveTailWordsToNext = () => {
+      if (!moveTailWordsCheckbox.input.checked) {
+        toast("Turn on Move end words to next, then press Apply.", true);
+        return;
+      }
+      restoreReviewRowsToRawLyricText();
+      const count = moveTailWordCountValue();
+      const rows = reviewRows();
+      let moved = 0;
+      for (let index = 0; index < rows.length - 1; index++) {
+        const current = rows[index];
+        const next = rows[index + 1];
+        const currentText = reviewRowRawLyricText(current);
+        const nextText = reviewRowRawLyricText(next);
+        const currentBlocked = reviewRowBlocksLipSync(current) || isInstrumentalLyricText(currentText);
+        const nextBlocked = reviewRowBlocksLipSync(next) || isInstrumentalLyricText(nextText);
+        if (currentBlocked || nextBlocked) continue;
+        const words = lyricWords(currentText);
+        if (words.length <= count) continue;
+        const movedWords = words.slice(-count);
+        const remainingWords = words.slice(0, -count);
+        setReviewRowRawLyricText(current, remainingWords.join(" "));
+        if (!lyricStartsWithWords(nextText, movedWords)) {
+          setReviewRowRawLyricText(next, `${movedWords.join(" ")} ${nextText}`.trim());
+        }
+        moved += 1;
+      }
+      refreshBoundaryOverlapPreview();
+      toast(moved ? `Moved end words into ${moved} next scene${moved === 1 ? "" : "s"}. Press Save to keep it.` : "No eligible lyric rows needed word moves.", !moved);
+    };
+
+    boundaryOverlapCheckbox.input.onchange = () => {
+      boundaryOverlapCount.disabled = !boundaryOverlapCheckbox.input.checked;
+      if (!boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
+    };
+    boundaryOverlapApply.onclick = () => {
+      refreshBoundaryOverlapPreview();
+      toast(boundaryOverlapCheckbox.input.checked ? "Boundary word preview applied. Press Save to keep it." : "Boundary word copy is off. Raw lyric text restored.");
+    };
+    moveTailWordsCheckbox.input.onchange = () => {
+      moveTailWordsCount.disabled = !moveTailWordsCheckbox.input.checked;
+    };
+    moveTailWordsApply.onclick = applyMoveTailWordsToNext;
+
     const mergedReviewLyricText = (a, b) => {
       const values = [a, b].map((value) => String(value || "").trim()).filter(Boolean);
       const nonInstrumental = values.filter((value) => !isInstrumentalLyricText(value));
@@ -9896,13 +10200,12 @@ function openBuilder(node) {
     const refreshReviewRowLabels = () => {
       const rows = reviewRows();
       rows.forEach((row, index) => {
-        const segment = reviewSegmentForRow(row);
+        const segment = liveReviewSegmentForRow(row);
         const label = `Scene ${index + 1}`;
         if (segment) segment.label = label;
         const labelEl = row.querySelector("[data-review-scene-label]");
         if (labelEl) labelEl.textContent = segment?.label || label;
-        updateReviewTimingDisplay(row);
-        rememberReviewRowTiming(row);
+        syncReviewRowFromSegment(row);
       });
       state.segments.forEach((segment, index) => {
         segment.label = `Scene ${index + 1}`;
@@ -9920,14 +10223,23 @@ function openBuilder(node) {
       const absorbedEnd = parseBulkTimeValue(absorbedRow.querySelector("[data-review-end]")?.value);
       const targetStart = parseBulkTimeValue(targetStartInput?.value);
       const targetEnd = parseBulkTimeValue(targetEndInput?.value);
+      let mergedStart = Number.isFinite(targetStart) ? targetStart : Number(targetSegment.start || 0);
+      let mergedEnd = Number.isFinite(targetEnd) ? targetEnd : Number(targetSegment.end || mergedStart + 0.05);
       if (targetStartInput && Number.isFinite(absorbedStart) && Number.isFinite(targetStart) && absorbedStart < targetStart) {
-        targetStartInput.value = formatTime(absorbedStart);
+        mergedStart = absorbedStart;
+        targetStartInput.value = formatTime(mergedStart);
       }
       if (targetEndInput && Number.isFinite(absorbedEnd) && Number.isFinite(targetEnd) && absorbedEnd > targetEnd) {
-        targetEndInput.value = formatTime(absorbedEnd);
+        mergedEnd = absorbedEnd;
+        targetEndInput.value = formatTime(mergedEnd);
       }
+      targetSegment.start = Math.max(0, mergedStart);
+      targetSegment.end = Math.max(targetSegment.start + 0.05, mergedEnd);
       const targetText = targetRow.querySelector("[data-review-lyric-text]");
-      if (targetText) targetText.value = mergedReviewLyricText(reviewRowLyricText(targetRow), reviewRowLyricText(absorbedRow));
+      if (targetText) {
+        targetText.value = mergedReviewLyricText(reviewRowLyricText(targetRow), reviewRowLyricText(absorbedRow));
+        targetText.dataset.reviewRawLyricText = targetText.value;
+      }
       const absorbedInstrumental = Boolean(absorbedRow.querySelector("[data-review-instrumental='1']")?.checked);
       const targetInstrumental = targetRow.querySelector("[data-review-instrumental='1']");
       if (targetInstrumental && !isInstrumentalLyricText(targetText?.value || "") && absorbedInstrumental) targetInstrumental.checked = false;
@@ -10058,15 +10370,21 @@ function openBuilder(node) {
       const rows = reviewRows();
       const rowIndex = rows.indexOf(row);
       const prevRow = rows[rowIndex - 1] || null;
+      const segment = liveReviewSegmentForRow(row);
+      if (segment) {
+        segment.start = Math.max(0, start);
+        segment.end = Math.max(segment.start + 0.05, end);
+      }
       if (prevRow) {
-        const prevEnd = prevRow.querySelector("[data-review-end]");
-        if (prevEnd) prevEnd.value = formatTime(start);
-        updateReviewTimingDisplay(prevRow);
-        rememberReviewRowTiming(prevRow);
+        const prevSegment = liveReviewSegmentForRow(prevRow);
+        if (prevSegment) prevSegment.end = Math.max(Number(prevSegment.start || 0) + 0.05, start);
+        syncReviewRowFromSegment(prevRow);
         await maybeWarnShortReviewScene(prevRow, prevRow, row, "Do you want to merge that previous scene with this scene instead?");
       }
-      updateReviewTimingDisplay(row);
-      rememberReviewRowTiming(row);
+      syncReviewRowFromSegment(row);
+      state.duration = timelineDuration();
+      syncInspector();
+      render();
     };
 
     const handleReviewEndEdited = async (row, previousEndOverride = null) => {
@@ -10083,22 +10401,34 @@ function openBuilder(node) {
         ? previousEndOverride
         : Number(row.dataset.reviewLastEnd || start);
       const delta = end - previousEnd;
-      updateReviewTimingDisplay(row);
-      rememberReviewRowTiming(row);
+      const segment = liveReviewSegmentForRow(row);
+      if (segment) {
+        segment.start = Math.max(0, start);
+        segment.end = Math.max(segment.start + 0.05, end);
+      }
+      syncReviewRowFromSegment(row);
       const rows = reviewRows();
       const rowIndex = rows.indexOf(row);
       const nextRow = rows[rowIndex + 1] || null;
       if (timingModeSelect.value === "ripple") {
         shiftReviewRowsAfter(row, delta);
+        state.duration = timelineDuration();
+        syncInspector();
+        render();
         return;
       }
       if (nextRow) {
-        const nextStartInput = nextRow.querySelector("[data-review-start]");
-        if (nextStartInput) nextStartInput.value = formatTime(end);
-        updateReviewTimingDisplay(nextRow);
-        rememberReviewRowTiming(nextRow);
+        const nextSegment = liveReviewSegmentForRow(nextRow);
+        if (nextSegment) {
+          nextSegment.start = end;
+          nextSegment.end = Math.max(nextSegment.start + 0.05, Number(nextSegment.end || nextSegment.start + 0.05));
+        }
+        syncReviewRowFromSegment(nextRow);
         await maybeWarnShortReviewScene(nextRow, row, nextRow, "Do you want to merge it with the scene you just extended?");
       }
+      state.duration = timelineDuration();
+      syncInspector();
+      render();
     };
 
     const normalizeEditedReviewTiming = async () => {
@@ -10130,15 +10460,7 @@ function openBuilder(node) {
       const rows = reviewRows();
       const rowIndex = rows.indexOf(row);
       const prevRow = rows[rowIndex - 1] || null;
-      if (prevRow) {
-        const prevEnd = prevRow.querySelector("[data-review-end]");
-        if (prevEnd) prevEnd.value = formatTime(time);
-        updateReviewTimingDisplay(prevRow);
-        rememberReviewRowTiming(prevRow);
-        await maybeWarnShortReviewScene(prevRow, prevRow, row, "Do you want to merge that previous scene with this scene instead?");
-      }
-      updateReviewTimingDisplay(row);
-      rememberReviewRowTiming(row);
+      await handleReviewStartEdited(row);
     };
 
     const setReviewRowEndToPlayhead = async (row) => {
@@ -10155,10 +10477,12 @@ function openBuilder(node) {
       await handleReviewEndEdited(row, previousEnd);
     };
 
-    const applyReviewRowValues = (row, segment, includeTiming = false) => {
+    const applyReviewRowValues = (row, segment, includeTiming = false, options = {}) => {
       const instrumental = Boolean(row.querySelector("[data-review-instrumental='1']")?.checked);
       const broll = Boolean(row.querySelector("[data-review-broll='1']")?.checked);
-      const lyricText = row.querySelector("[data-review-lyric-text]")?.value || "";
+      const lyricText = Object.prototype.hasOwnProperty.call(options, "lyricTextOverride")
+        ? options.lyricTextOverride
+        : row.querySelector("[data-review-lyric-text]")?.value || "";
       segment.lyric_text = instrumental ? "[instrumental]" : lyricText;
       segment.lyric_no_lip_sync = instrumental || broll;
       segment.lyric_singers = [...row.querySelectorAll("[data-review-singer-choice='1']")]
@@ -10397,8 +10721,14 @@ function openBuilder(node) {
       const text = document.createElement("textarea");
       text.dataset.reviewLyricText = "1";
       text.value = String(segment.lyric_text || "");
+      text.dataset.reviewRawLyricText = text.value;
       text.placeholder = "Lyrics / vocal line, or [instrumental]...";
       text.style.cssText = "width:100%;box-sizing:border-box;min-height:64px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;";
+      text.addEventListener("input", () => {
+        if (applyingBoundaryOverlapPreview) return;
+        text.dataset.reviewRawLyricText = text.value;
+        refreshBoundaryOverlapPreview();
+      });
       const singerPanel = document.createElement("div");
       singerPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:64px;box-sizing:border-box;";
       const flags = document.createElement("div");
@@ -10411,8 +10741,10 @@ function openBuilder(node) {
       const updateDisabled = () => {
         if (instrumental.input.checked) {
           text.value = "[instrumental]";
+          text.dataset.reviewRawLyricText = "[instrumental]";
           broll.input.checked = false;
         }
+        refreshBoundaryOverlapPreview();
       };
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
       instrumental.input.onchange = updateDisabled;
@@ -10477,10 +10809,11 @@ function openBuilder(node) {
         pushHistory();
         syncSingleSubjectPerformerLabel();
         await normalizeEditedReviewTiming();
+        const lyricOverrides = collectBoundaryOverlapLyricOverrides();
         for (const row of rowList.querySelectorAll("[data-review-segment-id]")) {
           const segment = scenes.find((item) => item.id === row.dataset.reviewSegmentId);
           if (!segment) continue;
-          applyReviewRowValues(row, segment, true);
+          applyReviewRowValues(row, segment, true, { lyricTextOverride: lyricOverrides.get(segment.id) });
         }
         sortSegments(state.segments);
         state.segments.forEach((segment, index) => {
@@ -11696,7 +12029,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const zimageReferencePayload = (prompt, settings) => {
       const zSettings = cloneZImageSettings(settings);
       const useLoras = Boolean(zSettings.use_loras && zSettings.lora_count > 0);
-      const trigger = zSettings.image_trigger_phrase || state.imageTriggerPhrase || "";
+      const trigger = zSettings.image_trigger_phrase || "";
       const payload = {
         prompt: applyTriggerPhrase(prompt, trigger, { validateJunk: true }),
         unet_name: zSettings.unet_name || "",
@@ -12324,16 +12657,19 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         label.style.cssText = "font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
         const subjectSelect = document.createElement("select");
         subjectSelect.multiple = true;
+        subjectSelect.dataset.subjectMapSegmentId = segment.id;
         subjectSelect.size = Math.min(4, Math.max(2, refs.subjects.length || 2));
         subjectSelect.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:6px;font-size:12px;";
         refs.subjects.forEach((subject) => subjectSelect.append(new Option(subject.name || "Character", subject.id)));
         const selectedSubjectIds = new Set(refs.subject_scene_map?.[segment.id] || []);
+        if (!selectedSubjectIds.size && singleGlobalSubject && refs.subjects[0]?.id) selectedSubjectIds.add(refs.subjects[0].id);
         for (const option of subjectSelect.options) option.selected = selectedSubjectIds.has(option.value);
         subjectSelect.onchange = () => {
           refs.subject_scene_map[segment.id] = Array.from(subjectSelect.selectedOptions).map((option) => option.value);
           renderSubjects();
         };
         const select = document.createElement("select");
+        select.dataset.locationMapSegmentId = segment.id;
         select.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:8px;font-size:12px;";
         select.append(new Option("Unassigned", ""));
         refs.locations.forEach((location) => select.append(new Option(location.name || "Location", location.id)));
@@ -12495,6 +12831,22 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
         refs.subjects[0].description = refs.subject.description;
         refs.subjects[0].image = refs.subject.image;
+      }
+      if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      for (const select of mappingList.querySelectorAll("[data-subject-map-segment-id]")) {
+        const segmentId = select.dataset.subjectMapSegmentId || "";
+        if (!segmentId) continue;
+        const subjectIds = Array.from(select.selectedOptions || []).map((option) => option.value).filter(Boolean);
+        if (subjectIds.length) refs.subject_scene_map[segmentId] = subjectIds;
+        else delete refs.subject_scene_map[segmentId];
+      }
+      if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+      for (const select of mappingList.querySelectorAll("[data-location-map-segment-id]")) {
+        const segmentId = select.dataset.locationMapSegmentId || "";
+        if (!segmentId) continue;
+        const locationId = String(select.value || "").trim();
+        if (locationId) refs.scene_map[segmentId] = locationId;
+        else delete refs.scene_map[segmentId];
       }
       refs.use_subject_reference = Boolean(useSubject.input.checked);
       refs.use_location_references = Boolean(useLocations.input.checked);
@@ -13714,8 +14066,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         state.srtMode = Boolean(data.session.srt_mode);
         state.promptJsonPath = data.session.prompt_json_path || state.promptJsonPath;
         state.i2vMotionJsonPath = data.session.i2v_motion_json_path || state.i2vMotionJsonPath;
-        state.imageTriggerPhrase = data.session.image_trigger_phrase || state.imageTriggerPhrase || "";
-        state.videoTriggerPhrase = data.session.video_trigger_phrase || state.videoTriggerPhrase || "";
+        if (Object.prototype.hasOwnProperty.call(data.session, "image_trigger_phrase")) state.imageTriggerPhrase = data.session.image_trigger_phrase || "";
+        if (Object.prototype.hasOwnProperty.call(data.session, "video_trigger_phrase")) state.videoTriggerPhrase = data.session.video_trigger_phrase || "";
         state.useI2VPromptEnhancementPass = data.session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
         state.useVrgdgTextContext = data.session.use_vrgdg_text_context ?? state.useVrgdgTextContext;
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
@@ -15069,7 +15421,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
   async function runVideoPromptEnhancementBatch(segments, progress = null, options = {}) {
     const modeLabel = videoModeDisplayLabel(currentVideoMode(), true);
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const force = Boolean(options.force);
     const targets = (segments || []).filter((segment) => String(segment?.i2v_prompt || "").trim());
     if (!targets.length) {
@@ -15255,7 +15607,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const progress = options.progress || createProgressWindow(`Gemma ${modeLabel} All Scenes`);
     const closeProgress = !options.progress;
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const allScenes = batchTargetItems(sceneScope).map(({ segment }) => segment);
     const redoPrompts = options.i2vRunMode === "redo_prompts";
     const forceTextOnly = Boolean(options.forceTextOnly);
@@ -15268,7 +15620,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     }
     const scenes = allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
     const missing = [];
-    if (!allScenes.length) missing.push(sceneScope === "selected" ? "No selected scenes found. Turn on Select Multi and choose scenes first." : "No scenes found. Add or load scenes first.");
+    if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
       const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
@@ -15353,13 +15705,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const imageMode = state.imageModelMode || "zimage";
     const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
     const promptRunMode = options.promptRunMode || "redo_all";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const redoPrompts = promptRunMode === "redo_all";
     const allScenes = batchTargetItems(sceneScope);
     const targetScenes = promptAllModeTargets(promptRunMode, imageMode, sceneScope);
     const progress = createProgressWindow(`Gemma T2I All (${modelLabel})`);
     const missing = [];
-    if (!allScenes.length) missing.push(sceneScope === "selected" ? "No selected scenes found. Turn on Select Multi and choose scenes first." : "No scenes found. Add or load scenes first.");
+    if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
     targetScenes.forEach(({ segment, index }) => {
       if (imageMode === "flux_klein") {
@@ -15468,7 +15820,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     gemmaVideoAllButton.disabled = true;
     const changedReferenceFlags = [];
     const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     try {
       if (options.promptRunMode === "enhance_existing") {
         const progress = createProgressWindow(`Gemma ${videoLabel} Enhancement All`);
@@ -15857,6 +16209,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const segment = segments.find((candidate) => candidate.id === scene.id)
           || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
         if (!segment) continue;
+        ensureSegmentRuntimeFields(segment);
         const imagePrompt = String(scene.image_prompt || "").trim();
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
         const videoType = String(scene.video_prompt_type || "").trim();
@@ -15873,6 +16226,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         if (String(scene.camera_motion || "").trim()) segment.camera_motion = String(scene.camera_motion || "").trim();
       }
       if (applied) {
+        ensureAllSegmentRuntimeFields();
         syncInspector();
         render();
         autoSaveSessionQuiet("Storyboard prompt export");
@@ -15981,16 +16335,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
   function validateRenderAllReady(options = {}) {
     const missing = [];
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const allScenes = batchTargetItems(sceneScope).map(({ segment }) => segment);
-    if (!allScenes.length) missing.push(sceneScope === "selected" ? "No selected scenes found. Turn on Select Multi and choose scenes first." : "No scenes found. Add or load scenes first.");
+    if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     const scenesToRender = allScenes
       .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
       .filter(({ segment }) => options.forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
     const sceneAudioMode = usingSceneAudioMode();
     if (!sceneAudioMode && !String(audioInput.value || "").trim()) missing.push("Audio file path is missing.");
     if (sceneAudioMode) {
-      const audioCheckScenes = sceneScope === "selected" ? batchTargetItems(sceneScope, { baseOnly: true }) : state.segments.map((segment, index) => ({ segment, index }));
+      const audioCheckScenes = sceneScope === "all" ? state.segments.map((segment, index) => ({ segment, index })) : batchTargetItems(sceneScope, { baseOnly: true });
       audioCheckScenes.forEach(({ segment, index }) => {
         if (!String(segment.custom_audio_path || "").trim()) {
           missing.push(`${sceneDisplayName(segment, index)}: scene audio is missing.`);
@@ -16022,9 +16376,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
   function validateZImageAllReady(options = {}) {
     const mode = options.imageRunMode || "resume_missing";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const missing = [];
-    if (!batchTargetItems(sceneScope).length) missing.push(sceneScope === "selected" ? "No selected scenes found. Turn on Select Multi and choose scenes first." : "No scenes found. Add or load scenes first.");
+    if (!batchTargetItems(sceneScope).length) missing.push(batchEmptyMessage(sceneScope));
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
     imageAllSegmentsForMode(mode, state.imageModelMode || "zimage", sceneScope).forEach(({ segment }) => {
       if (mode !== "redo_prompts_images" && String(segment.t2i_prompt || "").trim()) return;
@@ -16149,10 +16503,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       promptNumber: promptNumberForScene,
       expectedDuration: expectedDurationForScene,
     });
+    const videoPromptForRender = applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false });
+    if (videoPromptForRender && videoPromptForRender !== segment.i2v_prompt) {
+      segment.i2v_prompt = videoPromptForRender;
+      if (segment.id === state.activeId) i2vPrompt.value = videoPromptForRender;
+    }
     const payload = {
       ...i2vVideoSettingsPayload(segment),
-      i2v_prompt: segment.i2v_prompt,
-      t2v_prompt: segment.i2v_prompt,
+      i2v_prompt: videoPromptForRender,
+      t2v_prompt: videoPromptForRender,
       audio_path: audioPathForScene,
       prompt_number_one_based: promptNumberForScene,
       srt_path: srtPath,
@@ -16469,10 +16828,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     saveI2VVideoSettingsFromPanel();
     const forceVideos = Boolean(options.forceVideos);
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const skipFinalStitch = Boolean(options.skipFinalStitch || sceneScope === "selected");
     const missing = validateRenderAllReady({ forceVideos, sceneScope });
-    const progress = createProgressWindow(sceneScope === "selected" ? "Render Selected Scenes" : "Render All Scenes");
+    const progress = createProgressWindow(sceneScope === "selected" ? "Render Selected Scenes" : sceneScope === "from_selected" ? "Render From Selected Scene" : "Render All Scenes");
     if (missing.length) {
       progress.setHtml(renderMissingListHtml(missing), 100);
       toast("Render All needs a few things fixed first.", true);
@@ -16483,7 +16842,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       renderAllButton.disabled = true;
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
-      progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : "Render All"}...`, 3);
+      progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
       const preparedAudio = skipFinalStitch
         ? { audioPath: "", srtPath: "" }
@@ -16543,7 +16902,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   async function zImageAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageRunMode = options.imageRunMode || "resume_missing";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const missing = validateZImageAllReady({ imageRunMode, sceneScope });
@@ -16660,7 +17019,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   async function ernieImageAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageRunMode = options.imageRunMode || "resume_missing";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const missing = validateZImageAllReady({ imageRunMode, sceneScope });
@@ -16779,7 +17138,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   async function fluxKleinAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageRunMode = options.imageRunMode || "resume_missing";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("Flux/Klein All Scenes");
@@ -16885,7 +17244,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   async function nbImageAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageRunMode = options.imageRunMode || "resume_missing";
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("NanoBanana All Scenes");
     if (!String((state.nbImageSettings || {}).api_key || "").trim() && !allEditableSegments().some((segment) => String(segment.nb_image_settings?.api_key || "").trim())) {
@@ -17044,7 +17403,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   async function buildFullVideoPipeline(options = {}) {
     let buildMode = options.buildMode || "resume_missing";
     const maxAutoRetries = Math.max(0, Math.min(5, Number(options.maxAutoRetries ?? 3)));
-    const sceneScope = options.sceneScope || "all";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
     let attempt = 0;
     let progress = null;
     try {
@@ -17825,6 +18184,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }, 60000);
       resetProjectState(data.project_folder || "", data.session_path || "", data.srt_path || "");
       await loadGlobalModelDefaultsQuiet();
+      clearTriggerPhrasesForFreshProject();
+      syncZImageSettingsPanel();
+      syncFluxKleinPanel();
+      syncErnieImagePanel();
+      syncI2VVideoSettingsPanel();
       if (data.concept_prompts_path) {
         promptJsonInput.value = data.concept_prompts_path;
         state.promptJsonPath = data.concept_prompts_path;
@@ -20303,7 +20667,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ...(scopeChoices.length ? [{
           key: "sceneScope",
           label: "Scenes to run",
-          description: "Selected-scenes mode only runs scenes selected with Select Multi. They do not need to be next to each other.",
+          description: "Choose all scenes, start from the active clip, or run only the scenes selected with Select Multi.",
           choices: scopeChoices,
         }] : []),
         {
@@ -20316,7 +20680,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     if (!action?.mode) return;
     const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(action.imageMode) ? action.imageMode : imageMode;
-    const sceneScope = action.sceneScope === "selected" ? "selected" : "all";
+    const sceneScope = normalizeBatchScope(action.sceneScope);
     state.imageModelMode = selectedImageMode;
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
     state.fluxKleinSettings.enabled = selectedImageMode === "flux_klein";
@@ -20351,11 +20715,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       extraGroups: scopeChoices.length ? [{
         key: "sceneScope",
         label: "Scenes to run",
-        description: "Selected-scenes mode only creates prompts for scenes selected with Select Multi.",
+        description: "Choose all scenes, start from the active clip, or run only the scenes selected with Select Multi.",
         choices: scopeChoices,
       }] : [],
     });
-    if (action?.mode) await gemmaT2IAllScenes({ promptRunMode: action.mode, sceneScope: action.sceneScope === "selected" ? "selected" : "all" });
+    if (action?.mode) await gemmaT2IAllScenes({ promptRunMode: action.mode, sceneScope: normalizeBatchScope(action.sceneScope) });
   }
 
   async function confirmAndRunGemmaVideoAll() {
@@ -20406,7 +20770,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       extraGroups: scopeChoices.length ? [{
         key: "sceneScope",
         label: "Scenes to run",
-        description: "Selected-scenes mode only creates video prompts for scenes selected with Select Multi.",
+        description: "Choose all scenes, start from the active clip, or run only the scenes selected with Select Multi.",
         choices: scopeChoices,
       }] : [],
     });
@@ -20414,14 +20778,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     if (action.mode === "enhance_existing") {
       await gemmaVideoAllTextOnly({
         promptRunMode: "enhance_existing",
-        sceneScope: action.sceneScope === "selected" ? "selected" : "all",
+        sceneScope: normalizeBatchScope(action.sceneScope),
       });
       return;
     }
     await gemmaVideoAllTextOnly({
       promptRunMode: action.mode.startsWith("missing") ? "missing_only" : "redo_all",
       gemmaInputMode: action.mode.endsWith("vision") ? "vision" : "text",
-      sceneScope: action.sceneScope === "selected" ? "selected" : "all",
+      sceneScope: normalizeBatchScope(action.sceneScope),
     });
   }
 
@@ -20435,7 +20799,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         currentVideoMode() === "t2v"
           ? "It uses existing T2V prompts and does not require scene images."
           : "It uses the current selected images and existing I2V prompts.",
-        "All-scenes mode stitches the final video when rendering is done. Selected-scenes mode renders only selected scenes and does not stitch.",
+        "All-scenes mode stitches the final video when rendering is done. From-selected mode starts at the active clip and still stitches when previous clips exist. Selected-scenes mode renders only selected scenes and does not stitch.",
       ].join(" "),
       confirmLabel: "Run Render",
       returnAll: true,
@@ -20454,12 +20818,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       extraGroups: scopeChoices.length ? [{
         key: "sceneScope",
         label: "Scenes to render",
-        description: "Selected-scenes mode is for non-adjacent scenes like 1, 5, and 10. It does not stitch a final video.",
+        description: "Choose all scenes, start from the active clip, or render only non-adjacent scenes selected with Select Multi. Only selected-scenes mode skips final stitching.",
         choices: scopeChoices,
       }] : [],
     });
     if (action?.mode) {
-      const sceneScope = action.sceneScope === "selected" ? "selected" : "all";
+      const sceneScope = normalizeBatchScope(action.sceneScope);
       await renderAllScenes({
         sceneScope,
         forceVideos: action.mode === "redo_videos",
@@ -20514,7 +20878,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ...(scopeChoices.length ? [{
           key: "sceneScope",
           label: "Scenes to run",
-          description: "Selected-scenes mode runs only the scenes selected with Select Multi and does not stitch a final video.",
+          description: "Choose all scenes, start from the active clip, or run only scenes selected with Select Multi. Only selected-scenes mode skips final stitching.",
           choices: scopeChoices,
         }] : []),
         {
@@ -20539,7 +20903,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     if (options?.mode) await buildFullVideoPipeline({
       buildMode: options.mode,
       videoSeedMode: options.videoSeedMode || "keep",
-      sceneScope: options.sceneScope === "selected" ? "selected" : "all",
+      sceneScope: normalizeBatchScope(options.sceneScope),
     });
   }
 
