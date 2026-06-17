@@ -4367,54 +4367,6 @@ class VRGDG_LTXAudioVideoLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         if not os.path.isdir(gemma_root):
             raise ValueError(f"gemma_root does not exist: {gemma_root}")
 
-        autochunk_enabled = bool(profile_defaults) and str(av_profile).strip() == "step200"
-        autochunk_total_steps = None
-        if autochunk_enabled:
-            logs_dir = self._ensure_dir(os.path.join(workspace_dir, "logs"))
-            master_log_path = os.path.join(
-                logs_dir,
-                f"{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_autochunk.log",
-            )
-            with open(master_log_path, "w", encoding="utf-8") as log_handle:
-                chunk_dataset_dirs, chunk_frame_count = self._prepare_step400_autochunk_dataset(
-                    dataset_videos_dir,
-                    workspace_dir,
-                    run_name,
-                    create_captions,
-                    caption_text,
-                    add_trigger_word,
-                    trigger_text,
-                    log_handle,
-                )
-                autochunk_total_steps = len(chunk_dataset_dirs) * int(steps_per_run)
-                if completed_steps >= int(autochunk_total_steps):
-                    raise RuntimeError(
-                        f"Training complete: reached {completed_steps}/{int(autochunk_total_steps)} steps. Stopping workflow."
-                    )
-                chunk_index = min(len(chunk_dataset_dirs) - 1, int(completed_steps) // int(steps_per_run))
-                selected_chunk_dir = chunk_dataset_dirs[chunk_index]
-                chunk_start_step = int(completed_steps) + 1
-                chunk_end_step = min(int(completed_steps) + int(steps_per_run), int(autochunk_total_steps))
-                print(
-                    f"[VRGDG] step200 autochunk enabled: chunk_frame_count={chunk_frame_count} "
-                    f"chunk_count={len(chunk_dataset_dirs)} total_target_steps={int(autochunk_total_steps)}"
-                )
-                print(
-                    f"[VRGDG] step200 autochunk chunk {chunk_index + 1}/{len(chunk_dataset_dirs)} "
-                    f"dataset={selected_chunk_dir} steps={chunk_start_step}-{chunk_end_step}"
-                )
-                log_handle.write(
-                    f"step200 autochunk enabled: chunk_frame_count={chunk_frame_count} "
-                    f"chunk_count={len(chunk_dataset_dirs)} total_target_steps={int(autochunk_total_steps)}\n"
-                )
-                log_handle.write(
-                    f"step200 autochunk chunk {chunk_index + 1}/{len(chunk_dataset_dirs)} "
-                    f"dataset={selected_chunk_dir} steps={chunk_start_step}-{chunk_end_step}\n"
-                )
-                log_handle.flush()
-                dataset_videos_dir = selected_chunk_dir
-                total_target_steps = int(autochunk_total_steps)
-
         python_exe, accelerate_exe, env_source = self._resolve_musubi_executables(musubi_root)
 
         cache_dir = self._ensure_dir(os.path.join(workspace_dir, "cache"))
