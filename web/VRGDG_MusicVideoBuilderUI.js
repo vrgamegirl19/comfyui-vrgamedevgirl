@@ -12596,6 +12596,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const location = locationById.get(locationId) || null;
         const name = String(location?.name || "").trim();
         sceneLocations[`scene${sceneNumber}_Location`] = name;
+        sceneLocations[`scene${sceneNumber}_LocationDescription`] = String(location?.description || "").trim();
       });
       try {
         exportLocations.disabled = true;
