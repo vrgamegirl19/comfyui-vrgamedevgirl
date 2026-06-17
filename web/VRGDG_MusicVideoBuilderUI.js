@@ -12595,8 +12595,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const locationId = String(refs.scene_map?.[segment.id] || refs.scene_map?.[String(sceneNumber)] || "").trim();
         const location = locationById.get(locationId) || null;
         const name = String(location?.name || "").trim();
-        sceneLocations[`scene${sceneNumber}_Location`] = name;
-        sceneLocations[`scene${sceneNumber}_LocationDescription`] = String(location?.description || "").trim();
+        sceneLocations[`scene${sceneNumber}`] = {
+          location: name,
+          description: String(location?.description || "").trim(),
+        };
       });
       try {
         exportLocations.disabled = true;
@@ -12605,7 +12607,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           path,
           content: JSON.stringify(sceneLocations, null, 2),
         }, 60000);
-        const mappedCount = Object.values(sceneLocations).filter((value) => String(value || "").trim()).length;
+        const mappedCount = Object.values(sceneLocations).filter((value) => String(value?.location || "").trim()).length;
         toast(`Exported ${mappedCount} scene location${mappedCount === 1 ? "" : "s"} to:\n${result.path || path}`);
       } catch (error) {
         toast(String(error?.message || error), true);
