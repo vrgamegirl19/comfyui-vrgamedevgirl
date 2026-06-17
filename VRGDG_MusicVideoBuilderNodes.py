@@ -5294,7 +5294,21 @@ def _load_builder_session(project_folder):
     if not isinstance(session, dict):
         raise ValueError("Builder session is not a JSON object.")
     session = _rehydrate_builder_session(folder, session)
-    return {"project_folder": folder, "session_path": path, "srt_path": _srt_path(folder), "session": session}
+    scene_note_fallbacks = _load_scene_notes_json(folder)
+    segments = session.get("segments", [])
+    if scene_note_fallbacks and isinstance(segments, list):
+        for index, segment in enumerate(segments, start=1):
+            if not isinstance(segment, dict):
+                continue
+            if not str(segment.get("timeline_note", "") or "").strip() and scene_note_fallbacks.get(index):
+                segment["timeline_note"] = scene_note_fallbacks[index]
+    return {
+        "project_folder": folder,
+        "session_path": path,
+        "srt_path": _srt_path(folder),
+        "scene_notes_path": _scene_notes_path(folder),
+        "session": session,
+    }
 
 
 def _list_builder_projects():

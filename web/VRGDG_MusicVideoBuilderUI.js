@@ -1473,6 +1473,7 @@ function openBuilder(node) {
   };
   const promptCreatorButton = makeButton("Prompt Creator");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
+  const importSceneNotesButton = makeButton("Import Scene Notes JSON");
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
   const lyricMapperButton = makeButton("Lyric Mapping");
@@ -1500,7 +1501,7 @@ function openBuilder(node) {
     button.style.textAlign = "left";
     button.style.justifyContent = "flex-start";
   };
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, importSceneNotesButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -4846,7 +4847,7 @@ function openBuilder(node) {
     normalized.use_location_references = Boolean(source.use_location_references);
     normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
     const rawSubjects = Array.isArray(source.subjects) ? source.subjects : [];
-    normalized.subject_count = Math.max(1, Math.min(12, Number(source.subject_count || rawSubjects.length || 1)));
+    normalized.subject_count = Math.max(1, Math.min(12, Math.max(Number(source.subject_count || 0), rawSubjects.length || 0, 1)));
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
     normalized.subject = {
       description: String(subject.description || ""),
@@ -4879,6 +4880,15 @@ function openBuilder(node) {
       });
     }
     normalized.subjects = normalized.subjects.slice(0, normalized.subject_count);
+    if (normalized.subjects.length) {
+      const firstSubject = normalized.subjects[0];
+      normalized.subject = {
+        description: firstSubject.description || normalized.subject.description || "",
+        image: (firstSubject.image?.path || firstSubject.image?.data || firstSubject.image?.name)
+          ? { ...(firstSubject.image || { path: "", data: "", name: "" }) }
+          : normalized.subject.image,
+      };
+    }
     normalized.subject_scene_map = {};
     if (source.subject_scene_map && typeof source.subject_scene_map === "object") {
       for (const [sceneId, value] of Object.entries(source.subject_scene_map)) {
@@ -6970,6 +6980,7 @@ function openBuilder(node) {
       if (!isOverlay && state.showTimelineSceneNotes) {
         const noteField = "timeline_note";
         const noteBox = document.createElement("textarea");
+        noteBox.dataset.sceneNoteSegmentId = segment.id || "";
         noteBox.value = String(segment[noteField] || "");
         noteBox.placeholder = "Director note...";
         noteBox.title = "Extra note saved on this scene. This does not replace Prompt Creator notes or main scene notes.";
@@ -7876,6 +7887,20 @@ function openBuilder(node) {
     if (!folder) return "";
     const separator = folder.includes("\\") ? "\\" : "/";
     return `${folder}${separator}project_context${separator}${filename}`;
+  }
+
+  function projectSceneNotesPath() {
+    const folder = String(state.projectFolder || projectInput.value || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") ? "\\" : "/";
+    return `${folder}${separator}SceneNotes.json`;
+  }
+
+  function projectReferenceBuilderLocationsPath() {
+    const folder = String(state.projectFolder || projectInput.value || "").trim().replace(/[\\/]+$/, "");
+    if (!folder) return "";
+    const separator = folder.includes("\\") ? "\\" : "/";
+    return `${folder}${separator}ReferenceBuilderLocations.json`;
   }
 
   async function loadContextTextQuiet(path) {
@@ -11286,18 +11311,21 @@ function openBuilder(node) {
     const extractLocations = makeButton("Extract Locations", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
     const importLocations = makeButton("Import Location List", "primary");
+    const exportLocations = makeButton("Export Locations", "primary");
     const createAllMissingLocationZImages = makeButton("ZImage Missing Locations", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const removeAllLocations = makeButton("Remove All Locations");
     extractLocations.textContent = "Extract";
     autoMapLocations.textContent = "Auto Map";
     importLocations.textContent = "Import List";
+    exportLocations.textContent = "Export";
     createAllMissingLocationZImages.textContent = "ZImage";
     addLocation.textContent = "Add";
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
+    exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
     createAllMissingLocationZImages.title = "Create ZImage references for locations that do not have images yet.";
     addLocation.title = "Add one location card manually.";
     removeAllLocations.title = "Remove every location card and clear location mappings.";
@@ -11323,7 +11351,7 @@ function openBuilder(node) {
     };
     locationActions.append(
       locationActionGroup("Gemma", [extractLocations, autoMapLocations]),
-      locationActionGroup("Manage", [importLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
+      locationActionGroup("Manage", [importLocations, exportLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
     const keepGemmaLoadedForLocations = makeCheckbox("Keep Gemma loaded while creating location prompts", true);
@@ -11340,8 +11368,13 @@ function openBuilder(node) {
     mappingTitle.textContent = "Scene Mapping";
     mappingTitle.style.cssText = subjectTitle.style.cssText;
     const mapSubjectsFromLyrics = makeButton("Map Subjects From Lyrics", "primary");
+    const mapSubjectsFromSceneNotes = makeButton("Map Subjects From Scene Notes", "primary");
     mapSubjectsFromLyrics.title = "Use saved Lyric Review singer choices to assign character references per scene.";
-    mappingHeader.append(mappingTitle, mapSubjectsFromLyrics);
+    mapSubjectsFromSceneNotes.title = "Read SceneNotes.json and assign character references when scene notes mention saved character names.";
+    const mappingActions = document.createElement("div");
+    mappingActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
+    mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes);
+    mappingHeader.append(mappingTitle, mappingActions);
     const mappingNote = document.createElement("div");
     mappingNote.textContent = `Choose which location image ${referenceBuilderTargetLabel} should receive for each scene. Use Unassigned for no location reference.`;
     mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
@@ -11509,8 +11542,13 @@ function openBuilder(node) {
     const locationByName = (name) => refs.locations.find((item) => locationKey(item.name) === locationKey(name));
     const subjectKey = locationKey;
     const subjectByName = (name) => refs.subjects.find((item) => subjectKey(item.name) === subjectKey(name));
-    const ensureSubjectCount = () => {
-      refs.subject_count = Math.max(1, Math.min(12, Number(subjectCountInput.value || refs.subject_count || 1)));
+    const ensureSubjectCount = (options = {}) => {
+      let desiredCount = Math.max(1, Math.min(12, Number(subjectCountInput.value || refs.subject_count || refs.subjects.length || 1)));
+      if (!options.allowTrim && refs.subjects.length > desiredCount) {
+        desiredCount = Math.min(12, refs.subjects.length);
+        subjectCountInput.value = String(desiredCount);
+      }
+      refs.subject_count = desiredCount;
       while (refs.subjects.length < refs.subject_count) {
         refs.subjects.push({
           id: `subj_${Date.now()}_${refs.subjects.length}_${Math.floor(Math.random() * 10000)}`,
@@ -11634,6 +11672,43 @@ function openBuilder(node) {
         mapped += 1;
       }
       return mapped;
+    };
+    const normalizeSceneNoteSubjectText = (value) => String(value || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const sceneNoteMentionsSubject = (note, subject) => {
+      const needle = normalizeSceneNoteSubjectText(subject?.name || "");
+      if (!needle) return false;
+      const haystack = ` ${normalizeSceneNoteSubjectText(note)} `;
+      return haystack.includes(` ${needle} `);
+    };
+    const autoMapSubjectsFromSceneNotesJson = async () => {
+      ensureSubjectCount();
+      if (!refs.subjects.length) return { mapped: 0, matches: 0, path: "" };
+      const sceneNotesPath = projectSceneNotesPath();
+      if (!sceneNotesPath) throw new Error("Create or load a project before mapping subjects from SceneNotes.json.");
+      const notes = await loadPromptJsonFromPath(sceneNotesPath);
+      if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      let mapped = 0;
+      let matches = 0;
+      const segments = allEditableSegments();
+      for (let index = 0; index < segments.length && index < notes.length; index += 1) {
+        const segment = segments[index];
+        const note = String(notes[index] || "");
+        const subjectIds = [];
+        for (const subject of refs.subjects) {
+          if (sceneNoteMentionsSubject(note, subject) && subject.id && !subjectIds.includes(subject.id)) {
+            subjectIds.push(subject.id);
+          }
+        }
+        if (!subjectIds.length) continue;
+        refs.subject_scene_map[segment.id] = subjectIds;
+        mapped += 1;
+        matches += subjectIds.length;
+      }
+      return { mapped, matches, path: sceneNotesPath };
     };
     const createLocation = (name = "", description = "") => {
       const location = {
@@ -12507,6 +12582,38 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function exportReferenceBuilderLocations() {
+      const path = projectReferenceBuilderLocationsPath();
+      if (!path) {
+        toast("Create or load a project before exporting locations.", true);
+        return;
+      }
+      const locationById = new Map((refs.locations || []).map((location) => [String(location.id || ""), location]));
+      const sceneLocations = {};
+      allEditableSegments().forEach((segment, index) => {
+        const sceneNumber = index + 1;
+        const locationId = String(refs.scene_map?.[segment.id] || refs.scene_map?.[String(sceneNumber)] || "").trim();
+        const location = locationById.get(locationId) || null;
+        const name = String(location?.name || "").trim();
+        sceneLocations[`scene${sceneNumber}_Location`] = name;
+      });
+      try {
+        exportLocations.disabled = true;
+        exportLocations.textContent = "Exporting...";
+        const result = await postJson("/vrgdg/music_builder/save_text_file", {
+          path,
+          content: JSON.stringify(sceneLocations, null, 2),
+        }, 60000);
+        const mappedCount = Object.values(sceneLocations).filter((value) => String(value || "").trim()).length;
+        toast(`Exported ${mappedCount} scene location${mappedCount === 1 ? "" : "s"} to:\n${result.path || path}`);
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        exportLocations.disabled = false;
+        exportLocations.textContent = "Export";
+      }
+    }
+
     function renderSubjects() {
       ensureSubjectCount();
       const multi = refs.subject_count > 1;
@@ -12687,8 +12794,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     function renderAll() {
       ensureSubjectCount();
-      refs.subject.description = subjectDescription.value;
-      if (refs.subject_count === 1 && refs.subjects[0]) refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
+      if (refs.subject_count === 1) {
+        refs.subject.description = subjectDescription.value;
+        if (refs.subjects[0]) refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
+      }
       renderSubjects();
       renderLocations();
       renderMapping();
@@ -12791,7 +12900,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       toast("Removed all location references.");
     };
     subjectCountInput.addEventListener("change", () => {
-      ensureSubjectCount();
+      ensureSubjectCount({ allowTrim: true });
       renderAll();
     });
     subjectCountInput.addEventListener("input", () => {
@@ -12802,6 +12911,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     autoMapLocations.onclick = autoMapLocationsWithGemma;
     createAllMissingLocationZImages.onclick = createMissingLocationReferencesWithZImage;
     importLocations.onclick = openImportLocationSourceDialog;
+    exportLocations.onclick = exportReferenceBuilderLocations;
     mapSubjectsFromLyrics.onclick = () => {
       const mapped = autoMapSubjectsFromLyrics();
       refs.use_subject_reference = true;
@@ -12810,6 +12920,24 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       toast(mapped
         ? `Mapped character references from lyric singers for ${mapped} scene${mapped === 1 ? "" : "s"}.`
         : "No lyric singer assignments matched Reference Builder subjects yet.");
+    };
+    mapSubjectsFromSceneNotes.onclick = async () => {
+      try {
+        mapSubjectsFromSceneNotes.disabled = true;
+        mapSubjectsFromSceneNotes.textContent = "Mapping...";
+        const result = await autoMapSubjectsFromSceneNotesJson();
+        refs.use_subject_reference = true;
+        useSubject.input.checked = true;
+        renderAll();
+        toast(result.mapped
+          ? `Mapped ${result.matches} character reference${result.matches === 1 ? "" : "s"} from SceneNotes.json across ${result.mapped} scene${result.mapped === 1 ? "" : "s"}.`
+          : `No Reference Builder character names were found in SceneNotes.json.\n${result.path}`);
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        mapSubjectsFromSceneNotes.disabled = false;
+        mapSubjectsFromSceneNotes.textContent = "Map Subjects From Scene Notes";
+      }
     };
     useSubject.input.onchange = () => { refs.use_subject_reference = Boolean(useSubject.input.checked); };
     useLocations.input.onchange = () => { refs.use_location_references = Boolean(useLocations.input.checked); };
@@ -12820,17 +12948,24 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         renderMapping();
       }
     });
-    subjectDescription.addEventListener("input", () => { refs.subject.description = subjectDescription.value; });
+    subjectDescription.addEventListener("input", () => {
+      if (refs.subject_count === 1) refs.subject.description = subjectDescription.value;
+    });
     wireDrop(subjectDrop, refs.subject);
     close.onclick = () => backdrop.remove();
     cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       ensureSubjectCount();
-      refs.subject.description = subjectDescription.value;
       if (refs.subject_count === 1 && refs.subjects[0]) {
+        refs.subject.description = subjectDescription.value;
         refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
         refs.subjects[0].description = refs.subject.description;
         refs.subjects[0].image = refs.subject.image;
+      } else if (refs.subjects[0]) {
+        refs.subject = {
+          description: refs.subjects[0].description || "",
+          image: { ...(refs.subjects[0].image || { path: "", data: "", name: "" }) },
+        };
       }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
       for (const select of mappingList.querySelectorAll("[data-subject-map-segment-id]")) {
@@ -13933,6 +14068,37 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       syncInspector();
       render();
       if (!options.quiet) toast(`Imported ${notes.length} I2V motion note${notes.length === 1 ? "" : "s"} into scenes.`);
+      return notes;
+    } catch (error) {
+      if (options.throwOnError) throw error;
+      if (!options.quiet) toast(String(error?.message || error), true);
+      return [];
+    }
+  }
+
+  async function importSceneNotesJson(options = {}) {
+    try {
+      const sceneNotesPath = projectSceneNotesPath();
+      if (!sceneNotesPath) throw new Error("Create or load a project before importing SceneNotes.json.");
+      const notes = await loadPromptJsonFromPath(sceneNotesPath);
+      if (options.pushHistory !== false) pushHistory();
+      let applied = 0;
+      let nonEmpty = 0;
+      for (let index = 0; index < state.segments.length && index < notes.length; index += 1) {
+        state.segments[index].timeline_note = String(notes[index] || "");
+        applied += 1;
+        if (String(notes[index] || "").trim()) nonEmpty += 1;
+      }
+      state.showTimelineSceneNotes = true;
+      syncSceneNoteControls();
+      syncInspector();
+      render();
+      for (const noteBox of segmentLayer.querySelectorAll("[data-scene-note-segment-id]")) {
+        const segment = allEditableSegments().find((item) => item.id === noteBox.dataset.sceneNoteSegmentId);
+        if (segment) noteBox.value = String(segment.timeline_note || "");
+      }
+      if (!options.skipAutoSave) await autoSaveSessionQuiet("SceneNotes.json import");
+      if (!options.quiet) toast(`Imported ${nonEmpty} non-empty scene note${nonEmpty === 1 ? "" : "s"} into ${applied} scene${applied === 1 ? "" : "s"} from:\n${sceneNotesPath}`);
       return notes;
     } catch (error) {
       if (options.throwOnError) throw error;
@@ -21125,6 +21291,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   gemmaRunnerButton.onclick = openGemmaRunnerModal;
   builderAgentButton.onclick = openBuilderAgentModal;
   autoLoadAllButton.onclick = autoLoadAll;
+  importSceneNotesButton.onclick = importSceneNotesJson;
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;
   stitchPreviewButton.onclick = openStitchPreviewModal;

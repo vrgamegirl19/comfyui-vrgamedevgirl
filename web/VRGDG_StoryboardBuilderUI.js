@@ -2068,12 +2068,13 @@ function openStoryboardBuilder(payload = {}) {
         state.referenceBuilder = mergeReferenceBuilderCatalog(state.referenceBuilder, savedReferences);
       }
       if (Array.isArray(saved.scenes) && saved.scenes.length) {
-        state.scenes = saved.scenes.map((scene, index) => {
-          const normalized = normalizeScene(scene, index);
-          const fresh = incomingScenes.find((item) => item.id === normalized.id)
-            || incomingScenes.find((item) => Number(item.scene_number) === Number(normalized.scene_number))
+        const savedScenes = saved.scenes.map((scene, index) => normalizeScene(scene, index));
+        const scenesToShow = incomingScenes.length ? incomingScenes : savedScenes;
+        state.scenes = scenesToShow.map((fresh, index) => {
+          const normalized = savedScenes.find((item) => item.id === fresh.id)
+            || savedScenes.find((item) => Number(item.scene_number) === Number(fresh.scene_number))
             || null;
-          if (!fresh) return normalized;
+          if (!normalized) return normalizeScene(fresh, index);
           const subjectRefs = fresh.subject_refs?.length ? fresh.subject_refs : normalized.subject_refs;
           const subjects = subjectRefs?.length
             ? storyboardSubjectNamesFromRefs(subjectRefs)
@@ -2083,6 +2084,13 @@ function openStoryboardBuilder(payload = {}) {
             ].map((item) => String(item || "").trim()).filter(Boolean)));
           return {
             ...normalized,
+            id: fresh.id || normalized.id,
+            scene_number: fresh.scene_number || normalized.scene_number,
+            label: fresh.label || normalized.label,
+            lyrics: fresh.lyrics || normalized.lyrics,
+            prompt_summary: fresh.prompt_summary || normalized.prompt_summary,
+            motion_summary: fresh.motion_summary || normalized.motion_summary,
+            image_path: fresh.image_path || normalized.image_path,
             subjects,
             subject_refs: subjectRefs,
             setting: fresh.location_ref?.name || normalized.setting || fresh.setting,
