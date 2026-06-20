@@ -746,23 +746,55 @@ function settingRefHtml(scene) {
 
 function normalizeReferenceBuilderCatalog(value = {}) {
   const source = value && typeof value === "object" ? value : {};
-  const subjects = Array.isArray(source.subjects) ? source.subjects
+  const mergeReferenceList = (items = []) => {
+    const byKey = new Map();
+    const keyFor = (item) => {
+      const name = String(item.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      return name || String(item.id || "").trim().toLowerCase();
+    };
+    for (const item of items) {
+      const key = keyFor(item);
+      if (!key) continue;
+      const existing = byKey.get(key) || {};
+      byKey.set(key, {
+        ...existing,
+        ...item,
+        id: existing.id || item.id,
+        name: existing.name || item.name,
+        description: existing.description || item.description,
+        trigger_phrase: existing.trigger_phrase || item.trigger_phrase,
+        image: mergeReferenceImages(existing.image, item.image),
+      });
+    }
+    return Array.from(byKey.values());
+  };
+  const subjects = mergeReferenceList(Array.isArray(source.subjects) ? source.subjects
     .filter((item) => item && typeof item === "object")
     .map((item, index) => ({
       id: String(item.id || `subject_${index + 1}`),
       name: String(item.name || `Character ${index + 1}`),
       description: String(item.description || ""),
+      trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
+      trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
       image: normalizeReferenceImage(item),
-    })) : [];
-  const locations = Array.isArray(source.locations) ? source.locations
+    })) : []);
+  const locations = mergeReferenceList(Array.isArray(source.locations) ? source.locations
     .filter((item) => item && typeof item === "object")
     .map((item, index) => ({
       id: String(item.id || `location_${index + 1}`),
       name: String(item.name || `Location ${index + 1}`),
       description: String(item.description || ""),
+      trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
+      trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
       image: normalizeReferenceImage(item),
-    })) : [];
-  return { subjects, locations };
+    })) : []);
+  return {
+    subjects,
+    locations,
+    trigger_position: String(source.trigger_position || source.triggerPosition || source.trigger_placement || "start") === "end" ? "end" : "start",
+    subject_trigger_position: String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start",
+    location_trigger_position: String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start",
+  };
 }
 
 function mergeReferenceBuilderCatalog(base = {}, incoming = {}) {
@@ -770,7 +802,10 @@ function mergeReferenceBuilderCatalog(base = {}, incoming = {}) {
   const normalizedIncoming = normalizeReferenceBuilderCatalog(incoming);
   const mergeList = (left, right) => {
     const byKey = new Map();
-    const keyFor = (item) => String(item.id || item.name || "").trim().toLowerCase();
+    const keyFor = (item) => {
+      const name = String(item.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      return name || String(item.id || "").trim().toLowerCase();
+    };
     for (const item of left) {
       const key = keyFor(item);
       if (key) byKey.set(key, { ...item, image: { ...(item.image || {}) } });
@@ -815,7 +850,7 @@ function storyboardIsInstrumentalText(value = "") {
 
 function normalizeScene(scene = {}, index = 0) {
   const rawVideoType = String(scene.video_prompt_type || scene.video_type || scene.mode || "").trim();
-  const videoPromptType = ["i2v", "t2v", "rtv"].includes(rawVideoType) ? rawVideoType : "i2v";
+  const videoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(rawVideoType) ? rawVideoType : "i2v";
   const lyrics = scene.lyrics || scene.lyric_text || "";
   const lyricSingers = Array.isArray(scene.lyric_singers)
     ? scene.lyric_singers.map((item) => String(item || "").trim()).filter(Boolean)
@@ -836,6 +871,8 @@ function normalizeScene(scene = {}, index = 0) {
     subject_refs: Array.isArray(scene.subject_refs) ? scene.subject_refs.filter((item) => item && typeof item === "object") : [],
     setting: scene.setting || scene.location_ref?.description || scene.location_ref?.name || scene.location || "",
     location_ref: scene.location_ref && typeof scene.location_ref === "object" ? scene.location_ref : null,
+    trigger_phrase: String(scene.trigger_phrase || scene.trigger || scene.Trigger || ""),
+    trigger_position: String(scene.trigger_position || scene.triggerPosition || scene.trigger_placement || "start") === "end" ? "end" : "start",
     video_prompt_type: videoPromptType,
     shot_type: scene.shot_type || "",
     camera_motion: scene.camera_motion || scene.motion_preset || "",
@@ -943,6 +980,8 @@ function slimReferenceForRequest(ref) {
     id: String(ref.id || ""),
     name: String(ref.name || ""),
     description: String(ref.description || ""),
+    trigger_phrase: String(ref.trigger_phrase || ref.trigger || ref.Trigger || ""),
+    trigger_position: String(ref.trigger_position || ref.triggerPosition || ref.trigger_placement || "start") === "end" ? "end" : "start",
     image: {
       path: String(ref.image?.path || ""),
       name: String(ref.image?.name || ""),
@@ -987,6 +1026,7 @@ function storyboardReferenceForGpt(ref) {
 
 function storyboardVideoPromptTypeLabel(type) {
   const key = String(type || "").toLowerCase();
+  if (key === "ingredients") return "ingredients to video";
   if (key === "t2v") return "text to video";
   if (key === "rtv") return "reference to video";
   if (key === "i2v") return "image to video";
@@ -1107,10 +1147,16 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
+  const payloadVideoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
+    ? String(payload.videoPromptType || payload.video_prompt_type || "").trim()
+    : "";
   const state = {
     projectFolder,
     mode: "storyboard_prompts",
-    scenes: scenesFromBuilderPayload(payload),
+    scenes: scenesFromBuilderPayload(payload).map((scene) => ({
+      ...scene,
+      video_prompt_type: payloadVideoPromptType || scene.video_prompt_type,
+    })),
     referenceBuilder: normalizeReferenceBuilderCatalog(payload.referenceBuilder || payload.reference_builder || {}),
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
@@ -1413,6 +1459,8 @@ function openStoryboardBuilder(payload = {}) {
         scene_number: scene.scene_number,
         subject_ids: (Array.isArray(scene.subject_refs) ? scene.subject_refs : []).map((ref) => String(ref?.id || "")).filter(Boolean),
         location_id: String(scene.location_ref?.id || ""),
+        trigger: String(scene.trigger_phrase || ""),
+        trigger_position: String(scene.trigger_position || "start") === "end" ? "end" : "start",
       })),
     });
   }
@@ -1611,6 +1659,7 @@ function openStoryboardBuilder(payload = {}) {
       { value: "i2v", label: "Image to Video" },
       { value: "t2v", label: "Text to Video" },
       { value: "rtv", label: "Reference to Video" },
+      { value: "ingredients", label: "Ingredients to Video" },
     ], scene.video_prompt_type || "i2v");
     const subjects = makeInput((scene.subjects || []).join(", "), "Subjects, comma separated");
     const subjectDetails = makeTextarea(
@@ -1622,11 +1671,23 @@ function openStoryboardBuilder(payload = {}) {
       4,
     );
     const setting = makeInput(scene.setting || scene.location_ref?.description || scene.location_ref?.name || "", "Location / setting");
+    const locationDetails = makeTextarea(
+      scene.location_ref
+        ? `${scene.location_ref.name || "Location"}: ${scene.location_ref.description || ""}`.trim()
+        : "",
+      "Location description from Reference Builder...",
+      4,
+    );
     const shot = makeInput(scene.shot_type, "Shot type");
     const shotPreset = makeSelect([{ value: "", label: "Choose a preset..." }, { value: "__custom__", label: "Custom / keep typed value" }], "__custom__");
     const imagePrompt = makeTextarea(scene.image_prompt, "Full text-to-image prompt...", 7);
     const videoPrompt = makeTextarea(scene.video_prompt, "Full video prompt...", 7);
     const imagePath = makeInput(scene.image_path, "Image path");
+    const triggerPhrase = makeInput(scene.trigger_phrase || "", "Optional scene trigger phrase");
+    const triggerPosition = makeSelect([
+      { value: "start", label: "Add trigger to start" },
+      { value: "end", label: "Add trigger to end" },
+    ], scene.trigger_position || "start");
     const notes = makeTextarea(scene.notes, "Extra planning notes...", 3);
     const selectedSubjectIds = (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
       .map((ref) => String(ref?.id || ""))
@@ -1705,7 +1766,7 @@ function openStoryboardBuilder(payload = {}) {
     const imagePathField = field("Image path", imagePath);
     const motionField = field("Motion / video summary", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
-    grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField);
+    grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     const referenceGrid = document.createElement("div");
     referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;";
     if (state.referenceBuilder.subjects.length || state.referenceBuilder.locations.length) {
@@ -1775,7 +1836,7 @@ function openStoryboardBuilder(payload = {}) {
     );
 
     const advancedGrid = twoCol();
-    advancedGrid.append(field("Prompt summary", summary), field("Motion / video prompt summary", motion), field("Character details", subjectDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
+    advancedGrid.append(field("Prompt summary", summary), field("Motion / video prompt summary", motion), field("Character details", subjectDetails), field("Location details", locationDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
     const notesWrap = document.createElement("div");
     notesWrap.append(notes);
     editor.replaceChildren(
@@ -1857,7 +1918,12 @@ function openStoryboardBuilder(payload = {}) {
     });
     locationSelect.addEventListener("change", () => {
       const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
-      if (selectedLocation) setting.value = selectedLocation.description || selectedLocation.name || "";
+      if (selectedLocation) {
+        setting.value = selectedLocation.description || selectedLocation.name || "";
+        locationDetails.value = `${selectedLocation.name || "Location"}: ${selectedLocation.description || ""}`.trim();
+      } else {
+        locationDetails.value = "";
+      }
       refreshReferenceChips();
     });
     addSubject.onclick = async () => {
@@ -1924,14 +1990,26 @@ function openStoryboardBuilder(payload = {}) {
       }
       if (state.referenceBuilder.locations.length) {
         const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
-        scene.location_ref = selectedLocation;
+        const locationParts = String(locationDetails.value || "").split(":");
+        const locationName = String(locationParts.shift() || "").trim();
+        const locationDescription = locationParts.join(":").trim();
+        scene.location_ref = selectedLocation
+          ? {
+              ...selectedLocation,
+              name: locationName || selectedLocation.name,
+              description: locationDescription || selectedLocation.description || "",
+            }
+          : null;
         if (selectedLocation) scene.setting = selectedLocation.description || selectedLocation.name || scene.setting;
+        if (scene.location_ref) scene.setting = scene.location_ref.description || scene.location_ref.name || scene.setting;
       }
       scene.shot_type = shot.value.trim();
       scene.camera_motion = customCameraMotion.value.trim() || cameraMotionPreset.value.trim();
       scene.character_motion = customCharacterMotion.value.trim() || characterMotionPreset.value.trim();
       scene.performance_style = performanceStyle.value || "";
       scene.include_microphone = Boolean(includeMic.checked);
+      scene.trigger_phrase = triggerPhrase.value.trim();
+      scene.trigger_position = triggerPosition.value === "end" ? "end" : "start";
       scene.image_prompt = imagePrompt.value.trim();
       scene.video_prompt = videoPrompt.value.trim();
       scene.image_path = imagePath.value.trim();
@@ -2087,6 +2165,7 @@ function openStoryboardBuilder(payload = {}) {
             id: fresh.id || normalized.id,
             scene_number: fresh.scene_number || normalized.scene_number,
             label: fresh.label || normalized.label,
+            video_prompt_type: payloadVideoPromptType || fresh.video_prompt_type || normalized.video_prompt_type,
             lyrics: fresh.lyrics || normalized.lyrics,
             prompt_summary: fresh.prompt_summary || normalized.prompt_summary,
             motion_summary: fresh.motion_summary || normalized.motion_summary,
@@ -2195,13 +2274,62 @@ function openStoryboardBuilder(payload = {}) {
     };
   }
 
+  function applyStoryboardTriggerPhrases(prompt, scene) {
+    let text = String(prompt || "").trim();
+    const normalized = normalizeScene(scene, 0);
+    const refs = normalizeReferenceBuilderCatalog(state.referenceBuilder || {});
+    const parts = { start: [], end: [] };
+    const add = (trigger, position = "start") => {
+      const value = String(trigger || "").trim();
+      if (!value) return;
+      const key = position === "end" ? "end" : "start";
+      if (!parts[key].some((item) => item.toLowerCase() === value.toLowerCase())) parts[key].push(value);
+    };
+    const subjectPosition = refs.subject_trigger_position === "end" ? "end" : "start";
+    const locationPosition = refs.location_trigger_position === "end" ? "end" : "start";
+    (Array.isArray(normalized.subject_refs) ? normalized.subject_refs : []).forEach((subject) => {
+      add(subject.trigger_phrase || subject.trigger || subject.Trigger, subjectPosition);
+    });
+    if (normalized.location_ref) {
+      add(normalized.location_ref.trigger_phrase || normalized.location_ref.trigger || normalized.location_ref.Trigger, locationPosition);
+    }
+    add(normalized.trigger_phrase || normalized.trigger || normalized.Trigger, normalized.trigger_position === "end" ? "end" : "start");
+    const stripBoundaryTrigger = (value, trigger) => {
+      let current = String(value || "").trim();
+      const escaped = String(trigger || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!escaped) return current;
+      const leading = new RegExp(`^\\s*${escaped}\\s*(?:,\\s*)?`, "i");
+      const trailing = new RegExp(`(?:,\\s*)?${escaped}\\s*$`, "i");
+      let previous = "";
+      while (current && current !== previous) {
+        previous = current;
+        current = current.replace(leading, "").replace(trailing, "").trim();
+      }
+      return current;
+    };
+    [...parts.start, ...parts.end]
+      .sort((a, b) => b.length - a.length)
+      .forEach((trigger) => {
+        text = stripBoundaryTrigger(text, trigger);
+      });
+    if (parts.start.length) {
+      const prefix = parts.start.join(", ");
+      if (!text.toLowerCase().startsWith(prefix.toLowerCase())) text = text ? `${prefix}, ${text}` : prefix;
+    }
+    if (parts.end.length) {
+      const suffix = parts.end.join(", ");
+      if (!text.toLowerCase().endsWith(suffix.toLowerCase())) text = text ? `${text}, ${suffix}` : suffix;
+    }
+    return text;
+  }
+
   async function createSceneVideoPromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
     const normalized = normalizeScene(scene, 0);
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to Gemma...\nThis can take a minute depending on runner/model speed.`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), 240000);
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: Gemma response received.\nRunner: ${data.runner || "Gemma"}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
-      const prompt = String(data.prompt || "").trim();
+      const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
       if (!prompt) throw new Error("Gemma returned an empty Storyboard video prompt.");
       scene.video_prompt = prompt;
       scene.status = "video_prompt_ready";

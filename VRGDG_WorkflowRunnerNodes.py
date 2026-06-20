@@ -25,6 +25,8 @@ _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = False
 _MAX_LORA_SLOTS = 20
 _NONE_LORA = "[none]"
 _REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors"
+_REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors"
+_MIN_LTX_INGREDIENTS_FRAMES = 121
 _I2V_UNET_ALIASES = {
     "LTX-2.3-22B-distilled-11-Q6_K.gguf": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
 }
@@ -130,6 +132,15 @@ def _rtv_api_template_path():
         "Workflows",
         "UsedForUIDoNotTouch",
         "SingleRef2VidForUI_API.json",
+    )
+
+
+def _ingredients_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "SingleIngredients2Video_ForUI_API.json",
     )
 
 
@@ -1120,6 +1131,78 @@ def _rtv_background_mode(value, has_background):
     return "neutral_placeholder_wip"
 
 
+def _srt_time_to_seconds(value):
+    text = str(value or "").strip().replace(".", ",")
+    hours, minutes, rest = text.split(":", 2)
+    seconds, millis = (rest.split(",", 1) + ["0"])[:2]
+    return int(hours) * 3600 + int(minutes) * 60 + int(seconds) + int((millis + "000")[:3]) / 1000.0
+
+
+def _srt_segment_frame_count(path, prompt_number, fps):
+    try:
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            blocks = handle.read().replace("\r\n", "\n").replace("\r", "\n").strip().split("\n\n")
+        segments = []
+        for block in blocks:
+            for line in block.splitlines():
+                if "-->" not in line:
+                    continue
+                start_text, end_text = line.split("-->", 1)
+                segments.append((_srt_time_to_seconds(start_text), _srt_time_to_seconds(end_text)))
+                break
+        index = max(0, int(prompt_number) - 1)
+        if index >= len(segments):
+            return 0
+        start_sec, end_sec = segments[index]
+        start_frame = int(round(start_sec * fps))
+        end_frame = int(round(end_sec * fps))
+        return max(1, end_frame - start_frame)
+    except Exception:
+        return 0
+
+
+def _pad_ingredients_preroll_tail(srt_path, prompt_number, fps, pre_frames, tail_loss_frames):
+    scene_frames = _srt_segment_frame_count(srt_path, prompt_number, fps)
+    original_pre_frames = pre_frames
+    original_tail_loss_frames = tail_loss_frames
+    if scene_frames <= 0:
+        print(
+            "[VRGDG Ingredients] Padding check skipped: "
+            f"prompt={prompt_number}, fps={fps}, scene_frames={scene_frames}, "
+            f"pre_frames={pre_frames}, tail_loss_frames={tail_loss_frames}",
+            flush=True,
+        )
+        return pre_frames, tail_loss_frames
+    current_total = scene_frames + pre_frames + tail_loss_frames
+    shortfall = max(0, _MIN_LTX_INGREDIENTS_FRAMES - current_total)
+    if shortfall <= 0:
+        print(
+            "[VRGDG Ingredients] Padding check: "
+            f"prompt={prompt_number}, fps={fps}, scene_frames={scene_frames}, "
+            f"original_pre={original_pre_frames}, original_tail={original_tail_loss_frames}, "
+            f"total_frames={current_total}, min_frames={_MIN_LTX_INGREDIENTS_FRAMES}, "
+            "added_pre=0, added_tail=0, "
+            f"final_pre={pre_frames}, final_tail={tail_loss_frames}",
+            flush=True,
+        )
+        return pre_frames, tail_loss_frames
+    add_pre = shortfall // 2
+    add_tail = shortfall - add_pre
+    final_pre = pre_frames + add_pre
+    final_tail = tail_loss_frames + add_tail
+    print(
+        "[VRGDG Ingredients] Padding applied: "
+        f"prompt={prompt_number}, fps={fps}, scene_frames={scene_frames}, "
+        f"original_pre={original_pre_frames}, original_tail={original_tail_loss_frames}, "
+        f"total_before={current_total}, min_frames={_MIN_LTX_INGREDIENTS_FRAMES}, "
+        f"shortfall={shortfall}, added_pre={add_pre}, added_tail={add_tail}, "
+        f"final_pre={final_pre}, final_tail={final_tail}, "
+        f"total_after={scene_frames + final_pre + final_tail}",
+        flush=True,
+    )
+    return final_pre, final_tail
+
+
 def _patch_rtv_api_prompt(prompt, payload):
     prompt = copy.deepcopy(prompt)
     rtv_prompt = str(payload.get("t2v_prompt", payload.get("i2v_prompt", "")) or "").strip()
@@ -1199,6 +1282,101 @@ def _patch_rtv_api_prompt(prompt, payload):
     _set_api_input(prompt, "927", "duration", 0)
     _set_api_input(prompt, "930", "value", prompt_number)
     _set_api_input(prompt, "933", "text", rtv_prompt)
+    _set_api_input(prompt, "933", "output_mode", "string")
+    _set_api_input(prompt, "935", "value", srt_path)
+    _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
+    _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
+    _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    _set_api_input(prompt, "437", "value", output_folder)
+    return prompt, output_folder
+
+
+def _patch_ingredients_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    ingredients_prompt = str(payload.get("t2v_prompt", payload.get("i2v_prompt", "")) or "").strip()
+    if not ingredients_prompt:
+        raise ValueError("Ingredients-to-video prompt is empty.")
+
+    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"Audio file was not found: {audio_path}")
+    srt_path = os.path.abspath(str(payload.get("srt_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(srt_path):
+        raise FileNotFoundError(f"SRT file was not found: {srt_path}")
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = os.path.join(project_folder, "ingredients_to_video_clips")
+    os.makedirs(output_folder, exist_ok=True)
+
+    image_path = os.path.abspath(str(payload.get("ingredients_image_path", "") or "").strip().strip('"'))
+    image_name = str(payload.get("ingredients_image_name", "") or "ingredients_reference.png")
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(f"Ingredients reference image was not found: {image_path}")
+
+    prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+    width = _int_payload(payload, "width", 768, 64, 4096)
+    height = _int_payload(payload, "height", 448, 64, 4096)
+    shorter_size = min(width, height)
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
+    pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
+    pre_frames, tail_loss_frames = _pad_ingredients_preroll_tail(
+        srt_path,
+        prompt_number,
+        fps,
+        pre_frames,
+        tail_loss_frames,
+    )
+
+    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
+    _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
+    _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    _set_api_input(prompt, "271:211", "model_name", str(payload.get("upscale_model_name", "") or ""))
+    _set_api_input(prompt, "271:254", "vae_name", str(payload.get("audio_vae_name", "") or ""))
+
+    _set_api_input(prompt, "736:424", "value", fps)
+    _set_api_input(prompt, "736:449", "value", seed)
+    _set_api_input(prompt, "736:551", "value", 0)
+    _set_optional_api_input(prompt, "940", "width", width)
+    _set_optional_api_input(prompt, "940", "height", height)
+    _set_optional_api_input(prompt, "943", "resize_type.shorter_size", shorter_size)
+
+    required_lora = _clean_lora_name(payload.get("ingredients_lora_name", _REQUIRED_LTX_INGREDIENTS_LORA))
+    required_strength = _float_payload(payload, "ingredients_first_pass_strength", 1.0)
+    use_user_loras = _bool_payload(payload, "use_custom_loras", False)
+    user_lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS - 1)
+    total_lora_count = 1 + (user_lora_count if use_user_loras else 0)
+    _set_api_input(prompt, "937", "use_custom_loras", True)
+    _set_api_input(prompt, "937", "lora_count", total_lora_count)
+    _set_api_input(prompt, "937", "lora_1", required_lora)
+    _set_api_input(prompt, "937", "first_pass_strength_1", required_strength)
+    _set_api_input(prompt, "937", "second_pass_strength_1", 0.0)
+    for slot in range(2, _MAX_LORA_SLOTS + 1):
+        user_slot = slot - 1
+        if use_user_loras and user_slot <= user_lora_count:
+            legacy_strength = _float_payload(payload, f"strength_{user_slot}", 1.0)
+            lora_name = _clean_lora_name(payload.get(f"lora_{user_slot}", _NONE_LORA))
+            first_pass_strength = _float_payload(payload, f"first_pass_strength_{user_slot}", legacy_strength)
+            second_pass_strength = _float_payload(payload, f"second_pass_strength_{user_slot}", legacy_strength)
+        else:
+            lora_name = _NONE_LORA
+            first_pass_strength = 1.0
+            second_pass_strength = 1.0
+        _set_api_input(prompt, "937", f"lora_{slot}", lora_name)
+        _set_api_input(prompt, "937", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "937", f"second_pass_strength_{slot}", second_pass_strength)
+
+    _set_api_input(prompt, "957", "image", image_path)
+    _set_api_input(prompt, "957", "custom_width", 0)
+    _set_api_input(prompt, "957", "custom_height", 0)
+    _set_api_input(prompt, "927", "audio_file", audio_path)
+    _set_api_input(prompt, "927", "seek_seconds", 0)
+    _set_api_input(prompt, "927", "duration", 0)
+    _set_api_input(prompt, "930", "value", prompt_number)
+    _set_api_input(prompt, "933", "text", ingredients_prompt)
     _set_api_input(prompt, "933", "output_mode", "string")
     _set_api_input(prompt, "935", "value", srt_path)
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
@@ -1517,6 +1695,16 @@ def _build_t2v_api_prompt(payload):
 def _build_rtv_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_rtv_api_template_path())
     patched_prompt, output_folder = _patch_rtv_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": patched_prompt,
+    }
+
+
+def _build_ingredients_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_ingredients_api_template_path())
+    patched_prompt, output_folder = _patch_ingredients_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -2357,6 +2545,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_rtv_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_ingredients_prompt")
+    async def vrgdg_workflow_runner_build_ingredients_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_ingredients_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

@@ -227,10 +227,13 @@ def _normalize_reference_image(value):
 
 def _normalize_reference_item(value, fallback_name="Reference", fallback_id="ref"):
     item = value if isinstance(value, dict) else {}
+    trigger_position = str(item.get("trigger_position") or item.get("triggerPosition") or item.get("trigger_placement") or "start").strip().lower()
     return {
         "id": _clean_scene_text(item.get("id") or fallback_id, 160),
         "name": _clean_scene_text(item.get("name") or fallback_name, 240),
         "description": _clean_scene_text(item.get("description") or "", 4000),
+        "trigger_phrase": _clean_scene_text(item.get("trigger_phrase") or item.get("trigger") or item.get("Trigger") or "", 1200),
+        "trigger_position": "end" if trigger_position == "end" else "start",
         "image": _normalize_reference_image(item.get("image") if isinstance(item.get("image"), dict) else {}),
     }
 
@@ -259,9 +262,15 @@ def _normalize_reference_catalog(value):
             refs.append(_normalize_reference_item(item, f"{fallback_name} {index + 1}", f"{fallback_id}_{index + 1}"))
         return refs
 
+    trigger_position = str(source.get("trigger_position") or source.get("triggerPosition") or source.get("trigger_placement") or "start").strip().lower()
+    subject_trigger_position = str(source.get("subject_trigger_position") or source.get("subjectTriggerPosition") or source.get("trigger_position") or "start").strip().lower()
+    location_trigger_position = str(source.get("location_trigger_position") or source.get("locationTriggerPosition") or source.get("trigger_position") or "start").strip().lower()
     return {
         "subjects": normalize_list(source.get("subjects"), "Subject", "subject"),
         "locations": normalize_list(source.get("locations"), "Location", "location"),
+        "trigger_position": "end" if trigger_position == "end" else "start",
+        "subject_trigger_position": "end" if subject_trigger_position == "end" else "start",
+        "location_trigger_position": "end" if location_trigger_position == "end" else "start",
     }
 
 
@@ -347,8 +356,9 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     performance_style = _clean_scene_text(scene.get("performance_style") or scene.get("song_style") or scene.get("music_style") or "", 120)
     performance_direction = _clean_scene_text(scene.get("performance_direction") or "", 1000)
     include_microphone = bool(scene.get("include_microphone") or scene.get("use_microphone") or scene.get("microphone"))
+    trigger_position = str(scene.get("trigger_position") or scene.get("triggerPosition") or scene.get("trigger_placement") or "start").strip().lower()
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
-    if video_prompt_type not in {"i2v", "t2v", "rtv"}:
+    if video_prompt_type not in {"i2v", "t2v", "rtv", "ingredients"}:
         video_prompt_type = "i2v"
     status = _clean_scene_text(scene.get("status") or ("image_ready" if image_path else "draft"), 80)
     return {
@@ -368,6 +378,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "performance_style": performance_style,
         "performance_direction": performance_direction,
         "include_microphone": include_microphone,
+        "trigger_phrase": _clean_scene_text(scene.get("trigger_phrase") or scene.get("trigger") or scene.get("Trigger") or "", 1200),
+        "trigger_position": "end" if trigger_position == "end" else "start",
         "video_prompt_type": video_prompt_type,
         "status": status,
         "image_prompt": image_prompt,

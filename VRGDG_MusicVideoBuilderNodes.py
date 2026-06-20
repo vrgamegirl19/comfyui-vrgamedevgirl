@@ -3153,6 +3153,8 @@ def _generate_builder_i2v_prompt(payload):
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    subject_context = str(payload.get("subject_context", "") or "").strip()
+    location_context = str(payload.get("location_context", "") or "").strip()
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose an I2V Gemma model first.")
@@ -3180,6 +3182,10 @@ def _generate_builder_i2v_prompt(payload):
         context_parts = []
         if subject_scene:
             context_parts.append(f"Subject/scene:\n{subject_scene}")
+        if subject_context:
+            context_parts.append(f"Mapped scene character(s):\n{subject_context}")
+        if location_context:
+            context_parts.append(f"Mapped scene location:\n{location_context}")
         if theme_style:
             context_parts.append(f"Theme/style:\n{theme_style}")
         if story_idea:
@@ -3283,6 +3289,8 @@ def _generate_builder_t2v_prompt(payload):
     image_reference_path = str(payload.get("image_reference_path", "") or "").strip().strip('"')
     image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    subject_context = str(payload.get("subject_context", "") or "").strip()
+    location_context = str(payload.get("location_context", "") or "").strip()
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose a T2V Gemma model first.")
@@ -3315,6 +3323,10 @@ def _generate_builder_t2v_prompt(payload):
     context_parts = []
     if subject_scene:
         context_parts.append(f"Subject/scene:\n{subject_scene}")
+    if subject_context:
+        context_parts.append(f"Mapped scene character(s):\n{subject_context}")
+    if location_context:
+        context_parts.append(f"Mapped scene location:\n{location_context}")
     if theme_style:
         context_parts.append(f"Theme/style:\n{theme_style}")
     if story_idea:

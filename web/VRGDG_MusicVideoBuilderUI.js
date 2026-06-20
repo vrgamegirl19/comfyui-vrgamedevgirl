@@ -9,6 +9,9 @@ const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", 
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
 const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
+const REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors";
+const DEFAULT_LTX_INGREDIENTS_WIDTH = 768;
+const DEFAULT_LTX_INGREDIENTS_HEIGHT = 448;
 const TIMELINE_HEIGHT = 210;
 const TIMELINE_OVERLAY_TOP = 24;
 const TIMELINE_OVERLAY_HEIGHT = 50;
@@ -2024,6 +2027,9 @@ function openBuilder(node) {
   const t2vReferenceNote = document.createElement("div");
   t2vReferenceNote.textContent = "Optional: Gemma looks at a reference image for pose, framing, mood, or visual direction while still creating a text-to-video prompt.";
   t2vReferenceNote.style.cssText = i2vReferenceNote.style.cssText;
+  const t2vLocationNote = document.createElement("div");
+  t2vLocationNote.textContent = "T2V uses mapped character and location descriptions as text context for Gemma. It does not pass those reference images into the video render.";
+  t2vLocationNote.style.cssText = i2vReferenceNote.style.cssText;
   const refImageInput = makeInput("");
   refImageInput.style.display = "none";
   const refImagePanel = document.createElement("div");
@@ -2075,11 +2081,12 @@ function openBuilder(node) {
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
   const videoModeChooser = document.createElement("div");
-  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;";
+  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
   const imageToVideoCard = makeImageModelCard("Image to Video", "i2v");
   const textToVideoCard = makeImageModelCard("Text to Video", "t2v");
   const referenceToVideoCard = makeImageModelCard("Reference to Video", "rtv");
-  videoModeChooser.append(imageToVideoCard, textToVideoCard, referenceToVideoCard);
+  const ingredientsToVideoCard = makeImageModelCard("Ingredients to Video", "ingredients");
+  videoModeChooser.append(imageToVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard);
   const i2vUnetPicker = makeSearchableLoraPicker("");
   const i2vVaePicker = makeSearchableLoraPicker("");
   const i2vClip1Picker = makeSearchableLoraPicker("");
@@ -2164,10 +2171,28 @@ function openBuilder(node) {
   ltxMsrReferenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   ltxMsrReferenceGrid.append(makeField("Reference strength", ltxMsrReferenceStrength), makeField("Background", ltxMsrBackgroundMode));
   ltxMsrRequiredPanel.append(ltxMsrRequiredNote, ltxMsrStrengthGrid, ltxMsrReferenceGrid);
+  const ltxIngredientsRequiredPanel = document.createElement("div");
+  ltxIngredientsRequiredPanel.style.cssText = ltxMsrRequiredPanel.style.cssText;
+  const ltxIngredientsRequiredNote = document.createElement("div");
+  ltxIngredientsRequiredNote.textContent = "Required for Ingredients to Video. This LoRA is always applied on pass 1; pass 2 is kept at 0 for the required LoRA.";
+  ltxIngredientsRequiredNote.style.cssText = ltxMsrRequiredNote.style.cssText;
+  const ltxIngredientsLoraPicker = makeSearchableLoraPicker(REQUIRED_LTX_INGREDIENTS_LORA);
+  const ltxIngredientsFirstPassStrength = makeInput("1", "number");
+  ltxIngredientsFirstPassStrength.step = "0.01";
+  const ltxIngredientsStrengthGrid = document.createElement("div");
+  ltxIngredientsStrengthGrid.style.cssText = "display:grid;grid-template-columns:1fr 84px;gap:8px;";
+  ltxIngredientsStrengthGrid.append(
+    makeField("Required Ingredients LoRA", ltxIngredientsLoraPicker.wrapper),
+    makeField("Pass 1", ltxIngredientsFirstPassStrength)
+  );
+  ltxIngredientsRequiredPanel.append(ltxIngredientsRequiredNote, ltxIngredientsStrengthGrid);
   i2vLoraPanel.append(i2vLoraHintRow, makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   i2vSettingsGrid.append(makeField("FPS", i2vFpsInput), makeField("Seed", i2vSeedInput), makeField("Width", i2vWidthInput), makeField("Height", i2vHeightInput));
+  const ltxIngredientsResolutionWarning = document.createElement("div");
+  ltxIngredientsResolutionWarning.textContent = "Ingredients LoRA was trained at 768x448. Other resolutions, including portrait, can break quality or composition. Final output is 2x after the second pass.";
+  ltxIngredientsResolutionWarning.style.cssText = "display:none;border:1px solid #991b1b;border-radius:7px;background:#450a0a;color:#fecaca;padding:8px 10px;font-size:11px;line-height:1.35;font-weight:800;";
   const i2vSrtSplitGrid = document.createElement("div");
   i2vSrtSplitGrid.style.cssText = i2vSettingsGrid.style.cssText;
   i2vSrtSplitGrid.append(makeField("Cool Down Frames", i2vTailLossFramesInput), makeField("Warm Up Frames", i2vPreFramesInput));
@@ -2552,6 +2577,7 @@ function openBuilder(node) {
           makeField("Vision mmproj", i2vMmprojSelect),
         ]),
         ltxMsrRequiredPanel,
+        ltxIngredientsRequiredPanel,
         i2vUseLora.wrapper,
         i2vLoraPanel,
         createSceneVideoButton,
@@ -2565,6 +2591,7 @@ function openBuilder(node) {
         makeField("Video trigger phrase", videoTriggerInput),
         makeSettingsSection("Render basics", [
           i2vSettingsGrid,
+          ltxIngredientsResolutionWarning,
         ]),
         makeSettingsSection("Advanced Settings", [
           i2vSrtSplitAdvancedNote,
@@ -2586,6 +2613,7 @@ function openBuilder(node) {
         i2vReferenceNote,
         useT2VVisionReference.wrapper,
         t2vReferenceNote,
+        t2vLocationNote,
         t2vRefImagePanel,
         createI2VButton,
         makeField("Video prompt", i2vPrompt),
@@ -2891,6 +2919,11 @@ function openBuilder(node) {
       msr_second_pass_strength: 0,
       msr_reference_strength: "auto - based on subject count",
       msr_background_mode: "neutral placeholder (WIP/testing)",
+      ingredients_lora_name: REQUIRED_LTX_INGREDIENTS_LORA,
+      ingredients_first_pass_strength: 1,
+      ingredients_second_pass_strength: 0,
+      ingredients_width: DEFAULT_LTX_INGREDIENTS_WIDTH,
+      ingredients_height: DEFAULT_LTX_INGREDIENTS_HEIGHT,
       use_loras: false,
       lora_count: 0,
       loras: [],
@@ -3892,6 +3925,11 @@ function openBuilder(node) {
       seed: Number(source.seed || 69),
       tail_loss_frames: Math.max(0, Number(source.tail_loss_frames ?? 25)),
       pre_frames: Math.max(0, Number(source.pre_frames ?? 50)),
+      ingredients_lora_name: source.ingredients_lora_name || REQUIRED_LTX_INGREDIENTS_LORA,
+      ingredients_first_pass_strength: Number(source.ingredients_first_pass_strength ?? 1),
+      ingredients_second_pass_strength: 0,
+      ingredients_width: Number(source.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
+      ingredients_height: Number(source.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
@@ -4024,7 +4062,7 @@ function openBuilder(node) {
 
   function videoVisionReferenceEnabled(segment) {
     const mode = currentVideoMode();
-    if (mode === "rtv") return false;
+    if (mode === "rtv" || mode === "ingredients") return false;
     return mode === "t2v" ? Boolean(segment?.use_t2v_vision_reference) : segment?.use_i2v_vision_reference !== false;
   }
 
@@ -4687,6 +4725,19 @@ function openBuilder(node) {
       subject_scene_map: {},
       locations: [],
       scene_map: {},
+      scene_trigger_map: {},
+      cleared: false,
+      trigger_position: "start",
+      subject_trigger_position: "start",
+      location_trigger_position: "start",
+      ingredients_sheets: [],
+      ingredients_scene_map: {},
+      ingredients_auto_map_sources: {
+        director_notes: true,
+        concept_prompt: true,
+        scene_notes: true,
+        lyric_text: true,
+      },
     };
   }
 
@@ -4841,13 +4892,46 @@ function openBuilder(node) {
         path: String(image.path || sourceItem.image_path || sourceItem.imagePath || sourceItem.path || ""),
         data: String(image.data || sourceItem.image_data || sourceItem.imageData || sourceItem.data || ""),
         name: String(image.name || sourceItem.image_name || sourceItem.imageName || (hasTopLevelImage ? sourceItem.name : "") || ""),
+        preview_url: String(image.preview_url || sourceItem.preview_url || ""),
       };
+    };
+    const refKeyForDedupe = (item = {}) => {
+      const name = String(item.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      return name || String(item.id || "").trim().toLowerCase();
+    };
+    const dedupeRefsByName = (items = []) => {
+      const byKey = new Map();
+      for (const item of items) {
+        const key = refKeyForDedupe(item);
+        if (!key) continue;
+        const existing = byKey.get(key) || {};
+        byKey.set(key, {
+          ...existing,
+          ...item,
+          id: existing.id || item.id,
+          name: existing.name || item.name,
+          description: existing.description || item.description,
+          trigger_phrase: existing.trigger_phrase || item.trigger_phrase,
+          trigger_position: existing.trigger_position || item.trigger_position,
+          image: {
+            ...(item.image || {}),
+            ...(existing.image || {}),
+          },
+        });
+      }
+      return Array.from(byKey.values());
     };
     normalized.use_subject_reference = Boolean(source.use_subject_reference);
     normalized.use_location_references = Boolean(source.use_location_references);
     normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
-    const rawSubjects = Array.isArray(source.subjects) ? source.subjects : [];
-    normalized.subject_count = Math.max(1, Math.min(12, Math.max(Number(source.subject_count || 0), rawSubjects.length || 0, 1)));
+    normalized.cleared = Boolean(source.cleared || source.clear_all || source.empty);
+    normalized.trigger_position = String(source.trigger_position || source.triggerPosition || source.trigger_placement || "start") === "end" ? "end" : "start";
+    normalized.subject_trigger_position = String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
+    normalized.location_trigger_position = String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
+    const rawSubjects = dedupeRefsByName(Array.isArray(source.subjects) ? source.subjects : []);
+    normalized.subject_count = normalized.cleared
+      ? 0
+      : Math.max(1, Math.min(12, rawSubjects.length || Number(source.subject_count || 0) || 1));
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
     normalized.subject = {
       description: String(subject.description || ""),
@@ -4860,6 +4944,8 @@ function openBuilder(node) {
           id: String(item.id || `subj_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
           name: String(item.name || `Character ${index + 1}`),
           description: String(item.description || ""),
+          trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
+          trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
           image: normalizeRefImage(item),
         };
       }) : [];
@@ -4868,18 +4954,22 @@ function openBuilder(node) {
         id: "subject_1",
         name: "Character 1",
         description: normalized.subject.description,
+        trigger_phrase: String(subject.trigger_phrase || subject.trigger || subject.Trigger || ""),
+        trigger_position: String(subject.trigger_position || subject.triggerPosition || subject.trigger_placement || "start") === "end" ? "end" : "start",
         image: { ...normalized.subject.image },
       });
     }
-    while (normalized.subjects.length < normalized.subject_count) {
+    while (!normalized.cleared && normalized.subjects.length < normalized.subject_count) {
       normalized.subjects.push({
         id: `subj_${Date.now()}_${normalized.subjects.length}_${Math.floor(Math.random() * 10000)}`,
         name: `Character ${normalized.subjects.length + 1}`,
         description: "",
+        trigger_phrase: "",
+        trigger_position: "start",
         image: { path: "", data: "", name: "" },
       });
     }
-    normalized.subjects = normalized.subjects.slice(0, normalized.subject_count);
+    normalized.subjects = normalized.cleared ? [] : normalized.subjects.slice(0, normalized.subject_count);
     if (normalized.subjects.length) {
       const firstSubject = normalized.subjects[0];
       normalized.subject = {
@@ -4895,18 +4985,135 @@ function openBuilder(node) {
         normalized.subject_scene_map[sceneId] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
       }
     }
-    normalized.locations = Array.isArray(source.locations) ? source.locations
+    normalized.locations = normalized.cleared ? [] : dedupeRefsByName(Array.isArray(source.locations) ? source.locations : [])
       .filter((item) => item && typeof item === "object")
       .map((item, index) => {
         return {
           id: String(item.id || `loc_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
           name: String(item.name || `Location ${index + 1}`),
           description: String(item.description || ""),
+          trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || item.phrase || ""),
+          trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
           image: normalizeRefImage(item),
         };
-      }) : [];
+      });
     normalized.scene_map = source.scene_map && typeof source.scene_map === "object" ? { ...source.scene_map } : {};
+    normalized.scene_trigger_map = source.scene_trigger_map && typeof source.scene_trigger_map === "object" ? { ...source.scene_trigger_map } : {};
+    normalized.ingredients_sheets = Array.isArray(source.ingredients_sheets) ? source.ingredients_sheets
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: String(item.id || `ingredients_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+        name: String(item.name || `Ingredients Sheet ${index + 1}`),
+        description: String(item.description || item.notes || ""),
+        image: normalizeRefImage(item),
+      })) : [];
+    normalized.ingredients_scene_map = {};
+    if (source.ingredients_scene_map && typeof source.ingredients_scene_map === "object") {
+      for (const [sceneId, value] of Object.entries(source.ingredients_scene_map)) {
+        const sheetId = String(value || "").trim();
+        if (sheetId) normalized.ingredients_scene_map[sceneId] = sheetId;
+      }
+    }
+    const defaultSources = defaultFluxReferenceBuilder().ingredients_auto_map_sources;
+    const rawSources = source.ingredients_auto_map_sources && typeof source.ingredients_auto_map_sources === "object"
+      ? source.ingredients_auto_map_sources
+      : {};
+    normalized.ingredients_auto_map_sources = {
+      director_notes: rawSources.director_notes !== false,
+      concept_prompt: rawSources.concept_prompt !== false,
+      scene_notes: rawSources.scene_notes !== false,
+      lyric_text: rawSources.lyric_text !== false,
+    };
+    for (const key of Object.keys(defaultSources)) {
+      if (!(key in normalized.ingredients_auto_map_sources)) normalized.ingredients_auto_map_sources[key] = defaultSources[key];
+    }
     return normalized;
+  }
+
+  function normalizedIngredientsMatchText(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function ingredientsSheetForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    if (!segment?.id) return null;
+    const sheetId = String(refs.ingredients_scene_map?.[segment.id] || "").trim();
+    if (!sheetId) return null;
+    return (refs.ingredients_sheets || []).find((sheet) => String(sheet.id || "") === sheetId) || null;
+  }
+
+  function ingredientsAutoMapTextForSegment(segment, sources = {}) {
+    const parts = [];
+    if (sources.director_notes !== false) parts.push(segment?.timeline_note || "");
+    if (sources.concept_prompt !== false) parts.push(sceneConceptPromptText(segment));
+    if (sources.scene_notes !== false) parts.push(segment?.notes || "", segment?.i2v_notes || "");
+    if (sources.lyric_text !== false) parts.push(segment?.lyric_text || "");
+    return normalizedIngredientsMatchText(parts.join(" "));
+  }
+
+  function autoMapIngredientsSheets(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder), sources = refs.ingredients_auto_map_sources) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const sheets = (normalizedRefs.ingredients_sheets || [])
+      .map((sheet) => ({
+        ...sheet,
+        matchName: normalizedIngredientsMatchText(sheet.name),
+      }))
+      .filter((sheet) => sheet.matchName)
+      .sort((a, b) => b.matchName.length - a.matchName.length);
+    let mapped = 0;
+    for (const segment of allEditableSegments()) {
+      const haystack = ingredientsAutoMapTextForSegment(segment, sources);
+      if (!haystack) continue;
+      const match = sheets.find((sheet) => haystack.includes(sheet.matchName));
+      if (!match) continue;
+      normalizedRefs.ingredients_scene_map[segment.id] = match.id;
+      mapped += 1;
+    }
+    normalizedRefs.ingredients_auto_map_sources = {
+      director_notes: sources?.director_notes !== false,
+      concept_prompt: sources?.concept_prompt !== false,
+      scene_notes: sources?.scene_notes !== false,
+      lyric_text: sources?.lyric_text !== false,
+    };
+    return { refs: normalizedRefs, mapped };
+  }
+
+  function applyIngredientsSheetToSegment(segment, sheet) {
+    if (!segment || !sheet) return false;
+    const image = sheet.image || {};
+    const path = String(image.path || "").trim();
+    const data = String(image.data || "").trim();
+    if (!path && !data) return false;
+    if (path) {
+      segment.custom_image_path = path;
+      segment.custom_image_data = "";
+      if (typeof addSceneImageHistoryPath === "function") addSceneImageHistoryPath(segment, path);
+    } else {
+      segment.custom_image_path = "";
+      segment.custom_image_data = data;
+    }
+    segment.custom_image_name = image.name || sheet.name || "ingredients_reference.png";
+    segment.approved_image_path = "";
+    segment.image = null;
+    segment.preview_mode = "image";
+    return true;
+  }
+
+  function applyIngredientsReferenceMappings(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    let applied = 0;
+    for (const segment of allEditableSegments()) {
+      if (applyIngredientsSheetToSegment(segment, ingredientsSheetForSegment(segment, normalizedRefs))) applied += 1;
+    }
+    return applied;
+  }
+
+  function applyIngredientsSheetForSceneIfMapped(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    return applyIngredientsSheetToSegment(segment, ingredientsSheetForSegment(segment, refs));
   }
 
   async function syncPromptJsonFromSegments(reason = "") {
@@ -6243,9 +6450,14 @@ function openBuilder(node) {
     i2vClip2Picker.input.value = settings.clip_name2 || "";
     i2vUpscalePicker.input.value = settings.upscale_model_name || "";
     i2vAudioVaePicker.input.value = settings.audio_vae_name || "";
+    const isIngredientsMode = currentVideoMode() === "ingredients";
+    const regularWidth = Number(settings.width || 1920);
+    const regularHeight = Number(settings.height || 1080);
+    const repairedRegularWidth = (!isIngredientsMode && regularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && regularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT) ? 1920 : regularWidth;
+    const repairedRegularHeight = (!isIngredientsMode && regularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && regularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT) ? 1080 : regularHeight;
     i2vFpsInput.value = settings.fps || 24;
-    i2vWidthInput.value = settings.width || 1920;
-    i2vHeightInput.value = settings.height || 1080;
+    i2vWidthInput.value = isIngredientsMode ? Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH) : repairedRegularWidth;
+    i2vHeightInput.value = isIngredientsMode ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT) : repairedRegularHeight;
     i2vSeedInput.value = settings.seed || 69;
     i2vTailLossFramesInput.value = Math.max(0, Number(settings.tail_loss_frames ?? 25));
     i2vPreFramesInput.value = Math.max(0, Number(settings.pre_frames ?? 50));
@@ -6254,6 +6466,9 @@ function openBuilder(node) {
     ltxMsrSecondPassStrength.value = 0;
     ltxMsrReferenceStrength.value = settings.msr_reference_strength || "auto - based on subject count";
     ltxMsrBackgroundMode.value = settings.msr_background_mode || "neutral placeholder (WIP/testing)";
+    ltxIngredientsLoraPicker.input.value = settings.ingredients_lora_name || REQUIRED_LTX_INGREDIENTS_LORA;
+    ltxIngredientsFirstPassStrength.value = Number(settings.ingredients_first_pass_strength ?? 1);
+    ltxIngredientsResolutionWarning.style.display = isIngredientsMode ? "block" : "none";
     i2vUseLora.input.checked = Boolean(settings.use_loras);
     i2vLoraCount.value = Number(settings.lora_count || 0);
     i2vLoraSlots.forEach((slot, index) => {
@@ -6269,6 +6484,16 @@ function openBuilder(node) {
   function saveI2VVideoSettingsFromPanel() {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
     const segment = activeSegment();
+    const previous = activeI2VVideoSettings() || {};
+    const isIngredientsMode = currentVideoMode() === "ingredients";
+    const previousRegularWidth = Number(previous.width || 1920);
+    const previousRegularHeight = Number(previous.height || 1080);
+    const repairedPreviousWidth = previousRegularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && previousRegularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT ? 1920 : previousRegularWidth;
+    const repairedPreviousHeight = previousRegularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && previousRegularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT ? 1080 : previousRegularHeight;
+    const regularWidth = isIngredientsMode ? repairedPreviousWidth : Number(i2vWidthInput.value || 1920);
+    const regularHeight = isIngredientsMode ? repairedPreviousHeight : Number(i2vHeightInput.value || 1080);
+    const ingredientsWidth = isIngredientsMode ? Number(i2vWidthInput.value || DEFAULT_LTX_INGREDIENTS_WIDTH) : Number(previous.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH);
+    const ingredientsHeight = isIngredientsMode ? Number(i2vHeightInput.value || DEFAULT_LTX_INGREDIENTS_HEIGHT) : Number(previous.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT);
     const settings = {
       unet_name: BAD_I2V_UNET_ALIASES.has(i2vUnetPicker.input.value) ? DEFAULT_I2V_UNET : i2vUnetPicker.input.value || "",
       vae_name: i2vVaePicker.input.value || "",
@@ -6277,8 +6502,8 @@ function openBuilder(node) {
       upscale_model_name: i2vUpscalePicker.input.value || "",
       audio_vae_name: i2vAudioVaePicker.input.value || "",
       fps: Number(i2vFpsInput.value || 24),
-      width: Number(i2vWidthInput.value || 1920),
-      height: Number(i2vHeightInput.value || 1080),
+      width: regularWidth,
+      height: regularHeight,
       seed: Number(i2vSeedInput.value || 69),
       tail_loss_frames: Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
       pre_frames: Math.max(0, Number(i2vPreFramesInput.value || 0)),
@@ -6288,6 +6513,11 @@ function openBuilder(node) {
       msr_second_pass_strength: 0,
       msr_reference_strength: ltxMsrReferenceStrength.value || "auto - based on subject count",
       msr_background_mode: ltxMsrBackgroundMode.value || "neutral placeholder (WIP/testing)",
+      ingredients_lora_name: ltxIngredientsLoraPicker.input.value || REQUIRED_LTX_INGREDIENTS_LORA,
+      ingredients_first_pass_strength: Number(ltxIngredientsFirstPassStrength.value || 1),
+      ingredients_second_pass_strength: 0,
+      ingredients_width: ingredientsWidth,
+      ingredients_height: ingredientsHeight,
       use_loras: Boolean(i2vUseLora.input.checked),
       lora_count: count,
       loras: i2vLoraSlots.map((slot) => ({
@@ -6314,13 +6544,14 @@ function openBuilder(node) {
   function currentVideoMode() {
     if (state.videoModelMode === "t2v") return "t2v";
     if (state.videoModelMode === "rtv") return "rtv";
+    if (state.videoModelMode === "ingredients") return "ingredients";
     return "i2v";
   }
 
   function syncVideoModePanel() {
     const mode = currentVideoMode();
     state.videoModelMode = mode;
-    for (const card of [imageToVideoCard, textToVideoCard, referenceToVideoCard]) {
+    for (const card of [imageToVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#71717a" : "#3f3f46";
       card.style.background = active ? "#52525b" : "#27272a";
@@ -6329,21 +6560,26 @@ function openBuilder(node) {
     }
     const isT2V = mode === "t2v";
     const isRTV = mode === "rtv";
-    const isT2VLike = isT2V || isRTV;
+    const isIngredients = mode === "ingredients";
+    const isT2VLike = isT2V || isRTV || isIngredients;
     useI2VPromptEnhancementPass.input.checked = Boolean(state.useI2VPromptEnhancementPass);
     useI2VVisionReference.wrapper.style.display = isT2VLike ? "none" : "flex";
     i2vReferenceNote.style.display = isT2VLike ? "none" : "";
     useT2VVisionReference.wrapper.style.display = isT2V ? "flex" : "none";
     t2vReferenceNote.style.display = isT2V ? "" : "none";
+    t2vLocationNote.style.display = isT2V ? "" : "none";
     t2vRefImagePanel.style.display = isT2V && useT2VVisionReference.input.checked ? "flex" : "none";
     ltxMsrRequiredPanel.style.display = isRTV ? "flex" : "none";
-    createI2VButton.textContent = isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
+    ltxIngredientsRequiredPanel.style.display = isIngredients ? "flex" : "none";
+    createI2VButton.textContent = isIngredients ? "Gemma Ingredients Video" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
     i2vNotesInput.placeholder = isT2V
       ? "Extra text-to-video motion notes, camera movement, character movement..."
+      : isIngredients
+        ? "Extra ingredients-to-video motion notes, camera movement, subject actions..."
       : isRTV
         ? "Extra reference-to-video motion notes, camera movement, subject actions..."
       : "Extra video motion notes, camera movement, character movement...";
-    i2vPrompt.placeholder = isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+    i2vPrompt.placeholder = isIngredients ? "Ingredients-to-video prompt..." : isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
     updateI2VLoraVisibility();
   }
 
@@ -8235,7 +8471,7 @@ function openBuilder(node) {
       "VRGDG Gemma junk/debug output",
       `Saved: ${new Date().toISOString()}`,
       `Context: ${context.label || ""}`,
-      `Mode: ${currentVideoMode() === "t2v" ? "T2V" : "I2V"}`,
+      `Mode: ${videoModeDisplayLabel(currentVideoMode(), true)}`,
       `Scene: ${segment ? sceneDisplayName(segment, info.index) : ""}`,
       `Error: ${String(error?.message || error || "")}`,
       "",
@@ -8838,6 +9074,26 @@ function openBuilder(node) {
     return String(segment?.lyric_singers || "").trim();
   }
 
+  function segmentMappedSubjectText(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    if (!segment) return "";
+    const indexKey = String(segmentIndexInfo(segment).index + 1);
+    const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
+      ? refs.subject_scene_map[segment.id]
+      : (Array.isArray(refs.subject_scene_map?.[indexKey]) ? refs.subject_scene_map[indexKey] : []);
+    const subjects = subjectIds
+      .map((id) => refs.subjects.find((item) => item.id === id))
+      .filter(Boolean)
+      .map((subject) => {
+        const name = String(subject.name || "").trim();
+        const description = String(subject.description || "").trim();
+        return name && description ? `${name}: ${description}` : name || description;
+      })
+      .filter(Boolean);
+    if (subjects.length) return subjects.join("\n");
+    return segmentSingerSubjectText(segment);
+  }
+
   function segmentMappedLocationText(segment) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (!segment) return "";
@@ -8849,6 +9105,69 @@ function openBuilder(node) {
     const description = String(location.description || "").trim();
     if (name && description) return `${name}: ${description}`;
     return name || description;
+  }
+
+  function mappedTriggerPartsForSegment(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const parts = { start: [], end: [] };
+    if (!segment) return parts;
+    const positionFor = (kind) => {
+      if (kind === "subject") return refs.subject_trigger_position === "end" ? "end" : "start";
+      if (kind === "location") return refs.location_trigger_position === "end" ? "end" : "start";
+      return refs.trigger_position === "end" ? "end" : "start";
+    };
+    const add = (trigger, kind = "location") => {
+      const text = String(trigger || "").trim();
+      if (!text) return;
+      const key = positionFor(kind);
+      if (!parts[key].some((item) => item.toLowerCase() === text.toLowerCase())) parts[key].push(text);
+    };
+    const indexKey = String(segmentIndexInfo(segment).index + 1);
+    const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
+      ? refs.subject_scene_map[segment.id]
+      : (Array.isArray(refs.subject_scene_map?.[indexKey]) ? refs.subject_scene_map[indexKey] : []);
+    subjectIds
+      .map((id) => refs.subjects.find((subject) => subject.id === id))
+      .filter(Boolean)
+      .forEach((subject) => add(subject.trigger_phrase, "subject"));
+    const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[indexKey] || "";
+    const location = refs.locations.find((item) => item.id === locId);
+    if (location) add(location.trigger_phrase, "location");
+    return parts;
+  }
+
+  function applyMappedTriggerPhrases(prompt, segment) {
+    let text = cleanGeneratedPromptText(prompt);
+    const parts = mappedTriggerPartsForSegment(segment);
+    const starts = parts.start.filter(Boolean);
+    const ends = parts.end.filter(Boolean);
+    const stripBoundaryTrigger = (value, trigger) => {
+      let current = String(value || "").trim();
+      const escaped = String(trigger || "").trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (!escaped) return current;
+      const leading = new RegExp(`^\\s*${escaped}\\s*(?:,\\s*)?`, "i");
+      const trailing = new RegExp(`(?:,\\s*)?${escaped}\\s*$`, "i");
+      let previous = "";
+      while (current && current !== previous) {
+        previous = current;
+        current = current.replace(leading, "").replace(trailing, "").trim();
+      }
+      return current;
+    };
+    [...starts, ...ends]
+      .sort((a, b) => b.length - a.length)
+      .forEach((trigger) => {
+        text = stripBoundaryTrigger(text, trigger);
+      });
+    if (starts.length) {
+      const prefix = starts.join(", ");
+      if (!text.toLowerCase().startsWith(prefix.toLowerCase())) text = text ? `${prefix}, ${text}` : prefix;
+    }
+    if (ends.length) {
+      const suffix = ends.join(", ");
+      if (!text.toLowerCase().endsWith(suffix.toLowerCase())) text = text ? `${text}, ${suffix}` : suffix;
+    }
+    return text;
   }
 
   function formatSubjectSegmentText(subjects = null) {
@@ -9498,6 +9817,62 @@ function openBuilder(node) {
 
     const lineList = document.createElement("div");
     lineList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:48vh;overflow:auto;padding-right:4px;";
+    let lyricIngredientsRefs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const ingredientsMappingPanel = document.createElement("div");
+    ingredientsMappingPanel.style.cssText = "display:none;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;gap:8px;flex-direction:column;";
+    const ingredientsMappingTitle = document.createElement("div");
+    ingredientsMappingTitle.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Ingredients Sheet Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Optional scene image assignment for Ingredients to Video.</div>`;
+    const ingredientsMappingList = document.createElement("div");
+    ingredientsMappingList.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:7px;max-height:190px;overflow:auto;";
+    ingredientsMappingPanel.append(ingredientsMappingTitle, ingredientsMappingList);
+
+    const collectLyricIngredientsMappings = () => {
+      lyricIngredientsRefs = normalizeFluxReferenceBuilder(lyricIngredientsRefs);
+      lyricIngredientsRefs.ingredients_scene_map = {};
+      for (const select of ingredientsMappingList.querySelectorAll("[data-lyric-ingredients-map='1']")) {
+        const sceneId = select.dataset.sceneId || "";
+        const sheetId = String(select.value || "").trim();
+        if (sceneId && sheetId) lyricIngredientsRefs.ingredients_scene_map[sceneId] = sheetId;
+      }
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder({
+        ...state.fluxReferenceBuilder,
+        ingredients_sheets: lyricIngredientsRefs.ingredients_sheets,
+        ingredients_scene_map: lyricIngredientsRefs.ingredients_scene_map,
+        ingredients_auto_map_sources: lyricIngredientsRefs.ingredients_auto_map_sources,
+      });
+    };
+
+    const renderLyricIngredientsMappings = () => {
+      lyricIngredientsRefs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const sheets = lyricIngredientsRefs.ingredients_sheets || [];
+      const shouldShow = currentVideoMode() === "ingredients" || sheets.length > 0;
+      ingredientsMappingPanel.style.display = shouldShow ? "flex" : "none";
+      ingredientsMappingList.innerHTML = "";
+      if (!shouldShow) return;
+      if (!sheets.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "grid-column:1/-1;border:1px dashed #334155;border-radius:7px;padding:12px;text-align:center;color:#94a3b8;font-size:12px;";
+        empty.textContent = "Add Ingredients sheets in Reference Builder first.";
+        ingredientsMappingList.append(empty);
+        return;
+      }
+      allEditableSegments().forEach((segment, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr);gap:5px;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:7px;";
+        const label = document.createElement("div");
+        label.style.cssText = "font-size:11px;font-weight:800;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        label.textContent = sceneDisplayName(segment, index);
+        const select = document.createElement("select");
+        select.dataset.lyricIngredientsMap = "1";
+        select.dataset.sceneId = segment.id || "";
+        select.style.cssText = "width:100%;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        select.innerHTML = `<option value="">No Ingredients sheet</option>${sheets.map((sheet) => `<option value="${escapeHtml(sheet.id)}">${escapeHtml(sheet.name || "Ingredients Sheet")}</option>`).join("")}`;
+        select.value = lyricIngredientsRefs.ingredients_scene_map?.[segment.id] || "";
+        select.onchange = () => collectLyricIngredientsMappings();
+        row.append(label, select);
+        ingredientsMappingList.append(row);
+      });
+    };
 
     const subjectChoices = () => referenceBuilderSubjectChoices();
     const collectLines = () => {
@@ -9631,10 +10006,11 @@ function openBuilder(node) {
     const apply = makeButton("Apply To Timeline", "primary");
     const cancel = makeButton("Close");
     actions.append(cancel, save, apply);
-    box.append(header, note, subjectWarning, audioPanel, makeField("Lyrics source", sourceLyrics), sourceActions, lineList, actions);
+    box.append(header, note, subjectWarning, audioPanel, makeField("Lyrics source", sourceLyrics), sourceActions, lineList, ingredientsMappingPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     renderLines(mapper.lines);
+    renderLyricIngredientsMappings();
 
     const saveMapper = async () => {
       pushHistory();
@@ -9642,6 +10018,8 @@ function openBuilder(node) {
         source_text: sourceLyrics.value || "",
         lines: collectLines(),
       });
+      collectLyricIngredientsMappings();
+      if (currentVideoMode() === "ingredients") applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
       await saveSession({ quiet: true, throwOnError: true });
       toast(`Saved ${state.lyricMapper.lines.length} mapped lyric line${state.lyricMapper.lines.length === 1 ? "" : "s"}.`);
     };
@@ -11194,7 +11572,7 @@ function openBuilder(node) {
   }
 
   function openFluxReferenceBuilderModal() {
-    const referenceBuilderTargetLabel = currentVideoMode() === "rtv" ? "LTX Reference to Video" : state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein";
+    const referenceBuilderTargetLabel = currentVideoMode() === "rtv" ? "LTX Reference to Video" : currentVideoMode() === "ingredients" ? "LTX Ingredients to Video" : "Gemma scene text mapping";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     const backdrop = document.createElement("div");
@@ -11204,7 +11582,7 @@ function openBuilder(node) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Image Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Use character references plus per-scene location references as automatic ${escapeHtml(referenceBuilderTargetLabel)} reference images.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -11376,7 +11754,7 @@ function openBuilder(node) {
     mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes);
     mappingHeader.append(mappingTitle, mappingActions);
     const mappingNote = document.createElement("div");
-    mappingNote.textContent = `Choose which location image ${referenceBuilderTargetLabel} should receive for each scene. Use Unassigned for no location reference.`;
+    mappingNote.textContent = "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.";
     mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     const mappingList = document.createElement("div");
     mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
@@ -13003,19 +13381,1046 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     renderAll();
   }
 
+  function openIngredientsReferenceBuilderModal() {
+    let refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1280px,calc(100vw - 36px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Ingredients Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Upload complete Ingredients ref sheets, map them to scenes, then Ingredients to Video will use the mapped sheet as that scene image.</div>`;
+    const close = makeButton("Close");
+    header.append(title, close);
+
+    const content = document.createElement("div");
+    content.style.cssText = "display:grid;grid-template-columns:minmax(280px,.9fr) minmax(360px,1.1fr);gap:12px;align-items:start;";
+
+    const sheetPanel = document.createElement("div");
+    sheetPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
+    const sheetHeader = document.createElement("div");
+    sheetHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+    sheetHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Ingredients Sheets</div>`;
+    const addSheet = makeButton("Add Sheet", "primary");
+    sheetHeader.append(addSheet);
+    const sheetList = document.createElement("div");
+    sheetList.style.cssText = "display:flex;flex-direction:column;gap:9px;";
+    sheetPanel.append(sheetHeader, sheetList);
+
+    const mappingPanel = document.createElement("div");
+    mappingPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
+    const mapHeader = document.createElement("div");
+    mapHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Scene Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Auto-map checks whether a sheet name appears in the selected scene text sources.</div>`;
+    const autoBox = document.createElement("div");
+    autoBox.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:9px;";
+    const sourceLabels = {
+      director_notes: "Director Notes",
+      concept_prompt: "Concept Prompt",
+      scene_notes: "Scene Notes",
+      lyric_text: "Lyric Text",
+    };
+    const sourceInputs = {};
+    for (const [key, label] of Object.entries(sourceLabels)) {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = "display:flex;align-items:center;gap:7px;font-size:12px;color:#dbeafe;";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = refs.ingredients_auto_map_sources?.[key] !== false;
+      sourceInputs[key] = input;
+      wrap.append(input, document.createTextNode(label));
+      autoBox.append(wrap);
+    }
+    const mapActions = document.createElement("div");
+    mapActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const autoMap = makeButton("Auto Map By Sheet Name", "primary");
+    const clearMappings = makeButton("Clear Mappings");
+    mapActions.append(autoMap, clearMappings);
+    const sceneList = document.createElement("div");
+    sceneList.style.cssText = "display:flex;flex-direction:column;gap:7px;max-height:58vh;overflow:auto;padding-right:4px;";
+    mappingPanel.append(mapHeader, autoBox, mapActions, sceneList);
+    content.append(sheetPanel, mappingPanel);
+
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Save And Apply", "primary");
+    footer.append(cancel, save);
+    box.append(header, content, footer);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const normalizeLocalRefs = () => {
+      refs.ingredients_auto_map_sources = Object.fromEntries(Object.entries(sourceInputs).map(([key, input]) => [key, input.checked]));
+      refs = normalizeFluxReferenceBuilder(refs);
+      return refs;
+    };
+
+    const syncMappingInputs = () => {
+      for (const select of sceneList.querySelectorAll("[data-ingredients-scene-map='1']")) {
+        const sceneId = select.dataset.sceneId || "";
+        select.value = refs.ingredients_scene_map?.[sceneId] || "";
+      }
+    };
+
+    const setSheetImageFromFile = (sheet, file) => {
+      if (!sheet || !file) return;
+      const previewUrl = URL.createObjectURL(file);
+      sheet.image = {
+        path: "",
+        data: sheet.image?.data || "",
+        name: file.name || `${sheet.name || "ingredients"}_sheet.png`,
+        preview_url: previewUrl,
+      };
+      renderSheets();
+      syncMappingInputs();
+      const reader = new FileReader();
+      reader.onload = () => {
+        sheet.image = {
+          path: "",
+          data: String(reader.result || ""),
+          name: file.name || `${sheet.name || "ingredients"}_sheet.png`,
+          preview_url: previewUrl,
+        };
+        renderSheets();
+        syncMappingInputs();
+        toast(`Loaded Ingredients sheet image:\n${file.name || "uploaded image"}`);
+      };
+      reader.onerror = () => toast("Failed to read Ingredients sheet image.", true);
+      reader.readAsDataURL(file);
+    };
+
+    const setSheetImageFromText = (sheet, text) => {
+      const value = String(text || "").trim();
+      if (!sheet || !value) return;
+      if (/^data:image\//i.test(value)) {
+        sheet.image = { path: "", data: value, name: sheet.image?.name || `${sheet.name || "ingredients"}_sheet.png`, preview_url: "" };
+      } else {
+        sheet.image = { path: value, data: "", name: sheet.image?.name || value.split(/[\\/]/).pop() || `${sheet.name || "ingredients"}_sheet.png`, preview_url: "" };
+      }
+      renderSheets();
+      syncMappingInputs();
+    };
+
+    const collectMappingsFromDom = () => {
+      refs.ingredients_scene_map = {};
+      for (const select of sceneList.querySelectorAll("[data-ingredients-scene-map='1']")) {
+        const sceneId = select.dataset.sceneId || "";
+        const sheetId = String(select.value || "").trim();
+        if (sceneId && sheetId) refs.ingredients_scene_map[sceneId] = sheetId;
+      }
+      normalizeLocalRefs();
+    };
+
+    function renderSheets() {
+      refs = normalizeFluxReferenceBuilder(refs);
+      sheetList.innerHTML = "";
+      if (!refs.ingredients_sheets.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:14px;text-align:center;color:#94a3b8;font-size:12px;";
+        empty.textContent = "No Ingredients sheets yet.";
+        sheetList.append(empty);
+        return;
+      }
+      refs.ingredients_sheets.forEach((sheet, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #1f2937;border-radius:7px;background:#020617;padding:9px;display:flex;flex-direction:column;gap:8px;";
+        row.dataset.sheetId = sheet.id;
+        const image = sheet.image || {};
+        const imageLoaded = Boolean(image.preview_url || image.data || image.path);
+        const previewSrc = image.preview_url || image.data || (image.path ? makeEditorImageUrl(image.path) : "");
+        const top = document.createElement("div");
+        top.style.cssText = "display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;";
+        const thumb = document.createElement("div");
+        thumb.style.cssText = `width:62px;height:46px;border:1px solid ${imageLoaded ? "#155e75" : "#334155"};border-radius:6px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#64748b;font-size:10px;`;
+        if (imageLoaded) {
+          const thumbImg = document.createElement("img");
+          thumbImg.src = previewSrc;
+          thumbImg.alt = sheet.name || "Ingredients sheet";
+          thumbImg.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+          thumbImg.onerror = () => {
+            thumb.textContent = "Loaded";
+            thumb.style.color = "#67e8f9";
+          };
+          thumb.append(thumbImg);
+        } else {
+          thumb.textContent = "No image";
+        }
+        const name = document.createElement("input");
+        name.value = sheet.name || `Ingredients Sheet ${index + 1}`;
+        name.placeholder = "Sheet name, used for auto-map";
+        name.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        name.oninput = () => { sheet.name = name.value; renderScenes(); };
+        const remove = makeButton("Remove");
+        remove.onclick = () => {
+          refs.ingredients_sheets = refs.ingredients_sheets.filter((item) => item.id !== sheet.id);
+          for (const [sceneId, sheetId] of Object.entries(refs.ingredients_scene_map || {})) {
+            if (sheetId === sheet.id) delete refs.ingredients_scene_map[sceneId];
+          }
+          renderAll();
+        };
+        top.append(thumb, name, remove);
+        const notes = document.createElement("textarea");
+        notes.value = sheet.description || "";
+        notes.placeholder = "Optional note for yourself";
+        notes.style.cssText = "width:100%;box-sizing:border-box;min-height:52px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        notes.oninput = () => { sheet.description = notes.value; };
+        const preview = document.createElement("div");
+        preview.style.cssText = "min-height:118px;border:1px dashed #334155;border-radius:7px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#94a3b8;font-size:12px;text-align:center;";
+        if (previewSrc) {
+          const img = document.createElement("img");
+          img.src = previewSrc;
+          img.alt = sheet.name || "Ingredients sheet";
+          img.style.cssText = "max-width:100%;max-height:220px;object-fit:contain;display:block;";
+          img.onerror = () => {
+            preview.innerHTML = "";
+            const error = document.createElement("div");
+            error.style.cssText = "padding:12px;color:#fca5a5;line-height:1.35;overflow-wrap:anywhere;";
+            error.textContent = `Image is loaded, but the preview could not render: ${image.name || image.path || "uploaded sheet"}`;
+            preview.append(error);
+          };
+          preview.append(img);
+        } else {
+          preview.textContent = "Drop image here, upload, or paste a path below.";
+        }
+        const status = document.createElement("div");
+        status.style.cssText = `font-size:11px;line-height:1.35;overflow-wrap:anywhere;color:${imageLoaded ? "#67e8f9" : "#94a3b8"};`;
+        status.textContent = imageLoaded
+          ? `Loaded: ${image.name || image.path || "uploaded image"}`
+          : "No sheet image loaded yet.";
+        preview.ondragover = (event) => {
+          event.preventDefault();
+          preview.style.borderColor = "#22d3ee";
+        };
+        preview.ondragleave = () => { preview.style.borderColor = "#334155"; };
+        preview.ondrop = (event) => {
+          event.preventDefault();
+          preview.style.borderColor = "#334155";
+          const file = imageFileFromDrop(event);
+          if (file) {
+            setSheetImageFromFile(sheet, file);
+            return;
+          }
+          const text = event.dataTransfer?.getData("text/plain") || event.dataTransfer?.getData("text/uri-list") || "";
+          setSheetImageFromText(sheet, text);
+        };
+        const controls = document.createElement("div");
+        controls.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;";
+        const upload = makeButton("Upload");
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "image/*";
+        fileInput.style.display = "none";
+        upload.onclick = () => fileInput.click();
+        fileInput.onchange = () => {
+          const file = fileInput.files?.[0];
+          if (file) setSheetImageFromFile(sheet, file);
+          fileInput.value = "";
+        };
+        const pathInput = document.createElement("input");
+        pathInput.value = image.path || "";
+        pathInput.placeholder = "Optional existing image path";
+        pathInput.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        pathInput.onchange = () => setSheetImageFromText(sheet, pathInput.value);
+        const clear = makeButton("Clear Image");
+        clear.onclick = () => {
+          sheet.image = { path: "", data: "", name: "" };
+          renderSheets();
+        };
+        controls.append(upload, pathInput, clear, fileInput);
+        row.append(top, notes, preview, status, controls);
+        sheetList.append(row);
+      });
+    }
+
+    function renderScenes() {
+      refs = normalizeFluxReferenceBuilder(refs);
+      sceneList.innerHTML = "";
+      const sheets = refs.ingredients_sheets || [];
+      const segments = allEditableSegments();
+      if (!segments.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:14px;text-align:center;color:#94a3b8;font-size:12px;";
+        empty.textContent = "No scenes are loaded yet.";
+        sceneList.append(empty);
+        return;
+      }
+      segments.forEach((segment, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,260px);gap:8px;align-items:center;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:8px;";
+        const label = document.createElement("div");
+        const lyric = String(segment.lyric_text || "").trim();
+        label.innerHTML = `<div style="font-size:12px;font-weight:800;color:#f8fafc;">${escapeHtml(sceneDisplayName(segment, index))}</div><div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(lyric || sceneConceptPromptText(segment) || segment.notes || "No notes yet")}</div>`;
+        const select = document.createElement("select");
+        select.dataset.ingredientsSceneMap = "1";
+        select.dataset.sceneId = segment.id || "";
+        select.style.cssText = "width:100%;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        select.innerHTML = `<option value="">No Ingredients sheet</option>${sheets.map((sheet) => `<option value="${escapeHtml(sheet.id)}">${escapeHtml(sheet.name || "Ingredients Sheet")}</option>`).join("")}`;
+        select.value = refs.ingredients_scene_map?.[segment.id] || "";
+        select.onchange = () => collectMappingsFromDom();
+        row.append(label, select);
+        sceneList.append(row);
+      });
+    }
+
+    function renderAll() {
+      renderSheets();
+      renderScenes();
+    }
+
+    addSheet.onclick = () => {
+      collectMappingsFromDom();
+      refs.ingredients_sheets.push({
+        id: `ingredients_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        name: `Ingredients Sheet ${refs.ingredients_sheets.length + 1}`,
+        description: "",
+        image: { path: "", data: "", name: "" },
+      });
+      renderAll();
+    };
+    autoMap.onclick = () => {
+      collectMappingsFromDom();
+      const sources = Object.fromEntries(Object.entries(sourceInputs).map(([key, input]) => [key, input.checked]));
+      const result = autoMapIngredientsSheets(refs, sources);
+      refs = result.refs;
+      renderScenes();
+      toast(`Auto-mapped ${result.mapped} scene${result.mapped === 1 ? "" : "s"} by Ingredients sheet name.`);
+    };
+    clearMappings.onclick = () => {
+      refs.ingredients_scene_map = {};
+      renderScenes();
+    };
+    cancel.onclick = () => backdrop.remove();
+    close.onclick = () => backdrop.remove();
+    save.onclick = async () => {
+      pushHistory();
+      collectMappingsFromDom();
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      const applied = applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
+      syncInspector();
+      syncPreview(activeSegment());
+      render();
+      await autoSaveSessionQuiet("ingredients reference builder");
+      toast(`Ingredients Reference Builder saved. Applied ${applied} mapped sheet${applied === 1 ? "" : "s"} to scenes.`);
+      backdrop.remove();
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    });
+    renderAll();
+  }
+
+  function openSceneTextMappingModal() {
+    state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const refs = state.fluxReferenceBuilder;
+    if (!Array.isArray(refs.subjects)) refs.subjects = [];
+    if (!Array.isArray(refs.locations)) refs.locations = [];
+    if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+    if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+    if (!refs.scene_trigger_map || typeof refs.scene_trigger_map !== "object") refs.scene_trigger_map = {};
+    refs.trigger_position = refs.trigger_position === "end" ? "end" : "start";
+    refs.subject_trigger_position = refs.subject_trigger_position === "end" ? "end" : refs.trigger_position;
+    refs.location_trigger_position = refs.location_trigger_position === "end" ? "end" : refs.trigger_position;
+
+    const newTextId = (prefix) => `${prefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1180px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const heading = document.createElement("div");
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Text Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Map character and location descriptions to scenes for Gemma. This tool does not send reference images.</div>`;
+    const close = makeButton("Close");
+    header.append(heading, close);
+
+    const note = document.createElement("div");
+    note.textContent = "Use this for Text to Video and text-only I2V prompting. Flux/Nano image references and LTX reference images are separate workflows.";
+    note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+    const triggerSettings = document.createElement("div");
+    triggerSettings.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:10px;align-items:end;";
+    const subjectTriggerPosition = makeSelect(["start", "end"], refs.subject_trigger_position || "start");
+    subjectTriggerPosition.options[0].textContent = "Add subject triggers to start";
+    subjectTriggerPosition.options[1].textContent = "Add subject triggers to end";
+    const locationTriggerPosition = makeSelect(["start", "end"], refs.location_trigger_position || "start");
+    locationTriggerPosition.options[0].textContent = "Add location triggers to start";
+    locationTriggerPosition.options[1].textContent = "Add location triggers to end";
+    const triggerHelp = document.createElement("div");
+    triggerHelp.textContent = "Subject placement applies to Character Text triggers. Location placement applies to Location Text triggers.";
+    triggerHelp.style.cssText = "grid-column:1 / -1;font-size:12px;color:#cbd5e1;line-height:1.45;";
+    subjectTriggerPosition.onchange = () => {
+      refs.subject_trigger_position = subjectTriggerPosition.value === "end" ? "end" : "start";
+      renderMappings();
+    };
+    locationTriggerPosition.onchange = () => {
+      refs.location_trigger_position = locationTriggerPosition.value === "end" ? "end" : "start";
+      renderMappings();
+    };
+    triggerSettings.append(
+      makeField("Subject trigger placement", subjectTriggerPosition),
+      makeField("Location trigger placement", locationTriggerPosition),
+      triggerHelp
+    );
+
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:minmax(260px,1fr) minmax(300px,1fr) minmax(360px,1.2fr);gap:12px;align-items:start;";
+    const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+    const titleStyle = "font-size:14px;font-weight:900;color:#cffafe;";
+
+    const subjectsCard = document.createElement("div");
+    subjectsCard.style.cssText = cardStyle;
+    const subjectsHeader = document.createElement("div");
+    subjectsHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+    const subjectsTitle = document.createElement("div");
+    subjectsTitle.textContent = "Character Text";
+    subjectsTitle.style.cssText = titleStyle;
+    const addSubject = makeButton("Add Character", "primary");
+    subjectsHeader.append(subjectsTitle, addSubject);
+    const subjectsList = document.createElement("div");
+    subjectsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
+    subjectsCard.append(subjectsHeader, subjectsList);
+
+    const locationsCard = document.createElement("div");
+    locationsCard.style.cssText = cardStyle;
+    const locationsHeader = document.createElement("div");
+    locationsHeader.style.cssText = subjectsHeader.style.cssText;
+    const locationsTitle = document.createElement("div");
+    locationsTitle.textContent = "Location Text";
+    locationsTitle.style.cssText = titleStyle;
+    const addLocation = makeButton("Add Location", "primary");
+    locationsHeader.append(locationsTitle, addLocation);
+    const locationTools = document.createElement("div");
+    locationTools.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
+    const extractLocations = makeButton("Extract", "primary");
+    const autoMapLocations = makeButton("Auto Map", "primary");
+    const importLocations = makeButton("Import List", "primary");
+    const exportLocations = makeButton("Export", "primary");
+    const removeAllLocations = makeButton("Remove");
+    locationTools.append(extractLocations, autoMapLocations, importLocations, exportLocations, removeAllLocations);
+    const locationsList = document.createElement("div");
+    locationsList.style.cssText = subjectsList.style.cssText;
+    locationsCard.append(locationsHeader, locationTools, locationsList);
+
+    const mappingCard = document.createElement("div");
+    mappingCard.style.cssText = cardStyle;
+    const mappingTitle = document.createElement("div");
+    mappingTitle.textContent = "Scene Mapping";
+    mappingTitle.style.cssText = titleStyle;
+    const mappingNote = document.createElement("div");
+    mappingNote.textContent = "Choose which character text and location text Gemma should receive for each scene. Imported location triggers appear in the Location Text trigger field.";
+    mappingNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const mappingList = document.createElement("div");
+    mappingList.style.cssText = subjectsList.style.cssText;
+    mappingCard.append(mappingTitle, mappingNote, mappingList);
+
+    grid.append(subjectsCard, locationsCard, mappingCard);
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;";
+    const clearAll = makeButton("Clear All");
+    const cancel = makeButton("Cancel");
+    const save = makeButton("Save Scene Text Mapping", "primary");
+    clearAll.style.cssText += "border-color:#7f1d1d;background:#3f1f1f;color:#fecaca;";
+    footer.append(clearAll, cancel, save);
+    box.append(header, note, triggerSettings, grid, footer);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const descriptionStyle = "min-height:76px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:9px;font-size:12px;line-height:1.45;";
+    let renderAll = () => {};
+    const locationKeyForTextMap = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const locationByNameForTextMap = (name) => refs.locations.find((location) => locationKeyForTextMap(location.name) === locationKeyForTextMap(name)) || null;
+    const createLocationForTextMap = (name, description = "", triggerPhrase = "", triggerPosition = "start") => {
+      refs.cleared = false;
+      const location = {
+        id: newTextId("loc"),
+        name: String(name || "Location").trim(),
+        description: String(description || "").trim(),
+        trigger_phrase: String(triggerPhrase || "").trim(),
+        trigger_position: triggerPosition === "end" ? "end" : "start",
+        image: { path: "", data: "", name: "" },
+      };
+      refs.locations.push(location);
+      return location;
+    };
+    const compactTextForTextMap = (value, limit) => {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      return text.length > limit ? `${text.slice(0, Math.max(0, limit - 3)).trim()}...` : text;
+    };
+    const parseLocationListForTextMap = (rawText) => {
+      const text = String(rawText || "").trim();
+      if (!text) return { locations: [], sceneMap: [] };
+      const explicitTriggerPosition = (item) => {
+        if (!item || typeof item !== "object") return "";
+        const raw = item.trigger_position ?? item.triggerPosition ?? item.trigger_placement;
+        return raw ? (String(raw) === "end" ? "end" : "start") : "";
+      };
+      const explicitRootPosition = (item, key) => {
+        if (!item || typeof item !== "object") return "";
+        const raw = item[key] ?? item[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())];
+        return raw ? (String(raw) === "end" ? "end" : "start") : "";
+      };
+      const normalizeLocation = (item) => {
+        if (!item || typeof item !== "object") return null;
+        const name = String(item.location || item.name || item.setting || "").trim();
+        const description = String(item.description || item.prompt || item.details || "").trim();
+        const trigger = String(item.Trigger || item.trigger || item.trigger_phrase || item.phrase || "").trim();
+        const triggerPosition = explicitTriggerPosition(item);
+        return name ? { name, description, trigger, triggerPosition } : null;
+      };
+      const normalizeSceneMap = (item, fallbackIndex = 0) => {
+        if (!item || typeof item !== "object") return null;
+        const sceneRaw = item.scene_number ?? item.sceneNumber ?? item.scene ?? item.segment ?? item.number ?? fallbackIndex + 1;
+        const sceneNumber = Number(String(sceneRaw).match(/\d+/)?.[0] || sceneRaw || fallbackIndex + 1);
+        const name = String(item.location || item.location_name || item.name || item.setting || "").trim();
+        const description = String(item.description || item.location_description || item.prompt || item.details || "").trim();
+        const trigger = String(item.Trigger || item.trigger || item.trigger_phrase || item.phrase || "").trim();
+        const triggerPosition = explicitTriggerPosition(item);
+        return name ? { sceneNumber, name, description, trigger, triggerPosition } : null;
+      };
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return {
+            locations: parsed.map(normalizeLocation).filter(Boolean),
+            sceneMap: parsed.map(normalizeSceneMap).filter(Boolean),
+            triggerPosition: parsed.map(explicitTriggerPosition).find(Boolean) || "",
+          };
+        }
+        if (parsed && typeof parsed === "object") {
+          const source = parsed.locations || parsed.location_list || parsed.scenes || parsed.scene_map || parsed;
+          const triggerPosition = explicitTriggerPosition(parsed);
+          const subjectTriggerPosition = explicitRootPosition(parsed, "subject_trigger_position");
+          const locationTriggerPosition = explicitRootPosition(parsed, "location_trigger_position");
+          if (Array.isArray(source)) {
+            return {
+              locations: source.map(normalizeLocation).filter(Boolean),
+              sceneMap: source.map(normalizeSceneMap).filter(Boolean),
+              triggerPosition: triggerPosition || source.map(explicitTriggerPosition).find(Boolean) || "",
+              subjectTriggerPosition,
+              locationTriggerPosition,
+            };
+          }
+          return {
+            locations: [],
+            sceneMap: Object.entries(source).filter(([key]) => !["trigger_position", "triggerPosition", "trigger_placement", "subject_trigger_position", "subjectTriggerPosition", "location_trigger_position", "locationTriggerPosition", "scene_trigger_position", "sceneTriggerPosition"].includes(key)).map(([key, value], index) => {
+              const objectValue = typeof value === "string" ? { Trigger: value } : value;
+              return normalizeSceneMap({ scene: key, ...(objectValue || {}) }, index);
+            }).filter(Boolean),
+            triggerPosition,
+            subjectTriggerPosition,
+            locationTriggerPosition,
+          };
+        }
+      } catch (_error) {
+        // Fall through to line formats.
+      }
+      const locations = text.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const clean = line.replace(/^[-*]\s*/, "");
+          const match = clean.match(/^(.+?)\s*(?:=>|=|:|\s+-\s+)\s*(.+)$/);
+          return match ? { name: match[1].trim(), description: match[2].trim(), trigger: "", triggerPosition: "" } : { name: clean, description: "", trigger: "", triggerPosition: "" };
+        })
+        .filter((item) => item.name);
+      return { locations, sceneMap: [] };
+    };
+    const upsertTextMapLocations = (locations = []) => {
+      let added = 0;
+      let updated = 0;
+      for (const item of locations) {
+        const name = String(item?.name || "").trim();
+        if (!name) continue;
+        const existing = locationByNameForTextMap(name);
+        if (existing) {
+          if (item.description && !String(existing.description || "").trim()) existing.description = String(item.description || "");
+          if (item.trigger && !String(existing.trigger_phrase || "").trim()) existing.trigger_phrase = String(item.trigger || "");
+          if (item.triggerPosition) refs.location_trigger_position = item.triggerPosition === "end" ? "end" : "start";
+          updated += 1;
+        } else {
+          createLocationForTextMap(name, item.description || "", item.trigger || "", item.triggerPosition || "start");
+          if (item.triggerPosition) refs.location_trigger_position = item.triggerPosition === "end" ? "end" : "start";
+          added += 1;
+        }
+      }
+      return { added, updated };
+    };
+    const applyTextMapSceneLocations = (sceneMap = []) => {
+      let mapped = 0;
+      const segments = allEditableSegments();
+      sceneMap.forEach((item, index) => {
+        const locationName = String(item?.name || "").trim();
+        const trigger = String(item?.trigger || "").trim();
+        if (!locationName && !trigger) return;
+        let location = locationByNameForTextMap(locationName);
+        if (!location && locationName) location = createLocationForTextMap(locationName, item.description || "", item.trigger || "", item.triggerPosition || "start");
+        const sceneNumber = Number(item.sceneNumber || 0);
+        const segment = sceneNumber > 0 ? segments[sceneNumber - 1] : segments[index];
+        if (!segment) return;
+        if (location) refs.scene_map[segment.id] = location.id;
+        if (item.triggerPosition) {
+          refs.location_trigger_position = item.triggerPosition === "end" ? "end" : "start";
+        }
+        mapped += 1;
+      });
+      return mapped;
+    };
+
+    const renderSubjects = () => {
+      subjectsList.innerHTML = "";
+      if (!refs.subjects.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No character descriptions yet.";
+        empty.style.cssText = "font-size:12px;color:#94a3b8;";
+        subjectsList.append(empty);
+        return;
+      }
+      refs.subjects.forEach((subject, index) => {
+        if (!subject.id) subject.id = newTextId("subject");
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        const name = makeInput(subject.name || `Character ${index + 1}`);
+        const description = document.createElement("textarea");
+        description.value = subject.description || "";
+        description.placeholder = "Character description Gemma should know...";
+        description.style.cssText = descriptionStyle;
+        const trigger = makeInput(subject.trigger_phrase || "");
+        trigger.placeholder = "Optional trigger phrase for this character...";
+        const remove = makeButton("Remove");
+        name.oninput = () => {
+          subject.name = name.value || "";
+          renderMappings();
+        };
+        description.oninput = () => {
+          subject.description = description.value || "";
+        };
+        trigger.oninput = () => {
+          subject.trigger_phrase = trigger.value || "";
+          renderMappings();
+        };
+        remove.onclick = () => {
+          refs.subjects.splice(index, 1);
+          for (const [sceneId, ids] of Object.entries(refs.subject_scene_map || {})) {
+            refs.subject_scene_map[sceneId] = (Array.isArray(ids) ? ids : []).filter((id) => id !== subject.id);
+          }
+          renderAll();
+        };
+        row.append(makeField("Name", name), makeField("Description", description), makeField("Trigger phrase", trigger), remove);
+        subjectsList.append(row);
+      });
+    };
+
+    const renderLocations = () => {
+      locationsList.innerHTML = "";
+      if (!refs.locations.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No location descriptions yet.";
+        empty.style.cssText = "font-size:12px;color:#94a3b8;";
+        locationsList.append(empty);
+        return;
+      }
+      refs.locations.forEach((location, index) => {
+        if (!location.id) location.id = newTextId("loc");
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        const name = makeInput(location.name || `Location ${index + 1}`);
+        const description = document.createElement("textarea");
+        description.value = location.description || "";
+        description.placeholder = "Location description Gemma should know...";
+        description.style.cssText = descriptionStyle;
+        const trigger = makeInput(location.trigger_phrase || "");
+        trigger.placeholder = "Optional trigger phrase for this location...";
+        const remove = makeButton("Remove");
+        name.oninput = () => {
+          location.name = name.value || "";
+          renderMappings();
+        };
+        description.oninput = () => {
+          location.description = description.value || "";
+        };
+        trigger.oninput = () => {
+          location.trigger_phrase = trigger.value || "";
+          renderMappings();
+        };
+        remove.onclick = () => {
+          refs.locations.splice(index, 1);
+          for (const [sceneId, locId] of Object.entries(refs.scene_map || {})) {
+            if (locId === location.id) delete refs.scene_map[sceneId];
+          }
+          renderAll();
+        };
+        row.append(makeField("Name", name), makeField("Description", description), makeField("Trigger phrase", trigger), remove);
+        locationsList.append(row);
+      });
+    };
+
+    function renderMappings() {
+      mappingList.innerHTML = "";
+      const segments = allEditableSegments();
+      if (!segments.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No scenes yet.";
+        empty.style.cssText = "font-size:12px;color:#94a3b8;";
+        mappingList.append(empty);
+        return;
+      }
+      const hasTextRefs = (refs.subjects || []).length || (refs.locations || []).length;
+      if (!hasTextRefs) {
+        const empty = document.createElement("div");
+        empty.textContent = "No scene mappings yet. Add or import character/location text to start fresh.";
+        empty.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.45;";
+        mappingList.append(empty);
+        return;
+      }
+      for (const [index, segment] of segments.entries()) {
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        const label = document.createElement("div");
+        label.textContent = sceneDisplayName(segment, index);
+        label.style.cssText = "font-size:12px;font-weight:900;color:#e0f2fe;";
+        const subjectSelect = document.createElement("select");
+        subjectSelect.multiple = true;
+        subjectSelect.size = Math.max(3, Math.min(6, refs.subjects.length || 3));
+        subjectSelect.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:7px;font-size:12px;";
+        const selectedSubjects = new Set(Array.isArray(refs.subject_scene_map?.[segment.id]) ? refs.subject_scene_map[segment.id] : []);
+        for (const subject of refs.subjects) {
+          const option = document.createElement("option");
+          option.value = subject.id;
+          option.textContent = subject.name || "Character";
+          option.selected = selectedSubjects.has(subject.id);
+          subjectSelect.append(option);
+        }
+        subjectSelect.onchange = () => {
+          const ids = Array.from(subjectSelect.selectedOptions || []).map((option) => option.value).filter(Boolean);
+          if (ids.length) refs.subject_scene_map[segment.id] = ids;
+          else delete refs.subject_scene_map[segment.id];
+          updateMappedTriggerPreview();
+        };
+        const locationSelect = makeSelect([""], "");
+        locationSelect.innerHTML = `<option value="">Unassigned</option>${refs.locations.map((location) => `<option value="${escapeHtml(location.id)}">${escapeHtml(location.name || "Location")}</option>`).join("")}`;
+        locationSelect.value = refs.scene_map?.[segment.id] || "";
+        locationSelect.onchange = () => {
+          if (locationSelect.value) refs.scene_map[segment.id] = locationSelect.value;
+          else delete refs.scene_map[segment.id];
+          updateMappedTriggerPreview();
+        };
+        const mappedTriggerPreview = document.createElement("textarea");
+        mappedTriggerPreview.readOnly = true;
+        mappedTriggerPreview.placeholder = "No mapped trigger for this scene.";
+        mappedTriggerPreview.style.cssText = "min-height:54px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#020617;color:#bae6fd;padding:8px;font-size:12px;line-height:1.4;";
+        function updateMappedTriggerPreview() {
+          const start = [];
+          const end = [];
+          const add = (bucket, value) => {
+            const text = String(value || "").trim();
+            if (!text) return;
+            if (!bucket.some((item) => item.toLowerCase() === text.toLowerCase())) bucket.push(text);
+          };
+          const subjectBucket = subjectTriggerPosition.value === "end" ? end : start;
+          const locationBucket = locationTriggerPosition.value === "end" ? end : start;
+          Array.from(subjectSelect.selectedOptions || [])
+            .map((option) => refs.subjects.find((subject) => subject.id === option.value))
+            .filter(Boolean)
+            .forEach((subject) => add(subjectBucket, subject.trigger_phrase));
+          const selectedLocation = refs.locations.find((location) => location.id === locationSelect.value);
+          if (selectedLocation) add(locationBucket, selectedLocation.trigger_phrase);
+          const parts = [];
+          if (start.length) parts.push(`Start: ${start.join(", ")}`);
+          if (end.length) parts.push(`End: ${end.join(", ")}`);
+          mappedTriggerPreview.value = parts.join("\n");
+        }
+        updateMappedTriggerPreview();
+        row.append(label, makeField("Character text", subjectSelect), makeField("Location text", locationSelect), makeField("Mapped trigger phrase", mappedTriggerPreview));
+        mappingList.append(row);
+      }
+    }
+
+    renderAll = () => {
+      renderSubjects();
+      renderLocations();
+      renderMappings();
+    };
+
+    addSubject.onclick = () => {
+      refs.cleared = false;
+      refs.subject_count = Math.max(1, refs.subjects.length + 1);
+      refs.subjects.push({ id: newTextId("subject"), name: `Character ${refs.subjects.length + 1}`, description: "", image: { path: "", data: "", name: "" } });
+      refs.use_subject_reference = true;
+      renderAll();
+    };
+    addLocation.onclick = () => {
+      refs.cleared = false;
+      refs.locations.push({ id: newTextId("loc"), name: `Location ${refs.locations.length + 1}`, description: "", image: { path: "", data: "", name: "" } });
+      refs.use_location_references = true;
+      renderAll();
+    };
+    extractLocations.onclick = async () => {
+      let progress = null;
+      try {
+        extractLocations.disabled = true;
+        extractLocations.textContent = "Extracting...";
+        progress = createProgressWindow("Extracting location text", { zIndex: 100008 });
+        const scenes = allEditableSegments().map((segment, index) => ({
+          id: segment.id,
+          label: segment.label || `Scene ${index + 1}`,
+          concept: sceneConceptPromptText(segment),
+          notes: [segment.notes || "", segment.timeline_note || "", segment.i2v_notes || "", segment.lyric_text || ""].filter(Boolean).join("\n"),
+        })).filter((scene) => String(scene.concept || scene.notes || "").trim());
+        if (!scenes.length) throw new Error("Extract needs scene prompts, notes, lyrics, or timeline notes first.");
+        const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.");
+        progress.set(`Asking Gemma for reusable location descriptions...\n${gemmaRunnerLine()}`, 15);
+        const data = await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          scenes,
+          subject_scene_text: subjectSceneInput.value || "",
+          existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+          n_ctx: 10000,
+          unload_after: true,
+        }, 10 * 60 * 1000);
+        const { added, updated } = upsertTextMapLocations((data.locations || []).map((item) => ({ name: item.name, description: item.description })));
+        if (added || updated) refs.cleared = false;
+        refs.use_location_references = true;
+        renderAll();
+        progress.set(`Extracted location text.\nAdded: ${added}\nUpdated: ${updated}`, 100);
+        progress.close(1800);
+        toast(`Extracted ${added} location${added === 1 ? "" : "s"}.`);
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        extractLocations.disabled = false;
+        extractLocations.textContent = "Extract";
+      }
+    };
+    autoMapLocations.onclick = async () => {
+      let progress = null;
+      try {
+        autoMapLocations.disabled = true;
+        autoMapLocations.textContent = "Mapping...";
+        progress = createProgressWindow("Auto mapping location text", { zIndex: 100008 });
+        if (!refs.locations.length) throw new Error("Auto Map needs at least one location. Click Extract, Import List, or Add first.");
+        const scenes = allEditableSegments().map((segment, index) => ({
+          id: segment.id,
+          label: segment.label || `Scene ${index + 1}`,
+          concept: compactTextForTextMap(sceneConceptPromptText(segment), 900),
+          notes: compactTextForTextMap([segment.notes || "", segment.timeline_note || "", segment.i2v_notes || "", segment.lyric_text || ""].filter(Boolean).join("\n"), 650),
+        })).filter((scene) => String(scene.concept || scene.notes || "").trim());
+        if (!scenes.length) throw new Error("Auto Map needs scene prompts, notes, lyrics, or timeline notes first.");
+        const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.");
+        progress.set(`Sending scene text to Gemma...\n${gemmaRunnerLine()}`, 15);
+        const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          scenes,
+          subject_scene_text: compactTextForTextMap(subjectSceneInput.value || "", 1600),
+          existing_locations: refs.locations.map((item) => ({
+            name: compactTextForTextMap(item.name, 80),
+            description: compactTextForTextMap(item.description, 650),
+          })),
+          unload_after: true,
+          n_ctx: 8000,
+          max_new_tokens: 1600,
+        }, 10 * 60 * 1000);
+        upsertTextMapLocations(data.locations || []);
+        let mapped = 0;
+        for (const [sceneId, locationName] of Object.entries(data.scene_map || {})) {
+          const location = locationByNameForTextMap(locationName);
+          if (!location) continue;
+          refs.scene_map[sceneId] = location.id;
+          mapped += 1;
+        }
+        if (mapped || (data.locations || []).length) refs.cleared = false;
+        refs.use_location_references = true;
+        renderAll();
+        progress.set(`Location text mapping ready.\nMapped scenes: ${mapped}`, 100);
+        progress.close(1800);
+        toast(`Auto-mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        autoMapLocations.disabled = false;
+        autoMapLocations.textContent = "Auto Map";
+      }
+    };
+    importLocations.onclick = () => {
+      const importBackdrop = document.createElement("div");
+      importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const importBox = document.createElement("div");
+      importBox.style.cssText = "width:min(720px,calc(100vw - 34px));max-height:calc(100vh - 40px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);padding:14px;display:flex;flex-direction:column;gap:10px;";
+      const importTitle = document.createElement("div");
+      importTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import Location Text / Scene Map</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Paste JSON or simple Name = Description lines. Images are ignored here.</div>`;
+      const help = document.createElement("div");
+      help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;font-size:12px;color:#dbeafe;line-height:1.45;max-height:260px;overflow:auto;";
+      help.innerHTML = `
+        <div style="font-weight:900;color:#cffafe;margin-bottom:6px;">Accepted formats</div>
+        <div>Location list with optional trigger:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 10px;color:#e2e8f0;">[
+  {
+    "scene": "scene1",
+    "location": "Glass hallway",
+    "description": "A long mirrored corridor with black glass walls...",
+    "Trigger": "f4nt4syw0m3n, cinematic hyperreal aquatic fantasy aesthetic"
+  }
+]</pre>
+        <div>Name/description lines:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">Glass hallway = Long mirrored corridor...
+Chrome vault corridor = Sealed industrial passage...</pre>
+        <div style="margin-top:8px;color:#94a3b8;">Use <code>Trigger</code>, <code>trigger</code>, or <code>trigger_phrase</code>. Subject and location trigger placement are controlled by the two dropdowns in the main text mapping window. A root <code>trigger_position: "end"</code> value applies to imported location/scene triggers unless changed after import.</div>`;
+      const input = document.createElement("textarea");
+      input.placeholder = "Paste location text, scene-location JSON, or scene-trigger JSON...";
+      input.style.cssText = "min-height:280px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+      const cancelImport = makeButton("Cancel");
+      const applyImport = makeButton("Import", "primary");
+      actions.append(cancelImport, applyImport);
+      importBox.append(importTitle, help, input, actions);
+      importBackdrop.append(importBox);
+      document.body.append(importBackdrop);
+      const closeImport = () => importBackdrop.remove();
+      cancelImport.onclick = closeImport;
+      importBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === importBackdrop) closeImport();
+      });
+      applyImport.onclick = () => {
+        const parsed = parseLocationListForTextMap(input.value);
+        const { added, updated } = upsertTextMapLocations(parsed.locations);
+        const mapped = applyTextMapSceneLocations(parsed.sceneMap);
+        if (added || updated || mapped) refs.cleared = false;
+        if (parsed.triggerPosition) {
+          refs.location_trigger_position = parsed.triggerPosition === "end" ? "end" : "start";
+        }
+        if (parsed.subjectTriggerPosition) refs.subject_trigger_position = parsed.subjectTriggerPosition === "end" ? "end" : "start";
+        if (parsed.locationTriggerPosition) refs.location_trigger_position = parsed.locationTriggerPosition === "end" ? "end" : "start";
+        subjectTriggerPosition.value = refs.subject_trigger_position;
+        locationTriggerPosition.value = refs.location_trigger_position;
+        refs.use_location_references = true;
+        renderAll();
+        toast(`Imported location text. Added: ${added}. Updated: ${updated}. Scene mappings: ${mapped}.`);
+        closeImport();
+      };
+      input.focus();
+    };
+    exportLocations.onclick = async () => {
+      const path = projectReferenceBuilderLocationsPath();
+      if (!path) {
+        toast("Create or load a project before exporting locations.", true);
+        return;
+      }
+      try {
+        exportLocations.disabled = true;
+        exportLocations.textContent = "Exporting...";
+        const locationById = new Map((refs.locations || []).map((location) => [String(location.id || ""), location]));
+        const sceneLocations = {
+          subject_trigger_position: refs.subject_trigger_position === "end" ? "end" : "start",
+          location_trigger_position: refs.location_trigger_position === "end" ? "end" : "start",
+          scene_map: {},
+        };
+        allEditableSegments().forEach((segment, index) => {
+          const location = locationById.get(String(refs.scene_map?.[segment.id] || "")) || null;
+          sceneLocations.scene_map[`scene${index + 1}`] = {
+            location: String(location?.name || "").trim(),
+            description: String(location?.description || "").trim(),
+            trigger: String(location?.trigger_phrase || "").trim(),
+          };
+        });
+        await postJson("/vrgdg/music_builder/save_text_file", {
+          path,
+          content: JSON.stringify(sceneLocations, null, 2),
+        }, 60000);
+        toast(`Exported location text map to:\n${path}`);
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        exportLocations.disabled = false;
+        exportLocations.textContent = "Export";
+      }
+    };
+    removeAllLocations.onclick = () => {
+      if (!window.confirm("Remove all location text and clear scene location mappings?")) return;
+      refs.locations = [];
+      refs.scene_map = {};
+      refs.use_location_references = false;
+      renderAll();
+    };
+    clearAll.onclick = () => {
+      if (!window.confirm("Clear all character text, location text, and scene mappings in this text mapping window?")) return;
+      refs.subjects = [];
+      refs.locations = [];
+      refs.subject_count = 0;
+      refs.subject_scene_map = {};
+      refs.scene_map = {};
+      refs.scene_trigger_map = {};
+      refs.cleared = true;
+      refs.trigger_position = "start";
+      refs.subject_trigger_position = "start";
+      refs.location_trigger_position = "start";
+      refs.use_subject_reference = false;
+      refs.use_location_references = false;
+      subjectTriggerPosition.value = "start";
+      locationTriggerPosition.value = "start";
+      renderAll();
+      toast("Cleared Scene Text Mapping. Click Save to keep it cleared.");
+    };
+
+    const closeModal = () => backdrop.remove();
+    close.onclick = closeModal;
+    cancel.onclick = closeModal;
+    save.onclick = async () => {
+      const hasSubjects = Array.isArray(refs.subjects) && refs.subjects.some((item) => String(item?.name || item?.description || item?.trigger_phrase || "").trim());
+      const hasLocations = Array.isArray(refs.locations) && refs.locations.some((item) => String(item?.name || item?.description || item?.trigger_phrase || "").trim());
+      const hasMappings = Object.keys(refs.subject_scene_map || {}).length || Object.keys(refs.scene_map || {}).length;
+      refs.cleared = !(hasSubjects || hasLocations || hasMappings);
+      refs.subject_count = refs.cleared ? 0 : Math.max(1, refs.subjects.length || Number(refs.subject_count || 1));
+      refs.use_subject_reference = hasSubjects || Object.keys(refs.subject_scene_map || {}).length > 0;
+      refs.use_location_references = hasLocations || Object.keys(refs.scene_map || {}).length > 0;
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      await syncLyricAndSubjectNoteFiles("scene text mapping save");
+      await autoSaveSessionQuiet("scene text mapping saved");
+      syncInspector();
+      render();
+      toast("Scene text mapping saved for Gemma prompts.");
+      closeModal();
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    renderAll();
+  }
+
   function openReferenceBuilderTargetChooser() {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = "width:min(520px,calc(100vw - 32px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder Target</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose which workflow these reference images should feed.</div>`;
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder Target</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose text scene mapping or an image-reference video workflow.</div>`;
     const choices = document.createElement("div");
-    choices.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-    const imageRefsButton = makeButton(state.imageModelMode === "nano_banana" ? "Nano B" : "Flux/Klein", "primary");
+    choices.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const choiceCard = (button, description) => {
+      const card = document.createElement("div");
+      card.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;display:flex;flex-direction:column;gap:7px;min-width:0;";
+      const text = document.createElement("div");
+      text.textContent = description;
+      text.style.cssText = "font-size:11px;line-height:1.35;color:#cbd5e1;";
+      card.append(button, text);
+      return card;
+    };
+    const textMappingButton = makeButton("I2V / T2V Text Mapping", "primary");
+    const imageRefsButton = makeButton("Flux / Nano Image References", "primary");
     const ltxRefsButton = makeButton("LTX Reference to Video", "primary");
+    const ingredientsRefsButton = makeButton("Ingredients to Video", "primary");
     const close = makeButton("Cancel", "neutral");
-    choices.append(imageRefsButton, ltxRefsButton);
+    choices.append(
+      choiceCard(textMappingButton, "Text-only character/location mapping for Gemma image planning, I2V prompt writing, and T2V prompt writing. No reference images are sent."),
+      choiceCard(imageRefsButton, "Image reference setup for Flux/Klein and Nano B image generation. Use when those image modes should receive character/location images."),
+      choiceCard(ltxRefsButton, "LTX Reference-to-Video setup for the MSR LoRA workflow. Uses reference images for the video render."),
+      choiceCard(ingredientsRefsButton, "Ingredients-to-Video setup for the Ingredients LoRA workflow. Maps ingredients sheets/images to scenes."),
+    );
     box.append(title, choices, close);
     backdrop.append(box);
     const openAndClose = (target) => {
@@ -13026,8 +14431,18 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       openFluxReferenceBuilderModal();
     };
+    textMappingButton.onclick = () => {
+      backdrop.remove();
+      openSceneTextMappingModal();
+    };
     imageRefsButton.onclick = () => openAndClose("image");
     ltxRefsButton.onclick = () => openAndClose("rtv");
+    ingredientsRefsButton.onclick = () => {
+      backdrop.remove();
+      state.videoModelMode = "ingredients";
+      syncVideoModePanel();
+      openIngredientsReferenceBuilderModal();
+    };
     close.onclick = () => backdrop.remove();
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) backdrop.remove();
@@ -14804,7 +16219,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       top_p: options.topP,
     }, 120000);
     pushHistory();
-    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }));
+    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
     render();
     return { ...data, used_text_only_fallback: true };
   }
@@ -14837,7 +16252,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       top_p: options.topP,
     }, useVision ? 10 * 60 * 1000 : 120000);
     pushHistory();
-    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, state.imageModelMode, { validateJunk: true }));
+    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, state.imageModelMode, { validateJunk: true }), segment));
     render();
     return data;
   }
@@ -15554,6 +16969,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const lyricText = quoteOrderedLyricCues(String(segment?.lyric_text || "").trim()).trim();
     const noVocal = Boolean(segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText));
@@ -15580,12 +16996,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   async function finalizeVideoPromptForSegment(segment, rawPrompt, progress = null, percent = 82, label = "I2V prompt enhancement", options = {}) {
     const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment);
     const enhanced = await enhanceVideoPromptForSegment(segment, draft, progress, percent, label, options);
-    return applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment);
+    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment), segment);
   }
 
   function finalizeVideoPromptDraftOnly(segment, rawPrompt) {
     const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment);
-    return applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(draft, videoTriggerPhraseForSegment(segment)), segment);
+    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(draft, videoTriggerPhraseForSegment(segment)), segment), segment);
   }
 
   async function runVideoPromptEnhancementBatch(segments, progress = null, options = {}) {
@@ -15637,8 +17053,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
-    const useImageReference = isRTV ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+    const useImageReference = isRTV || isIngredients ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const conceptPrompt = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -15647,8 +17064,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         : "Hey, you need a scene image first. Save/load an image, or turn off image reference to create I2V from the T2I prompt instead.", true);
       return;
     }
-    if ((isT2V || isRTV || !useImageReference) && !conceptPrompt) {
-      toast(isT2V || isRTV
+    if ((isT2V || isRTV || isIngredients || !useImageReference) && !conceptPrompt) {
+      toast(isT2V || isRTV || isIngredients
         ? "Hey, you need a T2I/concept prompt first so Gemma has scene content to turn into a text-to-video prompt."
         : "Hey, you need a T2I prompt first. Create/type one, or turn image reference back on and use a saved/custom image.", true);
       return;
@@ -15664,18 +17081,20 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       progress.set(useImageReference
         ? `Running Gemma vision ${modeLabel} prompt generation...\n${gemmaRunnerLine({ vision: true })}`
         : `Running Gemma text-only ${modeLabel} prompt generation...\n${gemmaRunnerLine()}`, 50);
-      const data = await postJson(isT2V || isRTV ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+      const data = await postJson(isT2V || isRTV || isIngredients ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
         ...textGemmaRunnerPayload(),
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-        t2i_prompt: isT2V || isRTV ? conceptPrompt : useImageReference ? "" : conceptPrompt,
+        t2i_prompt: isT2V || isRTV || isIngredients ? conceptPrompt : useImageReference ? "" : conceptPrompt,
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: videoGemmaNotesForSegment(segment),
-        theme_style_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-        story_idea_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-        subject_scene_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        subject_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : "",
+        location_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedLocationText(segment) : "",
+        theme_style_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+        story_idea_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+        subject_scene_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
         unload_after: !state.useI2VPromptEnhancementPass || useImageReference,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
@@ -15710,6 +17129,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       image_reference_data: "",
       repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
+      subject_context: segmentMappedSubjectText(segment),
+      location_context: segmentMappedLocationText(segment),
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -15730,33 +17151,36 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
-    const useImageReference = forceVision ? true : forceTextOnly || isRTV ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+    const useImageReference = forceVision ? true : forceTextOnly || isRTV || isIngredients ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = sceneConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
-    if ((isT2V || isRTV || !useImageReference) && !t2iText) {
+    if ((isT2V || isRTV || isIngredients || !useImageReference) && !t2iText) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I/concept prompt is missing.`);
     }
     progress?.set(useImageReference
       ? `${label}: creating ${modeLabel} prompt from reference image, concept, and motion notes...\n${gemmaRunnerLine({ vision: true })}`
       : `${label}: converting T2I prompt to ${modeLabel} prompt without vision...\n${gemmaRunnerLine()}`, percent);
-    const data = await postJson(isT2V || isRTV ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+    const data = await postJson(isT2V || isRTV || isIngredients ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
       ...textGemmaRunnerPayload(),
       model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
       mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-      t2i_prompt: isT2V || isRTV ? t2iText : useImageReference ? "" : t2iText,
+      t2i_prompt: isT2V || isRTV || isIngredients ? t2iText : useImageReference ? "" : t2iText,
       image_reference_path: imageReference.path,
       image_reference_data: imageReference.data,
       repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
-      theme_style_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-      story_idea_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-      subject_scene_path: useImageReference && !isT2V && !isRTV ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+      subject_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : "",
+      location_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedLocationText(segment) : "",
+      theme_style_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+      story_idea_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+      subject_scene_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
       unload_after: options.deferEnhancement ? options.unloadAfter !== false : state.useI2VPromptEnhancementPass ? useImageReference : options.unloadAfter !== false,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     pushHistory();
@@ -15797,8 +17221,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
-      if (isRTV && !sceneConceptPromptText(segment)) {
-        missing.push(`${sceneDisplayName(segment, index)}: Reference-to-Video prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running Gemma.`);
+      if ((isRTV || isIngredients) && !sceneConceptPromptText(segment)) {
+        missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running Gemma.`);
       } else if ((isT2V || !useImageReference) && !sceneConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: T2I/concept prompt is missing.`);
       }
@@ -15988,7 +17412,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     updateActiveFromInputs();
     gemmaVideoAllButton.disabled = true;
     const changedReferenceFlags = [];
-    const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+    const videoLabel = videoModeDisplayLabel(currentVideoMode(), true);
     const sceneScope = normalizeBatchScope(options.sceneScope);
     try {
       if (options.promptRunMode === "enhance_existing") {
@@ -16057,13 +17481,19 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\reference_to_video_clips`;
   }
 
+  function ingredientsVideoOutputFolder() {
+    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\ingredients_to_video_clips`;
+  }
+
   function videoModeDisplayLabel(mode = currentVideoMode(), compact = false) {
+    if (mode === "ingredients") return compact ? "Ingredients" : "Ingredients to Video";
     if (mode === "rtv") return compact ? "RTV" : "Reference to Video";
     if (mode === "t2v") return compact ? "T2V" : "Text to Video";
     return compact ? "I2V" : "Image to Video";
   }
 
   function activeVideoOutputFolder(mode = currentVideoMode()) {
+    if (mode === "ingredients") return ingredientsVideoOutputFolder();
     if (mode === "rtv") return rtvVideoOutputFolder();
     return mode === "t2v" ? t2vVideoOutputFolder() : i2vVideoOutputFolder();
   }
@@ -16073,7 +17503,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   }
 
   function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden video workflow...", details = {}) {
-    const videoMode = details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
+    const videoMode = details.videoMode === "ingredients" ? "ingredients" : details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
     const promptNumber = Number(details.promptNumber || sceneIndex + 1);
     const imageIndex = sceneSlotNumber(segment) - 1;
     const imageSource = segmentImageSource(segment);
@@ -16084,7 +17514,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     return `
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-weight:900;color:#cffafe;">${escapeHtml(statusText)}</div>
-        ${videoMode === "i2v" && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
+        ${(videoMode === "i2v" || videoMode === "ingredients") && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
         <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:5px 10px;font-size:11px;">
           <div style="color:#67e8f9;font-weight:900;">Scene</div><div>${escapeHtml(segment.label || `Scene ${promptNumber}`)}</div>
           <div style="color:#67e8f9;font-weight:900;">Video mode</div><div>${videoModeDisplayLabel(videoMode)}</div>
@@ -16092,7 +17522,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           <div style="color:#67e8f9;font-weight:900;">SRT prompt #</div><div>${promptNumber} (1 based)</div>
           <div style="color:#67e8f9;font-weight:900;">Audio mode</div><div>${escapeHtml(audioMode)}</div>
           ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(i2vImagesFolder())}</div>` : ""}
-          ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>` : ""}
+          ${(videoMode === "i2v" || videoMode === "ingredients") ? `<div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>` : ""}
           <div style="color:#67e8f9;font-weight:900;">Audio sent to LTX</div><div style="overflow-wrap:anywhere;">${escapeHtml(audioPath)}</div>
           <div style="color:#67e8f9;font-weight:900;">SRT path</div><div style="overflow-wrap:anywhere;">${escapeHtml(srtPath || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Save folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(outputFolder || "")}</div>
@@ -16121,7 +17551,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const segmentMode = String(segment?.video_prompt_type || "").trim();
-    const videoMode = ["i2v", "t2v", "rtv"].includes(segmentMode) ? segmentMode : currentVideoMode();
+    const videoMode = ["i2v", "t2v", "rtv", "ingredients"].includes(segmentMode) ? segmentMode : currentVideoMode();
     const singlePassLoras = videoMode === "rtv";
     const payload = {
       unet_name: settings.unet_name || "",
@@ -16131,8 +17561,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       upscale_model_name: settings.upscale_model_name || "",
       audio_vae_name: settings.audio_vae_name || "",
       fps: Number(settings.fps || 24),
-      width: Number(settings.width || 1920),
-      height: Number(settings.height || 1080),
+      width: videoMode === "ingredients" ? Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH) : Number(settings.width || 1920),
+      height: videoMode === "ingredients" ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT) : Number(settings.height || 1080),
       seed: Number(settings.seed || 1),
       tail_loss_frames: Math.max(0, Number(settings.tail_loss_frames ?? 25)),
       pre_frames: Math.max(0, Number(settings.pre_frames ?? 50)),
@@ -16141,6 +17571,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       msr_second_pass_strength: 0,
       msr_reference_strength: settings.msr_reference_strength || "auto - based on subject count",
       msr_background_mode: settings.msr_background_mode || "neutral placeholder (WIP/testing)",
+      ingredients_lora_name: settings.ingredients_lora_name || REQUIRED_LTX_INGREDIENTS_LORA,
+      ingredients_first_pass_strength: Number(settings.ingredients_first_pass_strength ?? 1),
+      ingredients_second_pass_strength: 0,
+      ingredients_width: Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
+      ingredients_height: Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
       use_custom_loras: useLoras,
       lora_count: useLoras ? count : 0,
     };
@@ -16208,12 +17643,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         id: subject.id,
         name: subject.name,
         description: subject.description,
+        trigger_phrase: subject.trigger_phrase || "",
+        trigger_position: subject.trigger_position || "start",
         image: { ...(subject.image || {}) },
       })),
       location_ref: locationRef ? {
         id: locationRef.id,
         name: locationRef.name,
         description: locationRef.description,
+        trigger_phrase: locationRef.trigger_phrase || "",
+        trigger_position: locationRef.trigger_position || "start",
         image: { ...(locationRef.image || {}) },
       } : (locationName || locationDescription ? {
         id: "",
@@ -16263,7 +17702,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           lyrics: lyric,
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
-          video_prompt_type: ["i2v", "t2v", "rtv"].includes(String(segment.video_prompt_type || "").trim())
+          video_prompt_type: ["i2v", "t2v", "rtv", "ingredients"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
           subjects,
@@ -16317,6 +17756,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
               id: String(item.id || item.name || `storyboard_ref_${index + 1}`),
               name: String(item.name || `Reference ${index + 1}`),
               description: String(item.description || ""),
+              trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
+              trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
               image: normalizeIncomingImage(item),
             };
           })
@@ -16327,7 +17768,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       };
       const mergeReferenceList = (current = [], incoming = []) => {
         const byKey = new Map();
-        const keyFor = (item) => String(item?.id || item?.name || "").trim().toLowerCase();
+        const keyFor = (item) => {
+          const name = String(item?.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+          return name || String(item?.id || "").trim().toLowerCase();
+        };
         for (const item of current) {
           const key = keyFor(item);
           if (key) byKey.set(key, { ...item, image: { ...(item.image || {}) } });
@@ -16353,6 +17797,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
       if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+      if (!refs.scene_trigger_map || typeof refs.scene_trigger_map !== "object") refs.scene_trigger_map = {};
       const segments = allEditableSegments();
       for (const item of Array.isArray(updates.scenes) ? updates.scenes : []) {
         const segment = segments.find((candidate) => candidate.id === item.id)
@@ -16364,6 +17809,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const locationId = String(item.location_id || "").trim();
         if (locationId) refs.scene_map[segment.id] = locationId;
         else delete refs.scene_map[segment.id];
+        if (item.trigger_position) refs.location_trigger_position = String(item.trigger_position || "start") === "end" ? "end" : "start";
       }
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       render();
@@ -16390,7 +17836,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           setSegmentPromptForEdit(segment, "i2v", videoPrompt);
           applied += 1;
         }
-        if (["i2v", "t2v", "rtv"].includes(videoType)) segment.video_prompt_type = videoType;
+        if (["i2v", "t2v", "rtv", "ingredients"].includes(videoType)) segment.video_prompt_type = videoType;
         if (String(scene.shot_type || "").trim()) segment.shot_type = String(scene.shot_type || "").trim();
         if (String(scene.camera_motion || "").trim()) segment.camera_motion = String(scene.camera_motion || "").trim();
       }
@@ -16404,6 +17850,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     };
     window.VRGDGStoryboardBuilder.open({
       projectFolder: projectInput.value || state.projectFolder || "",
+      videoPromptType: currentVideoMode(),
       scenes: storyboardScenePayload(),
       referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
       gemmaSettings: {
@@ -16426,8 +17873,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const name = sceneDisplayName(segment, sceneIndex);
     const missing = [];
     const mode = currentVideoMode();
-    const promptLabel = mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
-    if (mode === "i2v" && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
+    const promptLabel = mode === "ingredients" ? "Ingredients to Video" : mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
+    if (mode === "ingredients") applyIngredientsSheetForSceneIfMapped(segment);
+    if ((mode === "i2v" || mode === "ingredients") && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
     if (mode === "rtv") {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const hasSubjectReference = Boolean(refs.use_subject_reference && (
@@ -16614,8 +18062,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     progress?.set(`${batchLabel}Saving current UI session/SRT timing...`, pct(8));
     let srtPath = await saveSessionForSceneVideo();
     if (!srtPath) throw new Error("The builder SRT path was not created.");
-    if (videoMode === "i2v") {
-      progress?.set(`${batchLabel}Preparing selected scene image for I2V...`, pct(12));
+    if (videoMode === "i2v" || videoMode === "ingredients") {
+      progress?.set(`${batchLabel}Preparing selected scene image for ${modeLabel}...`, pct(12));
       await ensureSelectedImageForSceneVideo(segment, sceneIndex);
     } else {
       progress?.set(`${batchLabel}Preparing text-to-video render...`, pct(12));
@@ -16672,7 +18120,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       promptNumber: promptNumberForScene,
       expectedDuration: expectedDurationForScene,
     });
-    const videoPromptForRender = applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false });
+    const videoPromptForRender = applyMappedTriggerPhrases(
+      applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
+      segment
+    );
     if (videoPromptForRender && videoPromptForRender !== segment.i2v_prompt) {
       segment.i2v_prompt = videoPromptForRender;
       if (segment.id === state.activeId) i2vPrompt.value = videoPromptForRender;
@@ -16690,6 +18141,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       payload.image_folder = i2vImagesFolder();
       payload.image_index_zero_based = slotNumber - 1;
     }
+    if (videoMode === "ingredients") {
+      payload.ingredients_image_path = segment.approved_image_path || selectedSegmentImagePath(segment);
+      payload.ingredients_image_name = segment.image?.name || "ingredients_reference.png";
+    }
     if (videoMode === "rtv") {
       payload.rtv_references = rtvReferencesForSegment(segment);
     }
@@ -16700,7 +18155,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       videoMode,
     };
     const defaultOutputFolder = activeVideoOutputFolder(videoMode);
-    const buildEndpoint = videoMode === "rtv"
+    const buildEndpoint = videoMode === "ingredients"
+      ? "/vrgdg/workflow_runner/build_ingredients_prompt"
+      : videoMode === "rtv"
       ? "/vrgdg/workflow_runner/build_rtv_prompt"
       : videoMode === "t2v"
         ? "/vrgdg/workflow_runner/build_t2v_prompt"
@@ -17612,6 +19069,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
               ? "creating T2V prompts"
               : activeVideoMode === "rtv"
                 ? "creating Reference-to-Video prompts"
+                : activeVideoMode === "ingredients"
+                  ? "creating Ingredients-to-Video prompts"
                 : "creating I2V prompts";
             progress.set(`Stage 2/3: ${videoPromptStage}...`, 38);
             await i2vAllScenes({
@@ -19726,7 +21185,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         syncInspector();
         const progress = createProgressWindow(`Builder Agent video prompt`);
         try {
-          const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+          const videoLabel = videoModeDisplayLabel(currentVideoMode(), true);
           progress.set(`${label}: generating ${videoLabel} prompt with current video settings...`, 20);
           await generateI2VPromptForSegment(segment, progress, 35, `Builder Agent ${videoLabel}`, { unloadAfter: true });
           progress.set(`${label}: ${videoLabel} prompt ready.`, 100);
@@ -19743,7 +21202,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const previousActiveId = state.activeId;
         const requestedVideoMode = normalizeVideoMode(action?.video_mode);
         if (requestedVideoMode) setAgentVideoMode(requestedVideoMode);
-        const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+        const videoLabel = videoModeDisplayLabel(currentVideoMode(), true);
         state.activeId = segment.id;
         syncInspector();
         try {
@@ -20892,7 +22351,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   }
 
   async function confirmAndRunGemmaVideoAll() {
-    const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+    const videoMode = currentVideoMode();
+    const videoLabel = videoModeDisplayLabel(videoMode, true);
     const targets = allEditableSegments().filter((segment) => !String(segment.i2v_prompt || "").trim());
     const hasVisionTargets = targets.length
       ? targets.some((segment) => videoVisionReferenceEnabled(segment))
@@ -20959,15 +22419,18 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   }
 
   async function confirmAndRunRenderAll() {
-    const videoLabel = currentVideoMode() === "t2v" ? "T2V" : "I2V";
+    const videoMode = currentVideoMode();
+    const videoLabel = videoModeDisplayLabel(videoMode, true);
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
       title: "Run Render All?",
       intro: [
         "Render All only works on the video/render stage.",
-        currentVideoMode() === "t2v"
+        videoMode === "t2v"
           ? "It uses existing T2V prompts and does not require scene images."
-          : "It uses the current selected images and existing I2V prompts.",
+          : videoMode === "ingredients"
+            ? "It uses the current selected ingredients reference images and existing Ingredients prompts."
+            : "It uses the current selected images and existing I2V prompts.",
         "All-scenes mode stitches the final video when rendering is done. From-selected mode starts at the active clip and still stitches when previous clips exist. Selected-scenes mode renders only selected scenes and does not stitch.",
       ].join(" "),
       confirmLabel: "Run Render",
@@ -21005,14 +22468,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const t2vMode = videoMode === "t2v";
     const rtvMode = videoMode === "rtv";
+    const ingredientsMode = videoMode === "ingredients";
     const videoOnlyMode = t2vMode || rtvMode;
-    const videoPromptLabel = t2vMode ? "T2V" : rtvMode ? "Reference-to-Video" : "I2V";
+    const videoPromptLabel = t2vMode ? "T2V" : rtvMode ? "Reference-to-Video" : ingredientsMode ? "Ingredients-to-Video" : "I2V";
     const scopeChoices = batchScopeChoices();
     const options = await chooseBatchModeAction({
       title: "Build Full Video?",
       intro: videoOnlyMode
         ? `Build Full Video is in ${videoModeDisplayLabel(videoMode)} mode. It skips image generation, creates ${videoPromptLabel} prompts, renders scene videos, and stitches the final video. Model selections, LoRAs, notes, and project paths are not reset.`
-        : "Build Full Video can run the whole pipeline: image prompts, images, I2V prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.",
+        : `Build Full Video can run the whole pipeline: image prompts, images, ${videoPromptLabel} prompts, scene videos, and final stitching. Choose how much to regenerate. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
       confirmLabel: "Build Full Video",
       returnAll: true,
       choices: [
@@ -21026,21 +22490,21 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           label: "Fresh full rebuild",
           description: videoOnlyMode
             ? `Start fresh for generated video outputs. Regenerate ${videoPromptLabel} prompts and videos. Video seeds can be randomized below.`
-            : "Start fresh for generated outputs. Regenerate image prompts, images, I2V prompts, and videos. Image seeds are randomized.",
+            : `Start fresh for generated outputs. Regenerate image prompts, images, ${videoPromptLabel} prompts, and videos. Image seeds are randomized.`,
         },
         {
           value: "redo_i2v_prompts_videos",
-          label: videoOnlyMode ? `Redo ${videoPromptLabel} prompts and videos` : "Keep images, redo I2V prompts and videos",
+          label: videoOnlyMode ? `Redo ${videoPromptLabel} prompts and videos` : `Keep images, redo ${videoPromptLabel} prompts and videos`,
           description: videoOnlyMode
             ? `Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`
-            : "Use the current selected images. Regenerate I2V prompts with Gemma, then create new video versions.",
+            : `Use the current selected images. Regenerate ${videoPromptLabel} prompts with Gemma, then create new video versions.`,
         },
         {
           value: "redo_videos",
           label: videoOnlyMode ? "Keep prompts, redo videos" : "Keep images and prompts, redo videos",
           description: videoOnlyMode
             ? `Use existing ${videoPromptLabel} prompts. Only create new video versions, then stitch.`
-            : "Use the current selected images and existing I2V prompts. Only create new video versions, then stitch.",
+            : `Use the current selected images and existing ${videoPromptLabel} prompts. Only create new video versions, then stitch.`,
         },
       ],
       extraGroups: [
@@ -21419,16 +22883,25 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     pushHistory();
     state.videoModelMode = "i2v";
     syncVideoModePanel();
+    syncI2VVideoSettingsPanel();
   };
   textToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "t2v";
     syncVideoModePanel();
+    syncI2VVideoSettingsPanel();
   };
   referenceToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "rtv";
     syncVideoModePanel();
+    syncI2VVideoSettingsPanel();
+  };
+  ingredientsToVideoCard.onclick = () => {
+    pushHistory();
+    state.videoModelMode = "ingredients";
+    syncVideoModePanel();
+    syncI2VVideoSettingsPanel();
   };
   fluxIngredientFileInput.addEventListener("change", () => {
     const files = Array.from(fluxIngredientFileInput.files || []);
@@ -21915,6 +23388,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     }
     ltxMsrLoraPicker.options = loras;
     if (!ltxMsrLoraPicker.input.value) ltxMsrLoraPicker.input.value = REQUIRED_LTX_MSR_LORA;
+    ltxIngredientsLoraPicker.options = loras;
+    if (!ltxIngredientsLoraPicker.input.value) ltxIngredientsLoraPicker.input.value = REQUIRED_LTX_INGREDIENTS_LORA;
   }
 
   async function refreshModelChoices() {
@@ -22044,7 +23519,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     showInfoModal({
       title: "Video LoRA Strengths",
       lines: [
-        "Image to Video and Text to Video use separate Pass 1 and Pass 2 strengths.",
+        "Image to Video, Text to Video, and Ingredients to Video use separate Pass 1 and Pass 2 strengths.",
         "Reference to Video uses one LoRA strength only; Pass 2 is hidden and ignored in that mode.",
         "If a LoRA hurts I2V/T2V motion, lower Pass 1. If you want more LoRA detail in the final result, raise Pass 2.",
       ],
@@ -22093,10 +23568,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
   i2vLoraCount.addEventListener("input", saveI2VVideoSettingsFromPanel);
   i2vLoraCount.addEventListener("change", saveI2VVideoSettingsFromPanel);
   wireSearchablePicker(ltxMsrLoraPicker, saveI2VVideoSettingsFromPanel);
+  wireSearchablePicker(ltxIngredientsLoraPicker, saveI2VVideoSettingsFromPanel);
   for (const control of [ltxMsrFirstPassStrength, ltxMsrSecondPassStrength, ltxMsrReferenceStrength, ltxMsrBackgroundMode]) {
     control.addEventListener("input", saveI2VVideoSettingsFromPanel);
     control.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
+  ltxIngredientsFirstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
+  ltxIngredientsFirstPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
   for (const slot of i2vLoraSlots) {
     wireSearchablePicker(slot.picker, saveI2VVideoSettingsFromPanel);
     slot.firstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
