@@ -4809,11 +4809,12 @@ def _save_flux_reference_image(payload):
     if not project_folder:
         raise ValueError("Project folder is empty.")
     reference_type = str(payload.get("reference_type", "") or "").strip().lower()
-    if reference_type not in {"subject", "location"}:
+    if reference_type not in {"subject", "location", "ingredients_sheet"}:
         reference_type = "location"
     raw_name = str(payload.get("name", "") or "").strip() or reference_type
     safe_name = _safe_project_name(raw_name)
-    target_dir = os.path.join(_context_folder(project_folder), "flux_references", f"{reference_type}s")
+    folder_name = "ingredients_sheets" if reference_type == "ingredients_sheet" else f"{reference_type}s"
+    target_dir = os.path.join(_context_folder(project_folder), "flux_references", folder_name)
     os.makedirs(target_dir, exist_ok=True)
 
     image_data = str(payload.get("image_data", "") or "").strip()

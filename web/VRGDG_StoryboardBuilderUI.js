@@ -1168,6 +1168,64 @@ function openStoryboardBuilder(payload = {}) {
     performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
   };
 
+  const absorbSceneReferencesIntoCatalog = (scenes = []) => {
+    const refs = normalizeReferenceBuilderCatalog(state.referenceBuilder || {});
+    const locationIds = new Set(refs.locations.map((location) => String(location.id || "")).filter(Boolean));
+    const locationByName = new Map(
+      refs.locations
+        .map((location) => [String(location.name || "").trim().toLowerCase().replace(/\s+/g, " "), location])
+        .filter(([name]) => Boolean(name)),
+    );
+    const subjectIds = new Set(refs.subjects.map((subject) => String(subject.id || "")).filter(Boolean));
+    for (const scene of scenes || []) {
+      let location = scene?.location_ref;
+      if ((!location || typeof location !== "object") && String(scene?.setting || "").trim()) {
+        location = {
+          id: "",
+          name: String(scene.setting || "").trim(),
+          description: String(scene.setting || "").trim(),
+          image: { path: "", data: "", name: "" },
+        };
+      }
+    if (location && typeof location === "object" && String(location.id || location.name || location.description || "").trim()) {
+      const locationNameKey = String(location.name || scene.setting || "").trim().toLowerCase().replace(/\s+/g, " ");
+      const existingLocation = locationNameKey ? locationByName.get(locationNameKey) : null;
+      const id = String(existingLocation?.id || location.id || `location_from_scene_${scene.scene_number || refs.locations.length + 1}`).trim();
+      location.id = id;
+      scene.location_ref = location;
+      if (!locationIds.has(id)) {
+        const addedLocation = {
+            id,
+            name: String(location.name || scene.setting || "Saved location"),
+            description: String(location.description || ""),
+            trigger_phrase: String(location.trigger_phrase || ""),
+            trigger_position: String(location.trigger_position || "start") === "end" ? "end" : "start",
+            image: normalizeReferenceImage(location),
+          };
+          refs.locations.push(addedLocation);
+          locationIds.add(id);
+          const addedNameKey = String(addedLocation.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+          if (addedNameKey) locationByName.set(addedNameKey, addedLocation);
+        }
+      }
+      for (const subject of Array.isArray(scene?.subject_refs) ? scene.subject_refs : []) {
+        if (!subject || typeof subject !== "object") continue;
+        const id = String(subject.id || subject.name || "").trim();
+        if (!id || subjectIds.has(id)) continue;
+        refs.subjects.push({
+          id,
+          name: String(subject.name || "Saved subject"),
+          description: String(subject.description || ""),
+          trigger_phrase: String(subject.trigger_phrase || ""),
+          trigger_position: String(subject.trigger_position || "start") === "end" ? "end" : "start",
+          image: normalizeReferenceImage(subject),
+        });
+        subjectIds.add(id);
+      }
+    }
+    state.referenceBuilder = normalizeReferenceBuilderCatalog(refs);
+  };
+
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.62);display:flex;align-items:stretch;justify-content:center;padding:18px;";
   const shell = document.createElement("div");
@@ -1632,6 +1690,7 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const openSceneEditor = (scene) => {
+    absorbSceneReferencesIntoCatalog([scene]);
     const editorBackdrop = document.createElement("div");
     editorBackdrop.style.cssText = "position:fixed;inset:0;z-index:100012;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
     const editor = document.createElement("div");
@@ -1696,13 +1755,12 @@ function openStoryboardBuilder(payload = {}) {
       state.referenceBuilder.subjects.map((subject) => ({ value: subject.id, label: subject.name })),
       selectedSubjectIds,
     );
-    const locationSelect = makeSelect(
-      [
-        { value: "", label: "Unassigned" },
-        ...state.referenceBuilder.locations.map((location) => ({ value: location.id, label: location.name })),
-      ],
-      String(scene.location_ref?.id || ""),
-    );
+    const savedLocationId = String(scene.location_ref?.id || "");
+    const locationOptions = [
+      { value: "", label: "Unassigned" },
+      ...state.referenceBuilder.locations.map((location) => ({ value: location.id, label: location.name })),
+    ];
+    const locationSelect = makeSelect(locationOptions, savedLocationId);
     const field = (name, control) => {
       const wrap = document.createElement("label");
       wrap.style.cssText = "display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:800;color:#cbd5e1;";
@@ -1807,7 +1865,7 @@ function openStoryboardBuilder(payload = {}) {
     const locationChip = document.createElement("div");
     const refreshReferenceChips = () => {
       const selectedSubjects = Array.from(subjectSelect.selectedOptions).map((option) => state.referenceBuilder.subjects.find((subject) => subject.id === option.value)).filter(Boolean);
-      const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
+      const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || (locationSelect.value && scene.location_ref?.id === locationSelect.value ? scene.location_ref : null);
       subjectChip.innerHTML = selectedSubjects.length
         ? selectedSubjects.map((ref) => referenceChipHtml(ref, "Subject")).join("")
         : `<span style="color:#94a3b8;">No subject selected</span>`;
@@ -1917,7 +1975,7 @@ function openStoryboardBuilder(payload = {}) {
       motion.value = currentMotion ? `${currentMotion}\nCharacter motion: ${selectedMotion}.` : `Character motion: ${selectedMotion}.`;
     });
     locationSelect.addEventListener("change", () => {
-      const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
+      const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || (locationSelect.value && scene.location_ref?.id === locationSelect.value ? scene.location_ref : null);
       if (selectedLocation) {
         setting.value = selectedLocation.description || selectedLocation.name || "";
         locationDetails.value = `${selectedLocation.name || "Location"}: ${selectedLocation.description || ""}`.trim();
@@ -1989,7 +2047,7 @@ function openStoryboardBuilder(payload = {}) {
         }
       }
       if (state.referenceBuilder.locations.length) {
-        const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || null;
+        const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || (locationSelect.value && scene.location_ref?.id === locationSelect.value ? scene.location_ref : null);
         const locationParts = String(locationDetails.value || "").split(":");
         const locationName = String(locationParts.shift() || "").trim();
         const locationDescription = locationParts.join(":").trim();
@@ -2176,6 +2234,7 @@ function openStoryboardBuilder(payload = {}) {
             location_ref: fresh.location_ref || normalized.location_ref,
           };
         });
+        absorbSceneReferencesIntoCatalog(state.scenes);
       }
       state.mode = saved.mode || state.mode;
       if (saved.camera_flow && STORYBOARD_CAMERA_FLOW_PRESETS[saved.camera_flow]) {

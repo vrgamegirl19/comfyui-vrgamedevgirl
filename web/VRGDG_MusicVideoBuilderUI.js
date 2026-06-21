@@ -12,6 +12,8 @@ const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
 const REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors";
 const DEFAULT_LTX_INGREDIENTS_WIDTH = 768;
 const DEFAULT_LTX_INGREDIENTS_HEIGHT = 448;
+const LOCATION_TRIGGER_GPT_URL = "https://chatgpt.com/g/g-6a36e98d149c8191832005c2050a8c89-ltx-2-3-full-location-mapping-with-lora-trigger";
+const LOCATION_MAPPER_GPT_URL = "https://chatgpt.com/g/g-6a2df090651c819190b00d7974677ad2-ltx-2-3-video-builder-location-creator-mapper";
 const TIMELINE_HEIGHT = 210;
 const TIMELINE_OVERLAY_TOP = 24;
 const TIMELINE_OVERLAY_HEIGHT = 50;
@@ -177,6 +179,13 @@ function makeButton(label, kind = "neutral") {
     padding: 8px 11px;
     cursor: pointer;
   `;
+  return button;
+}
+
+function makeGptLinkButton(label, url) {
+  const button = makeButton(label, "primary");
+  button.title = url;
+  button.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
   return button;
 }
 
@@ -2930,6 +2939,24 @@ function openBuilder(node) {
     };
   }
 
+  function repairI2VVideoSettingDimensions(settings = {}) {
+    const repaired = settings && typeof settings === "object" ? settings : {};
+    const regularWidth = Number(repaired.width || 1920);
+    const regularHeight = Number(repaired.height || 1080);
+    if (regularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && regularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT) {
+      repaired.width = 1920;
+      repaired.height = 1080;
+    }
+    const ingredientsWidth = Number(repaired.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH);
+    const ingredientsHeight = Number(repaired.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT);
+    if (ingredientsWidth === 1920 && ingredientsHeight === 1080) {
+      repaired.ingredients_width = DEFAULT_LTX_INGREDIENTS_WIDTH;
+      repaired.ingredients_height = DEFAULT_LTX_INGREDIENTS_HEIGHT;
+    }
+    return repaired;
+  }
+
+
   const state = {
     duration: 0,
     peaks: [],
@@ -3916,7 +3943,7 @@ function openBuilder(node) {
 
   function cloneI2VVideoSettings(settings) {
     const source = settings || {};
-    return {
+    return repairI2VVideoSettingDimensions({
       ...defaultI2VVideoSettings(),
       ...source,
       fps: Number(source.fps || 24),
@@ -3938,7 +3965,7 @@ function openBuilder(node) {
         strength: Number(item?.second_pass_strength ?? item?.first_pass_strength ?? item?.strength ?? 1),
       })) : [],
       video_trigger_phrase: source.video_trigger_phrase || "",
-    };
+    });
   }
 
   function applyModelDefaults(defaults) {
@@ -5109,6 +5136,37 @@ function openBuilder(node) {
       if (applyIngredientsSheetToSegment(segment, ingredientsSheetForSegment(segment, normalizedRefs))) applied += 1;
     }
     return applied;
+  }
+
+  function syncIngredientsSceneMapFromSubjectMappings(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const sheets = normalizedRefs.ingredients_sheets || [];
+    const subjects = normalizedRefs.subjects || [];
+    if (!sheets.length || !subjects.length) return { refs: normalizedRefs, mapped: 0 };
+    const key = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const sheetByName = new Map();
+    for (const sheet of sheets) {
+      const sheetKey = key(sheet.name);
+      if (sheetKey && !sheetByName.has(sheetKey)) sheetByName.set(sheetKey, sheet);
+    }
+    if (!sheetByName.size) return { refs: normalizedRefs, mapped: 0 };
+    const subjectById = new Map(subjects.map((subject) => [String(subject.id || ""), subject]));
+    normalizedRefs.ingredients_scene_map = normalizedRefs.ingredients_scene_map || {};
+    let mapped = 0;
+    for (const segment of allEditableSegments()) {
+      const subjectIds = Array.isArray(normalizedRefs.subject_scene_map?.[segment.id]) ? normalizedRefs.subject_scene_map[segment.id] : [];
+      const singerNames = Array.isArray(segment.lyric_singers) ? segment.lyric_singers : [];
+      const names = [
+        ...subjectIds.map((id) => subjectById.get(String(id || ""))?.name || ""),
+        ...singerNames,
+      ];
+      const match = names.map((name) => sheetByName.get(key(name))).find(Boolean);
+      if (match?.id) {
+        normalizedRefs.ingredients_scene_map[segment.id] = match.id;
+        mapped += 1;
+      }
+    }
+    return { refs: normalizedRefs, mapped };
   }
 
   function applyIngredientsSheetForSceneIfMapped(segment) {
@@ -6442,7 +6500,7 @@ function openBuilder(node) {
     videoSettingsScopeNote.textContent = segment?.use_scene_i2v_video_settings
       ? "This scene is using custom video models, settings, and LoRAs from the Models tab."
       : "This scene is using global video models, settings, and LoRAs. Enable custom scene video settings in the Models tab.";
-    const settings = activeI2VVideoSettings() || {};
+    const settings = repairI2VVideoSettingDimensions(activeI2VVideoSettings() || {});
     videoTriggerInput.value = settings.video_trigger_phrase || "";
     i2vUnetPicker.input.value = BAD_I2V_UNET_ALIASES.has(settings.unet_name) ? DEFAULT_I2V_UNET : settings.unet_name || "";
     i2vVaePicker.input.value = settings.vae_name || "";
@@ -6455,9 +6513,13 @@ function openBuilder(node) {
     const regularHeight = Number(settings.height || 1080);
     const repairedRegularWidth = (!isIngredientsMode && regularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && regularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT) ? 1920 : regularWidth;
     const repairedRegularHeight = (!isIngredientsMode && regularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && regularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT) ? 1080 : regularHeight;
+    const rawIngredientsWidth = Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH);
+    const rawIngredientsHeight = Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT);
+    const ingredientsWidth = rawIngredientsWidth === 1920 && rawIngredientsHeight === 1080 ? DEFAULT_LTX_INGREDIENTS_WIDTH : rawIngredientsWidth;
+    const ingredientsHeight = rawIngredientsWidth === 1920 && rawIngredientsHeight === 1080 ? DEFAULT_LTX_INGREDIENTS_HEIGHT : rawIngredientsHeight;
     i2vFpsInput.value = settings.fps || 24;
-    i2vWidthInput.value = isIngredientsMode ? Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH) : repairedRegularWidth;
-    i2vHeightInput.value = isIngredientsMode ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT) : repairedRegularHeight;
+    i2vWidthInput.value = isIngredientsMode ? ingredientsWidth : repairedRegularWidth;
+    i2vHeightInput.value = isIngredientsMode ? ingredientsHeight : repairedRegularHeight;
     i2vSeedInput.value = settings.seed || 69;
     i2vTailLossFramesInput.value = Math.max(0, Number(settings.tail_loss_frames ?? 25));
     i2vPreFramesInput.value = Math.max(0, Number(settings.pre_frames ?? 50));
@@ -6492,8 +6554,12 @@ function openBuilder(node) {
     const repairedPreviousHeight = previousRegularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && previousRegularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT ? 1080 : previousRegularHeight;
     const regularWidth = isIngredientsMode ? repairedPreviousWidth : Number(i2vWidthInput.value || 1920);
     const regularHeight = isIngredientsMode ? repairedPreviousHeight : Number(i2vHeightInput.value || 1080);
-    const ingredientsWidth = isIngredientsMode ? Number(i2vWidthInput.value || DEFAULT_LTX_INGREDIENTS_WIDTH) : Number(previous.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH);
-    const ingredientsHeight = isIngredientsMode ? Number(i2vHeightInput.value || DEFAULT_LTX_INGREDIENTS_HEIGHT) : Number(previous.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT);
+    const previousIngredientsWidth = Number(previous.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH);
+    const previousIngredientsHeight = Number(previous.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT);
+    const repairedPreviousIngredientsWidth = previousIngredientsWidth === 1920 && previousIngredientsHeight === 1080 ? DEFAULT_LTX_INGREDIENTS_WIDTH : previousIngredientsWidth;
+    const repairedPreviousIngredientsHeight = previousIngredientsWidth === 1920 && previousIngredientsHeight === 1080 ? DEFAULT_LTX_INGREDIENTS_HEIGHT : previousIngredientsHeight;
+    const ingredientsWidth = isIngredientsMode ? Number(i2vWidthInput.value || DEFAULT_LTX_INGREDIENTS_WIDTH) : repairedPreviousIngredientsWidth;
+    const ingredientsHeight = isIngredientsMode ? Number(i2vHeightInput.value || DEFAULT_LTX_INGREDIENTS_HEIGHT) : repairedPreviousIngredientsHeight;
     const settings = {
       unet_name: BAD_I2V_UNET_ALIASES.has(i2vUnetPicker.input.value) ? DEFAULT_I2V_UNET : i2vUnetPicker.input.value || "",
       vae_name: i2vVaePicker.input.value || "",
@@ -6526,6 +6592,7 @@ function openBuilder(node) {
         second_pass_strength: Number(slot.secondPassStrength.value || 1),
       })),
     };
+    repairI2VVideoSettingDimensions(settings);
     if (segment?.use_scene_i2v_video_settings || hasMultiSceneBatchSelection()) {
       if (segment) {
         segment.use_scene_i2v_video_settings = true;
@@ -10041,6 +10108,9 @@ function openBuilder(node) {
         await saveMapper();
         pushHistory();
         const count = applyLyricMapperToSegments({ overwriteSingers: true });
+        const syncedIngredients = syncIngredientsSceneMapFromSubjectMappings(state.fluxReferenceBuilder);
+        state.fluxReferenceBuilder = syncedIngredients.refs;
+        if (currentVideoMode() === "ingredients") applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
         syncInspector();
         render();
         await saveSession({ quiet: true, throwOnError: true });
@@ -10450,7 +10520,7 @@ function openBuilder(node) {
       const instrumental = Boolean(row.querySelector("[data-review-instrumental='1']")?.checked);
       if (instrumental) return "[instrumental]";
       const text = row.querySelector("[data-review-lyric-text]");
-      return String(text?.dataset?.reviewRawLyricText ?? text?.value ?? "").trim();
+      return String(text?.dataset?.reviewRawLyricText ?? text?.value ?? "");
     };
 
     const reviewRowBlocksLipSync = (row) => {
@@ -10486,7 +10556,7 @@ function openBuilder(node) {
     const setReviewRowRawLyricText = (row, value) => {
       const text = row?.querySelector("[data-review-lyric-text]");
       if (!text) return;
-      const nextValue = String(value || "").trim();
+      const nextValue = String(value || "");
       text.dataset.reviewRawLyricText = nextValue;
       text.value = nextValue;
     };
@@ -10892,6 +10962,27 @@ function openBuilder(node) {
         .filter((input) => input.checked)
         .map((input) => input.value)
         .filter(Boolean);
+      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const subjects = Array.isArray(refs.subjects) ? refs.subjects : [];
+      const subjectIds = [];
+      for (const input of row.querySelectorAll("[data-review-singer-choice='1']")) {
+        if (!input.checked || isNoLipSyncSingerChoice(input.value)) continue;
+        const choiceId = String(input.dataset.reviewSubjectId || "").trim();
+        const choiceLabel = String(input.value || "").trim().toLowerCase();
+        if (choiceId === "group") {
+          subjectIds.push(...subjects.map((subject) => subject.id).filter(Boolean));
+          continue;
+        }
+        const byId = subjects.find((subject) => String(subject.id || "") === choiceId);
+        const byName = subjects.find((subject) => String(subject.name || "").trim().toLowerCase() === choiceLabel);
+        if (byId?.id) subjectIds.push(byId.id);
+        else if (byName?.id) subjectIds.push(byName.id);
+      }
+      refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
+      const uniqueSubjectIds = Array.from(new Set(subjectIds));
+      if (uniqueSubjectIds.length) refs.subject_scene_map[segment.id] = uniqueSubjectIds;
+      else delete refs.subject_scene_map[segment.id];
+      state.fluxReferenceBuilder = refs;
       if (includeTiming) {
         const start = parseBulkTimeValue(row.querySelector("[data-review-start]")?.value);
         const end = parseBulkTimeValue(row.querySelector("[data-review-end]")?.value);
@@ -11036,6 +11127,9 @@ function openBuilder(node) {
               const segment = scenes.find((item) => item.id === row.dataset.reviewSegmentId);
               if (segment) applyReviewRowValues(row, segment, false);
             }
+            const syncedIngredients = syncIngredientsSceneMapFromSubjectMappings(state.fluxReferenceBuilder);
+            state.fluxReferenceBuilder = syncedIngredients.refs;
+            if (currentVideoMode() === "ingredients") applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
             syncInspector();
             render();
             await saveSession({ quiet: true, throwOnError: true });
@@ -11130,7 +11224,7 @@ function openBuilder(node) {
       text.addEventListener("input", () => {
         if (applyingBoundaryOverlapPreview) return;
         text.dataset.reviewRawLyricText = text.value;
-        refreshBoundaryOverlapPreview();
+        if (boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
       });
       const singerPanel = document.createElement("div");
       singerPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:64px;box-sizing:border-box;";
@@ -11218,6 +11312,9 @@ function openBuilder(node) {
           if (!segment) continue;
           applyReviewRowValues(row, segment, true, { lyricTextOverride: lyricOverrides.get(segment.id) });
         }
+        const syncedIngredients = syncIngredientsSceneMapFromSubjectMappings(state.fluxReferenceBuilder);
+        state.fluxReferenceBuilder = syncedIngredients.refs;
+        if (currentVideoMode() === "ingredients") applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
         sortSegments(state.segments);
         state.segments.forEach((segment, index) => {
           segment.label = `Scene ${index + 1}`;
@@ -12295,8 +12392,16 @@ function openBuilder(node) {
       importHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;background:#083f4f;border-bottom:1px solid #155e75;padding:12px 14px;";
       const importTitle = document.createElement("div");
       importTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import Location List / Scene Map</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste locations to create cards, or scene-to-location JSON to auto-map scenes.</div>`;
+      const gptTools = document.createElement("div");
+      gptTools.style.cssText = "display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;margin-left:auto;";
+      const mapperGpt = makeGptLinkButton("GPT: Locations Only", LOCATION_MAPPER_GPT_URL);
+      mapperGpt.style.cssText += "white-space:nowrap;";
+      const gptNote = document.createElement("div");
+      gptNote.textContent = "Creates scene-location JSON without trigger words.";
+      gptNote.style.cssText = "flex-basis:100%;text-align:right;font-size:11px;color:#bae6fd;line-height:1.25;";
+      gptTools.append(mapperGpt, gptNote);
       const importClose = makeButton("Close");
-      importHeader.append(importTitle, importClose);
+      importHeader.append(importTitle, gptTools, importClose);
       const importBody = document.createElement("div");
       importBody.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;";
       const help = document.createElement("div");
@@ -13383,6 +13488,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
   function openIngredientsReferenceBuilderModal() {
     let refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const syncedIngredients = syncIngredientsSceneMapFromSubjectMappings(refs);
+    refs = syncedIngredients.refs;
+    state.fluxReferenceBuilder = refs;
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
@@ -13411,7 +13519,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const mappingPanel = document.createElement("div");
     mappingPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
     const mapHeader = document.createElement("div");
-    mapHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Scene Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Auto-map checks whether a sheet name appears in the selected scene text sources.</div>`;
+    mapHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Scene Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Choose the Ingredients sheet image and optional location text for each scene.</div>`;
     const autoBox = document.createElement("div");
     autoBox.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:9px;";
     const sourceLabels = {
@@ -13439,7 +13547,29 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const sceneList = document.createElement("div");
     sceneList.style.cssText = "display:flex;flex-direction:column;gap:7px;max-height:58vh;overflow:auto;padding-right:4px;";
     mappingPanel.append(mapHeader, autoBox, mapActions, sceneList);
-    content.append(sheetPanel, mappingPanel);
+
+    const locationPanel = document.createElement("div");
+    locationPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:8px;";
+    const locationHeader = document.createElement("div");
+    locationHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Location Text</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Optional text-only locations for Gemma/prompt planning. No location images or triggers are used here.</div>`;
+    const locationToolActions = document.createElement("div");
+    locationToolActions.style.cssText = "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;";
+    const importLocations = makeButton("Import JSON", "primary");
+    const addLocation = makeButton("Add Location", "primary");
+    const autoMapLocations = makeButton("Auto Map", "primary");
+    const clearLocations = makeButton("Clear Locations");
+    locationToolActions.append(importLocations, addLocation, autoMapLocations, clearLocations);
+    const locationHint = document.createElement("div");
+    locationHint.textContent = "Import location lists or scene-to-location JSON, then choose those locations in the scene dropdowns above.";
+    locationHint.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const locationList = document.createElement("div");
+    locationList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;padding-right:4px;";
+    locationPanel.append(locationHeader, locationToolActions, locationHint, locationList);
+
+    const rightStack = document.createElement("div");
+    rightStack.style.cssText = "display:flex;flex-direction:column;gap:12px;";
+    rightStack.append(mappingPanel, locationPanel);
+    content.append(sheetPanel, rightStack);
 
     const footer = document.createElement("div");
     footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px;";
@@ -13461,30 +13591,47 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const sceneId = select.dataset.sceneId || "";
         select.value = refs.ingredients_scene_map?.[sceneId] || "";
       }
+      for (const select of sceneList.querySelectorAll("[data-ingredients-location-map='1']")) {
+        const sceneId = select.dataset.sceneId || "";
+        select.value = refs.scene_map?.[sceneId] || "";
+      }
+    };
+
+    const ingredientsSheetById = (sheetId) => {
+      const id = String(sheetId || "");
+      return (refs.ingredients_sheets || []).find((item) => String(item.id || "") === id) || null;
     };
 
     const setSheetImageFromFile = (sheet, file) => {
       if (!sheet || !file) return;
+      const sheetId = String(sheet.id || "");
+      const fileName = file.name || `${sheet.name || "ingredients"}_sheet.png`;
       const previewUrl = URL.createObjectURL(file);
-      sheet.image = {
+      const previewImage = {
         path: "",
-        data: sheet.image?.data || "",
-        name: file.name || `${sheet.name || "ingredients"}_sheet.png`,
+        data: "",
+        name: fileName,
         preview_url: previewUrl,
       };
+      const currentSheet = ingredientsSheetById(sheetId);
+      if (currentSheet) currentSheet.image = previewImage;
+      else sheet.image = previewImage;
       renderSheets();
       syncMappingInputs();
       const reader = new FileReader();
       reader.onload = () => {
-        sheet.image = {
+        const loadedImage = {
           path: "",
           data: String(reader.result || ""),
-          name: file.name || `${sheet.name || "ingredients"}_sheet.png`,
+          name: fileName,
           preview_url: previewUrl,
         };
+        const latestSheet = ingredientsSheetById(sheetId);
+        if (latestSheet) latestSheet.image = loadedImage;
+        else sheet.image = loadedImage;
         renderSheets();
         syncMappingInputs();
-        toast(`Loaded Ingredients sheet image:\n${file.name || "uploaded image"}`);
+        toast(`Loaded Ingredients sheet image:\n${fileName || "uploaded image"}`);
       };
       reader.onerror = () => toast("Failed to read Ingredients sheet image.", true);
       reader.readAsDataURL(file);
@@ -13493,10 +13640,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const setSheetImageFromText = (sheet, text) => {
       const value = String(text || "").trim();
       if (!sheet || !value) return;
+      const sheetId = String(sheet.id || "");
+      const currentSheet = ingredientsSheetById(sheetId) || sheet;
       if (/^data:image\//i.test(value)) {
-        sheet.image = { path: "", data: value, name: sheet.image?.name || `${sheet.name || "ingredients"}_sheet.png`, preview_url: "" };
+        currentSheet.image = { path: "", data: value, name: currentSheet.image?.name || `${currentSheet.name || "ingredients"}_sheet.png`, preview_url: "" };
       } else {
-        sheet.image = { path: value, data: "", name: sheet.image?.name || value.split(/[\\/]/).pop() || `${sheet.name || "ingredients"}_sheet.png`, preview_url: "" };
+        currentSheet.image = { path: value, data: "", name: currentSheet.image?.name || value.split(/[\\/]/).pop() || `${currentSheet.name || "ingredients"}_sheet.png`, preview_url: "" };
       }
       renderSheets();
       syncMappingInputs();
@@ -13509,8 +13658,254 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const sheetId = String(select.value || "").trim();
         if (sceneId && sheetId) refs.ingredients_scene_map[sceneId] = sheetId;
       }
+      if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+      for (const select of sceneList.querySelectorAll("[data-ingredients-location-map='1']")) {
+        const sceneId = select.dataset.sceneId || "";
+        const locationId = String(select.value || "").trim();
+        const missing = select.selectedOptions?.[0]?.dataset?.missingLocation === "1";
+        if (sceneId && locationId && !missing) refs.scene_map[sceneId] = locationId;
+        else if (sceneId && locationId && missing && !refs.scene_map[sceneId]) refs.scene_map[sceneId] = locationId;
+        else if (sceneId) delete refs.scene_map[sceneId];
+      }
+      refs.use_location_references = Boolean((refs.locations || []).length || Object.keys(refs.scene_map || {}).length);
       normalizeLocalRefs();
     };
+
+    const syncNamedIngredientsSheetsToSubjects = () => {
+      const namedSheets = (refs.ingredients_sheets || [])
+        .filter((sheet) => {
+          const name = String(sheet.name || "").trim();
+          return name && !/^ingredients\s+sheet\s+\d*$/i.test(name);
+        });
+      if (!namedSheets.length) return 0;
+      const imageIsEmpty = (image = {}) => !String(image.path || image.data || image.name || image.preview_url || "").trim();
+      refs.subjects = Array.isArray(refs.subjects) ? refs.subjects : [];
+      refs.subjects = refs.subjects.filter((subject, index) => {
+        const name = String(subject?.name || "").trim();
+        const description = String(subject?.description || "").trim();
+        const image = subject?.image || {};
+        return !(index === 0 && /^Character\s+1$/i.test(name) && !description && imageIsEmpty(image));
+      });
+      const subjectKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+      const byName = new Map(refs.subjects.map((subject) => [subjectKey(subject.name), subject]));
+      let synced = 0;
+      for (const sheet of namedSheets) {
+        const name = String(sheet.name || "").trim();
+        const key = subjectKey(name);
+        if (!key) continue;
+        const existing = byName.get(key);
+        if (existing) {
+          if (!existing.image || imageIsEmpty(existing.image)) existing.image = { ...(sheet.image || { path: "", data: "", name: "" }) };
+          const sheetDescription = String(sheet.description || "").trim();
+          if (sheetDescription) existing.description = sheetDescription;
+          synced += 1;
+          continue;
+        }
+        const subject = {
+          id: `subj_${Date.now()}_${refs.subjects.length}_${Math.floor(Math.random() * 10000)}`,
+          name,
+          description: String(sheet.description || ""),
+          trigger_phrase: "",
+          trigger_position: "start",
+          image: { ...(sheet.image || { path: "", data: "", name: "" }) },
+        };
+        refs.subjects.push(subject);
+        byName.set(key, subject);
+        synced += 1;
+      }
+      refs.subject_count = Math.max(1, refs.subjects.length);
+      refs.use_subject_reference = refs.subjects.length > 0;
+      return synced;
+    };
+
+    const locationKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const locationByName = (name) => (refs.locations || []).find((location) => locationKey(location.name) === locationKey(name)) || null;
+    const locationById = (id) => (refs.locations || []).find((location) => String(location.id || "") === String(id || "")) || null;
+    const upsertLocationText = (items = []) => {
+      refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
+      let added = 0;
+      let updated = 0;
+      for (const item of items) {
+        const name = String(item?.name || item?.location || item?.setting || "").trim();
+        if (!name) continue;
+        const description = String(item?.description || item?.location_description || item?.prompt || item?.details || "").trim();
+        const existing = locationByName(name);
+        if (existing) {
+          if (description) existing.description = description;
+          updated += 1;
+        } else {
+          refs.locations.push({
+            id: `loc_${Date.now()}_${refs.locations.length}_${Math.floor(Math.random() * 10000)}`,
+            name,
+            description,
+            image: { path: "", data: "", name: "" },
+          });
+          added += 1;
+        }
+      }
+      refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
+      return { added, updated };
+    };
+    const parseIngredientLocationImport = (rawText) => {
+      const text = String(rawText || "").trim();
+      if (!text) return { locations: [], sceneMap: [] };
+      const normalizeLocation = (item) => {
+        if (!item || typeof item !== "object") return null;
+        const name = String(item.location || item.location_name || item.name || item.setting || "").trim();
+        const description = String(item.description || item.location_description || item.prompt || item.details || "").trim();
+        return name ? { name, description } : null;
+      };
+      const normalizeSceneMap = (item, fallbackIndex = 0) => {
+        if (!item || typeof item !== "object") return null;
+        const sceneRaw = item.scene_number ?? item.sceneNumber ?? item.scene ?? item.segment ?? item.number ?? fallbackIndex + 1;
+        const sceneNumber = Number(String(sceneRaw).match(/\d+/)?.[0] || sceneRaw || fallbackIndex + 1);
+        const location = normalizeLocation(item);
+        return location ? { sceneNumber, ...location } : null;
+      };
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) {
+          return {
+            locations: parsed.map(normalizeLocation).filter(Boolean),
+            sceneMap: parsed.map(normalizeSceneMap).filter(Boolean),
+          };
+        }
+        if (parsed && typeof parsed === "object") {
+          const source = parsed.locations || parsed.location_list || parsed.scenes || parsed.scene_map || parsed;
+          if (Array.isArray(source)) {
+            return {
+              locations: source.map(normalizeLocation).filter(Boolean),
+              sceneMap: source.map(normalizeSceneMap).filter(Boolean),
+            };
+          }
+          return {
+            locations: [],
+            sceneMap: Object.entries(source)
+              .filter(([key]) => !["trigger_position", "triggerPosition", "trigger_placement", "subject_trigger_position", "subjectTriggerPosition", "location_trigger_position", "locationTriggerPosition"].includes(key))
+              .map(([key, value], index) => {
+                const objectValue = typeof value === "string" ? { location: value } : value;
+                return normalizeSceneMap({ scene: key, ...(objectValue || {}) }, index);
+              })
+              .filter(Boolean),
+          };
+        }
+      } catch (_error) {
+        // Fall through to simple line formats.
+      }
+      return {
+        locations: text.split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const clean = line.replace(/^[-*]\s*/, "");
+            const match = clean.match(/^(.+?)\s*(?:=>|=|:|\s+-\s+)\s*(.+)$/);
+            return match ? { name: match[1].trim(), description: match[2].trim() } : { name: clean, description: "" };
+          })
+          .filter((item) => item.name),
+        sceneMap: [],
+      };
+    };
+    const applyIngredientLocationSceneMap = (sceneMap = []) => {
+      const segments = allEditableSegments();
+      refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
+      let mapped = 0;
+      for (const item of sceneMap) {
+        const segment = segments[Math.max(0, Number(item.sceneNumber || 1) - 1)];
+        if (!segment) continue;
+        const location = locationByName(item.name);
+        if (!location) continue;
+        refs.scene_map[segment.id] = location.id;
+        mapped += 1;
+      }
+      refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
+      return mapped;
+    };
+    const repairIngredientLocationMappings = () => {
+      refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
+      refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
+      const segments = allEditableSegments();
+      let repaired = 0;
+      for (const [index, segment] of segments.entries()) {
+        const keys = [segment.id, String(index + 1), `scene${index + 1}`, `Scene ${index + 1}`].filter(Boolean);
+        const existingKey = keys.find((key) => String(refs.scene_map?.[key] || "").trim());
+        if (!existingKey) continue;
+        const locationId = String(refs.scene_map[existingKey] || "").trim();
+        if (!locationId || locationById(locationId)) {
+          if (existingKey !== segment.id && locationId) {
+            refs.scene_map[segment.id] = locationId;
+            delete refs.scene_map[existingKey];
+          }
+          continue;
+        }
+        const locationRef = segment.location_ref && typeof segment.location_ref === "object" ? segment.location_ref : null;
+        const locationName = String(locationRef?.name || segment.mapped_location || segment.location || segment.setting || "").trim();
+        const locationDescription = String(locationRef?.description || segment.location_description || "").trim();
+        if (locationName || locationDescription) {
+          let location = locationName ? locationByName(locationName) : null;
+          if (!location) {
+            location = {
+              id: locationId,
+              name: locationName || `Location ${index + 1}`,
+              description: locationDescription,
+              image: { path: "", data: "", name: "" },
+            };
+            refs.locations.push(location);
+          } else {
+            refs.scene_map[segment.id] = location.id;
+          }
+          if (locationDescription && !String(location.description || "").trim()) location.description = locationDescription;
+          if (existingKey !== segment.id) delete refs.scene_map[existingKey];
+          repaired += 1;
+        } else {
+          delete refs.scene_map[existingKey];
+        }
+      }
+      refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
+      return repaired;
+    };
+
+    function renderLocations() {
+      refs = normalizeFluxReferenceBuilder(refs);
+      locationList.innerHTML = "";
+      if (!refs.locations.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:12px;text-align:center;color:#94a3b8;font-size:12px;";
+        empty.textContent = "No location text yet. Import JSON or add a location.";
+        locationList.append(empty);
+        return;
+      }
+      refs.locations.forEach((location, index) => {
+        const row = document.createElement("div");
+        row.style.cssText = "border:1px solid #1f2937;border-radius:7px;background:#020617;padding:8px;display:flex;flex-direction:column;gap:7px;";
+        const name = document.createElement("input");
+        name.value = location.name || `Location ${index + 1}`;
+        name.placeholder = "Location name";
+        name.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        name.oninput = () => {
+          const currentLocation = locationById(location.id) || location;
+          currentLocation.name = name.value;
+          renderScenes();
+        };
+        const description = document.createElement("textarea");
+        description.value = location.description || "";
+        description.placeholder = "Location description text...";
+        description.style.cssText = "width:100%;box-sizing:border-box;min-height:58px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;line-height:1.4;";
+        description.oninput = () => {
+          const currentLocation = locationById(location.id) || location;
+          currentLocation.description = description.value;
+        };
+        const remove = makeButton("Remove");
+        remove.onclick = () => {
+          refs.locations = refs.locations.filter((item) => item.id !== location.id);
+          for (const [sceneId, locationId] of Object.entries(refs.scene_map || {})) {
+            if (locationId === location.id) delete refs.scene_map[sceneId];
+          }
+          renderAll();
+        };
+        row.append(makeField("Name", name), makeField("Description", description), remove);
+        locationList.append(row);
+      });
+    }
 
     function renderSheets() {
       refs = normalizeFluxReferenceBuilder(refs);
@@ -13527,8 +13922,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         row.style.cssText = "border:1px solid #1f2937;border-radius:7px;background:#020617;padding:9px;display:flex;flex-direction:column;gap:8px;";
         row.dataset.sheetId = sheet.id;
         const image = sheet.image || {};
-        const imageLoaded = Boolean(image.preview_url || image.data || image.path);
-        const previewSrc = image.preview_url || image.data || (image.path ? makeEditorImageUrl(image.path) : "");
+        const persistedSrc = image.data || (image.path ? makeEditorImageUrl(image.path) : "");
+        const previewUrl = String(image.preview_url || "");
+        const transientPreviewSrc = /^blob:/i.test(previewUrl) && !persistedSrc ? "" : previewUrl;
+        const previewSrc = persistedSrc || transientPreviewSrc;
+        const imageLoaded = Boolean(previewSrc);
         const top = document.createElement("div");
         top.style.cssText = "display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;";
         const thumb = document.createElement("div");
@@ -13550,7 +13948,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         name.value = sheet.name || `Ingredients Sheet ${index + 1}`;
         name.placeholder = "Sheet name, used for auto-map";
         name.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
-        name.oninput = () => { sheet.name = name.value; renderScenes(); };
+        name.oninput = () => {
+          const currentSheet = ingredientsSheetById(sheet.id) || sheet;
+          currentSheet.name = name.value;
+          renderScenes();
+        };
         const remove = makeButton("Remove");
         remove.onclick = () => {
           refs.ingredients_sheets = refs.ingredients_sheets.filter((item) => item.id !== sheet.id);
@@ -13562,9 +13964,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         top.append(thumb, name, remove);
         const notes = document.createElement("textarea");
         notes.value = sheet.description || "";
-        notes.placeholder = "Optional note for yourself";
+        notes.placeholder = "Optional character/subject description sent to Storyboard and Gemma...";
         notes.style.cssText = "width:100%;box-sizing:border-box;min-height:52px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
-        notes.oninput = () => { sheet.description = notes.value; };
+        notes.oninput = () => {
+          const currentSheet = ingredientsSheetById(sheet.id) || sheet;
+          currentSheet.description = notes.value;
+        };
         const preview = document.createElement("div");
         preview.style.cssText = "min-height:118px;border:1px dashed #334155;border-radius:7px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#94a3b8;font-size:12px;text-align:center;";
         if (previewSrc) {
@@ -13624,11 +14029,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         pathInput.onchange = () => setSheetImageFromText(sheet, pathInput.value);
         const clear = makeButton("Clear Image");
         clear.onclick = () => {
-          sheet.image = { path: "", data: "", name: "" };
+          const currentSheet = ingredientsSheetById(sheet.id) || sheet;
+          currentSheet.image = { path: "", data: "", name: "" };
           renderSheets();
         };
         controls.append(upload, pathInput, clear, fileInput);
-        row.append(top, notes, preview, status, controls);
+        row.append(top, makeField("Character / subject description", notes), preview, status, controls);
         sheetList.append(row);
       });
     }
@@ -13637,7 +14043,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs = normalizeFluxReferenceBuilder(refs);
       sceneList.innerHTML = "";
       const sheets = refs.ingredients_sheets || [];
+      const locations = refs.locations || [];
       const segments = allEditableSegments();
+      const sceneMappedValue = (map, segment, index) => {
+        const keys = [segment.id, String(index + 1), `scene${index + 1}`, `Scene ${index + 1}`].filter(Boolean);
+        for (const key of keys) {
+          const value = String(map?.[key] || "").trim();
+          if (value) return value;
+        }
+        return "";
+      };
       if (!segments.length) {
         const empty = document.createElement("div");
         empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:14px;text-align:center;color:#94a3b8;font-size:12px;";
@@ -13647,7 +14062,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       segments.forEach((segment, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,260px);gap:8px;align-items:center;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:8px;";
+        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,240px) minmax(170px,240px);gap:8px;align-items:center;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:8px;";
         const label = document.createElement("div");
         const lyric = String(segment.lyric_text || "").trim();
         label.innerHTML = `<div style="font-size:12px;font-weight:800;color:#f8fafc;">${escapeHtml(sceneDisplayName(segment, index))}</div><div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(lyric || sceneConceptPromptText(segment) || segment.notes || "No notes yet")}</div>`;
@@ -13656,15 +14071,38 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         select.dataset.sceneId = segment.id || "";
         select.style.cssText = "width:100%;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
         select.innerHTML = `<option value="">No Ingredients sheet</option>${sheets.map((sheet) => `<option value="${escapeHtml(sheet.id)}">${escapeHtml(sheet.name || "Ingredients Sheet")}</option>`).join("")}`;
-        select.value = refs.ingredients_scene_map?.[segment.id] || "";
+        const sheetValue = sceneMappedValue(refs.ingredients_scene_map, segment, index);
+        select.value = sheets.some((sheet) => sheet.id === sheetValue) ? sheetValue : "";
         select.onchange = () => collectMappingsFromDom();
-        row.append(label, select);
+        const locationSelect = document.createElement("select");
+        locationSelect.dataset.ingredientsLocationMap = "1";
+        locationSelect.dataset.sceneId = segment.id || "";
+        locationSelect.style.cssText = select.style.cssText;
+        locationSelect.innerHTML = `<option value="">No location text</option>${locations.map((location) => `<option value="${escapeHtml(location.id)}">${escapeHtml(location.name || "Location")}</option>`).join("")}`;
+        const rawLocationValue = sceneMappedValue(refs.scene_map, segment, index);
+        const locationMatch = locations.find((location) => String(location.id || "") === rawLocationValue)
+          || locations.find((location) => locationKey(location.name) === locationKey(rawLocationValue));
+        const locationValue = locationMatch?.id || rawLocationValue;
+        if (locationMatch?.id && rawLocationValue !== locationMatch.id) refs.scene_map[segment.id] = locationMatch.id;
+        const hasLocationOption = Boolean(locationMatch);
+        if (locationValue && !hasLocationOption) {
+          const missingOption = new Option("Missing saved location", locationValue);
+          missingOption.dataset.missingLocation = "1";
+          locationSelect.append(missingOption);
+        }
+        locationSelect.value = hasLocationOption || locationValue ? locationValue : "";
+        locationSelect.disabled = !locations.length;
+        locationSelect.title = locations.length ? "Location text sent to Gemma/prompt planning for this scene." : "Add or import locations with Location Text Tools below.";
+        locationSelect.onchange = () => collectMappingsFromDom();
+        row.append(label, select, locationSelect);
         sceneList.append(row);
       });
     }
 
     function renderAll() {
+      repairIngredientLocationMappings();
       renderSheets();
+      renderLocations();
       renderScenes();
     }
 
@@ -13690,11 +14128,128 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.ingredients_scene_map = {};
       renderScenes();
     };
+    addLocation.onclick = () => {
+      collectMappingsFromDom();
+      refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
+      refs.locations.push({
+        id: `loc_${Date.now()}_${refs.locations.length}_${Math.floor(Math.random() * 10000)}`,
+        name: `Location ${refs.locations.length + 1}`,
+        description: "",
+        image: { path: "", data: "", name: "" },
+      });
+      refs.use_location_references = true;
+      renderAll();
+    };
+    clearLocations.onclick = () => {
+      if (!window.confirm("Clear Ingredients location text and scene location mappings?")) return;
+      refs.locations = [];
+      refs.scene_map = {};
+      refs.use_location_references = false;
+      renderAll();
+    };
+    autoMapLocations.onclick = () => {
+      collectMappingsFromDom();
+      const locations = refs.locations || [];
+      if (!locations.length) {
+        toast("Add or import locations before auto-mapping.", true);
+        return;
+      }
+      refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
+      let mapped = 0;
+      for (const segment of allEditableSegments()) {
+        const text = [
+          sceneConceptPromptText(segment),
+          segment.notes || "",
+          segment.timeline_note || "",
+          segment.i2v_notes || "",
+          segment.lyric_text || "",
+        ].join(" ").toLowerCase();
+        const match = locations.find((location) => {
+          const name = String(location.name || "").trim().toLowerCase();
+          return name && text.includes(name);
+        });
+        if (match?.id) {
+          refs.scene_map[segment.id] = match.id;
+          mapped += 1;
+        }
+      }
+      refs.use_location_references = Boolean(refs.locations.length || Object.keys(refs.scene_map || {}).length);
+      renderScenes();
+      toast(`Auto-mapped ${mapped} scene${mapped === 1 ? "" : "s"} by location name.`);
+    };
+    importLocations.onclick = () => {
+      const importBackdrop = document.createElement("div");
+      importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const importBox = document.createElement("div");
+      importBox.style.cssText = "width:min(760px,calc(100vw - 34px));max-height:calc(100vh - 40px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);padding:14px;display:flex;flex-direction:column;gap:10px;";
+      const importHeader = document.createElement("div");
+      importHeader.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
+      const importTitle = document.createElement("div");
+      importTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import Ingredients Location Text / Scene Map</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Paste location text or scene-location JSON. Trigger fields are ignored here.</div>`;
+      const gptTools = document.createElement("div");
+      gptTools.style.cssText = "display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;min-width:190px;";
+      const mapperGpt = makeGptLinkButton("GPT: Locations Only", LOCATION_MAPPER_GPT_URL);
+      mapperGpt.style.cssText += "white-space:nowrap;";
+      gptTools.append(mapperGpt);
+      importHeader.append(importTitle, gptTools);
+      const help = document.createElement("div");
+      help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;font-size:12px;color:#dbeafe;line-height:1.45;max-height:230px;overflow:auto;";
+      help.innerHTML = `
+        <strong>Accepted formats</strong>
+        <div style="margin-top:8px;">Location list JSON:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">[
+  { "location": "Glass hallway", "description": "A long mirrored corridor..." },
+  { "name": "Chrome vault corridor", "description": "A sealed industrial passage..." }
+]</pre>
+        <div style="margin-top:8px;">Combined location + scene map JSON:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">[
+  { "scene": "scene1", "location": "Glass hallway", "description": "A long mirrored corridor..." },
+  { "scene": "scene2", "location": "Chrome vault corridor", "description": "A sealed industrial passage..." }
+]</pre>
+        <div style="margin-top:8px;">Scene map JSON:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">{
+  "scene1": { "location": "Glass hallway" },
+  "scene2": { "location": "Chrome vault corridor" }
+}</pre>
+        <div style="margin-top:8px;">Quick text:</div>
+        <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">Glass hallway = A long mirrored corridor...
+Chrome vault corridor = A sealed industrial passage...</pre>`;
+      const input = document.createElement("textarea");
+      input.placeholder = "Paste location text or scene-location JSON...";
+      input.style.cssText = "min-height:250px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+      const cancelImport = makeButton("Cancel");
+      const applyImport = makeButton("Import", "primary");
+      actions.append(cancelImport, applyImport);
+      importBox.append(importHeader, help, input, actions);
+      importBackdrop.append(importBox);
+      document.body.append(importBackdrop);
+      const closeImport = () => importBackdrop.remove();
+      cancelImport.onclick = closeImport;
+      importBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === importBackdrop) closeImport();
+      });
+      applyImport.onclick = () => {
+        try {
+          const parsed = parseIngredientLocationImport(input.value);
+          const { added, updated } = upsertLocationText(parsed.locations);
+          const mapped = applyIngredientLocationSceneMap(parsed.sceneMap);
+          renderAll();
+          closeImport();
+          toast(`Imported location text. Added: ${added}. Updated: ${updated}. Scene mappings: ${mapped}.`);
+        } catch (error) {
+          toast(String(error?.message || error), true);
+        }
+      };
+      input.focus();
+    };
     cancel.onclick = () => backdrop.remove();
     close.onclick = () => backdrop.remove();
     save.onclick = async () => {
       pushHistory();
       collectMappingsFromDom();
+      syncNamedIngredientsSheetsToSubjects();
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       const applied = applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
       syncInspector();
@@ -14251,8 +14806,21 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
       const importBox = document.createElement("div");
       importBox.style.cssText = "width:min(720px,calc(100vw - 34px));max-height:calc(100vh - 40px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);padding:14px;display:flex;flex-direction:column;gap:10px;";
+      const importHeader = document.createElement("div");
+      importHeader.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
       const importTitle = document.createElement("div");
       importTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import Location Text / Scene Map</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Paste JSON or simple Name = Description lines. Images are ignored here.</div>`;
+      const gptTools = document.createElement("div");
+      gptTools.style.cssText = "display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;min-width:310px;";
+      const triggerGpt = makeGptLinkButton("GPT: Locations + Triggers", LOCATION_TRIGGER_GPT_URL);
+      const mapperGpt = makeGptLinkButton("GPT: Locations Only", LOCATION_MAPPER_GPT_URL);
+      triggerGpt.style.cssText += "white-space:nowrap;";
+      mapperGpt.style.cssText += "white-space:nowrap;";
+      const gptNote = document.createElement("div");
+      gptNote.textContent = "Use trigger GPT for location LoRA trigger phrases, or locations-only GPT for plain scene-location JSON.";
+      gptNote.style.cssText = "flex-basis:100%;font-size:11px;color:#bae6fd;line-height:1.25;text-align:right;";
+      gptTools.append(triggerGpt, mapperGpt, gptNote);
+      importHeader.append(importTitle, gptTools);
       const help = document.createElement("div");
       help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;font-size:12px;color:#dbeafe;line-height:1.45;max-height:260px;overflow:auto;";
       help.innerHTML = `
@@ -14269,16 +14837,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         <div>Name/description lines:</div>
         <pre style="white-space:pre-wrap;margin:6px 0 0;color:#e2e8f0;">Glass hallway = Long mirrored corridor...
 Chrome vault corridor = Sealed industrial passage...</pre>
-        <div style="margin-top:8px;color:#94a3b8;">Use <code>Trigger</code>, <code>trigger</code>, or <code>trigger_phrase</code>. Subject and location trigger placement are controlled by the two dropdowns in the main text mapping window. A root <code>trigger_position: "end"</code> value applies to imported location/scene triggers unless changed after import.</div>`;
+        <div style="margin-top:8px;color:#94a3b8;">Use <code>Trigger</code>, <code>trigger</code>, or <code>trigger_phrase</code> on location entries. Subject and location trigger placement are controlled by the two dropdowns in the main text mapping window. A root <code>trigger_position: "end"</code> value applies to imported location triggers unless changed after import.</div>`;
       const input = document.createElement("textarea");
-      input.placeholder = "Paste location text, scene-location JSON, or scene-trigger JSON...";
+      input.placeholder = "Paste location text or scene-location JSON...";
       input.style.cssText = "min-height:280px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
       const cancelImport = makeButton("Cancel");
       const applyImport = makeButton("Import", "primary");
       actions.append(cancelImport, applyImport);
-      importBox.append(importTitle, help, input, actions);
+      importBox.append(importHeader, help, input, actions);
       importBackdrop.append(importBox);
       document.body.append(importBackdrop);
       const closeImport = () => importBackdrop.remove();
@@ -15585,6 +16153,100 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
+  async function persistIngredientsSheetImages(projectFolder) {
+    const folder = String(projectFolder || "").trim();
+    if (!folder) return 0;
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    let saved = 0;
+    const dataUrlSize = (value) => String(value || "").length;
+    const compactImageDataUrl = (dataUrl) => new Promise((resolve) => {
+      const raw = String(dataUrl || "").trim();
+      if (!/^data:image\//i.test(raw) || dataUrlSize(raw) < 780000) {
+        resolve(raw);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const attempts = [
+          [1400, 0.82],
+          [1100, 0.74],
+          [900, 0.66],
+          [720, 0.58],
+          [560, 0.5],
+        ];
+        let best = raw;
+        for (const [maxDim, quality] of attempts) {
+          const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || img.width || 1, img.naturalHeight || img.height || 1));
+          const width = Math.max(1, Math.round((img.naturalWidth || img.width || 1) * scale));
+          const height = Math.max(1, Math.round((img.naturalHeight || img.height || 1) * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          const candidate = canvas.toDataURL("image/jpeg", quality);
+          if (candidate.length < best.length) best = candidate;
+          if (candidate.length < 720000) {
+            resolve(candidate);
+            return;
+          }
+        }
+        resolve(best);
+      };
+      img.onerror = () => resolve(raw);
+      img.src = raw;
+    });
+    const saveImageObject = async (image, referenceType, name) => {
+      const imageData = String(image?.data || "").trim();
+      if (!/^data:image\//i.test(imageData)) return false;
+      const uploadData = await compactImageDataUrl(imageData);
+      const data = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+        project_folder: folder,
+        reference_type: referenceType,
+        name,
+        image_data: uploadData,
+      }, 60000);
+      image.path = data.saved_path || "";
+      image.data = "";
+      image.name = image.name || name || "reference.png";
+      image.preview_url = "";
+      return true;
+    };
+    for (const [index, sheet] of (refs.ingredients_sheets || []).entries()) {
+      const image = sheet?.image || {};
+      if (await saveImageObject(image, "ingredients_sheet", sheet.name || image.name || `Ingredients Sheet ${index + 1}`)) saved += 1;
+    }
+    const sheetByName = new Map((refs.ingredients_sheets || []).map((sheet) => [String(sheet.name || "").trim().toLowerCase(), sheet]));
+    for (const subject of (refs.subjects || [])) {
+      const matchingSheet = sheetByName.get(String(subject.name || "").trim().toLowerCase());
+      if (matchingSheet?.image?.path && (subject.image?.data || !subject.image?.path)) {
+        subject.image = { ...(matchingSheet.image || {}) };
+      } else if (subject.image && await saveImageObject(subject.image, "subject", subject.name || subject.image.name || "subject")) {
+        saved += 1;
+      }
+    }
+    if (refs.subject?.image?.data) {
+      const firstSubjectImage = refs.subjects?.[0]?.image || null;
+      if (firstSubjectImage?.path) refs.subject.image = { ...firstSubjectImage };
+      else if (await saveImageObject(refs.subject.image, "subject", refs.subjects?.[0]?.name || "subject")) saved += 1;
+    }
+    for (const location of (refs.locations || [])) {
+      if (location.image && await saveImageObject(location.image, "location", location.name || location.image.name || "location")) saved += 1;
+    }
+    for (const segment of allEditableSegments()) {
+      const sheet = ingredientsSheetForSegment(segment, refs);
+      if (sheet?.image?.path && segment.custom_image_data) {
+        segment.custom_image_path = sheet.image.path;
+        segment.custom_image_data = "";
+        segment.custom_image_name = sheet.image.name || sheet.name || segment.custom_image_name || "ingredients_reference.png";
+      }
+    }
+    state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+    return saved;
+  }
+
   function activeProjectFolderForSave() {
     const folder = String(state.projectFolder || "").trim();
     if (folder) {
@@ -15631,6 +16293,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (!options.quiet) toast(message, true);
         return null;
       }
+      await persistIngredientsSheetImages(projectFolder);
       const data = await postJson("/vrgdg/music_builder/save_session", {
         audio_path: audioInput.value,
         project_folder: projectFolder,
@@ -15732,6 +16395,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     saveI2VVideoSettingsFromPanel();
     const projectFolder = activeProjectFolderForSave();
     if (!projectFolder) throw new Error("Create or load a project before rendering scene videos.");
+    await persistIngredientsSheetImages(projectFolder);
     const data = await postJson("/vrgdg/music_builder/save_session", {
       audio_path: audioInput.value,
       project_folder: projectFolder,
@@ -15762,6 +16426,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         console.warn(`[VRGDG Music Builder] Autosave skipped before ${reason || "action"} because no active project is set.`);
         return false;
       }
+      await persistIngredientsSheetImages(projectFolder);
       const data = await postJson("/vrgdg/music_builder/save_session", {
         audio_path: audioInput.value,
         project_folder: projectFolder,
@@ -17548,6 +18213,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function i2vVideoSettingsPayload(segment = activeSegment()) {
     const settings = i2vVideoSettingsForSegment(segment);
+    repairI2VVideoSettingDimensions(settings);
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const segmentMode = String(segment?.video_prompt_type || "").trim();
