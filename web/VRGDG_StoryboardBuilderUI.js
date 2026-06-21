@@ -857,6 +857,7 @@ function normalizeScene(scene = {}, index = 0) {
     : String(scene.lyric_singers || scene.singers || "").split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
   const lyricNoLipSync = Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || scene.noLipSync || scene.broll || scene.b_roll);
   const lyricInstrumental = Boolean(scene.lyric_instrumental || scene.instrumental || storyboardIsInstrumentalText(lyrics));
+  const noCharacterPresent = Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject);
   return {
     id: scene.id || `storyboard_scene_${index + 1}_${Date.now()}`,
     scene_number: Number(scene.scene_number || scene.number || index + 1),
@@ -865,10 +866,11 @@ function normalizeScene(scene = {}, index = 0) {
     lyric_singers: lyricSingers,
     lyric_no_lip_sync: lyricNoLipSync,
     lyric_instrumental: lyricInstrumental,
+    no_character_present: noCharacterPresent,
     prompt_summary: scene.prompt_summary || scene.summary || "",
     motion_summary: scene.motion_summary || scene.video_notes || scene.i2v_notes || "",
     subjects: Array.isArray(scene.subjects) ? scene.subjects : String(scene.subjects || "").split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean),
-    subject_refs: Array.isArray(scene.subject_refs) ? scene.subject_refs.filter((item) => item && typeof item === "object") : [],
+    subject_refs: noCharacterPresent ? [] : Array.isArray(scene.subject_refs) ? scene.subject_refs.filter((item) => item && typeof item === "object") : [],
     setting: scene.setting || scene.location_ref?.description || scene.location_ref?.name || scene.location || "",
     location_ref: scene.location_ref && typeof scene.location_ref === "object" ? scene.location_ref : null,
     trigger_phrase: String(scene.trigger_phrase || scene.trigger || scene.Trigger || ""),
@@ -897,6 +899,7 @@ function scenesFromBuilderPayload(payload = {}) {
     lyric_singers: scene.lyric_singers || scene.singers || [],
     lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync),
     lyric_instrumental: Boolean(scene.lyric_instrumental || scene.instrumental),
+    no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || scene.no_subject || scene.no_visible_subject),
     prompt_summary: scene.notes || scene.director_note || scene.t2i_prompt || "",
     motion_summary: scene.video_notes || scene.i2v_notes || "",
     subjects: scene.lyric_singers || scene.subjects || "",
@@ -1045,11 +1048,12 @@ function storyboardScenesForGpt(state) {
     const lyricText = String(normalized.lyrics || "").trim();
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync);
-    const shouldLipSync = Boolean(lyricText) && !instrumental && !noLipSync;
-    const subjectRefs = (Array.isArray(normalized.subject_refs) ? normalized.subject_refs : [])
+    const noCharacterPresent = Boolean(normalized.no_character_present);
+    const shouldLipSync = Boolean(lyricText) && !instrumental && !noLipSync && !noCharacterPresent;
+    const subjectRefs = noCharacterPresent ? [] : (Array.isArray(normalized.subject_refs) ? normalized.subject_refs : [])
       .map(storyboardReferenceForGpt)
       .filter(Boolean);
-    const subjectFallbacks = (Array.isArray(normalized.subjects) ? normalized.subjects : [])
+    const subjectFallbacks = noCharacterPresent ? [] : (Array.isArray(normalized.subjects) ? normalized.subjects : [])
       .map((name) => ({ name: String(name || "").trim(), description: "" }))
       .filter((item) => item.name);
     const subjectNames = subjectRefs.length
@@ -1072,6 +1076,7 @@ function storyboardScenesForGpt(state) {
         instrumental,
         no_lip_sync: noLipSync,
         should_lip_sync: shouldLipSync,
+        no_character_present: noCharacterPresent,
       },
       vocal_direction: {
         mode: shouldLipSync ? "sing exact lyric line" : (instrumental ? "instrumental / no vocals" : (noLipSync ? "b-roll / no lip sync" : "no lyric line provided")),
@@ -1092,7 +1097,9 @@ function storyboardScenesForGpt(state) {
           : "Do not mention or add a microphone, mic stand, headset mic, studio mic, or any microphone prop unless the scene notes explicitly ask for one.",
       },
       subject_count: subjectCount,
-      subject_instruction: subjectCount === 1
+      subject_instruction: noCharacterPresent
+        ? "No main character or mapped subject is present in this scene. Do not include, mention, imply, or describe the mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and camera motion instead."
+        : subjectCount === 1
         ? "This scene has exactly one subject. Treat the listed subject as one individual person even if the label sounds plural. Do not create a group, duplicates, backup singers, or multiple versions of the subject. Use singular wording and do not use they/them/their for this one subject."
         : "Only include the listed subjects. Do not add extra people unless the scene notes explicitly ask for them.",
       subjects: subjectRefs.length ? subjectRefs : subjectFallbacks,
@@ -1515,7 +1522,8 @@ function openStoryboardBuilder(payload = {}) {
       scenes: state.scenes.map((scene) => ({
         id: scene.id,
         scene_number: scene.scene_number,
-        subject_ids: (Array.isArray(scene.subject_refs) ? scene.subject_refs : []).map((ref) => String(ref?.id || "")).filter(Boolean),
+        no_character_present: Boolean(scene.no_character_present),
+        subject_ids: scene.no_character_present ? [] : (Array.isArray(scene.subject_refs) ? scene.subject_refs : []).map((ref) => String(ref?.id || "")).filter(Boolean),
         location_id: String(scene.location_ref?.id || ""),
         trigger: String(scene.trigger_phrase || ""),
         trigger_position: String(scene.trigger_position || "start") === "end" ? "end" : "start",
@@ -1714,6 +1722,12 @@ function openStoryboardBuilder(payload = {}) {
     includeMic.type = "checkbox";
     includeMic.checked = Boolean(scene.include_microphone);
     includeMicLabel.append(includeMic, document.createTextNode("Include microphone in prompt"));
+    const noCharacterLabel = document.createElement("label");
+    noCharacterLabel.style.cssText = includeMicLabel.style.cssText;
+    const noCharacterInput = document.createElement("input");
+    noCharacterInput.type = "checkbox";
+    noCharacterInput.checked = Boolean(scene.no_character_present);
+    noCharacterLabel.append(noCharacterInput, document.createTextNode("No character present"));
     const videoPromptType = makeSelect([
       { value: "i2v", label: "Image to Video" },
       { value: "t2v", label: "Text to Video" },
@@ -1748,7 +1762,7 @@ function openStoryboardBuilder(payload = {}) {
       { value: "end", label: "Add trigger to end" },
     ], scene.trigger_position || "start");
     const notes = makeTextarea(scene.notes, "Extra planning notes...", 3);
-    const selectedSubjectIds = (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
+    const selectedSubjectIds = scene.no_character_present ? [] : (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
       .map((ref) => String(ref?.id || ""))
       .filter(Boolean);
     const subjectSelect = makeMultiSelect(
@@ -1824,7 +1838,7 @@ function openStoryboardBuilder(payload = {}) {
     const imagePathField = field("Image path", imagePath);
     const motionField = field("Motion / video summary", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
-    grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
+    grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     const referenceGrid = document.createElement("div");
     referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;";
     if (state.referenceBuilder.subjects.length || state.referenceBuilder.locations.length) {
@@ -1853,7 +1867,7 @@ function openStoryboardBuilder(payload = {}) {
     header.append(headerIcon, headerText, closeEditor);
 
     const basicsGrid = twoCol();
-    basicsGrid.append(field("Scene label", label), field("Scene / lyrics", lyrics), field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), includeMicLabel, videoTypeHint);
+    basicsGrid.append(field("Scene label", label), field("Scene / lyrics", lyrics), field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), includeMicLabel, noCharacterLabel, videoTypeHint);
 
     const addSubject = makeButton("+ Add subject");
     addSubject.style.background = "#0f172a";
@@ -1866,12 +1880,25 @@ function openStoryboardBuilder(payload = {}) {
     const refreshReferenceChips = () => {
       const selectedSubjects = Array.from(subjectSelect.selectedOptions).map((option) => state.referenceBuilder.subjects.find((subject) => subject.id === option.value)).filter(Boolean);
       const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || (locationSelect.value && scene.location_ref?.id === locationSelect.value ? scene.location_ref : null);
-      subjectChip.innerHTML = selectedSubjects.length
+      subjectChip.innerHTML = noCharacterInput.checked
+        ? `<span style="color:#fca5a5;">No character present</span>`
+        : selectedSubjects.length
         ? selectedSubjects.map((ref) => referenceChipHtml(ref, "Subject")).join("")
         : `<span style="color:#94a3b8;">No subject selected</span>`;
       locationChip.innerHTML = selectedLocation
         ? referenceChipHtml(selectedLocation, "Location")
         : `<span style="color:#94a3b8;">No location selected</span>`;
+    };
+    const refreshNoCharacterState = () => {
+      subjectSelect.disabled = Boolean(noCharacterInput.checked);
+      subjects.disabled = Boolean(noCharacterInput.checked);
+      subjectDetails.disabled = Boolean(noCharacterInput.checked);
+      if (noCharacterInput.checked) {
+        for (const option of subjectSelect.options) option.selected = false;
+        subjects.value = "";
+        subjectDetails.value = "";
+      }
+      refreshReferenceChips();
     };
     const referencesGrid = twoCol();
     const subjectPick = document.createElement("div");
@@ -1955,6 +1982,8 @@ function openStoryboardBuilder(payload = {}) {
     };
     subjectSelect.addEventListener("change", refreshSubjectDetailsFromSelection);
     subjectSelect.addEventListener("change", refreshReferenceChips);
+    noCharacterInput.addEventListener("change", refreshNoCharacterState);
+    refreshNoCharacterState();
     shotPreset.addEventListener("change", () => {
       if (shotPreset.value && shotPreset.value !== "__custom__") shot.value = shotPreset.value;
     });
@@ -2020,9 +2049,10 @@ function openStoryboardBuilder(payload = {}) {
       scene.prompt_summary = summary.value.trim();
       scene.motion_summary = motion.value.trim();
       scene.video_prompt_type = videoPromptType.value || "i2v";
-      scene.subjects = subjects.value.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
+      scene.no_character_present = Boolean(noCharacterInput.checked);
+      scene.subjects = scene.no_character_present ? [] : subjects.value.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
       scene.setting = setting.value.trim();
-      if (state.referenceBuilder.subjects.length) {
+      if (state.referenceBuilder.subjects.length && !scene.no_character_present) {
         const selectedIds = Array.from(subjectSelect.selectedOptions).map((option) => option.value).filter(Boolean);
         scene.subject_refs = selectedIds
           .map((id) => state.referenceBuilder.subjects.find((subject) => subject.id === id))
@@ -2045,6 +2075,8 @@ function openStoryboardBuilder(payload = {}) {
         if (scene.subject_refs.length) {
           scene.subjects = storyboardSubjectNamesFromRefs(scene.subject_refs);
         }
+      } else if (scene.no_character_present) {
+        scene.subject_refs = [];
       }
       if (state.referenceBuilder.locations.length) {
         const selectedLocation = state.referenceBuilder.locations.find((location) => location.id === locationSelect.value) || (locationSelect.value && scene.location_ref?.id === locationSelect.value ? scene.location_ref : null);
@@ -2228,8 +2260,9 @@ function openStoryboardBuilder(payload = {}) {
             prompt_summary: fresh.prompt_summary || normalized.prompt_summary,
             motion_summary: fresh.motion_summary || normalized.motion_summary,
             image_path: fresh.image_path || normalized.image_path,
+            no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
             subjects,
-            subject_refs: subjectRefs,
+            subject_refs: fresh.no_character_present || normalized.no_character_present ? [] : subjectRefs,
             setting: fresh.location_ref?.name || normalized.setting || fresh.setting,
             location_ref: fresh.location_ref || normalized.location_ref,
           };

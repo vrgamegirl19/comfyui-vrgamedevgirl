@@ -1323,6 +1323,7 @@ function newSegment(start = 0, end = 4) {
     timeline_note: "",
     lyric_text: "",
     lyric_singers: [],
+    no_character_present: false,
     i2v_notes: "",
     t2i_prompt: "",
     enhance_notes: "",
@@ -3148,6 +3149,51 @@ function openBuilder(node) {
     return `Runner: ${gemmaRunnerLabel(options)}`;
   }
 
+  function referenceDescriptionVisionModel() {
+    return String(i2vGemmaModelSelect.value || fluxGemmaModelSelect.value || nbGemmaModelSelect.value || gemmaModelSelect.value || ernieGemmaModelSelect.value || "").trim();
+  }
+
+  function referenceDescriptionMmproj() {
+    return String(i2vMmprojSelect.value || fluxMmprojSelect.value || nbMmprojSelect.value || mmprojSelect.value || ernieMmprojSelect.value || "").trim();
+  }
+
+  function referenceImagePayload(image = {}) {
+    return {
+      image_path: String(image?.path || "").trim(),
+      image_data: String(image?.data || "").trim(),
+    };
+  }
+
+  function hasReferenceImage(image = {}) {
+    const payload = referenceImagePayload(image);
+    return Boolean(payload.image_path || payload.image_data);
+  }
+
+  async function describeReferenceImageWithGemma(target, referenceType = "subject", options = {}) {
+    const image = target?.image || {};
+    if (!hasReferenceImage(image)) {
+      throw new Error(referenceType === "location" ? "This location has no image for Gemma to describe." : "This character has no image for Gemma to describe.");
+    }
+    const modelFile = referenceDescriptionVisionModel();
+    const mmprojFile = referenceDescriptionMmproj();
+    if (!modelFile || !mmprojFile) {
+      throw new Error("Choose a Gemma vision model and Vision mmproj first.");
+    }
+    const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
+      model_file: modelFile,
+      mmproj_file: mmprojFile,
+      reference_type: referenceType,
+      name: target?.name || "",
+      ...referenceImagePayload(image),
+      unload_after: options.unloadAfter !== false,
+      clear_before_load: Boolean(options.clearBeforeLoad),
+    }, 4 * 60 * 1000);
+    const description = String(data.description || "").trim();
+    if (!description) throw new Error("Gemma returned an empty reference description.");
+    target.description = description;
+    return description;
+  }
+
   function isLikelyEmbeddingModelId(modelId) {
     const text = String(modelId || "").toLowerCase();
     return text.includes("embedding") || text.includes("embed") || text.includes("nomic-embed") || text.includes("bge-") || text.includes("e5-");
@@ -3738,6 +3784,7 @@ function openBuilder(node) {
     if (segment.lyric_text == null) segment.lyric_text = "";
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
     segment.lyric_no_lip_sync = Boolean(segment.lyric_no_lip_sync);
+    segment.no_character_present = Boolean(segment.no_character_present || segment.no_subject || segment.no_visible_subject);
     if (segment.timeline_note == null) segment.timeline_note = "";
     if (segment.i2v_notes == null) segment.i2v_notes = "";
     if (segment.id == null || !String(segment.id).trim()) segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
@@ -4626,25 +4673,30 @@ function openBuilder(node) {
 
   function videoGemmaNotesForSegment(segment) {
     const notes = String(segment?.i2v_notes || "").trim();
+    const noCharacterNote = segment?.no_character_present
+      ? "Subject visibility: no main character is present in this scene. Do not include, mention, show, imply, or describe the mapped character/subject/singer. Build the shot from the location, props, environment, objects, atmosphere, and camera motion instead."
+      : "";
+    const withNoCharacterNote = (text) => [noCharacterNote, text, notes].filter(Boolean).join("\n\n");
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText);
     if (lyricText && !isInstrumentalLyricText(lyricText)) {
       if (segment?.lyric_no_lip_sync) {
         const brollNote = "Vocal/performance direction: b-roll / no lip-sync. Do not make any visible subject sing or lip-sync in this shot. Use visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere instead.";
-        return notes ? `${brollNote}\n\n${notes}` : brollNote;
+        return withNoCharacterNote(brollNote);
       }
       const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
       const performanceNote = singers.length
         ? `Vocal/performance direction: ${singers.length > 1 ? `all listed singers (${singers.join(", ")}) must visibly sing together in this shot. Do not describe one listed singer as only listening, watching, reacting, or dancing while another listed singer sings.` : `only ${singers[0]} should visibly sing in this shot; other visible subjects should react, perform, dance, listen, or move without singing unless also listed.`} The exact lyric text will be inserted into the final prompt automatically.`
         : "Vocal/performance direction: the visible subject should perform as if singing in sync with the audio. The exact lyric text will be inserted into the final prompt automatically.";
-      return notes ? `${performanceNote}\n\n${notes}` : performanceNote;
+      return withNoCharacterNote(segment?.no_character_present ? "" : performanceNote);
     }
-    if (!isInstrumentalLyricText(lyricText)) return notes;
+    if (!isInstrumentalLyricText(lyricText)) return withNoCharacterNote("");
     const instrumentalNote = "Lyric/performance status: instrumental / no sung lyrics. In the final prompt, do not mention singing, lip-syncing, mouth movement, instrumental status, or no-vocal status. Use visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere instead.";
-    return notes ? `${instrumentalNote}\n\n${notes}` : instrumentalNote;
+    return withNoCharacterNote(instrumentalNote);
   }
 
   function vocalDirectiveForSegment(segment) {
+    if (segment?.no_character_present) return "";
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
     if (!lyricText) return "";
@@ -4666,6 +4718,7 @@ function openBuilder(node) {
   }
 
   function vocalClauseForSegment(segment) {
+    if (segment?.no_character_present) return null;
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
     if (!lyricText || isInstrumentalLyricText(lyricText) || segment?.lyric_no_lip_sync) return null;
@@ -6194,7 +6247,7 @@ function openBuilder(node) {
       location_name: "",
       location_description: "",
     };
-    if (refs.use_subject_reference) {
+    if (refs.use_subject_reference && !segment?.no_character_present) {
       let mappedSubjects = [];
       if (refs.subject_count > 1 && segment) {
         const subjectIds = refs.subject_scene_map?.[segment.id] || refs.subject_scene_map?.[String(segmentIndexInfo(segment).index + 1)] || [];
@@ -9135,6 +9188,7 @@ function openBuilder(node) {
   }
 
   function segmentSingerSubjectText(segment) {
+    if (segment?.no_character_present) return "";
     if (Array.isArray(segment?.lyric_singers)) {
       return segment.lyric_singers.map((item) => String(item || "").trim()).filter(Boolean).join(", ");
     }
@@ -9144,6 +9198,7 @@ function openBuilder(node) {
   function segmentMappedSubjectText(segment) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (!segment) return "";
+    if (segment.no_character_present) return "";
     const indexKey = String(segmentIndexInfo(segment).index + 1);
     const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
       ? refs.subject_scene_map[segment.id]
@@ -9190,13 +9245,15 @@ function openBuilder(node) {
       if (!parts[key].some((item) => item.toLowerCase() === text.toLowerCase())) parts[key].push(text);
     };
     const indexKey = String(segmentIndexInfo(segment).index + 1);
-    const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
-      ? refs.subject_scene_map[segment.id]
-      : (Array.isArray(refs.subject_scene_map?.[indexKey]) ? refs.subject_scene_map[indexKey] : []);
-    subjectIds
-      .map((id) => refs.subjects.find((subject) => subject.id === id))
-      .filter(Boolean)
-      .forEach((subject) => add(subject.trigger_phrase, "subject"));
+    if (!segment.no_character_present) {
+      const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
+        ? refs.subject_scene_map[segment.id]
+        : (Array.isArray(refs.subject_scene_map?.[indexKey]) ? refs.subject_scene_map[indexKey] : []);
+      subjectIds
+        .map((id) => refs.subjects.find((subject) => subject.id === id))
+        .filter(Boolean)
+        .forEach((subject) => add(subject.trigger_phrase, "subject"));
+    }
     const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[indexKey] || "";
     const location = refs.locations.find((item) => item.id === locId);
     if (location) add(location.trigger_phrase, "location");
@@ -10953,20 +11010,22 @@ function openBuilder(node) {
     const applyReviewRowValues = (row, segment, includeTiming = false, options = {}) => {
       const instrumental = Boolean(row.querySelector("[data-review-instrumental='1']")?.checked);
       const broll = Boolean(row.querySelector("[data-review-broll='1']")?.checked);
+      const noCharacterPresent = Boolean(row.querySelector("[data-review-no-character='1']")?.checked);
       const lyricText = Object.prototype.hasOwnProperty.call(options, "lyricTextOverride")
         ? options.lyricTextOverride
         : row.querySelector("[data-review-lyric-text]")?.value || "";
       segment.lyric_text = instrumental ? "[instrumental]" : lyricText;
       segment.lyric_no_lip_sync = instrumental || broll;
+      segment.no_character_present = noCharacterPresent;
       segment.lyric_singers = [...row.querySelectorAll("[data-review-singer-choice='1']")]
-        .filter((input) => input.checked)
+        .filter((input) => !noCharacterPresent && input.checked)
         .map((input) => input.value)
         .filter(Boolean);
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const subjects = Array.isArray(refs.subjects) ? refs.subjects : [];
       const subjectIds = [];
       for (const input of row.querySelectorAll("[data-review-singer-choice='1']")) {
-        if (!input.checked || isNoLipSyncSingerChoice(input.value)) continue;
+        if (noCharacterPresent || !input.checked || isNoLipSyncSingerChoice(input.value)) continue;
         const choiceId = String(input.dataset.reviewSubjectId || "").trim();
         const choiceLabel = String(input.value || "").trim().toLowerCase();
         if (choiceId === "group") {
@@ -10980,7 +11039,7 @@ function openBuilder(node) {
       }
       refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
       const uniqueSubjectIds = Array.from(new Set(subjectIds));
-      if (uniqueSubjectIds.length) refs.subject_scene_map[segment.id] = uniqueSubjectIds;
+      if (!noCharacterPresent && uniqueSubjectIds.length) refs.subject_scene_map[segment.id] = uniqueSubjectIds;
       else delete refs.subject_scene_map[segment.id];
       state.fluxReferenceBuilder = refs;
       if (includeTiming) {
@@ -11011,6 +11070,7 @@ function openBuilder(node) {
       target.lyric_text = source.lyric_text || "";
       target.lyric_singers = Array.isArray(source.lyric_singers) ? [...source.lyric_singers] : [];
       target.lyric_no_lip_sync = Boolean(source.lyric_no_lip_sync);
+      target.no_character_present = Boolean(source.no_character_present);
       target.i2v_notes = source.i2v_notes || "";
       return target;
     };
@@ -11119,6 +11179,7 @@ function openBuilder(node) {
               state.fluxReferenceBuilder = reviewReferenceBuilder;
             }
             for (const row of reviewRows()) {
+              if (row.querySelector("[data-review-no-character='1']")?.checked) continue;
               for (const singerInput of row.querySelectorAll("[data-review-singer-choice='1']")) {
                 if (singerInput.dataset.reviewSubjectId === choice.id || singerInput.value === choiceLabel) singerInput.checked = true;
               }
@@ -11136,7 +11197,7 @@ function openBuilder(node) {
             showInfoModal({
               title: "Lyric Review Saved",
               lines: [subjectIds.length
-                ? `${reviewChoiceLabel(choice)} was assigned as a visible scene character everywhere. Instrumental and B-roll scenes remain no-lip-sync.`
+                ? `${reviewChoiceLabel(choice)} was assigned as a visible scene character everywhere. Instrumental and B-roll scenes remain no-lip-sync. No-character scenes stay empty.`
                 : `${reviewChoiceLabel(choice)} was added to every scene.`],
               confirmLabel: "OK",
             });
@@ -11232,20 +11293,33 @@ function openBuilder(node) {
       flags.style.cssText = "display:flex;flex-direction:column;gap:8px;padding-top:4px;";
       const instrumental = makeCheckbox("Instrumental", isInstrumentalLyricText(segment.lyric_text));
       const broll = makeCheckbox("B-roll / no lip-sync", Boolean(segment.lyric_no_lip_sync) && !isInstrumentalLyricText(segment.lyric_text));
+      const noCharacter = makeCheckbox("No character present", Boolean(segment.no_character_present));
       instrumental.input.dataset.reviewInstrumental = "1";
       broll.input.dataset.reviewBroll = "1";
-      flags.append(instrumental.wrapper, broll.wrapper);
+      noCharacter.input.dataset.reviewNoCharacter = "1";
+      flags.append(instrumental.wrapper, broll.wrapper, noCharacter.wrapper);
+      const updateNoCharacterState = () => {
+        const disabled = Boolean(noCharacter.input.checked);
+        for (const input of singerPanel.querySelectorAll("[data-review-singer-choice='1']")) {
+          input.disabled = disabled;
+          if (disabled) input.checked = false;
+        }
+        singerPanel.style.opacity = disabled ? "0.55" : "1";
+      };
       const updateDisabled = () => {
         if (instrumental.input.checked) {
           text.value = "[instrumental]";
           text.dataset.reviewRawLyricText = "[instrumental]";
           broll.input.checked = false;
         }
+        updateNoCharacterState();
         refreshBoundaryOverlapPreview();
       };
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
+      updateNoCharacterState();
       instrumental.input.onchange = updateDisabled;
       broll.input.onchange = updateDisabled;
+      noCharacter.input.onchange = updateDisabled;
       const locationWrap = document.createElement("div");
       locationWrap.style.cssText = "display:flex;flex-direction:column;gap:6px;";
       const locationSelect = document.createElement("select");
@@ -11325,7 +11399,7 @@ function openBuilder(node) {
         await saveSession({ quiet: true, throwOnError: true });
         showInfoModal({
           title: "Lyric Review Saved",
-          lines: ["Lyrics, scene timing, singer labels, no-lip-sync flags, and location mapping were saved to the timeline."],
+          lines: ["Lyrics, scene timing, singer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
           confirmLabel: "OK",
         });
       } catch (error) {
@@ -11378,8 +11452,8 @@ function openBuilder(node) {
     const setStatusText = () => {
       const scenes = allEditableSegments();
       const lyricCount = scenes.filter((segment) => String(segment.lyric_text || "").trim()).length;
-      const singerCount = scenes.filter((segment) => (Array.isArray(segment.lyric_singers) && segment.lyric_singers.length) || segment.lyric_no_lip_sync).length;
-      statusLine.textContent = `${lyricCount}/${scenes.length} scenes have lyric notes. ${singerCount}/${scenes.length} scenes have singer/no-lip-sync mapping.`;
+      const singerCount = scenes.filter((segment) => (Array.isArray(segment.lyric_singers) && segment.lyric_singers.length) || segment.lyric_no_lip_sync || segment.no_character_present).length;
+      statusLine.textContent = `${lyricCount}/${scenes.length} scenes have lyric notes. ${singerCount}/${scenes.length} scenes have singer/no-lip-sync/no-character mapping.`;
     };
     let activeLyricMappingTab = "transcribe";
     let manualTimingAudio = null;
@@ -11739,12 +11813,14 @@ function openBuilder(node) {
     subjectTitle.textContent = "Character References";
     subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
     const extractSubjects = makeButton("Extract Subjects", "primary");
+    const describeMissingSubjects = makeButton("Gemma - Create subject Description if missing", "primary");
     const importSubjects = makeButton("Import Subjects", "primary");
     const removeAllSubjects = makeButton("Remove All Subjects");
     const subjectActions = document.createElement("div");
     subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
+    describeMissingSubjects.title = "Use vision Gemma to describe character reference images that do not already have descriptions.";
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
-    subjectActions.append(extractSubjects, importSubjects, removeAllSubjects);
+    subjectActions.append(extractSubjects, describeMissingSubjects, importSubjects, removeAllSubjects);
     subjectHeader.append(subjectTitle, subjectActions);
     const subjectCountInput = makeInput(String(refs.subject_count || 1), "number");
     subjectCountInput.min = "1";
@@ -11769,9 +11845,11 @@ function openBuilder(node) {
     const subjectButtons = document.createElement("div");
     subjectButtons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
     const createSubjectZImage = makeButton("Create Subject with ZImage", "primary");
+    const describeSubjectImage = makeButton("Gemma Describe", "primary");
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
-    subjectButtons.append(createSubjectZImage, uploadSubject, clearSubject);
+    describeSubjectImage.title = "Use vision Gemma to write the character appearance description from this image.";
+    subjectButtons.append(createSubjectZImage, describeSubjectImage, uploadSubject, clearSubject);
     const subjectsList = document.createElement("div");
     subjectsList.style.cssText = "display:none;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
     subjectCard.append(subjectHeader, makeField("Character count", subjectCountInput), makeField("Extract subjects from", subjectSourceSelect), makeField("Character / singer label", subjectNameInput), makeField("Subject description", subjectDescription), subjectDrop, subjectButtons, subjectsList);
@@ -11785,6 +11863,7 @@ function openBuilder(node) {
     locationsTitle.style.cssText = subjectTitle.style.cssText;
     const extractLocations = makeButton("Extract Locations", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
+    const describeMissingLocations = makeButton("Gemma - Create Location Description if missing", "primary");
     const importLocations = makeButton("Import Location List", "primary");
     const exportLocations = makeButton("Export Locations", "primary");
     const createAllMissingLocationZImages = makeButton("ZImage Missing Locations", "primary");
@@ -11799,6 +11878,7 @@ function openBuilder(node) {
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
+    describeMissingLocations.title = "Use vision Gemma to describe location reference images that do not already have descriptions.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
     exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
     createAllMissingLocationZImages.title = "Create ZImage references for locations that do not have images yet.";
@@ -11825,7 +11905,7 @@ function openBuilder(node) {
       return group;
     };
     locationActions.append(
-      locationActionGroup("Gemma", [extractLocations, autoMapLocations]),
+      locationActionGroup("Gemma", [extractLocations, autoMapLocations, describeMissingLocations]),
       locationActionGroup("Manage", [importLocations, exportLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
@@ -12036,7 +12116,7 @@ function openBuilder(node) {
       if (refs.subject_count === 1 && refs.subjects[0]) {
         refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
         refs.subjects[0].description = subjectDescription.value || refs.subjects[0].description || "";
-        refs.subjects[0].image = refs.subject.image || refs.subjects[0].image || { path: "", data: "", name: "" };
+        refs.subjects[0].image = hasReferenceImage(refs.subject.image || {}) ? refs.subject.image : (refs.subjects[0].image || { path: "", data: "", name: "" });
       }
     };
     const createSubject = (name = "", description = "") => {
@@ -12809,6 +12889,59 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function describeReferenceItemsWithGemma(items, referenceType, options = {}) {
+      const jobs = items
+        .filter((item) => item?.target && !String(item.target.description || "").trim() && hasReferenceImage(item.target.image || {}));
+      if (!jobs.length) {
+        toast(referenceType === "location" ? "No location images are missing descriptions." : "No character images are missing descriptions.");
+        return 0;
+      }
+      const progress = createProgressWindow(referenceType === "location" ? "Describing locations" : "Describing characters", { zIndex: 100008 });
+      let completed = 0;
+      try {
+        for (let index = 0; index < jobs.length; index += 1) {
+          const { target, label } = jobs[index];
+          const isLast = index === jobs.length - 1;
+          progress.set(`Vision Gemma describing ${referenceType} image...\n${index + 1}/${jobs.length}: ${label || target.name || referenceType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          await describeReferenceImageWithGemma(target, referenceType, {
+            unloadAfter: options.keepLoaded ? isLast : true,
+            clearBeforeLoad: index === 0 && Boolean(options.clearBeforeLoad),
+          });
+          if (referenceType === "subject" && refs.subject_count === 1) {
+            subjectDescription.value = target.description || "";
+            refs.subject.description = target.description || "";
+          }
+          completed += 1;
+          renderAll();
+          await autoSaveSessionQuiet(`Gemma described ${referenceType} ${label || target.name || index + 1}`);
+        }
+        progress.set(`Gemma descriptions complete.\nUpdated ${completed} ${referenceType}${completed === 1 ? "" : "s"}.`, 100);
+        progress.close(1800);
+        toast(`Gemma described ${completed} ${referenceType}${completed === 1 ? "" : "s"}.`);
+        return completed;
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+        return completed;
+      }
+    }
+
+    async function describeSingleReferenceWithGemma(target, referenceType, label = "") {
+      const progress = createProgressWindow(referenceType === "location" ? "Describing location" : "Describing character", { zIndex: 100008 });
+      try {
+        progress.set(`Vision Gemma describing ${referenceType} image...\n${label || target?.name || referenceType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        await describeReferenceImageWithGemma(target, referenceType, { unloadAfter: true, clearBeforeLoad: false });
+        renderAll();
+        await autoSaveSessionQuiet(`Gemma described ${referenceType}`);
+        progress.set("Description updated.", 100);
+        progress.close(1200);
+        toast(referenceType === "location" ? "Location description updated." : "Character description updated.");
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    }
+
     async function extractLocationsWithGemma() {
       let progress = null;
       extractLocations.disabled = true;
@@ -13113,7 +13246,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
         refs.subject.description = subjectDescription.value;
         refs.subjects[0].description = refs.subject.description;
-        refs.subjects[0].image = refs.subject.image || refs.subjects[0].image || { path: "", data: "", name: "" };
+        refs.subjects[0].image = hasReferenceImage(refs.subject.image || {}) ? refs.subject.image : (refs.subjects[0].image || { path: "", data: "", name: "" });
         updateSubjectDrop();
         return;
       }
@@ -13141,10 +13274,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
         const createZImage = makeButton("Create with ZImage", "primary");
+        const describeImage = makeButton("Gemma Describe", "primary");
         const upload = makeButton("Upload", "primary");
         const clear = makeButton("Clear");
         const remove = makeButton("Remove");
         createZImage.onclick = () => createFluxReferenceWithZImage("subject", subject, `${subject.name || ""}\n${subject.description || ""}`, subject.name || `character_${index + 1}`);
+        describeImage.onclick = () => describeSingleReferenceWithGemma(subject, "subject", subject.name || `Character ${index + 1}`);
         upload.onclick = () => uploadFor(target);
         clear.onclick = () => {
           subject.image = { path: "", data: "", name: "" };
@@ -13166,7 +13301,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         description.addEventListener("input", () => {
           subject.description = description.value;
         });
-        buttons.append(createZImage, upload, clear, remove);
+        buttons.append(createZImage, describeImage, upload, clear, remove);
         row.append(makeField("Character name", name), makeField("Description / prompt", description), used, drop, buttons);
         subjectsList.append(row);
       });
@@ -13204,10 +13339,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
         const createZImage = makeButton("Create with ZImage", "primary");
+        const describeImage = makeButton("Gemma Describe", "primary");
         const upload = makeButton("Upload", "primary");
         const clear = makeButton("Clear");
         const remove = makeButton("Remove");
         createZImage.onclick = () => createFluxReferenceWithZImage("location", location, `${location.name || ""}\n${location.description || ""}`, location.name || `location_${index + 1}`);
+        describeImage.onclick = () => describeSingleReferenceWithGemma(location, "location", location.name || `Location ${index + 1}`);
         upload.onclick = () => uploadFor(target);
         clear.onclick = () => {
           location.image = { path: "", data: "", name: "" };
@@ -13227,7 +13364,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         description.addEventListener("input", () => {
           location.description = description.value;
         });
-        buttons.append(createZImage, upload, clear, remove);
+        buttons.append(createZImage, describeImage, upload, clear, remove);
         row.append(makeField("Location name", name), makeField("Description / prompt", description), used, drop, buttons);
         locationsList.append(row);
       });
@@ -13291,6 +13428,43 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     uploadSubject.onclick = () => uploadFor(refs.subject);
     createSubjectZImage.onclick = () => createFluxReferenceWithZImage("subject", refs.subject, refs.subject.description || subjectDescription.value || "", "subject_reference");
+    describeSubjectImage.onclick = async () => {
+      ensureSubjectCount();
+      refs.subject.description = subjectDescription.value || refs.subject.description || "";
+      const progress = createProgressWindow("Describing character", { zIndex: 100008 });
+      try {
+        progress.set(`Vision Gemma describing character image...\n${subjectNameInput.value || refs.subjects[0]?.name || "Subject"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        const description = await describeReferenceImageWithGemma(refs.subject, "subject", { unloadAfter: true });
+        subjectDescription.value = description;
+        refs.subject.description = description;
+        if (refs.subjects[0]) refs.subjects[0].description = description;
+        renderAll();
+        await autoSaveSessionQuiet("Gemma described subject");
+        progress.set("Description updated.", 100);
+        progress.close(1200);
+        toast("Character description updated.");
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    };
+    describeMissingSubjects.onclick = () => {
+      ensureSubjectCount();
+      const subjectItems = refs.subject_count === 1
+        ? [{ target: refs.subject, label: subjectNameInput.value || refs.subjects[0]?.name || "Subject" }]
+        : refs.subjects.map((subject, index) => ({
+            target: subject,
+            label: subject.name || `Character ${index + 1}`,
+          }));
+      describeReferenceItemsWithGemma(subjectItems, "subject", { keepLoaded: true, clearBeforeLoad: false });
+    };
+    describeMissingLocations.onclick = () => {
+      const locationItems = refs.locations.map((location, index) => ({
+        target: location,
+        label: location.name || `Location ${index + 1}`,
+      }));
+      describeReferenceItemsWithGemma(locationItems, "location", { keepLoaded: true, clearBeforeLoad: false });
+    };
     clearSubject.onclick = () => {
       refs.subject.image = { path: "", data: "", name: "" };
       renderAll();
@@ -13446,7 +13620,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         refs.subject.description = subjectDescription.value;
         refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
         refs.subjects[0].description = refs.subject.description;
-        refs.subjects[0].image = refs.subject.image;
+        refs.subjects[0].image = hasReferenceImage(refs.subject.image || {}) ? refs.subject.image : (refs.subjects[0].image || { path: "", data: "", name: "" });
       } else if (refs.subjects[0]) {
         refs.subject = {
           description: refs.subjects[0].description || "",
@@ -13510,8 +13684,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const sheetHeader = document.createElement("div");
     sheetHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
     sheetHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Ingredients Sheets</div>`;
+    const describeSheets = makeButton("Gemma - Describe Missing", "primary");
     const addSheet = makeButton("Add Sheet", "primary");
-    sheetHeader.append(addSheet);
+    describeSheets.title = "Use vision Gemma to write character appearance descriptions for sheet images that do not already have descriptions.";
+    const sheetHeaderActions = document.createElement("div");
+    sheetHeaderActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
+    sheetHeaderActions.append(describeSheets, addSheet);
+    sheetHeader.append(sheetHeaderActions);
     const sheetList = document.createElement("div");
     sheetList.style.cssText = "display:flex;flex-direction:column;gap:9px;";
     sheetPanel.append(sheetHeader, sheetList);
@@ -13649,6 +13828,49 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       renderSheets();
       syncMappingInputs();
+    };
+
+    const describeIngredientSheetWithGemma = async (sheet) => {
+      const currentSheet = ingredientsSheetById(sheet?.id) || sheet;
+      if (!currentSheet) return;
+      const progress = createProgressWindow("Describing Ingredients sheet", { zIndex: 100008 });
+      try {
+        progress.set(`Vision Gemma describing sheet image...\n${currentSheet.name || "Ingredients sheet"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
+        await describeReferenceImageWithGemma(currentSheet, "subject", { unloadAfter: true });
+        renderSheets();
+        await autoSaveSessionQuiet("Gemma described ingredients sheet");
+        progress.set("Sheet description updated.", 100);
+        progress.close(1200);
+        toast("Ingredients sheet description updated.");
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    };
+
+    const describeMissingIngredientSheetsWithGemma = async () => {
+      const jobs = (refs.ingredients_sheets || [])
+        .filter((sheet) => !String(sheet.description || "").trim() && hasReferenceImage(sheet.image || {}));
+      if (!jobs.length) {
+        toast("No Ingredients sheet images are missing descriptions.");
+        return;
+      }
+      const progress = createProgressWindow("Describing Ingredients sheets", { zIndex: 100008 });
+      try {
+        for (let index = 0; index < jobs.length; index += 1) {
+          const sheet = jobs[index];
+          progress.set(`Vision Gemma describing sheet image...\n${index + 1}/${jobs.length}: ${sheet.name || `Ingredients Sheet ${index + 1}`}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          await describeReferenceImageWithGemma(sheet, "subject", { unloadAfter: index === jobs.length - 1 });
+          renderSheets();
+          await autoSaveSessionQuiet(`Gemma described ingredients sheet ${index + 1}`);
+        }
+        progress.set(`Gemma sheet descriptions complete.\nUpdated ${jobs.length} sheet${jobs.length === 1 ? "" : "s"}.`, 100);
+        progress.close(1800);
+        toast(`Gemma described ${jobs.length} Ingredients sheet${jobs.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
     };
 
     const collectMappingsFromDom = () => {
@@ -14010,13 +14232,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           setSheetImageFromText(sheet, text);
         };
         const controls = document.createElement("div");
-        controls.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;";
+        controls.style.cssText = "display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:8px;";
         const upload = makeButton("Upload");
+        const describe = makeButton("Gemma Describe", "primary");
+        describe.title = "Use vision Gemma to write the character appearance description from this sheet image.";
         const fileInput = document.createElement("input");
         fileInput.type = "file";
         fileInput.accept = "image/*";
         fileInput.style.display = "none";
         upload.onclick = () => fileInput.click();
+        describe.onclick = () => describeIngredientSheetWithGemma(sheet);
         fileInput.onchange = () => {
           const file = fileInput.files?.[0];
           if (file) setSheetImageFromFile(sheet, file);
@@ -14033,7 +14258,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           currentSheet.image = { path: "", data: "", name: "" };
           renderSheets();
         };
-        controls.append(upload, pathInput, clear, fileInput);
+        controls.append(upload, describe, pathInput, clear, fileInput);
         row.append(top, makeField("Character / subject description", notes), preview, status, controls);
         sheetList.append(row);
       });
@@ -14116,6 +14341,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       });
       renderAll();
     };
+    describeSheets.onclick = () => describeMissingIngredientSheetsWithGemma();
     autoMap.onclick = () => {
       collectMappingsFromDom();
       const sources = Object.fromEntries(Object.entries(sourceInputs).map(([key, input]) => [key, input.checked]));
@@ -14329,8 +14555,13 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     const subjectsTitle = document.createElement("div");
     subjectsTitle.textContent = "Character Text";
     subjectsTitle.style.cssText = titleStyle;
+    const describeTextSubjects = makeButton("Gemma - Describe Missing", "primary");
     const addSubject = makeButton("Add Character", "primary");
-    subjectsHeader.append(subjectsTitle, addSubject);
+    describeTextSubjects.title = "Use vision Gemma to describe character images in this catalog that do not already have descriptions.";
+    const subjectTextActions = document.createElement("div");
+    subjectTextActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
+    subjectTextActions.append(describeTextSubjects, addSubject);
+    subjectsHeader.append(subjectsTitle, subjectTextActions);
     const subjectsList = document.createElement("div");
     subjectsList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:560px;overflow:auto;padding-right:4px;";
     subjectsCard.append(subjectsHeader, subjectsList);
@@ -14342,8 +14573,13 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     const locationsTitle = document.createElement("div");
     locationsTitle.textContent = "Location Text";
     locationsTitle.style.cssText = titleStyle;
+    const describeTextLocations = makeButton("Gemma - Describe Missing", "primary");
     const addLocation = makeButton("Add Location", "primary");
-    locationsHeader.append(locationsTitle, addLocation);
+    describeTextLocations.title = "Use vision Gemma to describe location images in this catalog that do not already have descriptions.";
+    const locationTextHeaderActions = document.createElement("div");
+    locationTextHeaderActions.style.cssText = subjectTextActions.style.cssText;
+    locationTextHeaderActions.append(describeTextLocations, addLocation);
+    locationsHeader.append(locationsTitle, locationTextHeaderActions);
     const locationTools = document.createElement("div");
     locationTools.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
     const extractLocations = makeButton("Extract", "primary");
@@ -14519,6 +14755,31 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         mapped += 1;
       });
       return mapped;
+    };
+
+    const describeTextMapItemsWithGemma = async (items, referenceType) => {
+      const jobs = items
+        .filter((item) => item && !String(item.description || "").trim() && hasReferenceImage(item.image || {}));
+      if (!jobs.length) {
+        toast(referenceType === "location" ? "No image-backed locations are missing descriptions." : "No image-backed characters are missing descriptions.");
+        return;
+      }
+      const progress = createProgressWindow(referenceType === "location" ? "Describing location text" : "Describing character text", { zIndex: 100008 });
+      try {
+        for (let index = 0; index < jobs.length; index += 1) {
+          const item = jobs[index];
+          progress.set(`Vision Gemma describing ${referenceType} image...\n${index + 1}/${jobs.length}: ${item.name || referenceType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 8 + Math.round((index / Math.max(1, jobs.length)) * 84));
+          await describeReferenceImageWithGemma(item, referenceType, { unloadAfter: index === jobs.length - 1 });
+          renderAll();
+          await autoSaveSessionQuiet(`Gemma described ${referenceType} text`);
+        }
+        progress.set(`Gemma descriptions complete.\nUpdated ${jobs.length} ${referenceType}${jobs.length === 1 ? "" : "s"}.`, 100);
+        progress.close(1800);
+        toast(`Gemma described ${jobs.length} ${referenceType}${jobs.length === 1 ? "" : "s"}.`);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
     };
 
     const renderSubjects = () => {
@@ -14709,6 +14970,8 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
       refs.use_location_references = true;
       renderAll();
     };
+    describeTextSubjects.onclick = () => describeTextMapItemsWithGemma(refs.subjects || [], "subject");
+    describeTextLocations.onclick = () => describeTextMapItemsWithGemma(refs.locations || [], "location");
     extractLocations.onclick = async () => {
       let progress = null;
       try {
@@ -15055,7 +15318,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const includeSubjects = ["subjects", "lyrics_subjects", "all"].includes(sourceMode);
     const refContext = conceptPromptReferenceModes(segment);
     const referenceContext = fluxReferenceContextForSegment(segment);
-    const lyricSingers = Array.isArray(segment.lyric_singers)
+    const lyricSingers = segment.no_character_present ? [] : Array.isArray(segment.lyric_singers)
       ? segment.lyric_singers.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
     const mappedSubjectText = includeSubjects ? String(referenceContext.subject_description || "").trim() : "";
@@ -15066,6 +15329,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lyric_singers: includeSubjects ? lyricSingers : [],
       lyric_instrumental: includeLyrics ? isInstrumentalLyricText(segment.lyric_text) : false,
       lyric_no_lip_sync: includeLyrics ? Boolean(segment.lyric_no_lip_sync) : false,
+      no_character_present: Boolean(segment.no_character_present),
       mapped_subjects: mappedSubjectText,
       director_note: includeDirector ? String(segment.timeline_note || "").trim() : "",
       scene_note: includeScene ? String(segment.notes || "").trim() : "",
@@ -17649,8 +17913,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       t2i_prompt: sceneConceptPromptText(segment),
       user_notes: String(segment?.i2v_notes || "").trim(),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
-      singers,
+      singers: segment?.no_character_present ? [] : singers,
       no_vocal: noVocal,
+      no_character_present: Boolean(segment?.no_character_present),
       unload_after: options.unloadAfter !== false,
       n_ctx: 8000,
       max_new_tokens: 1200,
@@ -17755,8 +18020,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: videoGemmaNotesForSegment(segment),
-        subject_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : "",
+        subject_context: segment.no_character_present ? "" : (isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : ""),
         location_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedLocationText(segment) : "",
+        no_character_present: Boolean(segment.no_character_present),
         theme_style_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
         subject_scene_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -17794,8 +18060,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       image_reference_data: "",
       repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
-      subject_context: segmentMappedSubjectText(segment),
+      subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
       location_context: segmentMappedLocationText(segment),
+      no_character_present: Boolean(segment.no_character_present),
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -17841,8 +18108,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       image_reference_data: imageReference.data,
       repair_model_file: i2vTextGemmaModelSelect.value,
       user_notes: videoGemmaNotesForSegment(segment),
-      subject_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : "",
+      subject_context: segment.no_character_present ? "" : (isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : ""),
       location_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedLocationText(segment) : "",
+      no_character_present: Boolean(segment.no_character_present),
       theme_style_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -18216,8 +18484,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     repairI2VVideoSettingDimensions(settings);
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
-    const segmentMode = String(segment?.video_prompt_type || "").trim();
-    const videoMode = ["i2v", "t2v", "rtv", "ingredients"].includes(segmentMode) ? segmentMode : currentVideoMode();
+    const videoMode = currentVideoMode();
     const singlePassLoras = videoMode === "rtv";
     const payload = {
       unet_name: settings.unet_name || "",
@@ -18279,6 +18546,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function storyboardSubjectsForSegment(segment) {
+    if (segment?.no_character_present) return [];
     const singers = Array.isArray(segment?.lyric_singers)
       ? segment.lyric_singers
       : String(segment?.lyric_singers || segment?.singers || "").split(/[,;\n]+/);
@@ -18291,13 +18559,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const info = segmentIndexInfo(segment);
     const sceneKey = segment?.id || "";
     const numberKey = String((info.index >= 0 ? info.index : allEditableSegments().indexOf(segment)) + 1);
-    const subjectIds = Array.isArray(refs.subject_scene_map?.[sceneKey])
+    const noCharacterPresent = Boolean(segment?.no_character_present);
+    const subjectIds = noCharacterPresent ? [] : Array.isArray(refs.subject_scene_map?.[sceneKey])
       ? refs.subject_scene_map[sceneKey]
       : (Array.isArray(refs.subject_scene_map?.[numberKey]) ? refs.subject_scene_map[numberKey] : []);
     let subjectRefs = subjectIds
       .map((id) => refs.subjects.find((subject) => subject.id === id))
       .filter(Boolean);
-    if (!subjectRefs.length && refs.use_subject_reference && refs.subjects.length === 1) {
+    if (!noCharacterPresent && !subjectRefs.length && refs.use_subject_reference && refs.subjects.length === 1) {
       subjectRefs = [refs.subjects[0]];
     }
     const locId = refs.scene_map?.[sceneKey] || refs.scene_map?.[numberKey] || "";
@@ -18305,6 +18574,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const locationName = String(locationRef?.name || segment?.mapped_location || segment?.location || "").trim();
     const locationDescription = String(locationRef?.description || segment?.location_description || "").trim();
     return {
+      no_character_present: noCharacterPresent,
       subject_refs: subjectRefs.map((subject) => ({
         id: subject.id,
         name: subject.name,
@@ -18368,10 +18638,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           lyrics: lyric,
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
+          lyric_singers: Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : [],
+          lyric_no_lip_sync: Boolean(segment.lyric_no_lip_sync),
+          lyric_instrumental: isInstrumentalLyricText(lyric),
+          no_character_present: Boolean(segment.no_character_present),
           video_prompt_type: ["i2v", "t2v", "rtv", "ingredients"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
-          subjects,
+          subjects: segment.no_character_present ? [] : subjects,
           subject_refs: referenceData.subject_refs,
           setting: String(referenceData.location_ref?.description || referenceData.location_ref?.name || segment.location || segment.mapped_location || "").trim(),
           location_ref: referenceData.location_ref,
@@ -18469,8 +18743,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const segment = segments.find((candidate) => candidate.id === item.id)
           || segments.find((candidate, index) => Number(index + 1) === Number(item.scene_number));
         if (!segment) continue;
+        segment.no_character_present = Boolean(item.no_character_present || item.noCharacterPresent || item.no_subject || item.no_visible_subject);
         const subjectIds = Array.isArray(item.subject_ids) ? item.subject_ids.map(String).filter(Boolean) : [];
-        if (subjectIds.length) refs.subject_scene_map[segment.id] = subjectIds;
+        if (!segment.no_character_present && subjectIds.length) refs.subject_scene_map[segment.id] = subjectIds;
         else delete refs.subject_scene_map[segment.id];
         const locationId = String(item.location_id || "").trim();
         if (locationId) refs.scene_map[segment.id] = locationId;

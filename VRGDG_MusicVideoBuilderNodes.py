@@ -2724,6 +2724,7 @@ def _generate_builder_concept_prompts(payload):
             ][:8],
             "lyric_instrumental": bool(scene.get("lyric_instrumental")),
             "lyric_no_lip_sync": bool(scene.get("lyric_no_lip_sync")),
+            "no_character_present": bool(scene.get("no_character_present") or scene.get("no_subject") or scene.get("no_visible_subject")),
             "mapped_subjects": str(scene.get("mapped_subjects") or "").strip()[:1600],
             "director_note": str(scene.get("director_note") or "").strip()[:1200],
             "scene_note": str(scene.get("scene_note") or "").strip()[:1200],
@@ -2770,6 +2771,7 @@ def _generate_builder_concept_prompts(payload):
         "Subject rules:\n"
         "- If lyric_singers contains names, those are the subjects/performers for that scene.\n"
         "- If mapped_subjects contains character reference names, use those as the visible subjects for that scene.\n"
+        "- If no_character_present is true, do not include any main character, singer, performer, person, mapped subject, or character reference in that scene. Start with \"No main subject\" and focus on location, props, objects, atmosphere, or environmental action.\n"
         "- If lyric_no_lip_sync is true or lyric_instrumental is true, the scene should not be treated as a singing/lip-sync performance scene.\n"
         "- If the scene note says female, start with \"Female only\".\n"
         "- If the scene note says male, start with \"Male only\".\n"
@@ -3155,6 +3157,7 @@ def _generate_builder_i2v_prompt(payload):
     user_notes = str(payload.get("user_notes", "") or "").strip()
     subject_context = str(payload.get("subject_context", "") or "").strip()
     location_context = str(payload.get("location_context", "") or "").strip()
+    no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose an I2V Gemma model first.")
@@ -3180,9 +3183,11 @@ def _generate_builder_i2v_prompt(payload):
         story_idea = _read_text_file(payload.get("story_idea_path", ""), "Story idea file")
         subject_scene = _read_text_file(payload.get("subject_scene_path", ""), "Subject/scene file")
         context_parts = []
-        if subject_scene:
+        if no_character_present:
+            context_parts.append("Subject visibility:\nNo main character, singer, performer, person, mapped subject, or character reference is present in this scene. Use location, props, objects, atmosphere, and camera motion instead.")
+        elif subject_scene:
             context_parts.append(f"Subject/scene:\n{subject_scene}")
-        if subject_context:
+        if subject_context and not no_character_present:
             context_parts.append(f"Mapped scene character(s):\n{subject_context}")
         if location_context:
             context_parts.append(f"Mapped scene location:\n{location_context}")
@@ -3291,6 +3296,7 @@ def _generate_builder_t2v_prompt(payload):
     user_notes = str(payload.get("user_notes", "") or "").strip()
     subject_context = str(payload.get("subject_context", "") or "").strip()
     location_context = str(payload.get("location_context", "") or "").strip()
+    no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner != "lm_studio":
         raise ValueError("Choose a T2V Gemma model first.")
@@ -3321,9 +3327,11 @@ def _generate_builder_t2v_prompt(payload):
     story_idea = _read_text_file(payload.get("story_idea_path", ""), "Story idea file")
     subject_scene = _read_text_file(payload.get("subject_scene_path", ""), "Subject/scene file")
     context_parts = []
-    if subject_scene:
+    if no_character_present:
+        context_parts.append("Subject visibility:\nNo main character, singer, performer, person, mapped subject, or character reference is present in this scene. Use location, props, objects, atmosphere, and camera motion instead.")
+    elif subject_scene:
         context_parts.append(f"Subject/scene:\n{subject_scene}")
-    if subject_context:
+    if subject_context and not no_character_present:
         context_parts.append(f"Mapped scene character(s):\n{subject_context}")
     if location_context:
         context_parts.append(f"Mapped scene location:\n{location_context}")
@@ -3437,11 +3445,21 @@ def _video_prompt_enhancement_instructions(payload):
     else:
         singers = []
     no_vocal = bool(payload.get("no_vocal") or payload.get("instrumental") or payload.get("broll"))
+    no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     has_multiple_singers = len(singers) > 1
     has_one_singer = len(singers) == 1
     singer_text = ", ".join(singers)
 
-    if no_vocal:
+    if no_character_present:
+        template = (
+            "Use this final prompt shape:\n"
+            "The [main visual focus: location, prop, object, environment, architecture, weather, light, or atmosphere] in [location/environment] during [time/weather/lighting]. "
+            "[Main visual focus] [clear visible action or environmental motion]. [Objects, props, fabric, water, plants, particles, or lighting] move naturally if visible. "
+            "The camera [camera motion] while keeping the location or main object clearly framed and visible. "
+            "The environment [visible motion/reaction].\n\n"
+            "No-character rule: do not include, mention, imply, show, or describe any main character, singer, performer, person, mapped subject, or character reference in the final prompt."
+        )
+    elif no_vocal:
         template = (
             "Use this final prompt shape:\n"
             "The [subject or main visual focus] in [location/environment] during [time/weather/lighting]. "
@@ -3493,6 +3511,7 @@ def _video_prompt_enhancement_instructions(payload):
         f"Rewrite this draft {mode_label} video prompt into one stronger LTX-ready paragraph.\n\n"
         "Use the requested sentence shape, but replace every bracketed phrase with concrete details. Never output brackets or placeholder words.\n"
         "Preserve the subject, location, outfit, scene identity, and any user-requested camera/motion notes from the inputs.\n"
+        "If the no-character rule is present, ignore any subject/character/singer from the draft and preserve only location, props, objects, atmosphere, and camera/motion notes.\n"
         "Only describe visible physical actions or visible scene motion. Do not mention invisible sensations, internal thoughts, symbolism, breath, heartbeat, sound-only details, or audio instructions.\n"
         "Do not use the word lip-sync. Use singing language only when this is a vocal scene.\n"
         "Do not add microphones unless they are visible or explicitly requested.\n"
@@ -3646,6 +3665,110 @@ def _clear_builder_memory_direct():
         ),
         **llm_result,
     }
+
+
+def _generate_builder_reference_description(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
+    reference_type = str(payload.get("reference_type") or "subject").strip().lower()
+    name_hint = str(payload.get("name") or "").strip()
+    if reference_type not in {"subject", "character", "location"}:
+        reference_type = "subject"
+    if not model_file:
+        raise ValueError("Choose a Gemma vision model first.")
+    image = _image_from_prompt_payload(payload.get("image_path", ""), payload.get("image_data", ""), "Reference image")
+
+    if reference_type in {"subject", "character"}:
+        instruction = (
+            "Look at the image and write one concise character appearance description.\n"
+            "Output only the description, one paragraph, no markdown, no label, no bullet points.\n"
+            "Describe only the character's full visible appearance: hair, makeup, accessories, jewelry, clothing, outfit materials, colors, shoes, and distinctive visual identity details.\n"
+            "Do not mention skin color, skin tone, ethnicity, race, or complexion.\n"
+            "Do not describe the background, location, pose, camera angle, facial expression, mood, action, or what the character is doing.\n"
+            "Do not invent hidden or unseen details.\n"
+            "Keep it under 100 words."
+        )
+        if name_hint:
+            instruction += f"\nUse this label only as the subject name if needed: {name_hint}"
+    else:
+        instruction = (
+            "Look at the image and write one concise location/environment description.\n"
+            "Output only the description, one paragraph, no markdown, no label, no bullet points.\n"
+            "Describe the place itself: environment, architecture, layout, major objects, materials, colors, lighting, atmosphere, and visible setting details.\n"
+            "Do not describe a main character, pose, performance, camera angle, or story action.\n"
+            "Do not invent hidden or unseen details.\n"
+            "Keep it under 100 words."
+        )
+        if name_hint:
+            instruction += f"\nUse this label only as the location name if needed: {name_hint}"
+
+    llm = VRGDG_SuperGemmaGGUFChat()
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+    n_ctx = int(payload.get("n_ctx") or 2048)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.2)
+    top_p = float(payload.get("top_p") or 0.9)
+    max_new_tokens = int(payload.get("max_new_tokens") or 180)
+    seed = payload.get("seed")
+    clear_before_load = bool(payload.get("clear_before_load", False))
+    unload_after = bool(payload.get("unload_after", True))
+
+    try:
+        if clear_before_load:
+            _clear_comfy_model_memory()
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+        model = llm._load_gguf_model(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_threads=n_threads,
+            chat_format=chat_format,
+            mmproj_path=mmproj_path,
+        )
+        text = llm._run_gguf_vision_pipeline(
+            model=model,
+            pil_images=[image],
+            instruction_text=instruction,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+            seed=int(seed) if seed is not None else None,
+        )
+        text = _clean_visual_gemma_text(text)
+        text = re.sub(r"^\s*(character|subject|location|description)\s*:\s*", "", text, flags=re.I).strip()
+        if reference_type in {"subject", "character"}:
+            text = re.sub(
+                r"\b(?:with|has|having|featuring)?\s*(?:very\s+|pale\s+|fair\s+|light\s+|medium\s+|tan\s+|tanned\s+|olive\s+|brown\s+|dark\s+|deep\s+|warm\s+|cool\s+|golden\s+|porcelain\s+|dusky\s+|caramel\s+|bronze\s+|dark-skinned\s+|light-skinned\s+)+(?:skin|skin tone|complexion)\b,?\s*(?:and\s+)?",
+                "",
+                text,
+                flags=re.I,
+            )
+            text = re.sub(r"\b(?:skin|skin tone|complexion)\s*(?:is|appears|looks)\s+[^,.]+,?\s*(?:and\s+)?", "", text, flags=re.I)
+            text = re.sub(r"\s+,", ",", text)
+            text = re.sub(r"(?:^|\.\s*)and\s+", "", text, flags=re.I).strip()
+            text = re.sub(r"\s{2,}", " ", text).strip(" ,")
+        words = text.split()
+        if len(words) > 100:
+            text = " ".join(words[:100]).rstrip(" ,.;:") + "."
+        if not text:
+            raise ValueError("Gemma returned an empty reference description.")
+        return {"description": text, "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after}
+    finally:
+        if unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
 def _generate_flux_klein_prompt(payload):
@@ -5872,6 +5995,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_klein_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/describe_reference_image")
+    async def vrgdg_music_builder_describe_reference_image(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_builder_reference_description, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
