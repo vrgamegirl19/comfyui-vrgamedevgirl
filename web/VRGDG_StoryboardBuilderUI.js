@@ -113,6 +113,46 @@ function makeMultiSelect(options, values = []) {
   return select;
 }
 
+function makeCollapsiblePanel(title, summary = "", content = null, { open = false } = {}) {
+  const panel = document.createElement("div");
+  panel.style.cssText = "margin:8px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;overflow:hidden;";
+  const header = document.createElement("button");
+  header.type = "button";
+  header.style.cssText = "width:100%;border:0;background:#0f172a;color:#e5e7eb;padding:9px 12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;cursor:pointer;";
+  const caret = document.createElement("span");
+  caret.style.cssText = "color:#67e8f9;font-size:13px;";
+  const label = document.createElement("span");
+  label.style.cssText = "font-weight:900;color:#cffafe;font-size:13px;white-space:nowrap;";
+  label.textContent = title;
+  const summaryNode = document.createElement("span");
+  summaryNode.style.cssText = "color:#94a3b8;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  summaryNode.textContent = summary;
+  const body = document.createElement("div");
+  body.style.cssText = "border-top:1px solid #1f3347;padding:10px 12px;";
+  if (content) body.append(content);
+  let expanded = Boolean(open);
+  const sync = () => {
+    caret.textContent = expanded ? "▾" : "▸";
+    body.style.display = expanded ? "" : "none";
+  };
+  header.onclick = () => {
+    expanded = !expanded;
+    sync();
+  };
+  header.append(caret, label, summaryNode);
+  panel.append(header, body);
+  panel.setSummary = (value) => {
+    summaryNode.textContent = String(value || "");
+  };
+  panel.setOpen = (value) => {
+    expanded = Boolean(value);
+    sync();
+  };
+  panel.isOpen = () => expanded;
+  sync();
+  return panel;
+}
+
 function escapeHtml(text) {
   return String(text || "")
     .replace(/&/g, "&amp;")
@@ -863,6 +903,8 @@ function normalizeScene(scene = {}, index = 0) {
     scene_number: Number(scene.scene_number || scene.number || index + 1),
     label: scene.label || `Scene ${index + 1}`,
     lyrics,
+    lyric_section: scene.lyric_section || scene.section || scene.song_section || "",
+    story_beat: scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "",
     lyric_singers: lyricSingers,
     lyric_no_lip_sync: lyricNoLipSync,
     lyric_instrumental: lyricInstrumental,
@@ -896,6 +938,8 @@ function scenesFromBuilderPayload(payload = {}) {
     scene_number: index + 1,
     label: scene.label || `Scene ${index + 1}`,
     lyrics: scene.lyric_text || scene.lyrics || "",
+    lyric_section: scene.lyric_section || scene.section || scene.song_section || "",
+    story_beat: scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "",
     lyric_singers: scene.lyric_singers || scene.singers || [],
     lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync),
     lyric_instrumental: Boolean(scene.lyric_instrumental || scene.instrumental),
@@ -1004,11 +1048,31 @@ function slimSceneForRequest(scene, index = 0) {
   };
 }
 
+function normalizeStoryLayer(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    enabled: source.enabled !== false,
+    user_story_arc: String(source.user_story_arc || source.userStoryArc || ""),
+    song_story_brief: String(source.song_story_brief || source.songStoryBrief || ""),
+  };
+}
+
+function mergeStoryLayers(primary = {}, fallback = {}) {
+  const primaryLayer = normalizeStoryLayer(primary);
+  const fallbackLayer = normalizeStoryLayer(fallback);
+  return normalizeStoryLayer({
+    enabled: primaryLayer.enabled !== false,
+    user_story_arc: primaryLayer.user_story_arc || fallbackLayer.user_story_arc,
+    song_story_brief: primaryLayer.song_story_brief || fallbackLayer.song_story_brief,
+  });
+}
+
 function slimStoryboardForRequest(state) {
   return {
     mode: state.mode,
     camera_flow: state.cameraFlow || "balanced",
     performance_style_default: state.performanceStyle || "",
+    story_layer: normalizeStoryLayer(state.storyLayer),
     reference_builder: {
       subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
       locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
@@ -1064,6 +1128,10 @@ function storyboardScenesForGpt(state) {
       .map((name) => String(name || "").trim())
       .filter(Boolean);
     const singers = shouldLipSync ? (explicitSingers.length ? explicitSingers : subjectNames) : [];
+    const singerKeySet = new Set(singers.map((name) => String(name || "").trim().toLowerCase()));
+    const nonSingingSubjects = shouldLipSync
+      ? subjectNames.filter((name) => !singerKeySet.has(String(name || "").trim().toLowerCase()))
+      : subjectNames;
     const locationRef = storyboardReferenceForGpt(normalized.location_ref);
     return {
       scene_number: normalized.scene_number,
@@ -1072,6 +1140,7 @@ function storyboardScenesForGpt(state) {
       lyric_line_to_sing: shouldLipSync ? lyricText : "",
       vocal_status: {
         lyric_text: lyricText,
+        lyric_section: normalized.lyric_section,
         singers,
         instrumental,
         no_lip_sync: noLipSync,
@@ -1082,11 +1151,19 @@ function storyboardScenesForGpt(state) {
         mode: shouldLipSync ? "sing exact lyric line" : (instrumental ? "instrumental / no vocals" : (noLipSync ? "b-roll / no lip sync" : "no lyric line provided")),
         lyric_line: lyricText,
         singers,
+        non_singing_visible_subjects: nonSingingSubjects,
         instruction: shouldLipSync
-          ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Do not describe mouth shapes or mouth position."
-          : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene.",
+          ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Every non_singing_visible_subjects entry must still appear in the scene as a visible non-singing subject who reacts, watches, moves, or shares the moment without singing. Do not describe mouth shapes or mouth position."
+          : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene. Every listed subject must still appear as a visible non-singing subject unless no_character_present is true.",
       },
       scene_summary: normalized.prompt_summary,
+      story_layer: {
+        lyric_section: normalized.lyric_section,
+        scene_story_beat: normalized.story_beat,
+        song_story_brief: state.storyLayer?.enabled === false ? "" : String(state.storyLayer?.song_story_brief || ""),
+        user_story_arc: state.storyLayer?.enabled === false ? "" : String(state.storyLayer?.user_story_arc || ""),
+        instruction: "Use the story brief and scene story beat as narrative guidance. They should influence emotion, symbolic action, continuity, and visual motivation without turning the prompt into plot exposition.",
+      },
       motion_summary: normalized.motion_summary,
       performance_style: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).label,
       performance_direction: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).direction,
@@ -1101,7 +1178,8 @@ function storyboardScenesForGpt(state) {
         ? "No main character or mapped subject is present in this scene. Do not include, mention, imply, or describe the mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and camera motion instead."
         : subjectCount === 1
         ? "This scene has exactly one subject. Treat the listed subject as one individual person even if the label sounds plural. Do not create a group, duplicates, backup singers, or multiple versions of the subject. Use singular wording and do not use they/them/their for this one subject."
-        : "Only include the listed subjects. Do not add extra people unless the scene notes explicitly ask for them.",
+        : "This scene has multiple mapped subjects. Every listed subject must be visibly present in the prompt. Do not drop any listed subject. Only the names in vocal_status.singers should sing; the other listed subjects should be visible but not singing. Do not add extra people unless the scene notes explicitly ask for them.",
+      visible_subjects: subjectNames,
       subjects: subjectRefs.length ? subjectRefs : subjectFallbacks,
       setting: locationRef || {
         name: String(normalized.setting || "").trim(),
@@ -1129,6 +1207,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
     scope: selectedScene ? "single_scene" : "all_scenes",
     selected_scene_number: selectedScene ? selectedScene.scene_number : null,
     storyboard_mode: state.mode === "image_to_video_prep" ? "video prompt planning" : "image and video prompt planning",
+    story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
   };
 }
@@ -1165,7 +1244,9 @@ function openStoryboardBuilder(payload = {}) {
       video_prompt_type: payloadVideoPromptType || scene.video_prompt_type,
     })),
     referenceBuilder: normalizeReferenceBuilderCatalog(payload.referenceBuilder || payload.reference_builder || {}),
+    storyLayer: normalizeStoryLayer(payload.storyLayer || payload.story_layer || {}),
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
+    onStoryLayerChanged: typeof payload.onStoryLayerChanged === "function" ? payload.onStoryLayerChanged : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
     query: "",
     selected: new Set(),
@@ -1236,7 +1317,7 @@ function openStoryboardBuilder(payload = {}) {
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.62);display:flex;align-items:stretch;justify-content:center;padding:18px;";
   const shell = document.createElement("div");
-  shell.style.cssText = "width:min(1820px,calc(100vw - 36px));height:calc(100vh - 36px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#e5e7eb;box-shadow:0 28px 90px rgba(0,0,0,.62);display:grid;grid-template-rows:auto auto 1fr auto;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
+  shell.style.cssText = "width:min(1820px,calc(100vw - 36px));height:calc(100vh - 36px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#e5e7eb;box-shadow:0 28px 90px rgba(0,0,0,.62);display:grid;grid-template-rows:auto auto auto auto 1fr auto;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
 
   const header = document.createElement("div");
   header.style.cssText = "display:grid;grid-template-columns:minmax(280px,1fr) auto auto;gap:22px;align-items:center;padding:24px;border-bottom:1px solid #1f3b46;background:linear-gradient(180deg,#083344,#111827);";
@@ -1285,7 +1366,7 @@ function openStoryboardBuilder(payload = {}) {
   note.style.cssText = "margin:18px 24px 0;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;";
 
   const cameraFlowBar = document.createElement("div");
-  cameraFlowBar.style.cssText = "margin:10px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;padding:10px 12px;display:grid;grid-template-columns:auto minmax(280px,1fr);gap:8px 12px;align-items:center;color:#cbd5e1;font-size:12px;";
+  cameraFlowBar.style.cssText = "display:grid;grid-template-columns:auto minmax(280px,1fr);gap:8px 12px;align-items:center;color:#cbd5e1;font-size:12px;";
   const cameraFlowControls = document.createElement("div");
   cameraFlowControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const cameraFlowLabel = document.createElement("div");
@@ -1321,8 +1402,48 @@ function openStoryboardBuilder(payload = {}) {
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   cameraFlowBar.append(cameraFlowControls, cameraFlowInfo, performanceControls, performanceInfo);
 
+  const storyLayerBar = document.createElement("div");
+  storyLayerBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;color:#cbd5e1;font-size:12px;";
+  const storyLayerHeader = document.createElement("div");
+  storyLayerHeader.style.cssText = "grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;";
+  const storyLayerTitle = document.createElement("div");
+  storyLayerTitle.innerHTML = `<div style="font-weight:900;color:#cffafe;font-size:15px;">Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Optional narrative context for connecting lyrics, sections, subjects, and locations across scenes.</div>`;
+  const storyLayerEnabledLabel = document.createElement("label");
+  storyLayerEnabledLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;white-space:nowrap;";
+  const storyLayerEnabledInput = document.createElement("input");
+  storyLayerEnabledInput.type = "checkbox";
+  storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
+  storyLayerEnabledLabel.append(storyLayerEnabledInput, document.createTextNode("Use in Gemma prompts"));
+  storyLayerHeader.append(storyLayerTitle, storyLayerEnabledLabel);
+  const userStoryArcInput = makeTextarea(state.storyLayer.user_story_arc || "", "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...", 5);
+  const songStoryBriefInput = makeTextarea(state.storyLayer.song_story_brief || "", "Gemma-created song story brief...", 5);
+  const storyField = (label, control) => {
+    const wrap = document.createElement("label");
+    wrap.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:900;color:#cbd5e1;";
+    wrap.textContent = label;
+    wrap.append(control);
+    return wrap;
+  };
+  const storyActions = document.createElement("div");
+  storyActions.style.cssText = "grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
+  const createStoryBriefButton = makeButton("Create Story Brief", "primary");
+  const createMissingBeatsButton = makeButton("Create Missing Scene Beats", "purple");
+  const replaceBeatsButton = makeButton("Replace All Scene Beats");
+  const detectSectionsButton = makeButton("Detect Lyric Sections");
+  storyActions.append(createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
+  storyLayerBar.append(
+    storyLayerHeader,
+    storyField("User Story Arc", userStoryArcInput),
+    storyField("Song Story Brief", songStoryBriefInput),
+    storyActions,
+  );
+
+  const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: false });
+  const hasStoryLayerContent = Boolean(String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
+  const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: hasStoryLayerContent });
+
   const tableWrap = document.createElement("div");
-  tableWrap.style.cssText = "margin:18px 24px;overflow:auto;border:1px solid #334155;border-radius:10px;background:#0b1220;";
+  tableWrap.style.cssText = "margin:10px 24px 18px;overflow:auto;border:1px solid #334155;border-radius:10px;background:#0b1220;min-height:0;";
 
   const footer = document.createElement("div");
   footer.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 24px;border-top:1px solid #334155;background:#111827;";
@@ -1331,11 +1452,12 @@ function openStoryboardBuilder(payload = {}) {
   const footerActions = document.createElement("div");
   footerActions.style.cssText = "display:flex;gap:10px;align-items:center;";
   const save = makeButton("Save Storyboard");
-  const exportPrompts = makeButton("Export T2I + Video Text Files", "purple");
+  const exportPrompts = makeButton("Export Prompt Files", "purple");
+  exportPrompts.title = "Export text prompt files plus clean JSON files keyed by scene number.";
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
-  shell.append(header, note, cameraFlowBar, tableWrap, footer);
+  shell.append(header, note, sceneDefaultsPanel, storyLayerPanel, tableWrap, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
 
@@ -1359,12 +1481,24 @@ function openStoryboardBuilder(payload = {}) {
     return storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion);
   };
 
+  const refreshSetupPanelSummaries = () => {
+    const cameraPreset = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
+    const performancePreset = storyboardPerformancePreset(state.performanceStyle);
+    sceneDefaultsPanel.setSummary(`${cameraPreset.label || "Camera flow"} · ${performancePreset.label || "Performance style"}`);
+    const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
+    const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
+    const hasBrief = Boolean(String(state.storyLayer.song_story_brief || "").trim());
+    const hasArc = Boolean(String(state.storyLayer.user_story_arc || "").trim());
+    storyLayerPanel.setSummary(`${state.storyLayer.enabled === false ? "Off" : "On"} · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
+  };
+
   const refreshCameraFlowInfo = () => {
     const preset = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
     const count = preset.sequence?.length || 0;
     cameraFlowInfo.textContent = state.cameraFlow === "off"
       ? preset.description
       : `${preset.description} For any scene count, it cycles through ${count} camera beats and only fills blank fields.`;
+    refreshSetupPanelSummaries();
   };
 
   const refreshPerformanceInfo = () => {
@@ -1372,6 +1506,166 @@ function openStoryboardBuilder(payload = {}) {
     performanceInfo.textContent = state.performanceStyle
       ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene performance style.`
       : `${preset.description} Pick a style here to use it as the default for blank scenes.`;
+    refreshSetupPanelSummaries();
+  };
+
+  const syncStoryLayerFromInputs = ({ notify = false } = {}) => {
+    state.storyLayer = normalizeStoryLayer({
+      enabled: storyLayerEnabledInput.checked,
+      user_story_arc: userStoryArcInput.value,
+      song_story_brief: songStoryBriefInput.value,
+    });
+    if (notify && state.onStoryLayerChanged) {
+      state.onStoryLayerChanged({
+        story_layer: normalizeStoryLayer(state.storyLayer),
+        scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+      });
+    }
+    refreshSetupPanelSummaries();
+  };
+
+  const lyricsForStoryBrief = () => {
+    return state.scenes
+      .map((scene, index) => {
+        const normalized = normalizeScene(scene, index);
+        const section = String(normalized.lyric_section || "").trim();
+        const lyric = String(normalized.lyrics || "").trim();
+        if (!section && !lyric) return "";
+        return `${section ? `[${section}]\n` : ""}${lyric}`;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  };
+
+  const sectionMapFromLyrics = () => {
+    const map = new Map();
+    let current = "";
+    state.scenes.forEach((scene, index) => {
+      const lyric = String(scene.lyrics || "").trim();
+      const explicit = String(scene.lyric_section || "").trim();
+      const header = lyric.match(/^\s*\[([^\]]{2,80})\]\s*$/);
+      if (explicit) current = explicit;
+      else if (header) current = header[1].trim();
+      else if (current) map.set(scene.id || `scene_${index + 1}`, current);
+    });
+    return map;
+  };
+
+  const detectLyricSections = () => {
+    const map = sectionMapFromLyrics();
+    let changed = 0;
+    state.scenes.forEach((scene, index) => {
+      const key = scene.id || `scene_${index + 1}`;
+      const section = map.get(key);
+      const lyric = String(scene.lyrics || "").trim();
+      const header = lyric.match(/^\s*\[([^\]]{2,80})\]\s*$/);
+      if (header && !String(scene.lyric_section || "").trim()) {
+        scene.lyric_section = header[1].trim();
+        changed += 1;
+      } else if (section && !String(scene.lyric_section || "").trim()) {
+        scene.lyric_section = section;
+        changed += 1;
+      }
+    });
+    renderTable();
+    syncStoryLayerFromInputs();
+    createToast(changed ? `Detected lyric sections for ${changed} scene${changed === 1 ? "" : "s"}.` : "No missing lyric sections were detected.");
+  };
+
+  const createStoryBriefWithGemma = async () => {
+    syncStoryLayerFromInputs();
+    const progress = createStoryboardProgressWindow("Story Brief Gemma");
+    try {
+      progress.set("Creating compact song story brief from lyrics, sections, and your story arc...", 18);
+      const data = await postJson("/vrgdg/storyboard/story_brief", {
+        ...(state.gemmaSettings || {}),
+        story_layer: normalizeStoryLayer(state.storyLayer),
+        lyrics: lyricsForStoryBrief(),
+        scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+        unload_after: true,
+        max_new_tokens: 800,
+      }, 240000);
+      state.storyLayer.song_story_brief = String(data.story_brief || "").trim();
+      songStoryBriefInput.value = state.storyLayer.song_story_brief;
+      syncStoryLayerFromInputs({ notify: true });
+      progress.set("Story brief saved into the Story Layer.", 100);
+      progress.close(1600);
+      createToast("Story brief created.");
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      createToast(`Story brief failed:\n${String(error?.message || error)}`, true);
+    }
+  };
+
+  const sceneBeatGemmaPayload = (scene, overrides = {}) => ({
+    ...(state.gemmaSettings || {}),
+    ...overrides,
+    story_layer: normalizeStoryLayer(state.storyLayer),
+    storyboard_payload: storyboardGptPayload(state, [scene]),
+    max_new_tokens: 360,
+    temperature: 0.35,
+    top_p: 0.90,
+  });
+
+  const createSceneBeatWithGemma = async (scene, { quiet = false, unloadAfter = true, previousBeat = "", nextLyrics = "", progress = null, progressPercent = 35, progressLabel = "" } = {}) => {
+    syncStoryLayerFromInputs();
+    const normalized = normalizeScene(scene, 0);
+    try {
+      progress?.set(`${progressLabel || normalized.label || "Scene"}: creating scene story beat...`, progressPercent);
+      const data = await postJson("/vrgdg/storyboard/scene_story_beat", sceneBeatGemmaPayload(scene, {
+        unload_after: unloadAfter,
+        previous_beat: previousBeat,
+        next_lyrics: nextLyrics,
+      }), 240000);
+      scene.story_beat = String(data.story_beat || "").trim();
+      if (!scene.story_beat) throw new Error("Gemma returned an empty scene story beat.");
+      if (!quiet) createToast(`Scene story beat created for ${normalized.label || "scene"}.`);
+      return scene.story_beat;
+    } catch (error) {
+      if (!quiet) createToast(`Scene story beat failed:\n${String(error?.message || error)}`, true);
+      throw error;
+    } finally {
+      renderTable();
+    }
+  };
+
+  const createAllSceneBeatsWithGemma = async ({ overwrite = false } = {}) => {
+    syncStoryLayerFromInputs();
+    const scenes = currentRows().filter((scene) => overwrite || !String(scene.story_beat || "").trim());
+    if (!scenes.length) {
+      createToast(overwrite ? "No scenes found." : "No scene story beats are missing.");
+      return;
+    }
+    const progress = createStoryboardProgressWindow(overwrite ? "Replace Scene Beats" : "Create Missing Scene Beats");
+    let created = 0;
+    try {
+      progress.set(`Creating ${scenes.length} scene story beat${scenes.length === 1 ? "" : "s"}...`, 5);
+      for (let index = 0; index < scenes.length; index += 1) {
+        const scene = scenes[index];
+        const allIndex = state.scenes.findIndex((item) => item.id === scene.id);
+        const previousBeat = allIndex > 0 ? String(state.scenes[allIndex - 1]?.story_beat || "") : "";
+        const nextLyrics = allIndex >= 0 && allIndex < state.scenes.length - 1 ? String(state.scenes[allIndex + 1]?.lyrics || "") : "";
+        const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
+        await createSceneBeatWithGemma(scene, {
+          quiet: true,
+          unloadAfter: index === scenes.length - 1,
+          previousBeat,
+          nextLyrics,
+          progress,
+          progressPercent: base,
+          progressLabel: `Scene Beat ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`,
+        });
+        created += 1;
+      }
+      progress.set("Saving story beats...", 96);
+      await saveStoryboard();
+      progress.set(`Scene beats complete.\nCreated ${created} story beat${created === 1 ? "" : "s"}.`, 100);
+      progress.close(1600);
+      createToast(`Created ${created} scene story beat${created === 1 ? "" : "s"}.`);
+    } catch (error) {
+      progress.set(`Scene beats stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, 100);
+      createToast(`Scene beats stopped after ${created}/${scenes.length}:\n${String(error?.message || error)}`, true);
+    }
   };
 
   const applyCameraFlow = ({ overwrite = false } = {}) => {
@@ -1507,6 +1801,8 @@ function openStoryboardBuilder(payload = {}) {
     return state.scenes.filter((scene) => [
       scene.label,
       scene.lyrics,
+      scene.lyric_section,
+      scene.story_beat,
       scene.prompt_summary,
       scene.motion_summary,
       scene.setting,
@@ -1704,7 +2000,9 @@ function openStoryboardBuilder(payload = {}) {
     const editor = document.createElement("div");
     editor.style.cssText = "width:min(1420px,calc(100vw - 42px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #0e7490;border-radius:16px;background:linear-gradient(135deg,#07111f,#0f172a 46%,#071827);color:#f8fafc;box-shadow:0 28px 90px rgba(0,0,0,.68);padding:18px;display:flex;flex-direction:column;gap:12px;";
     const label = makeInput(scene.label, "Scene label");
+    const lyricSection = makeInput(scene.lyric_section || "", "Verse 1, Chorus, Bridge, Outro...");
     const lyrics = makeTextarea(scene.lyrics, "Lyrics, script, or beat for this scene...", 4);
+    const storyBeat = makeTextarea(scene.story_beat || "", "Scene story beat for this scene...", 4);
     const summary = makeTextarea(scene.prompt_summary, "Image prompt summary...", 3);
     const motion = makeTextarea(scene.motion_summary, "Motion/video summary...", 3);
     const cameraMotionOptions = CAMERA_MOTION_GROUPS.flatMap((group) => group.options || []);
@@ -1850,11 +2148,12 @@ function openStoryboardBuilder(payload = {}) {
       referenceGrid.innerHTML = `<div style="grid-column:1/-1;color:#94a3b8;font-size:12px;">No Reference Builder subjects or locations are available yet. Add them in Reference Builder first, then reopen Storyboard Builder.</div>`;
     }
     const actions = document.createElement("div");
-    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;";
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;";
+    const gemmaBeat = makeButton("Gemma Story Beat", "primary");
     const gemma = makeButton("Generate Prompt", "purple");
     const cancel = makeButton("Cancel");
     const apply = makeButton("Save Scene Card", "primary");
-    actions.append(cancel, gemma, apply);
+    actions.append(cancel, gemmaBeat, gemma, apply);
     const closeEditor = makeButton("×");
     closeEditor.style.cssText += "font-size:26px;line-height:1;width:44px;height:44px;padding:0;border-radius:8px;";
     const header = document.createElement("div");
@@ -1867,7 +2166,7 @@ function openStoryboardBuilder(payload = {}) {
     header.append(headerIcon, headerText, closeEditor);
 
     const basicsGrid = twoCol();
-    basicsGrid.append(field("Scene label", label), field("Scene / lyrics", lyrics), field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), includeMicLabel, noCharacterLabel, videoTypeHint);
+    basicsGrid.append(field("Scene label", label), field("Lyric section", lyricSection), field("Scene / lyrics", lyrics), field("Scene story beat", storyBeat), field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), includeMicLabel, noCharacterLabel, videoTypeHint);
 
     const addSubject = makeButton("+ Add subject");
     addSubject.style.background = "#0f172a";
@@ -2045,7 +2344,9 @@ function openStoryboardBuilder(payload = {}) {
     };
     const saveEditorFieldsToScene = () => {
       scene.label = label.value.trim() || scene.label;
+      scene.lyric_section = lyricSection.value.trim();
       scene.lyrics = lyrics.value.trim();
+      scene.story_beat = storyBeat.value.trim();
       scene.prompt_summary = summary.value.trim();
       scene.motion_summary = motion.value.trim();
       scene.video_prompt_type = videoPromptType.value || "i2v";
@@ -2125,9 +2426,28 @@ function openStoryboardBuilder(payload = {}) {
         gemma.textContent = previous;
       }
     };
+    gemmaBeat.onclick = async () => {
+      const previous = gemmaBeat.textContent;
+      gemmaBeat.disabled = true;
+      gemmaBeat.textContent = "Creating...";
+      const progress = createStoryboardProgressWindow("Scene Story Beat");
+      try {
+        saveEditorFieldsToScene();
+        await createSceneBeatWithGemma(scene, { progress, progressPercent: 35 });
+        storyBeat.value = scene.story_beat || "";
+        progress.set("Scene story beat ready.", 100);
+        progress.close(1200);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      } finally {
+        gemmaBeat.disabled = false;
+        gemmaBeat.textContent = previous;
+      }
+    };
     apply.onclick = () => {
       saveEditorFieldsToScene();
       syncReferenceMappingsToVideoCreator();
+      syncStoryLayerFromInputs({ notify: true });
       editorBackdrop.remove();
       renderTable();
     };
@@ -2167,12 +2487,13 @@ function openStoryboardBuilder(payload = {}) {
       const settingCell = `<div>${settingRefHtml(scene)}</div><button data-action="load-location-ref" title="Load a location image for this scene" style="${miniRefButtonStyle}">+ Location</button>`;
       const videoType = videoPromptTypeLabel(scene.video_prompt_type || "i2v");
       const shotCell = `<div style="display:flex;flex-direction:column;gap:4px;"><span style="align-self:flex-start;border:1px solid #155e75;border-radius:999px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;padding:2px 7px;">${escapeHtml(videoType)}</span><strong style="color:#f8fafc;">${escapeHtml(scene.shot_type || "-")}</strong></div>`;
+      const storyPreview = `${scene.lyric_section ? `<div style="margin-top:5px;color:#67e8f9;font-size:11px;font-weight:900;">${escapeHtml(scene.lyric_section)}</div>` : ""}${scene.story_beat ? `<div style="margin-top:5px;color:#94a3b8;font-size:11px;">Beat: ${escapeHtml(truncate(scene.story_beat, 90))}</div>` : ""}`;
       if (mode === "image_to_video_prep") {
         tr.innerHTML = `
           <td style="padding:13px;"><input type="checkbox" data-action="select" ${state.selected.has(scene.id) ? "checked" : ""}></td>
           <td style="padding:13px;font-weight:900;font-size:17px;">${String(scene.scene_number).padStart(2, "0")}</td>
           <td style="padding:13px;">${imageCell}</td>
-          <td style="padding:13px;max-width:210px;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 95))}</span></td>
+          <td style="padding:13px;max-width:210px;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 95))}</span>${storyPreview}</td>
           <td style="padding:13px;max-width:270px;color:#d4d4d8;">${escapeHtml(truncate(scene.motion_summary || scene.video_prompt, 150))}</td>
           <td style="padding:13px;max-width:230px;">${subjectCell}</td>
           <td style="padding:13px;color:#d4d4d8;max-width:210px;">${settingCell}</td>
@@ -2184,7 +2505,7 @@ function openStoryboardBuilder(payload = {}) {
         tr.innerHTML = `
           <td style="padding:13px;font-weight:900;font-size:17px;">${String(scene.scene_number).padStart(2, "0")}</td>
           <td style="padding:13px;">${imageCell}</td>
-          <td style="padding:13px;max-width:220px;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 95))}</span></td>
+          <td style="padding:13px;max-width:220px;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 95))}</span>${storyPreview}</td>
           <td style="padding:13px;max-width:280px;color:#d4d4d8;">${escapeHtml(truncate(scene.prompt_summary || scene.image_prompt, 150))}</td>
           <td style="padding:13px;max-width:230px;">${subjectCell}</td>
           <td style="padding:13px;color:#d4d4d8;max-width:210px;">${settingCell}</td>
@@ -2220,6 +2541,7 @@ function openStoryboardBuilder(payload = {}) {
     const readyCount = state.scenes.filter((scene) => String(scene.image_prompt || scene.video_prompt || "").trim()).length;
     const imageCount = state.scenes.filter((scene) => String(scene.image_path || "").trim()).length;
     stats.textContent = `${state.scenes.length} scenes  |  ${imageCount} images linked  |  ${readyCount} scenes with prompts  |  ${state.selected.size} selected`;
+    refreshSetupPanelSummaries();
   }
 
   async function loadExisting() {
@@ -2232,7 +2554,15 @@ function openStoryboardBuilder(payload = {}) {
       const data = await postJson("/vrgdg/storyboard/load", { project_folder: state.projectFolder });
       const saved = data.storyboard || {};
       const savedReferences = normalizeReferenceBuilderCatalog(saved.reference_builder || saved.referenceBuilder || {});
-      if (savedReferences.subjects.length || savedReferences.locations.length) {
+      const currentHasSubjects = Array.isArray(state.referenceBuilder?.subjects) && state.referenceBuilder.subjects.length > 0;
+      const currentHasLocations = Array.isArray(state.referenceBuilder?.locations) && state.referenceBuilder.locations.length > 0;
+      if ((!currentHasSubjects && savedReferences.subjects.length) || (!currentHasLocations && savedReferences.locations.length)) {
+        const nextReferences = {
+          subjects: currentHasSubjects ? state.referenceBuilder.subjects : savedReferences.subjects,
+          locations: currentHasLocations ? state.referenceBuilder.locations : savedReferences.locations,
+        };
+        state.referenceBuilder = normalizeReferenceBuilderCatalog(nextReferences);
+      } else if (!currentHasSubjects && !currentHasLocations && (savedReferences.subjects.length || savedReferences.locations.length)) {
         state.referenceBuilder = mergeReferenceBuilderCatalog(state.referenceBuilder, savedReferences);
       }
       if (Array.isArray(saved.scenes) && saved.scenes.length) {
@@ -2243,7 +2573,7 @@ function openStoryboardBuilder(payload = {}) {
             || savedScenes.find((item) => Number(item.scene_number) === Number(fresh.scene_number))
             || null;
           if (!normalized) return normalizeScene(fresh, index);
-          const subjectRefs = fresh.subject_refs?.length ? fresh.subject_refs : normalized.subject_refs;
+          const subjectRefs = incomingScenes.length ? (fresh.subject_refs || []) : (fresh.subject_refs?.length ? fresh.subject_refs : normalized.subject_refs);
           const subjects = subjectRefs?.length
             ? storyboardSubjectNamesFromRefs(subjectRefs)
             : Array.from(new Set([
@@ -2257,6 +2587,8 @@ function openStoryboardBuilder(payload = {}) {
             label: fresh.label || normalized.label,
             video_prompt_type: payloadVideoPromptType || fresh.video_prompt_type || normalized.video_prompt_type,
             lyrics: fresh.lyrics || normalized.lyrics,
+            lyric_section: fresh.lyric_section || normalized.lyric_section,
+            story_beat: fresh.story_beat || normalized.story_beat,
             prompt_summary: fresh.prompt_summary || normalized.prompt_summary,
             motion_summary: fresh.motion_summary || normalized.motion_summary,
             image_path: fresh.image_path || normalized.image_path,
@@ -2264,7 +2596,7 @@ function openStoryboardBuilder(payload = {}) {
             subjects,
             subject_refs: fresh.no_character_present || normalized.no_character_present ? [] : subjectRefs,
             setting: fresh.location_ref?.name || normalized.setting || fresh.setting,
-            location_ref: fresh.location_ref || normalized.location_ref,
+            location_ref: incomingScenes.length ? fresh.location_ref : (fresh.location_ref || normalized.location_ref),
           };
         });
         absorbSceneReferencesIntoCatalog(state.scenes);
@@ -2276,6 +2608,10 @@ function openStoryboardBuilder(payload = {}) {
       }
       state.performanceStyle = String(saved.performance_style_default || saved.performance_style || state.performanceStyle || "");
       performanceSelect.value = state.performanceStyle;
+      state.storyLayer = mergeStoryLayers(state.storyLayer, saved.story_layer || saved.storyLayer || {});
+      storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
+      userStoryArcInput.value = state.storyLayer.user_story_arc || "";
+      songStoryBriefInput.value = state.storyLayer.song_story_brief || "";
       refreshCameraFlowInfo();
       refreshPerformanceInfo();
       setMode(state.mode);
@@ -2294,10 +2630,12 @@ function openStoryboardBuilder(payload = {}) {
     state.saving = true;
     save.disabled = true;
     try {
+      syncStoryLayerFromInputs();
       const data = await postJson("/vrgdg/storyboard/save", {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
       });
+      syncStoryLayerFromInputs({ notify: true });
       createToast(`Storyboard saved:\n${data.storyboard?.path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
@@ -2319,9 +2657,12 @@ function openStoryboardBuilder(payload = {}) {
         storyboard: slimStoryboardForRequest(state),
       });
       if (state.onPromptsExported) {
-        state.onPromptsExported({ scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)) });
+        state.onPromptsExported({
+          story_layer: normalizeStoryLayer(state.storyLayer),
+          scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+        });
       }
-      createToast(`Exported ${data.scene_count || 0} scene prompt rows:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}`);
+      createToast(`Exported ${data.scene_count || 0} scene prompt rows:\nText:\n${data.t2i_prompts_path}\n${data.i2v_prompts_path}\nJSON:\n${data.t2i_prompts_json_path || ""}\n${data.video_prompts_json_path || ""}`);
     } catch (error) {
       createToast(String(error?.message || error), true);
     } finally {
@@ -2500,6 +2841,13 @@ function openStoryboardBuilder(payload = {}) {
   gptButton.onclick = copyStoryboardForGpt;
   gemmaAllButton.onclick = createAllVideoPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
+  storyLayerEnabledInput.addEventListener("change", syncStoryLayerFromInputs);
+  userStoryArcInput.addEventListener("input", syncStoryLayerFromInputs);
+  songStoryBriefInput.addEventListener("input", syncStoryLayerFromInputs);
+  createStoryBriefButton.onclick = createStoryBriefWithGemma;
+  createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: false });
+  replaceBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: true });
+  detectSectionsButton.onclick = detectLyricSections;
   keepGemmaLoadedInput.onchange = () => {
     state.gemmaSettings = {
       ...(state.gemmaSettings || {}),

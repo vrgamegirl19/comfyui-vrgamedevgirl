@@ -21,23 +21,29 @@ Use `vocal_status` to decide which opening structure to use.
 
 If `vocal_status.should_lip_sync` is true, use this structure:
 
-[Shot type] on [main subject] as [main subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [Main subject] is in [location/setting], surrounded by [key environmental perspective/detail].
+[Shot type] on [singer subject or all visible subjects] as [singer subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Singer subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [All non-singing mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene without singing.]
 
-[Main subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
+[Singer subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing], while [each non-singing mapped subject performs a visible non-vocal reaction or action]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
 [Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
 
 If `vocal_status.instrumental` is true, `vocal_status.no_lip_sync` is true, or `vocal_status.should_lip_sync` is false, use this structure:
 
-[Shot type] on [main subject] in [location/setting], framed by [key environmental perspective/detail]. [Main subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with [hair/costume/appearance detail] catching the light or motion.
+[Shot type] on [all visible mapped subjects] in [location/setting], framed by [key environmental perspective/detail]. [Each mapped subject is visibly present; describe their shared blocking or relationship in the frame.] [Subject faces show specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with [hair/costume/appearance details] catching the light or motion.
 
-[Main subject] [performs a clear motivated action that fits the scene mood, character status, and environment] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the action], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
+[Each mapped subject performs a clear motivated non-vocal action that fits the scene mood, character status, and environment] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the action], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
 [Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
 
 Rules:
 
-* Pull the subject from `subject_refs`.
+* Pull the visible subject list only from the selected scene's `subject_refs`.
+* Never use subjects from the project catalog, another scene, the song story brief, or the user story arc unless that subject is also present in the selected scene's `subject_refs`.
+* If a person, singer, partner, lover, husband, wife, or other character appears in the story idea but is not listed in the selected scene's `subject_refs`, treat that person as off-screen, implied, reflected only if explicitly requested, or absent. Do not describe their body, face, clothing, beard, hair, or reference image.
+* If `subject_refs` has one subject, the prompt may include only that one visible subject. Secondary characters are not allowed unless there is a second subject object in `subject_refs`.
+* If `subject_refs` has more than one subject, every listed subject must be visibly present in the final prompt. Do not drop, merge, hide, imply, or omit any listed subject.
+* If `vocal_status.singers` lists only one subject while `subject_refs` lists multiple subjects, only the singer should sing the lyric. The other mapped subjects must still be visible as non-singing subjects who react, watch, move, pose, confront, avoid, touch the environment, or otherwise participate silently.
+* If `vocal_status.singers` is empty but `subject_refs` has multiple subjects, include every mapped subject as visible non-singing subjects.
 * If `subject_refs` contains exactly one subject, treat it as one individual person even if the subject label sounds plural, collective, or awkwardly worded. Do not create extra copies, duplicate singers, a group, or multiple people unless multiple subject objects are provided or the user explicitly asks for a group.
 * When there is one subject, use singular phrasing and pronouns that fit the subject description. For example, "The woman sings..." rather than "The women sing..." if the provided description is a single feminine character.
 * When there is one subject, never use "they", "them", or "their" for that subject. If the subject is a woman/girl/feminine character, use she/her. If the subject is a man/boy/masculine character, use he/him. If gender is unclear, repeat the subject label instead of using plural pronouns.
@@ -51,6 +57,7 @@ Rules:
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
 * Use `performance_style` and `performance_direction` to choose the vocal wording, facial emotion, body language, gesture intensity, and camera energy. For rap/hip-hop, describe rapping or performing the lyric with rhythmic delivery, hand gestures, head nods, and confident body language instead of soft singing. For rock, punk, or metal, use stronger facial intensity and performance energy.
+* If `story_layer` exists, use `song_story_brief`, `user_story_arc`, `lyric_section`, and `scene_story_beat` as narrative guidance for emotion, symbolic action, continuity, and visual motivation. Do not quote the story layer or explain it; weave it into the scene naturally.
 * If the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
 * If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
 * Do not mention or add a microphone, mic stand, headset mic, studio mic, or microphone prop unless `microphone.include` is true or the user's scene notes explicitly ask for a microphone.
@@ -274,6 +281,15 @@ def _normalize_reference_catalog(value):
     }
 
 
+def _normalize_story_layer(value):
+    source = value if isinstance(value, dict) else {}
+    return {
+        "enabled": bool(source.get("enabled", True)),
+        "user_story_arc": _clean_scene_text(source.get("user_story_arc") or source.get("userStoryArc") or "", 8000),
+        "song_story_brief": _clean_scene_text(source.get("song_story_brief") or source.get("songStoryBrief") or "", 4000),
+    }
+
+
 def _safe_file_stem(value, fallback="reference"):
     text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip()).strip("._")
     return (text[:90] or fallback).strip("._") or fallback
@@ -341,6 +357,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     number = _scene_number(scene, fallback_number)
     label = _clean_scene_text(scene.get("label") or f"Scene {number}", 180)
     lyrics = _clean_scene_text(scene.get("lyrics") or scene.get("lyric_text") or scene.get("lyricNote") or "", 4000)
+    lyric_section = _clean_scene_text(scene.get("lyric_section") or scene.get("section") or scene.get("song_section") or "", 160)
+    story_beat = _clean_scene_text(scene.get("story_beat") or scene.get("scene_story_beat") or scene.get("narrative_beat") or "", 1800)
     image_prompt = _clean_scene_text(scene.get("image_prompt") or scene.get("t2i_prompt") or scene.get("prompt") or "", 12000)
     video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 12000)
     image_path = _clean_scene_text(scene.get("image_path") or scene.get("approved_image_path") or scene.get("image") or "", 2000)
@@ -366,6 +384,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "scene_number": number,
         "label": label,
         "lyrics": lyrics,
+        "lyric_section": lyric_section,
+        "story_beat": story_beat,
         "prompt_summary": prompt_summary,
         "motion_summary": motion_summary,
         "subjects": subjects,
@@ -401,6 +421,7 @@ def _default_storyboard(payload):
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
         "mode": "image_to_video_prep" if any(scene.get("image_path") for scene in normalized) else "storyboard_prompts",
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
+        "story_layer": _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {}),
         "reference_builder": _normalize_reference_catalog(payload.get("reference_builder") or payload.get("referenceBuilder") or {}),
         "scenes": normalized,
     }
@@ -416,6 +437,7 @@ def _load_storyboard(payload):
         if not isinstance(scenes, list):
             scenes = []
         data["scenes"] = [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)]
+        data["story_layer"] = _normalize_story_layer(data.get("story_layer") or data.get("storyLayer") or {})
         data["reference_builder"] = _normalize_reference_catalog(data.get("reference_builder") or data.get("referenceBuilder") or {})
         data["path"] = path
         return data
@@ -439,6 +461,7 @@ def _save_storyboard(payload):
         "project_folder": project_folder,
         "mode": storyboard.get("mode") or "storyboard_prompts",
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
+        "story_layer": _normalize_story_layer(storyboard.get("story_layer") or storyboard.get("storyLayer") or {}),
         "reference_builder": _normalize_reference_catalog(storyboard.get("reference_builder") or storyboard.get("referenceBuilder") or {}),
         "scenes": [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)],
     }
@@ -456,6 +479,18 @@ def _write_key_value_file(path, prefix, scenes, field):
             handle.write(f"{prefix}{index}={text}\n")
 
 
+def _prompt_json_entry(scene, index, field):
+    prompt = _clean_scene_text(scene.get(field) or "")
+    return {
+        "scene": index,
+        "scene_id": _clean_scene_text(scene.get("id") or "", 120),
+        "label": _clean_scene_text(scene.get("label") or f"Scene {index}", 200),
+        "lyric_section": _clean_scene_text(scene.get("lyric_section") or "", 160),
+        "lyric_line": _clean_scene_text(scene.get("lyrics") or "", 1200),
+        "prompt": prompt,
+    }
+
+
 def _export_storyboard_prompts(payload):
     saved = _save_storyboard(payload)
     project_folder = _safe_project_folder(payload.get("project_folder", ""))
@@ -463,21 +498,51 @@ def _export_storyboard_prompts(payload):
     scenes = saved.get("scenes", [])
     t2i_path = os.path.join(prompts_dir, "t2i_prompts.txt")
     i2v_path = os.path.join(prompts_dir, "i2v_prompts.txt")
+    t2i_json_path = os.path.join(prompts_dir, "t2i_prompts.json")
+    video_json_path = os.path.join(prompts_dir, "video_prompts.json")
     summary_path = os.path.join(_storyboard_folder(project_folder), "storyboard_export.json")
     _write_key_value_file(t2i_path, "Prompt", scenes, "image_prompt")
     _write_key_value_file(i2v_path, "I2V", scenes, "video_prompt")
+    t2i_json = {
+        "version": 1,
+        "exported_at": datetime.now().isoformat(timespec="seconds"),
+        "type": "storyboard_t2i_prompts",
+        "scene_count": len(scenes),
+        "scenes": [_prompt_json_entry(scene, index, "image_prompt") for index, scene in enumerate(scenes, start=1)],
+    }
+    video_json = {
+        "version": 1,
+        "exported_at": datetime.now().isoformat(timespec="seconds"),
+        "type": "storyboard_video_prompts",
+        "scene_count": len(scenes),
+        "scenes": [
+            {
+                **_prompt_json_entry(scene, index, "video_prompt"),
+                "video_prompt_type": _clean_scene_text(scene.get("video_prompt_type") or "", 80),
+            }
+            for index, scene in enumerate(scenes, start=1)
+        ],
+    }
+    with open(t2i_json_path, "w", encoding="utf-8") as handle:
+        json.dump(t2i_json, handle, indent=2, ensure_ascii=False)
+    with open(video_json_path, "w", encoding="utf-8") as handle:
+        json.dump(video_json, handle, indent=2, ensure_ascii=False)
     with open(summary_path, "w", encoding="utf-8") as handle:
         json.dump({
             "version": 1,
             "exported_at": datetime.now().isoformat(timespec="seconds"),
             "t2i_prompts": t2i_path,
             "i2v_prompts": i2v_path,
+            "t2i_prompts_json": t2i_json_path,
+            "video_prompts_json": video_json_path,
             "scenes": scenes,
         }, handle, indent=2, ensure_ascii=False)
     return {
         "storyboard_path": saved.get("path", ""),
         "t2i_prompts_path": t2i_path,
         "i2v_prompts_path": i2v_path,
+        "t2i_prompts_json_path": t2i_json_path,
+        "video_prompts_json_path": video_json_path,
         "export_path": summary_path,
         "scene_count": len(scenes),
     }
@@ -511,6 +576,119 @@ def _build_storyboard_video_prompt(payload):
         raise ValueError("Gemma returned an empty Storyboard video prompt.")
     return {
         "prompt": prompt,
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
+def _build_story_layer_brief(payload):
+    lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 16000)
+    story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    scenes = payload.get("scenes")
+    if not isinstance(scenes, list):
+        scenes = []
+    compact_scenes = []
+    for index, scene in enumerate(scenes[:160], start=1):
+        if not isinstance(scene, dict):
+            continue
+        normalized = _normalize_storyboard_scene(scene, index)
+        compact_scenes.append({
+            "scene_number": normalized["scene_number"],
+            "label": normalized["label"],
+            "lyric_section": normalized.get("lyric_section", ""),
+            "lyrics": normalized.get("lyrics", "")[:500],
+        })
+    if not lyrics and not compact_scenes and not story_layer.get("user_story_arc"):
+        raise ValueError("Lyrics, scene lyrics, or a user story arc are required to create a story brief.")
+    instruction = (
+        "You are a music video story planner.\n"
+        "Create a compact story brief that can guide per-scene video prompts without sending the full lyrics every time.\n\n"
+        "Rules:\n"
+        "- Use the user story arc as the strongest direction when it exists.\n"
+        "- Use the lyrics and song sections to infer emotional progression, recurring symbols, visual motifs, and character journey.\n"
+        "- Do not summarize every lyric line.\n"
+        "- Do not quote long lyric sections.\n"
+        "- Keep it useful for music-video scene prompting.\n"
+        "- Output plain text only, no markdown table.\n"
+        "- Keep it under 250 words.\n\n"
+        "Include these compact headings exactly:\n"
+        "Story premise:\n"
+        "Emotional arc:\n"
+        "Visual motifs:\n"
+        "Scene guidance:\n\n"
+        f"User story arc:\n{story_layer.get('user_story_arc') or '[none]'}\n\n"
+        f"Full/pasted lyrics:\n{lyrics or '[not provided]'}\n\n"
+        f"Scene lyric map:\n{json.dumps(compact_scenes, ensure_ascii=False, indent=2)}"
+    )
+    from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
+
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.35),
+        top_p=float(payload.get("top_p") or 0.90),
+        max_new_tokens=int(payload.get("max_new_tokens") or 800),
+        label="Storyboard Story Brief Gemma",
+        preserve_paragraphs=True,
+    )
+    text = _clean_scene_text(text, 4000)
+    if not text:
+        raise ValueError("Gemma returned an empty story brief.")
+    return {
+        "story_brief": text,
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
+def _build_story_layer_scene_beat(payload):
+    scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
+    if not isinstance(scene_bundle, dict):
+        raise ValueError("Storyboard scene-card payload is missing.")
+    scene = _selected_storyboard_scene(scene_bundle)
+    if not scene:
+        raise ValueError("Storyboard scene-card payload has no selected scene.")
+    story_layer = _normalize_story_layer(payload.get("story_layer") or scene_bundle.get("story_layer") or {})
+    previous_beat = _clean_scene_text(payload.get("previous_beat") or "", 1200)
+    next_lyrics = _clean_scene_text(payload.get("next_lyrics") or "", 800)
+    instruction = (
+        "You are a music video scene-story planner.\n"
+        "Create one concise scene story beat that tells the video prompt writer what this scene contributes to the larger music-video story.\n\n"
+        "Rules:\n"
+        "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
+        "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
+        "- Describe narrative purpose, emotional state, visual symbolism, and how the scene should feel.\n"
+        "- Do not write the final video prompt.\n"
+        "- Do not include camera technical instructions unless they are part of the story emotion.\n"
+        "- Do not quote long lyric text.\n"
+        "- If no character is present, make the beat about location, objects, atmosphere, memory, or symbolism.\n"
+        "- Output one short paragraph only, no label, no bullets.\n"
+        "- Keep it under 80 words.\n\n"
+        f"User Story Arc:\n{story_layer.get('user_story_arc') or '[none]'}\n\n"
+        f"Song Story Brief:\n{story_layer.get('song_story_brief') or '[none]'}\n\n"
+        f"Previous scene beat:\n{previous_beat or '[none]'}\n\n"
+        f"Next scene lyric text:\n{next_lyrics or '[none]'}\n\n"
+        "Selected scene JSON:\n"
+        + json.dumps(scene, ensure_ascii=False, indent=2)
+    )
+    from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
+
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.35),
+        top_p=float(payload.get("top_p") or 0.90),
+        max_new_tokens=int(payload.get("max_new_tokens") or 360),
+        label="Storyboard Scene Beat Gemma",
+        preserve_paragraphs=True,
+    )
+    text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(text, 1800), flags=re.I)
+    if not text:
+        raise ValueError("Gemma returned an empty scene story beat.")
+    return {
+        "story_beat": text,
         "runner": run_info.get("runner", "builtin"),
         "used_model": run_info.get("used_model", ""),
         "unloaded": run_info.get("unloaded", True),
@@ -566,6 +744,24 @@ def _ensure_storyboard_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_build_storyboard_video_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/story_brief")
+    async def vrgdg_storyboard_story_brief(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_story_layer_brief, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/scene_story_beat")
+    async def vrgdg_storyboard_scene_story_beat(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_story_layer_scene_beat, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

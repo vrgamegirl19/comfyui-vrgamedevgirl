@@ -8,7 +8,7 @@ import {
   storyboardGptPayload,
   storyboardPerformancePreset,
 } from "./VRGDG_StoryboardBuilderUI.js";
-import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260622-wizard-location-scout";
+import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260623-story-layer";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -21,6 +21,7 @@ const DEFAULT_LTX_INGREDIENTS_WIDTH = 768;
 const DEFAULT_LTX_INGREDIENTS_HEIGHT = 448;
 const LOCATION_TRIGGER_GPT_URL = "https://chatgpt.com/g/g-6a36e98d149c8191832005c2050a8c89-ltx-2-3-full-location-mapping-with-lora-trigger";
 const LOCATION_MAPPER_GPT_URL = "https://chatgpt.com/g/g-6a2df090651c819190b00d7974677ad2-ltx-2-3-video-builder-location-creator-mapper";
+const SCENE_MAPPING_GPT_URL = "https://chatgpt.com/g/g-6a3a00f5cd508191a0a94ab5356e0b63-ltx-2-3-scene-mapping-assistant";
 const TIMELINE_HEIGHT = 210;
 const TIMELINE_OVERLAY_TOP = 24;
 const TIMELINE_OVERLAY_HEIGHT = 50;
@@ -194,6 +195,23 @@ function makeGptLinkButton(label, url) {
   button.title = url;
   button.onclick = () => window.open(url, "_blank", "noopener,noreferrer");
   return button;
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || "");
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return true;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "readonly");
+  textarea.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  return copied;
 }
 
 function makeInput(value = "", type = "text") {
@@ -1329,6 +1347,8 @@ function audioUrl(path) {
     notes: "",
     timeline_note: "",
     lyric_text: "",
+    lyric_section: "",
+    story_beat: "",
     lyric_singers: [],
     no_character_present: false,
     i2v_notes: "",
@@ -2966,6 +2986,15 @@ function openBuilder(node) {
     return repaired;
   }
 
+  function normalizeBuilderStoryLayer(value = {}) {
+    const source = value && typeof value === "object" ? value : {};
+    return {
+      enabled: source.enabled !== false,
+      user_story_arc: String(source.user_story_arc || source.userStoryArc || ""),
+      song_story_brief: String(source.song_story_brief || source.songStoryBrief || ""),
+    };
+  }
+
 
   const state = {
     duration: 0,
@@ -3040,6 +3069,7 @@ function openBuilder(node) {
     builderStorySourcePreview: "",
     builderStoryReferenceImages: [],
     builderStoryReferenceNotes: "",
+    builderStoryLayer: normalizeBuilderStoryLayer({}),
     builderAgentFloating: null,
     undoStack: [],
     redoStack: [],
@@ -3227,7 +3257,9 @@ function openBuilder(node) {
   }
 
   function allEditableSegments() {
-    return [...state.segments, ...state.overlaySegments];
+    const base = Array.isArray(state.segments) ? state.segments : [];
+    const overlays = Array.isArray(state.overlaySegments) ? state.overlaySegments : [];
+    return [...base, ...overlays].filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment));
   }
 
   function segmentTrack(segment) {
@@ -3827,6 +3859,8 @@ function openBuilder(node) {
     if (Number(segment.end) <= Number(segment.start)) segment.end = Number(segment.start || 0) + 0.1;
     if (segment.label == null) segment.label = "New scene";
     if (segment.lyric_text == null) segment.lyric_text = "";
+    if (segment.lyric_section == null) segment.lyric_section = "";
+    if (segment.story_beat == null) segment.story_beat = "";
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
     segment.lyric_no_lip_sync = Boolean(segment.lyric_no_lip_sync);
     segment.no_character_present = Boolean(segment.no_character_present || segment.no_subject || segment.no_visible_subject);
@@ -4235,6 +4269,7 @@ function openBuilder(node) {
       ernieImageSettings: state.ernieImageSettings,
       useFluxGlobalImageIngredients: state.useFluxGlobalImageIngredients,
       fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
+      builderStoryLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       lyricMapper: normalizeLyricMapper(state.lyricMapper),
       zEnhanceSettings: state.zEnhanceSettings,
       videoModelMode: state.videoModelMode,
@@ -4298,6 +4333,7 @@ function openBuilder(node) {
     state.ernieImageSettings = data.ernieImageSettings || state.ernieImageSettings;
     state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
+    state.builderStoryLayer = normalizeBuilderStoryLayer(data.builderStoryLayer || data.builder_story_layer || state.builderStoryLayer);
     state.lyricMapper = normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || state.lyricMapper);
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.videoModelMode = data.videoModelMode || data.video_model_mode || state.videoModelMode || "i2v";
@@ -4922,6 +4958,24 @@ function openBuilder(node) {
     return choices;
   }
 
+  function sceneReferenceMapValue(map, segment, index = null) {
+    const source = map && typeof map === "object" ? map : {};
+    const sceneId = String(segment?.id || "").trim();
+    if (sceneId && Object.prototype.hasOwnProperty.call(source, sceneId)) return source[sceneId];
+    const hasSceneIdKeys = Object.keys(source).some((key) => !/^\d+$/.test(String(key || "").trim()));
+    if (hasSceneIdKeys) return undefined;
+    const sceneNumber = Number.isFinite(Number(index)) ? Number(index) + 1 : segmentIndexInfo(segment).index + 1;
+    const numberKey = String(sceneNumber);
+    return Object.prototype.hasOwnProperty.call(source, numberKey) ? source[numberKey] : undefined;
+  }
+
+  function sceneReferenceMapArray(map, segment, index = null) {
+    const value = sceneReferenceMapValue(map, segment, index);
+    return Array.isArray(value)
+      ? value.map((item) => String(item || "").trim()).filter(Boolean)
+      : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
   function splitLyricsToMapperLines(text) {
     return String(text || "")
       .replace(/\r\n/g, "\n")
@@ -5061,10 +5115,13 @@ function openBuilder(node) {
     normalized.trigger_position = String(source.trigger_position || source.triggerPosition || source.trigger_placement || "start") === "end" ? "end" : "start";
     normalized.subject_trigger_position = String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
     normalized.location_trigger_position = String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
-    const rawSubjects = dedupeRefsByName(Array.isArray(source.subjects) ? source.subjects : []);
+    const hasExplicitSubjectsArray = Array.isArray(source.subjects);
+    const rawSubjects = dedupeRefsByName(hasExplicitSubjectsArray ? source.subjects : []);
     normalized.subject_count = normalized.cleared
       ? 0
-      : Math.max(1, Math.min(12, rawSubjects.length || Number(source.subject_count || 0) || 1));
+      : hasExplicitSubjectsArray
+        ? Math.min(12, rawSubjects.length)
+        : Math.max(1, Math.min(12, rawSubjects.length || Number(source.subject_count || 0) || 1));
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
     normalized.subject = {
       description: String(subject.description || ""),
@@ -5084,7 +5141,7 @@ function openBuilder(node) {
           image: normalizeRefImage(item),
         };
       }) : [];
-    if (!normalized.subjects.length && (normalized.subject.description || normalized.subject.image.path || normalized.subject.image.data || normalized.subject.image.name)) {
+    if (!hasExplicitSubjectsArray && !normalized.subjects.length && (normalized.subject.description || normalized.subject.image.path || normalized.subject.image.data || normalized.subject.image.name)) {
       normalized.subjects.push({
         id: "subject_1",
         name: "Character 1",
@@ -5095,7 +5152,7 @@ function openBuilder(node) {
         image: { ...normalized.subject.image },
       });
     }
-    while (!normalized.cleared && normalized.subjects.length < normalized.subject_count) {
+    while (!hasExplicitSubjectsArray && !normalized.cleared && normalized.subjects.length < normalized.subject_count) {
       normalized.subjects.push({
         id: `subj_${Date.now()}_${normalized.subjects.length}_${Math.floor(Math.random() * 10000)}`,
         name: `Character ${normalized.subjects.length + 1}`,
@@ -5107,6 +5164,15 @@ function openBuilder(node) {
       });
     }
     normalized.subjects = normalized.cleared ? [] : normalized.subjects.slice(0, normalized.subject_count);
+    if (!normalized.subjects.length) {
+      normalized.subject_count = 0;
+      normalized.subject = {
+        name: "",
+        description: "",
+        reference_type: normalized.subject.reference_type || "character",
+        image: { path: "", data: "", name: "" },
+      };
+    }
     if (normalized.subjects.length) {
       const firstSubject = normalized.subjects[0];
       normalized.subject = {
@@ -6254,7 +6320,7 @@ function openBuilder(node) {
     };
     if (refs.use_subject_reference) {
       if (refs.subject_count > 1 && segment) {
-        const subjectIds = refs.subject_scene_map?.[segment.id] || refs.subject_scene_map?.[String(segmentIndexInfo(segment).index + 1)] || [];
+        const subjectIds = sceneReferenceMapArray(refs.subject_scene_map, segment);
         const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
         refs.subjects.filter((item) => idSet.has(item.id)).forEach((item) => addUnique(item.image));
       } else {
@@ -6262,7 +6328,7 @@ function openBuilder(node) {
       }
     }
     if (refs.use_location_references && segment) {
-      const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
+      const locId = String(sceneReferenceMapValue(refs.scene_map, segment) || "");
       const location = refs.locations.find((item) => item.id === locId);
       addUnique(location?.image);
     }
@@ -6296,8 +6362,20 @@ function openBuilder(node) {
       || (normalizedRefs.subjects || []).some(referenceBuilderSubjectHasImage)
     );
     if (!normalizedRefs.use_subject_reference && !rtvAutoUse) return [];
+    if (segment?.no_character_present) {
+      const imageBackedSubjects = normalizedRefs.subjects.filter(referenceBuilderSubjectHasImage);
+      if (imageBackedSubjects.length) return [imageBackedSubjects[0]];
+      if (referenceBuilderSubjectHasImage(normalizedRefs.subject)) {
+        return [{
+          ...normalizedRefs.subjects?.[0],
+          description: normalizedRefs.subject?.description || normalizedRefs.subjects?.[0]?.description || "",
+          image: normalizedRefs.subject?.image || {},
+        }];
+      }
+      return [];
+    }
     if (normalizedRefs.subject_count > 1 && segment) {
-      const subjectIds = normalizedRefs.subject_scene_map?.[segment.id] || normalizedRefs.subject_scene_map?.[String(segmentIndexInfo(segment).index + 1)] || [];
+      const subjectIds = sceneReferenceMapArray(normalizedRefs.subject_scene_map, segment);
       const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
       const mapped = normalizedRefs.subjects.filter((item) => idSet.has(item.id));
       if (mapped.length) return mapped;
@@ -6322,7 +6400,7 @@ function openBuilder(node) {
 
   function rtvReferencesForSegment(segment = activeSegment()) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-    const references = { subjects: [], background: {} };
+    const references = { subjects: [], background: {}, use_subject_placeholder: false };
     const addSubject = (item) => {
       const image = item?.image || {};
       if (!image.path && !image.data) return;
@@ -6334,8 +6412,19 @@ function openBuilder(node) {
     };
     referenceBuilderSubjectItemsForSegment(refs, segment).forEach(addSubject);
     references.subjects = references.subjects.slice(0, 4);
+    if (segment?.no_character_present && !references.subjects.length) {
+      references.use_subject_placeholder = true;
+      references.subjects.push({
+        path: "",
+        data: "",
+        name: "",
+        label: "Neutral placeholder used for MSR subject slot",
+        reference_type: "placeholder",
+        placeholder: true,
+      });
+    }
     if (refs.use_location_references && segment) {
-      const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
+      const locId = String(sceneReferenceMapValue(refs.scene_map, segment) || "");
       const location = refs.locations.find((item) => item.id === locId);
       const image = location?.image || {};
       if (image.path || image.data) {
@@ -6373,7 +6462,7 @@ function openBuilder(node) {
       }
     }
     if (refs.use_location_references && segment) {
-      const locId = refs.scene_map?.[segment.id] || refs.scene_map?.[String(segmentIndexInfo(segment).index + 1)] || "";
+      const locId = String(sceneReferenceMapValue(refs.scene_map, segment) || "");
       const location = refs.locations.find((item) => item.id === locId);
       const image = location?.image || {};
       if (location && (image.path || image.data)) {
@@ -9846,6 +9935,73 @@ function openBuilder(node) {
     return created;
   }
 
+  function normalizeLyricSectionLookupText(value = "") {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}' ]/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function lyricSectionMapFromReferenceText(text = "") {
+    const map = new Map();
+    let currentSection = "";
+    for (const rawLine of String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const header = line.match(/^\[([^\]]{2,80})\]$/);
+      if (header) {
+        currentSection = header[1].trim();
+        continue;
+      }
+      const key = normalizeLyricSectionLookupText(line);
+      if (key && currentSection && !map.has(key)) map.set(key, currentSection);
+    }
+    return map;
+  }
+
+  function applyLyricSectionsFromReferenceText(segments = [], referenceText = "") {
+    const sectionMap = lyricSectionMapFromReferenceText(referenceText);
+    if (!sectionMap.size) return 0;
+    const sectionEntries = Array.from(sectionMap.entries());
+    let applied = 0;
+    for (const segment of segments) {
+      if (!segment || String(segment.lyric_section || "").trim()) continue;
+      const lyricLines = String(segment.lyric_text || "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      for (const line of lyricLines) {
+        const header = line.match(/^\[([^\]]{2,80})\]$/);
+        if (header) {
+          segment.lyric_section = header[1].trim();
+          applied += 1;
+          break;
+        }
+        const section = sectionMap.get(normalizeLyricSectionLookupText(line));
+        if (section) {
+          segment.lyric_section = section;
+          applied += 1;
+          break;
+        }
+        const key = normalizeLyricSectionLookupText(line);
+        if (key.length >= 6) {
+          const fuzzy = sectionEntries.find(([referenceKey]) =>
+            referenceKey.length >= 6 && (referenceKey.includes(key) || key.includes(referenceKey))
+          );
+          if (fuzzy?.[1]) {
+            segment.lyric_section = fuzzy[1];
+            applied += 1;
+            break;
+          }
+        }
+      }
+    }
+    return applied;
+  }
+
   async function createScenesFromTimestampedLyrics(presetOptions = null) {
     const options = presetOptions || await showTimestampedTranscribeModal();
     if (!options) return;
@@ -9886,6 +10042,7 @@ function openBuilder(node) {
       const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
       const created = createSegmentsFromTimestampedLyricsPayload(payload, options);
       if (!created.length) throw new Error("Timestamped lyrics did not produce any usable scene segments.");
+      applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
       pushHistory();
       state.segments = created;
       state.overlaySegments = [];
@@ -9968,6 +10125,7 @@ function openBuilder(node) {
         segments[index].lyric_no_lip_sync = isInstrumentalLyricText(value);
         applied += 1;
       }
+      const sectioned = applyLyricSectionsFromReferenceText(segments, options.referenceLyrics || "");
       const mapped = applyLyricMapperToSegments({ overwriteSingers: true });
       state.showTimelineLyricNotes = true;
       syncLyricNoteControls();
@@ -9976,9 +10134,9 @@ function openBuilder(node) {
       syncInspector();
       render();
       await saveSession({ quiet: true, throwOnError: true });
-      progress.set(`Transcribed timeline lyrics from existing scene windows.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
+      progress.set(`Transcribed timeline lyrics from existing scene windows.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nDetected lyric sections on ${sectioned} scene${sectioned === 1 ? "" : "s"}.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
       progress.close(1800);
-      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"} from existing scene windows; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
+      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"} from existing scene windows; detected ${sectioned} section${sectioned === 1 ? "" : "s"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -10318,7 +10476,7 @@ function openBuilder(node) {
         "Instrumental means nobody should sing or lip-sync in that scene. B-roll / no lip-sync means the scene can have visuals or movement, but visible people should not mouth the lyric.",
         "Singer choices tell Gemma who should visibly sing the lyric. Location connects the scene to a Reference Builder location image.",
         "Copy boundary words is optional. It appends the first word or words from the next vocal scene onto the current scene, which can help LTX warm-up and cooldown frames keep lyric context.",
-        "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next lyric scene when the transcript split landed too early.",
+        "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next vocal scene when the transcript split landed too early. If the next scene is instrumental or no-lip-sync, the words are only removed and are not added to that scene.",
         "Save Lyrics + Timing + Singers + Locations applies the edited rows to the real timeline and saves the project.",
       ],
     });
@@ -10405,7 +10563,7 @@ function openBuilder(node) {
     lyricWordToolsWrap.append(boundaryOverlapWrap, moveTailWordsWrap);
     const boundaryOverlapHelp = document.createElement("div");
     boundaryOverlapHelp.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    boundaryOverlapHelp.textContent = "Copy duplicates next-scene starter words for warm-up/cooldown context. Move removes end words from one scene and puts them at the start of the next scene. Both are text-only.";
+    boundaryOverlapHelp.textContent = "Copy duplicates next-scene starter words for warm-up/cooldown context. Move removes end words from one scene and puts them at the start of the next vocal scene. Instrumental/no-lip-sync targets stay lyric-free.";
     boundaryOverlapCheckbox.input.onchange = () => {
       boundaryOverlapCount.disabled = !boundaryOverlapCheckbox.input.checked;
     };
@@ -10787,6 +10945,7 @@ function openBuilder(node) {
       const count = moveTailWordCountValue();
       const rows = reviewRows();
       let moved = 0;
+      let removedOnly = 0;
       for (let index = 0; index < rows.length - 1; index++) {
         const current = rows[index];
         const next = rows[index + 1];
@@ -10794,19 +10953,26 @@ function openBuilder(node) {
         const nextText = reviewRowRawLyricText(next);
         const currentBlocked = reviewRowBlocksLipSync(current) || isInstrumentalLyricText(currentText);
         const nextBlocked = reviewRowBlocksLipSync(next) || isInstrumentalLyricText(nextText);
-        if (currentBlocked || nextBlocked) continue;
+        if (currentBlocked) continue;
         const words = lyricWords(currentText);
         if (words.length <= count) continue;
         const movedWords = words.slice(-count);
         const remainingWords = words.slice(0, -count);
         setReviewRowRawLyricText(current, remainingWords.join(" "));
-        if (!lyricStartsWithWords(nextText, movedWords)) {
+        if (nextBlocked) {
+          removedOnly += 1;
+        } else if (!lyricStartsWithWords(nextText, movedWords)) {
           setReviewRowRawLyricText(next, `${movedWords.join(" ")} ${nextText}`.trim());
+          moved += 1;
+        } else {
+          moved += 1;
         }
-        moved += 1;
       }
       refreshBoundaryOverlapPreview();
-      toast(moved ? `Moved end words into ${moved} next scene${moved === 1 ? "" : "s"}. Press Save to keep it.` : "No eligible lyric rows needed word moves.", !moved);
+      const parts = [];
+      if (moved) parts.push(`moved into ${moved} next scene${moved === 1 ? "" : "s"}`);
+      if (removedOnly) parts.push(`removed before ${removedOnly} instrumental/no-lip-sync scene${removedOnly === 1 ? "" : "s"}`);
+      toast(parts.length ? `End words ${parts.join(" and ")}. Press Save to keep it.` : "No eligible lyric rows needed word moves.", !parts.length);
     };
 
     boundaryOverlapCheckbox.input.onchange = () => {
@@ -10814,8 +10980,19 @@ function openBuilder(node) {
       if (!boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
     };
     boundaryOverlapApply.onclick = () => {
+      const overrides = collectBoundaryOverlapLyricOverrides();
+      let applied = 0;
+      for (const row of reviewRows()) {
+        const segment = reviewSegmentForRow(row);
+        if (!segment || !overrides.has(segment.id)) continue;
+        const nextText = String(overrides.get(segment.id) || "");
+        if (nextText !== reviewRowRawLyricText(row)) applied += 1;
+        setReviewRowRawLyricText(row, nextText);
+      }
       refreshBoundaryOverlapPreview();
-      toast(boundaryOverlapCheckbox.input.checked ? "Boundary word preview applied. Press Save to keep it." : "Boundary word copy is off. Raw lyric text restored.");
+      toast(boundaryOverlapCheckbox.input.checked
+        ? (applied ? `Copied boundary words into ${applied} scene${applied === 1 ? "" : "s"}. Press Save to keep it.` : "No eligible boundary words to copy.")
+        : "Boundary word copy is off. Raw lyric text restored.", boundaryOverlapCheckbox.input.checked && !applied);
     };
     moveTailWordsCheckbox.input.onchange = () => {
       moveTailWordsCount.disabled = !moveTailWordsCheckbox.input.checked;
@@ -11129,23 +11306,12 @@ function openBuilder(node) {
         .map((input) => input.value)
         .filter(Boolean);
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      const subjects = Array.isArray(refs.subjects) ? refs.subjects : [];
-      const subjectIds = [];
-      for (const input of row.querySelectorAll("[data-review-singer-choice='1']")) {
-        if (noCharacterPresent || !input.checked || isNoLipSyncSingerChoice(input.value)) continue;
-        const choiceId = String(input.dataset.reviewSubjectId || "").trim();
-        const choiceLabel = String(input.value || "").trim().toLowerCase();
-        if (choiceId === "group") {
-          subjectIds.push(...subjects.map((subject) => subject.id).filter(Boolean));
-          continue;
-        }
-        const byId = subjects.find((subject) => String(subject.id || "") === choiceId);
-        const byName = subjects.find((subject) => String(subject.name || "").trim().toLowerCase() === choiceLabel);
-        if (byId?.id) subjectIds.push(byId.id);
-        else if (byName?.id) subjectIds.push(byName.id);
-      }
       refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
-      const uniqueSubjectIds = Array.from(new Set(subjectIds));
+      const presentSubjectIds = [...row.querySelectorAll("[data-review-present-subject='1']")]
+        .filter((input) => !noCharacterPresent && input.checked)
+        .map((input) => String(input.value || "").trim())
+        .filter(Boolean);
+      const uniqueSubjectIds = Array.from(new Set(presentSubjectIds));
       if (!noCharacterPresent && uniqueSubjectIds.length) refs.subject_scene_map[segment.id] = uniqueSubjectIds;
       else delete refs.subject_scene_map[segment.id];
       state.fluxReferenceBuilder = refs;
@@ -11249,6 +11415,48 @@ function openBuilder(node) {
         || reviewReferenceBuilder.scene_map?.[String(index + 1)]
         || "";
     };
+    const reviewSubjectIdsForSegment = (segment, index) => {
+      const direct = reviewReferenceBuilder.subject_scene_map?.[segment.id];
+      if (Array.isArray(direct)) return direct.map(String).filter(Boolean);
+      const byNumber = reviewReferenceBuilder.subject_scene_map?.[String(index + 1)];
+      if (Array.isArray(byNumber)) return byNumber.map(String).filter(Boolean);
+      const subjects = Array.isArray(reviewReferenceBuilder.subjects) ? reviewReferenceBuilder.subjects : [];
+      const singerNames = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.map((name) => String(name || "").trim().toLowerCase()) : [];
+      if (!singerNames.length) return [];
+      return subjects
+        .filter((subject) => singerNames.includes(String(subject.name || "").trim().toLowerCase()) || singerNames.includes(String(subject.id || "").trim().toLowerCase()))
+        .map((subject) => subject.id)
+        .filter(Boolean);
+    };
+    const renderSubjectPresenceChoices = (segment, index, container) => {
+      container.textContent = "";
+      const subjects = Array.isArray(reviewReferenceBuilder.subjects) ? reviewReferenceBuilder.subjects : [];
+      const selected = new Set(reviewSubjectIdsForSegment(segment, index));
+      if (!subjects.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No Reference Builder subjects yet.";
+        empty.style.cssText = "font-size:11px;color:#94a3b8;";
+        container.append(empty);
+        return;
+      }
+      for (const subject of subjects) {
+        const subjectId = String(subject.id || "").trim();
+        if (!subjectId) continue;
+        const label = document.createElement("label");
+        label.style.cssText = "display:inline-flex;align-items:center;gap:5px;border:1px solid #334155;border-radius:999px;background:#0f172a;color:#e2e8f0;padding:5px 8px;font-size:11px;line-height:1;cursor:pointer;user-select:none;";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.dataset.reviewPresentSubject = "1";
+        input.dataset.reviewSubjectId = subjectId;
+        input.value = subjectId;
+        input.checked = selected.has(subjectId);
+        input.style.cssText = "margin:0;";
+        const name = document.createElement("span");
+        name.textContent = subject.name || "Subject";
+        label.append(input, name);
+        container.append(label);
+      }
+    };
     const renderSingerChoices = (segment, container, instrumentalInput, brollInput) => {
       container.textContent = "";
       const selected = new Set(Array.isArray(segment.lyric_singers) ? segment.lyric_singers : []);
@@ -11264,6 +11472,15 @@ function openBuilder(node) {
         input.value = choiceLabel;
         input.checked = selected.has(choiceLabel) || selected.has(choice.label) || selected.has(choice.id);
         input.style.cssText = "margin:0;";
+        input.onchange = () => {
+          if (!input.checked) return;
+          const row = input.closest("[data-review-segment-id]");
+          if (!row) return;
+          const subjectIds = subjectIdsForReviewChoice(choice);
+          for (const presentInput of row.querySelectorAll("[data-review-present-subject='1']")) {
+            if (subjectIds.includes(presentInput.value)) presentInput.checked = true;
+          }
+        };
         const name = document.createElement("span");
         name.dataset.reviewSubjectLabel = choice.id;
         name.textContent = choiceLabel;
@@ -11287,6 +11504,9 @@ function openBuilder(node) {
             }
             for (const row of reviewRows()) {
               if (row.querySelector("[data-review-no-character='1']")?.checked) continue;
+              for (const presentInput of row.querySelectorAll("[data-review-present-subject='1']")) {
+                if (subjectIds.includes(presentInput.value)) presentInput.checked = true;
+              }
               for (const singerInput of row.querySelectorAll("[data-review-singer-choice='1']")) {
                 if (singerInput.dataset.reviewSubjectId === choice.id || singerInput.value === choiceLabel) singerInput.checked = true;
               }
@@ -11324,7 +11544,7 @@ function openBuilder(node) {
     for (const [index, segment] of scenes.entries()) {
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
-      row.style.cssText = "display:grid;grid-template-columns:112px minmax(150px,180px) minmax(240px,1fr) minmax(220px,290px) minmax(160px,220px) 150px 86px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
+      row.style.cssText = "display:grid;grid-template-columns:112px minmax(150px,180px) minmax(240px,1fr) minmax(260px,340px) minmax(160px,220px) 150px 86px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
       const meta = document.createElement("div");
       meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
       const timing = document.createElement("div");
@@ -11394,8 +11614,12 @@ function openBuilder(node) {
         text.dataset.reviewRawLyricText = text.value;
         if (boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
       });
+      const subjectSingerPanel = document.createElement("div");
+      subjectSingerPanel.style.cssText = "display:flex;flex-direction:column;gap:7px;";
+      const presentPanel = document.createElement("div");
+      presentPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
       const singerPanel = document.createElement("div");
-      singerPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:64px;box-sizing:border-box;";
+      singerPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
       const flags = document.createElement("div");
       flags.style.cssText = "display:flex;flex-direction:column;gap:8px;padding-top:4px;";
       const instrumental = makeCheckbox("Instrumental", isInstrumentalLyricText(segment.lyric_text));
@@ -11407,10 +11631,15 @@ function openBuilder(node) {
       flags.append(instrumental.wrapper, broll.wrapper, noCharacter.wrapper);
       const updateNoCharacterState = () => {
         const disabled = Boolean(noCharacter.input.checked);
+        for (const input of presentPanel.querySelectorAll("[data-review-present-subject='1']")) {
+          input.disabled = disabled;
+          if (disabled) input.checked = false;
+        }
         for (const input of singerPanel.querySelectorAll("[data-review-singer-choice='1']")) {
           input.disabled = disabled;
           if (disabled) input.checked = false;
         }
+        presentPanel.style.opacity = disabled ? "0.55" : "1";
         singerPanel.style.opacity = disabled ? "0.55" : "1";
       };
       const updateDisabled = () => {
@@ -11422,7 +11651,9 @@ function openBuilder(node) {
         updateNoCharacterState();
         refreshBoundaryOverlapPreview();
       };
+      renderSubjectPresenceChoices(segment, index, presentPanel);
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
+      subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Singer / lip-sync", singerPanel));
       updateNoCharacterState();
       instrumental.input.onchange = updateDisabled;
       broll.input.onchange = updateDisabled;
@@ -11458,7 +11689,7 @@ function openBuilder(node) {
       playFrom.onclick = () => playFromSegment(segment, playFrom);
       select.onclick = () => setActiveReviewScene(segment);
       buttons.append(play, playFrom, select);
-      row.append(meta, timing, text, singerPanel, locationWrap, flags, buttons);
+      row.append(meta, timing, text, subjectSingerPanel, locationWrap, flags, buttons);
       rowList.append(row);
       rememberReviewRowTiming(row);
     }
@@ -11485,6 +11716,7 @@ function openBuilder(node) {
       try {
         save.disabled = true;
         pushHistory();
+        ensureAllSegmentRuntimeFields();
         syncSingleSubjectPerformerLabel();
         await normalizeEditedReviewTiming();
         const lyricOverrides = collectBoundaryOverlapLyricOverrides();
@@ -11497,6 +11729,7 @@ function openBuilder(node) {
         state.fluxReferenceBuilder = syncedIngredients.refs;
         if (currentVideoMode() === "ingredients") applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
         sortSegments(state.segments);
+        ensureAllSegmentRuntimeFields();
         state.segments.forEach((segment, index) => {
           segment.label = `Scene ${index + 1}`;
         });
@@ -12051,11 +12284,15 @@ function openBuilder(node) {
     mappingTitle.style.cssText = subjectTitle.style.cssText;
     const mapSubjectsFromLyrics = makeButton("Map Subjects From Lyrics", "primary");
     const mapSubjectsFromSceneNotes = makeButton("Map Subjects From Scene Notes", "primary");
+    const exportGptSceneContext = makeButton("Export GPT Context", "primary");
+    const importGptSceneMap = makeButton("Import GPT Map", "primary");
     mapSubjectsFromLyrics.title = "Use saved Lyric Review singer choices to assign character references per scene.";
     mapSubjectsFromSceneNotes.title = "Read SceneNotes.json and assign character references when scene notes mention saved character names.";
+    exportGptSceneContext.title = "Copy subjects, locations, lyric lines, and current scene mappings as JSON, then open the Scene Mapping Assistant GPT.";
+    importGptSceneMap.title = "Paste GPT scene mapping JSON to assign saved subjects and locations back to scenes.";
     const mappingActions = document.createElement("div");
     mappingActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes);
+    mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes, exportGptSceneContext, importGptSceneMap);
     mappingHeader.append(mappingTitle, mappingActions);
     const mappingNote = document.createElement("div");
     mappingNote.textContent = "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.";
@@ -12260,6 +12497,30 @@ function openBuilder(node) {
       refs.subject_count = refs.subjects.length;
       subjectCountInput.value = String(refs.subject_count);
       return subject;
+    };
+    const syncSingleSubjectInputsFromFirstSubject = () => {
+      const first = refs.subjects?.[0] || null;
+      if (!first) {
+        subjectNameInput.value = "";
+        subjectTypeSelect.value = "character";
+        subjectDescription.value = "";
+        refs.subject = {
+          name: "",
+          description: "",
+          reference_type: "character",
+          image: { path: "", data: "", name: "" },
+        };
+        return;
+      }
+      subjectNameInput.value = first.name || "Character 1";
+      subjectTypeSelect.value = first.reference_type || "character";
+      subjectDescription.value = first.description || "";
+      refs.subject = {
+        name: first.name || "Character 1",
+        description: first.description || "",
+        reference_type: first.reference_type || "character",
+        image: { ...(first.image || { path: "", data: "", name: "" }) },
+      };
     };
     const subjectGenderHint = (subject) => {
       const text = `${subject?.name || ""} ${subject?.description || ""}`.toLowerCase();
@@ -13452,6 +13713,294 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    function cleanSceneMapName(value = "") {
+      return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    }
+
+    function sceneMappingContextPath() {
+      return projectContextPath("ReferenceBuilderSceneMappingContext.json");
+    }
+
+    function sceneMappingImportSceneNumber(value) {
+      const text = String(value || "").trim();
+      const match = text.match(/(?:scene|segment|clip)?\s*#?\s*(\d+)/i);
+      return match ? Number(match[1]) : Number(text) || 0;
+    }
+
+    function sceneMappingSegments() {
+      return allEditableSegments().slice().sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    }
+
+    function sceneMappingSubjectByNameOrId(value) {
+      const key = cleanSceneMapName(value);
+      if (!key) return null;
+      return (refs.subjects || []).find((subject) =>
+        cleanSceneMapName(subject.id) === key
+        || cleanSceneMapName(subject.name) === key
+        || cleanSceneMapName(subject.label) === key
+      ) || null;
+    }
+
+    function sceneMappingLocationByNameOrId(value) {
+      const key = cleanSceneMapName(value);
+      if (!key) return null;
+      return (refs.locations || []).find((location) =>
+        cleanSceneMapName(location.id) === key
+        || cleanSceneMapName(location.name) === key
+        || cleanSceneMapName(location.label) === key
+      ) || null;
+    }
+
+    function normalizeSceneMappingSubjectNames(value) {
+      if (Array.isArray(value)) {
+        return value.map((item) => {
+          if (item && typeof item === "object") return item.name || item.subject || item.character || item.id || "";
+          return item;
+        }).map((item) => String(item || "").trim()).filter(Boolean);
+      }
+      if (value && typeof value === "object") {
+        return normalizeSceneMappingSubjectNames(value.subjects || value.characters || value.names || value.name || value.subject || value.character);
+      }
+      return String(value || "")
+        .split(/[,;|]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function buildSceneMappingContextJson() {
+      const subjects = (refs.subjects || []).map((subject) => ({
+        id: String(subject.id || ""),
+        name: String(subject.name || "").trim(),
+        type: String(subject.reference_type || "character"),
+        description: String(subject.description || "").trim(),
+      })).filter((subject) => subject.name);
+      const locations = (refs.locations || []).map((location) => ({
+        id: String(location.id || ""),
+        name: String(location.name || "").trim(),
+        description: String(location.description || "").trim(),
+      })).filter((location) => location.name);
+      const subjectById = new Map(subjects.map((subject) => [subject.id, subject]));
+      const locationById = new Map(locations.map((location) => [location.id, location]));
+      const scenes = sceneMappingSegments().map((segment, index) => {
+        const sceneNumber = index + 1;
+        const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
+          ? refs.subject_scene_map[segment.id]
+          : (Array.isArray(refs.subject_scene_map?.[String(sceneNumber)]) ? refs.subject_scene_map[String(sceneNumber)] : []);
+        const locationId = String(refs.scene_map?.[segment.id] || refs.scene_map?.[String(sceneNumber)] || "");
+        return {
+          scene: sceneNumber,
+          scene_id: String(segment.id || ""),
+          label: String(segment.label || `Scene ${sceneNumber}`),
+          lyric_section: String(segment.lyric_section || ""),
+          lyric_line: String(segment.lyric_text || ""),
+          story_beat: String(segment.story_beat || ""),
+          no_character_present: Boolean(segment.no_character_present),
+          current_subjects: subjectIds.map((id) => subjectById.get(String(id || ""))?.name || "").filter(Boolean),
+          current_location: locationById.get(locationId)?.name || "",
+        };
+      });
+      return {
+        instructions: "Return a JSON object with a scenes array. Use only the subject and location names from this file unless the user explicitly says a scene should be unassigned. Match by scene number.",
+        user_input: "Optional: tell the GPT who is singing, when no subject should appear, whether instrumentals should include subjects, or any story/location rules.",
+        summary: {
+          subjects: subjects.map(({ name, type, description }) => ({ name, type, description })),
+          locations: locations.map(({ name, description }) => ({ name, description })),
+        },
+        subjects,
+        locations,
+        scenes,
+        expected_output_example: {
+          scenes: [
+            {
+              scene: 1,
+              subjects: ["subject name or none"],
+              location: "location name or Unassigned",
+              no_character_present: false,
+              reason: "short optional reason",
+            },
+          ],
+        },
+      };
+    }
+
+    async function exportSceneMappingContextForGpt() {
+      const path = sceneMappingContextPath();
+      if (!path) {
+        toast("Create or load a project before exporting GPT scene mapping context.", true);
+        return;
+      }
+      try {
+        exportGptSceneContext.disabled = true;
+        const data = buildSceneMappingContextJson();
+        const content = JSON.stringify(data, null, 2);
+        const gptWindow = window.open(SCENE_MAPPING_GPT_URL, "_blank", "noopener,noreferrer");
+        exportGptSceneContext.textContent = "Copying...";
+        let copied = false;
+        try {
+          copied = await copyTextToClipboard(content);
+        } catch (copyError) {
+          console.warn("[VRGDG Music Builder] Could not copy GPT scene mapping context:", copyError);
+        }
+        exportGptSceneContext.textContent = "Saving...";
+        const result = await postJson("/vrgdg/music_builder/save_text_file", {
+          path,
+          content,
+        }, 60000);
+        toast(`${copied ? "Copied GPT scene mapping JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}\nSaved backup for ${data.scenes.length} scene${data.scenes.length === 1 ? "" : "s"} to:\n${result.path || path}`);
+      } catch (error) {
+        toast(String(error?.message || error), true);
+      } finally {
+        exportGptSceneContext.disabled = false;
+        exportGptSceneContext.textContent = "Export GPT Context";
+      }
+    }
+
+    function parseGptSceneMappingJson(rawText) {
+      const text = String(rawText || "").trim();
+      if (!text) return [];
+      const data = JSON.parse(text);
+      const source = Array.isArray(data)
+        ? data
+        : (data.scenes || data.scene_mappings || data.sceneMappings || data.mappings || data.scene_map || data.sceneMap || []);
+      if (Array.isArray(source)) return source;
+      if (source && typeof source === "object") {
+        return Object.entries(source).map(([key, value]) => {
+          if (value && typeof value === "object") return { scene: sceneMappingImportSceneNumber(key), ...value };
+          return { scene: sceneMappingImportSceneNumber(key), location: value };
+        });
+      }
+      return [];
+    }
+
+    function applyGptSceneMappings(items) {
+      refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
+      refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
+      const segments = sceneMappingSegments();
+      let subjectMapped = 0;
+      let locationMapped = 0;
+      let clearedSubjects = 0;
+      let clearedLocations = 0;
+      const unknownSubjects = new Set();
+      const unknownLocations = new Set();
+      const targetSegmentForItem = (item, fallbackIndex) => {
+        const sceneId = String(item.scene_id || item.sceneId || item.id || "").trim();
+        if (sceneId) {
+          const byId = segments.find((segment) => String(segment.id || "") === sceneId);
+          if (byId) return byId;
+        }
+        const sceneNumber = sceneMappingImportSceneNumber(item.scene_number ?? item.sceneNumber ?? item.scene ?? item.segment ?? item.clip ?? fallbackIndex + 1);
+        if (sceneNumber > 0) return segments[sceneNumber - 1] || segments.find((segment) => sceneSlotNumber(segment) === sceneNumber) || null;
+        return segments[fallbackIndex] || null;
+      };
+      items.forEach((item, index) => {
+        if (!item || typeof item !== "object") return;
+        const segment = targetSegmentForItem(item, index);
+        if (!segment) return;
+        const explicitNoCharacter = Boolean(item.no_character_present || item.noCharacterPresent || item.no_subject || item.noSubject);
+        const subjectNames = normalizeSceneMappingSubjectNames(
+          item.subjects ?? item.characters ?? item.character_refs ?? item.characterRefs ?? item.subject ?? item.character ?? item.singer
+        );
+        if (explicitNoCharacter || subjectNames.some((name) => /^(none|no character|no subject|unassigned|empty)$/i.test(name))) {
+          delete refs.subject_scene_map[segment.id];
+          segment.no_character_present = true;
+          clearedSubjects += 1;
+        } else if (subjectNames.length) {
+          const ids = [];
+          for (const name of subjectNames) {
+            const subject = sceneMappingSubjectByNameOrId(name);
+            if (subject?.id) ids.push(subject.id);
+            else unknownSubjects.add(name);
+          }
+          const uniqueIds = Array.from(new Set(ids));
+          if (uniqueIds.length) {
+            refs.subject_scene_map[segment.id] = uniqueIds;
+            segment.no_character_present = false;
+            subjectMapped += 1;
+          }
+        }
+        const locationName = String(item.location ?? item.location_name ?? item.locationName ?? item.setting ?? "").trim();
+        if (/^(none|unassigned|empty|no location)$/i.test(locationName)) {
+          delete refs.scene_map[segment.id];
+          clearedLocations += 1;
+        } else if (locationName) {
+          const location = sceneMappingLocationByNameOrId(locationName);
+          if (location?.id) {
+            refs.scene_map[segment.id] = location.id;
+            locationMapped += 1;
+          } else {
+            unknownLocations.add(locationName);
+          }
+        }
+      });
+      refs.use_subject_reference = Boolean((refs.subjects || []).length || Object.keys(refs.subject_scene_map || {}).length);
+      refs.use_location_references = Boolean((refs.locations || []).length || Object.keys(refs.scene_map || {}).length);
+      useSubject.input.checked = refs.use_subject_reference;
+      useLocations.input.checked = refs.use_location_references;
+      return {
+        subjectMapped,
+        locationMapped,
+        clearedSubjects,
+        clearedLocations,
+        unknownSubjects: Array.from(unknownSubjects),
+        unknownLocations: Array.from(unknownLocations),
+      };
+    }
+
+    function openImportGptSceneMapDialog() {
+      const importBackdrop = document.createElement("div");
+      importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const importBox = document.createElement("div");
+      importBox.style.cssText = "width:min(780px,calc(100vw - 34px));max-height:calc(100vh - 40px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);display:flex;flex-direction:column;overflow:hidden;";
+      const importHeader = document.createElement("div");
+      importHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;background:#083f4f;border-bottom:1px solid #155e75;padding:12px 14px;";
+      const importTitle = document.createElement("div");
+      importTitle.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Import GPT Scene Mapping</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste the GPT output JSON to map saved subjects and locations back to scenes.</div>`;
+      const closeImport = makeButton("Close");
+      importHeader.append(importTitle, closeImport);
+      const note = document.createElement("div");
+      note.style.cssText = "margin:12px 14px 0;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;font-size:12px;color:#cbd5e1;line-height:1.45;";
+      note.innerHTML = `<b style="color:#e0f2fe;">Accepted JSON:</b><pre style="white-space:pre-wrap;margin:8px 0 0;color:#dbeafe;">{
+  "scenes": [
+    { "scene": 1, "subjects": ["the woman"], "location": "Neon motel pool" },
+    { "scene": 2, "subjects": [], "location": "Foggy pine road", "no_character_present": true }
+  ]
+}</pre>`;
+      const input = document.createElement("textarea");
+      input.placeholder = "Paste GPT scene mapping JSON here...";
+      input.spellcheck = false;
+      input.style.cssText = "margin:12px 14px;min-height:300px;resize:vertical;border:1px solid #cbd5e1;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px 14px;";
+      const cancelImport = makeButton("Cancel");
+      const applyImport = makeButton("Import Scene Map", "primary");
+      actions.append(cancelImport, applyImport);
+      importBox.append(importHeader, note, input, actions);
+      importBackdrop.append(importBox);
+      document.body.append(importBackdrop);
+      const closeDialog = () => importBackdrop.remove();
+      closeImport.onclick = closeDialog;
+      cancelImport.onclick = closeDialog;
+      applyImport.onclick = () => {
+        try {
+          const items = parseGptSceneMappingJson(input.value);
+          if (!items.length) throw new Error("No scene mappings were found in the pasted JSON.");
+          const result = applyGptSceneMappings(items);
+          renderAll();
+          const warnings = [];
+          if (result.unknownSubjects.length) warnings.push(`Unknown subjects: ${result.unknownSubjects.slice(0, 8).join(", ")}${result.unknownSubjects.length > 8 ? "..." : ""}`);
+          if (result.unknownLocations.length) warnings.push(`Unknown locations: ${result.unknownLocations.slice(0, 8).join(", ")}${result.unknownLocations.length > 8 ? "..." : ""}`);
+          toast(`Imported GPT scene map. Subjects mapped: ${result.subjectMapped}. Locations mapped: ${result.locationMapped}. Cleared: ${result.clearedSubjects + result.clearedLocations}.${warnings.length ? `\n${warnings.join("\n")}` : ""}`);
+          closeDialog();
+        } catch (error) {
+          toast(String(error?.message || error), true);
+        }
+      };
+      importBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === importBackdrop) closeDialog();
+      });
+      input.focus();
+    }
+
     function renderSubjects() {
       ensureSubjectCount();
       const multi = refs.subject_count > 1;
@@ -13514,6 +14063,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           for (const segment of allEditableSegments()) {
             refs.subject_scene_map[segment.id] = (refs.subject_scene_map?.[segment.id] || []).filter((id) => id !== subject.id);
           }
+          if (refs.subjects.length <= 1) syncSingleSubjectInputsFromFirstSubject();
           renderAll();
         };
         name.addEventListener("input", () => {
@@ -13699,25 +14249,19 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     };
     removeAllSubjects.onclick = () => {
       if (refs.subjects.length && !window.confirm("Remove all subject references and clear subject scene mappings?")) return;
-      refs.subject_count = 1;
+      refs.subject_count = 0;
       refs.subject = {
-        name: "the singer",
+        name: "",
         description: "",
         reference_type: "character",
         image: { path: "", data: "", name: "" },
       };
-      refs.subjects = [{
-        id: `subj_${Date.now()}_0_${Math.floor(Math.random() * 10000)}`,
-        name: "Character 1",
-        description: "",
-        reference_type: "character",
-        image: { path: "", data: "", name: "" },
-      }];
+      refs.subjects = [];
       refs.subject_scene_map = {};
       refs.use_subject_reference = false;
       useSubject.input.checked = false;
       subjectCountInput.value = "1";
-      subjectNameInput.value = "the singer";
+      subjectNameInput.value = "";
       subjectTypeSelect.value = "character";
       subjectDescription.value = "";
       renderAll();
@@ -13806,6 +14350,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     createAllMissingLocationZImages.onclick = createMissingLocationReferencesWithZImage;
     importLocations.onclick = openImportLocationSourceDialog;
     exportLocations.onclick = exportReferenceBuilderLocations;
+    exportGptSceneContext.onclick = exportSceneMappingContextForGpt;
+    importGptSceneMap.onclick = openImportGptSceneMapDialog;
     mapSubjectsFromLyrics.onclick = () => {
       const mapped = autoMapSubjectsFromLyrics();
       refs.use_subject_reference = true;
@@ -13854,7 +14400,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     close.onclick = () => backdrop.remove();
     cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
-      ensureSubjectCount();
+      refs.subjects = Array.isArray(refs.subjects)
+        ? refs.subjects.filter((subject) => subject && typeof subject === "object" && String(subject.id || subject.name || subject.description || subject.image?.path || subject.image?.data).trim())
+        : [];
+      refs.subject_count = refs.subjects.length;
+      subjectCountInput.value = String(refs.subject_count || 1);
       if (refs.subject_count === 1 && refs.subjects[0]) {
         refs.subject.description = subjectDescription.value;
         refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
@@ -13864,16 +14414,30 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         refs.subjects[0].image = hasReferenceImage(refs.subject.image || {}) ? refs.subject.image : (refs.subjects[0].image || { path: "", data: "", name: "" });
       } else if (refs.subjects[0]) {
         refs.subject = {
+          name: refs.subjects[0].name || "Character 1",
           description: refs.subjects[0].description || "",
           reference_type: refs.subjects[0].reference_type || "character",
           image: { ...(refs.subjects[0].image || { path: "", data: "", name: "" }) },
         };
+      } else {
+        refs.subject = {
+          name: "",
+          description: "",
+          reference_type: "character",
+          image: { path: "", data: "", name: "" },
+        };
       }
+      const validSubjectIds = new Set(refs.subjects.map((subject) => String(subject.id || "").trim()).filter(Boolean));
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
+      for (const [sceneId, ids] of Object.entries(refs.subject_scene_map || {})) {
+        const pruned = (Array.isArray(ids) ? ids : []).map(String).filter((id) => validSubjectIds.has(id));
+        if (pruned.length) refs.subject_scene_map[sceneId] = pruned;
+        else delete refs.subject_scene_map[sceneId];
+      }
       for (const select of mappingList.querySelectorAll("[data-subject-map-segment-id]")) {
         const segmentId = select.dataset.subjectMapSegmentId || "";
         if (!segmentId) continue;
-        const subjectIds = Array.from(select.selectedOptions || []).map((option) => option.value).filter(Boolean);
+        const subjectIds = Array.from(select.selectedOptions || []).map((option) => option.value).filter((id) => validSubjectIds.has(id));
         if (subjectIds.length) refs.subject_scene_map[segmentId] = subjectIds;
         else delete refs.subject_scene_map[segmentId];
       }
@@ -13885,7 +14449,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         if (locationId) refs.scene_map[segmentId] = locationId;
         else delete refs.scene_map[segmentId];
       }
-      refs.use_subject_reference = Boolean(useSubject.input.checked);
+      refs.use_subject_reference = Boolean(useSubject.input.checked && refs.subjects.length);
       refs.use_location_references = Boolean(useLocations.input.checked);
       refs.include_manual_ingredients = Boolean(includeManual.input.checked);
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
@@ -16742,6 +17306,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       builder_story_source_path: state.builderStorySourcePath || "",
       builder_story_reference_images: Array.isArray(state.builderStoryReferenceImages) ? state.builderStoryReferenceImages : [],
       builder_story_reference_notes: state.builderStoryReferenceNotes || "",
+      builder_story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
     };
   }
 
@@ -16919,6 +17484,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStorySourcePath = data.session.builder_story_source_path || state.builderStorySourcePath || "";
         state.builderStoryReferenceImages = Array.isArray(data.session.builder_story_reference_images) ? data.session.builder_story_reference_images : state.builderStoryReferenceImages || [];
         state.builderStoryReferenceNotes = data.session.builder_story_reference_notes || state.builderStoryReferenceNotes || "";
+        state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || state.builderStoryLayer);
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
@@ -17081,6 +17647,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStorySourcePath = session.builder_story_source_path || projectContextPath("AgentStorySource.txt") || "";
       state.builderStoryReferenceImages = Array.isArray(session.builder_story_reference_images) ? session.builder_story_reference_images : [];
       state.builderStoryReferenceNotes = session.builder_story_reference_notes || "";
+      state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
@@ -18772,6 +19339,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const imageSrc = imagePath ? makeEditorImageUrl(imagePath) : imageSource?.data || "";
     const audioPath = String(details.audioPath || audioInput.value || "");
     const audioMode = String(details.audioMode || (segment.custom_audio_path ? "Custom scene audio" : "Global/project audio"));
+    const rtvSubjects = Array.isArray(details.rtvReferences?.subjects) ? details.rtvReferences.subjects : [];
+    const rtvSubjectText = rtvSubjects
+      .map((item, index) => {
+        const label = String(item?.label || item?.name || item?.path || "").trim();
+        return `${index + 1}. ${label || "Unnamed subject reference"}`;
+      })
+      .join("\n");
+    const rtvBackground = details.rtvReferences?.background || {};
+    const rtvBackgroundText = String(rtvBackground?.label || rtvBackground?.name || rtvBackground?.path || "").trim();
     return `
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-weight:900;color:#cffafe;">${escapeHtml(statusText)}</div>
@@ -18788,6 +19364,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           <div style="color:#67e8f9;font-weight:900;">SRT path</div><div style="overflow-wrap:anywhere;">${escapeHtml(srtPath || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Save folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(outputFolder || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Collected clips</div><div style="overflow-wrap:anywhere;">${escapeHtml(collectedSceneVideoFolder())}</div>
+          ${videoMode === "rtv" ? `<div style="color:#67e8f9;font-weight:900;">RTV subject refs</div><div style="overflow-wrap:anywhere;white-space:pre-wrap;">${escapeHtml(rtvSubjectText || "None")}</div>` : ""}
+          ${videoMode === "rtv" ? `<div style="color:#67e8f9;font-weight:900;">RTV location ref</div><div style="overflow-wrap:anywhere;">${escapeHtml(rtvBackgroundText || "None")}</div>` : ""}
         </div>
         <div>
           <div style="color:#67e8f9;font-weight:900;margin-bottom:4px;">${videoModeDisplayLabel(videoMode, true)} prompt</div>
@@ -18888,16 +19466,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneKey = segment?.id || "";
     const numberKey = String((info.index >= 0 ? info.index : allEditableSegments().indexOf(segment)) + 1);
     const noCharacterPresent = Boolean(segment?.no_character_present);
-    const subjectIds = noCharacterPresent ? [] : Array.isArray(refs.subject_scene_map?.[sceneKey])
-      ? refs.subject_scene_map[sceneKey]
-      : (Array.isArray(refs.subject_scene_map?.[numberKey]) ? refs.subject_scene_map[numberKey] : []);
+    const subjectIds = noCharacterPresent ? [] : sceneReferenceMapArray(refs.subject_scene_map, segment, Number(numberKey) - 1);
     let subjectRefs = subjectIds
       .map((id) => refs.subjects.find((subject) => subject.id === id))
       .filter(Boolean);
     if (!noCharacterPresent && !subjectRefs.length && refs.use_subject_reference && refs.subjects.length === 1) {
       subjectRefs = [refs.subjects[0]];
     }
-    const locId = refs.scene_map?.[sceneKey] || refs.scene_map?.[numberKey] || "";
+    const locId = String(sceneReferenceMapValue(refs.scene_map, segment, Number(numberKey) - 1) || "");
     const locationRef = refs.locations.find((location) => location.id === locId) || null;
     const locationName = String(locationRef?.name || segment?.mapped_location || segment?.location || "").trim();
     const locationDescription = String(locationRef?.description || segment?.location_description || "").trim();
@@ -18965,6 +19541,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scene_number: sortedIndex + 1,
           label,
           lyrics: lyric,
+          lyric_section: String(segment.lyric_section || "").trim(),
+          story_beat: String(segment.story_beat || "").trim(),
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
           lyric_singers: Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : [],
@@ -19057,11 +19635,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         return Array.from(byKey.values());
       };
-      if (incomingRefs.subjects.length) {
+      if (incomingRefs.subjects.length && !(refs.subjects || []).length) {
         refs.subjects = mergeReferenceList(refs.subjects, incomingRefs.subjects);
-        refs.subject_count = Math.max(1, refs.subjects.length);
+        refs.subject_count = refs.subjects.length;
       }
-      if (incomingRefs.locations.length) {
+      if (incomingRefs.locations.length && !(refs.locations || []).length) {
         refs.locations = mergeReferenceList(refs.locations, incomingRefs.locations);
       }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
@@ -19073,7 +19651,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           || segments.find((candidate, index) => Number(index + 1) === Number(item.scene_number));
         if (!segment) continue;
         segment.no_character_present = Boolean(item.no_character_present || item.noCharacterPresent || item.no_subject || item.no_visible_subject);
-        const subjectIds = Array.isArray(item.subject_ids) ? item.subject_ids.map(String).filter(Boolean) : [];
+        const validSubjectIds = new Set((refs.subjects || []).map((subject) => String(subject.id || "").trim()).filter(Boolean));
+        const subjectIds = Array.isArray(item.subject_ids) ? item.subject_ids.map(String).filter((id) => validSubjectIds.has(id)) : [];
         if (!segment.no_character_present && subjectIds.length) refs.subject_scene_map[segment.id] = subjectIds;
         else delete refs.subject_scene_map[segment.id];
         const locationId = String(item.location_id || "").trim();
@@ -19090,6 +19669,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         .slice()
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
       let applied = 0;
+      let storyChanged = false;
       for (const scene of Array.isArray(updates.scenes) ? updates.scenes : []) {
         const segment = segments.find((candidate) => candidate.id === scene.id)
           || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
@@ -19098,6 +19678,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const imagePrompt = String(scene.image_prompt || "").trim();
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
         const videoType = String(scene.video_prompt_type || "").trim();
+        segment.lyric_section = String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim();
+        segment.story_beat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim();
         if (imagePrompt) {
           setSegmentPromptForEdit(segment, "t2i", imagePrompt);
           applied += 1;
@@ -19110,12 +19692,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (String(scene.shot_type || "").trim()) segment.shot_type = String(scene.shot_type || "").trim();
         if (String(scene.camera_motion || "").trim()) segment.camera_motion = String(scene.camera_motion || "").trim();
       }
-      if (applied) {
+      if (updates.story_layer || updates.storyLayer) {
+        state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
+        storyChanged = true;
+      }
+      if (applied || storyChanged) {
         ensureAllSegmentRuntimeFields();
         syncInspector();
         render();
         autoSaveSessionQuiet("Storyboard prompt export");
-        toast(`Storyboard prompts copied into Video Builder for ${applied} prompt field${applied === 1 ? "" : "s"}.`);
+        if (applied) toast(`Storyboard prompts copied into Video Builder for ${applied} prompt field${applied === 1 ? "" : "s"}.`);
       }
     };
     window.VRGDGStoryboardBuilder.open({
@@ -19123,6 +19709,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       videoPromptType: currentVideoMode(),
       scenes: storyboardScenePayload(),
       referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+      storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       gemmaSettings: {
         text_runner: state.textGemmaRunner || "builtin",
         model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
@@ -19135,6 +19722,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         unload_after: true,
       },
       onReferenceMappingsChanged: applyStoryboardReferenceMappings,
+      onStoryLayerChanged: applyStoryboardPrompts,
       onPromptsExported: applyStoryboardPrompts,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
   }
@@ -19148,7 +19736,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if ((mode === "i2v" || mode === "ingredients") && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
     if (mode === "rtv") {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
-      const hasSubjectReference = referenceBuilderSubjectItemsForSegment(refs, segment).some(referenceBuilderSubjectHasImage);
+      const rtvReferences = rtvReferencesForSegment(segment);
+      const hasSubjectReference = Boolean(rtvReferences.use_subject_placeholder)
+        || referenceBuilderSubjectItemsForSegment(refs, segment).some(referenceBuilderSubjectHasImage);
       if (!hasSubjectReference) missing.push(`${name}: Reference to Video needs a subject image in Reference Builder.`);
     }
     if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${promptLabel} prompt is missing.`);
@@ -19411,14 +20001,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       payload.ingredients_image_path = segment.approved_image_path || selectedSegmentImagePath(segment);
       payload.ingredients_image_name = segment.image?.name || "ingredients_reference.png";
     }
-    if (videoMode === "rtv") {
-      payload.rtv_references = rtvReferencesForSegment(segment);
-    }
+    const rtvReferences = videoMode === "rtv" ? rtvReferencesForSegment(segment) : null;
+    if (videoMode === "rtv") payload.rtv_references = rtvReferences;
     const workflowDetails = {
       audioPath: audioPathForScene,
       promptNumber: promptNumberForScene,
       audioMode: audioModeForScene,
       videoMode,
+      rtvReferences,
     };
     const defaultOutputFolder = activeVideoOutputFolder(videoMode);
     const buildEndpoint = videoMode === "ingredients"
@@ -24104,6 +24694,117 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       return text;
     };
+    const createWizardStoryBrief = async (draft = {}) => {
+      const layer = normalizeBuilderStoryLayer({
+        ...state.builderStoryLayer,
+        ...(draft?.storyLayer || draft?.story_layer || {}),
+        user_story_arc: draft?.userStoryArc ?? draft?.user_story_arc ?? state.builderStoryLayer?.user_story_arc,
+      });
+      state.builderStoryLayer = layer;
+      const scenes = storyboardScenePayload();
+      const progress = createProgressWindow("Wizard Story Brief", { zIndex: 100012 });
+      try {
+        progress.set("Creating compact story brief from lyrics, sections, and story arc...", 18);
+        const data = await postJson("/vrgdg/storyboard/story_brief", {
+          ...(state.textGemmaRunner === "lm_studio" ? textGemmaRunnerPayload() : {}),
+          text_runner: state.textGemmaRunner || "builtin",
+          model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+          lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+          lmstudio_model: state.lmStudioModel || "",
+          lmstudio_api_key: state.lmStudioApiKey || "",
+          story_layer: layer,
+          lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
+          scenes,
+          unload_after: true,
+          max_new_tokens: 800,
+        }, 240000);
+        state.builderStoryLayer = normalizeBuilderStoryLayer({
+          ...layer,
+          song_story_brief: data.story_brief || "",
+        });
+        await autoSaveSessionQuiet("wizard story brief");
+        progress.set("Story brief saved.", 100);
+        progress.close(1400);
+        toast("Wizard story brief created.");
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
+      }
+    };
+    const detectWizardLyricSections = async (referenceLyrics = "") => {
+      const applied = applyLyricSectionsFromReferenceText(allEditableSegments(), referenceLyrics);
+      if (applied) {
+        syncInspector();
+        render();
+        await autoSaveSessionQuiet("wizard lyric sections detected");
+      }
+      toast(applied ? `Detected lyric sections for ${applied} scene${applied === 1 ? "" : "s"}.` : "No missing lyric sections were detected.");
+      return applied;
+    };
+    const createWizardSceneBeats = async ({ overwrite = false } = {}) => {
+      const segments = allEditableSegments()
+        .slice()
+        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+      const scenes = storyboardScenePayload();
+      const targets = scenes.filter((scene) => {
+        const segment = segments.find((item) => item.id === scene.id);
+        return overwrite || !String(segment?.story_beat || scene.story_beat || "").trim();
+      });
+      if (!targets.length) {
+        toast(overwrite ? "No scenes found." : "No scene story beats are missing.");
+        return { created: 0 };
+      }
+      const storyboardState = {
+        projectFolder: activeProjectFolderForSave(),
+        mode: "storyboard_prompts",
+        scenes,
+        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+        referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+      };
+      const progress = createProgressWindow(overwrite ? "Replace Scene Story Beats" : "Create Missing Scene Story Beats", { zIndex: 100012 });
+      let created = 0;
+      try {
+        progress.set(`Creating ${targets.length} scene story beat${targets.length === 1 ? "" : "s"}...`, 5);
+        for (let index = 0; index < targets.length; index += 1) {
+          const scene = targets[index];
+          const segmentIndex = segments.findIndex((item) => item.id === scene.id);
+          const previousBeat = segmentIndex > 0 ? String(segments[segmentIndex - 1]?.story_beat || "") : "";
+          const nextLyrics = segmentIndex >= 0 && segmentIndex < segments.length - 1 ? String(segments[segmentIndex + 1]?.lyric_text || "") : "";
+          const base = 8 + Math.round((index / Math.max(1, targets.length)) * 84);
+          progress.set(`Scene Beat ${index + 1}/${targets.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`, base);
+          const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
+            ...(state.textGemmaRunner === "lm_studio" ? textGemmaRunnerPayload() : {}),
+            text_runner: state.textGemmaRunner || "builtin",
+            model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+            lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+            lmstudio_model: state.lmStudioModel || "",
+            lmstudio_api_key: state.lmStudioApiKey || "",
+            story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+            storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+            previous_beat: previousBeat,
+            next_lyrics: nextLyrics,
+            unload_after: index === targets.length - 1,
+            max_new_tokens: 360,
+          }, 240000);
+          const segment = segments.find((item) => item.id === scene.id);
+          if (segment) segment.story_beat = String(data.story_beat || "").trim();
+          created += 1;
+        }
+        syncInspector();
+        render();
+        await autoSaveSessionQuiet("wizard scene story beats");
+        progress.set(`Scene story beats complete.\nCreated ${created}.`, 100);
+        progress.close(1400);
+        toast(`Created ${created} scene story beat${created === 1 ? "" : "s"}.`);
+        return { created };
+      } catch (error) {
+        progress.set(`Scene story beats stopped after ${created}/${targets.length}:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+        return { created, error: String(error?.message || error) };
+      }
+    };
     const runWizardStoryboardGemmaAll = async () => {
       setWizardVideoMode("rtv");
       updateActiveFromInputs();
@@ -24121,6 +24822,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         projectFolder: activeProjectFolderForSave(),
         mode: "storyboard_prompts",
         scenes,
+        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
         referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
         gemmaSettings: {
           text_runner: state.textGemmaRunner || "builtin",
@@ -24193,6 +24895,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         videoModeLabel: videoModeDisplayLabel(currentVideoMode()),
         subjectCount: Array.isArray(refs.subjects) ? refs.subjects.length : 0,
         locationCount: Array.isArray(refs.locations) ? refs.locations.length : 0,
+        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+        storyBeatCount: allEditableSegments().filter((segment) => String(segment.story_beat || "").trim()).length,
+        lyricSectionCount: allEditableSegments().filter((segment) => String(segment.lyric_section || "").trim()).length,
         videoSettings: {
           fps: Number(videoSettings.fps || 24),
           width: Number(videoSettings.width || 1920),
@@ -24260,6 +24965,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       openStoryboard: openStoryboardBuilderFromProject,
       createLocationsFromLyrics: createWizardLocationsFromLyrics,
       autoMapLocations: autoMapWizardLocations,
+      detectLyricSections: detectWizardLyricSections,
+      createStoryBrief: createWizardStoryBrief,
+      createSceneBeats: createWizardSceneBeats,
+      updateStoryLayer: async (storyLayer = {}) => {
+        state.builderStoryLayer = normalizeBuilderStoryLayer(storyLayer);
+        await autoSaveSessionQuiet("wizard story layer updated");
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
+      },
       applySceneDefaults: applyWizardSceneDefaults,
       saveWizardDraft: async (draft = {}) => {
         const projectFolder = activeProjectFolderForSave();

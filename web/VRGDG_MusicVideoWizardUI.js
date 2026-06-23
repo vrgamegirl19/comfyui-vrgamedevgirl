@@ -190,6 +190,18 @@ function injectWizardStyles() {
       font-size: 12px;
       line-height: 1.5;
     }
+    .vrgdg-wizard-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #cbd5e1;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 800;
+    }
     .vrgdg-wizard-button-row {
       display: grid;
       grid-template-columns: minmax(180px, 1fr) auto auto;
@@ -683,6 +695,7 @@ export function openMusicVideoWizard(api = {}) {
     { id: "lyrics", title: "Lyrics + Scenes", caption: "Create timeline scenes" },
     { id: "mode", title: "Mode", caption: "V1 is Ref to Video" },
     { id: "references", title: "References", caption: "Subjects and locations" },
+    { id: "story", title: "Story Direction", caption: "Arc and scene beats" },
     { id: "finish", title: "Gemma + Render", caption: "Prompt and build" },
   ];
   let activeIndex = 0;
@@ -695,6 +708,11 @@ export function openMusicVideoWizard(api = {}) {
     maxSceneSeconds: "8.0",
     cameraFlow: "balanced",
     performanceStyle: "",
+    storyLayer: {
+      enabled: true,
+      user_story_arc: "",
+      song_story_brief: "",
+    },
   };
 
   const backdrop = el("div", "vrgdg-wizard-backdrop");
@@ -821,13 +839,20 @@ export function openMusicVideoWizard(api = {}) {
     let changed = false;
     const sourceState = draft.wizardState && typeof draft.wizardState === "object" ? draft.wizardState : draft;
       Object.assign(wizardState, {
-        lyrics: String(sourceState.lyrics || draft.lyrics || ""),
-        language: String(sourceState.language || "english"),
-        segmentMode: String(sourceState.segmentMode || "reference_lines"),
-        minSceneSeconds: String(sourceState.minSceneSeconds || "1.0"),
-        maxSceneSeconds: String(sourceState.maxSceneSeconds || "8.0"),
-        cameraFlow: String(sourceState.cameraFlow || "balanced"),
-        performanceStyle: String(sourceState.performanceStyle || ""),
+      lyrics: String(sourceState.lyrics || draft.lyrics || ""),
+      language: String(sourceState.language || "english"),
+      segmentMode: String(sourceState.segmentMode || "reference_lines"),
+      minSceneSeconds: String(sourceState.minSceneSeconds || "1.0"),
+      maxSceneSeconds: String(sourceState.maxSceneSeconds || "8.0"),
+      cameraFlow: String(sourceState.cameraFlow || "balanced"),
+      performanceStyle: String(sourceState.performanceStyle || ""),
+      storyLayer: sourceState.storyLayer && typeof sourceState.storyLayer === "object"
+        ? {
+            enabled: sourceState.storyLayer.enabled !== false,
+            user_story_arc: String(sourceState.storyLayer.user_story_arc || ""),
+            song_story_brief: String(sourceState.storyLayer.song_story_brief || ""),
+          }
+        : wizardState.storyLayer,
       });
     changed = true;
     if (Array.isArray(draft.done)) {
@@ -861,6 +886,7 @@ export function openMusicVideoWizard(api = {}) {
   async function saveWizardProgress(label = "wizard progress") {
     persistWizardDraft();
     await persistWizardDraftFile().catch(() => null);
+    await api.updateStoryLayer?.(wizardState.storyLayer).catch(() => null);
     try {
       await api.saveProject?.({ quiet: true, label });
     } catch {
@@ -1422,6 +1448,108 @@ export function openMusicVideoWizard(api = {}) {
     content.append(note, grid);
   }
 
+  function renderStory(data) {
+    const incomingLayer = data.storyLayer && typeof data.storyLayer === "object" ? data.storyLayer : {};
+    wizardState.storyLayer = {
+      enabled: incomingLayer.enabled !== false,
+      user_story_arc: wizardState.storyLayer?.user_story_arc || incomingLayer.user_story_arc || "",
+      song_story_brief: wizardState.storyLayer?.song_story_brief || incomingLayer.song_story_brief || "",
+    };
+    const note = el("div", "vrgdg-wizard-note", "Use this optional story layer to give Gemma a compact narrative arc. The final video prompts will use this without sending the full lyrics every time.");
+    const grid = el("div", "vrgdg-wizard-grid");
+    const arc = card("1. User Story Arc", "Optional direction Gemma should follow more strongly than its own interpretation.");
+    const enabledLabel = el("label", "vrgdg-wizard-check");
+    const enabled = document.createElement("input");
+    enabled.type = "checkbox";
+    enabled.checked = wizardState.storyLayer.enabled !== false;
+    enabledLabel.append(enabled, document.createTextNode("Use story layer in prompt generation"));
+    const arcText = textarea(wizardState.storyLayer.user_story_arc || "", "Verse 1: ...\nChorus 1: ...\nVerse 2: ...");
+    arcText.style.minHeight = "190px";
+    arcText.addEventListener("input", () => {
+      wizardState.storyLayer.user_story_arc = arcText.value;
+      queueWizardDraftSave();
+    });
+    enabled.addEventListener("change", () => {
+      wizardState.storyLayer.enabled = Boolean(enabled.checked);
+      queueWizardDraftSave();
+    });
+    arc.append(enabledLabel, arcText);
+    const brief = card("2. Song Story Brief", "A compact Gemma summary of the song's premise, emotional arc, motifs, and scene guidance.");
+    const briefText = textarea(wizardState.storyLayer.song_story_brief || "", "Create or edit the song story brief...");
+    briefText.style.minHeight = "190px";
+    briefText.addEventListener("input", () => {
+      wizardState.storyLayer.song_story_brief = briefText.value;
+      queueWizardDraftSave();
+    });
+    const briefButton = button("Create Story Brief", "primary");
+    briefButton.onclick = async () => {
+      briefButton.disabled = true;
+      try {
+        wizardState.storyLayer.user_story_arc = arcText.value;
+        wizardState.storyLayer.enabled = Boolean(enabled.checked);
+        const updated = await api.createStoryBrief?.({
+          storyLayer: wizardState.storyLayer,
+          userStoryArc: arcText.value,
+        });
+        if (updated) {
+          wizardState.storyLayer = { ...wizardState.storyLayer, ...updated };
+          briefText.value = wizardState.storyLayer.song_story_brief || "";
+        }
+        done.add("story");
+        await saveWizardProgress("wizard story brief");
+      } finally {
+        briefButton.disabled = false;
+      }
+    };
+    brief.append(briefText, briefButton);
+    const beats = card("3. Scene Story Beats", "Create short per-scene narrative beats using lyrics, sections, subjects, locations, and the story brief.");
+    const beatStatus = el("div", "vrgdg-wizard-copy", `Lyric sections: ${Number(data.lyricSectionCount || 0)} / ${Number(data.sceneCount || 0)} | Scene beats: ${Number(data.storyBeatCount || 0)} / ${Number(data.sceneCount || 0)}`);
+    const detect = button("Detect Lyric Sections", "primary");
+    const missing = button("Create Missing Scene Beats", "primary");
+    const replace = button("Replace All Scene Beats");
+    detect.onclick = async () => {
+      detect.disabled = true;
+      try {
+        await api.detectLyricSections?.(wizardState.lyrics || "");
+        done.add("story");
+        render();
+      } finally {
+        detect.disabled = false;
+      }
+    };
+    missing.onclick = async () => {
+      missing.disabled = true;
+      try {
+        wizardState.storyLayer.user_story_arc = arcText.value;
+        wizardState.storyLayer.song_story_brief = briefText.value;
+        await api.updateStoryLayer?.(wizardState.storyLayer);
+        await api.createSceneBeats?.({ overwrite: false });
+        done.add("story");
+        render();
+      } finally {
+        missing.disabled = false;
+      }
+    };
+    replace.onclick = async () => {
+      replace.disabled = true;
+      try {
+        wizardState.storyLayer.user_story_arc = arcText.value;
+        wizardState.storyLayer.song_story_brief = briefText.value;
+        await api.updateStoryLayer?.(wizardState.storyLayer);
+        await api.createSceneBeats?.({ overwrite: true });
+        done.add("story");
+        render();
+      } finally {
+        replace.disabled = false;
+      }
+    };
+    const beatActions = el("div", "vrgdg-wizard-button-row");
+    beatActions.append(detect, missing, replace);
+    beats.append(beatStatus, beatActions);
+    grid.append(arc, brief, beats);
+    content.append(note, grid);
+  }
+
   function renderFinish() {
     const note = el("div", "vrgdg-wizard-note", "When mapping and scene cards look right, create the video prompts first. Build Full Video can then render the clips and stitch the final video using the current Ref to Video settings.");
     const grid = el("div", "vrgdg-wizard-grid");
@@ -1459,6 +1587,7 @@ export function openMusicVideoWizard(api = {}) {
       else if (step.id === "lyrics") renderLyrics();
       else if (step.id === "mode") renderMode(data);
       else if (step.id === "references") renderReferences(data);
+      else if (step.id === "story") renderStory(data);
       else renderFinish(data);
     } catch (error) {
       const box = el("div", "vrgdg-wizard-info-note");

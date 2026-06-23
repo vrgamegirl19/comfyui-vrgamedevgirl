@@ -1266,6 +1266,8 @@ def _patch_rtv_api_prompt(prompt, payload):
     references = payload.get("rtv_references") if isinstance(payload.get("rtv_references"), dict) else {}
     subjects = references.get("subjects") if isinstance(references.get("subjects"), list) else []
     subject_images = [_prepare_optional_input_image_name(item) for item in subjects[:4]]
+    if references.get("use_subject_placeholder") and not any(image != "(none)" for image in subject_images):
+        subject_images = [_ensure_placeholder_load_image()]
     while len(subject_images) < 4:
         subject_images.append("(none)")
     background_image = _prepare_optional_input_image_name(references.get("background"))

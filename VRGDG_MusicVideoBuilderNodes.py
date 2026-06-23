@@ -1594,9 +1594,9 @@ def _parse_location_lines(text):
             description = rest
         name = re.sub(r"^\s*name\s*[:=]\s*", "", name, flags=re.IGNORECASE)
         description = re.sub(r"^\s*description\s*[:=]\s*", "", description, flags=re.IGNORECASE)
-        name = re.sub(r"\s+", " ", name).strip(" ,")
-        description = re.sub(r"\s+", " ", description).strip(" ,")
-        if not name or _looks_like_location_meta_text(name) or _looks_like_location_meta_text(description) or name.lower() in seen_names:
+        raw_name = name
+        name, description = _clean_location_card(name, description, raw_name)
+        if not name or _looks_like_location_meta_text(name) or _looks_like_location_meta_text(description) or not _valid_location_card(name, description) or name.lower() in seen_names:
             continue
         seen_names.add(name.lower())
         locations.append({"name": name, "description": description})
@@ -1626,6 +1626,164 @@ def _looks_like_location_meta_text(value):
         r"\buser input\b",
     )
     return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in meta_patterns)
+
+
+_LOCATION_PLACE_WORDS = {
+    "alley", "apartment", "arena", "attic", "ballroom", "bar", "barn", "bathroom", "beach", "bedroom",
+    "bridge", "building", "cabin", "cafe", "casino", "cathedral", "cave", "chapel", "church", "city",
+    "club", "corridor", "courtyard", "desert", "diner", "dock", "factory", "field", "forest", "foyer",
+    "garage", "garden", "greenhouse", "hall", "hallway", "harbor", "hotel", "house", "kitchen", "lab",
+    "lake", "lounge", "mansion", "market", "motel", "museum", "office", "palace", "parking", "pier",
+    "pool", "quarry", "railway", "road", "rooftop", "room", "school", "set", "shore", "stage", "station",
+    "street", "studio", "subway", "temple", "theater", "tower", "train", "tunnel", "vault", "warehouse",
+    "workshop",
+}
+
+_NON_LOCATION_OBJECT_WORDS = {
+    "bottle", "bowl", "bracelet", "camera", "candle", "chair", "collar", "comb", "crown", "dress",
+    "frame", "glass", "kit", "knife", "locket", "mirror", "necklace", "perfume", "phone", "pocket",
+    "razor", "rice", "ring", "shaving", "shoe", "sink", "sugar", "table", "tooth", "vanity", "veil", "window",
+}
+
+_LOCATION_SURFACE_WORDS = {
+    "ceiling", "corner", "floor", "partition", "partitions", "wall", "walls",
+}
+
+_CHARACTER_WORDS = {
+    "bride", "character", "face", "ghost", "girl", "hand", "human", "man", "person", "silhouette",
+    "subject", "woman",
+}
+
+
+def _location_place_pattern():
+    return r"(?:%s)" % "|".join(sorted((re.escape(word) for word in _LOCATION_PLACE_WORDS), key=len, reverse=True))
+
+
+def _nice_location_name(value):
+    text = re.sub(r"\s+", " ", str(value or "").strip(" ,.-"))
+    if not text:
+        return ""
+    return text[:1].upper() + text[1:]
+
+
+def _location_text_has_non_place_focus(value):
+    tokens = set(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+    return bool(tokens & (_NON_LOCATION_OBJECT_WORDS | _LOCATION_SURFACE_WORDS | _CHARACTER_WORDS))
+
+
+def _normalize_location_name(name):
+    text = re.sub(r"\s+", " ", str(name or "").strip(" ,.-"))
+    if not text:
+        return ""
+    lowered = text.lower()
+    place_re = _location_place_pattern()
+    tokens = set(re.findall(r"[a-z0-9]+", lowered))
+
+    if re.search(r"\b(?:a|an|the|with|without|under|beneath|behind|beside|inside|outside|near|through|over|heavy|long|thick|deep|wide|large|small|empty|covered)\s*$", lowered):
+        place_match = re.search(rf"^(.{{3,80}}?\b{place_re}\b)", text, flags=re.IGNORECASE)
+        if place_match:
+            return _nice_location_name(place_match.group(1))
+
+    if tokens & (_NON_LOCATION_OBJECT_WORDS | _LOCATION_SURFACE_WORDS | _CHARACTER_WORDS):
+        prep_match = re.search(
+            rf"\b(?:in|inside|within|at|on|near|beside|behind|beneath|under)\s+(?:a|an|the)?\s*([^,.;]*?\b{place_re}\b(?:\s+\w+)?)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if prep_match:
+            return _nice_location_name(prep_match.group(1))
+
+        surface_match = re.search(
+            rf"^(.{{3,80}}?\b{place_re}\b)\s+(?:{'|'.join(sorted(_LOCATION_SURFACE_WORDS | _NON_LOCATION_OBJECT_WORDS, key=len, reverse=True))})\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if surface_match:
+            return _nice_location_name(surface_match.group(1))
+
+        trailing_object_match = re.search(
+            rf"\b({place_re})\s+(?:{'|'.join(sorted(_LOCATION_SURFACE_WORDS | _NON_LOCATION_OBJECT_WORDS, key=len, reverse=True))})\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if trailing_object_match:
+            before = text[:trailing_object_match.end(1)].strip()
+            return _nice_location_name(before)
+
+    return _nice_location_name(text)
+
+
+def _clean_location_card(name, description, raw_name=None):
+    normalized_name = _normalize_location_name(name)
+    cleaned_description = _clean_location_description(normalized_name, description)
+    raw_text = str(raw_name if raw_name is not None else name or "")
+    if normalized_name.lower() != re.sub(r"\s+", " ", raw_text.strip(" ,.-")).lower() and _location_text_has_non_place_focus(raw_text):
+        cleaned_description = normalized_name
+    return normalized_name, cleaned_description
+
+
+def _location_name_fragment_is_complete(fragment):
+    text = re.sub(r"\s+", " ", str(fragment or "").strip().lower())
+    if not text:
+        return False
+    if re.search(r"\b(?:a|an|the|with|without|under|beneath|behind|beside|inside|outside|near|through|over|heavy|long|thick|deep|wide|large|small|empty|covered)\s*$", text):
+        return False
+    return bool(re.search(rf"\b{_location_place_pattern()}\b", text, flags=re.IGNORECASE))
+
+
+def _location_name_is_place(name):
+    text = re.sub(r"\s+", " ", str(name or "").strip().lower())
+    if not text:
+        return False
+    tokens = set(re.findall(r"[a-z0-9]+", text))
+    if tokens & _LOCATION_PLACE_WORDS:
+        if tokens & (_NON_LOCATION_OBJECT_WORDS | _LOCATION_SURFACE_WORDS | _CHARACTER_WORDS):
+            normalized = _normalize_location_name(name).lower()
+            normalized_tokens = set(re.findall(r"[a-z0-9]+", normalized))
+            if normalized_tokens & (_NON_LOCATION_OBJECT_WORDS | _LOCATION_SURFACE_WORDS | _CHARACTER_WORDS):
+                return False
+        return True
+    if tokens & (_NON_LOCATION_OBJECT_WORDS | _LOCATION_SURFACE_WORDS | _CHARACTER_WORDS):
+        return False
+    if re.search(r"\b(?:inside|outside|interior|exterior|room|space|area|zone)\b", text):
+        return True
+    return False
+
+
+def _clean_location_description(name, description):
+    name_text = re.sub(r"\s+", " ", str(name or "").strip())
+    desc = re.sub(r"\s+", " ", str(description or "").strip())
+    if not desc:
+        return name_text
+    fragments = [part.strip(" .") for part in re.split(r"\s*,\s*", desc) if part.strip(" .")]
+    kept = []
+    for index, fragment in enumerate(fragments):
+        fragment_lower = fragment.lower()
+        if index > 0 and re.search(
+            r"\b(?:bride|woman|man|girl|boy|face|hand|human|silhouette|wearing|watching|pressed|resting|trailing|caught|hidden|dissolving|reflecting|smelling)\b",
+            fragment_lower,
+        ):
+            continue
+        if index > 0 and re.search(r"\b(?:razor|tooth|dress|veil|bottle|locket|collar|frame|kit|rice|sugar bowl)\b", fragment_lower):
+            continue
+        kept.append(fragment)
+    cleaned = ", ".join(kept).strip()
+    if not cleaned:
+        cleaned = name_text
+    if name_text and not cleaned.lower().startswith(name_text.lower()):
+        cleaned = f"{name_text}, {cleaned}"
+    return cleaned
+
+
+def _valid_location_card(name, description):
+    if not _location_name_is_place(name):
+        return False
+    combined = f"{name} {description}".lower()
+    if re.search(r"\b(?:character|subject|woman|man|girl|boy|bride|ghostly face|human tooth|hand pressed)\b", combined):
+        desc_without_name = str(description or "").lower().replace(str(name or "").lower(), "")
+        if not re.search(r"\b(?:room|hall|hallway|corridor|street|road|forest|garden|stage|kitchen|bathroom|bedroom|ballroom|pool|motel|warehouse|studio|city)\b", desc_without_name):
+            return False
+    return True
 
 
 def _clean_location_context_text(value):
@@ -1673,11 +1831,11 @@ def _parse_location_idea_lines(text):
             description = split_match.group(2).strip()
         else:
             comma_parts = line.split(",", 1)
-            if len(comma_parts) == 2 and 4 <= len(comma_parts[0].strip()) <= 60:
+            if len(comma_parts) == 2 and 4 <= len(comma_parts[0].strip()) <= 60 and _location_name_fragment_is_complete(comma_parts[0]):
                 name = comma_parts[0].strip()
-        name = re.sub(r"\s+", " ", name).strip(" ,")
-        description = re.sub(r"\s+", " ", description).strip(" ,")
-        if _looks_like_location_meta_text(name) or _looks_like_location_meta_text(description) or name.lower() in seen_names:
+        raw_name = name
+        name, description = _clean_location_card(name, description, raw_name)
+        if _looks_like_location_meta_text(name) or _looks_like_location_meta_text(description) or not _valid_location_card(name, description) or name.lower() in seen_names:
             continue
         seen_names.add(name.lower())
         locations.append({"name": name, "description": description})
@@ -1699,12 +1857,15 @@ def _parse_location_ideas_flexible(text):
             parsed = []
             for item in raw_locations:
                 if isinstance(item, dict):
-                    name = re.sub(r"\s+", " ", str(item.get("name") or item.get("location") or item.get("idea") or "").strip())
+                    raw_name = item.get("name") or item.get("location") or item.get("idea") or ""
+                    name = _normalize_location_name(raw_name)
                     description = re.sub(r"\s+", " ", str(item.get("description") or item.get("detail") or item.get("visual_detail") or name).strip())
                 else:
-                    name = re.sub(r"\s+", " ", str(item or "").strip())
+                    raw_name = item
+                    name = _normalize_location_name(raw_name)
                     description = name
-                if name and not _looks_like_location_meta_text(name) and not _looks_like_location_meta_text(description):
+                name, description = _clean_location_card(name, description or name, raw_name)
+                if name and not _looks_like_location_meta_text(name) and not _looks_like_location_meta_text(description) and _valid_location_card(name, description):
                     parsed.append({"name": name, "description": description or name})
             if parsed:
                 return parsed
@@ -4752,7 +4913,7 @@ def _generate_flux_reference_locations(payload):
         "Extract a short reusable location list for Flux/Klein or Nano B reference images.\n\n"
         "Use the scene concept prompts and scene notes as the source of truth. "
         "Optional extra context may be empty; if it is empty or missing, ignore it completely. "
-        "Find concrete physical places/backgrounds that repeat or are useful as references. "
+        "Find concrete physical places, sets, rooms, buildings, landscapes, or backgrounds that repeat or are useful as references. "
         "If the extra context includes locations not directly named in a concept prompt, include them when they fit the project.\n\n"
         "Output only simple lines in this exact format:\n"
         "1|location name|short visual description for a reference image\n"
@@ -4760,7 +4921,10 @@ def _generate_flux_reference_locations(payload):
         "Rules:\n"
         "- Do not output JSON, markdown, bullets, headings, or explanations.\n"
         "- Keep names short, like bedroom, foggy white forest, salt-flat desert, ruined opera house.\n"
-        "- Descriptions must describe only the place/background, not the main character.\n"
+        "- Every name must be an actual place where the subject could stand, walk, sit, perform, or be filmed.\n"
+        "- Do not output props, objects, clothing, accessories, body parts, people, characters, creatures, or symbolic items as locations.\n"
+        "- Descriptions must describe only the place/background: architecture, layout, surfaces, lighting, weather, atmosphere, era, and color.\n"
+        "- Do not include characters or actions in descriptions. No bride, woman, man, face, hand, tooth, dress, razor, locket, veil, or similar subject/object details.\n"
         "- Reuse broad locations instead of creating one unique location for every scene.\n"
         "- 3 to 8 locations is usually enough unless the project clearly needs more.\n\n"
         f"Optional extra context:\n{subject_scene or '(none)'}\n\n"
@@ -4785,20 +4949,25 @@ def _generate_flux_reference_locations(payload):
             if isinstance(raw_locations, list):
                 for item in raw_locations:
                     if isinstance(item, dict):
-                        name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+                        raw_name = item.get("name", "")
+                        name = _normalize_location_name(raw_name)
                         description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
                         if name:
-                            locations.append({"name": name, "description": description})
+                            name, description = _clean_location_card(name, description, raw_name)
+                            if _valid_location_card(name, description):
+                                locations.append({"name": name, "description": description})
         except Exception:
             pass
     if not locations:
         retry_instruction = (
-            "Return only reusable music video locations from the scene text below.\n"
+            "Return only reusable music video filming locations from the scene text below.\n"
             "Do not explain anything.\n"
             "Do not summarize the scenes.\n"
             "Write 3 to 12 locations.\n"
             "Write one location per line as a short bullet.\n"
-            "Each bullet must be a concrete visual place/background, not a character, outfit, emotion, or action.\n"
+            "Each bullet must be a concrete visual place/background where the subject could stand or move.\n"
+            "Reject props, objects, clothing, accessories, people, body parts, symbolic items, and actions.\n"
+            "Describe only the environment, not characters or objects from the lyrics.\n"
             "If any optional context is missing, invisible, empty, or unavailable, ignore that and use only the scene text.\n"
             "Never mention missing files, missing context, subjectsandscenes.txt, prompts, or instructions.\n"
             "Example format:\n"
@@ -4852,11 +5021,20 @@ def _generate_flux_reference_locations(payload):
     deduped = []
     seen = set()
     for item in locations:
-        key = item["name"].lower()
+        raw_name = item.get("name", "")
+        name, description = _clean_location_card(raw_name, item.get("description", ""), raw_name)
+        if not _valid_location_card(name, description):
+            continue
+        key = name.lower()
         if key in seen:
             continue
         seen.add(key)
-        deduped.append(item)
+        deduped.append({"name": name, "description": description})
+    if not deduped:
+        preview = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(preview) > 700:
+            preview = preview[:697].rstrip() + "..."
+        raise ValueError(f"Gemma returned only non-location items. Raw response preview: {preview or '(empty)'}")
     return {
         "locations": deduped,
         "raw_text": text,
@@ -4890,18 +5068,24 @@ def _generate_wizard_locations_from_lyrics(payload):
         "You are a music video location scout.\n\n"
         "The user will provide song lyrics.\n\n"
         "Your task is to analyze the mood, imagery, setting clues, themes, and emotional tone of the lyrics, "
-        "then generate a list of possible locations that could appear in a music video for that song.\n\n"
-        "Return only location ideas.\n\n"
+        "then generate a list of reusable filming locations where the main subject or character could be placed.\n\n"
+        "Return only actual locations, sets, rooms, buildings, outdoor areas, roads, stages, landscapes, or environments.\n\n"
         "Rules:\n\n"
         "Do not summarize the lyrics.\n"
         "Do not explain the song meaning.\n"
         "Do not quote long lyric sections.\n"
-        "Focus on visual places that could realistically appear in a music video.\n"
-        "Include both literal locations from the lyrics and symbolic locations inspired by the mood.\n"
+        "Focus on visual places that could realistically appear in a music video and hold the subject.\n"
+        "Include literal locations from the lyrics and cinematic locations inspired by the mood, but they must still be real places.\n"
+        "Do not output props, objects, clothing, accessories, body parts, people, characters, creatures, or symbolic items as locations.\n"
+        "Bad location names: Vintage shaving kit, Ornate sugar bowl, Lace veil, Silver frame, Human tooth, Ghostly face, Tattered dress.\n"
+        "Good location names: Grand ballroom, Dark wood study, Steamy bathroom, Overgrown garden, Dimly lit hallway, Empty stage.\n"
+        "Descriptions must describe only the place: architecture, layout, surfaces, lighting, weather, atmosphere, era, and color.\n"
+        "Do not include characters or actions in descriptions. No bride, woman, man, face, hand, tooth, dress, razor, locket, veil, or similar subject/object details.\n"
+        "Test every idea: could the selected subject stand, walk, sit, perform, or be filmed inside this place? If no, reject it.\n"
         "Make the locations specific and cinematic.\n"
         "Output 10-20 locations.\n"
         "Use short bullet points.\n"
-        "Each bullet should be a location only, with a brief visual detail if helpful.\n\n"
+        "Each bullet should be a place only, with a brief visual detail if helpful.\n\n"
         "Output format:\n\n"
         "Music Video Locations:\n\n"
         "- [location idea]\n"
@@ -4922,12 +5106,14 @@ def _generate_wizard_locations_from_lyrics(payload):
     locations = _parse_location_ideas_flexible(text)
     if not locations:
         retry_instruction = (
-            "Return exactly 12 music video location ideas for the lyrics below.\n"
+            "Return exactly 12 reusable music video filming locations for the lyrics below.\n"
             "Do not write a heading.\n"
             "Do not explain anything.\n"
             "Do not summarize the lyrics.\n"
             "Write one location per line as a short bullet.\n"
-            "Each bullet must be a specific cinematic place with a brief visual detail.\n"
+            "Each bullet must be a specific cinematic place where the subject could stand, walk, sit, perform, or be filmed.\n"
+            "Reject props, objects, clothing, accessories, body parts, people, characters, creatures, symbolic items, and actions.\n"
+            "Descriptions must describe only the place/background, not characters or objects from the lyrics.\n"
             "Example format:\n"
             "- Abandoned motel pool, turquoise water under buzzing neon signs\n"
             "- Foggy pine road, wet asphalt and fading headlights\n\n"
@@ -4957,11 +5143,20 @@ def _generate_wizard_locations_from_lyrics(payload):
     deduped = []
     seen = set()
     for item in locations:
-        key = item["name"].lower()
+        raw_name = item.get("name", "")
+        name, description = _clean_location_card(raw_name, item.get("description", ""), raw_name)
+        if not _valid_location_card(name, description):
+            continue
+        key = name.lower()
         if key in seen:
             continue
         seen.add(key)
-        deduped.append(item)
+        deduped.append({"name": name, "description": description})
+    if not deduped:
+        preview = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(preview) > 700:
+            preview = preview[:697].rstrip() + "..."
+        raise ValueError(f"Gemma returned only non-location items. Raw response preview: {preview or '(empty)'}")
     return {
         "locations": deduped[:20],
         "raw_text": text,
