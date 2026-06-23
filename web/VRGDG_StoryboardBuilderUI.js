@@ -573,7 +573,7 @@ const CHARACTER_MOTION_GROUPS = [
   },
 ];
 
-const STORYBOARD_CAMERA_FLOW_PRESETS = {
+export const STORYBOARD_CAMERA_FLOW_PRESETS = {
   off: {
     label: "Off",
     description: "Do not auto-fill missing shot or camera motion fields.",
@@ -643,7 +643,7 @@ const STORYBOARD_CAMERA_FLOW_PRESETS = {
   },
 };
 
-const PERFORMANCE_STYLE_PRESETS = [
+export const PERFORMANCE_STYLE_PRESETS = [
   {
     value: "",
     label: "Default cinematic",
@@ -696,7 +696,7 @@ const PERFORMANCE_STYLE_PRESETS = [
   },
 ];
 
-function storyboardPerformancePreset(value = "") {
+export function storyboardPerformancePreset(value = "") {
   return PERFORMANCE_STYLE_PRESETS.find((item) => item.value === value) || PERFORMANCE_STYLE_PRESETS[0];
 }
 
@@ -711,7 +711,7 @@ function storyboardMotionFamily(motion = "") {
   return text.split(/\s+/).slice(0, 2).join(" ");
 }
 
-function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "") {
+export function storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion = "") {
   const preset = STORYBOARD_CAMERA_FLOW_PRESETS[profileKey] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
   const sequence = preset.sequence || [];
   if (!sequence.length) return null;
@@ -1122,7 +1122,7 @@ function storyboardScenesForGpt(state) {
   });
 }
 
-function storyboardGptPayload(state, scenesOverride = null) {
+export function storyboardGptPayload(state, scenesOverride = null) {
   const payloadState = scenesOverride ? { ...state, scenes: scenesOverride } : state;
   const selectedScene = scenesOverride?.length === 1 ? normalizeScene(scenesOverride[0], 0) : null;
   return {

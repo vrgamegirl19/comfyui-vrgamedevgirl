@@ -476,6 +476,7 @@ def _save_builder_project_as(payload):
     if not isinstance(overlay_segments, list):
         overlay_segments = []
         session["overlay_segments"] = overlay_segments
+    overlay_segments = _assign_overlay_scene_numbers(overlay_segments)
     audio_raw = str(payload.get("audio_path", "") or "").strip().strip('"')
     audio_path = _resolve_existing_file(audio_raw, "Audio file") if audio_raw else ""
     audio_path, session = _snapshot_project_assets(target, session, audio_path, source)
@@ -529,6 +530,18 @@ def _prompts_folder(project_folder):
 
 def _context_folder(project_folder):
     return os.path.join(project_folder, "project_context")
+
+
+def _wizard_folder(project_folder):
+    return os.path.join(project_folder, "wizard")
+
+
+def _wizard_draft_path(project_folder):
+    return os.path.join(_wizard_folder(project_folder), "wizard_draft.json")
+
+
+def _wizard_lyrics_path(project_folder):
+    return os.path.join(_wizard_folder(project_folder), "lyrics.txt")
 
 
 def _scene_image_path(project_folder, scene_number, extension=".png"):
@@ -836,10 +849,11 @@ def _copy_session_assets_to_project(project_folder, session):
 
     overlay_segments = session.get("overlay_segments", [])
     if isinstance(overlay_segments, list):
+        overlay_segments = _assign_overlay_scene_numbers(overlay_segments)
         for overlay_index, segment in enumerate(overlay_segments, start=1):
             if not isinstance(segment, dict):
                 continue
-            scene_number = 10000 + overlay_index
+            scene_number = _overlay_scene_number(segment, overlay_index)
             segment["track"] = "overlay"
             approved = str(segment.get("approved_image_path", "") or "").strip()
             if approved and os.path.isfile(approved):
@@ -956,6 +970,43 @@ def _project_path_candidates(project_folder, old_project_folder, raw_path, scene
     return candidates
 
 
+def _overlay_scene_number(segment, fallback_index):
+    if isinstance(segment, dict):
+        for key in ("overlay_slot_number", "scene_slot_number", "slot_number"):
+            try:
+                value = int(segment.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                value = 0
+            if value >= 10001:
+                return value
+    return 10000 + int(fallback_index or 1)
+
+
+def _assign_overlay_scene_numbers(overlay_segments):
+    if not isinstance(overlay_segments, list):
+        return overlay_segments
+    used = set()
+    existing = []
+    for segment in overlay_segments:
+        if isinstance(segment, dict):
+            value = _overlay_scene_number(segment, 0)
+            if value >= 10001:
+                existing.append(value)
+    next_slot = max([10000] + existing) + 1
+    for index, segment in enumerate(overlay_segments, start=1):
+        if not isinstance(segment, dict):
+            continue
+        slot = _overlay_scene_number(segment, index)
+        if slot in used:
+            slot = max(next_slot, 10000 + index)
+            while slot in used:
+                slot += 1
+            next_slot = slot + 1
+        segment["overlay_slot_number"] = slot
+        used.add(slot)
+    return overlay_segments
+
+
 def _resolve_project_asset_path(project_folder, old_project_folder, raw_path, scene_number=None):
     for candidate in _project_path_candidates(project_folder, old_project_folder, raw_path, scene_number):
         if candidate and os.path.isfile(candidate):
@@ -1041,6 +1092,7 @@ def _rehydrate_builder_session(project_folder, session):
     if not isinstance(overlay_segments, list):
         session["overlay_segments"] = []
         overlay_segments = session["overlay_segments"]
+    overlay_segments = _assign_overlay_scene_numbers(overlay_segments)
 
     # Only rebuild timeline scenes from loose media files when the session has no
     # saved scene list. Otherwise deleted scenes can come back from old files.
@@ -1144,7 +1196,7 @@ def _rehydrate_builder_session(project_folder, session):
     for index, segment in enumerate(overlay_segments, start=1):
         if not isinstance(segment, dict):
             continue
-        scene_number = 10000 + index
+        scene_number = _overlay_scene_number(segment, index)
         if not str(segment.get("label", "") or "").strip() or str(segment.get("label", "")).lower() == "new scene":
             segment["label"] = f"Insert {index}"
         segment["track"] = "overlay"
@@ -1405,6 +1457,98 @@ def _best_location_for_scene(scene, locations):
     return best_location
 
 
+def _canonical_location_name(name, locations):
+    raw = re.sub(r"\s+", " ", str(name or "").strip()).lower()
+    for location in locations or []:
+        loc_name = re.sub(r"\s+", " ", str(location.get("name", "") or "").strip())
+        if loc_name.lower() == raw:
+            return loc_name
+    return ""
+
+
+def _location_usage_counts_from_payload(payload, locations):
+    names = [re.sub(r"\s+", " ", str(item.get("name", "") or "").strip()) for item in locations or []]
+    counts = {name: 0 for name in names if name}
+    raw_counts = payload.get("used_location_counts")
+    if isinstance(raw_counts, dict):
+        for raw_name, raw_count in raw_counts.items():
+            name = _canonical_location_name(raw_name, locations)
+            if name:
+                try:
+                    counts[name] = max(0, int(raw_count or 0))
+                except Exception:
+                    counts[name] = counts.get(name, 0)
+    raw_assignments = payload.get("previous_assignments")
+    if isinstance(raw_assignments, list):
+        for item in raw_assignments:
+            if isinstance(item, dict):
+                name = _canonical_location_name(item.get("location") or item.get("location_name"), locations)
+            else:
+                name = _canonical_location_name(item, locations)
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
+def _balance_location_map_by_usage(scene_map, cleaned_scenes, locations, previous_counts=None):
+    if not scene_map or not cleaned_scenes or not locations:
+        return scene_map
+    location_by_name = {}
+    for item in locations:
+        name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+        if name:
+            location_by_name[name] = item
+    location_names = list(location_by_name.keys())
+    if len(location_names) <= 1:
+        return scene_map
+    balanced = {}
+    fallback = _fallback_location_map_by_overlap(cleaned_scenes, locations)
+    for scene in cleaned_scenes:
+        name = _canonical_location_name(scene_map.get(scene["id"], ""), locations) or fallback.get(scene["id"], "")
+        balanced[scene["id"]] = name
+
+    previous_counts = previous_counts or {}
+    current_counts = {name: 0 for name in location_names}
+    for name in balanced.values():
+        if name in current_counts:
+            current_counts[name] += 1
+
+    target_count = min(len(cleaned_scenes), len(location_names))
+    desired_locations = sorted(
+        location_names,
+        key=lambda name: (int(previous_counts.get(name, 0) or 0), current_counts.get(name, 0), location_names.index(name)),
+    )[:target_count]
+
+    for desired_name in desired_locations:
+        if current_counts.get(desired_name, 0) > 0:
+            continue
+        desired_location = location_by_name.get(desired_name) or {"name": desired_name, "description": ""}
+        best_scene = None
+        best_score = None
+        for scene in cleaned_scenes:
+            current_name = balanced.get(scene["id"], "")
+            if current_name == desired_name:
+                continue
+            if current_counts.get(current_name, 0) <= 1 and any(current_counts.get(name, 0) == 0 for name in desired_locations if name != desired_name):
+                continue
+            scene_text = f"{scene.get('concept', '')} {scene.get('notes', '')}"
+            desired_score = _location_text_overlap_score(scene_text, f"{desired_location.get('name', '')} {desired_location.get('description', '')}")
+            current_location = location_by_name.get(current_name, {"name": current_name, "description": ""})
+            current_score = _location_text_overlap_score(scene_text, f"{current_location.get('name', '')} {current_location.get('description', '')}")
+            repeat_penalty = current_counts.get(current_name, 0) + int(previous_counts.get(current_name, 0) or 0)
+            score = (desired_score - current_score) + repeat_penalty
+            if best_score is None or score > best_score:
+                best_score = score
+                best_scene = scene
+        if best_scene:
+            old_name = balanced.get(best_scene["id"], "")
+            if old_name in current_counts:
+                current_counts[old_name] = max(0, current_counts[old_name] - 1)
+            balanced[best_scene["id"]] = desired_name
+            current_counts[desired_name] = current_counts.get(desired_name, 0) + 1
+    return balanced
+
+
 def _location_text_overlap_score(scene_text, location_text):
     stop_words = {
         "a", "an", "and", "are", "as", "at", "by", "for", "from", "in", "into", "is", "it",
@@ -1452,11 +1596,130 @@ def _parse_location_lines(text):
         description = re.sub(r"^\s*description\s*[:=]\s*", "", description, flags=re.IGNORECASE)
         name = re.sub(r"\s+", " ", name).strip(" ,")
         description = re.sub(r"\s+", " ", description).strip(" ,")
-        if not name or name.lower() in seen_names:
+        if not name or _looks_like_location_meta_text(name) or _looks_like_location_meta_text(description) or name.lower() in seen_names:
             continue
         seen_names.add(name.lower())
         locations.append({"name": name, "description": description})
     return locations
+
+
+def _looks_like_location_meta_text(value):
+    text = re.sub(r"\s+", " ", str(value or "").strip()).lower()
+    if not text:
+        return True
+    if len(text) > 140 and not re.search(r"\b(?:room|hall|hallway|corridor|street|road|forest|temple|pool|motel|stage|club|warehouse|desert|beach|shore|city|rooftop|alley|kitchen|bedroom|bathroom|church|chapel|station|train|car|bus|field|garden|vault|cave|lake|river|bridge|tunnel|apartment|house|mansion|hotel|bar|lounge|studio|parking|garage)\b", text):
+        return True
+    meta_patterns = (
+        r"\bsince the provided\b",
+        r"\bprovided .*content was not visible\b",
+        r"\bprovided .*prompt\b",
+        r"\bsubjectsandscenes\.txt\b",
+        r"\bhere is (?:a|the)\b",
+        r"\breusable location list\b",
+        r"\bbased on the structural context\b",
+        r"\bscene descriptions imply\b",
+        r"\bcohesive project\b",
+        r"\bi can(?:not|'t)\b",
+        r"\bi(?:'|’)m sorry\b",
+        r"\bas an ai\b",
+        r"\boutput format\b",
+        r"\buser input\b",
+    )
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in meta_patterns)
+
+
+def _clean_location_context_text(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    lines = []
+    for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.search(r"\bsubjectsandscenes\.txt\b", line, flags=re.IGNORECASE):
+            continue
+        if re.search(r"\.(?:txt|json|srt)\b", line, flags=re.IGNORECASE) and re.search(r"[A-Za-z]:\\|/|\\", line):
+            continue
+        if _looks_like_location_meta_text(line):
+            continue
+        lines.append(line)
+    cleaned = "\n".join(lines).strip()
+    if _looks_like_location_meta_text(cleaned):
+        return ""
+    return cleaned
+
+
+def _parse_location_idea_lines(text):
+    locations = []
+    seen_names = set()
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if re.match(r"^\s*music\s+video\s+locations\s*:?\s*$", line, flags=re.IGNORECASE):
+            continue
+        line = re.sub(r"^\s*(?:[-*\u2022]+|\d+[\).:-])\s*", "", line).strip()
+        line = line.strip('"').strip()
+        if not line or line in {"{", "}", "[", "]"} or line.startswith("{") or line.startswith("["):
+            continue
+        if re.match(r"^(?:location ideas?|output|user input)\s*:?\s*$", line, flags=re.IGNORECASE):
+            continue
+        name = line
+        description = line
+        split_match = re.match(r"^(.{4,80}?)(?:\s+-\s+|\s+--\s+|:\s+)(.{4,})$", line)
+        if split_match:
+            name = split_match.group(1).strip()
+            description = split_match.group(2).strip()
+        else:
+            comma_parts = line.split(",", 1)
+            if len(comma_parts) == 2 and 4 <= len(comma_parts[0].strip()) <= 60:
+                name = comma_parts[0].strip()
+        name = re.sub(r"\s+", " ", name).strip(" ,")
+        description = re.sub(r"\s+", " ", description).strip(" ,")
+        if _looks_like_location_meta_text(name) or _looks_like_location_meta_text(description) or name.lower() in seen_names:
+            continue
+        seen_names.add(name.lower())
+        locations.append({"name": name, "description": description})
+    return locations
+
+
+def _parse_location_ideas_flexible(text):
+    locations = _parse_location_idea_lines(text)
+    if locations:
+        return locations
+    cleaned = _clean_visual_gemma_text(text)
+    try:
+        data = _extract_json_object_from_text(cleaned)
+        if isinstance(data, dict):
+            raw_locations = data.get("locations") or data.get("location_ideas") or data.get("music_video_locations")
+        else:
+            raw_locations = data
+        if isinstance(raw_locations, list):
+            parsed = []
+            for item in raw_locations:
+                if isinstance(item, dict):
+                    name = re.sub(r"\s+", " ", str(item.get("name") or item.get("location") or item.get("idea") or "").strip())
+                    description = re.sub(r"\s+", " ", str(item.get("description") or item.get("detail") or item.get("visual_detail") or name).strip())
+                else:
+                    name = re.sub(r"\s+", " ", str(item or "").strip())
+                    description = name
+                if name and not _looks_like_location_meta_text(name) and not _looks_like_location_meta_text(description):
+                    parsed.append({"name": name, "description": description or name})
+            if parsed:
+                return parsed
+    except Exception:
+        pass
+    bulletish = re.split(r"(?:\n+|(?<=\.)\s+(?=[A-Z][A-Za-z ]{4,70}(?:\s+-|:)))", cleaned)
+    parsed = _parse_location_idea_lines("\n".join(part.strip() for part in bulletish if part.strip()))
+    if parsed:
+        return parsed
+    candidates = []
+    for part in re.split(r";|\n", cleaned):
+        part = re.sub(r"^\s*(?:Music Video Locations|Locations|Location ideas)\s*:?\s*", "", part.strip(), flags=re.I)
+        if 4 <= len(part) <= 180 and not _looks_like_location_meta_text(part) and not re.search(r"\b(?:sorry|cannot|unable|lyrics|song meaning|summary)\b", part, flags=re.I):
+            candidates.append(part)
+    return _parse_location_idea_lines("\n".join(f"- {item}" for item in candidates))
 
 
 def _parse_subject_lines(text):
@@ -3674,7 +3937,11 @@ def _generate_builder_reference_description(payload):
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     reference_type = str(payload.get("reference_type") or "subject").strip().lower()
     name_hint = str(payload.get("name") or "").strip()
-    if reference_type not in {"subject", "character", "location"}:
+    subject_label = re.sub(r"\s+", " ", name_hint).strip()
+    if subject_label.lower().startswith("the "):
+        subject_label = subject_label.lower()
+    object_reference_types = {"prop", "object", "vehicle", "creature", "animal", "outfit", "style", "environment", "other"}
+    if reference_type not in {"subject", "character", "location", *object_reference_types}:
         reference_type = "subject"
     if not model_file:
         raise ValueError("Choose a Gemma vision model first.")
@@ -3690,9 +3957,12 @@ def _generate_builder_reference_description(payload):
             "Do not invent hidden or unseen details.\n"
             "Keep it under 100 words."
         )
-        if name_hint:
-            instruction += f"\nUse this label only as the subject name if needed: {name_hint}"
-    else:
+        if subject_label:
+            instruction += (
+                f"\nRefer to the subject as {subject_label}. "
+                f"Do not call them the character or the subject in the final description."
+            )
+    elif reference_type == "location":
         instruction = (
             "Look at the image and write one concise location/environment description.\n"
             "Output only the description, one paragraph, no markdown, no label, no bullet points.\n"
@@ -3703,6 +3973,18 @@ def _generate_builder_reference_description(payload):
         )
         if name_hint:
             instruction += f"\nUse this label only as the location name if needed: {name_hint}"
+    else:
+        label = reference_type.replace("_", " ")
+        instruction = (
+            f"Look at the image and write one concise {label} reference description.\n"
+            "Output only the description, one paragraph, no markdown, no label, no bullet points.\n"
+            "Describe only the visible reference item: shape, form, materials, colors, markings, texture, scale cues, construction, accessories, and distinctive visual identity details.\n"
+            "Do not describe the background, location, pose, camera angle, facial expression, mood, action, story meaning, or a person unless the reference item itself is a person.\n"
+            "Do not invent hidden or unseen details.\n"
+            "Keep it under 100 words."
+        )
+        if name_hint:
+            instruction += f"\nUse this label only as the reference name if needed: {name_hint}"
 
     llm = VRGDG_SuperGemmaGGUFChat()
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
@@ -3742,6 +4024,11 @@ def _generate_builder_reference_description(payload):
         text = _clean_visual_gemma_text(text)
         text = re.sub(r"^\s*(character|subject|location|description)\s*:\s*", "", text, flags=re.I).strip()
         if reference_type in {"subject", "character"}:
+            if subject_label:
+                text = re.sub(r"\bthe character\b", subject_label, text, flags=re.I)
+                text = re.sub(r"\bthe subject\b", subject_label, text, flags=re.I)
+                text = re.sub(r"\ba character\b", subject_label, text, flags=re.I)
+                text = re.sub(r"\ba subject\b", subject_label, text, flags=re.I)
             text = re.sub(
                 r"\b(?:with|has|having|featuring)?\s*(?:very\s+|pale\s+|fair\s+|light\s+|medium\s+|tan\s+|tanned\s+|olive\s+|brown\s+|dark\s+|deep\s+|warm\s+|cool\s+|golden\s+|porcelain\s+|dusky\s+|caramel\s+|bronze\s+|dark-skinned\s+|light-skinned\s+)+(?:skin|skin tone|complexion)\b,?\s*(?:and\s+)?",
                 "",
@@ -4322,9 +4609,9 @@ def _generate_flux_reference_location_map(payload):
                 "notes": notes,
             })
     if not cleaned_scenes:
-        raise ValueError("Scenes need concept prompt text before Gemma can map locations.")
+        raise ValueError("Scenes need lyrics, scene notes, concept prompts, or timeline notes before Gemma can map locations.")
 
-    subject_scene = str(payload.get("subject_scene_text", "") or "").strip()
+    subject_scene = _clean_location_context_text(payload.get("subject_scene_text", ""))
     existing_locations = payload.get("existing_locations") or []
     if not isinstance(existing_locations, list):
         existing_locations = []
@@ -4359,10 +4646,18 @@ def _generate_flux_reference_location_map(payload):
         f"{index}={item['name']}" + (f" | {item['description']}" if item.get("description") else "")
         for index, item in enumerate(normalized_existing_locations, start=1)
     )
+    previous_counts = _location_usage_counts_from_payload(payload, normalized_existing_locations)
+    usage_lines = "\n".join(
+        f"- {name}: already used {int(previous_counts.get(name, 0) or 0)} time(s)"
+        for name in sorted(previous_counts, key=lambda item: (int(previous_counts.get(item, 0) or 0), item.lower()))
+    )
     instruction = (
-        "Choose the best existing location number for each music-video scene.\n\n"
-        "First use a location clearly named or implied by the scene concept. "
-        "If the scene has no clear location, choose the closest fit from the location list based on visual mood, objects, and environment.\n\n"
+        "You are mapping music-video scenes to an existing location list.\n\n"
+        "Choose the best existing location number for each scene using the scene lyric line, concept text, notes, visual mood, objects, and environment. "
+        "First use a location clearly named or implied by the scene text. "
+        "If the scene has no clear location, choose the closest fit from the location list based on emotional tone and visual atmosphere. "
+        "Use locations that have not been used yet before repeating locations that were already used. "
+        "Avoid repeating the same location across too many neighboring scenes when another listed location fits equally well.\n\n"
         "Output only simple lines in this exact format:\n"
         "Scene1=1\n"
         "Scene2=3\n"
@@ -4370,9 +4665,12 @@ def _generate_flux_reference_location_map(payload):
         "Rules:\n"
         "- Every scene must get one line.\n"
         "- Use only location numbers from the list.\n"
+        "- Prefer the least-used matching location when multiple locations fit.\n"
+        "- If there are enough scenes, use every listed location at least once before heavy repeats.\n"
         "- Do not output JSON, markdown, bullets, explanations, names, or descriptions.\n"
         "- Do not invent new locations.\n\n"
-        f"Subject/location context:\n{subject_scene or '(none)'}\n\n"
+        f"Optional extra context, if any:\n{subject_scene or '(none)'}\n\n"
+        f"Already used locations before these scenes:\n{usage_lines or '(none)'}\n\n"
         f"Locations:\n{numbered_locations}\n\n"
         f"Scenes:\n\n{chr(10).join(scene_lines)}"
     )
@@ -4396,6 +4694,7 @@ def _generate_flux_reference_location_map(payload):
         fallback_map = _fallback_location_map_by_overlap(cleaned_scenes, normalized_locations)
         for scene in cleaned_scenes:
             normalized_map.setdefault(scene["id"], fallback_map[scene["id"]])
+    normalized_map = _balance_location_map_by_usage(normalized_map, cleaned_scenes, normalized_locations, previous_counts)
     return {
         "locations": normalized_locations,
         "scene_map": normalized_map,
@@ -4427,9 +4726,9 @@ def _generate_flux_reference_locations(payload):
                 "notes": notes,
             })
     if not cleaned_scenes:
-        raise ValueError("Scenes need concept prompt text before Gemma can extract locations.")
+        raise ValueError("Scenes need lyrics, scene notes, concept prompts, or timeline notes before Gemma can extract locations.")
 
-    subject_scene = str(payload.get("subject_scene_text", "") or "").strip()
+    subject_scene = _clean_location_context_text(payload.get("subject_scene_text", ""))
     existing_locations = payload.get("existing_locations") or []
     existing_lines = []
     if isinstance(existing_locations, list):
@@ -4451,9 +4750,10 @@ def _generate_flux_reference_locations(payload):
 
     instruction = (
         "Extract a short reusable location list for Flux/Klein or Nano B reference images.\n\n"
-        "Look at the scene concept prompts, scene notes, and subject/location context. "
+        "Use the scene concept prompts and scene notes as the source of truth. "
+        "Optional extra context may be empty; if it is empty or missing, ignore it completely. "
         "Find concrete physical places/backgrounds that repeat or are useful as references. "
-        "If the context includes locations not directly named in a concept prompt, include them when they fit the project.\n\n"
+        "If the extra context includes locations not directly named in a concept prompt, include them when they fit the project.\n\n"
         "Output only simple lines in this exact format:\n"
         "1|location name|short visual description for a reference image\n"
         "2|location name|short visual description for a reference image\n\n"
@@ -4463,7 +4763,7 @@ def _generate_flux_reference_locations(payload):
         "- Descriptions must describe only the place/background, not the main character.\n"
         "- Reuse broad locations instead of creating one unique location for every scene.\n"
         "- 3 to 8 locations is usually enough unless the project clearly needs more.\n\n"
-        f"Subject/location context:\n{subject_scene or '(none)'}\n\n"
+        f"Optional extra context:\n{subject_scene or '(none)'}\n\n"
         f"Existing user locations:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
         f"Scenes:\n\n{chr(10).join(scene_lines)}"
     )
@@ -4476,6 +4776,8 @@ def _generate_flux_reference_locations(payload):
         label="Gemma",
     )
     locations = _parse_location_lines(text)
+    if not locations:
+        locations = _parse_location_ideas_flexible(text)
     if not locations:
         try:
             data = _extract_json_object_from_text(_clean_visual_gemma_text(text))
@@ -4490,7 +4792,63 @@ def _generate_flux_reference_locations(payload):
         except Exception:
             pass
     if not locations:
-        raise ValueError("Gemma did not return any usable locations.")
+        retry_instruction = (
+            "Return only reusable music video locations from the scene text below.\n"
+            "Do not explain anything.\n"
+            "Do not summarize the scenes.\n"
+            "Write 3 to 12 locations.\n"
+            "Write one location per line as a short bullet.\n"
+            "Each bullet must be a concrete visual place/background, not a character, outfit, emotion, or action.\n"
+            "If any optional context is missing, invisible, empty, or unavailable, ignore that and use only the scene text.\n"
+            "Never mention missing files, missing context, subjectsandscenes.txt, prompts, or instructions.\n"
+            "Example format:\n"
+            "- Abandoned motel pool, turquoise water under buzzing neon signs\n"
+            "- Foggy pine road, wet asphalt and fading headlights\n\n"
+            f"Optional extra context:\n{subject_scene or '(none)'}\n\n"
+            f"Existing user locations:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+            f"Scenes:\n\n{chr(10).join(scene_lines)}"
+        )
+        retry_text, retry_info = _run_builder_text_llm(
+            payload,
+            retry_instruction,
+            temperature=float(payload.get("temperature") or 0.35),
+            top_p=float(payload.get("top_p") or 0.9),
+            max_new_tokens=int(payload.get("max_new_tokens") or 2200),
+            label="Gemma",
+        )
+        retry_locations = _parse_location_lines(retry_text) or _parse_location_ideas_flexible(retry_text)
+        if retry_locations:
+            text = retry_text
+            run_info = retry_info
+            locations = retry_locations
+    if not locations:
+        try:
+            scout_payload = {
+                **payload,
+                "subject_scene_text": "",
+                "lyrics_text": "\n\n".join(scene_lines),
+                "user_input": "Create reusable location ideas from these music-video scene lines.",
+                "temperature": float(payload.get("temperature") or 0.45),
+                "top_p": float(payload.get("top_p") or 0.9),
+                "max_new_tokens": int(payload.get("max_new_tokens") or 2200),
+            }
+            scout_result = _generate_wizard_locations_from_lyrics(scout_payload)
+            locations = scout_result.get("locations") or []
+            if locations:
+                text = scout_result.get("raw_text", text)
+                run_info = {
+                    **run_info,
+                    "used_model": scout_result.get("used_model", run_info.get("used_model", "")),
+                    "runner": scout_result.get("runner", run_info.get("runner", "builtin")),
+                    "unloaded": scout_result.get("unloaded", run_info.get("unloaded", True)),
+                }
+        except Exception:
+            pass
+    if not locations:
+        preview = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(preview) > 700:
+            preview = preview[:697].rstrip() + "..."
+        raise ValueError(f"Gemma did not return any usable locations. Raw response preview: {preview or '(empty)'}")
     deduped = []
     seen = set()
     for item in locations:
@@ -4501,6 +4859,111 @@ def _generate_flux_reference_locations(payload):
         deduped.append(item)
     return {
         "locations": deduped,
+        "raw_text": text,
+        "used_model": run_info.get("used_model", ""),
+        "runner": run_info.get("runner", "builtin"),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
+def _generate_wizard_locations_from_lyrics(payload):
+    model_file = str(payload.get("model_file", "") or "").strip()
+    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+        raise ValueError("Choose a non-vision Gemma model first.")
+    lyrics_text = str(payload.get("lyrics_text", "") or payload.get("lyrics", "") or "").strip()
+    user_input = str(payload.get("user_input", "") or payload.get("notes", "") or "").strip()
+    if not lyrics_text:
+        raise ValueError("Paste or create lyrics before creating locations from lyrics.")
+
+    existing_locations = payload.get("existing_locations") or []
+    existing_lines = []
+    if isinstance(existing_locations, list):
+        for item in existing_locations:
+            if not isinstance(item, dict):
+                continue
+            name = re.sub(r"\s+", " ", str(item.get("name", "") or "").strip())
+            description = re.sub(r"\s+", " ", str(item.get("description", "") or "").strip())
+            if name:
+                existing_lines.append(f"- {name}" + (f": {description}" if description else ""))
+
+    instruction = (
+        "You are a music video location scout.\n\n"
+        "The user will provide song lyrics.\n\n"
+        "Your task is to analyze the mood, imagery, setting clues, themes, and emotional tone of the lyrics, "
+        "then generate a list of possible locations that could appear in a music video for that song.\n\n"
+        "Return only location ideas.\n\n"
+        "Rules:\n\n"
+        "Do not summarize the lyrics.\n"
+        "Do not explain the song meaning.\n"
+        "Do not quote long lyric sections.\n"
+        "Focus on visual places that could realistically appear in a music video.\n"
+        "Include both literal locations from the lyrics and symbolic locations inspired by the mood.\n"
+        "Make the locations specific and cinematic.\n"
+        "Output 10-20 locations.\n"
+        "Use short bullet points.\n"
+        "Each bullet should be a location only, with a brief visual detail if helpful.\n\n"
+        "Output format:\n\n"
+        "Music Video Locations:\n\n"
+        "- [location idea]\n"
+        "- [location idea]\n"
+        "- [location idea]\n\n"
+        f"Existing user locations to avoid duplicating exactly:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+        f"Optional user input:\n{user_input or '(none)'}\n\n"
+        f"User lyrics:\n{lyrics_text}"
+    )
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.45),
+        top_p=float(payload.get("top_p") or 0.9),
+        max_new_tokens=int(payload.get("max_new_tokens") or 2200),
+        label="Gemma",
+    )
+    locations = _parse_location_ideas_flexible(text)
+    if not locations:
+        retry_instruction = (
+            "Return exactly 12 music video location ideas for the lyrics below.\n"
+            "Do not write a heading.\n"
+            "Do not explain anything.\n"
+            "Do not summarize the lyrics.\n"
+            "Write one location per line as a short bullet.\n"
+            "Each bullet must be a specific cinematic place with a brief visual detail.\n"
+            "Example format:\n"
+            "- Abandoned motel pool, turquoise water under buzzing neon signs\n"
+            "- Foggy pine road, wet asphalt and fading headlights\n\n"
+            f"Optional user input:\n{user_input or '(none)'}\n\n"
+            f"Lyrics:\n{lyrics_text}"
+        )
+        retry_text, retry_info = _run_builder_text_llm(
+            payload,
+            retry_instruction,
+            temperature=float(payload.get("temperature") or 0.55),
+            top_p=float(payload.get("top_p") or 0.9),
+            max_new_tokens=int(payload.get("max_new_tokens") or 2200),
+            label="Gemma",
+        )
+        retry_locations = _parse_location_ideas_flexible(retry_text)
+        if retry_locations:
+            text = retry_text
+            run_info = retry_info
+            locations = retry_locations
+    if not locations:
+        locations = _parse_location_lines(text)
+    if not locations:
+        preview = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(preview) > 700:
+            preview = preview[:697].rstrip() + "..."
+        raise ValueError(f"Gemma did not return any usable location ideas. Raw response preview: {preview or '(empty)'}")
+    deduped = []
+    seen = set()
+    for item in locations:
+        key = item["name"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return {
+        "locations": deduped[:20],
         "raw_text": text,
         "used_model": run_info.get("used_model", ""),
         "runner": run_info.get("runner", "builtin"),
@@ -4807,6 +5270,7 @@ def _save_builder_session(payload):
     if not isinstance(overlay_segments, list):
         overlay_segments = []
         session["overlay_segments"] = overlay_segments
+    overlay_segments = _assign_overlay_scene_numbers(overlay_segments)
     audio_path, session = _snapshot_project_assets(project_folder, session, audio_path)
     session = {
         **session,
@@ -4848,6 +5312,72 @@ def _save_builder_session(payload):
         "model_defaults_path": model_defaults_path,
         "scene_notes_path": scene_notes_path,
         "session": session,
+    }
+
+
+def _save_wizard_draft(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    os.makedirs(project_folder, exist_ok=True)
+    folder = _wizard_folder(project_folder)
+    os.makedirs(folder, exist_ok=True)
+    draft = payload.get("draft") if isinstance(payload.get("draft"), dict) else {}
+    lyrics = str(payload.get("lyrics", "") or draft.get("lyrics", "") or "").replace("\r\n", "\n").replace("\r", "\n")
+    draft = {
+        **draft,
+        "lyrics": lyrics,
+        "updated": time.time(),
+    }
+    with open(_wizard_draft_path(project_folder), "w", encoding="utf-8") as handle:
+        json.dump(draft, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    with open(_wizard_lyrics_path(project_folder), "w", encoding="utf-8") as handle:
+        handle.write(lyrics)
+        if lyrics and not lyrics.endswith("\n"):
+            handle.write("\n")
+    raw_outputs = payload.get("raw_outputs") if isinstance(payload.get("raw_outputs"), dict) else {}
+    for name, value in raw_outputs.items():
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(name or "").strip()).strip("._") or "raw_output"
+        if not safe_name.endswith(".txt") and not safe_name.endswith(".json"):
+            safe_name += ".txt"
+        with open(os.path.join(folder, safe_name), "w", encoding="utf-8") as handle:
+            if isinstance(value, (dict, list)):
+                json.dump(value, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            else:
+                handle.write(str(value or ""))
+                if value and not str(value).endswith("\n"):
+                    handle.write("\n")
+    return {
+        "wizard_folder": folder,
+        "wizard_draft_path": _wizard_draft_path(project_folder),
+        "wizard_lyrics_path": _wizard_lyrics_path(project_folder),
+        "draft": draft,
+    }
+
+
+def _load_wizard_draft(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    path = _wizard_draft_path(project_folder)
+    draft = {}
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as handle:
+            loaded = json.load(handle)
+        if isinstance(loaded, dict):
+            draft = loaded
+    lyrics_path = _wizard_lyrics_path(project_folder)
+    if os.path.isfile(lyrics_path) and not str(draft.get("lyrics", "")).strip():
+        with open(lyrics_path, "r", encoding="utf-8") as handle:
+            draft["lyrics"] = handle.read()
+    return {
+        "wizard_folder": _wizard_folder(project_folder),
+        "wizard_draft_path": path,
+        "wizard_lyrics_path": lyrics_path,
+        "draft": draft,
+        "exists": bool(draft),
     }
 
 
@@ -5573,6 +6103,7 @@ def _scan_builder_scene_videos(project_folder):
             if thumb:
                 video_thumbnails[key] = thumb
     if os.path.isdir(backup_root):
+        max_backups_per_scene = 12
         backup_pattern = re.compile(r"^video_(\d+)-audio_.*\.mp4$", re.IGNORECASE)
         for root, _, names in os.walk(backup_root):
             for name in names:
@@ -5583,12 +6114,17 @@ def _scan_builder_scene_videos(project_folder):
                 if not os.path.isfile(path):
                     continue
                 key = str(int(match.group(1)))
-                thumb = _ensure_builder_scene_video_thumbnail(path)
-                video_backups.setdefault(key, []).append((path, thumb))
+                try:
+                    modified = os.path.getmtime(path)
+                except OSError:
+                    modified = 0
+                video_backups.setdefault(key, []).append((path, modified))
         for key, pairs in list(video_backups.items()):
-            pairs.sort(key=lambda item: os.path.getmtime(item[0]))
-            video_backups[key] = [item[0] for item in pairs]
-            video_backup_thumbnails[key] = [item[1] for item in pairs]
+            pairs.sort(key=lambda item: item[1], reverse=True)
+            kept = pairs[:max_backups_per_scene]
+            kept.reverse()
+            video_backups[key] = [item[0] for item in kept]
+            video_backup_thumbnails[key] = [_ensure_builder_scene_video_thumbnail(item[0]) for item in kept]
     return {
         "project_folder": folder,
         "video_folder": video_folder,
@@ -5629,6 +6165,24 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _save_builder_session(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_wizard_draft")
+    async def vrgdg_music_builder_save_wizard_draft(request):
+        try:
+            payload = await request.json()
+            result = _save_wizard_draft(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/load_wizard_draft")
+    async def vrgdg_music_builder_load_wizard_draft(request):
+        try:
+            payload = await request.json()
+            result = _load_wizard_draft(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
@@ -6040,6 +6594,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_generate_flux_reference_locations, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/wizard_locations_from_lyrics")
+    async def vrgdg_music_builder_wizard_locations_from_lyrics(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_generate_wizard_locations_from_lyrics, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})
