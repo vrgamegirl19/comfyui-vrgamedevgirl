@@ -1426,11 +1426,12 @@ function openStoryboardBuilder(payload = {}) {
   };
   const storyActions = document.createElement("div");
   storyActions.style.cssText = "grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
+  const createStoryArcButton = makeButton("Create User Story Arc", "primary");
   const createStoryBriefButton = makeButton("Create Story Brief", "primary");
   const createMissingBeatsButton = makeButton("Create Missing Scene Beats", "purple");
   const replaceBeatsButton = makeButton("Replace All Scene Beats");
   const detectSectionsButton = makeButton("Detect Lyric Sections");
-  storyActions.append(createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
+  storyActions.append(createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
   storyLayerBar.append(
     storyLayerHeader,
     storyField("User Story Arc", userStoryArcInput),
@@ -1594,6 +1595,33 @@ function openStoryboardBuilder(payload = {}) {
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       createToast(`Story brief failed:\n${String(error?.message || error)}`, true);
+    }
+  };
+
+  const createStoryArcWithGemma = async () => {
+    syncStoryLayerFromInputs();
+    const progress = createStoryboardProgressWindow("Story Arc Gemma");
+    try {
+      progress.set("Creating a short song-structure story arc from lyrics, subjects, and locations...", 18);
+      const data = await postJson("/vrgdg/storyboard/story_arc", {
+        ...(state.gemmaSettings || {}),
+        story_layer: normalizeStoryLayer(state.storyLayer),
+        story_idea: userStoryArcInput.value,
+        lyrics: lyricsForStoryBrief(),
+        scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+        reference_builder: state.referenceBuilder || {},
+        unload_after: true,
+        max_new_tokens: 900,
+      }, 240000);
+      state.storyLayer.user_story_arc = String(data.story_arc || "").trim();
+      userStoryArcInput.value = state.storyLayer.user_story_arc;
+      syncStoryLayerFromInputs({ notify: true });
+      progress.set("Story arc saved into the Story Layer.", 100);
+      progress.close(1600);
+      createToast("Story arc created.");
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      createToast(`Story arc failed:\n${String(error?.message || error)}`, true);
     }
   };
 
@@ -2844,6 +2872,7 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerEnabledInput.addEventListener("change", syncStoryLayerFromInputs);
   userStoryArcInput.addEventListener("input", syncStoryLayerFromInputs);
   songStoryBriefInput.addEventListener("input", syncStoryLayerFromInputs);
+  createStoryArcButton.onclick = createStoryArcWithGemma;
   createStoryBriefButton.onclick = createStoryBriefWithGemma;
   createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: false });
   replaceBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: true });

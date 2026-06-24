@@ -4773,6 +4773,8 @@ def _generate_flux_reference_location_map(payload):
         raise ValueError("Scenes need lyrics, scene notes, concept prompts, or timeline notes before Gemma can map locations.")
 
     subject_scene = _clean_location_context_text(payload.get("subject_scene_text", ""))
+    style_theme = _clean_location_context_text(payload.get("style_theme", ""))
+    subject_context = _clean_location_context_text(payload.get("subject_context", ""))
     existing_locations = payload.get("existing_locations") or []
     if not isinstance(existing_locations, list):
         existing_locations = []
@@ -4913,6 +4915,8 @@ def _generate_flux_reference_locations(payload):
         "Extract a short reusable location list for Flux/Klein or Nano B reference images.\n\n"
         "Use the scene concept prompts and scene notes as the source of truth. "
         "Optional extra context may be empty; if it is empty or missing, ignore it completely. "
+        "Use character/reference descriptions and style/theme only to understand the visual world, era, mood, genre, and design language. "
+        "Do not turn characters, clothing, props, accessories, or body details into location names. "
         "Find concrete physical places, sets, rooms, buildings, landscapes, or backgrounds that repeat or are useful as references. "
         "If the extra context includes locations not directly named in a concept prompt, include them when they fit the project.\n\n"
         "Output only simple lines in this exact format:\n"
@@ -4927,6 +4931,8 @@ def _generate_flux_reference_locations(payload):
         "- Do not include characters or actions in descriptions. No bride, woman, man, face, hand, tooth, dress, razor, locket, veil, or similar subject/object details.\n"
         "- Reuse broad locations instead of creating one unique location for every scene.\n"
         "- 3 to 8 locations is usually enough unless the project clearly needs more.\n\n"
+        f"Optional style/theme guidance:\n{style_theme or '(none)'}\n\n"
+        f"Character/reference descriptions for style guidance only:\n{subject_context or '(none)'}\n\n"
         f"Optional extra context:\n{subject_scene or '(none)'}\n\n"
         f"Existing user locations:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
         f"Scenes:\n\n{chr(10).join(scene_lines)}"
@@ -4973,6 +4979,8 @@ def _generate_flux_reference_locations(payload):
             "Example format:\n"
             "- Abandoned motel pool, turquoise water under buzzing neon signs\n"
             "- Foggy pine road, wet asphalt and fading headlights\n\n"
+            f"Optional style/theme guidance:\n{style_theme or '(none)'}\n\n"
+            f"Character/reference descriptions for style guidance only:\n{subject_context or '(none)'}\n\n"
             f"Optional extra context:\n{subject_scene or '(none)'}\n\n"
             f"Existing user locations:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
             f"Scenes:\n\n{chr(10).join(scene_lines)}"
@@ -4995,6 +5003,8 @@ def _generate_flux_reference_locations(payload):
             scout_payload = {
                 **payload,
                 "subject_scene_text": "",
+                "style_theme": style_theme,
+                "subject_context": subject_context,
                 "lyrics_text": "\n\n".join(scene_lines),
                 "user_input": "Create reusable location ideas from these music-video scene lines.",
                 "temperature": float(payload.get("temperature") or 0.45),
@@ -5050,6 +5060,8 @@ def _generate_wizard_locations_from_lyrics(payload):
         raise ValueError("Choose a non-vision Gemma model first.")
     lyrics_text = str(payload.get("lyrics_text", "") or payload.get("lyrics", "") or "").strip()
     user_input = str(payload.get("user_input", "") or payload.get("notes", "") or "").strip()
+    style_theme = _clean_location_context_text(payload.get("style_theme", ""))
+    subject_context = _clean_location_context_text(payload.get("subject_context", ""))
     if not lyrics_text:
         raise ValueError("Paste or create lyrics before creating locations from lyrics.")
 
@@ -5070,6 +5082,8 @@ def _generate_wizard_locations_from_lyrics(payload):
         "Your task is to analyze the mood, imagery, setting clues, themes, and emotional tone of the lyrics, "
         "then generate a list of reusable filming locations where the main subject or character could be placed.\n\n"
         "Return only actual locations, sets, rooms, buildings, outdoor areas, roads, stages, landscapes, or environments.\n\n"
+        "Use character/reference descriptions and style/theme only to understand the visual world, era, mood, genre, and design language. "
+        "Do not turn characters, clothing, props, accessories, or body details into location names.\n\n"
         "Rules:\n\n"
         "Do not summarize the lyrics.\n"
         "Do not explain the song meaning.\n"
@@ -5092,6 +5106,8 @@ def _generate_wizard_locations_from_lyrics(payload):
         "- [location idea]\n"
         "- [location idea]\n\n"
         f"Existing user locations to avoid duplicating exactly:\n{chr(10).join(existing_lines) if existing_lines else '(none)'}\n\n"
+        f"Optional style/theme guidance:\n{style_theme or '(none)'}\n\n"
+        f"Character/reference descriptions for style guidance only:\n{subject_context or '(none)'}\n\n"
         f"Optional user input:\n{user_input or '(none)'}\n\n"
         f"User lyrics:\n{lyrics_text}"
     )
@@ -5117,6 +5133,8 @@ def _generate_wizard_locations_from_lyrics(payload):
             "Example format:\n"
             "- Abandoned motel pool, turquoise water under buzzing neon signs\n"
             "- Foggy pine road, wet asphalt and fading headlights\n\n"
+            f"Optional style/theme guidance:\n{style_theme or '(none)'}\n\n"
+            f"Character/reference descriptions for style guidance only:\n{subject_context or '(none)'}\n\n"
             f"Optional user input:\n{user_input or '(none)'}\n\n"
             f"Lyrics:\n{lyrics_text}"
         )

@@ -643,6 +643,141 @@ def _build_story_layer_brief(payload):
     }
 
 
+def _build_story_layer_arc(payload):
+    lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 16000)
+    story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("user_story_arc") or "", 4000)
+    style_theme = _clean_scene_text(payload.get("style_theme") or payload.get("styleTheme") or payload.get("theme") or "", 1600)
+    scenes = payload.get("scenes")
+    if not isinstance(scenes, list):
+        scenes = []
+    compact_scenes = []
+    subjects = []
+    locations = []
+    seen_subjects = set()
+    seen_locations = set()
+    for index, scene in enumerate(scenes[:160], start=1):
+        if not isinstance(scene, dict):
+            continue
+        normalized = _normalize_storyboard_scene(scene, index)
+        compact_scenes.append({
+            "scene_number": normalized["scene_number"],
+            "label": normalized["label"],
+            "lyric_section": normalized.get("lyric_section", ""),
+            "lyrics": normalized.get("lyrics", "")[:500],
+        })
+        for subject in normalized.get("subject_refs") or []:
+            if not isinstance(subject, dict):
+                continue
+            name = _clean_scene_text(subject.get("name") or "", 120)
+            description = _clean_scene_text(subject.get("description") or "", 500)
+            key = name.lower()
+            if key and key not in seen_subjects:
+                seen_subjects.add(key)
+                subjects.append({"name": name, "description": description})
+        location = normalized.get("location_ref")
+        if isinstance(location, dict):
+            name = _clean_scene_text(location.get("name") or "", 120)
+            description = _clean_scene_text(location.get("description") or "", 500)
+            key = name.lower()
+            if key and key not in seen_locations:
+                seen_locations.add(key)
+                locations.append({"name": name, "description": description})
+    reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
+    if isinstance(reference_builder, dict):
+        for subject in reference_builder.get("subjects") or []:
+            if not isinstance(subject, dict):
+                continue
+            name = _clean_scene_text(subject.get("name") or "", 120)
+            description = _clean_scene_text(subject.get("description") or "", 500)
+            key = name.lower()
+            if key and key not in seen_subjects:
+                seen_subjects.add(key)
+                subjects.append({"name": name, "description": description})
+        for location in reference_builder.get("locations") or []:
+            if not isinstance(location, dict):
+                continue
+            name = _clean_scene_text(location.get("name") or "", 120)
+            description = _clean_scene_text(location.get("description") or "", 500)
+            key = name.lower()
+            if key and key not in seen_locations:
+                seen_locations.add(key)
+                locations.append({"name": name, "description": description})
+    instruction = (
+        "You are a music video story arc generator.\n\n"
+        "Your job is to take song lyrics and turn them into a simple, short story arc for a music video.\n\n"
+        "The user may provide:\n"
+        "* Song lyrics\n"
+        "* Story idea (optional)\n"
+        "* Style/theme (optional)\n"
+        "* Character descriptions\n"
+        "* Location descriptions\n\n"
+        "All inputs are optional. If something is missing, make a strong creative choice and continue.\n\n"
+        "Your output should be short, clean, and easy to use.\n"
+        "Always break the idea down by song structure.\n\n"
+        "Use this format:\n\n"
+        "Intro:\n"
+        "Super short visual concept.\n\n"
+        "Verse 1:\n"
+        "Super short story idea.\n\n"
+        "Pre-Chorus:\n"
+        "Super short build-up idea.\n\n"
+        "Chorus:\n"
+        "Super short main emotional or visual payoff.\n\n"
+        "Verse 2:\n"
+        "Super short story development.\n\n"
+        "Pre-Chorus 2:\n"
+        "Super short escalation idea.\n\n"
+        "Chorus 2:\n"
+        "Super short bigger version of the payoff.\n\n"
+        "Bridge:\n"
+        "Super short twist, memory, confrontation, or transformation.\n\n"
+        "Final Chorus:\n"
+        "Super short climax idea.\n\n"
+        "Outro:\n"
+        "Super short ending image.\n\n"
+        "Rules:\n"
+        "* Keep every section brief.\n"
+        "* Do not write a full treatment.\n"
+        "* Do not over-explain.\n"
+        "* Do not summarize the lyrics line by line.\n"
+        "* Turn the lyrics into a simple visual story arc.\n"
+        "* Each section should be a clear concept, not a long scene.\n"
+        "* Use cinematic, visual language.\n"
+        "* If the song does not clearly have every section, infer a natural structure.\n"
+        "* If only lyrics are provided, build the arc from the lyrics.\n"
+        "* If no lyrics are provided, build the arc from the theme or story idea.\n"
+        "* Do not ask follow-up questions unless absolutely necessary.\n"
+        "* Output only the story arc sections. No intro note, no markdown table, no JSON.\n\n"
+        f"Story idea:\n{story_idea or '[not provided]'}\n\n"
+        f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
+        f"Character descriptions:\n{json.dumps(subjects[:24], ensure_ascii=False, indent=2) if subjects else '[not provided]'}\n\n"
+        f"Location descriptions:\n{json.dumps(locations[:40], ensure_ascii=False, indent=2) if locations else '[not provided]'}\n\n"
+        f"Full/pasted lyrics:\n{lyrics or '[not provided]'}\n\n"
+        f"Scene lyric map:\n{json.dumps(compact_scenes, ensure_ascii=False, indent=2) if compact_scenes else '[not provided]'}"
+    )
+    from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
+
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.45),
+        top_p=float(payload.get("top_p") or 0.92),
+        max_new_tokens=int(payload.get("max_new_tokens") or 900),
+        label="Storyboard Story Arc Gemma",
+        preserve_paragraphs=True,
+    )
+    text = _clean_scene_text(text, 5000)
+    if not text:
+        raise ValueError("Gemma returned an empty story arc.")
+    return {
+        "story_arc": text,
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
 def _build_story_layer_scene_beat(payload):
     scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
     if not isinstance(scene_bundle, dict):
@@ -753,6 +888,15 @@ def _ensure_storyboard_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_build_story_layer_brief, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/story_arc")
+    async def vrgdg_storyboard_story_arc(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_story_layer_arc, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

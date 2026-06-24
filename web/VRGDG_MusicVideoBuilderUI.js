@@ -51,6 +51,11 @@ const ZIMAGE_MODEL_DOWNLOADS = [
   { label: "Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
   { label: "Z-Image VAE", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors" },
 ];
+const KREA2_MODEL_DOWNLOADS = [
+  { label: "Krea2 diffusion model", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/diffusion_models/krea2_turbo_fp8_scaled.safetensors" },
+  { label: "Krea2 text encoder", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors" },
+  { label: "Krea2 VAE", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors" },
+];
 const FLUX_KLEIN_9B_MODEL_DOWNLOADS = [
   { label: "9B diffusion model", url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors" },
   { label: "9B Qwen CLIP", url: "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors" },
@@ -86,6 +91,14 @@ models/
     z_image_turbo_bf16.safetensors
   vae/
     ae.safetensors`,
+  "Krea2": `ComfyUI/
+models/
+  diffusion_models/
+    krea2_turbo_fp8_scaled.safetensors
+  text_encoders/
+    qwen3vl_4b_fp8_scaled.safetensors
+  vae/
+    qwen_image_vae.safetensors`,
   "Flux/Klein 9B": `ComfyUI/
 models/
   diffusion_models/
@@ -512,6 +525,7 @@ function showModelDownloadModal() {
   const groups = [
     { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
     { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
+    { title: "Krea2", note: "Krea2 text-to-image model used by the Reference Builder Krea2 + ZImage enhancer option.", downloads: KREA2_MODEL_DOWNLOADS },
     { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
     { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
     { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },
@@ -4888,6 +4902,7 @@ function openBuilder(node) {
       locations: [],
       scene_map: {},
       scene_trigger_map: {},
+      location_style_theme: "",
       cleared: false,
       trigger_position: "start",
       subject_trigger_position: "start",
@@ -5115,6 +5130,7 @@ function openBuilder(node) {
     normalized.trigger_position = String(source.trigger_position || source.triggerPosition || source.trigger_placement || "start") === "end" ? "end" : "start";
     normalized.subject_trigger_position = String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
     normalized.location_trigger_position = String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
+    normalized.location_style_theme = String(source.location_style_theme || source.locationStyleTheme || "");
     const hasExplicitSubjectsArray = Array.isArray(source.subjects);
     const rawSubjects = dedupeRefsByName(hasExplicitSubjectsArray ? source.subjects : []);
     normalized.subject_count = normalized.cleared
@@ -12155,13 +12171,15 @@ function openBuilder(node) {
     subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
     const extractSubjects = makeButton("Extract Subjects", "primary");
     const describeMissingSubjects = makeButton("Gemma - Create subject Description if missing", "primary");
+    const createAllMissingSubjectImages = makeButton("Generate Missing Images", "primary");
     const importSubjects = makeButton("Import Subjects", "primary");
     const removeAllSubjects = makeButton("Remove All Subjects");
     const subjectActions = document.createElement("div");
     subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
     describeMissingSubjects.title = "Use vision Gemma to describe character reference images that do not already have descriptions.";
+    createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage or Krea2 + ZImage enhancer before generation starts.";
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
-    subjectActions.append(extractSubjects, describeMissingSubjects, importSubjects, removeAllSubjects);
+    subjectActions.append(extractSubjects, describeMissingSubjects, createAllMissingSubjectImages, importSubjects, removeAllSubjects);
     subjectHeader.append(subjectTitle, subjectActions);
     const subjectCountInput = makeInput(String(refs.subject_count || 1), "number");
     subjectCountInput.min = "1";
@@ -12204,10 +12222,11 @@ function openBuilder(node) {
     subjectDrop.style.cssText = "min-height:118px;border:1px dashed #0891b2;border-radius:7px;background:#061620;color:#cffafe;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;overflow:hidden;";
     const subjectButtons = document.createElement("div");
     subjectButtons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-    const createSubjectZImage = makeButton("Create Reference with ZImage", "primary");
+    const createSubjectZImage = makeButton("Generate Subject", "primary");
     const describeSubjectImage = makeButton("Gemma Describe", "primary");
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
+    createSubjectZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this subject reference.";
     describeSubjectImage.title = "Use vision Gemma to write the reference description from this image.";
     subjectButtons.append(createSubjectZImage, describeSubjectImage, uploadSubject, clearSubject);
     const subjectsList = document.createElement("div");
@@ -12226,14 +12245,14 @@ function openBuilder(node) {
     const describeMissingLocations = makeButton("Gemma - Create Location Description if missing", "primary");
     const importLocations = makeButton("Import Location List", "primary");
     const exportLocations = makeButton("Export Locations", "primary");
-    const createAllMissingLocationZImages = makeButton("ZImage Missing Locations", "primary");
+    const createAllMissingLocationZImages = makeButton("Generate Missing Images", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const removeAllLocations = makeButton("Remove All Locations");
     extractLocations.textContent = "Extract";
     autoMapLocations.textContent = "Auto Map";
     importLocations.textContent = "Import List";
     exportLocations.textContent = "Export";
-    createAllMissingLocationZImages.textContent = "ZImage";
+    createAllMissingLocationZImages.textContent = "Generate Missing Images";
     addLocation.textContent = "Add";
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
@@ -12241,12 +12260,18 @@ function openBuilder(node) {
     describeMissingLocations.title = "Use vision Gemma to describe location reference images that do not already have descriptions.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
     exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
-    createAllMissingLocationZImages.title = "Create ZImage references for locations that do not have images yet.";
+    createAllMissingLocationZImages.title = "Batch-create missing location images. You will choose ZImage or Krea2 + ZImage enhancer before generation starts.";
     addLocation.title = "Add one location card manually.";
     removeAllLocations.title = "Remove every location card and clear location mappings.";
     const locationActions = document.createElement("div");
     locationActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:10px;";
-    const locationActionGroup = (label, buttons) => {
+    const locationStyleTheme = makeInput(refs.location_style_theme || "");
+    locationStyleTheme.placeholder = "Optional style/theme for location extraction...";
+    locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your video style, theme, era, or mood.";
+    locationStyleTheme.addEventListener("input", () => {
+      refs.location_style_theme = locationStyleTheme.value;
+    });
+    const locationActionGroup = (label, buttons, extra = null) => {
       const group = document.createElement("div");
       group.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0b1220;padding:10px 12px;display:flex;flex-direction:column;gap:9px;";
       const rowLabel = document.createElement("div");
@@ -12262,10 +12287,11 @@ function openBuilder(node) {
         buttonWrap.append(button);
       }
       group.append(rowLabel, buttonWrap);
+      if (extra) group.append(extra);
       return group;
     };
     locationActions.append(
-      locationActionGroup("Gemma", [extractLocations, autoMapLocations, describeMissingLocations]),
+      locationActionGroup("Gemma", [extractLocations, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
       locationActionGroup("Manage", [importLocations, exportLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
@@ -13090,7 +13116,24 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       return payload;
     };
 
-    async function createFluxReferenceWithZImage(referenceType, target, sourceText, name = "") {
+    const krea2ReferencePayload = (prompt, settings = {}) => ({
+      prompt: String(prompt || "").trim(),
+      krea_unet_name: settings.krea_unet_name || "krea2_turbo_fp8_scaled.safetensors",
+      krea_clip_name: settings.krea_clip_name || "qwen3vl_4b_fp8_scaled.safetensors",
+      krea_vae_name: settings.krea_vae_name || "qwen_image_vae.safetensors",
+      z_unet_name: settings.z_unet_name || "z_image_turbo_bf16.safetensors",
+      z_clip_name: settings.z_clip_name || "qwen_3_4b.safetensors",
+      z_vae_name: settings.z_vae_name || "ae.safetensors",
+      first_pass_width: Number(settings.first_pass_width || 1024),
+      first_pass_height: Number(settings.first_pass_height || 576),
+      width: Number(settings.width || 1920),
+      height: Number(settings.height || 1080),
+      seed: Number(settings.seed || 1),
+      seed_mode: settings.seed_mode || "fixed",
+      batch_size: 1,
+    });
+
+    async function runFluxReferenceWithZImage(referenceType, target, sourceText, name = "", generatorSettings = null) {
       const text = String(sourceText || "").trim();
       if (!text) {
         toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
@@ -13116,7 +13159,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           style_theme: styleTheme,
           unload_after: true,
         }, 3 * 60 * 1000);
-        const zSettings = currentZImageReferenceSettings();
+        const zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
         setInlineProgress("Building ZImage reference workflow...", 28);
         progress.set("Building ZImage reference workflow...", 28);
         const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(promptData.prompt, zSettings));
@@ -13169,7 +13212,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
-    async function createMissingLocationReferencesWithZImage() {
+    async function createMissingLocationReferencesWithZImage(workflow = "zimage", generatorSettings = {}) {
+      const useKrea2 = workflow === "krea2";
+      const workflowLabel = useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
       const missingLocations = refs.locations
         .map((location, index) => ({ location, index }))
         .filter(({ location }) => {
@@ -13192,7 +13237,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       autoMapLocations.disabled = true;
       createAllMissingLocationZImages.textContent = "Creating...";
       const keepGemmaLoaded = Boolean(keepGemmaLoadedForLocations.input.checked);
-      let ranZImage = false;
+      let ranWorkflow = false;
       try {
         const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
         const promptJobs = [];
@@ -13215,31 +13260,34 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           promptJobs.push({ location, prompt: promptData.prompt });
         }
 
-        let zSettings = currentZImageReferenceSettings();
+        let zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
+        const kreaSettings = generatorSettings?.krea2 || {};
         for (let index = 0; index < promptJobs.length; index += 1) {
           const { location, prompt } = promptJobs[index];
           const label = location.name || `Location ${index + 1}`;
           const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
-          setInlineProgress(`Building ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
-          progress.set(`Building ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
-          const built = await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-          if (Number.isFinite(Number(built.used_seed))) {
+          setInlineProgress(`Building ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          progress.set(`Building ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          const built = useKrea2
+            ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
+            : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (!useKrea2 && Number.isFinite(Number(built.used_seed))) {
             zSettings.seed = Number(built.used_seed);
             state.zimageSettings = zSettings;
             zSeed.value = String(zSettings.seed);
           }
-          setInlineProgress(`Queueing ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
-          progress.set(`Queueing ZImage location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
+          setInlineProgress(`Queueing ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
+          progress.set(`Queueing ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
           const queued = await queueWorkflowPrompt(built.prompt);
           const promptId = queued?.prompt_id;
           if (!promptId) throw new Error(`ComfyUI queued ${label} but did not return a prompt_id.`);
-          ranZImage = true;
+          ranWorkflow = true;
           const images = await waitForImages(promptId, (message) => {
             setInlineProgress(`${index + 1}/${promptJobs.length}: ${label}\n${message}\nPrompt ID: ${promptId}`, basePercent + 6);
             progress.set(`${index + 1}/${promptJobs.length}: ${label}\n${message}\nPrompt ID: ${promptId}`, basePercent + 6);
           });
           const image = images[images.length - 1];
-          if (!image) throw new Error(`ZImage did not return a reference image for ${label}.`);
+          if (!image) throw new Error(`${workflowLabel} did not return a reference image for ${label}.`);
           const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
             project_folder: projectInput.value || state.projectFolder,
             reference_type: "location",
@@ -13250,9 +13298,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           location.image.path = saved.saved_path || "";
           location.image.data = "";
           location.image.name = `${location.name || `location_${index + 1}`}.png`;
-          advanceZImageSeedAfterRun(zSettings);
-          zSettings = cloneZImageSettings(state.zimageSettings);
-          syncZImageSettingsPanel();
+          if (!useKrea2) {
+            advanceZImageSeedAfterRun(zSettings);
+            zSettings = cloneZImageSettings(state.zimageSettings);
+            syncZImageSettingsPanel();
+          }
           renderAll();
         }
         refs.use_location_references = true;
@@ -13263,9 +13313,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         progress.set(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"}.`, 100);
         progress.close(1800);
         hideInlineProgress();
-        toast(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"} with ZImage.`);
+        toast(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"} with ${workflowLabel}.`);
       } catch (error) {
-        if (ranZImage) {
+        if (ranWorkflow) {
           setInlineProgress("Cleaning memory after failed location reference batch...", 100);
           await runImageMemoryCleanupQuiet(progress, "failed location references", 100);
         }
@@ -13276,7 +13326,131 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         createAllMissingLocationZImages.disabled = false;
         extractLocations.disabled = false;
         autoMapLocations.disabled = false;
-        createAllMissingLocationZImages.textContent = "ZImage Missing Locations";
+        createAllMissingLocationZImages.textContent = "Generate Missing Images";
+      }
+    }
+
+    async function createMissingSubjectReferencesWithImageWorkflow(workflow = "zimage", generatorSettings = {}) {
+      ensureSubjectCount();
+      if (refs.subject_count === 1 && refs.subjects[0]) {
+        refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || refs.subject.name || "Subject";
+        refs.subjects[0].reference_type = subjectTypeSelect.value || refs.subjects[0].reference_type || refs.subject.reference_type || "character";
+        refs.subjects[0].description = subjectDescription.value || refs.subjects[0].description || refs.subject.description || "";
+        refs.subject = { ...refs.subject, ...refs.subjects[0], image: refs.subjects[0].image || refs.subject.image || { path: "", data: "", name: "" } };
+      }
+      const useKrea2 = workflow === "krea2";
+      const workflowLabel = useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+      const missingSubjects = refs.subjects
+        .map((subject, index) => ({ subject, index }))
+        .filter(({ subject }) => {
+          const image = subject?.image || {};
+          return String(subject?.name || subject?.description || "").trim()
+            && !String(image.path || image.data || "").trim();
+        });
+      if (!missingSubjects.length) {
+        toast("All listed subjects already have images, or no usable subjects were found.");
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      const progress = createProgressWindow("Creating subject references", { zIndex: 100008 });
+      createAllMissingSubjectImages.disabled = true;
+      extractSubjects.disabled = true;
+      createAllMissingSubjectImages.textContent = "Creating...";
+      let ranWorkflow = false;
+      try {
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptJobs = [];
+        for (let index = 0; index < missingSubjects.length; index += 1) {
+          const { subject } = missingSubjects[index];
+          const sourceText = `${subject.name || ""}\n${subject.reference_type ? `Reference type: ${subject.reference_type}` : ""}\n${subject.description || ""}`.trim();
+          const percent = 6 + Math.round((index / Math.max(1, missingSubjects.length)) * 34);
+          const message = `Creating subject prompts with Gemma...\n${index + 1}/${missingSubjects.length}: ${subject.name || `Subject ${index + 1}`}\n${gemmaRunnerLine()}`;
+          setInlineProgress(message, percent);
+          progress.set(message, percent);
+          const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+            ...textGemmaRunnerPayload(),
+            model_file: modelFile,
+            reference_type: "subject",
+            source_text: sourceText,
+            style_theme: styleTheme,
+            unload_after: index === missingSubjects.length - 1,
+          }, 3 * 60 * 1000);
+          promptJobs.push({ subject, prompt: promptData.prompt });
+        }
+
+        let zSettings = generatorSettings?.zimage ? cloneZImageSettings({ ...currentZImageReferenceSettings(), ...generatorSettings.zimage }) : currentZImageReferenceSettings();
+        const kreaSettings = generatorSettings?.krea2 || {};
+        for (let index = 0; index < promptJobs.length; index += 1) {
+          const { subject, prompt } = promptJobs[index];
+          const label = subject.name || `Subject ${index + 1}`;
+          const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
+          setInlineProgress(`Building ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          progress.set(`Building ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
+          const built = useKrea2
+            ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
+            : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (!useKrea2 && Number.isFinite(Number(built.used_seed))) {
+            zSettings.seed = Number(built.used_seed);
+            state.zimageSettings = zSettings;
+            zSeed.value = String(zSettings.seed);
+          }
+          setInlineProgress(`Queueing ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
+          progress.set(`Queueing ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent + 3);
+          const queued = await queueWorkflowPrompt(built.prompt);
+          const promptId = queued?.prompt_id;
+          if (!promptId) throw new Error(`ComfyUI queued ${label} but did not return a prompt_id.`);
+          ranWorkflow = true;
+          const images = await waitForImages(promptId, (message) => {
+            setInlineProgress(`${index + 1}/${promptJobs.length}: ${label}\n${message}\nPrompt ID: ${promptId}`, basePercent + 6);
+            progress.set(`${index + 1}/${promptJobs.length}: ${label}\n${message}\nPrompt ID: ${promptId}`, basePercent + 6);
+          });
+          const image = images[images.length - 1];
+          if (!image) throw new Error(`${workflowLabel} did not return a reference image for ${label}.`);
+          const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+            project_folder: projectInput.value || state.projectFolder,
+            reference_type: "subject",
+            name: subject.name || `subject_${index + 1}`,
+            image,
+          });
+          if (!subject.image) subject.image = { path: "", data: "", name: "" };
+          subject.image.path = saved.saved_path || "";
+          subject.image.data = "";
+          subject.image.name = `${subject.name || `subject_${index + 1}`}.png`;
+          if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
+            refs.subject.image = subject.image;
+          }
+          if (!useKrea2) {
+            advanceZImageSeedAfterRun(zSettings);
+            zSettings = cloneZImageSettings(state.zimageSettings);
+            syncZImageSettingsPanel();
+          }
+          renderAll();
+        }
+        refs.use_subject_reference = true;
+        useSubject.input.checked = true;
+        setInlineProgress("Cleaning memory after subject references...", 94);
+        await runImageMemoryCleanupQuiet(progress, "subject references", 94);
+        setInlineProgress("Subject reference images ready.", 100);
+        progress.set(`Created ${promptJobs.length} subject reference image${promptJobs.length === 1 ? "" : "s"}.`, 100);
+        progress.close(1800);
+        hideInlineProgress();
+        toast(`Created ${promptJobs.length} subject reference image${promptJobs.length === 1 ? "" : "s"} with ${workflowLabel}.`);
+      } catch (error) {
+        if (ranWorkflow) {
+          setInlineProgress("Cleaning memory after failed subject reference batch...", 100);
+          await runImageMemoryCleanupQuiet(progress, "failed subject references", 100);
+        }
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        createAllMissingSubjectImages.disabled = false;
+        extractSubjects.disabled = false;
+        createAllMissingSubjectImages.textContent = "Generate Missing Images";
       }
     }
 
@@ -13333,6 +13507,534 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         toast(String(error?.message || error), true);
       }
     }
+
+    async function runFluxReferenceWithKrea2(referenceType, target, sourceText, name = "", generatorSettings = {}) {
+      const text = String(sourceText || "").trim();
+      if (!text) {
+        toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      let ranKrea2 = false;
+      try {
+        setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
+        progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
+        progress.set(`Creating reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          reference_type: referenceType,
+          source_text: text,
+          style_theme: styleTheme,
+          unload_after: true,
+        }, 3 * 60 * 1000);
+        const kreaSettings = generatorSettings.krea2 || {};
+        setInlineProgress("Building Krea2 + ZImage enhancer workflow...", 28);
+        progress.set("Building Krea2 + ZImage enhancer workflow...", 28);
+        const built = await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(promptData.prompt, kreaSettings));
+        setInlineProgress("Queueing Krea2 reference workflow...", 42);
+        progress.set("Queueing Krea2 reference workflow...", 42);
+        const queued = await queueWorkflowPrompt(built.prompt);
+        const promptId = queued?.prompt_id;
+        if (!promptId) throw new Error("ComfyUI queued the Krea2 reference but did not return a prompt_id.");
+        ranKrea2 = true;
+        const images = await waitForImages(promptId, (message) => {
+          setInlineProgress(`${message}\nPrompt ID: ${promptId}`, 66);
+          progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
+        });
+        const image = images[images.length - 1];
+        if (!image) throw new Error("Krea2 did not return a reference image.");
+        setInlineProgress("Saving reference image into the project...", 88);
+        progress.set("Saving reference image into the project...", 88);
+        const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+          project_folder: projectInput.value || state.projectFolder,
+          reference_type: referenceType,
+          name: name || text.slice(0, 48) || referenceType,
+          image,
+        });
+        target.image.path = saved.saved_path || "";
+        target.image.data = "";
+        target.image.name = `${name || referenceType}.png`;
+        renderAll();
+        setInlineProgress("Cleaning memory after Krea2 reference...", 94);
+        await runImageMemoryCleanupQuiet(progress, "Krea2 reference", 94);
+        setInlineProgress("Reference image ready.", 100);
+        progress.set("Reference image ready.", 100);
+        progress.close(1300);
+        hideInlineProgress();
+        toast(referenceType === "subject" ? "Subject reference created with Krea2." : "Location reference created with Krea2.");
+      } catch (error) {
+        if (ranKrea2) {
+          setInlineProgress("Cleaning memory after failed Krea2 reference...", 100);
+          await runImageMemoryCleanupQuiet(progress, "failed Krea2 reference", 100);
+        }
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    }
+
+    function createFluxReferenceWithZImage(referenceType, target, sourceText, name = "") {
+      const text = String(sourceText || "").trim();
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(820px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the image workflow for this Reference Builder image.</div>`;
+      const close = makeButton("Close");
+      header.append(title, close);
+      const note = document.createElement("div");
+      note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+      note.textContent = "ZImage uses the existing reference-image workflow. Krea2 uses the new hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass in that workflow. A subject or location description is required before generation can run.";
+
+      const zSettings = currentZImageReferenceSettings();
+      const zModel = makeSearchableLoraPicker(zSettings.unet_name || "z_image_turbo_bf16.safetensors");
+      const zClip = makeSearchableLoraPicker(zSettings.clip_name || "qwen_3_4b.safetensors");
+      const zVae = makeSearchableLoraPicker(zSettings.vae_name || "ae.safetensors");
+      const kreaModel = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
+      const kreaClip = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
+      const kreaVae = makeSearchableLoraPicker("qwen_image_vae.safetensors");
+      const setLocalOptions = (picker, options = [], fallback = "") => {
+        const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
+        picker.options = values;
+        picker.input.value = chooseModelValue(values, picker.input.value, fallback) || picker.input.value || fallback;
+        wireSearchablePicker(picker);
+      };
+      setLocalOptions(zModel, zUnetPicker.options || [], "z_image_turbo_bf16.safetensors");
+      setLocalOptions(zClip, zClipPicker.options || [], "qwen_3_4b.safetensors");
+      setLocalOptions(zVae, zVaePicker.options || [], "ae.safetensors");
+      setLocalOptions(kreaModel, zUnetPicker.options || [], "krea2_turbo_fp8_scaled.safetensors");
+      setLocalOptions(kreaClip, zClipPicker.options || [], "qwen3vl_4b_fp8_scaled.safetensors");
+      setLocalOptions(kreaVae, zVaePicker.options || [], "qwen_image_vae.safetensors");
+
+      const seed = makeInput(String(zSettings.seed || 1), "number");
+      seed.min = "0";
+      seed.step = "1";
+      const seedMode = makeSelect(["fixed", "random"], zSettings.seed_mode || "fixed");
+      const firstWidth = makeInput("1024", "number");
+      const firstHeight = makeInput("576", "number");
+      const width = makeInput(String(zSettings.second_pass_width || 1920), "number");
+      const height = makeInput(String(zSettings.second_pass_height || 1080), "number");
+      for (const input of [firstWidth, firstHeight, width, height]) {
+        input.min = "64";
+        input.step = "8";
+      }
+
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
+      const modalHelp = (text) => {
+        const help = document.createElement("div");
+        help.textContent = text;
+        help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
+        return help;
+      };
+      const sharedZImageCard = document.createElement("div");
+      sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
+      const sharedTitle = document.createElement("div");
+      sharedTitle.style.cssText = "grid-column:1/-1;font-size:13px;font-weight:900;color:#cffafe;";
+      sharedTitle.textContent = "Shared ZImage / Enhancer Models";
+      const sharedNote = document.createElement("div");
+      sharedNote.style.cssText = "grid-column:1/-1;font-size:12px;color:#94a3b8;line-height:1.35;";
+      sharedNote.textContent = "Used directly by ZImage, and reused as the enhancer pass when Krea2 is selected.";
+      sharedZImageCard.append(
+        sharedTitle,
+        sharedNote,
+        makeField("Diffusion model", zModel.wrapper),
+        makeField("Text encoder", zClip.wrapper),
+        makeField("VAE", zVae.wrapper)
+      );
+      const optionCard = (heading, body, actionLabel, action) => {
+        const card = document.createElement("div");
+        card.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+        const h = document.createElement("div");
+        h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
+        h.textContent = heading;
+        const button = makeButton(actionLabel, "primary");
+        button.onclick = async () => {
+          closeModal();
+          await action();
+        };
+        card.append(h, ...body, button);
+        return card;
+      };
+      grid.append(
+        optionCard("ZImage", [
+          modalHelp("Use the shared ZImage model settings above for a direct ZImage reference image."),
+        ], "Use ZImage", () => runFluxReferenceWithZImage(referenceType, target, text, name, {
+          zimage: {
+            unet_name: zModel.input.value,
+            clip_name: zClip.input.value,
+            vae_name: zVae.input.value,
+          },
+        })),
+        optionCard("Krea2 + ZImage Enhancer", [
+          makeField("Krea2 diffusion model", kreaModel.wrapper),
+          makeField("Krea2 text encoder", kreaClip.wrapper),
+          makeField("Krea2 VAE", kreaVae.wrapper),
+          makeField("Seed", seed),
+          makeField("Seed mode", seedMode),
+          makeField("Krea first width", firstWidth),
+          makeField("Krea first height", firstHeight),
+          makeField("Final width", width),
+          makeField("Final height", height),
+        ], "Use Krea2 + Enhancer", () => runFluxReferenceWithKrea2(referenceType, target, text, name, {
+          krea2: {
+            krea_unet_name: kreaModel.input.value,
+            krea_clip_name: kreaClip.input.value,
+            krea_vae_name: kreaVae.input.value,
+            z_unet_name: zModel.input.value,
+            z_clip_name: zClip.input.value,
+            z_vae_name: zVae.input.value,
+            first_pass_width: Number(firstWidth.value || 1024),
+            first_pass_height: Number(firstHeight.value || 576),
+            width: Number(width.value || 1920),
+            height: Number(height.value || 1080),
+            seed: Number(seed.value || 1),
+            seed_mode: seedMode.value || "fixed",
+          },
+        })),
+      );
+      const footer = document.createElement("div");
+      footer.style.cssText = "display:flex;justify-content:flex-end;";
+      const cancel = makeButton("Cancel");
+      footer.append(cancel);
+      box.append(header, note, sharedZImageCard, grid, footer);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      function closeModal() {
+        backdrop.remove();
+      }
+      close.onclick = closeModal;
+      cancel.onclick = closeModal;
+      backdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === backdrop) closeModal();
+      });
+    }
+
+    function openMissingSubjectImageGeneratorDialog() {
+      ensureSubjectCount();
+      if (refs.subject_count === 1 && refs.subjects[0]) {
+        refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || refs.subject.name || "Subject";
+        refs.subjects[0].reference_type = subjectTypeSelect.value || refs.subjects[0].reference_type || refs.subject.reference_type || "character";
+        refs.subjects[0].description = subjectDescription.value || refs.subjects[0].description || refs.subject.description || "";
+        refs.subject = { ...refs.subject, ...refs.subjects[0], image: refs.subjects[0].image || refs.subject.image || { path: "", data: "", name: "" } };
+      }
+      const missingCount = refs.subjects
+        .filter((subject) => {
+          const image = subject?.image || {};
+          return String(subject?.name || subject?.description || "").trim()
+            && !String(image.path || image.data || "").trim();
+        }).length;
+      if (!missingCount) {
+        toast("All listed subjects already have images, or no usable subjects were found.");
+        return;
+      }
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(820px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate Missing Subject Images</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose one workflow for ${missingCount} missing subject/reference image${missingCount === 1 ? "" : "s"}.</div>`;
+      const close = makeButton("Close");
+      header.append(title, close);
+      const note = document.createElement("div");
+      note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+      note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here.";
+
+      const zSettings = currentZImageReferenceSettings();
+      const zModel = makeSearchableLoraPicker(zSettings.unet_name || "z_image_turbo_bf16.safetensors");
+      const zClip = makeSearchableLoraPicker(zSettings.clip_name || "qwen_3_4b.safetensors");
+      const zVae = makeSearchableLoraPicker(zSettings.vae_name || "ae.safetensors");
+      const kreaModel = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
+      const kreaClip = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
+      const kreaVae = makeSearchableLoraPicker("qwen_image_vae.safetensors");
+      const setLocalOptions = (picker, options = [], fallback = "") => {
+        const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
+        picker.options = values;
+        picker.input.value = chooseModelValue(values, picker.input.value, fallback) || picker.input.value || fallback;
+        wireSearchablePicker(picker);
+      };
+      setLocalOptions(zModel, zUnetPicker.options || [], "z_image_turbo_bf16.safetensors");
+      setLocalOptions(zClip, zClipPicker.options || [], "qwen_3_4b.safetensors");
+      setLocalOptions(zVae, zVaePicker.options || [], "ae.safetensors");
+      setLocalOptions(kreaModel, zUnetPicker.options || [], "krea2_turbo_fp8_scaled.safetensors");
+      setLocalOptions(kreaClip, zClipPicker.options || [], "qwen3vl_4b_fp8_scaled.safetensors");
+      setLocalOptions(kreaVae, zVaePicker.options || [], "qwen_image_vae.safetensors");
+
+      const seed = makeInput(String(zSettings.seed || 1), "number");
+      seed.min = "0";
+      seed.step = "1";
+      const seedMode = makeSelect(["fixed", "random"], zSettings.seed_mode || "fixed");
+      const firstWidth = makeInput("1024", "number");
+      const firstHeight = makeInput("576", "number");
+      const width = makeInput(String(zSettings.second_pass_width || 1920), "number");
+      const height = makeInput(String(zSettings.second_pass_height || 1080), "number");
+      for (const input of [firstWidth, firstHeight, width, height]) {
+        input.min = "64";
+        input.step = "8";
+      }
+
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
+      const modalHelp = (text) => {
+        const help = document.createElement("div");
+        help.textContent = text;
+        help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
+        return help;
+      };
+      const sharedZImageCard = document.createElement("div");
+      sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
+      const sharedTitle = document.createElement("div");
+      sharedTitle.style.cssText = "grid-column:1/-1;font-size:13px;font-weight:900;color:#cffafe;";
+      sharedTitle.textContent = "Shared ZImage / Enhancer Models";
+      const sharedNote = document.createElement("div");
+      sharedNote.style.cssText = "grid-column:1/-1;font-size:12px;color:#94a3b8;line-height:1.35;";
+      sharedNote.textContent = "Used directly by ZImage, and reused as the enhancer pass when Krea2 is selected.";
+      sharedZImageCard.append(
+        sharedTitle,
+        sharedNote,
+        makeField("Diffusion model", zModel.wrapper),
+        makeField("Text encoder", zClip.wrapper),
+        makeField("VAE", zVae.wrapper)
+      );
+      const optionCard = (heading, body, actionLabel, action) => {
+        const card = document.createElement("div");
+        card.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+        const h = document.createElement("div");
+        h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
+        h.textContent = heading;
+        const button = makeButton(actionLabel, "primary");
+        button.onclick = async () => {
+          closeModal();
+          await action();
+        };
+        card.append(h, ...body, button);
+        return card;
+      };
+      grid.append(
+        optionCard("ZImage", [
+          modalHelp("Use the shared ZImage model settings above for every missing subject/reference image."),
+        ], "Use ZImage For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("zimage", {
+          zimage: {
+            unet_name: zModel.input.value,
+            clip_name: zClip.input.value,
+            vae_name: zVae.input.value,
+          },
+        })),
+        optionCard("Krea2 + ZImage Enhancer", [
+          makeField("Krea2 diffusion model", kreaModel.wrapper),
+          makeField("Krea2 text encoder", kreaClip.wrapper),
+          makeField("Krea2 VAE", kreaVae.wrapper),
+          makeField("Seed", seed),
+          makeField("Seed mode", seedMode),
+          makeField("Krea first width", firstWidth),
+          makeField("Krea first height", firstHeight),
+          makeField("Final width", width),
+          makeField("Final height", height),
+        ], "Use Krea2 + Enhancer For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("krea2", {
+          krea2: {
+            krea_unet_name: kreaModel.input.value,
+            krea_clip_name: kreaClip.input.value,
+            krea_vae_name: kreaVae.input.value,
+            z_unet_name: zModel.input.value,
+            z_clip_name: zClip.input.value,
+            z_vae_name: zVae.input.value,
+            first_pass_width: Number(firstWidth.value || 1024),
+            first_pass_height: Number(firstHeight.value || 576),
+            width: Number(width.value || 1920),
+            height: Number(height.value || 1080),
+            seed: Number(seed.value || 1),
+            seed_mode: seedMode.value || "fixed",
+          },
+        })),
+      );
+      const footer = document.createElement("div");
+      footer.style.cssText = "display:flex;justify-content:flex-end;";
+      const cancel = makeButton("Cancel");
+      footer.append(cancel);
+      box.append(header, note, sharedZImageCard, grid, footer);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      function closeModal() {
+        backdrop.remove();
+      }
+      close.onclick = closeModal;
+      cancel.onclick = closeModal;
+      backdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === backdrop) closeModal();
+      });
+    }
+
+    function openMissingLocationImageGeneratorDialog() {
+      const missingCount = refs.locations
+        .filter((location) => {
+          const image = location?.image || {};
+          return String(location?.name || location?.description || "").trim()
+            && !String(image.path || image.data || "").trim();
+        }).length;
+      if (!missingCount) {
+        toast("All listed locations already have images, or no usable locations were found.");
+        return;
+      }
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(820px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate Missing Location Images</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose one workflow for ${missingCount} missing location image${missingCount === 1 ? "" : "s"}.</div>`;
+      const close = makeButton("Close");
+      header.append(title, close);
+      const note = document.createElement("div");
+      note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+      note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here.";
+
+      const zSettings = currentZImageReferenceSettings();
+      const zModel = makeSearchableLoraPicker(zSettings.unet_name || "z_image_turbo_bf16.safetensors");
+      const zClip = makeSearchableLoraPicker(zSettings.clip_name || "qwen_3_4b.safetensors");
+      const zVae = makeSearchableLoraPicker(zSettings.vae_name || "ae.safetensors");
+      const kreaModel = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
+      const kreaClip = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
+      const kreaVae = makeSearchableLoraPicker("qwen_image_vae.safetensors");
+      const setLocalOptions = (picker, options = [], fallback = "") => {
+        const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
+        picker.options = values;
+        picker.input.value = chooseModelValue(values, picker.input.value, fallback) || picker.input.value || fallback;
+        wireSearchablePicker(picker);
+      };
+      setLocalOptions(zModel, zUnetPicker.options || [], "z_image_turbo_bf16.safetensors");
+      setLocalOptions(zClip, zClipPicker.options || [], "qwen_3_4b.safetensors");
+      setLocalOptions(zVae, zVaePicker.options || [], "ae.safetensors");
+      setLocalOptions(kreaModel, zUnetPicker.options || [], "krea2_turbo_fp8_scaled.safetensors");
+      setLocalOptions(kreaClip, zClipPicker.options || [], "qwen3vl_4b_fp8_scaled.safetensors");
+      setLocalOptions(kreaVae, zVaePicker.options || [], "qwen_image_vae.safetensors");
+
+      const seed = makeInput(String(zSettings.seed || 1), "number");
+      seed.min = "0";
+      seed.step = "1";
+      const seedMode = makeSelect(["fixed", "random"], zSettings.seed_mode || "fixed");
+      const firstWidth = makeInput("1024", "number");
+      const firstHeight = makeInput("576", "number");
+      const width = makeInput(String(zSettings.second_pass_width || 1920), "number");
+      const height = makeInput(String(zSettings.second_pass_height || 1080), "number");
+      for (const input of [firstWidth, firstHeight, width, height]) {
+        input.min = "64";
+        input.step = "8";
+      }
+
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
+      const modalHelp = (text) => {
+        const help = document.createElement("div");
+        help.textContent = text;
+        help.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.4;";
+        return help;
+      };
+      const sharedZImageCard = document.createElement("div");
+      sharedZImageCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
+      const sharedTitle = document.createElement("div");
+      sharedTitle.style.cssText = "grid-column:1/-1;font-size:13px;font-weight:900;color:#cffafe;";
+      sharedTitle.textContent = "Shared ZImage / Enhancer Models";
+      const sharedNote = document.createElement("div");
+      sharedNote.style.cssText = "grid-column:1/-1;font-size:12px;color:#94a3b8;line-height:1.35;";
+      sharedNote.textContent = "Used directly by ZImage, and reused as the enhancer pass when Krea2 is selected.";
+      sharedZImageCard.append(
+        sharedTitle,
+        sharedNote,
+        makeField("Diffusion model", zModel.wrapper),
+        makeField("Text encoder", zClip.wrapper),
+        makeField("VAE", zVae.wrapper)
+      );
+      const optionCard = (heading, body, actionLabel, action) => {
+        const card = document.createElement("div");
+        card.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+        const h = document.createElement("div");
+        h.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
+        h.textContent = heading;
+        const button = makeButton(actionLabel, "primary");
+        button.onclick = async () => {
+          closeModal();
+          await action();
+        };
+        card.append(h, ...body, button);
+        return card;
+      };
+      grid.append(
+        optionCard("ZImage", [
+          modalHelp("Use the shared ZImage model settings above for every missing location image."),
+        ], "Use ZImage For All Missing", () => createMissingLocationReferencesWithZImage("zimage", {
+          zimage: {
+            unet_name: zModel.input.value,
+            clip_name: zClip.input.value,
+            vae_name: zVae.input.value,
+          },
+        })),
+        optionCard("Krea2 + ZImage Enhancer", [
+          makeField("Krea2 diffusion model", kreaModel.wrapper),
+          makeField("Krea2 text encoder", kreaClip.wrapper),
+          makeField("Krea2 VAE", kreaVae.wrapper),
+          makeField("Seed", seed),
+          makeField("Seed mode", seedMode),
+          makeField("Krea first width", firstWidth),
+          makeField("Krea first height", firstHeight),
+          makeField("Final width", width),
+          makeField("Final height", height),
+        ], "Use Krea2 + Enhancer For All Missing", () => createMissingLocationReferencesWithZImage("krea2", {
+          krea2: {
+            krea_unet_name: kreaModel.input.value,
+            krea_clip_name: kreaClip.input.value,
+            krea_vae_name: kreaVae.input.value,
+            z_unet_name: zModel.input.value,
+            z_clip_name: zClip.input.value,
+            z_vae_name: zVae.input.value,
+            first_pass_width: Number(firstWidth.value || 1024),
+            first_pass_height: Number(firstHeight.value || 576),
+            width: Number(width.value || 1920),
+            height: Number(height.value || 1080),
+            seed: Number(seed.value || 1),
+            seed_mode: seedMode.value || "fixed",
+          },
+        })),
+      );
+      const footer = document.createElement("div");
+      footer.style.cssText = "display:flex;justify-content:flex-end;";
+      const cancel = makeButton("Cancel");
+      footer.append(cancel);
+      box.append(header, note, sharedZImageCard, grid, footer);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      function closeModal() {
+        backdrop.remove();
+      }
+      close.onclick = closeModal;
+      cancel.onclick = closeModal;
+      backdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === backdrop) closeModal();
+      });
+    }
+
+    const referenceSubjectContextForLocations = () => (refs.subjects || [])
+      .map((subject) => {
+        const type = String(subject.reference_type || "character").trim();
+        const name = String(subject.name || "").trim();
+        const description = String(subject.description || "").trim();
+        if (!name && !description) return "";
+        return `${name || "Reference"}${type ? ` (${type})` : ""}${description ? `: ${description}` : ""}`;
+      })
+      .filter(Boolean)
+      .join("\n");
 
     async function extractLocationsWithGemma() {
       let progress = null;
@@ -13392,6 +14094,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             ...textGemmaRunnerPayload(),
             model_file: modelFile,
             lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
+            style_theme: locationStyleTheme.value || "",
+            subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
             max_new_tokens: 2200,
@@ -13402,6 +14106,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             model_file: modelFile,
             scenes: planningScenes,
             subject_scene_text: subjectSceneInput.value || "",
+            style_theme: locationStyleTheme.value || "",
+            subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
             unload_after: true,
@@ -14044,7 +14750,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         wireDrop(drop, target);
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-        const createZImage = makeButton("Create with ZImage", "primary");
+        const createZImage = makeButton("Generate Subject", "primary");
+        createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this subject reference.";
         const describeImage = makeButton("Gemma Describe", "primary");
         const upload = makeButton("Upload", "primary");
         const clear = makeButton("Clear");
@@ -14114,7 +14821,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         wireDrop(drop, target);
         const buttons = document.createElement("div");
         buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-        const createZImage = makeButton("Create with ZImage", "primary");
+        const createZImage = makeButton("Generate Location", "primary");
+        createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this location reference.";
         const describeImage = makeButton("Gemma Describe", "primary");
         const upload = makeButton("Upload", "primary");
         const clear = makeButton("Clear");
@@ -14236,6 +14944,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           }));
       describeReferenceItemsWithGemma(subjectItems, "subject", { keepLoaded: true, clearBeforeLoad: false });
     };
+    createAllMissingSubjectImages.onclick = openMissingSubjectImageGeneratorDialog;
     describeMissingLocations.onclick = () => {
       const locationItems = refs.locations.map((location, index) => ({
         target: location,
@@ -14347,7 +15056,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
     autoMapLocations.onclick = autoMapLocationsWithGemma;
-    createAllMissingLocationZImages.onclick = createMissingLocationReferencesWithZImage;
+    createAllMissingLocationZImages.onclick = openMissingLocationImageGeneratorDialog;
     importLocations.onclick = openImportLocationSourceDialog;
     exportLocations.onclick = exportReferenceBuilderLocations;
     exportGptSceneContext.onclick = exportSceneMappingContextForGpt;
@@ -14452,6 +15161,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.use_subject_reference = Boolean(useSubject.input.checked && refs.subjects.length);
       refs.use_location_references = Boolean(useLocations.input.checked);
       refs.include_manual_ingredients = Boolean(includeManual.input.checked);
+      refs.location_style_theme = String(locationStyleTheme.value || "");
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       renderFluxIngredientList(activeSegment());
       renderNBIngredientList(activeSegment());
@@ -14544,12 +15254,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const autoMapLocations = makeButton("Auto Map", "primary");
     const clearLocations = makeButton("Clear Locations");
     locationToolActions.append(importLocations, addLocation, autoMapLocations, clearLocations);
+    const locationStyleTheme = makeInput(refs.location_style_theme || "");
+    locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
+    locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
     const locationHint = document.createElement("div");
     locationHint.textContent = "Import location lists or scene-to-location JSON, then choose those locations in the scene dropdowns above.";
     locationHint.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     const locationList = document.createElement("div");
     locationList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;padding-right:4px;";
-    locationPanel.append(locationHeader, locationToolActions, locationHint, locationList);
+    locationPanel.append(locationHeader, locationToolActions, makeField("Optional style/theme for location extraction", locationStyleTheme), locationHint, locationList);
 
     const rightStack = document.createElement("div");
     rightStack.style.cssText = "display:flex;flex-direction:column;gap:12px;";
@@ -15282,6 +15995,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
       pushHistory();
       collectMappingsFromDom();
       syncNamedIngredientsSheetsToSubjects();
+      refs.location_style_theme = String(locationStyleTheme.value || "");
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       const applied = applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
       syncInspector();
@@ -15394,9 +16108,12 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     const exportLocations = makeButton("Export", "primary");
     const removeAllLocations = makeButton("Remove");
     locationTools.append(extractLocations, autoMapLocations, importLocations, exportLocations, removeAllLocations);
+    const locationStyleTheme = makeInput(refs.location_style_theme || "");
+    locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
+    locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
     const locationsList = document.createElement("div");
     locationsList.style.cssText = subjectsList.style.cssText;
-    locationsCard.append(locationsHeader, locationTools, locationsList);
+    locationsCard.append(locationsHeader, locationTools, makeField("Optional style/theme for location extraction", locationStyleTheme), locationsList);
 
     const mappingCard = document.createElement("div");
     mappingCard.style.cssText = cardStyle;
@@ -15443,6 +16160,16 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
       const text = String(value || "").replace(/\s+/g, " ").trim();
       return text.length > limit ? `${text.slice(0, Math.max(0, limit - 3)).trim()}...` : text;
     };
+    const subjectContextForTextMapLocations = () => (refs.subjects || [])
+      .map((subject) => {
+        const type = String(subject.reference_type || "character").trim();
+        const name = String(subject.name || "").trim();
+        const description = String(subject.description || "").trim();
+        if (!name && !description) return "";
+        return `${name || "Reference"}${type ? ` (${type})` : ""}${description ? `: ${description}` : ""}`;
+      })
+      .filter(Boolean)
+      .join("\n");
     const parseLocationListForTextMap = (rawText) => {
       const text = String(rawText || "").trim();
       if (!text) return { locations: [], sceneMap: [] };
@@ -15826,6 +16553,8 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             ...textGemmaRunnerPayload(),
             model_file: modelFile,
             lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
+            style_theme: locationStyleTheme.value || "",
+            subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
             max_new_tokens: 2200,
@@ -15836,6 +16565,8 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             model_file: modelFile,
             scenes,
             subject_scene_text: subjectSceneInput.value || "",
+            style_theme: locationStyleTheme.value || "",
+            subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
             unload_after: true,
@@ -16094,6 +16825,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       refs.subject_count = refs.cleared ? 0 : Math.max(1, refs.subjects.length || Number(refs.subject_count || 1));
       refs.use_subject_reference = hasSubjects || Object.keys(refs.subject_scene_map || {}).length > 0;
       refs.use_location_references = hasLocations || Object.keys(refs.scene_map || {}).length > 0;
+      refs.location_style_theme = String(locationStyleTheme.value || "");
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
       await syncLyricAndSubjectNoteFiles("scene text mapping save");
       await autoSaveSessionQuiet("scene text mapping saved");
@@ -24497,6 +25229,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       })
       .filter(Boolean)
       .join("\n");
+    const wizardSubjectContextForLocations = (refs) => (refs.subjects || [])
+      .map((subject) => {
+        const type = String(subject.reference_type || "character").trim();
+        const name = String(subject.name || "").trim();
+        const description = String(subject.description || "").trim();
+        if (!name && !description) return "";
+        return `${name || "Reference"}${type ? ` (${type})` : ""}${description ? `: ${description}` : ""}`;
+      })
+      .filter(Boolean)
+      .join("\n");
     const createWizardLocationsFromLyrics = async (options = {}) => {
       setWizardVideoMode("rtv");
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
@@ -24517,6 +25259,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ...textGemmaRunnerPayload(),
           model_file: modelFile,
           lyrics_text: lyricsText,
+          style_theme: options.styleTheme || options.style_theme || refs.location_style_theme || "",
+          subject_context: wizardSubjectContextForLocations(refs),
           existing_locations: refs.locations.map((item) => ({
             name: compactWizardText(item.name, 90),
             description: compactWizardText(item.description, 700),
@@ -24726,6 +25470,47 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress.set("Story brief saved.", 100);
         progress.close(1400);
         toast("Wizard story brief created.");
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
+      } catch (error) {
+        progress.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+        return normalizeBuilderStoryLayer(state.builderStoryLayer);
+      }
+    };
+    const createWizardStoryArc = async (draft = {}) => {
+      const layer = normalizeBuilderStoryLayer({
+        ...state.builderStoryLayer,
+        ...(draft?.storyLayer || draft?.story_layer || {}),
+        user_story_arc: draft?.userStoryArc ?? draft?.user_story_arc ?? state.builderStoryLayer?.user_story_arc,
+      });
+      state.builderStoryLayer = layer;
+      const scenes = storyboardScenePayload();
+      const progress = createProgressWindow("Wizard Story Arc", { zIndex: 100012 });
+      try {
+        progress.set("Creating a short song-structure story arc from lyrics, subjects, and locations...", 18);
+        const data = await postJson("/vrgdg/storyboard/story_arc", {
+          ...(state.textGemmaRunner === "lm_studio" ? textGemmaRunnerPayload() : {}),
+          text_runner: state.textGemmaRunner || "builtin",
+          model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+          lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
+          lmstudio_model: state.lmStudioModel || "",
+          lmstudio_api_key: state.lmStudioApiKey || "",
+          story_layer: layer,
+          story_idea: draft?.storyIdea ?? draft?.story_idea ?? layer.user_story_arc,
+          lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
+          scenes,
+          reference_builder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+          unload_after: true,
+          max_new_tokens: 900,
+        }, 240000);
+        state.builderStoryLayer = normalizeBuilderStoryLayer({
+          ...layer,
+          user_story_arc: data.story_arc || "",
+        });
+        await autoSaveSessionQuiet("wizard story arc");
+        progress.set("Story arc saved.", 100);
+        progress.close(1400);
+        toast("Wizard story arc created.");
         return normalizeBuilderStoryLayer(state.builderStoryLayer);
       } catch (error) {
         progress.set(`Error:\n${String(error?.message || error)}`, 100);
@@ -24962,10 +25747,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         openFluxReferenceBuilderModal({ wizardMode: true });
       },
       openLyricMapping: openLyricMappingWorkflowModal,
+      openLyricReview: openLyricReviewModal,
       openStoryboard: openStoryboardBuilderFromProject,
       createLocationsFromLyrics: createWizardLocationsFromLyrics,
       autoMapLocations: autoMapWizardLocations,
       detectLyricSections: detectWizardLyricSections,
+      createStoryArc: createWizardStoryArc,
       createStoryBrief: createWizardStoryBrief,
       createSceneBeats: createWizardSceneBeats,
       updateStoryLayer: async (storyLayer = {}) => {

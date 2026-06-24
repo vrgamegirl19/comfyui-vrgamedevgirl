@@ -1328,9 +1328,9 @@ export function openMusicVideoWizard(api = {}) {
     };
     ref.append(openRef);
     const lyric = card("2. Review Lyrics + Map Singers", "Correct lyric notes, choose who sings, mark B-roll/instrumental sections, and mark no-character scenes when needed.");
-    const openLyrics = button("Open Lyric Mapping", "primary");
+    const openLyrics = button("Open Review + Map Singers", "primary");
     openLyrics.onclick = () => {
-      openNestedTool(() => api.openLyricMapping?.(), "wizard lyric mapping");
+      openNestedTool(() => (api.openLyricReview || api.openLyricMapping)?.(), "wizard lyric review");
     };
     lyric.append(openLyrics);
     const defaultsData = data.sceneDefaults || {};
@@ -1473,7 +1473,28 @@ export function openMusicVideoWizard(api = {}) {
       wizardState.storyLayer.enabled = Boolean(enabled.checked);
       queueWizardDraftSave();
     });
-    arc.append(enabledLabel, arcText);
+    const arcButton = button("Create User Story Arc", "primary");
+    arcButton.onclick = async () => {
+      arcButton.disabled = true;
+      try {
+        wizardState.storyLayer.user_story_arc = arcText.value;
+        wizardState.storyLayer.enabled = Boolean(enabled.checked);
+        const updated = await api.createStoryArc?.({
+          storyLayer: wizardState.storyLayer,
+          userStoryArc: arcText.value,
+          storyIdea: arcText.value,
+        });
+        if (updated) {
+          wizardState.storyLayer = { ...wizardState.storyLayer, ...updated };
+          arcText.value = wizardState.storyLayer.user_story_arc || "";
+        }
+        done.add("story");
+        await saveWizardProgress("wizard story arc");
+      } finally {
+        arcButton.disabled = false;
+      }
+    };
+    arc.append(enabledLabel, arcText, arcButton);
     const brief = card("2. Song Story Brief", "A compact Gemma summary of the song's premise, emotional arc, motifs, and scene guidance.");
     const briefText = textarea(wizardState.storyLayer.song_story_brief || "", "Create or edit the song story brief...");
     briefText.style.minHeight = "190px";

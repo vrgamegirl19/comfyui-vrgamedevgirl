@@ -54,6 +54,15 @@ def _zimage_api_template_path():
     )
 
 
+def _krea2_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "Krea2_TextToImage_API.json",
+    )
+
+
 def _flux_klein_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -608,6 +617,58 @@ def _patch_zimage_api_prompt(prompt, payload):
         for slot in range(1, _MAX_LORA_SLOTS + 1):
             _set_api_input(prompt, lora_node_id, f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
             _set_api_input(prompt, lora_node_id, f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
+    return prompt, seed
+
+
+def _patch_krea2_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("Prompt text is empty.")
+
+    width = _int_payload(payload, "width", 1920, 64, 4096)
+    height = _int_payload(payload, "height", 1080, 64, 4096)
+    first_width = _int_payload(payload, "first_pass_width", 1024, 64, 4096)
+    first_height = _int_payload(payload, "first_pass_height", 576, 64, 4096)
+    seed_mode = str(payload.get("seed_mode", "fixed") or "fixed").strip().lower()
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    if seed_mode in {"random", "randomize"}:
+        seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+
+    krea_unet = str(payload.get("krea_unet_name") or payload.get("unet_name") or "krea2_turbo_fp8_scaled.safetensors").strip()
+    krea_clip = str(payload.get("krea_clip_name") or payload.get("clip_name") or "qwen3vl_4b_fp8_scaled.safetensors").strip()
+    krea_vae = str(payload.get("krea_vae_name") or payload.get("vae_name") or "qwen_image_vae.safetensors").strip()
+    z_unet = str(payload.get("z_unet_name") or payload.get("enhance_unet_name") or "z_image_turbo_bf16.safetensors").strip()
+    z_clip = str(payload.get("z_clip_name") or payload.get("enhance_clip_name") or "qwen_3_4b.safetensors").strip()
+    z_vae = str(payload.get("z_vae_name") or payload.get("enhance_vae_name") or "ae.safetensors").strip()
+
+    _set_api_input(prompt, "200", "text", prompt_text)
+    _set_api_input(prompt, "30:10", "unet_name", krea_unet)
+    _set_api_input(prompt, "30:11", "clip_name", krea_clip)
+    _set_api_input(prompt, "30:12", "vae_name", krea_vae)
+    _set_api_input(prompt, "30:3", "seed", seed)
+    _set_api_input(prompt, "30:5", "batch_size", _int_payload(payload, "batch_size", 1, 1, 16))
+    _set_api_input(prompt, "201", "width", first_width)
+    _set_api_input(prompt, "201", "height", first_height)
+
+    _set_api_input(prompt, "193:16", "unet_name", z_unet)
+    _set_api_input(prompt, "193:18", "clip_name", z_clip)
+    _set_api_input(prompt, "193:17", "vae_name", z_vae)
+    _set_api_input(prompt, "193:86", "noise_seed", seed)
+    _set_api_input(prompt, "193:98", "width", width)
+    _set_api_input(prompt, "193:98", "height", height)
+
+    aspect_node = prompt.get("49")
+    if isinstance(aspect_node, dict):
+        inputs = aspect_node.setdefault("inputs", {})
+        ratio = width / max(1, height)
+        if abs(ratio - (16 / 9)) < 0.04:
+            inputs["aspect_ratio"] = "16:9 (Widescreen)"
+        elif abs(ratio - 1) < 0.04:
+            inputs["aspect_ratio"] = "1:1 (Square)"
+        elif ratio < 1:
+            inputs["aspect_ratio"] = "9:16 (Portrait)"
+        inputs["megapixels"] = max(0.25, round((first_width * first_height) / 1000000, 2))
     return prompt, seed
 
 
@@ -1655,6 +1716,16 @@ def _build_zimage_api_prompt(payload):
     }
 
 
+def _build_krea2_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_krea2_api_template_path())
+    patched_prompt, used_seed = _patch_krea2_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "prompt": patched_prompt,
+        "used_seed": used_seed,
+    }
+
+
 def _build_ernie_image_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_ernie_image_api_template_path())
     patched_prompt, used_seed = _patch_ernie_image_api_prompt(prompt, payload)
@@ -2499,6 +2570,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_zimage_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_krea2_prompt")
+    async def vrgdg_workflow_runner_build_krea2_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_krea2_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
