@@ -1194,8 +1194,9 @@ function extractVideosFromHistory(historyPayload, promptId) {
   return videos;
 }
 
-async function waitForVideos(promptId, onStatus, shouldCancel) {
+async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null) {
   const started = Date.now();
+  let lastFallbackCheck = 0;
   while (Date.now() - started < 40 * 60 * 1000) {
     if (shouldCancel?.()) throw new Error("Stopped by user.");
     const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
@@ -1205,7 +1206,16 @@ async function waitForVideos(promptId, onStatus, shouldCancel) {
     if (promptError) throw new Error(`Scene video workflow failed:\n${promptError}`);
     const videos = extractVideosFromHistory(data, promptId);
     if (videos.length) return videos;
+    if (typeof findOutputFallback === "function" && Date.now() - lastFallbackCheck > 10000) {
+      lastFallbackCheck = Date.now();
+      const fallbackPath = await findOutputFallback().catch(() => "");
+      if (fallbackPath) return [{ params: { fullpath: fallbackPath }, fullpath: fallbackPath }];
+    }
     if (promptHistoryFinished(data, promptId)) {
+      if (typeof findOutputFallback === "function") {
+        const fallbackPath = await findOutputFallback().catch(() => "");
+        if (fallbackPath) return [{ params: { fullpath: fallbackPath }, fullpath: fallbackPath }];
+      }
       throw new Error("Scene video workflow finished, but no video output was found in history.");
     }
     onStatus?.("Waiting for scene video...");
@@ -4903,6 +4913,7 @@ function openBuilder(node) {
       scene_map: {},
       scene_trigger_map: {},
       location_style_theme: "",
+      locations_cleared: false,
       cleared: false,
       trigger_position: "start",
       subject_trigger_position: "start",
@@ -4954,7 +4965,7 @@ function openBuilder(node) {
       seen.add(cleanId);
       choices.push({ id: cleanId, label: cleanLabel });
     };
-    for (const subject of refs.subjects || []) {
+    for (const subject of logicalReferenceSubjects(refs)) {
       const subjectName = String(subject.name || "").trim();
       add(subject.id, subjectName && subjectName !== "Character 1" ? subjectName : "the singer");
     }
@@ -4989,6 +5000,50 @@ function openBuilder(node) {
     return Array.isArray(value)
       ? value.map((item) => String(item || "").trim()).filter(Boolean)
       : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  function isExtraSubjectReference(subject = {}) {
+    return Boolean(String(subject?.extra_reference_for || subject?.extraReferenceFor || subject?.same_subject_as || subject?.sameSubjectAs || "").trim());
+  }
+
+  function subjectExtraTargetId(subject = {}) {
+    return String(subject?.extra_reference_for || subject?.extraReferenceFor || subject?.same_subject_as || subject?.sameSubjectAs || "").trim();
+  }
+
+  function logicalReferenceSubjects(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    return (normalizedRefs.subjects || []).filter((subject) => !isExtraSubjectReference(subject));
+  }
+
+  function logicalSubjectIdsForScene(refs, segment, index = null) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const ids = sceneReferenceMapArray(normalizedRefs.subject_scene_map, segment, index);
+    const validLogicalIds = new Set(logicalReferenceSubjects(normalizedRefs).map((subject) => subject.id));
+    const mappedToLogical = ids
+      .map((id) => {
+        const subject = normalizedRefs.subjects.find((item) => item.id === id);
+        if (!subject) return "";
+        return subjectExtraTargetId(subject) || subject.id;
+      })
+      .filter((id) => id && validLogicalIds.has(id));
+    return Array.from(new Set(mappedToLogical));
+  }
+
+  function expandSubjectReferencesForRender(refs, subjects = []) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const selectedIds = new Set((subjects || []).map((subject) => String(subject?.id || "").trim()).filter(Boolean));
+    const expanded = [...subjects];
+    for (const subject of normalizedRefs.subjects || []) {
+      const targetId = subjectExtraTargetId(subject);
+      if (targetId && selectedIds.has(targetId)) expanded.push(subject);
+    }
+    const seen = new Set();
+    return expanded.filter((subject) => {
+      const id = String(subject?.id || "").trim();
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
   }
 
   function splitLyricsToMapperLines(text) {
@@ -5098,6 +5153,11 @@ function openBuilder(node) {
     };
     const refKeyForDedupe = (item = {}) => {
       const name = String(item.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+      const extraTarget = String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || "").trim();
+      if (extraTarget) {
+        const image = item.image && typeof item.image === "object" ? item.image : item;
+        return String(item.id || image.path || image.data || `${name}:${extraTarget}`).trim().toLowerCase();
+      }
       return name || String(item.id || "").trim().toLowerCase();
     };
     const dedupeRefsByName = (items = []) => {
@@ -5115,6 +5175,8 @@ function openBuilder(node) {
           reference_type: existing.reference_type || item.reference_type || item.referenceType || item.type,
           trigger_phrase: existing.trigger_phrase || item.trigger_phrase,
           trigger_position: existing.trigger_position || item.trigger_position,
+          extra_reference_for: existing.extra_reference_for || item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs,
+          extra_reference_note: existing.extra_reference_note || item.extra_reference_note || item.extraReferenceNote,
           image: {
             ...(item.image || {}),
             ...(existing.image || {}),
@@ -5127,6 +5189,7 @@ function openBuilder(node) {
     normalized.use_location_references = Boolean(source.use_location_references);
     normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
     normalized.cleared = Boolean(source.cleared || source.clear_all || source.empty);
+    normalized.locations_cleared = Boolean(source.locations_cleared || source.locationsCleared || source.clear_locations || source.clearLocations);
     normalized.trigger_position = String(source.trigger_position || source.triggerPosition || source.trigger_placement || "start") === "end" ? "end" : "start";
     normalized.subject_trigger_position = String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
     normalized.location_trigger_position = String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
@@ -5154,6 +5217,8 @@ function openBuilder(node) {
           reference_type: normalizeReferenceType(item.reference_type || item.referenceType || item.type || "character"),
           trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
           trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
+          extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
+          extra_reference_note: String(item.extra_reference_note || item.extraReferenceNote || ""),
           image: normalizeRefImage(item),
         };
       }) : [];
@@ -5165,6 +5230,8 @@ function openBuilder(node) {
         reference_type: normalized.subject.reference_type || "character",
         trigger_phrase: String(subject.trigger_phrase || subject.trigger || subject.Trigger || ""),
         trigger_position: String(subject.trigger_position || subject.triggerPosition || subject.trigger_placement || "start") === "end" ? "end" : "start",
+        extra_reference_for: "",
+        extra_reference_note: "",
         image: { ...normalized.subject.image },
       });
     }
@@ -5176,9 +5243,19 @@ function openBuilder(node) {
         reference_type: "character",
         trigger_phrase: "",
         trigger_position: "start",
+        extra_reference_for: "",
+        extra_reference_note: "",
         image: { path: "", data: "", name: "" },
       });
     }
+    const subjectIdSet = new Set(normalized.subjects.map((subject) => String(subject.id || "").trim()).filter(Boolean));
+    normalized.subjects.forEach((subject) => {
+      const targetId = String(subject.extra_reference_for || "").trim();
+      if (!targetId || targetId === subject.id || !subjectIdSet.has(targetId)) {
+        subject.extra_reference_for = "";
+        subject.extra_reference_note = subject.extra_reference_for ? subject.extra_reference_note : "";
+      }
+    });
     normalized.subjects = normalized.cleared ? [] : normalized.subjects.slice(0, normalized.subject_count);
     if (!normalized.subjects.length) {
       normalized.subject_count = 0;
@@ -5205,7 +5282,7 @@ function openBuilder(node) {
         normalized.subject_scene_map[sceneId] = Array.isArray(value) ? value.map(String).filter(Boolean) : String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
       }
     }
-    normalized.locations = normalized.cleared ? [] : dedupeRefsByName(Array.isArray(source.locations) ? source.locations : [])
+    normalized.locations = (normalized.cleared || normalized.locations_cleared) ? [] : dedupeRefsByName(Array.isArray(source.locations) ? source.locations : [])
       .filter((item) => item && typeof item === "object")
       .map((item, index) => {
         return {
@@ -5217,8 +5294,8 @@ function openBuilder(node) {
           image: normalizeRefImage(item),
         };
       });
-    normalized.scene_map = source.scene_map && typeof source.scene_map === "object" ? { ...source.scene_map } : {};
-    normalized.scene_trigger_map = source.scene_trigger_map && typeof source.scene_trigger_map === "object" ? { ...source.scene_trigger_map } : {};
+    normalized.scene_map = (normalized.cleared || normalized.locations_cleared) ? {} : (source.scene_map && typeof source.scene_map === "object" ? { ...source.scene_map } : {});
+    normalized.scene_trigger_map = (normalized.cleared || normalized.locations_cleared) ? {} : (source.scene_trigger_map && typeof source.scene_trigger_map === "object" ? { ...source.scene_trigger_map } : {});
     const hasMeaningfulSubject = !normalized.cleared && (
       Boolean(normalized.subject?.description || normalized.subject?.image?.path || normalized.subject?.image?.data || normalized.subject?.image?.name)
       || Object.keys(normalized.subject_scene_map || {}).length > 0
@@ -5235,7 +5312,15 @@ function openBuilder(node) {
         );
       })
     );
-    const hasMeaningfulLocation = !normalized.cleared && (
+    const validLocationIds = new Set(normalized.locations.map((location) => String(location.id || "").trim()).filter(Boolean));
+    if (!validLocationIds.size) {
+      normalized.scene_map = {};
+    } else {
+      for (const [sceneId, locationId] of Object.entries(normalized.scene_map || {})) {
+        if (!validLocationIds.has(String(locationId || "").trim())) delete normalized.scene_map[sceneId];
+      }
+    }
+    const hasMeaningfulLocation = !normalized.cleared && !normalized.locations_cleared && (
       normalized.locations.length > 0
       || Object.keys(normalized.scene_map || {}).length > 0
       || Object.keys(normalized.scene_trigger_map || {}).length > 0
@@ -6336,9 +6421,10 @@ function openBuilder(node) {
     };
     if (refs.use_subject_reference) {
       if (refs.subject_count > 1 && segment) {
-        const subjectIds = sceneReferenceMapArray(refs.subject_scene_map, segment);
+        const subjectIds = logicalSubjectIdsForScene(refs, segment);
         const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
-        refs.subjects.filter((item) => idSet.has(item.id)).forEach((item) => addUnique(item.image));
+        const mapped = refs.subjects.filter((item) => idSet.has(item.id));
+        expandSubjectReferencesForRender(refs, mapped).forEach((item) => addUnique(item.image));
       } else {
         addUnique(refs.subject?.image || refs.subjects?.[0]?.image);
       }
@@ -6391,11 +6477,11 @@ function openBuilder(node) {
       return [];
     }
     if (normalizedRefs.subject_count > 1 && segment) {
-      const subjectIds = sceneReferenceMapArray(normalizedRefs.subject_scene_map, segment);
+      const subjectIds = logicalSubjectIdsForScene(normalizedRefs, segment);
       const idSet = new Set(Array.isArray(subjectIds) ? subjectIds : [subjectIds].filter(Boolean));
       const mapped = normalizedRefs.subjects.filter((item) => idSet.has(item.id));
-      if (mapped.length) return mapped;
-      const imageBackedSubjects = normalizedRefs.subjects.filter(referenceBuilderSubjectHasImage);
+      if (mapped.length) return expandSubjectReferencesForRender(normalizedRefs, mapped);
+      const imageBackedSubjects = logicalReferenceSubjects(normalizedRefs).filter(referenceBuilderSubjectHasImage);
       if (imageBackedSubjects.length === 1) return imageBackedSubjects;
       if (!imageBackedSubjects.length && referenceBuilderSubjectHasImage(normalizedRefs.subject)) {
         return [{
@@ -9412,9 +9498,7 @@ function openBuilder(node) {
     if (!segment) return "";
     if (segment.no_character_present) return "";
     const indexKey = String(segmentIndexInfo(segment).index + 1);
-    const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
-      ? refs.subject_scene_map[segment.id]
-      : (Array.isArray(refs.subject_scene_map?.[indexKey]) ? refs.subject_scene_map[indexKey] : []);
+    const subjectIds = logicalSubjectIdsForScene(refs, segment, Number(indexKey) - 1);
     const subjects = subjectIds
       .map((id) => refs.subjects.find((item) => item.id === id))
       .filter(Boolean)
@@ -9458,9 +9542,7 @@ function openBuilder(node) {
     };
     const indexKey = String(segmentIndexInfo(segment).index + 1);
     if (!segment.no_character_present) {
-      const subjectIds = Array.isArray(refs.subject_scene_map?.[segment.id])
-        ? refs.subject_scene_map[segment.id]
-        : (Array.isArray(refs.subject_scene_map?.[indexKey]) ? refs.subject_scene_map[indexKey] : []);
+      const subjectIds = logicalSubjectIdsForScene(refs, segment, Number(indexKey) - 1);
       subjectIds
         .map((id) => refs.subjects.find((subject) => subject.id === id))
         .filter(Boolean)
@@ -12500,6 +12582,8 @@ function openBuilder(node) {
           name: `Character ${refs.subjects.length + 1}`,
           description: "",
           reference_type: "character",
+          extra_reference_for: "",
+          extra_reference_note: "",
           image: { path: "", data: "", name: "" },
         });
       }
@@ -12517,6 +12601,8 @@ function openBuilder(node) {
         name: String(name || `Character ${refs.subjects.length + 1}`).trim(),
         description: String(description || "").trim(),
         reference_type: "character",
+        extra_reference_for: "",
+        extra_reference_note: "",
         image: { path: "", data: "", name: "" },
       };
       refs.subjects.push(subject);
@@ -12559,7 +12645,7 @@ function openBuilder(node) {
       const hints = [];
       if (/\b(female|woman|girl|lady)\b/.test(text)) hints.push("female");
       if (/\b(male|man|boy|guy)\b/.test(text)) hints.push("male");
-      for (const subject of refs.subjects) {
+      for (const subject of logicalReferenceSubjects(refs)) {
         const name = String(subject?.name || "").trim().toLowerCase();
         if (name && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) {
           hints.push(subject.id);
@@ -12570,7 +12656,7 @@ function openBuilder(node) {
     const autoMapSubjectsFromDirectorNotes = () => {
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
       const subjectByGender = {};
-      for (const subject of refs.subjects) {
+      for (const subject of logicalReferenceSubjects(refs)) {
         const gender = subjectGenderHint(subject);
         if (gender && !subjectByGender[gender]) subjectByGender[gender] = subject.id;
       }
@@ -12579,7 +12665,7 @@ function openBuilder(node) {
         const hints = noteSubjectHints(segment.timeline_note);
         const ids = hints
           .map((hint) => subjectByGender[hint] || hint)
-          .filter((id) => refs.subjects.some((subject) => subject.id === id));
+          .filter((id) => logicalReferenceSubjects(refs).some((subject) => subject.id === id));
         const uniqueIds = Array.from(new Set(ids));
         if (uniqueIds.length) {
           refs.subject_scene_map[segment.id] = uniqueIds;
@@ -12598,7 +12684,7 @@ function openBuilder(node) {
       };
       const normalized = (value) => String(value || "").toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, " ").replace(/\s+/g, " ").trim();
       const subjectByGender = {};
-      for (const subject of refs.subjects) {
+      for (const subject of logicalReferenceSubjects(refs)) {
         const gender = subjectGenderHint(subject);
         if (gender && !subjectByGender[gender]) subjectByGender[gender] = subject;
       }
@@ -12606,15 +12692,15 @@ function openBuilder(node) {
         const cleanSinger = normalized(singer);
         if (!cleanSinger || isNoLipSyncSingerChoice(singer)) continue;
         if (/\b(group|all visible|all singers|duet|both)\b/i.test(singer)) {
-          refs.subjects.forEach(addSubject);
+          logicalReferenceSubjects(refs).forEach(addSubject);
           continue;
         }
-        const byId = refs.subjects.find((subject) => subject.id === singer);
+        const byId = logicalReferenceSubjects(refs).find((subject) => subject.id === singer);
         if (byId) {
           addSubject(byId);
           continue;
         }
-        const byName = refs.subjects.find((subject) => {
+        const byName = logicalReferenceSubjects(refs).find((subject) => {
           const name = normalized(subject.name);
           return name && (cleanSinger === name || cleanSinger.includes(name) || name.includes(cleanSinger));
         });
@@ -12670,7 +12756,7 @@ function openBuilder(node) {
         const segment = segments[index];
         const note = String(notes[index] || "");
         const subjectIds = [];
-        for (const subject of refs.subjects) {
+        for (const subject of logicalReferenceSubjects(refs)) {
           if (sceneNoteMentionsSubject(note, subject) && subject.id && !subjectIds.includes(subject.id)) {
             subjectIds.push(subject.id);
           }
@@ -12683,6 +12769,7 @@ function openBuilder(node) {
       return { mapped, matches, path: sceneNotesPath };
     };
     const createLocation = (name = "", description = "") => {
+      refs.locations_cleared = false;
       const location = {
         id: `loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
         name: String(name || `Location ${refs.locations.length + 1}`).trim(),
@@ -14736,12 +14823,32 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         description.value = subject.description || "";
         description.placeholder = "Reference details. For props/objects, describe shape, material, color, markings, and important visual features.";
         description.style.cssText = "min-height:76px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;";
+        const sameSubjectWrap = document.createElement("div");
+        sameSubjectWrap.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;";
+        const sameSubjectCheck = document.createElement("input");
+        sameSubjectCheck.type = "checkbox";
+        sameSubjectCheck.checked = Boolean(subjectExtraTargetId(subject));
+        const sameSubjectLabel = document.createElement("div");
+        sameSubjectLabel.innerHTML = `<div style="font-size:12px;font-weight:900;color:#e0f2fe;">This is another reference image for</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">Uses this RTV slot as extra visual guidance for one subject. It will not be prompted as a second character.</div>`;
+        const sameSubjectSelect = document.createElement("select");
+        sameSubjectSelect.style.cssText = "grid-column:2;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:7px;font-size:12px;";
+        sameSubjectSelect.append(new Option("Choose subject...", ""));
+        refs.subjects
+          .filter((candidate) => candidate.id !== subject.id && !isExtraSubjectReference(candidate))
+          .forEach((candidate) => sameSubjectSelect.append(new Option(candidate.name || "Character", candidate.id)));
+        sameSubjectSelect.value = subjectExtraTargetId(subject);
+        sameSubjectSelect.disabled = !sameSubjectCheck.checked;
+        sameSubjectWrap.append(sameSubjectCheck, sameSubjectLabel, sameSubjectSelect);
         const usedBy = allEditableSegments()
-          .map((segment, sceneIndex) => (refs.subject_scene_map?.[segment.id] || []).includes(subject.id) ? `Scene ${sceneIndex + 1}` : "")
+          .map((segment, sceneIndex) => logicalSubjectIdsForScene(refs, segment).includes(subjectExtraTargetId(subject) || subject.id) ? `Scene ${sceneIndex + 1}` : "")
           .filter(Boolean)
           .join(", ") || "Not mapped yet";
         const used = document.createElement("div");
-        used.textContent = `Used by: ${usedBy}`;
+        const targetSubject = refs.subjects.find((item) => item.id === subjectExtraTargetId(subject));
+        const extraCount = refs.subjects.filter((item) => subjectExtraTargetId(item) === subject.id).length;
+        used.textContent = targetSubject
+          ? `Extra ref for: ${targetSubject.name || "Subject"} | Used by: ${usedBy}`
+          : `Used by: ${usedBy}${extraCount ? ` | Includes ${extraCount} extra ref image${extraCount === 1 ? "" : "s"}` : ""}`;
         used.style.cssText = "font-size:11px;color:#a5f3fc;";
         const drop = document.createElement("div");
         drop.style.cssText = subjectDrop.style.cssText;
@@ -14767,6 +14874,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           refs.subjects.splice(index, 1);
           refs.subject_count = Math.max(1, refs.subjects.length);
           subjectCountInput.value = String(refs.subject_count);
+          refs.subjects.forEach((item) => {
+            if (subjectExtraTargetId(item) === subject.id) {
+              item.extra_reference_for = "";
+              item.extra_reference_note = "";
+            }
+          });
           for (const segment of allEditableSegments()) {
             refs.subject_scene_map[segment.id] = (refs.subject_scene_map?.[segment.id] || []).filter((id) => id !== subject.id);
           }
@@ -14781,11 +14894,46 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           subject.reference_type = typeSelect.value || "character";
           renderMapping();
         });
+        sameSubjectCheck.addEventListener("change", () => {
+          if (sameSubjectCheck.checked) {
+            sameSubjectSelect.disabled = false;
+            subject.extra_reference_for = sameSubjectSelect.value || sameSubjectSelect.options[1]?.value || "";
+            sameSubjectSelect.value = subject.extra_reference_for;
+            refs.subjects.forEach((item) => {
+              if (subjectExtraTargetId(item) === subject.id) {
+                item.extra_reference_for = "";
+                item.extra_reference_note = "";
+              }
+            });
+          } else {
+            subject.extra_reference_for = "";
+            subject.extra_reference_note = "";
+            sameSubjectSelect.value = "";
+            sameSubjectSelect.disabled = true;
+          }
+          for (const segment of allEditableSegments()) {
+            refs.subject_scene_map[segment.id] = logicalSubjectIdsForScene(refs, segment);
+          }
+          renderAll();
+        });
+        sameSubjectSelect.addEventListener("change", () => {
+          subject.extra_reference_for = sameSubjectSelect.value || "";
+          refs.subjects.forEach((item) => {
+            if (subjectExtraTargetId(item) === subject.id) {
+              item.extra_reference_for = "";
+              item.extra_reference_note = "";
+            }
+          });
+          for (const segment of allEditableSegments()) {
+            refs.subject_scene_map[segment.id] = logicalSubjectIdsForScene(refs, segment);
+          }
+          renderAll();
+        });
         description.addEventListener("input", () => {
           subject.description = description.value;
         });
         buttons.append(createZImage, describeImage, upload, clear, remove);
-        row.append(makeField("Reference name", name), makeField("Reference type", typeSelect), makeField("Description / prompt", description), used, drop, buttons);
+        row.append(makeField("Reference name", name), makeField("Reference type", typeSelect), sameSubjectWrap, makeField("Description / prompt", description), used, drop, buttons);
         subjectsList.append(row);
       });
     }
@@ -14839,6 +14987,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           for (const segment of allEditableSegments()) {
             if (refs.scene_map?.[segment.id] === location.id) refs.scene_map[segment.id] = "";
           }
+          if (!refs.locations.length) {
+            refs.scene_map = {};
+            refs.scene_trigger_map = {};
+            refs.use_location_references = false;
+            refs.locations_cleared = true;
+            useLocations.input.checked = false;
+          }
           renderAll();
         };
         name.addEventListener("input", () => {
@@ -14856,8 +15011,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     function renderMapping() {
       mappingList.innerHTML = "";
-      const showSubjects = refs.subjects.length > 0;
-      const singleGlobalSubject = refs.use_subject_reference && refs.subject_count <= 1 && refs.subjects.length === 1;
+      const logicalSubjects = logicalReferenceSubjects(refs);
+      const showSubjects = logicalSubjects.length > 0;
+      const singleGlobalSubject = refs.use_subject_reference && logicalSubjects.length === 1;
       mappingNote.textContent = singleGlobalSubject
         ? `Your single character reference is global and will be included in every scene. The dropdowns below assign location references only; Unassigned means no location image for that scene.`
         : showSubjects
@@ -14872,11 +15028,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const subjectSelect = document.createElement("select");
         subjectSelect.multiple = true;
         subjectSelect.dataset.subjectMapSegmentId = segment.id;
-        subjectSelect.size = Math.min(4, Math.max(2, refs.subjects.length || 2));
+        subjectSelect.size = Math.min(4, Math.max(2, logicalSubjects.length || 2));
         subjectSelect.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:6px;font-size:12px;";
-        refs.subjects.forEach((subject) => subjectSelect.append(new Option(subject.name || "Character", subject.id)));
-        const selectedSubjectIds = new Set(refs.subject_scene_map?.[segment.id] || []);
-        if (!selectedSubjectIds.size && singleGlobalSubject && refs.subjects[0]?.id) selectedSubjectIds.add(refs.subjects[0].id);
+        logicalSubjects.forEach((subject) => {
+          const extraCount = refs.subjects.filter((item) => subjectExtraTargetId(item) === subject.id).length;
+          subjectSelect.append(new Option(`${subject.name || "Character"}${extraCount ? ` (${extraCount + 1} ref images)` : ""}`, subject.id));
+        });
+        const selectedSubjectIds = new Set(logicalSubjectIdsForScene(refs, segment));
+        if (!selectedSubjectIds.size && singleGlobalSubject && logicalSubjects[0]?.id) selectedSubjectIds.add(logicalSubjects[0].id);
         for (const option of subjectSelect.options) option.selected = selectedSubjectIds.has(option.value);
         subjectSelect.onchange = () => {
           refs.subject_scene_map[segment.id] = Array.from(subjectSelect.selectedOptions).map((option) => option.value);
@@ -14993,6 +15152,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             name,
             description: String(subject?.description || "").trim(),
             reference_type: String(subject?.reference_type || subject?.referenceType || subject?.type || "character").trim() || "character",
+            extra_reference_for: String(subject?.extra_reference_for || subject?.extraReferenceFor || subject?.same_subject_as || subject?.sameSubjectAs || "").trim(),
+            extra_reference_note: String(subject?.extra_reference_note || subject?.extraReferenceNote || "").trim(),
             image: {
               path: String(image.path || ""),
               data: String(image.data || ""),
@@ -15035,13 +15196,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     };
     addLocation.onclick = () => {
       createLocation();
+      refs.locations_cleared = false;
       renderAll();
     };
     removeAllLocations.onclick = () => {
       if (refs.locations.length && !window.confirm("Remove all location references and clear location scene mappings?")) return;
       refs.locations = [];
       refs.scene_map = {};
+      refs.scene_trigger_map = {};
       refs.use_location_references = false;
+      refs.locations_cleared = true;
       useLocations.input.checked = false;
       renderAll();
       toast("Removed all location references.");
@@ -15136,10 +15300,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           image: { path: "", data: "", name: "" },
         };
       }
-      const validSubjectIds = new Set(refs.subjects.map((subject) => String(subject.id || "").trim()).filter(Boolean));
+      const validSubjectIds = new Set(logicalReferenceSubjects(refs).map((subject) => String(subject.id || "").trim()).filter(Boolean));
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
       for (const [sceneId, ids] of Object.entries(refs.subject_scene_map || {})) {
-        const pruned = (Array.isArray(ids) ? ids : []).map(String).filter((id) => validSubjectIds.has(id));
+        const pruned = Array.from(new Set((Array.isArray(ids) ? ids : []).map(String).map((id) => {
+          const subject = refs.subjects.find((item) => item.id === id);
+          return subject ? (subjectExtraTargetId(subject) || subject.id) : "";
+        }).filter((id) => validSubjectIds.has(id))));
         if (pruned.length) refs.subject_scene_map[sceneId] = pruned;
         else delete refs.subject_scene_map[sceneId];
       }
@@ -15150,16 +15317,29 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         if (subjectIds.length) refs.subject_scene_map[segmentId] = subjectIds;
         else delete refs.subject_scene_map[segmentId];
       }
-      if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
-      for (const select of mappingList.querySelectorAll("[data-location-map-segment-id]")) {
-        const segmentId = select.dataset.locationMapSegmentId || "";
-        if (!segmentId) continue;
-        const locationId = String(select.value || "").trim();
-        if (locationId) refs.scene_map[segmentId] = locationId;
-        else delete refs.scene_map[segmentId];
+      const validLocationIds = new Set((refs.locations || []).map((location) => String(location.id || "").trim()).filter(Boolean));
+      if (!validLocationIds.size) {
+        refs.scene_map = {};
+        refs.scene_trigger_map = {};
+        refs.use_location_references = false;
+        refs.locations_cleared = true;
+        useLocations.input.checked = false;
+      } else {
+        refs.locations_cleared = false;
+        if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+        for (const select of mappingList.querySelectorAll("[data-location-map-segment-id]")) {
+          const segmentId = select.dataset.locationMapSegmentId || "";
+          if (!segmentId) continue;
+          const locationId = String(select.value || "").trim();
+          if (locationId && validLocationIds.has(locationId)) refs.scene_map[segmentId] = locationId;
+          else delete refs.scene_map[segmentId];
+        }
+        for (const [sceneId, locationId] of Object.entries(refs.scene_map || {})) {
+          if (!validLocationIds.has(String(locationId || "").trim())) delete refs.scene_map[sceneId];
+        }
       }
       refs.use_subject_reference = Boolean(useSubject.input.checked && refs.subjects.length);
-      refs.use_location_references = Boolean(useLocations.input.checked);
+      refs.use_location_references = Boolean(useLocations.input.checked && validLocationIds.size);
       refs.include_manual_ingredients = Boolean(includeManual.input.checked);
       refs.location_style_theme = String(locationStyleTheme.value || "");
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
@@ -15399,16 +15579,22 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const sheetId = String(select.value || "").trim();
         if (sceneId && sheetId) refs.ingredients_scene_map[sceneId] = sheetId;
       }
-      if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
-      for (const select of sceneList.querySelectorAll("[data-ingredients-location-map='1']")) {
-        const sceneId = select.dataset.sceneId || "";
-        const locationId = String(select.value || "").trim();
-        const missing = select.selectedOptions?.[0]?.dataset?.missingLocation === "1";
-        if (sceneId && locationId && !missing) refs.scene_map[sceneId] = locationId;
-        else if (sceneId && locationId && missing && !refs.scene_map[sceneId]) refs.scene_map[sceneId] = locationId;
-        else if (sceneId) delete refs.scene_map[sceneId];
+      const validLocationIds = new Set((refs.locations || []).map((location) => String(location.id || "").trim()).filter(Boolean));
+      if (!validLocationIds.size) {
+        refs.scene_map = {};
+        refs.use_location_references = false;
+        refs.locations_cleared = true;
+      } else {
+        refs.locations_cleared = false;
+        if (!refs.scene_map || typeof refs.scene_map !== "object") refs.scene_map = {};
+        for (const select of sceneList.querySelectorAll("[data-ingredients-location-map='1']")) {
+          const sceneId = select.dataset.sceneId || "";
+          const locationId = String(select.value || "").trim();
+          if (sceneId && locationId && validLocationIds.has(locationId)) refs.scene_map[sceneId] = locationId;
+          else if (sceneId) delete refs.scene_map[sceneId];
+        }
       }
-      refs.use_location_references = Boolean((refs.locations || []).length || Object.keys(refs.scene_map || {}).length);
+      refs.use_location_references = Boolean(validLocationIds.size && ((refs.locations || []).length || Object.keys(refs.scene_map || {}).length));
       normalizeLocalRefs();
     };
 
@@ -15876,6 +16062,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     addLocation.onclick = () => {
       collectMappingsFromDom();
       refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
+      refs.locations_cleared = false;
       refs.locations.push({
         id: `loc_${Date.now()}_${refs.locations.length}_${Math.floor(Math.random() * 10000)}`,
         name: `Location ${refs.locations.length + 1}`,
@@ -15890,6 +16077,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.locations = [];
       refs.scene_map = {};
       refs.use_location_references = false;
+      refs.locations_cleared = true;
       renderAll();
     };
     autoMapLocations.onclick = () => {
@@ -16145,6 +16333,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     const locationByNameForTextMap = (name) => refs.locations.find((location) => locationKeyForTextMap(location.name) === locationKeyForTextMap(name)) || null;
     const createLocationForTextMap = (name, description = "", triggerPhrase = "", triggerPosition = "start") => {
       refs.cleared = false;
+      refs.locations_cleared = false;
       const location = {
         id: newTextId("loc"),
         name: String(name || "Location").trim(),
@@ -16445,12 +16634,13 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         const label = document.createElement("div");
         label.textContent = sceneDisplayName(segment, index);
         label.style.cssText = "font-size:12px;font-weight:900;color:#e0f2fe;";
+        const logicalSubjects = logicalReferenceSubjects(refs);
         const subjectSelect = document.createElement("select");
         subjectSelect.multiple = true;
-        subjectSelect.size = Math.max(3, Math.min(6, refs.subjects.length || 3));
+        subjectSelect.size = Math.max(3, Math.min(6, logicalSubjects.length || 3));
         subjectSelect.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:7px;font-size:12px;";
-        const selectedSubjects = new Set(Array.isArray(refs.subject_scene_map?.[segment.id]) ? refs.subject_scene_map[segment.id] : []);
-        for (const subject of refs.subjects) {
+        const selectedSubjects = new Set(logicalSubjectIdsForScene(refs, segment));
+        for (const subject of logicalSubjects) {
           const option = document.createElement("option");
           option.value = subject.id;
           option.textContent = subject.name || "Character";
@@ -16486,7 +16676,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
           const subjectBucket = subjectTriggerPosition.value === "end" ? end : start;
           const locationBucket = locationTriggerPosition.value === "end" ? end : start;
           Array.from(subjectSelect.selectedOptions || [])
-            .map((option) => refs.subjects.find((subject) => subject.id === option.value))
+            .map((option) => logicalSubjects.find((subject) => subject.id === option.value))
             .filter(Boolean)
             .forEach((subject) => add(subjectBucket, subject.trigger_phrase));
           const selectedLocation = refs.locations.find((location) => location.id === locationSelect.value);
@@ -16517,6 +16707,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     };
     addLocation.onclick = () => {
       refs.cleared = false;
+      refs.locations_cleared = false;
       refs.locations.push({ id: newTextId("loc"), name: `Location ${refs.locations.length + 1}`, description: "", image: { path: "", data: "", name: "" } });
       refs.use_location_references = true;
       renderAll();
@@ -16792,6 +16983,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       refs.locations = [];
       refs.scene_map = {};
       refs.use_location_references = false;
+      refs.locations_cleared = true;
       renderAll();
     };
     clearAll.onclick = () => {
@@ -16803,6 +16995,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       refs.scene_map = {};
       refs.scene_trigger_map = {};
       refs.cleared = true;
+      refs.locations_cleared = true;
       refs.trigger_position = "start";
       refs.subject_trigger_position = "start";
       refs.location_trigger_position = "start";
@@ -20198,17 +20391,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneKey = segment?.id || "";
     const numberKey = String((info.index >= 0 ? info.index : allEditableSegments().indexOf(segment)) + 1);
     const noCharacterPresent = Boolean(segment?.no_character_present);
-    const subjectIds = noCharacterPresent ? [] : sceneReferenceMapArray(refs.subject_scene_map, segment, Number(numberKey) - 1);
+    const subjectIds = noCharacterPresent ? [] : logicalSubjectIdsForScene(refs, segment, Number(numberKey) - 1);
     let subjectRefs = subjectIds
       .map((id) => refs.subjects.find((subject) => subject.id === id))
       .filter(Boolean);
-    if (!noCharacterPresent && !subjectRefs.length && refs.use_subject_reference && refs.subjects.length === 1) {
-      subjectRefs = [refs.subjects[0]];
+    const logicalSubjects = logicalReferenceSubjects(refs);
+    if (!noCharacterPresent && !subjectRefs.length && refs.use_subject_reference && logicalSubjects.length === 1) {
+      subjectRefs = [logicalSubjects[0]];
     }
     const locId = String(sceneReferenceMapValue(refs.scene_map, segment, Number(numberKey) - 1) || "");
     const locationRef = refs.locations.find((location) => location.id === locId) || null;
-    const locationName = String(locationRef?.name || segment?.mapped_location || segment?.location || "").trim();
-    const locationDescription = String(locationRef?.description || segment?.location_description || "").trim();
+    const locationsCleared = Boolean(refs.locations_cleared);
+    const locationName = locationsCleared ? "" : String(locationRef?.name || segment?.mapped_location || segment?.location || "").trim();
+    const locationDescription = locationsCleared ? "" : String(locationRef?.description || segment?.location_description || "").trim();
     return {
       no_character_present: noCharacterPresent,
       subject_refs: subjectRefs.map((subject) => ({
@@ -20220,7 +20415,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         trigger_position: subject.trigger_position || "start",
         image: { ...(subject.image || {}) },
       })),
-      location_ref: locationRef ? {
+      location_ref: !locationsCleared && locationRef ? {
         id: locationRef.id,
         name: locationRef.name,
         description: locationRef.description,
@@ -20371,7 +20566,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         refs.subjects = mergeReferenceList(refs.subjects, incomingRefs.subjects);
         refs.subject_count = refs.subjects.length;
       }
-      if (incomingRefs.locations.length && !(refs.locations || []).length) {
+      if (incomingRefs.locations.length && !(refs.locations || []).length && !refs.locations_cleared) {
         refs.locations = mergeReferenceList(refs.locations, incomingRefs.locations);
       }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
@@ -20388,7 +20583,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (!segment.no_character_present && subjectIds.length) refs.subject_scene_map[segment.id] = subjectIds;
         else delete refs.subject_scene_map[segment.id];
         const locationId = String(item.location_id || "").trim();
-        if (locationId) refs.scene_map[segment.id] = locationId;
+        if (locationId && !refs.locations_cleared) refs.scene_map[segment.id] = locationId;
         else delete refs.scene_map[segment.id];
         if (item.trigger_position) refs.location_trigger_position = String(item.trigger_position || "start") === "end" ? "end" : "start";
       }
@@ -20445,6 +20640,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       gemmaSettings: {
         text_runner: state.textGemmaRunner || "builtin",
         model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+        vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
+        mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
         lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
         lmstudio_model: state.lmStudioModel || "",
         lmstudio_api_key: state.lmStudioApiKey || "",
@@ -20751,16 +20948,29 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ? "/vrgdg/workflow_runner/build_t2v_prompt"
         : "/vrgdg/workflow_runner/build_i2v_prompt";
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, defaultOutputFolder, `${batchLabel}Preparing hidden ${modeLabel} workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`, workflowDetails), pct(15));
+    const renderStartedAt = Date.now() / 1000 - 2;
     const built = await postJson(buildEndpoint, payload);
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queueing hidden ${modeLabel} workflow...`, workflowDetails), pct(40));
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
     if (!promptId) throw new Error("ComfyUI queued the video but did not return a prompt_id.");
+    const findSceneVideoOutput = async () => {
+      const found = await postJson("/vrgdg/workflow_runner/find_scene_video_output", {
+        project_folder: projectInput.value,
+        video_mode: videoMode,
+        output_folder: built.output_folder || defaultOutputFolder,
+        scene_number: slotNumber,
+        prompt_number_one_based: promptNumberForScene,
+        min_mtime: renderStartedAt,
+      }, 30000);
+      return found.video_path || "";
+    };
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queued prompt ID: ${promptId}\nWaiting for video...`, workflowDetails), pct(60));
     const videos = await waitForVideos(
       promptId,
       (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}${message}\nPrompt ID: ${promptId}`, workflowDetails), pct(80)),
-      () => state.batchCancelled
+      () => state.batchCancelled,
+      findSceneVideoOutput
     );
     const video = videos[videos.length - 1] || null;
     const videoPath = resolveComfyVideoPath(video);
@@ -25210,6 +25420,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             updated += 1;
           }
         } else {
+          refs.locations_cleared = false;
           refs.locations.push({
             id: `loc_wizard_${Date.now()}_${refs.locations.length}_${Math.floor(Math.random() * 10000)}`,
             name,
@@ -25612,6 +25823,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         gemmaSettings: {
           text_runner: state.textGemmaRunner || "builtin",
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+          vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
+          mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
           lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
           lmstudio_model: state.lmStudioModel || "",
           lmstudio_api_key: state.lmStudioApiKey || "",

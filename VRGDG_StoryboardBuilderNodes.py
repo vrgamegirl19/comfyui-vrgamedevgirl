@@ -78,6 +78,36 @@ Rules:
 
 When information is missing, infer a fitting cinematic detail from the available subject, setting, tone, and notes."""
 
+_STORYBOARD_T2I_GEMMA_INSTRUCTIONS = """You are a text-to-image prompt builder for a music-video storyboard.
+
+The user will provide a JSON scene-card bundle. Your job is to read the JSON and create one polished text-to-image prompt for the selected scene.
+
+Use `selected_scene_number` to choose the scene.
+
+Rules:
+
+* Create one cinematic still-frame prompt, not a video prompt.
+* Pull the visible subject list only from the selected scene's `subject_refs`.
+* Never use subjects from the project catalog, another scene, the song story brief, or the user story arc unless that subject is also present in the selected scene's `subject_refs`.
+* If `subject_refs` has more than one subject, every listed subject must be visibly present in the image prompt. Do not drop, merge, hide, imply, or omit any listed subject.
+* If `subject_refs` has one subject, describe only that one visible subject. Do not create duplicates, backup singers, crowds, or extra people unless the scene notes explicitly ask for them.
+* If `vocal_status.no_character_present` is true, do not include, mention, imply, or describe any mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and composition instead.
+* Pull the setting from `location_ref`.
+* Include the mapped subject descriptions and location description when available.
+* Use the scene lyrics, lyric section, story beat, song story brief, and user story arc only as visual guidance. Do not quote long lyrics.
+* If the scene is a singing scene, show performance energy and emotion, but do not describe mouth shapes, lip sync, or audio behavior.
+* If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
+* Use `shot_type` as the still-frame composition when available.
+* Use `performance_style` and `performance_direction` for facial emotion, body language, wardrobe energy, and genre feel.
+* Do not describe future camera movement, animation, transitions, frame changes, or what happens next.
+* Do not mention JSON, IDs, file paths, image names, or metadata.
+* Do not include explanations.
+* Output only the final image prompt.
+* Use natural language, not bracket labels.
+* Keep it as one clean paragraph.
+
+When information is missing, infer a fitting cinematic still image from the available subject, setting, tone, and notes."""
+
 
 def _safe_project_folder(path):
     folder = os.path.abspath(str(path or "").strip().strip('"'))
@@ -548,6 +578,51 @@ def _export_storyboard_prompts(payload):
     }
 
 
+def _selected_storyboard_scene(scene_bundle):
+    scenes = scene_bundle.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("Storyboard scene-card payload has no scenes.")
+    selected = int(scene_bundle.get("selected_scene_number") or scenes[0].get("scene_number") or 1)
+    for scene in scenes:
+        if int(scene.get("scene_number") or 0) == selected:
+            return scene
+    return scenes[0]
+
+
+def _build_storyboard_image_prompt(payload):
+    scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
+    if not isinstance(scene_bundle, dict):
+        raise ValueError("Storyboard scene-card payload is missing.")
+    scenes = scene_bundle.get("scenes")
+    if not isinstance(scenes, list) or not scenes:
+        raise ValueError("Storyboard scene-card payload has no scenes.")
+    instruction = (
+        _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
+        + "\n\nScene-card JSON:\n"
+        + json.dumps(scene_bundle, indent=2, ensure_ascii=False)
+    )
+    from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
+
+    prompt, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.35),
+        top_p=float(payload.get("top_p") or 0.90),
+        max_new_tokens=int(payload.get("max_new_tokens") or 1200),
+        label="Storyboard T2I Gemma",
+        preserve_paragraphs=True,
+    )
+    prompt = _clean_scene_text(_fix_single_subject_prompt_pronouns(prompt, scene_bundle), 12000)
+    if not prompt:
+        raise ValueError("Gemma returned an empty Storyboard image prompt.")
+    return {
+        "prompt": prompt,
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
 def _build_storyboard_video_prompt(payload):
     scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
     if not isinstance(scene_bundle, dict):
@@ -555,6 +630,49 @@ def _build_storyboard_video_prompt(payload):
     scenes = scene_bundle.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         raise ValueError("Storyboard scene-card payload has no scenes.")
+    selected_scene = _selected_storyboard_scene(scene_bundle)
+    image_path = _clean_scene_text(selected_scene.get("image_path") or selected_scene.get("approved_image_path") or "", 2000)
+    if image_path:
+        from .VRGDG_MusicVideoBuilderNodes import _generate_builder_i2v_prompt
+
+        subject_context = "\n\n".join(
+            f"{_clean_scene_text(subject.get('name') or 'Subject', 120)}: {_clean_scene_text(subject.get('description') or '', 1000)}".strip()
+            for subject in selected_scene.get("subjects") or []
+            if isinstance(subject, dict)
+        )
+        location_ref = selected_scene.get("setting") or {}
+        location_context = ""
+        if isinstance(location_ref, dict):
+            location_context = f"{_clean_scene_text(location_ref.get('name') or 'Location', 120)}: {_clean_scene_text(location_ref.get('description') or '', 1000)}".strip()
+        vocal_status = selected_scene.get("vocal_status") or {}
+        story_layer = selected_scene.get("story_layer") or {}
+        user_notes = "\n\n".join(
+            part for part in [
+                f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
+                f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
+                f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
+                f"Motion/video summary:\n{_clean_scene_text(selected_scene.get('motion_summary') or '', 1200)}",
+                f"Camera motion:\n{_clean_scene_text(selected_scene.get('camera_motion') or '', 500)}",
+                f"Performance direction:\n{_clean_scene_text(selected_scene.get('performance_direction') or selected_scene.get('performance_style') or '', 1000)}",
+            ]
+            if part.split(":\n", 1)[-1].strip()
+        )
+        vision_payload = {
+            **payload,
+            "model_file": payload.get("vision_model_file") or payload.get("vision_model") or payload.get("model_file") or "",
+            "mmproj_file": payload.get("mmproj_file") or payload.get("mmproj") or "",
+            "t2i_prompt": _clean_scene_text(selected_scene.get("text_to_image_prompt") or selected_scene.get("scene_summary") or "", 12000),
+            "image_reference_path": image_path,
+            "user_notes": user_notes,
+            "subject_context": subject_context,
+            "location_context": location_context,
+            "no_character_present": bool(vocal_status.get("no_character_present")),
+            "max_new_tokens": int(payload.get("max_new_tokens") or 1800),
+        }
+        result = _generate_builder_i2v_prompt(vision_payload)
+        result["prompt"] = _clean_scene_text(_fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle), 12000)
+        return result
+
     instruction = (
         _STORYBOARD_T2V_GEMMA_INSTRUCTIONS
         + "\n\nScene-card JSON:\n"
@@ -879,6 +997,15 @@ def _ensure_storyboard_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_build_storyboard_video_prompt, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/gemma_image_prompt")
+    async def vrgdg_storyboard_gemma_image_prompt(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_storyboard_image_prompt, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

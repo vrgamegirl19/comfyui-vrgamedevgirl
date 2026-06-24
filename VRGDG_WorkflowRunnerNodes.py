@@ -2237,6 +2237,80 @@ def _collect_scene_video(payload):
     }
 
 
+def _find_scene_video_output(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        raise ValueError("Project folder is empty or does not exist.")
+    mode = str(payload.get("video_mode", "") or "").strip().lower()
+    if mode == "rtv":
+        prefixes = ("reference_to_video_clips", "reference_to_video_clips_")
+    elif mode == "t2v":
+        prefixes = ("text_to_video_clips", "text_to_video_clips_")
+    elif mode == "ingredients":
+        prefixes = ("ingredients_to_video_clips", "ingredients_to_video_clips_")
+    else:
+        prefixes = ("image_to_video_clips", "image_to_video_clips_")
+
+    scene_number = _int_payload(payload, "scene_number", 0, 0, 999999)
+    prompt_number = _int_payload(payload, "prompt_number_one_based", scene_number or 0, 0, 999999)
+    min_mtime = float(payload.get("min_mtime") or 0)
+    output_folder = os.path.abspath(str(payload.get("output_folder", "") or "").strip().strip('"')) if payload.get("output_folder") else ""
+
+    folders = []
+    if output_folder and os.path.isdir(output_folder):
+        try:
+            if os.path.commonpath([project_folder, output_folder]) == project_folder:
+                folders.append(output_folder)
+        except ValueError:
+            pass
+    for name in os.listdir(project_folder):
+        path = os.path.abspath(os.path.join(project_folder, name))
+        if not os.path.isdir(path):
+            continue
+        if any(name == prefix.rstrip("_") or name.startswith(prefix) for prefix in prefixes):
+            folders.append(path)
+    folders = list(dict.fromkeys(folders))
+
+    candidates = []
+    for folder in folders:
+        for root, _dirs, files in os.walk(folder):
+            try:
+                if os.path.commonpath([project_folder, os.path.abspath(root)]) != project_folder:
+                    continue
+            except ValueError:
+                continue
+            for name in files:
+                lower = name.lower()
+                if not lower.endswith("-audio.mp4"):
+                    continue
+                path = os.path.abspath(os.path.join(root, name))
+                try:
+                    mtime = os.path.getmtime(path)
+                    size = os.path.getsize(path)
+                except OSError:
+                    continue
+                if size <= 0 or (min_mtime and mtime + 1 < min_mtime):
+                    continue
+                score = 0
+                if scene_number and re.match(rf"^video_{scene_number:04d}-audio\.mp4$", name, re.IGNORECASE):
+                    score += 1000
+                if prompt_number and re.match(rf"^video_{prompt_number:04d}(?:_|-)", name, re.IGNORECASE):
+                    score += 700
+                if scene_number and f"_{scene_number:04d}_" in name:
+                    score += 100
+                candidates.append((score, mtime, path, folder))
+    if not candidates:
+        return {"video_path": "", "output_folder": "", "searched_folders": folders}
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    _score, _mtime, path, folder = candidates[0]
+    _wait_for_stable_readable_file(path, timeout=8.0, interval=0.25)
+    return {
+        "video_path": path,
+        "output_folder": folder,
+        "searched_folders": folders,
+    }
+
+
 def _stitch_scene_videos(payload):
     raw_paths = payload.get("scene_paths", [])
     if not isinstance(raw_paths, list) or not raw_paths:
@@ -2734,6 +2808,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _collect_scene_video(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/find_scene_video_output")
+    async def vrgdg_workflow_runner_find_scene_video_output(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _find_scene_video_output(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

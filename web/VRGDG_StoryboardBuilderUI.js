@@ -816,8 +816,9 @@ function normalizeReferenceBuilderCatalog(value = {}) {
       description: String(item.description || ""),
       trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || ""),
       trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
+      extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
       image: normalizeReferenceImage(item),
-    })) : []);
+    })).filter((item) => !item.extra_reference_for) : []);
   const locations = mergeReferenceList(Array.isArray(source.locations) ? source.locations
     .filter((item) => item && typeof item === "object")
     .map((item, index) => ({
@@ -830,7 +831,8 @@ function normalizeReferenceBuilderCatalog(value = {}) {
     })) : []);
   return {
     subjects,
-    locations,
+    locations: Boolean(source.locations_cleared || source.locationsCleared || source.clear_locations || source.clearLocations) ? [] : locations,
+    locations_cleared: Boolean(source.locations_cleared || source.locationsCleared || source.clear_locations || source.clearLocations),
     trigger_position: String(source.trigger_position || source.triggerPosition || source.trigger_placement || "start") === "end" ? "end" : "start",
     subject_trigger_position: String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start",
     location_trigger_position: String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start",
@@ -864,7 +866,8 @@ function mergeReferenceBuilderCatalog(base = {}, incoming = {}) {
   };
   return {
     subjects: mergeList(normalizedBase.subjects, normalizedIncoming.subjects),
-    locations: mergeList(normalizedBase.locations, normalizedIncoming.locations),
+    locations: normalizedBase.locations_cleared ? [] : mergeList(normalizedBase.locations, normalizedIncoming.locations),
+    locations_cleared: Boolean(normalizedBase.locations_cleared || normalizedIncoming.locations_cleared),
   };
 }
 
@@ -1470,11 +1473,15 @@ function openStoryboardBuilder(payload = {}) {
     stepPrep.style.borderColor = mode === "image_to_video_prep" ? "#06b6d4" : "#3f3f46";
     shell.querySelector("#vrgdg-storyboard-mode-pill").textContent = mode === "image_to_video_prep" ? "Video Prep" : "Planning";
     shell.querySelector("#vrgdg-storyboard-subtitle").textContent = mode === "image_to_video_prep"
-      ? "Review I2V, T2V, and Reference-to-Video scene cards, then refine video prompts before creation."
-      : "Write and organize prompts. Image and video rendering stays in the Video Creator workspace.";
+      ? "Use scene images with vision guidance to create video prompts before rendering."
+      : "Create text-to-image prompts for each scene before image generation.";
     note.textContent = mode === "image_to_video_prep"
-      ? "Video prep mode supports I2V, T2V, and Reference to Video per scene. Open a scene card to choose the video prompt type, shot direction, and motion notes."
-      : "Storyboard prompt mode is the planning space. Build stronger scene cards first, then export prompt text files for the existing Video Creator.";
+      ? "Video Prep uses existing scene images when available, plus subjects, locations, lyrics, story beats, and motion notes to create video prompts."
+      : "Image Prep creates text-to-image prompts from subjects, locations, lyrics, story beats, shot direction, and the story layer.";
+    gemmaAllButton.textContent = mode === "image_to_video_prep" ? "Gemma Video All" : "Gemma Image All";
+    gemmaAllButton.title = mode === "image_to_video_prep"
+      ? "Create video prompts for the visible scenes. If a scene has an image path, Gemma Vision uses it as guidance."
+      : "Create text-to-image prompts for the visible scenes.";
     renderTable();
   };
 
@@ -2443,9 +2450,10 @@ function openStoryboardBuilder(payload = {}) {
       try {
         saveEditorFieldsToScene();
         progress.set(`Preparing ${scene.label || "scene"} for Gemma...`, 12);
-        await createSceneVideoPromptWithGemma(scene, { progress, progressPercent: 32 });
-        progress.set("Storyboard video prompt ready.", 100);
+        await createScenePromptForActiveMode(scene, { progress, progressPercent: 32 });
+        progress.set(state.mode === "image_to_video_prep" ? "Storyboard video prompt ready." : "Storyboard image prompt ready.", 100);
         progress.close(1200);
+        imagePrompt.value = scene.image_prompt || "";
         videoPrompt.value = scene.video_prompt || "";
       } catch (error) {
         progress.set(`Error:\n${String(error?.message || error)}`, 100);
@@ -2503,10 +2511,13 @@ function openStoryboardBuilder(payload = {}) {
       const sceneActionStyle = "border:1px solid #155e75;border-radius:6px;background:#0f172a;color:#a5f3fc;padding:8px 10px;font-weight:800;cursor:pointer;";
       const sceneGptStyle = "border:1px solid #06b6d4;border-radius:6px;background:#0e7490;color:#f8fafc;padding:8px 10px;font-weight:900;cursor:pointer;";
       const sceneGemmaStyle = "border:1px solid #22c55e;border-radius:6px;background:#166534;color:#f0fdf4;padding:8px 10px;font-weight:900;cursor:pointer;";
+      const gemmaTitle = mode === "image_to_video_prep"
+        ? "Create this scene's video prompt with Gemma. If the scene has an image, Gemma Vision uses it as guidance."
+        : "Create this scene's text-to-image prompt with Gemma.";
       const actionHtml = `
         <div style="display:flex;align-items:center;gap:7px;white-space:nowrap;">
           <button data-action="edit" style="${sceneActionStyle}">Open Scene Card</button>
-          <button data-action="gemma" style="${sceneGemmaStyle}" title="Create this scene's video prompt with Gemma4.">Gemma</button>
+          <button data-action="gemma" style="${sceneGemmaStyle}" title="${escapeHtml(gemmaTitle)}">Gemma</button>
           <button data-action="gpt" style="${sceneGptStyle}" title="Copy only this scene card as GPT JSON.">GPT</button>
         </div>`;
       const status = `<span style="display:inline-flex;align-items:center;gap:6px;color:${meta.color};font-weight:900;"><span style="width:8px;height:8px;border-radius:999px;background:${meta.color};display:inline-block;"></span>${escapeHtml(meta.label)}</span>`;
@@ -2549,8 +2560,8 @@ function openStoryboardBuilder(payload = {}) {
         const progress = createStoryboardProgressWindow("Storyboard Gemma");
         try {
           progress.set(`Preparing ${scene.label || "scene"} for Gemma...`, 12);
-          await createSceneVideoPromptWithGemma(scene, { progress, progressPercent: 32 });
-          progress.set("Storyboard video prompt ready.", 100);
+          await createScenePromptForActiveMode(scene, { progress, progressPercent: 32 });
+          progress.set(state.mode === "image_to_video_prep" ? "Storyboard video prompt ready." : "Storyboard image prompt ready.", 100);
           progress.close(1200);
         } catch (error) {
           progress.set(`Error:\n${String(error?.message || error)}`, 100);
@@ -2584,13 +2595,15 @@ function openStoryboardBuilder(payload = {}) {
       const savedReferences = normalizeReferenceBuilderCatalog(saved.reference_builder || saved.referenceBuilder || {});
       const currentHasSubjects = Array.isArray(state.referenceBuilder?.subjects) && state.referenceBuilder.subjects.length > 0;
       const currentHasLocations = Array.isArray(state.referenceBuilder?.locations) && state.referenceBuilder.locations.length > 0;
-      if ((!currentHasSubjects && savedReferences.subjects.length) || (!currentHasLocations && savedReferences.locations.length)) {
+      const currentLocationsCleared = Boolean(state.referenceBuilder?.locations_cleared);
+      if ((!currentHasSubjects && savedReferences.subjects.length) || (!currentHasLocations && !currentLocationsCleared && savedReferences.locations.length)) {
         const nextReferences = {
           subjects: currentHasSubjects ? state.referenceBuilder.subjects : savedReferences.subjects,
-          locations: currentHasLocations ? state.referenceBuilder.locations : savedReferences.locations,
+          locations: currentLocationsCleared ? [] : (currentHasLocations ? state.referenceBuilder.locations : savedReferences.locations),
+          locations_cleared: currentLocationsCleared,
         };
         state.referenceBuilder = normalizeReferenceBuilderCatalog(nextReferences);
-      } else if (!currentHasSubjects && !currentHasLocations && (savedReferences.subjects.length || savedReferences.locations.length)) {
+      } else if (!currentHasSubjects && !currentHasLocations && !currentLocationsCleared && (savedReferences.subjects.length || savedReferences.locations.length)) {
         state.referenceBuilder = mergeReferenceBuilderCatalog(state.referenceBuilder, savedReferences);
       }
       if (Array.isArray(saved.scenes) && saved.scenes.length) {
@@ -2623,10 +2636,16 @@ function openStoryboardBuilder(payload = {}) {
             no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
             subjects,
             subject_refs: fresh.no_character_present || normalized.no_character_present ? [] : subjectRefs,
-            setting: fresh.location_ref?.name || normalized.setting || fresh.setting,
-            location_ref: incomingScenes.length ? fresh.location_ref : (fresh.location_ref || normalized.location_ref),
+            setting: currentLocationsCleared ? "" : (fresh.location_ref?.name || normalized.setting || fresh.setting),
+            location_ref: currentLocationsCleared ? null : (incomingScenes.length ? fresh.location_ref : (fresh.location_ref || normalized.location_ref)),
           };
         });
+        if (currentLocationsCleared) {
+          state.scenes.forEach((scene) => {
+            scene.location_ref = null;
+            scene.setting = "";
+          });
+        }
         absorbSceneReferencesIntoCatalog(state.scenes);
       }
       state.mode = saved.mode || state.mode;
@@ -2735,6 +2754,26 @@ function openStoryboardBuilder(payload = {}) {
     };
   }
 
+  async function createSceneImagePromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
+    const normalized = normalizeScene(scene, 0);
+    try {
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending image scene card to Gemma...\nThis creates the text-to-image prompt for Image Prep.`, progressPercent);
+      const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter, max_new_tokens: 1200 }), 240000);
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: Gemma response received.\nRunner: ${data.runner || "Gemma"}\nSaving image prompt into the scene card...`, Math.min(96, progressPercent + 45));
+      const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
+      if (!prompt) throw new Error("Gemma returned an empty Storyboard image prompt.");
+      scene.image_prompt = prompt;
+      scene.status = "image_prompt_ready";
+      if (!quiet) createToast(`Gemma created image prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || "Gemma"}`);
+      return prompt;
+    } catch (error) {
+      if (!quiet) createToast(`Gemma Storyboard image prompt failed:\n${String(error?.message || error)}`, true);
+      throw error;
+    } finally {
+      renderTable();
+    }
+  }
+
   function applyStoryboardTriggerPhrases(prompt, scene) {
     let text = String(prompt || "").trim();
     const normalized = normalizeScene(scene, 0);
@@ -2804,33 +2843,41 @@ function openStoryboardBuilder(payload = {}) {
     }
   }
 
-  async function createAllVideoPromptsWithGemma() {
+  async function createScenePromptForActiveMode(scene, options = {}) {
+    return state.mode === "image_to_video_prep"
+      ? createSceneVideoPromptWithGemma(scene, options)
+      : createSceneImagePromptWithGemma(scene, options);
+  }
+
+  async function createAllPromptsWithGemma() {
     const scenes = currentRows();
     if (!scenes.length) {
       createToast("No storyboard scenes found.", true);
       return;
     }
+    const videoMode = state.mode === "image_to_video_prep";
+    const promptKind = videoMode ? "video" : "image";
     gemmaAllButton.disabled = true;
     const previousText = gemmaAllButton.textContent;
     const progress = createStoryboardProgressWindow("Storyboard Gemma All");
     let created = 0;
     try {
       const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
-      progress.set(`Starting Storyboard Gemma All...\nScenes: ${scenes.length}\nKeep Gemma loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+      progress.set(`Starting Storyboard Gemma All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScenes: ${scenes.length}\nKeep Gemma loaded: ${keepLoaded ? "yes" : "no"}`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         gemmaAllButton.textContent = `Gemma ${index + 1}/${scenes.length}`;
         const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
         const label = `Gemma All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
-        progress.set(`${label}\nCreating storyboard video prompt...`, base);
-        await createSceneVideoPromptWithGemma(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
+        progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
+        await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
         created += 1;
       }
       progress.set("Saving storyboard prompts...", 96);
       await saveStoryboard();
-      progress.set(`Gemma All complete.\nCreated ${created} storyboard video prompt${created === 1 ? "" : "s"}.`, 100);
+      progress.set(`Gemma All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`, 100);
       progress.close(1800);
-      createToast(`Gemma created ${created} storyboard video prompt${created === 1 ? "" : "s"}.`);
+      createToast(`Gemma created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`);
     } catch (error) {
       progress.set(`Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
       createToast(`Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
@@ -2867,7 +2914,7 @@ function openStoryboardBuilder(payload = {}) {
     renderTable();
   };
   gptButton.onclick = copyStoryboardForGpt;
-  gemmaAllButton.onclick = createAllVideoPromptsWithGemma;
+  gemmaAllButton.onclick = createAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   storyLayerEnabledInput.addEventListener("change", syncStoryLayerFromInputs);
   userStoryArcInput.addEventListener("input", syncStoryLayerFromInputs);
