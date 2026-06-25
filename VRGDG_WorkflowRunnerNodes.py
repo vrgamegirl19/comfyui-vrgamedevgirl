@@ -220,6 +220,32 @@ def _folder_choices(category):
     return unique
 
 
+def _model_choice_exists(category, value):
+    requested = str(value or "").strip()
+    if not requested:
+        return False
+    requested_base = os.path.basename(requested.replace("\\", "/"))
+    for choice in _folder_choices(category):
+        text = str(choice or "").strip()
+        if not text:
+            continue
+        if text == requested:
+            return True
+        if os.path.basename(text.replace("\\", "/")) == requested_base:
+            return True
+    return False
+
+
+def _require_model_choice(category, value, label):
+    if _model_choice_exists(category, value):
+        return
+    folder_hint = category[0] if isinstance(category, (list, tuple)) else category
+    raise ValueError(
+        f"{label} '{value}' was not found in ComfyUI/models/{folder_hint}. "
+        "Install the model there, refresh/restart ComfyUI, then try Krea2 again."
+    )
+
+
 def _manual_model_folder_choices(category):
     category = str(category or "").strip()
     if not category:
@@ -641,6 +667,13 @@ def _patch_krea2_api_prompt(prompt, payload):
     z_unet = str(payload.get("z_unet_name") or payload.get("enhance_unet_name") or "z_image_turbo_bf16.safetensors").strip()
     z_clip = str(payload.get("z_clip_name") or payload.get("enhance_clip_name") or "qwen_3_4b.safetensors").strip()
     z_vae = str(payload.get("z_vae_name") or payload.get("enhance_vae_name") or "ae.safetensors").strip()
+
+    _require_model_choice(("diffusion_models", "unet"), krea_unet, "Krea2 diffusion model")
+    _require_model_choice(("text_encoders", "clip"), krea_clip, "Krea2 text encoder")
+    _require_model_choice("vae", krea_vae, "Krea2 VAE")
+    _require_model_choice(("unet", "diffusion_models"), z_unet, "ZImage enhancer diffusion model")
+    _require_model_choice(("clip", "text_encoders"), z_clip, "ZImage enhancer text encoder")
+    _require_model_choice("vae", z_vae, "ZImage enhancer VAE")
 
     _set_api_input(prompt, "200", "text", prompt_text)
     _set_api_input(prompt, "30:10", "unet_name", krea_unet)

@@ -56,6 +56,27 @@ const KREA2_MODEL_DOWNLOADS = [
   { label: "Krea2 text encoder", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors" },
   { label: "Krea2 VAE", url: "https://huggingface.co/Comfy-Org/Krea-2/resolve/main/vae/qwen_image_vae.safetensors" },
 ];
+const DEFAULT_KREA2_REFERENCE_SETTINGS = {
+  krea_unet_name: "krea2_turbo_fp8_scaled.safetensors",
+  krea_clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
+  krea_vae_name: "qwen_image_vae.safetensors",
+  z_unet_name: "z_image_turbo_bf16.safetensors",
+  z_clip_name: "qwen_3_4b.safetensors",
+  z_vae_name: "ae.safetensors",
+  first_pass_width: 1024,
+  first_pass_height: 576,
+  width: 1920,
+  height: 1080,
+  seed: 1,
+  seed_mode: "fixed",
+};
+
+function cloneKrea2ReferenceSettings(settings = {}) {
+  return {
+    ...DEFAULT_KREA2_REFERENCE_SETTINGS,
+    ...(settings && typeof settings === "object" ? settings : {}),
+  };
+}
 const FLUX_KLEIN_9B_MODEL_DOWNLOADS = [
   { label: "9B diffusion model", url: "https://huggingface.co/black-forest-labs/FLUX.2-klein-9b-fp8/resolve/main/flux-2-klein-9b-fp8.safetensors" },
   { label: "9B Qwen CLIP", url: "https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors" },
@@ -3074,6 +3095,7 @@ function openBuilder(node) {
     notificationSettings: defaultNotificationSettings(),
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
+    referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
     fluxKleinSettings: defaultFluxKleinSettings(),
     ernieImageSettings: defaultErnieImageSettings(),
     nbImageSettings: defaultNBImageSettings(),
@@ -4137,6 +4159,9 @@ function openBuilder(node) {
     if (defaults.zimage_settings || defaults.zimageSettings) {
       state.zimageSettings = cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings);
     }
+    if (defaults.reference_krea2_settings || defaults.referenceKrea2Settings) {
+      state.referenceKrea2Settings = cloneKrea2ReferenceSettings(defaults.reference_krea2_settings || defaults.referenceKrea2Settings);
+    }
     if (defaults.flux_klein_settings || defaults.fluxKleinSettings) {
       state.fluxKleinSettings = cloneFluxKleinSettings(defaults.flux_klein_settings || defaults.fluxKleinSettings);
     }
@@ -4288,6 +4313,7 @@ function openBuilder(node) {
       autoSaveEnabled: state.autoSaveEnabled,
       imageModelMode: state.imageModelMode,
       zimageSettings: state.zimageSettings,
+      referenceKrea2Settings: state.referenceKrea2Settings,
       fluxKleinSettings: state.fluxKleinSettings,
       nbImageSettings: state.nbImageSettings,
       ernieImageSettings: state.ernieImageSettings,
@@ -4352,6 +4378,7 @@ function openBuilder(node) {
     autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
     applyLayoutSizes();
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
+    state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.referenceKrea2Settings || data.reference_krea2_settings || state.referenceKrea2Settings);
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
     state.nbImageSettings = data.nbImageSettings || data.nb_image_settings || state.nbImageSettings;
     state.ernieImageSettings = data.ernieImageSettings || state.ernieImageSettings;
@@ -13220,6 +13247,81 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       batch_size: 1,
     });
 
+    const currentKrea2ReferenceSettings = () => {
+      state.referenceKrea2Settings = cloneKrea2ReferenceSettings(state.referenceKrea2Settings);
+      return state.referenceKrea2Settings;
+    };
+
+    const rememberKrea2ReferenceSettings = (settings = {}) => {
+      state.referenceKrea2Settings = cloneKrea2ReferenceSettings(settings);
+      return state.referenceKrea2Settings;
+    };
+
+    const referenceGeneratorPickerOptions = (options = [], defaults = []) => {
+      const merged = [...(Array.isArray(defaults) ? defaults : [defaults]), ...(options || [])];
+      return Array.from(new Set(merged.map((item) => String(item || "").trim()).filter(Boolean)));
+    };
+
+    const setReferenceGeneratorOptions = (picker, options = [], preferred = "") => {
+      const preferredList = Array.isArray(preferred) ? preferred : [preferred];
+      picker.options = referenceGeneratorPickerOptions(options, preferredList);
+      picker.input.value = chooseModelValue(picker.options, picker.input.value, preferredList) || picker.input.value || preferredList[0] || "";
+      wireSearchablePicker(picker);
+    };
+
+    function buildReferenceGeneratorControls() {
+      const zSettings = currentZImageReferenceSettings();
+      const kreaSettings = currentKrea2ReferenceSettings();
+      const zModel = makeSearchableLoraPicker(kreaSettings.z_unet_name || zSettings.unet_name || DEFAULT_KREA2_REFERENCE_SETTINGS.z_unet_name);
+      const zClip = makeSearchableLoraPicker(kreaSettings.z_clip_name || zSettings.clip_name || DEFAULT_KREA2_REFERENCE_SETTINGS.z_clip_name);
+      const zVae = makeSearchableLoraPicker(kreaSettings.z_vae_name || zSettings.vae_name || DEFAULT_KREA2_REFERENCE_SETTINGS.z_vae_name);
+      const kreaModel = makeSearchableLoraPicker(kreaSettings.krea_unet_name || DEFAULT_KREA2_REFERENCE_SETTINGS.krea_unet_name);
+      const kreaClip = makeSearchableLoraPicker(kreaSettings.krea_clip_name || DEFAULT_KREA2_REFERENCE_SETTINGS.krea_clip_name);
+      const kreaVae = makeSearchableLoraPicker(kreaSettings.krea_vae_name || DEFAULT_KREA2_REFERENCE_SETTINGS.krea_vae_name);
+
+      setReferenceGeneratorOptions(zModel, zUnetPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.z_unet_name);
+      setReferenceGeneratorOptions(zClip, zClipPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.z_clip_name);
+      setReferenceGeneratorOptions(zVae, zVaePicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.z_vae_name);
+      setReferenceGeneratorOptions(kreaModel, zUnetPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.krea_unet_name);
+      setReferenceGeneratorOptions(kreaClip, zClipPicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.krea_clip_name);
+      setReferenceGeneratorOptions(kreaVae, zVaePicker.options || [], DEFAULT_KREA2_REFERENCE_SETTINGS.krea_vae_name);
+
+      const seed = makeInput(String(kreaSettings.seed || zSettings.seed || DEFAULT_KREA2_REFERENCE_SETTINGS.seed), "number");
+      seed.min = "0";
+      seed.step = "1";
+      const seedMode = makeSelect(["fixed", "random"], kreaSettings.seed_mode || zSettings.seed_mode || DEFAULT_KREA2_REFERENCE_SETTINGS.seed_mode);
+      const firstWidth = makeInput(String(kreaSettings.first_pass_width || DEFAULT_KREA2_REFERENCE_SETTINGS.first_pass_width), "number");
+      const firstHeight = makeInput(String(kreaSettings.first_pass_height || DEFAULT_KREA2_REFERENCE_SETTINGS.first_pass_height), "number");
+      const width = makeInput(String(kreaSettings.width || zSettings.second_pass_width || DEFAULT_KREA2_REFERENCE_SETTINGS.width), "number");
+      const height = makeInput(String(kreaSettings.height || zSettings.second_pass_height || DEFAULT_KREA2_REFERENCE_SETTINGS.height), "number");
+      for (const input of [firstWidth, firstHeight, width, height]) {
+        input.min = "64";
+        input.step = "8";
+      }
+
+      const readZImage = () => ({
+        unet_name: zModel.input.value,
+        clip_name: zClip.input.value,
+        vae_name: zVae.input.value,
+      });
+      const readKrea2 = () => rememberKrea2ReferenceSettings({
+        krea_unet_name: kreaModel.input.value,
+        krea_clip_name: kreaClip.input.value,
+        krea_vae_name: kreaVae.input.value,
+        z_unet_name: zModel.input.value,
+        z_clip_name: zClip.input.value,
+        z_vae_name: zVae.input.value,
+        first_pass_width: Number(firstWidth.value || DEFAULT_KREA2_REFERENCE_SETTINGS.first_pass_width),
+        first_pass_height: Number(firstHeight.value || DEFAULT_KREA2_REFERENCE_SETTINGS.first_pass_height),
+        width: Number(width.value || DEFAULT_KREA2_REFERENCE_SETTINGS.width),
+        height: Number(height.value || DEFAULT_KREA2_REFERENCE_SETTINGS.height),
+        seed: Number(seed.value || DEFAULT_KREA2_REFERENCE_SETTINGS.seed),
+        seed_mode: seedMode.value || DEFAULT_KREA2_REFERENCE_SETTINGS.seed_mode,
+      });
+
+      return { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 };
+    }
+
     async function runFluxReferenceWithZImage(referenceType, target, sourceText, name = "", generatorSettings = null) {
       const text = String(sourceText || "").trim();
       if (!text) {
@@ -13683,38 +13785,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
       note.textContent = "ZImage uses the existing reference-image workflow. Krea2 uses the new hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass in that workflow. A subject or location description is required before generation can run.";
 
-      const zSettings = currentZImageReferenceSettings();
-      const zModel = makeSearchableLoraPicker(zSettings.unet_name || "z_image_turbo_bf16.safetensors");
-      const zClip = makeSearchableLoraPicker(zSettings.clip_name || "qwen_3_4b.safetensors");
-      const zVae = makeSearchableLoraPicker(zSettings.vae_name || "ae.safetensors");
-      const kreaModel = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
-      const kreaClip = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
-      const kreaVae = makeSearchableLoraPicker("qwen_image_vae.safetensors");
-      const setLocalOptions = (picker, options = [], fallback = "") => {
-        const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
-        picker.options = values;
-        picker.input.value = chooseModelValue(values, picker.input.value, fallback) || picker.input.value || fallback;
-        wireSearchablePicker(picker);
-      };
-      setLocalOptions(zModel, zUnetPicker.options || [], "z_image_turbo_bf16.safetensors");
-      setLocalOptions(zClip, zClipPicker.options || [], "qwen_3_4b.safetensors");
-      setLocalOptions(zVae, zVaePicker.options || [], "ae.safetensors");
-      setLocalOptions(kreaModel, zUnetPicker.options || [], "krea2_turbo_fp8_scaled.safetensors");
-      setLocalOptions(kreaClip, zClipPicker.options || [], "qwen3vl_4b_fp8_scaled.safetensors");
-      setLocalOptions(kreaVae, zVaePicker.options || [], "qwen_image_vae.safetensors");
-
-      const seed = makeInput(String(zSettings.seed || 1), "number");
-      seed.min = "0";
-      seed.step = "1";
-      const seedMode = makeSelect(["fixed", "random"], zSettings.seed_mode || "fixed");
-      const firstWidth = makeInput("1024", "number");
-      const firstHeight = makeInput("576", "number");
-      const width = makeInput(String(zSettings.second_pass_width || 1920), "number");
-      const height = makeInput(String(zSettings.second_pass_height || 1080), "number");
-      for (const input of [firstWidth, firstHeight, width, height]) {
-        input.min = "64";
-        input.step = "8";
-      }
+      const generatorControls = buildReferenceGeneratorControls();
+      const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
 
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
@@ -13757,11 +13829,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for a direct ZImage reference image."),
         ], "Use ZImage", () => runFluxReferenceWithZImage(referenceType, target, text, name, {
-          zimage: {
-            unet_name: zModel.input.value,
-            clip_name: zClip.input.value,
-            vae_name: zVae.input.value,
-          },
+          zimage: readZImage(),
         })),
         optionCard("Krea2 + ZImage Enhancer", [
           makeField("Krea2 diffusion model", kreaModel.wrapper),
@@ -13774,20 +13842,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           makeField("Final width", width),
           makeField("Final height", height),
         ], "Use Krea2 + Enhancer", () => runFluxReferenceWithKrea2(referenceType, target, text, name, {
-          krea2: {
-            krea_unet_name: kreaModel.input.value,
-            krea_clip_name: kreaClip.input.value,
-            krea_vae_name: kreaVae.input.value,
-            z_unet_name: zModel.input.value,
-            z_clip_name: zClip.input.value,
-            z_vae_name: zVae.input.value,
-            first_pass_width: Number(firstWidth.value || 1024),
-            first_pass_height: Number(firstHeight.value || 576),
-            width: Number(width.value || 1920),
-            height: Number(height.value || 1080),
-            seed: Number(seed.value || 1),
-            seed_mode: seedMode.value || "fixed",
-          },
+          krea2: readKrea2(),
         })),
       );
       const footer = document.createElement("div");
@@ -13839,38 +13894,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
       note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here.";
 
-      const zSettings = currentZImageReferenceSettings();
-      const zModel = makeSearchableLoraPicker(zSettings.unet_name || "z_image_turbo_bf16.safetensors");
-      const zClip = makeSearchableLoraPicker(zSettings.clip_name || "qwen_3_4b.safetensors");
-      const zVae = makeSearchableLoraPicker(zSettings.vae_name || "ae.safetensors");
-      const kreaModel = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
-      const kreaClip = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
-      const kreaVae = makeSearchableLoraPicker("qwen_image_vae.safetensors");
-      const setLocalOptions = (picker, options = [], fallback = "") => {
-        const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
-        picker.options = values;
-        picker.input.value = chooseModelValue(values, picker.input.value, fallback) || picker.input.value || fallback;
-        wireSearchablePicker(picker);
-      };
-      setLocalOptions(zModel, zUnetPicker.options || [], "z_image_turbo_bf16.safetensors");
-      setLocalOptions(zClip, zClipPicker.options || [], "qwen_3_4b.safetensors");
-      setLocalOptions(zVae, zVaePicker.options || [], "ae.safetensors");
-      setLocalOptions(kreaModel, zUnetPicker.options || [], "krea2_turbo_fp8_scaled.safetensors");
-      setLocalOptions(kreaClip, zClipPicker.options || [], "qwen3vl_4b_fp8_scaled.safetensors");
-      setLocalOptions(kreaVae, zVaePicker.options || [], "qwen_image_vae.safetensors");
-
-      const seed = makeInput(String(zSettings.seed || 1), "number");
-      seed.min = "0";
-      seed.step = "1";
-      const seedMode = makeSelect(["fixed", "random"], zSettings.seed_mode || "fixed");
-      const firstWidth = makeInput("1024", "number");
-      const firstHeight = makeInput("576", "number");
-      const width = makeInput(String(zSettings.second_pass_width || 1920), "number");
-      const height = makeInput(String(zSettings.second_pass_height || 1080), "number");
-      for (const input of [firstWidth, firstHeight, width, height]) {
-        input.min = "64";
-        input.step = "8";
-      }
+      const generatorControls = buildReferenceGeneratorControls();
+      const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
 
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
@@ -13913,11 +13938,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for every missing subject/reference image."),
         ], "Use ZImage For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("zimage", {
-          zimage: {
-            unet_name: zModel.input.value,
-            clip_name: zClip.input.value,
-            vae_name: zVae.input.value,
-          },
+          zimage: readZImage(),
         })),
         optionCard("Krea2 + ZImage Enhancer", [
           makeField("Krea2 diffusion model", kreaModel.wrapper),
@@ -13930,20 +13951,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           makeField("Final width", width),
           makeField("Final height", height),
         ], "Use Krea2 + Enhancer For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("krea2", {
-          krea2: {
-            krea_unet_name: kreaModel.input.value,
-            krea_clip_name: kreaClip.input.value,
-            krea_vae_name: kreaVae.input.value,
-            z_unet_name: zModel.input.value,
-            z_clip_name: zClip.input.value,
-            z_vae_name: zVae.input.value,
-            first_pass_width: Number(firstWidth.value || 1024),
-            first_pass_height: Number(firstHeight.value || 576),
-            width: Number(width.value || 1920),
-            height: Number(height.value || 1080),
-            seed: Number(seed.value || 1),
-            seed_mode: seedMode.value || "fixed",
-          },
+          krea2: readKrea2(),
         })),
       );
       const footer = document.createElement("div");
@@ -13988,38 +13996,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
       note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here.";
 
-      const zSettings = currentZImageReferenceSettings();
-      const zModel = makeSearchableLoraPicker(zSettings.unet_name || "z_image_turbo_bf16.safetensors");
-      const zClip = makeSearchableLoraPicker(zSettings.clip_name || "qwen_3_4b.safetensors");
-      const zVae = makeSearchableLoraPicker(zSettings.vae_name || "ae.safetensors");
-      const kreaModel = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
-      const kreaClip = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
-      const kreaVae = makeSearchableLoraPicker("qwen_image_vae.safetensors");
-      const setLocalOptions = (picker, options = [], fallback = "") => {
-        const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
-        picker.options = values;
-        picker.input.value = chooseModelValue(values, picker.input.value, fallback) || picker.input.value || fallback;
-        wireSearchablePicker(picker);
-      };
-      setLocalOptions(zModel, zUnetPicker.options || [], "z_image_turbo_bf16.safetensors");
-      setLocalOptions(zClip, zClipPicker.options || [], "qwen_3_4b.safetensors");
-      setLocalOptions(zVae, zVaePicker.options || [], "ae.safetensors");
-      setLocalOptions(kreaModel, zUnetPicker.options || [], "krea2_turbo_fp8_scaled.safetensors");
-      setLocalOptions(kreaClip, zClipPicker.options || [], "qwen3vl_4b_fp8_scaled.safetensors");
-      setLocalOptions(kreaVae, zVaePicker.options || [], "qwen_image_vae.safetensors");
-
-      const seed = makeInput(String(zSettings.seed || 1), "number");
-      seed.min = "0";
-      seed.step = "1";
-      const seedMode = makeSelect(["fixed", "random"], zSettings.seed_mode || "fixed");
-      const firstWidth = makeInput("1024", "number");
-      const firstHeight = makeInput("576", "number");
-      const width = makeInput(String(zSettings.second_pass_width || 1920), "number");
-      const height = makeInput(String(zSettings.second_pass_height || 1080), "number");
-      for (const input of [firstWidth, firstHeight, width, height]) {
-        input.min = "64";
-        input.step = "8";
-      }
+      const generatorControls = buildReferenceGeneratorControls();
+      const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
 
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
@@ -14062,11 +14040,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for every missing location image."),
         ], "Use ZImage For All Missing", () => createMissingLocationReferencesWithZImage("zimage", {
-          zimage: {
-            unet_name: zModel.input.value,
-            clip_name: zClip.input.value,
-            vae_name: zVae.input.value,
-          },
+          zimage: readZImage(),
         })),
         optionCard("Krea2 + ZImage Enhancer", [
           makeField("Krea2 diffusion model", kreaModel.wrapper),
@@ -14079,20 +14053,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           makeField("Final width", width),
           makeField("Final height", height),
         ], "Use Krea2 + Enhancer For All Missing", () => createMissingLocationReferencesWithZImage("krea2", {
-          krea2: {
-            krea_unet_name: kreaModel.input.value,
-            krea_clip_name: kreaClip.input.value,
-            krea_vae_name: kreaVae.input.value,
-            z_unet_name: zModel.input.value,
-            z_clip_name: zClip.input.value,
-            z_vae_name: zVae.input.value,
-            first_pass_width: Number(firstWidth.value || 1024),
-            first_pass_height: Number(firstHeight.value || 576),
-            width: Number(width.value || 1920),
-            height: Number(height.value || 1080),
-            seed: Number(seed.value || 1),
-            seed_mode: seedMode.value || "fixed",
-          },
+          krea2: readKrea2(),
         })),
       );
       const footer = document.createElement("div");
@@ -18213,6 +18174,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       auto_save_enabled: state.autoSaveEnabled,
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
+      reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
       flux_klein_settings: state.fluxKleinSettings,
       nb_image_settings: state.nbImageSettings,
       ernie_image_settings: state.ernieImageSettings,
@@ -18441,6 +18403,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
+        state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.session.reference_krea2_settings || state.referenceKrea2Settings);
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
         state.nbImageSettings = data.session.nb_image_settings || state.nbImageSettings;
         state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
@@ -18604,6 +18567,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
+      state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
       state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
       state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
@@ -22555,6 +22519,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.sceneAudioSegmentId = "";
     state.sceneAudioGlobalTime = 0;
     state.zimageSettings = defaultZImageSettings();
+    state.referenceKrea2Settings = { ...DEFAULT_KREA2_REFERENCE_SETTINGS };
     state.fluxKleinSettings = defaultFluxKleinSettings();
     state.ernieImageSettings = defaultErnieImageSettings();
     state.useFluxGlobalImageIngredients = false;

@@ -5370,6 +5370,7 @@ _MODEL_DEFAULT_KEYS = (
     "lm_studio_api_key",
     "image_model_mode",
     "zimage_settings",
+    "reference_krea2_settings",
     "flux_klein_settings",
     "ernie_image_settings",
     "z_enhance_settings",
