@@ -11,6 +11,11 @@ function getWidget(node, name) {
   return (node.widgets || []).find((w) => w.name === name);
 }
 
+function normalizeWidgetValues(values) {
+  if (!Array.isArray(values)) return values;
+  return values.map((value) => (value == null ? "" : value));
+}
+
 function setWidgetVisible(widget, visible) {
   if (!widget) return;
   if (!Object.prototype.hasOwnProperty.call(widget, "__vrgdgOriginalType")) {
@@ -83,15 +88,35 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = origOnNodeCreated?.apply(this, arguments);
       bindCountChange(this);
-      if (!(this.widgets || []).some((w) => w.type === "button" && w.name === "Refresh Inputs")) {
-        this.addWidget("button", "Refresh Inputs", null, () => refreshNode(this));
+      const refreshButton = (this.widgets || []).find((w) => w.type === "button" && w.name === "Refresh Inputs");
+      if (refreshButton) {
+        refreshButton.serialize = false;
+      } else {
+        const buttonWidget = this.addWidget("button", "Refresh Inputs", null, () => refreshNode(this));
+        buttonWidget.serialize = false;
       }
       setTimeout(() => refreshNode(this), 0);
       return r;
     };
 
+    const origConfigure = nodeType.prototype.configure;
+    nodeType.prototype.configure = function () {
+      if (arguments[0]?.widgets_values) {
+        arguments[0].widgets_values = normalizeWidgetValues(arguments[0].widgets_values);
+      }
+      const r = origConfigure?.apply(this, arguments);
+      this.widgets_values = normalizeWidgetValues(this.widgets_values);
+      return r;
+    };
+
     nodeType.prototype.onConfigure = function () {
+      if (arguments[0]?.widgets_values) {
+        arguments[0].widgets_values = normalizeWidgetValues(arguments[0].widgets_values);
+      }
       const r = origOnConfigure?.apply(this, arguments);
+      this.widgets_values = normalizeWidgetValues(this.widgets_values);
+      const refreshButton = (this.widgets || []).find((w) => w.type === "button" && w.name === "Refresh Inputs");
+      if (refreshButton) refreshButton.serialize = false;
       bindCountChange(this);
       refreshNode(this);
       return r;

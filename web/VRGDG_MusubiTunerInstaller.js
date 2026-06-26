@@ -9,6 +9,11 @@ function getWidget(node, name) {
   return (node.widgets || []).find((w) => w?.name === name);
 }
 
+function normalizeWidgetValues(values) {
+  if (!Array.isArray(values)) return values;
+  return values.map((value) => (value == null ? "" : value));
+}
+
 function setWidgetVisible(widget, visible) {
   if (!widget) return;
   if (!Object.prototype.hasOwnProperty.call(widget, "__vrgdgOriginalType")) {
@@ -44,10 +49,14 @@ function ensureInstallerButtons(node) {
   ];
 
   for (const def of buttonDefs) {
-    const exists = widgets.some((w) => w?.type === "button" && w?.name === def.name);
-    if (exists) continue;
+    const existingButton = widgets.find((w) => w?.type === "button" && w?.name === def.name);
+    if (existingButton) {
+      existingButton.serialize = false;
+      continue;
+    }
 
     const buttonWidget = node.addWidget("button", def.name, null, () => installMusubi(node, def.action));
+    buttonWidget.serialize = false;
     const buttonIndex = (node.widgets || []).indexOf(buttonWidget);
     if (buttonIndex >= 0) {
       node.widgets.splice(buttonIndex, 1);
@@ -125,6 +134,7 @@ app.registerExtension({
 
     const origOnNodeCreated = nodeType.prototype.onNodeCreated;
     const origOnConfigure = nodeType.prototype.onConfigure;
+    const origConfigure = nodeType.prototype.configure;
 
     function hideBackingWidgets(node) {
       for (const name of ["install_root", "checkpoint_path", "assets_root_out", "report_path", "status_text"]) {
@@ -142,8 +152,21 @@ app.registerExtension({
       return result;
     };
 
+    nodeType.prototype.configure = function () {
+      if (arguments[0]?.widgets_values) {
+        arguments[0].widgets_values = normalizeWidgetValues(arguments[0].widgets_values);
+      }
+      const result = origConfigure?.apply(this, arguments);
+      this.widgets_values = normalizeWidgetValues(this.widgets_values);
+      return result;
+    };
+
     nodeType.prototype.onConfigure = function () {
+      if (arguments[0]?.widgets_values) {
+        arguments[0].widgets_values = normalizeWidgetValues(arguments[0].widgets_values);
+      }
       const result = origOnConfigure?.apply(this, arguments);
+      this.widgets_values = normalizeWidgetValues(this.widgets_values);
       hideBackingWidgets(this);
       ensureInstallerButtons(this);
       return result;
