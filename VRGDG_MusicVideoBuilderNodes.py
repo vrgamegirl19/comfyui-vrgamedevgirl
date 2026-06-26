@@ -5373,6 +5373,7 @@ _MODEL_DEFAULT_KEYS = (
     "reference_krea2_settings",
     "flux_klein_settings",
     "ernie_image_settings",
+    "krea2_2pass_settings",
     "z_enhance_settings",
     "video_model_mode",
     "i2v_video_settings",

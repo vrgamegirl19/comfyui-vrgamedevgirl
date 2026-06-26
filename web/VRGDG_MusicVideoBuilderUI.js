@@ -1438,6 +1438,8 @@ function audioUrl(path) {
     zimage_settings: null,
     use_scene_ernie_image_settings: false,
     ernie_image_settings: null,
+    use_scene_krea2_2pass_settings: false,
+    krea2_2pass_settings: null,
     use_scene_flux_klein_settings: false,
     flux_klein_settings: null,
     use_scene_nb_image_settings: false,
@@ -1681,6 +1683,9 @@ function openBuilder(node) {
   const useSceneErnieImageSettings = makeCheckbox("Use custom Ernie settings for this scene", false);
   const ernieImageTriggerInput = makeInput("");
   ernieImageTriggerInput.placeholder = imageTriggerInput.placeholder;
+  const useSceneKrea2TwoPassSettings = makeCheckbox("Use custom Krea 2 settings for this scene", false);
+  const krea2TwoPassImageTriggerInput = makeInput("");
+  krea2TwoPassImageTriggerInput.placeholder = imageTriggerInput.placeholder;
   const useSceneFluxKleinSettings = makeCheckbox("Use custom Flux/Klein settings for this scene", false);
   const fluxImageTriggerInput = makeInput("");
   fluxImageTriggerInput.placeholder = imageTriggerInput.placeholder;
@@ -1846,6 +1851,112 @@ function openBuilder(node) {
   const ernieI2ILoadButton = makeButton("Load I2I Image", "primary");
   ernieI2IActions.append(ernieI2ILoadButton);
   ernieI2IPanel.append(makeField("I2I similarity", ernieI2ISlider), ernieI2IHint, makeField("I2I start step", ernieI2IStartStep), ernieI2IPath, ernieI2IDrop, ernieI2IActions);
+  const krea2TwoPassPanel = document.createElement("div");
+  krea2TwoPassPanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
+  const krea2TwoPassUnetPicker = makeSearchableLoraPicker("krea2_turbo_fp8_scaled.safetensors");
+  const krea2TwoPassClipPicker = makeSearchableLoraPicker("qwen3vl_4b_fp8_scaled.safetensors");
+  const krea2TwoPassVaePicker = makeSearchableLoraPicker("qwen_image_vae.safetensors");
+  const krea2TwoPassUseLora = makeCheckbox("Use LoRAs?", false);
+  const krea2TwoPassLoraCount = makeInput("0", "number");
+  krea2TwoPassLoraCount.min = "0";
+  krea2TwoPassLoraCount.max = "4";
+  const krea2TwoPassLoraPanel = document.createElement("div");
+  krea2TwoPassLoraPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const krea2TwoPassLoraRows = document.createElement("div");
+  krea2TwoPassLoraRows.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const krea2TwoPassLoraSlots = [];
+  for (let slot = 1; slot <= 4; slot++) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 76px 76px;gap:8px;";
+    const picker = makeSearchableLoraPicker("[none]");
+    const firstPassStrength = makeInput("0.5", "number");
+    firstPassStrength.step = "0.01";
+    const secondPassStrength = makeInput("0", "number");
+    secondPassStrength.step = "0.01";
+    row.append(makeField(`LoRA ${slot}`, picker.wrapper), makeField("Pass 1", firstPassStrength), makeField("Pass 2", secondPassStrength));
+    krea2TwoPassLoraRows.append(row);
+    krea2TwoPassLoraSlots.push({ row, picker, firstPassStrength, secondPassStrength });
+  }
+  krea2TwoPassLoraPanel.append(makeField("LoRA count", krea2TwoPassLoraCount), krea2TwoPassLoraRows);
+  const krea2TwoPassAspectRatio = makeSelect([
+    "16:9 (Widescreen)",
+    "9:16 (Portrait)",
+    "1:1 (Square)",
+    "4:3 (Landscape)",
+    "3:4 (Portrait)",
+    "3:2 (Landscape)",
+    "2:3 (Portrait)",
+    "21:9 (Cinematic)",
+  ], "16:9 (Widescreen)");
+  const krea2TwoPassSampler = makeSelect([
+    "euler_ancestral_cfg_pp",
+    "euler",
+    "euler_ancestral",
+    "heun",
+    "dpm_2",
+    "dpm_2_ancestral",
+    "lms",
+    "dpm_fast",
+    "dpm_adaptive",
+    "dpmpp_2s_ancestral",
+    "dpmpp_sde",
+    "dpmpp_2m",
+    "ddim",
+    "uni_pc",
+  ], "euler_ancestral_cfg_pp");
+  const krea2TwoPassSeed = makeInput("1", "number");
+  const krea2TwoPassSeedMode = makeSelect(["fixed", "randomize", "increment", "decrement"], "fixed");
+  const krea2TwoPassCfg = makeInput("1.2", "number");
+  krea2TwoPassCfg.min = "1";
+  krea2TwoPassCfg.max = "1.2";
+  krea2TwoPassCfg.step = "0.01";
+  const krea2TwoPassCfgField = makeField("CFG", krea2TwoPassCfg);
+  const krea2TwoPassCfgNote = document.createElement("div");
+  krea2TwoPassCfgNote.textContent = "Use 1-1.2. Recommended: 1.2.";
+  krea2TwoPassCfgNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:3px;";
+  krea2TwoPassCfgField.append(krea2TwoPassCfgNote);
+  const krea2TwoPassBatchSize = makeInput("1", "number");
+  krea2TwoPassBatchSize.min = "1";
+  krea2TwoPassBatchSize.max = "16";
+  krea2TwoPassBatchSize.step = "1";
+  const krea2TwoPassSettingsGrid = document.createElement("div");
+  krea2TwoPassSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  krea2TwoPassSettingsGrid.append(
+    makeField("Aspect ratio", krea2TwoPassAspectRatio),
+    makeField("Sampler", krea2TwoPassSampler),
+    makeField("Seed", krea2TwoPassSeed),
+    makeField("Seed mode", krea2TwoPassSeedMode),
+    krea2TwoPassCfgField,
+    makeField("Batch size", krea2TwoPassBatchSize)
+  );
+  const krea2TwoPassUseImageToImage = makeCheckbox("Use image-to-image?", false);
+  const krea2TwoPassI2IPanel = document.createElement("div");
+  krea2TwoPassI2IPanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  const krea2TwoPassCreativity = document.createElement("input");
+  krea2TwoPassCreativity.type = "range";
+  krea2TwoPassCreativity.min = "0";
+  krea2TwoPassCreativity.max = "10";
+  krea2TwoPassCreativity.step = "1";
+  krea2TwoPassCreativity.value = "5";
+  krea2TwoPassCreativity.style.cssText = "width:100%;accent-color:#22d3ee;";
+  const krea2TwoPassCreativityInput = makeInput("5", "number");
+  krea2TwoPassCreativityInput.min = "0";
+  krea2TwoPassCreativityInput.max = "10";
+  krea2TwoPassCreativityInput.step = "1";
+  const krea2TwoPassI2IHint = document.createElement("div");
+  krea2TwoPassI2IHint.textContent = "0 ignores the image. 10 keeps the original image most intact while still changing it based on the prompt.";
+  krea2TwoPassI2IHint.style.cssText = "font-size:11px;color:#a1a1aa;";
+  const krea2TwoPassI2IPath = makeInput("");
+  krea2TwoPassI2IPath.placeholder = "Image-to-image source path...";
+  krea2TwoPassI2IPath.style.display = "none";
+  const krea2TwoPassI2IDrop = document.createElement("div");
+  krea2TwoPassI2IDrop.textContent = "Drop an image here, or drag a scene image from the timeline.";
+  krea2TwoPassI2IDrop.style.cssText = zI2IDrop.style.cssText;
+  const krea2TwoPassI2IActions = document.createElement("div");
+  krea2TwoPassI2IActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:8px;";
+  const krea2TwoPassI2ILoadButton = makeButton("Load I2I Image", "primary");
+  krea2TwoPassI2IActions.append(krea2TwoPassI2ILoadButton);
+  krea2TwoPassI2IPanel.append(makeField("I2I creativity", krea2TwoPassCreativity), krea2TwoPassI2IHint, makeField("Creativity value", krea2TwoPassCreativityInput), krea2TwoPassI2IPath, krea2TwoPassI2IDrop, krea2TwoPassI2IActions);
   const fluxKleinPanel = document.createElement("div");
   fluxKleinPanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
   const useFluxKlein = makeCheckbox("Build image using Flux/Klein?", false);
@@ -2063,10 +2174,11 @@ function openBuilder(node) {
   const fluxKleinCard = makeImageModelCard("Flux Klein", "flux_klein");
   const nbImageCard = makeImageModelCard("Nano B", "nano_banana");
   const ernieImageCard = makeImageModelCard("Ernie", "ernie_image");
+  const krea2TwoPassCard = makeImageModelCard("Krea 2", "krea2_2pass");
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
   const loadCustomImageButton = makeImageModelCard("+ Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
-  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, zEnhanceCard, loadCustomImageButton);
+  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, zEnhanceCard, loadCustomImageButton);
   imageModelChooserWrap.append(imageModelChooserLabel, imageModelChooser);
   const zImageModePanel = document.createElement("div");
   zImageModePanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
@@ -2074,6 +2186,8 @@ function openBuilder(node) {
   fluxKleinModePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
   const ernieImageModePanel = document.createElement("div");
   ernieImageModePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
+  const krea2TwoPassModePanel = document.createElement("div");
+  krea2TwoPassModePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
   const startInput = makeInput("0", "number");
   startInput.step = "0.01";
   const endInput = makeInput("4", "number");
@@ -2149,6 +2263,23 @@ function openBuilder(node) {
   ernieRefImageDrop.style.cssText = refImageDrop.style.cssText;
   const ernieRefImageLoadButton = makeButton("Load Reference Image", "primary");
   ernieRefImagePanel.append(ernieRefImageNote, ernieRefImageDrop, ernieRefImageLoadButton);
+  const krea2TwoPassNotesInput = document.createElement("textarea");
+  krea2TwoPassNotesInput.placeholder = notesInput.placeholder;
+  krea2TwoPassNotesInput.style.cssText = notesInput.style.cssText;
+  const krea2TwoPassT2IPrompt = document.createElement("textarea");
+  krea2TwoPassT2IPrompt.placeholder = t2iPrompt.placeholder;
+  krea2TwoPassT2IPrompt.style.cssText = t2iPrompt.style.cssText;
+  const krea2TwoPassUseVisionReference = makeCheckbox("Use vision reference image?", false);
+  const krea2TwoPassRefImagePanel = document.createElement("div");
+  krea2TwoPassRefImagePanel.style.cssText = refImagePanel.style.cssText;
+  const krea2TwoPassRefImageNote = document.createElement("div");
+  krea2TwoPassRefImageNote.textContent = refImageNote.textContent;
+  krea2TwoPassRefImageNote.style.cssText = refImageNote.style.cssText;
+  const krea2TwoPassRefImageDrop = document.createElement("div");
+  krea2TwoPassRefImageDrop.textContent = refImageDrop.textContent;
+  krea2TwoPassRefImageDrop.style.cssText = refImageDrop.style.cssText;
+  const krea2TwoPassRefImageLoadButton = makeButton("Load Reference Image", "primary");
+  krea2TwoPassRefImagePanel.append(krea2TwoPassRefImageNote, krea2TwoPassRefImageDrop, krea2TwoPassRefImageLoadButton);
   const t2vRefImagePanel = document.createElement("div");
   t2vRefImagePanel.style.cssText = refImagePanel.style.cssText;
   const t2vRefImageNote = document.createElement("div");
@@ -2161,6 +2292,8 @@ function openBuilder(node) {
   t2vRefImagePanel.append(t2vRefImageNote, t2vRefImageDrop, t2vRefImageLoadButton);
   const ernieCreateT2IButton = makeButton("Gemma T2I", "primary");
   const ernieSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
+  const krea2TwoPassCreateT2IButton = makeButton("Gemma T2I", "primary");
+  const krea2TwoPassSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
@@ -2301,6 +2434,13 @@ function openBuilder(node) {
     ernieCreateButtons.push(button);
     return button;
   }
+  const krea2TwoPassCreateButton = makeButton("Create with Krea 2", "primary");
+  const krea2TwoPassCreateButtons = [krea2TwoPassCreateButton];
+  function makeKrea2TwoPassCreateButton() {
+    const button = makeButton("Create with Krea 2", "primary");
+    krea2TwoPassCreateButtons.push(button);
+    return button;
+  }
   const fluxCreateButtons = [previewFluxButton];
   function makeFluxCreateButton() {
     const button = makeButton("Create with Flux/Klein", "primary");
@@ -2435,6 +2575,7 @@ function openBuilder(node) {
   zImageModePanel.append(zimageSettingsPanel);
   fluxKleinModePanel.append(fluxKleinPanel);
   ernieImageModePanel.append(ernieImagePanel);
+  krea2TwoPassModePanel.append(krea2TwoPassPanel);
   const ernieImageSubTabs = makeSubTabs([
     {
       label: "Models",
@@ -2483,6 +2624,53 @@ function openBuilder(node) {
     },
   ]);
   ernieImagePanel.append(ernieImageSubTabs.wrapper);
+  const krea2TwoPassSubTabs = makeSubTabs([
+    {
+      label: "Models",
+      value: "models",
+      content: makeSettingsPanel([
+        makeSettingsSection("Krea 2 Models", [
+          makeField("Krea2 model", krea2TwoPassUnetPicker.wrapper),
+          makeField("CLIP", krea2TwoPassClipPicker.wrapper),
+          makeField("VAE", krea2TwoPassVaePicker.wrapper),
+          krea2TwoPassUseLora.wrapper,
+          krea2TwoPassLoraPanel,
+        ]),
+        makeSettingsSection("LLM Models", [
+          makeField("Non-Vision text Gemma model", t2iTextGemmaModelSelect),
+          makeField("Vision Gemma model", gemmaModelSelect),
+          makeField("Vision mmproj", mmprojSelect),
+        ]),
+        makeKrea2TwoPassCreateButton(),
+      ]),
+    },
+    {
+      label: "Image Settings",
+      value: "settings",
+      content: makeSettingsPanel([
+        useSceneKrea2TwoPassSettings.wrapper,
+        makeField("Image trigger phrase", krea2TwoPassImageTriggerInput),
+        krea2TwoPassSettingsGrid,
+        krea2TwoPassUseImageToImage.wrapper,
+        krea2TwoPassI2IPanel,
+        krea2TwoPassCreateButton,
+      ]),
+    },
+    {
+      label: "LLM Prompting",
+      value: "prompting",
+      content: makeSettingsPanel([
+        makeField("Notes", krea2TwoPassNotesInput),
+        krea2TwoPassUseVisionReference.wrapper,
+        krea2TwoPassRefImagePanel,
+        krea2TwoPassCreateT2IButton,
+        makeField("T2I prompt", krea2TwoPassT2IPrompt),
+        krea2TwoPassSendT2IPromptToEnhanceButton,
+        makeKrea2TwoPassCreateButton(),
+      ]),
+    },
+  ]);
+  krea2TwoPassPanel.append(krea2TwoPassSubTabs.wrapper);
   const fluxKleinSubTabs = makeSubTabs([
     {
       label: "Models",
@@ -2635,6 +2823,7 @@ function openBuilder(node) {
     zImageModePanel,
     fluxKleinModePanel,
     ernieImageModePanel,
+    krea2TwoPassModePanel,
     zEnhancePanel,
     inspectorActions,
   );
@@ -2967,6 +3156,29 @@ function openBuilder(node) {
     };
   }
 
+  function defaultKrea2TwoPassSettings() {
+    return {
+      unet_name: "krea2_turbo_fp8_scaled.safetensors",
+      clip_name: "qwen3vl_4b_fp8_scaled.safetensors",
+      vae_name: "qwen_image_vae.safetensors",
+      use_loras: false,
+      lora_count: 0,
+      loras: [],
+      aspect_ratio: "16:9 (Widescreen)",
+      sampler_name: "euler_ancestral_cfg_pp",
+      cfg: 1.2,
+      seed: 1,
+      seed_mode: "fixed",
+      batch_size: 1,
+      use_image_to_image: false,
+      image_to_image_creativity: 5,
+      image_to_image_path: "",
+      image_to_image_data: "",
+      image_to_image_name: "",
+      image_trigger_phrase: "",
+    };
+  }
+
   function defaultZEnhanceSettings() {
     return {
       unet_name: "z_image_turbo_bf16.safetensors",
@@ -3098,6 +3310,7 @@ function openBuilder(node) {
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
     fluxKleinSettings: defaultFluxKleinSettings(),
     ernieImageSettings: defaultErnieImageSettings(),
+    krea2TwoPassSettings: defaultKrea2TwoPassSettings(),
     nbImageSettings: defaultNBImageSettings(),
     useFluxGlobalImageIngredients: false,
     fluxGlobalImageIngredients: [],
@@ -3417,6 +3630,9 @@ function openBuilder(node) {
       } else if (kind === "ernie_image") {
         segment.use_scene_ernie_image_settings = true;
         segment.ernie_image_settings = { ...settings, loras: Array.isArray(settings.loras) ? settings.loras.map((item) => ({ ...item })) : [] };
+      } else if (kind === "krea2_2pass") {
+        segment.use_scene_krea2_2pass_settings = true;
+        segment.krea2_2pass_settings = cloneKrea2TwoPassSettings(settings);
       } else if (kind === "flux_klein") {
         segment.use_scene_flux_klein_settings = true;
         segment.flux_klein_settings = { ...settings, loras: Array.isArray(settings.loras) ? settings.loras.map((item) => ({ ...item })) : [] };
@@ -3956,6 +4172,8 @@ function openBuilder(node) {
     if (segment.zimage_settings && typeof segment.zimage_settings !== "object") segment.zimage_settings = null;
     if (segment.use_scene_ernie_image_settings == null) segment.use_scene_ernie_image_settings = false;
     if (segment.ernie_image_settings && typeof segment.ernie_image_settings !== "object") segment.ernie_image_settings = null;
+    if (segment.use_scene_krea2_2pass_settings == null) segment.use_scene_krea2_2pass_settings = false;
+    if (segment.krea2_2pass_settings && typeof segment.krea2_2pass_settings !== "object") segment.krea2_2pass_settings = null;
     if (segment.use_scene_flux_klein_settings == null) segment.use_scene_flux_klein_settings = false;
     if (segment.flux_klein_settings && typeof segment.flux_klein_settings !== "object") segment.flux_klein_settings = null;
     if (segment.nb_notes == null) segment.nb_notes = "";
@@ -4082,6 +4300,36 @@ function openBuilder(node) {
     };
   }
 
+  function cloneKrea2TwoPassSettings(settings) {
+    const source = settings || {};
+    const legacyLora = source.enhancer_lora_name && source.enhancer_lora_name !== "[none]"
+      ? [{
+        name: source.enhancer_lora_name,
+        first_pass_strength: Number(source.enhancer_lora_first_pass_strength ?? source.enhancer_lora_strength ?? 0.5),
+        second_pass_strength: Number(source.enhancer_lora_second_pass_strength ?? source.enhancer_lora_strength ?? 0),
+        strength: Number(source.enhancer_lora_second_pass_strength ?? source.enhancer_lora_strength ?? 0),
+      }]
+      : [];
+    const sourceLoras = Array.isArray(source.loras) && source.loras.length ? source.loras : legacyLora;
+    return {
+      ...defaultKrea2TwoPassSettings(),
+      ...source,
+      cfg: Math.max(1, Math.min(1.2, Number(source.cfg ?? 1.2))),
+      seed: Number(source.seed || 1),
+      batch_size: Math.max(1, Math.min(16, Number(source.batch_size || 1))),
+      use_loras: Boolean(source.use_loras ?? source.use_custom_loras ?? legacyLora.length),
+      lora_count: Math.max(0, Math.min(4, Number(source.lora_count || sourceLoras.length || 0))),
+      loras: sourceLoras.map((item) => ({
+        name: item?.name || "[none]",
+        first_pass_strength: Number(item?.first_pass_strength ?? item?.strength ?? 0.5),
+        second_pass_strength: Number(item?.second_pass_strength ?? item?.strength ?? 0),
+        strength: Number(item?.second_pass_strength ?? item?.strength ?? 0),
+      })),
+      image_to_image_creativity: Math.max(0, Math.min(10, Number(source.image_to_image_creativity ?? 5))),
+      image_trigger_phrase: source.image_trigger_phrase || "",
+    };
+  }
+
   function cloneNBImageSettings(settings) {
     const source = settings || {};
     return {
@@ -4168,6 +4416,9 @@ function openBuilder(node) {
     if (defaults.ernie_image_settings || defaults.ernieImageSettings) {
       state.ernieImageSettings = cloneErnieImageSettings(defaults.ernie_image_settings || defaults.ernieImageSettings);
     }
+    if (defaults.krea2_2pass_settings || defaults.krea2TwoPassSettings) {
+      state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(defaults.krea2_2pass_settings || defaults.krea2TwoPassSettings);
+    }
     if (defaults.nb_image_settings || defaults.nbImageSettings) {
       state.nbImageSettings = cloneNBImageSettings(defaults.nb_image_settings || defaults.nbImageSettings);
     }
@@ -4184,6 +4435,7 @@ function openBuilder(node) {
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
+    syncKrea2TwoPassPanel();
     syncNBImagePanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
@@ -4211,9 +4463,11 @@ function openBuilder(node) {
     if (state.zimageSettings) state.zimageSettings.image_trigger_phrase = "";
     if (state.fluxKleinSettings) state.fluxKleinSettings.image_trigger_phrase = "";
     if (state.ernieImageSettings) state.ernieImageSettings.image_trigger_phrase = "";
+    if (state.krea2TwoPassSettings) state.krea2TwoPassSettings.image_trigger_phrase = "";
     if (state.i2vVideoSettings) state.i2vVideoSettings.video_trigger_phrase = "";
     imageTriggerInput.value = "";
     ernieImageTriggerInput.value = "";
+    krea2TwoPassImageTriggerInput.value = "";
     fluxImageTriggerInput.value = "";
     videoTriggerInput.value = "";
   }
@@ -4234,6 +4488,15 @@ function openBuilder(node) {
       return segment.ernie_image_settings;
     }
     return state.ernieImageSettings;
+  }
+
+  function activeKrea2TwoPassSettings() {
+    const segment = activeSegment();
+    if (segment?.use_scene_krea2_2pass_settings) {
+      if (!segment.krea2_2pass_settings) segment.krea2_2pass_settings = cloneKrea2TwoPassSettings(state.krea2TwoPassSettings);
+      return segment.krea2_2pass_settings;
+    }
+    return state.krea2TwoPassSettings;
   }
 
   function activeNBImageSettings() {
@@ -4317,6 +4580,7 @@ function openBuilder(node) {
       fluxKleinSettings: state.fluxKleinSettings,
       nbImageSettings: state.nbImageSettings,
       ernieImageSettings: state.ernieImageSettings,
+      krea2TwoPassSettings: state.krea2TwoPassSettings,
       useFluxGlobalImageIngredients: state.useFluxGlobalImageIngredients,
       fluxGlobalImageIngredients: state.fluxGlobalImageIngredients,
       builderStoryLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
@@ -4382,6 +4646,7 @@ function openBuilder(node) {
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
     state.nbImageSettings = data.nbImageSettings || data.nb_image_settings || state.nbImageSettings;
     state.ernieImageSettings = data.ernieImageSettings || state.ernieImageSettings;
+    state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(data.krea2TwoPassSettings || data.krea2_2pass_settings || state.krea2TwoPassSettings);
     state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
     state.builderStoryLayer = normalizeBuilderStoryLayer(data.builderStoryLayer || data.builder_story_layer || state.builderStoryLayer);
@@ -4393,6 +4658,7 @@ function openBuilder(node) {
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
+    syncKrea2TwoPassPanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
     syncVideoModePanel();
@@ -4684,6 +4950,7 @@ function openBuilder(node) {
     if (imageMode === "flux_klein") return fluxKleinSettingsForSegment(segment).image_trigger_phrase || "";
     if (imageMode === "nano_banana") return "";
     if (imageMode === "ernie_image") return segment.use_scene_ernie_image_settings ? (segment.ernie_image_settings?.image_trigger_phrase || "") : (state.ernieImageSettings?.image_trigger_phrase || "");
+    if (imageMode === "krea2_2pass") return segment.use_scene_krea2_2pass_settings ? (segment.krea2_2pass_settings?.image_trigger_phrase || "") : (state.krea2TwoPassSettings?.image_trigger_phrase || "");
     return segment.use_scene_zimage_settings ? (segment.zimage_settings?.image_trigger_phrase || "") : (state.zimageSettings?.image_trigger_phrase || "");
   }
 
@@ -4701,6 +4968,7 @@ function openBuilder(node) {
     if (segment.id === activeSegment()?.id) {
       t2iPrompt.value = cleanPrompt;
       ernieT2IPrompt.value = cleanPrompt;
+      krea2TwoPassT2IPrompt.value = cleanPrompt;
       fluxPrompt.value = cleanPrompt;
       nbPrompt.value = cleanPrompt;
       zEnhancePromptPreview.value = cleanPrompt;
@@ -5827,12 +6095,12 @@ function openBuilder(node) {
   function syncInspector() {
     const segment = activeSegment();
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -5843,6 +6111,7 @@ function openBuilder(node) {
     promptJsonInput.value = state.promptJsonPath || "";
     i2vMotionJsonInput.value = state.i2vMotionJsonPath || "";
     useSceneErnieImageSettings.input.checked = Boolean(segment?.use_scene_ernie_image_settings);
+    useSceneKrea2TwoPassSettings.input.checked = Boolean(segment?.use_scene_krea2_2pass_settings);
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
     useSceneNBImageSettings.input.checked = Boolean(segment?.use_scene_nb_image_settings);
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
@@ -5862,16 +6131,19 @@ function openBuilder(node) {
       endInput.value = "4";
       notesInput.value = "";
       ernieNotesInput.value = "";
+      krea2TwoPassNotesInput.value = "";
       nbNotes.value = "";
       lyricTextInput.value = "";
       lyricSingersInput.value = "";
       i2vNotesInput.value = "";
       t2iPrompt.value = "";
       ernieT2IPrompt.value = "";
+      krea2TwoPassT2IPrompt.value = "";
       nbPrompt.value = "";
       i2vPrompt.value = "";
       useVisionReference.input.checked = false;
       ernieUseVisionReference.input.checked = false;
+      krea2TwoPassUseVisionReference.input.checked = false;
       useI2VVisionReference.input.checked = true;
       useT2VVisionReference.input.checked = false;
       useSceneZImageSettings.input.checked = false;
@@ -5879,11 +6151,13 @@ function openBuilder(node) {
       refImageInput.value = "";
       refImagePanel.style.display = "none";
       ernieRefImagePanel.style.display = "none";
+      krea2TwoPassRefImagePanel.style.display = "none";
       t2vRefImagePanel.style.display = "none";
       audioSummary.textContent = "Select a scene to view or edit scene audio.";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
       syncErnieImagePanel();
+      syncKrea2TwoPassPanel();
       syncVideoModePanel();
       syncPreview(null);
       return;
@@ -5893,23 +6167,27 @@ function openBuilder(node) {
     endInput.value = segment.end;
     notesInput.value = segment.notes || "";
     ernieNotesInput.value = segment.notes || "";
+    krea2TwoPassNotesInput.value = segment.notes || "";
     nbNotes.value = segment.nb_notes || segment.flux_notes || segment.notes || "";
     lyricTextInput.value = segment.lyric_text || "";
     lyricSingersInput.value = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.join(", ") : "";
     i2vNotesInput.value = segment.i2v_notes || "";
     t2iPrompt.value = segment.t2i_prompt || "";
     ernieT2IPrompt.value = segment.t2i_prompt || "";
+    krea2TwoPassT2IPrompt.value = segment.t2i_prompt || "";
     fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
     nbPrompt.value = segment.t2i_prompt || segment.nb_prompt || "";
     i2vPrompt.value = segment.i2v_prompt || "";
     useVisionReference.input.checked = Boolean(segment.use_vision_reference);
     ernieUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
+    krea2TwoPassUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
     useI2VVisionReference.input.checked = segment.use_i2v_vision_reference !== false;
     useT2VVisionReference.input.checked = Boolean(segment.use_t2v_vision_reference);
     useSceneZImageSettings.input.checked = Boolean(segment.use_scene_zimage_settings);
     refImageInput.value = segment.ref_image_path || "";
     refImagePanel.style.display = useVisionReference.input.checked ? "flex" : "none";
     ernieRefImagePanel.style.display = ernieUseVisionReference.input.checked ? "flex" : "none";
+    krea2TwoPassRefImagePanel.style.display = krea2TwoPassUseVisionReference.input.checked ? "flex" : "none";
     audioSummary.innerHTML = segment.custom_audio_path
       ? `
         <div><strong>Scene audio:</strong> ${escapeHtml(segment.custom_audio_name || segment.custom_audio_path)}</div>
@@ -5921,6 +6199,7 @@ function openBuilder(node) {
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
+    syncKrea2TwoPassPanel();
     syncVideoModePanel();
     syncPreview(segment);
     updateAudioScrubbers();
@@ -6292,6 +6571,126 @@ function openBuilder(node) {
     else state.ernieImageSettings = settings;
   }
 
+  function syncKrea2TwoPassPanel() {
+    const segment = activeSegment();
+    useSceneKrea2TwoPassSettings.input.checked = Boolean(segment?.use_scene_krea2_2pass_settings);
+    const settings = activeKrea2TwoPassSettings() || {};
+    krea2TwoPassImageTriggerInput.value = settings.image_trigger_phrase || "";
+    krea2TwoPassUnetPicker.input.value = chooseModelValue(
+      krea2TwoPassUnetPicker.options || [],
+      settings.unet_name || "krea2_turbo_fp8_scaled.safetensors",
+      "krea2_turbo_fp8_scaled.safetensors",
+    ) || settings.unet_name || "";
+    krea2TwoPassClipPicker.input.value = chooseModelValue(
+      krea2TwoPassClipPicker.options || [],
+      settings.clip_name || "qwen3vl_4b_fp8_scaled.safetensors",
+      "qwen3vl_4b_fp8_scaled.safetensors",
+    ) || settings.clip_name || "";
+    krea2TwoPassVaePicker.input.value = chooseModelValue(
+      krea2TwoPassVaePicker.options || [],
+      settings.vae_name || "qwen_image_vae.safetensors",
+      "qwen_image_vae.safetensors",
+    ) || settings.vae_name || "";
+    krea2TwoPassUseLora.input.checked = Boolean(settings.use_loras);
+    krea2TwoPassLoraCount.value = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    krea2TwoPassLoraPanel.style.display = krea2TwoPassUseLora.input.checked ? "flex" : "none";
+    krea2TwoPassLoraRows.style.display = krea2TwoPassUseLora.input.checked && Number(krea2TwoPassLoraCount.value || 0) > 0 ? "flex" : "none";
+    krea2TwoPassLoraSlots.forEach((slot, index) => {
+      const config = settings.loras?.[index] || {};
+      const legacyStrength = config.strength;
+      slot.row.style.display = index < Number(krea2TwoPassLoraCount.value || 0) ? "grid" : "none";
+      slot.picker.input.value = chooseModelValue(slot.picker.options || [], config.name || "[none]") || config.name || "[none]";
+      slot.firstPassStrength.value = config.first_pass_strength ?? legacyStrength ?? 0.5;
+      slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength ?? 0;
+    });
+    krea2TwoPassAspectRatio.value = settings.aspect_ratio || "16:9 (Widescreen)";
+    krea2TwoPassSampler.value = settings.sampler_name || "euler_ancestral_cfg_pp";
+    krea2TwoPassSeed.value = Number(settings.seed || 1);
+    krea2TwoPassSeedMode.value = settings.seed_mode || "fixed";
+    krea2TwoPassCfg.value = Math.max(1, Math.min(1.2, Number(settings.cfg ?? 1.2)));
+    krea2TwoPassBatchSize.value = Math.max(1, Math.min(16, Number(settings.batch_size || 1)));
+    krea2TwoPassUseImageToImage.input.checked = Boolean(settings.use_image_to_image);
+    updateKrea2TwoPassImageToImageVisibility();
+    const creativity = Math.max(0, Math.min(10, Number(settings.image_to_image_creativity ?? 5)));
+    krea2TwoPassCreativity.value = String(creativity);
+    krea2TwoPassCreativityInput.value = String(creativity);
+    krea2TwoPassI2IPath.value = settings.image_to_image_path || settings.image_to_image_name || "";
+  }
+
+  function updateKrea2TwoPassImageToImageVisibility() {
+    krea2TwoPassI2IPanel.style.display = krea2TwoPassUseImageToImage.input.checked ? "flex" : "none";
+  }
+
+  function updateKrea2TwoPassLoraVisibility() {
+    const count = Math.max(0, Math.min(4, Number(krea2TwoPassLoraCount.value || 0)));
+    krea2TwoPassLoraPanel.style.display = krea2TwoPassUseLora.input.checked ? "flex" : "none";
+    krea2TwoPassLoraRows.style.display = krea2TwoPassUseLora.input.checked && count > 0 ? "flex" : "none";
+    krea2TwoPassLoraSlots.forEach((slot, index) => {
+      slot.row.style.display = index < count ? "grid" : "none";
+    });
+  }
+
+  function saveKrea2TwoPassSettingsFromPanel() {
+    pushHistory();
+    const segment = activeSegment();
+    const currentSettings = activeKrea2TwoPassSettings() || {};
+    const i2iPathValue = krea2TwoPassI2IPath.value || "";
+    const keepDataSource = Boolean(currentSettings.image_to_image_data && i2iPathValue === currentSettings.image_to_image_name);
+    const loraCount = Math.max(0, Math.min(4, Number(krea2TwoPassLoraCount.value || 0)));
+    const settings = cloneKrea2TwoPassSettings({
+      unet_name: krea2TwoPassUnetPicker.input.value || "krea2_turbo_fp8_scaled.safetensors",
+      clip_name: krea2TwoPassClipPicker.input.value || "qwen3vl_4b_fp8_scaled.safetensors",
+      vae_name: krea2TwoPassVaePicker.input.value || "qwen_image_vae.safetensors",
+      use_loras: Boolean(krea2TwoPassUseLora.input.checked),
+      lora_count: loraCount,
+      loras: krea2TwoPassLoraSlots.map((slot) => ({
+        name: slot.picker.input.value || "[none]",
+        first_pass_strength: Number(slot.firstPassStrength.value || 0.5),
+        second_pass_strength: Number(slot.secondPassStrength.value || 0),
+        strength: Number(slot.secondPassStrength.value || 0),
+      })),
+      aspect_ratio: krea2TwoPassAspectRatio.value || "16:9 (Widescreen)",
+      sampler_name: krea2TwoPassSampler.value || "euler_ancestral_cfg_pp",
+      cfg: Number(krea2TwoPassCfg.value || 1.2),
+      seed: Number(krea2TwoPassSeed.value || 1),
+      seed_mode: krea2TwoPassSeedMode.value || "fixed",
+      batch_size: Math.max(1, Math.min(16, Number(krea2TwoPassBatchSize.value || 1))),
+      image_trigger_phrase: krea2TwoPassImageTriggerInput.value || "",
+      use_image_to_image: Boolean(krea2TwoPassUseImageToImage.input.checked),
+      image_to_image_creativity: Math.max(0, Math.min(10, Number(krea2TwoPassCreativityInput.value || krea2TwoPassCreativity.value || 5))),
+      image_to_image_path: keepDataSource ? "" : i2iPathValue,
+      image_to_image_data: keepDataSource ? currentSettings.image_to_image_data || "" : "",
+      image_to_image_name: keepDataSource ? currentSettings.image_to_image_name || "" : "",
+    });
+    if (segment?.use_scene_krea2_2pass_settings || hasMultiSceneBatchSelection()) {
+      if (segment) {
+        segment.use_scene_krea2_2pass_settings = true;
+        segment.krea2_2pass_settings = settings;
+      }
+    } else {
+      state.imageTriggerPhrase = settings.image_trigger_phrase || "";
+      state.krea2TwoPassSettings = settings;
+    }
+    applyImageSettingsToMultiSelection("krea2_2pass", settings);
+    updateKrea2TwoPassLoraVisibility();
+    updateKrea2TwoPassImageToImageVisibility();
+    return settings;
+  }
+
+  function advanceKrea2TwoPassSeedAfterRun(settings) {
+    const mode = String(settings?.seed_mode || "fixed").toLowerCase();
+    if (mode === "increment") {
+      settings.seed = Math.min(Number.MAX_SAFE_INTEGER, Number(settings.seed || 0) + 1);
+    } else if (mode === "decrement") {
+      settings.seed = Math.max(0, Number(settings.seed || 0) - 1);
+    } else {
+      return;
+    }
+    krea2TwoPassSeed.value = String(settings.seed);
+    if (activeSegment()?.use_scene_krea2_2pass_settings) activeSegment().krea2_2pass_settings = settings;
+    else state.krea2TwoPassSettings = settings;
+  }
+
   function advanceZEnhanceSeedAfterRun(settings) {
     const mode = String(settings?.seed_mode || "fixed").toLowerCase();
     if (mode === "increment") {
@@ -6363,6 +6762,12 @@ function openBuilder(node) {
       if (activeSegment()?.use_scene_ernie_image_settings) activeSegment().ernie_image_settings = settings;
       else state.ernieImageSettings = settings;
       ernieSeed.value = String(seed);
+    } else if (imageMode === "krea2_2pass") {
+      const settings = activeKrea2TwoPassSettings() || {};
+      settings.seed = seed;
+      if (activeSegment()?.use_scene_krea2_2pass_settings) activeSegment().krea2_2pass_settings = settings;
+      else state.krea2TwoPassSettings = settings;
+      krea2TwoPassSeed.value = String(seed);
     } else {
       const settings = activeZImageSettings() || {};
       settings.seed = seed;
@@ -6630,14 +7035,17 @@ function openBuilder(node) {
     zImageModePanel.style.display = mode === "zimage" ? "flex" : "none";
     fluxKleinModePanel.style.display = mode === "flux_klein" || mode === "nano_banana" ? "flex" : "none";
     ernieImageModePanel.style.display = mode === "ernie_image" ? "flex" : "none";
+    krea2TwoPassModePanel.style.display = mode === "krea2_2pass" ? "flex" : "none";
     zEnhancePanel.style.display = mode === "z_enhance" ? "flex" : "none";
     previewButton.style.display = mode === "zimage" ? "" : "none";
     ernieCreateButton.style.display = mode === "ernie_image" ? "" : "none";
+    krea2TwoPassCreateButton.style.display = mode === "krea2_2pass" ? "" : "none";
     useFluxKlein.input.checked = mode === "flux_klein";
     fluxKleinPanel.style.display = mode === "flux_klein" ? "flex" : "none";
     nbImagePanel.style.display = mode === "nano_banana" ? "flex" : "none";
     ernieImagePanel.style.display = mode === "ernie_image" ? "flex" : "none";
-    for (const card of [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, zEnhanceCard]) {
+    krea2TwoPassPanel.style.display = mode === "krea2_2pass" ? "flex" : "none";
+    for (const card of [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, zEnhanceCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#0891b2" : "#3f3f46";
       card.style.background = active ? "#06b6d4" : "#27272a";
@@ -7041,6 +7449,8 @@ function openBuilder(node) {
     segment.notes = notesInput.value || "";
     if (state.imageModelMode === "ernie_image") {
       segment.notes = ernieNotesInput.value || "";
+    } else if (state.imageModelMode === "krea2_2pass") {
+      segment.notes = krea2TwoPassNotesInput.value || "";
     } else if (state.imageModelMode === "nano_banana") {
       segment.nb_notes = nbNotes.value || "";
     }
@@ -7049,6 +7459,8 @@ function openBuilder(node) {
     segment.lyric_singers = lyricSingersInput.value.split(",").map((item) => item.trim()).filter(Boolean);
     const editedT2IPrompt = state.imageModelMode === "ernie_image"
       ? ernieT2IPrompt.value || ""
+      : state.imageModelMode === "krea2_2pass"
+        ? krea2TwoPassT2IPrompt.value || ""
       : state.imageModelMode === "flux_klein"
         ? fluxPrompt.value || ""
         : state.imageModelMode === "nano_banana"
@@ -7059,6 +7471,7 @@ function openBuilder(node) {
     segment.nb_prompt = editedT2IPrompt;
     if (t2iPrompt.value !== editedT2IPrompt) t2iPrompt.value = editedT2IPrompt;
     if (ernieT2IPrompt.value !== editedT2IPrompt) ernieT2IPrompt.value = editedT2IPrompt;
+    if (krea2TwoPassT2IPrompt.value !== editedT2IPrompt) krea2TwoPassT2IPrompt.value = editedT2IPrompt;
     if (fluxPrompt.value !== editedT2IPrompt) fluxPrompt.value = editedT2IPrompt;
     if (nbPrompt.value !== editedT2IPrompt) nbPrompt.value = editedT2IPrompt;
     segment.i2v_prompt = i2vPrompt.value || "";
@@ -7067,12 +7480,15 @@ function openBuilder(node) {
     segment.use_vision_reference = Boolean(useVisionReference.input.checked);
     if (state.imageModelMode === "ernie_image") {
       segment.use_vision_reference = Boolean(ernieUseVisionReference.input.checked);
+    } else if (state.imageModelMode === "krea2_2pass") {
+      segment.use_vision_reference = Boolean(krea2TwoPassUseVisionReference.input.checked);
     }
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
     segment.use_t2v_vision_reference = Boolean(useT2VVisionReference.input.checked);
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     ernieRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
+    krea2TwoPassRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     t2vRefImagePanel.style.display = currentVideoMode() === "t2v" && segment.use_t2v_vision_reference ? "flex" : "none";
     if (!state.timingFrozen && !hasLockedVideo(segment) && !isOverlay) normalizeSegments(segment);
     if (isOverlay) sortSegments(state.overlaySegments);
@@ -8360,19 +8776,31 @@ function openBuilder(node) {
 
   function setImageToImageSource({ path = "", data = "", name = "" } = {}) {
     const useErnie = (state.imageModelMode || "") === "ernie_image";
-    const settings = useErnie ? (state.ernieImageSettings || defaultErnieImageSettings()) : activeZImageSettings();
+    const useKrea2TwoPass = (state.imageModelMode || "") === "krea2_2pass";
+    const settings = useKrea2TwoPass
+      ? (activeKrea2TwoPassSettings() || defaultKrea2TwoPassSettings())
+      : useErnie
+        ? (state.ernieImageSettings || defaultErnieImageSettings())
+        : activeZImageSettings();
     pushHistory();
     settings.use_image_to_image = true;
     settings.image_to_image_path = path || "";
     settings.image_to_image_data = data || "";
     settings.image_to_image_name = name || "";
-    settings.image_to_image_start_at_step = Math.max(1, Math.min(8, Number(
-      useErnie ? (ernieI2IStartStep.value || ernieI2ISlider.value || settings.image_to_image_start_at_step || 5) : (zI2IStartStep.value || zI2ISlider.value || settings.image_to_image_start_at_step || 5)
-    )));
+    if (useKrea2TwoPass) {
+      settings.image_to_image_creativity = Math.max(0, Math.min(10, Number(krea2TwoPassCreativityInput.value || krea2TwoPassCreativity.value || settings.image_to_image_creativity || 5)));
+      if (activeSegment()?.use_scene_krea2_2pass_settings) activeSegment().krea2_2pass_settings = settings;
+      else state.krea2TwoPassSettings = settings;
+      syncKrea2TwoPassPanel();
+    } else {
+      settings.image_to_image_start_at_step = Math.max(1, Math.min(8, Number(
+        useErnie ? (ernieI2IStartStep.value || ernieI2ISlider.value || settings.image_to_image_start_at_step || 5) : (zI2IStartStep.value || zI2ISlider.value || settings.image_to_image_start_at_step || 5)
+      )));
+    }
     if (useErnie) {
       state.ernieImageSettings = settings;
       syncErnieImagePanel();
-    } else {
+    } else if (!useKrea2TwoPass) {
       syncZImageSettingsPanel();
     }
     renderList();
@@ -8427,10 +8855,12 @@ function openBuilder(node) {
       segment.use_vision_reference = true;
       useVisionReference.input.checked = true;
       ernieUseVisionReference.input.checked = true;
+      krea2TwoPassUseVisionReference.input.checked = true;
     }
     refImageInput.value = segment.ref_image_path || name || "";
     refImagePanel.style.display = useVisionReference.input.checked ? "flex" : "none";
     ernieRefImagePanel.style.display = ernieUseVisionReference.input.checked ? "flex" : "none";
+    krea2TwoPassRefImagePanel.style.display = krea2TwoPassUseVisionReference.input.checked ? "flex" : "none";
     t2vRefImagePanel.style.display = currentVideoMode() === "t2v" && useT2VVisionReference.input.checked ? "flex" : "none";
     renderList();
     toast(`Vision reference set${segment.ref_image_path ? `:\n${segment.ref_image_path}` : "."}`);
@@ -18178,6 +18608,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       flux_klein_settings: state.fluxKleinSettings,
       nb_image_settings: state.nbImageSettings,
       ernie_image_settings: state.ernieImageSettings,
+      krea2_2pass_settings: cloneKrea2TwoPassSettings(state.krea2TwoPassSettings),
       use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
       flux_reference_builder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
@@ -18407,6 +18838,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
         state.nbImageSettings = data.session.nb_image_settings || state.nbImageSettings;
         state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
+        state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(data.session.krea2_2pass_settings || state.krea2TwoPassSettings);
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(data.session.flux_reference_builder);
@@ -18418,6 +18850,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncZImageSettingsPanel();
         syncFluxKleinPanel();
         syncErnieImagePanel();
+        syncKrea2TwoPassPanel();
         syncI2VVideoSettingsPanel();
         syncVideoModePanel();
         syncInspector();
@@ -18571,6 +19004,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
       state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
       state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
+      state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(session.krea2_2pass_settings || state.krea2TwoPassSettings);
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(session.flux_reference_builder);
@@ -18669,6 +19103,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
       syncZImageSettingsPanel();
       syncFluxKleinPanel();
+      syncErnieImagePanel();
+      syncKrea2TwoPassPanel();
       syncZEnhanceSettingsPanel();
       syncI2VVideoSettingsPanel();
       syncVideoModePanel();
@@ -19161,6 +19597,107 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(String(error?.message || error), true);
     } finally {
       setButtonGroupState(ernieCreateButtons, { disabled: false, text: "Create with Ernie" });
+    }
+  }
+
+  async function createKrea2TwoPassImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Krea 2") {
+    state.activeId = segment.id;
+    syncInspector();
+    const prompt = ensureSegmentT2IPromptHasTrigger(segment, "krea2_2pass", segment.notes || "");
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
+    progress?.set(`${label}: preparing Krea 2 settings...`, percentBase);
+    const settings = saveKrea2TwoPassSettingsFromPanel();
+    const loraCount = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    const useLoras = Boolean(settings.use_loras && loraCount > 0);
+    const payload = {
+      prompt,
+      unet_name: settings.unet_name || "",
+      clip_name: settings.clip_name || "",
+      vae_name: settings.vae_name || "",
+      use_custom_loras: useLoras,
+      lora_count: useLoras ? loraCount : 0,
+      aspect_ratio: settings.aspect_ratio || "16:9 (Widescreen)",
+      sampler_name: settings.sampler_name || "euler_ancestral_cfg_pp",
+      cfg: Math.max(1, Math.min(1.2, Number(settings.cfg ?? 1.2))),
+      seed: settings.seed,
+      seed_mode: settings.seed_mode || "fixed",
+      batch_size: settings.batch_size || 1,
+      use_image_to_image: Boolean(settings.use_image_to_image),
+      image_to_image_creativity: Math.max(0, Math.min(10, Number(settings.image_to_image_creativity ?? 5))),
+      image_to_image_path: settings.image_to_image_path || "",
+      image_to_image_data: settings.image_to_image_data || "",
+      image_to_image_name: settings.image_to_image_name || "",
+    };
+    for (let index = 0; index < 4; index += 1) {
+      const lora = settings.loras?.[index] || {};
+      payload[`lora_${index + 1}`] = useLoras && index < loraCount ? (lora.name || "[none]") : "[none]";
+      payload[`first_pass_strength_${index + 1}`] = Number(lora.first_pass_strength ?? lora.strength ?? 0.5);
+      payload[`second_pass_strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 0);
+      payload[`strength_${index + 1}`] = Number(lora.second_pass_strength ?? lora.strength ?? 0);
+    }
+    progress?.set(`${label}: building hidden Krea 2 workflow...`, percentBase + percentSpan * 0.25);
+    let built;
+    try {
+      built = await postJson("/vrgdg/workflow_runner/build_krea2_2pass_prompt", payload);
+    } catch (error) {
+      if (/\b405\b/.test(String(error?.message || error))) {
+        throw new Error("Krea 2 backend route is not loaded yet. Fully restart ComfyUI so the new workflow route is registered, then refresh the browser.");
+      }
+      throw error;
+    }
+    if (Number.isFinite(Number(built.used_seed))) {
+      settings.seed = Number(built.used_seed);
+      krea2TwoPassSeed.value = String(settings.seed);
+    }
+    progress?.set(`${label}: queueing Krea 2 workflow...`, percentBase + percentSpan * 0.45);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the Krea 2 image but did not return a prompt_id.");
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    });
+    for (const image of images) {
+      await archiveGeneratedSceneImage(segment, image);
+    }
+    segment.enhance_prompt = prompt;
+    zEnhancePromptPreview.value = prompt;
+    segment.image = images[images.length - 1] || null;
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    syncPreview(segment);
+    render();
+    advanceKrea2TwoPassSeedAfterRun(settings);
+    return images;
+  }
+
+  async function previewKrea2TwoPassImage() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const prompt = String(segment.t2i_prompt || segment.notes || "").trim();
+    if (!prompt) {
+      toast("Hey, you need a T2I prompt first. Create one with Gemma T2I, type one into the T2I prompt box, or add scene notes.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      setButtonGroupState(krea2TwoPassCreateButtons, { disabled: true, text: "Creating..." });
+      progress = createProgressWindow("Creating Krea 2 image");
+      progress.set("Autosaving session/SRT before Krea 2...", 8);
+      await autoSaveSessionQuiet("Krea 2 image");
+      await createKrea2TwoPassImageForSegment(segment, progress, 15, 75, "Krea 2 image");
+      await autoSaveSessionQuiet("Krea 2 image complete");
+      progress.set("Krea 2 image ready.", 100);
+      progress.close(900);
+      toast("Krea 2 image ready.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      setButtonGroupState(krea2TwoPassCreateButtons, { disabled: false, text: "Create with Krea 2" });
     }
   }
 
@@ -20050,6 +20587,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       zImageAllButton.disabled = true;
       createT2IButton.disabled = true;
       ernieCreateT2IButton.disabled = true;
+      krea2TwoPassCreateT2IButton.disabled = true;
       createFluxPromptButton.disabled = true;
       progress.set(`Autosaving session/SRT before Gemma T2I All (${batchScopeLabel(sceneScope)})...`, 3);
       await saveSessionForSceneVideo();
@@ -20118,6 +20656,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       zImageAllButton.disabled = false;
       createT2IButton.disabled = false;
       ernieCreateT2IButton.disabled = false;
+      krea2TwoPassCreateT2IButton.disabled = false;
       createFluxPromptButton.disabled = false;
       state.batchCancelled = false;
       syncInspector();
@@ -21523,6 +22062,125 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function krea2TwoPassImageAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const imageRunMode = options.imageRunMode || "resume_missing";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
+    const redoPrompts = imageRunMode === "redo_prompts_images";
+    const missing = validateZImageAllReady({ imageRunMode, sceneScope });
+    const progress = createProgressWindow("Krea 2 Image All Scenes");
+    if (missing.length) {
+      progress.setHtml(`
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:900;color:#fecaca;">Krea 2 Image All cannot start yet.</div>
+          <div>Fix these first, then press Image All again:</div>
+          <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
+        </div>
+      `, 100);
+      toast("Krea 2 Image All needs scene notes first.", true);
+      if (options.throwOnError) throw new Error(missing.join("\n"));
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "Krea2...";
+      setButtonGroupState(krea2TwoPassCreateButtons, { disabled: true });
+      createT2IButton.disabled = true;
+      krea2TwoPassCreateT2IButton.disabled = true;
+      progress.set(`Autosaving session/SRT before Krea 2 Image All (${batchScopeLabel(sceneScope)})...`, 3);
+      await saveSessionForSceneVideo();
+      const scenes = imageAllSegmentsForMode(imageRunMode, "krea2_2pass", sceneScope);
+      if (!scenes.length) {
+        progress.set("All scenes already have images. Skipping Krea 2 Image All.", 100);
+        progress.close(1800);
+        toast("All scenes already have images. Krea 2 Image All skipped.");
+        return;
+      }
+      if (redoPrompts) {
+        scenes.forEach(({ segment }) => {
+          segment.t2i_prompt = "";
+          segment.flux_prompt = "";
+          segment.nb_prompt = "";
+          segment.enhance_prompt = "";
+        });
+      }
+      const promptScenes = scenes.filter(({ segment }) => !String(segment.t2i_prompt || "").trim());
+      if (promptScenes.length) {
+        progress.set(`Image All: creating ${promptScenes.length} missing T2I prompt${promptScenes.length === 1 ? "" : "s"} with Gemma first...`, 6);
+      } else {
+        progress.set("Image All: all missing images already have T2I prompts. Skipping Gemma prompt pass...", 12);
+      }
+      for (let index = 0; index < promptScenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = promptScenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 6 + Math.floor((index / promptScenes.length) * 32);
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        await runGemmaImagePromptPassWithRetry(
+          segment,
+          progress,
+          base,
+          `Image All prompt pass ${index + 1}/${promptScenes.length}: ${sceneLabel}`,
+          generateT2IPromptForSegment,
+          { unloadAfter: false },
+        );
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Image All prompt pass scene ${sceneIndex + 1}`);
+      }
+      if (promptScenes.length) {
+        await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
+      }
+      progress.set(`Image All: creating ${scenes.length} Krea 2 image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 45 + Math.floor((index / scenes.length) * 45);
+        const span = Math.max(1, Math.floor(40 / scenes.length));
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        if (forceNewImages) setImageSeedForCurrentMode("krea2_2pass");
+        progress.set(`Krea 2 image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
+        await createKrea2TwoPassImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Krea 2 Image All ${index + 1}/${scenes.length}: Krea 2`);
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Krea 2 Image All scene ${sceneIndex + 1}`);
+        await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+      }
+      await autoSaveSessionQuiet("Krea 2 Image All complete");
+      progress.set("Image All complete. You can review the generated images and re-do any scenes you do not like.", 100);
+      progress.close(4500);
+      toast("Krea 2 Image All complete.");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
+      try {
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped Krea 2 Image All" : "Krea 2 Image All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after Krea 2 Image All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
+      }
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
+      setButtonGroupState(krea2TwoPassCreateButtons, { disabled: false, text: "Create with Krea 2" });
+      createT2IButton.disabled = false;
+      krea2TwoPassCreateT2IButton.disabled = false;
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
   async function fluxKleinAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageRunMode = options.imageRunMode || "resume_missing";
@@ -21808,7 +22466,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           if (videoMode === "t2v" || videoMode === "rtv") {
             progress.set(`Stage 1/3: ${videoModeDisplayLabel(videoMode)} mode skips image generation.`, 20);
           } else {
-            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "nano_banana" ? "NanoBanana image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : "Z-Image pass";
+            const imageStage = (state.imageModelMode || "") === "flux_klein" ? "Flux/Klein image pass" : state.imageModelMode === "nano_banana" ? "NanoBanana image pass" : state.imageModelMode === "ernie_image" ? "Ernie image pass" : state.imageModelMode === "krea2_2pass" ? "Krea 2 image pass" : "Z-Image pass";
             progress.set(`Stage 1/3: ${imageStage}...`, 5);
             const imageMode = state.imageModelMode || "zimage";
             const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
@@ -21818,6 +22476,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               await nbImageAllScenes({ throwOnError: true, imageRunMode, sceneScope });
             } else if (imageMode === "ernie_image") {
               await ernieImageAllScenes({ throwOnError: true, imageRunMode, sceneScope });
+            } else if (imageMode === "krea2_2pass") {
+              await krea2TwoPassImageAllScenes({ throwOnError: true, imageRunMode, sceneScope });
             } else {
               await zImageAllScenes({ throwOnError: true, imageRunMode, sceneScope });
             }
@@ -22522,6 +23182,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.referenceKrea2Settings = { ...DEFAULT_KREA2_REFERENCE_SETTINGS };
     state.fluxKleinSettings = defaultFluxKleinSettings();
     state.ernieImageSettings = defaultErnieImageSettings();
+    state.krea2TwoPassSettings = defaultKrea2TwoPassSettings();
     state.useFluxGlobalImageIngredients = false;
     state.fluxGlobalImageIngredients = [];
     state.fluxReferenceBuilder = defaultFluxReferenceBuilder();
@@ -22554,6 +23215,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
+    syncKrea2TwoPassPanel();
     syncZEnhanceSettingsPanel();
     syncI2VVideoSettingsPanel();
     syncVideoModePanel();
@@ -23086,15 +23748,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (mode === "flux_klein") return "Flux/Klein";
       if (mode === "nano_banana") return "Nano B";
       if (mode === "ernie_image") return "Ernie";
+      if (mode === "krea2_2pass") return "Krea 2";
       if (mode === "z_enhance") return "Z Enhance";
       return "ZImage";
     };
     const normalizeImageMode = (mode) => {
       const value = String(mode || "").trim().toLowerCase();
-      if (["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(value)) return value;
+      if (["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass"].includes(value)) return value;
       if (value === "flux" || value === "klein") return "flux_klein";
       if (value === "nano" || value === "nanobanana" || value === "nano_b") return "nano_banana";
       if (value === "ernie") return "ernie_image";
+      if (value === "krea" || value === "krea2" || value === "krea_2" || value === "krea2_2_pass" || value === "krea2 two pass") return "krea2_2pass";
       return "";
     };
     const setAgentImageMode = (mode, push = true) => {
@@ -23926,6 +24590,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             await createNBImageForSegment(segment, progress, 18, 72, "Builder Agent NanoBanana image");
           } else if (imageMode === "ernie_image") {
             await createErnieImageForSegment(segment, progress, 18, 72, "Builder Agent Ernie image");
+          } else if (imageMode === "krea2_2pass") {
+            await createKrea2TwoPassImageForSegment(segment, progress, 18, 72, "Builder Agent Krea 2 image");
           } else {
             await createZImageForSegment(segment, progress, 18, 72, "Builder Agent ZImage");
             await runImageMemoryCleanupQuiet(progress, "Builder Agent ZImage", 94);
@@ -25004,7 +25670,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useFluxKleinMode = imageMode === "flux_klein";
     const useNBMode = imageMode === "nano_banana";
     const useErnieMode = imageMode === "ernie_image";
-    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : "ZImage";
+    const useKrea2TwoPassMode = imageMode === "krea2_2pass";
+    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : "ZImage";
     const imageModeChoices = [
       {
         value: "zimage",
@@ -25025,6 +25692,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         value: "ernie_image",
         label: "Ernie",
         description: "Use the Ernie image workflow.",
+      },
+      {
+        value: "krea2_2pass",
+        label: "Krea 2",
+        description: "Use the Krea 2 workflow with optional image-to-image.",
       },
     ];
     const currentChoice = imageModeChoices.find((choice) => choice.value === imageMode) || imageModeChoices[0];
@@ -25071,7 +25743,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ],
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     if (!action?.mode) return;
-    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image"].includes(action.imageMode) ? action.imageMode : imageMode;
+    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass"].includes(action.imageMode) ? action.imageMode : imageMode;
     const sceneScope = normalizeBatchScope(action.sceneScope);
     state.imageModelMode = selectedImageMode;
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
@@ -25080,12 +25752,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (selectedImageMode === "flux_klein") await fluxKleinAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "nano_banana") await nbImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "ernie_image") await ernieImageAllScenes({ imageRunMode: action.mode, sceneScope });
+    else if (selectedImageMode === "krea2_2pass") await krea2TwoPassImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else await zImageAllScenes({ imageRunMode: action.mode, sceneScope });
   }
 
   async function confirmAndRunGemmaT2IAll() {
     const imageMode = state.imageModelMode || "zimage";
-    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : imageMode === "krea2_2pass" ? "Krea 2" : "ZImage";
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
       title: "Run Gemma T2I All?",
@@ -25966,7 +26639,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     });
   }
 
-  for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview]) {
+  for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview]) {
     control.addEventListener("input", updateActiveFromInputs);
     control.addEventListener("change", updateActiveFromInputs);
   }
@@ -25987,6 +26660,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   imageTriggerInput.addEventListener("input", saveZImageSettingsFromPanel);
   ernieImageTriggerInput.addEventListener("input", saveErnieImageSettingsFromPanel);
+  krea2TwoPassImageTriggerInput.addEventListener("input", saveKrea2TwoPassSettingsFromPanel);
   fluxImageTriggerInput.addEventListener("input", saveFluxKleinSettingsFromPanel);
   fluxUseTextOnlyGemmaPrompt.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
   fluxUseDirectorNotes.input.addEventListener("change", saveFluxKleinSettingsFromPanel);
@@ -26066,6 +26740,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   useVisionReference.input.addEventListener("change", updateActiveFromInputs);
   ernieUseVisionReference.input.addEventListener("change", updateActiveFromInputs);
+  krea2TwoPassUseVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useT2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VPromptEnhancementPass.input.addEventListener("change", async () => {
@@ -26096,6 +26771,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncErnieImagePanel();
     renderList();
     toast(segment.use_scene_ernie_image_settings ? "This scene now has custom Ernie settings." : "This scene is using global Ernie settings again.");
+  });
+  useSceneKrea2TwoPassSettings.input.addEventListener("change", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.use_scene_krea2_2pass_settings = Boolean(useSceneKrea2TwoPassSettings.input.checked);
+    if (segment.use_scene_krea2_2pass_settings && !segment.krea2_2pass_settings) {
+      segment.krea2_2pass_settings = cloneKrea2TwoPassSettings(state.krea2TwoPassSettings);
+    }
+    syncKrea2TwoPassPanel();
+    renderList();
+    toast(segment.use_scene_krea2_2pass_settings ? "This scene now has custom Krea 2 settings." : "This scene is using global Krea 2 settings again.");
   });
   useSceneFluxKleinSettings.input.addEventListener("change", () => {
     const segment = activeSegment();
@@ -26242,9 +26929,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   addOverlaySegmentButton.onclick = addOverlaySegment;
   createT2IButton.onclick = createT2IPromptWithGemma;
   ernieCreateT2IButton.onclick = createT2IPromptWithGemma;
+  krea2TwoPassCreateT2IButton.onclick = createT2IPromptWithGemma;
   createI2VButton.onclick = createI2VPromptWithGemma;
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
+  krea2TwoPassSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", krea2TwoPassT2IPrompt.value);
   sendFluxPromptToEnhanceButton.onclick = () => sendPromptToEnhance("Flux/Klein", fluxPrompt.value);
   zEnhanceGemmaButton.onclick = generateEnhancePromptWithGemma;
   createFluxPromptButton.onclick = createFluxKleinPromptWithGemma;
@@ -26253,6 +26942,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   loadCustomImageButton.onclick = loadCustomImage;
   for (const button of zCreateButtons) button.onclick = previewZImage;
   for (const button of ernieCreateButtons) button.onclick = previewErnieImage;
+  for (const button of krea2TwoPassCreateButtons) button.onclick = previewKrea2TwoPassImage;
   for (const button of fluxCreateButtons) button.onclick = previewFluxKleinImage;
   for (const button of nbCreateButtons) button.onclick = previewNBImage;
   customImageFileInput.addEventListener("change", () => {
@@ -26266,6 +26956,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   zI2ILoadButton.onclick = () => i2iImageFileInput.click();
   ernieI2ILoadButton.onclick = () => i2iImageFileInput.click();
+  krea2TwoPassI2ILoadButton.onclick = () => i2iImageFileInput.click();
   zImageCard.onclick = () => {
     pushHistory();
     state.imageModelMode = "zimage";
@@ -26289,6 +26980,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
     autoSaveSessionQuiet("image mode changed to Ernie").catch(() => null);
+  };
+  krea2TwoPassCard.onclick = () => {
+    pushHistory();
+    state.imageModelMode = "krea2_2pass";
+    state.fluxKleinSettings.image_model_mode = "krea2_2pass";
+    state.fluxKleinSettings.enabled = false;
+    syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to Krea 2").catch(() => null);
   };
   zEnhanceCard.onclick = () => {
     pushHistory();
@@ -26446,6 +27145,32 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ernieI2IDrop.style.borderColor = "#155e75";
     loadImageToImageFile(file);
   });
+  krea2TwoPassI2IDrop.addEventListener("dragover", (event) => {
+    const types = Array.from(event.dataTransfer?.types || []);
+    if (!types.includes("Files") && !types.includes("application/x-vrgdg-segment-id")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    krea2TwoPassI2IDrop.style.borderColor = "#a3e635";
+  });
+  krea2TwoPassI2IDrop.addEventListener("dragleave", () => {
+    krea2TwoPassI2IDrop.style.borderColor = "#155e75";
+  });
+  krea2TwoPassI2IDrop.addEventListener("drop", (event) => {
+    const sceneSource = droppedSceneImageSource(event);
+    if (sceneSource) {
+      event.preventDefault();
+      event.stopPropagation();
+      krea2TwoPassI2IDrop.style.borderColor = "#155e75";
+      setImageToImageSource(sceneSource);
+      return;
+    }
+    const file = imageFileFromDrop(event);
+    if (!file) return;
+    event.preventDefault();
+    event.stopPropagation();
+    krea2TwoPassI2IDrop.style.borderColor = "#155e75";
+    loadImageToImageFile(file);
+  });
   const t2vVisionRefFileInput = document.createElement("input");
   t2vVisionRefFileInput.type = "file";
   t2vVisionRefFileInput.accept = "image/*";
@@ -26453,6 +27178,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   document.body.append(t2vVisionRefFileInput);
   refImageLoadButton.onclick = () => visionRefFileInput.click();
   ernieRefImageLoadButton.onclick = () => visionRefFileInput.click();
+  krea2TwoPassRefImageLoadButton.onclick = () => visionRefFileInput.click();
   t2vRefImageLoadButton.onclick = () => t2vVisionRefFileInput.click();
   visionRefFileInput.addEventListener("change", () => {
     loadVisionReferenceFile(visionRefFileInput.files?.[0]);
@@ -26492,6 +27218,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   wireVisionReferenceDrop(refImageDrop);
   wireVisionReferenceDrop(ernieRefImageDrop);
+  wireVisionReferenceDrop(krea2TwoPassRefImageDrop);
   wireVisionReferenceDrop(t2vRefImageDrop, { forT2V: true });
   deleteSegmentButton.onclick = deleteSegment;
   useFrameAsImageButton.onclick = captureSelectedVideoFrameAsImage;
@@ -26808,7 +27535,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function refreshLoraChoices() {
     const data = await getJson("/vrgdg/workflow_runner/lora_list");
     const loras = data.loras || ["[none]"];
-    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots]) {
+    for (const slot of [...zLoraSlots, ...ernieLoraSlots, ...fluxLoraSlots, ...i2vLoraSlots, ...zEnhanceLoraSlots, ...krea2TwoPassLoraSlots]) {
       const current = slot.picker.input.value || "[none]";
       slot.picker.options = loras;
       slot.picker.input.value = loras.includes(current) ? current : current;
@@ -26846,6 +27573,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     setOptions(ernieUnetPicker, data.unets, ["ernie\\ernie-image-turbo.safetensors", "ernie-image-turbo.safetensors"]);
     setOptions(ernieClipPicker, data.clip, ["ministral-3-3b.safetensors", "ernie\\ministral-3-3b.safetensors"]);
     setOptions(ernieVaePicker, data.vae, ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"]);
+    setOptions(krea2TwoPassUnetPicker, data.unets, "krea2_turbo_fp8_scaled.safetensors");
+    setOptions(krea2TwoPassClipPicker, data.clip, "qwen3vl_4b_fp8_scaled.safetensors");
+    setOptions(krea2TwoPassVaePicker, data.vae, "qwen_image_vae.safetensors");
   }
 
   async function loadCustomModelRootSetting() {
@@ -26877,6 +27607,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     control.addEventListener("input", saveErnieImageSettingsFromPanel);
     control.addEventListener("change", saveErnieImageSettingsFromPanel);
   }
+  for (const control of [krea2TwoPassLoraCount, krea2TwoPassAspectRatio, krea2TwoPassSampler, krea2TwoPassSeed, krea2TwoPassSeedMode, krea2TwoPassCfg, krea2TwoPassBatchSize, krea2TwoPassCreativity, krea2TwoPassCreativityInput, krea2TwoPassI2IPath]) {
+    control.addEventListener("input", saveKrea2TwoPassSettingsFromPanel);
+    control.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
+  }
   for (const picker of [zUnetPicker, zClipPicker, zVaePicker]) {
     wireSearchablePicker(picker, saveZImageSettingsFromPanel);
     picker.input.addEventListener("change", saveZImageSettingsFromPanel);
@@ -26884,6 +27618,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   for (const picker of [ernieUnetPicker, ernieClipPicker, ernieVaePicker]) {
     wireSearchablePicker(picker, saveErnieImageSettingsFromPanel);
     picker.input.addEventListener("change", saveErnieImageSettingsFromPanel);
+  }
+  for (const picker of [krea2TwoPassUnetPicker, krea2TwoPassClipPicker, krea2TwoPassVaePicker]) {
+    wireSearchablePicker(picker, saveKrea2TwoPassSettingsFromPanel);
+    picker.input.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
+  }
+  for (const slot of krea2TwoPassLoraSlots) {
+    wireSearchablePicker(slot.picker, saveKrea2TwoPassSettingsFromPanel);
+    slot.picker.input.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
+    slot.firstPassStrength.addEventListener("input", saveKrea2TwoPassSettingsFromPanel);
+    slot.firstPassStrength.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
+    slot.secondPassStrength.addEventListener("input", saveKrea2TwoPassSettingsFromPanel);
+    slot.secondPassStrength.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
   }
   zI2ISlider.addEventListener("input", () => {
     zI2IStartStep.value = zI2ISlider.value;
@@ -26905,6 +27651,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   ernieUseLora.input.addEventListener("change", saveErnieImageSettingsFromPanel);
   ernieUseImageToImage.input.addEventListener("change", saveErnieImageSettingsFromPanel);
+  krea2TwoPassCreativity.addEventListener("input", () => {
+    krea2TwoPassCreativityInput.value = krea2TwoPassCreativity.value;
+  });
+  krea2TwoPassCreativityInput.addEventListener("input", () => {
+    krea2TwoPassCreativity.value = String(Math.max(0, Math.min(10, Number(krea2TwoPassCreativityInput.value || 0))));
+  });
+  krea2TwoPassUseLora.input.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
+  krea2TwoPassUseImageToImage.input.addEventListener("change", saveKrea2TwoPassSettingsFromPanel);
   for (const slot of zLoraSlots) {
     wireSearchablePicker(slot.picker, saveZImageSettingsFromPanel);
     slot.firstPassStrength.addEventListener("input", saveZImageSettingsFromPanel);

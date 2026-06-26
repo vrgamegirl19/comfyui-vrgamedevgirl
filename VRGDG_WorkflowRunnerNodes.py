@@ -63,6 +63,15 @@ def _krea2_api_template_path():
     )
 
 
+def _krea2_2pass_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "Krea2_API_2Pass.json",
+    )
+
+
 def _flux_klein_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -753,6 +762,76 @@ def _patch_ernie_image_api_prompt(prompt, payload):
     for slot in range(1, _MAX_LORA_SLOTS + 1):
         _set_api_input(prompt, "113", f"lora_{slot}", _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)))
         _set_api_input(prompt, "113", f"strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
+    return prompt, seed
+
+
+def _patch_krea2_2pass_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    prompt_text = str(payload.get("prompt", "") or "").strip()
+    if not prompt_text:
+        raise ValueError("Krea 2 prompt text is empty.")
+
+    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
+    batch_size = _int_payload(payload, "batch_size", 1, 1, 16)
+    seed_mode = str(payload.get("seed_mode", "fixed") or "fixed").strip().lower()
+    seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
+    if seed_mode in {"random", "randomize"}:
+        seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+    cfg = max(1.0, min(1.2, _float_payload(payload, "cfg", 1.2)))
+    sampler_name = str(payload.get("sampler_name") or "euler_ancestral_cfg_pp").strip()
+    use_i2i = _bool_payload(payload, "use_image_to_image", False)
+    creativity = _int_payload(payload, "image_to_image_creativity", 5, 0, 10)
+
+    unet_name = str(payload.get("unet_name") or "krea2_turbo_fp8_scaled.safetensors").strip()
+    clip_name = str(payload.get("clip_name") or "qwen3vl_4b_fp8_scaled.safetensors").strip()
+    vae_name = str(payload.get("vae_name") or "qwen_image_vae.safetensors").strip()
+    use_loras = _bool_payload(payload, "use_custom_loras", _bool_payload(payload, "use_loras", False))
+    lora_count = _int_payload(payload, "lora_count", 0, 0, 20) if use_loras else 0
+
+    _require_model_choice(("diffusion_models", "unet"), unet_name, "Krea 2 diffusion model")
+    _require_model_choice(("text_encoders", "clip"), clip_name, "Krea 2 text encoder")
+    _require_model_choice("vae", vae_name, "Krea 2 VAE")
+    for slot in range(1, lora_count + 1):
+        lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+        if lora_name != _NONE_LORA:
+            _require_model_choice("loras", lora_name, f"Krea 2 LoRA {slot}")
+
+    _set_api_input(prompt, "228", "text", prompt_text)
+    _set_api_input(prompt, "236", "unet_name", unet_name)
+    _set_api_input(prompt, "233", "clip_name", clip_name)
+    _set_api_input(prompt, "234", "vae_name", vae_name)
+    _set_api_input(prompt, "248", "use_custom_loras", bool(use_loras and lora_count > 0))
+    _set_api_input(prompt, "248", "lora_count", lora_count if use_loras else 0)
+    for slot in range(1, 21):
+        lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA))
+        legacy_strength = _float_payload(payload, f"strength_{slot}", 1.0)
+        first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", legacy_strength)
+        second_pass_strength = _float_payload(payload, f"second_pass_strength_{slot}", legacy_strength)
+        if not use_loras or slot > lora_count:
+            lora_name = _NONE_LORA
+        _set_api_input(prompt, "248", f"lora_{slot}", lora_name)
+        _set_api_input(prompt, "248", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "248", f"second_pass_strength_{slot}", second_pass_strength)
+    _set_api_input(prompt, "238", "aspect_ratio", aspect_ratio)
+    _set_api_input(prompt, "49", "aspect_ratio", aspect_ratio)
+    _set_api_input(prompt, "240", "batch_size", batch_size)
+    _set_api_input(prompt, "245", "value", creativity)
+    _set_api_input(prompt, "242", "switch", use_i2i)
+    _set_api_input(prompt, "243", "switch", use_i2i)
+    _set_api_input(prompt, "235", "sampler_name", sampler_name)
+    for node_id in ("230", "231"):
+        _set_api_input(prompt, node_id, "noise_seed", seed)
+        _set_api_input(prompt, node_id, "cfg", cfg)
+
+    if use_i2i:
+        image_name = _prepare_load_image_name(
+            payload.get("image_to_image_path", ""),
+            payload.get("image_to_image_data", ""),
+            payload.get("image_to_image_name", "image.png"),
+        )
+        if not image_name:
+            raise ValueError("Krea 2 image-to-image is enabled, but no source image was provided.")
+        _set_api_input(prompt, "249", "image", image_name)
     return prompt, seed
 
 
@@ -1759,6 +1838,16 @@ def _build_krea2_api_prompt(payload):
     }
 
 
+def _build_krea2_2pass_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_krea2_2pass_api_template_path())
+    patched_prompt, used_seed = _patch_krea2_2pass_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "prompt": patched_prompt,
+        "used_seed": used_seed,
+    }
+
+
 def _build_ernie_image_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_ernie_image_api_template_path())
     patched_prompt, used_seed = _patch_ernie_image_api_prompt(prompt, payload)
@@ -2689,6 +2778,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_krea2_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_krea2_2pass_prompt")
+    async def vrgdg_workflow_runner_build_krea2_2pass_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_krea2_2pass_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
