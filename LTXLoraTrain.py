@@ -3330,7 +3330,7 @@ class VRGDG_LTXPreviewXYZPlot:
             f"using a {int(columns)}x{int(rows)} grid at {int(cell_width)}x{int(cell_height)} per tile "
             f"with {encoder_label}."
         )
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True, text=True, errors="replace")
         if result.returncode != 0:
             stderr = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(f"FFmpeg failed while creating XYZ compare video: {stderr}")
@@ -5536,6 +5536,534 @@ class VRGDG_ZImageLoraTrainChunk(VRGDG_LTXLoraTrainChunk):
         )
 
 
+class VRGDG_Krea2LoraTrainChunk(VRGDG_ZImageLoraTrainChunk):
+    DESCRIPTION = (
+        "Runs one Krea 2 LoRA training chunk using musubi-tuner. "
+        "Outputs the native Krea 2 LoRA safetensors path; no Comfy conversion is attempted."
+    )
+
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = (
+        "latest_lora_path",
+        "latest_state_path",
+        "log_path",
+        "output_name",
+        "completed_steps",
+        "total_target_steps",
+    )
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/Training"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "dataset_images_dir": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Folder containing your training images, or a parent folder that will be organized into an images subfolder."
+                }),
+                "workspace_dir": ("STRING", {
+                    "default": "A:/MUSUBI/Training/Krea2LoraTrain",
+                    "multiline": False,
+                    "tooltip": "Working folder for cache, logs, config files, checkpoints, and training state."
+                }),
+                "run_name": ("STRING", {
+                    "default": "Krea2ChunkRun",
+                    "multiline": False,
+                    "tooltip": "Name prefix used for the log file."
+                }),
+                "output_name": ("STRING", {
+                    "default": "Krea2ChunkRun",
+                    "multiline": False,
+                    "tooltip": "Name prefix used for saved LoRA files and state folders."
+                }),
+                "resolution_width": ("INT", {
+                    "default": 1024, "min": 64, "max": 8192, "step": 1,
+                    "tooltip": "Training bucket width written to the musubi dataset config."
+                }),
+                "resolution_height": ("INT", {
+                    "default": 1024, "min": 64, "max": 8192, "step": 1,
+                    "tooltip": "Training bucket height written to the musubi dataset config."
+                }),
+                "steps_per_run": ("INT", {
+                    "default": 250, "min": 1, "max": 100000, "step": 1,
+                    "tooltip": "How many steps to train per run, and also when to save the LoRA/state at the end of that run."
+                }),
+                "total_target_steps": ("INT", {
+                    "default": 3000, "min": 1, "max": 1000000, "step": 1,
+                    "tooltip": "Training stops once the latest saved step reaches this total."
+                }),
+                "network_dim": ("INT", {
+                    "default": 32, "min": 1, "max": 2048, "step": 1,
+                    "tooltip": "LoRA rank. Krea 2 docs recommend 32 as the default."
+                }),
+                "network_alpha": ("INT", {
+                    "default": 32, "min": 1, "max": 2048, "step": 1,
+                    "tooltip": "LoRA alpha scaling value. Krea 2 docs recommend 32 as the default."
+                }),
+                "blocks_to_swap": ("INT", {
+                    "default": 4, "min": 0, "max": 26, "step": 1,
+                    "tooltip": "How many Krea 2 main blocks to offload to CPU. Krea 2 docs list 26 as the maximum."
+                }),
+                "clear_memory_before_text_encoder": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Tries to unload ComfyUI models and clear VRAM/RAM before text encoder caching."
+                }),
+                "learning_rate_preset": ([
+                    "Custom",
+                    "1e-4",
+                    "7e-5",
+                    "5e-5",
+                    "3e-5",
+                    "1e-5",
+                ], {
+                    "default": "1e-4",
+                    "tooltip": "Quick preset for the training learning rate. Choose Custom to use the float input below."
+                }),
+                "learning_rate": ("FLOAT", {
+                    "default": 1e-4, "min": 1e-8, "max": 1.0, "step": 1e-6,
+                    "tooltip": "Custom learning rate used only when the preset is set to Custom."
+                }),
+                "num_repeats": ("INT", {
+                    "default": 1, "min": 1, "max": 1000, "step": 1,
+                    "tooltip": "How many times each image-caption pair is repeated in the dataset."
+                }),
+                "cache_strategy": (["auto", "force", "skip"], {
+                    "default": "auto",
+                    "tooltip": "Auto builds cache only when needed, Force always rebuilds it, Skip goes straight to training."
+                }),
+                "copy_latest_to_comfy_loras": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Copies the latest native Krea 2 LoRA into the ComfyUI loras folder after training."
+                }),
+                "create_captions": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "If enabled, missing caption txt files are created automatically using the caption text input."
+                }),
+                "caption_text": ("STRING", {
+                    "default": "", "multiline": True,
+                    "tooltip": "Base caption text used when create_captions is enabled and an image has no caption file."
+                }),
+                "add_trigger_word": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "If enabled, the trigger text is prepended to each caption."
+                }),
+                "trigger_text": ("STRING", {
+                    "default": "", "multiline": False,
+                    "tooltip": "Trigger word or phrase to prepend to captions when add_trigger_word is enabled."
+                }),
+                "musubi_root": ("STRING", {
+                    "default": "A:/MUSUBI/musubi-tuner-ltx2", "multiline": False,
+                    "tooltip": "Root folder of your musubi-tuner install with the Krea 2 backport applied."
+                }),
+                "krea2_raw_dit": ("STRING", {
+                    "default": "A:/MUSUBI/models/krea2/raw.safetensors", "multiline": False,
+                    "tooltip": "Path to the Krea 2 RAW DiT checkpoint used for training."
+                }),
+                "vae": ("STRING", {
+                    "default": "A:/MUSUBI/models/qwen_image/qwen_image_vae.safetensors", "multiline": False,
+                    "tooltip": "Path to the Qwen-Image VAE checkpoint."
+                }),
+                "text_encoder": ("STRING", {
+                    "default": "A:/MUSUBI/models/qwen3vl/qwen3vl_4b_bf16.safetensors", "multiline": False,
+                    "tooltip": "Path to the Qwen3-VL-4B-Instruct single safetensors text encoder."
+                }),
+                "fp8_base": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable fp8 base model weights during Krea 2 training. Krea 2 requires fp8_scaled with this."
+                }),
+                "fp8_scaled": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Enable dynamic scaled fp8 weights during Krea 2 training. Required when fp8_base is enabled."
+                }),
+                "timestep_sampling": (["shift", "qwen_shift", "flux_shift"], {
+                    "default": "shift",
+                    "tooltip": "Krea 2 docs recommend shift with discrete_flow_shift=2.5 for 1024px. qwen_shift/flux_shift are available in this backported tuner; krea2_shift is not exposed by the older shared parser."
+                }),
+                "discrete_flow_shift": ("FLOAT", {
+                    "default": 2.5, "min": 0.0, "max": 10.0, "step": 0.1,
+                    "tooltip": "Used when timestep_sampling is shift. 2.5 matches Krea 2's 1024x1024 inference time-shift."
+                }),
+            }
+        }
+
+    @staticmethod
+    def _get_zimage_cache_architecture():
+        return "k2"
+
+    def _write_krea2_training_config(
+        self,
+        path,
+        dataset_config,
+        raw_dit,
+        vae,
+        output_dir,
+        log_dir,
+        output_name,
+        network_dim,
+        network_alpha,
+        blocks_to_swap,
+        learning_rate,
+        max_train_steps,
+        steps_per_run,
+        total_target_steps,
+        fp8_base,
+        fp8_scaled,
+        timestep_sampling,
+        discrete_flow_shift,
+    ):
+        fp8_base = bool(fp8_base)
+        fp8_scaled = bool(fp8_scaled)
+        timestep_sampling = str(timestep_sampling or "shift").strip() or "shift"
+        if timestep_sampling not in {"shift", "qwen_shift", "flux_shift"}:
+            raise ValueError(f"Unsupported Krea 2 timestep_sampling: {timestep_sampling}")
+
+        content = (
+            "# Auto-generated by VRGDG Krea 2 chunk trainer\n"
+            f"# total_target_steps_from_workflow = {int(total_target_steps)}\n"
+            f"# chunk_target_steps_this_run = {int(max_train_steps)}\n"
+            f"# save_interval_per_run = {int(steps_per_run)}\n"
+            f'dit = "{self._quote(raw_dit)}"\n'
+            f'vae = "{self._quote(vae)}"\n'
+            f'dataset_config = "{self._quote(dataset_config)}"\n\n'
+            'network_module = "networks.lora_krea2"\n'
+            f"network_dim = {int(network_dim)}\n"
+            f"network_alpha = {int(network_alpha)}\n\n"
+            'cache_text_encoder_outputs = true\n'
+            'cache_text_encoder_outputs_to_disk = false\n'
+            'sdpa = true\n'
+            'gradient_checkpointing = true\n'
+            'gradient_accumulation_steps = 1\n'
+            f"blocks_to_swap = {int(blocks_to_swap)}\n"
+            'optimizer_type = "AdamW8Bit"\n'
+            f"learning_rate = {learning_rate}\n"
+            'lr_scheduler = "constant_with_warmup"\n'
+            "lr_warmup_steps = 100\n\n"
+            f'timestep_sampling = "{timestep_sampling}"\n'
+            'weighting_scheme = "none"\n'
+        )
+        if timestep_sampling == "shift":
+            content += f"discrete_flow_shift = {float(discrete_flow_shift)}\n"
+
+        content += (
+            "\n"
+            f"fp8_base = {'true' if fp8_base else 'false'}\n"
+            f"fp8_scaled = {'true' if fp8_scaled else 'false'}\n\n"
+            f'output_dir = "{self._quote(output_dir)}"\n'
+            f'output_name = "{output_name}"\n'
+            'log_with = "tensorboard"\n'
+            f'logging_dir = "{self._quote(log_dir)}"\n'
+            "log_config = true\n"
+            f"max_train_steps = {int(max_train_steps)}\n"
+            f"save_every_n_steps = {int(steps_per_run)}\n"
+            'save_model_as = "safetensors"\n'
+            'mixed_precision = "bf16"\n'
+            "save_state = true\n"
+            "save_state_on_train_end = true\n"
+        )
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def _export_latest_native_lora_to_comfy(self, latest_lora_path, output_name):
+        if not latest_lora_path or not os.path.isfile(latest_lora_path):
+            return ""
+        lora_dirs = folder_paths.get_folder_paths("loras")
+        if not lora_dirs:
+            raise RuntimeError("ComfyUI loras folder could not be resolved.")
+        target_dir = lora_dirs[0]
+        self._ensure_dir(target_dir)
+        target_path = os.path.join(target_dir, f"{output_name}_latest.safetensors")
+        shutil.copy2(latest_lora_path, target_path)
+        return os.path.normpath(target_path)
+
+    def run(
+        self,
+        dataset_images_dir,
+        workspace_dir,
+        run_name,
+        output_name,
+        resolution_width,
+        resolution_height,
+        steps_per_run,
+        total_target_steps,
+        network_dim,
+        network_alpha,
+        blocks_to_swap,
+        clear_memory_before_text_encoder,
+        learning_rate_preset,
+        learning_rate,
+        num_repeats,
+        cache_strategy,
+        copy_latest_to_comfy_loras,
+        create_captions,
+        caption_text,
+        add_trigger_word,
+        trigger_text,
+        musubi_root,
+        krea2_raw_dit,
+        vae,
+        text_encoder,
+        fp8_base,
+        fp8_scaled,
+        timestep_sampling,
+        discrete_flow_shift,
+    ):
+        dataset_images_dir = self._norm(dataset_images_dir)
+        workspace_dir = self._norm(workspace_dir)
+        musubi_root = self._norm(musubi_root)
+        krea2_raw_dit = self._resolve_zimage_model_path(krea2_raw_dit, "checkpoint")
+        vae = self._resolve_zimage_model_path(vae, "vae")
+        text_encoder = self._resolve_zimage_model_path(text_encoder, "text_encoder")
+        run_name = self._safe_name(run_name, "Krea2ChunkRun")
+        output_name = self._safe_name(output_name, run_name)
+        effective_learning_rate = self._resolve_learning_rate(learning_rate_preset, learning_rate)
+
+        if bool(fp8_base) and not bool(fp8_scaled):
+            raise ValueError("Krea 2 fp8_base requires fp8_scaled to be enabled.")
+        if int(blocks_to_swap) > 26:
+            raise ValueError("Krea 2 blocks_to_swap must be 26 or lower.")
+
+        dataset_images_dir = self._prepare_dataset_directory(
+            dataset_images_dir,
+            create_captions,
+            caption_text,
+            add_trigger_word,
+            trigger_text,
+        )
+        workspace_dir = self._ensure_dir(workspace_dir)
+
+        musubi_root = self._resolve_musubi_script_root(
+            musubi_root,
+            [
+                "krea2_cache_latents.py",
+                "krea2_cache_text_encoder_outputs.py",
+                "krea2_train_network.py",
+            ],
+        )
+
+        python_exe, accelerate_exe, env_source = self._resolve_musubi_executables(musubi_root)
+
+        cache_dir = self._ensure_dir(os.path.join(workspace_dir, "cache"))
+        output_dir = self._ensure_dir(os.path.join(workspace_dir, "output"))
+        logs_dir = self._ensure_dir(os.path.join(workspace_dir, "logs"))
+        config_dir = self._ensure_dir(os.path.join(workspace_dir, "config"))
+        dataset_config = os.path.join(config_dir, "dataset-krea2.toml")
+        training_config = os.path.join(config_dir, "training_args_krea2.toml")
+
+        latest_state_path, completed_steps = self._latest_state_dir(output_dir, output_name)
+        if completed_steps >= int(total_target_steps):
+            raise RuntimeError(
+                f"Training complete: reached {completed_steps}/{int(total_target_steps)} steps. Stopping workflow."
+            )
+
+        next_target_steps = min(completed_steps + int(steps_per_run), int(total_target_steps))
+        self._write_dataset_config(
+            dataset_config,
+            dataset_images_dir,
+            cache_dir,
+            resolution_width,
+            resolution_height,
+            num_repeats,
+        )
+        self._write_krea2_training_config(
+            training_config,
+            dataset_config,
+            krea2_raw_dit,
+            vae,
+            output_dir,
+            logs_dir,
+            output_name,
+            network_dim,
+            network_alpha,
+            blocks_to_swap,
+            effective_learning_rate,
+            next_target_steps,
+            steps_per_run,
+            total_target_steps,
+            fp8_base,
+            fp8_scaled,
+            timestep_sampling,
+            discrete_flow_shift,
+        )
+
+        log_path = os.path.join(
+            logs_dir,
+            f"{run_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log",
+        )
+        with open(log_path, "w", encoding="utf-8") as log_handle:
+            log_handle.write(f"dataset_images_dir={dataset_images_dir}\n")
+            log_handle.write(f"workspace_dir={workspace_dir}\n")
+            log_handle.write(f"completed_steps={completed_steps}\n")
+            log_handle.write(f"next_target_steps={next_target_steps}\n\n")
+            log_handle.flush()
+
+            image_count, caption_count = self._count_dataset_files(dataset_images_dir)
+            cache_file_count_before = self._count_cache_files(cache_dir)
+            should_build_cache = self._should_build_cache(cache_strategy, cache_dir)
+            total_stages = 3 if should_build_cache else 1
+
+            print(f"[VRGDG] Krea 2 dataset_images_dir={dataset_images_dir}")
+            print(f"[VRGDG] Krea 2 workspace_dir={workspace_dir}")
+            print(f"[VRGDG] completed_steps={completed_steps}")
+            print(f"[VRGDG] next_target_steps={next_target_steps}")
+            print(f"[VRGDG] steps_per_run_and_save={steps_per_run}")
+            print(f"[VRGDG] total_target_steps={total_target_steps}")
+            print(f"[VRGDG] blocks_to_swap={int(blocks_to_swap)}")
+            print(f"[VRGDG] musubi_env_source={env_source}")
+            print(f"[VRGDG] musubi_python={python_exe}")
+            print(f"[VRGDG] musubi_accelerate={accelerate_exe}")
+            print(f"[VRGDG] clear_memory_before_text_encoder={clear_memory_before_text_encoder}")
+            print(f"[VRGDG] fp8_base={bool(fp8_base)} fp8_scaled={bool(fp8_scaled)}")
+            print(f"[VRGDG] timestep_sampling={timestep_sampling} discrete_flow_shift={float(discrete_flow_shift)}")
+            print(
+                f"[VRGDG] learning_rate={effective_learning_rate} "
+                f"(preset={learning_rate_preset})"
+            )
+            print(f"[VRGDG] dataset summary: images={image_count} captions={caption_count}")
+            print(
+                f"[VRGDG] cache summary: strategy={cache_strategy} build_cache={'yes' if should_build_cache else 'no'} "
+                f"existing_cache_files={cache_file_count_before}"
+            )
+            if latest_state_path:
+                print(f"[VRGDG] resume state detected: {latest_state_path}")
+            else:
+                print("[VRGDG] resume state detected: none")
+
+            if should_build_cache:
+                self._run_stage_command(
+                    1,
+                    total_stages,
+                    "Cache Krea 2 latents",
+                    [
+                        python_exe,
+                        "krea2_cache_latents.py",
+                        "--dataset_config",
+                        dataset_config,
+                        "--vae",
+                        vae,
+                        "--device",
+                        "cuda",
+                    ],
+                    musubi_root,
+                    log_handle,
+                    [
+                        f"Dataset images dir: {dataset_images_dir}",
+                        f"Images found: {image_count}",
+                        f"Captions found: {caption_count}",
+                        f"Cache dir: {cache_dir}",
+                    ],
+                )
+                if clear_memory_before_text_encoder:
+                    self._clear_memory_before_gemma(log_handle)
+                self._run_stage_command(
+                    2,
+                    total_stages,
+                    "Cache Krea 2 text encoder outputs",
+                    [
+                        python_exe,
+                        "krea2_cache_text_encoder_outputs.py",
+                        "--dataset_config",
+                        dataset_config,
+                        "--text_encoder",
+                        text_encoder,
+                        "--device",
+                        "cuda",
+                        "--batch_size",
+                        "1",
+                    ],
+                    musubi_root,
+                    log_handle,
+                    [
+                        f"Text encoder: {text_encoder}",
+                        "Krea 2 caches Qwen3-VL multi-layer hidden states.",
+                        "You should see per-item progress from the text encoder cache script.",
+                    ],
+                )
+                print(f"[VRGDG] cache summary after build: files={self._count_cache_files(cache_dir)}")
+            else:
+                self._print_stage_banner(
+                    log_handle,
+                    1,
+                    total_stages,
+                    "Skip cache build",
+                    [
+                        f"Cache strategy: {cache_strategy}",
+                        f"Existing cache files: {cache_file_count_before}",
+                        "Proceeding directly to training.",
+                    ],
+                )
+
+            train_stage_number = 3 if should_build_cache else 1
+            train_command = [
+                accelerate_exe,
+                "launch",
+                "--num_cpu_threads_per_process",
+                "1",
+                "--mixed_precision",
+                "bf16",
+                "krea2_train_network.py",
+                "--config_file",
+                training_config,
+                "--dit",
+                krea2_raw_dit,
+                "--vae",
+                vae,
+            ]
+            if latest_state_path:
+                train_command.extend(["--resume", latest_state_path])
+
+            self._run_stage_command(
+                train_stage_number,
+                total_stages,
+                "Train Krea 2 LoRA",
+                train_command,
+                musubi_root,
+                log_handle,
+                [
+                    f"Output dir: {output_dir}",
+                    f"Target steps this run: {completed_steps} -> {next_target_steps}",
+                    f"Steps per run and save interval: {steps_per_run}",
+                    f"Blocks to swap: {int(blocks_to_swap)}",
+                    f"Learning rate: {effective_learning_rate}",
+                ],
+            )
+
+        latest_lora_path, latest_lora_step = self._latest_file(output_dir, output_name, ".safetensors")
+        latest_state_path, latest_state_step = self._latest_state_dir(output_dir, output_name)
+
+        completed_steps = max(latest_lora_step, latest_state_step)
+        if completed_steps < next_target_steps:
+            raise RuntimeError(
+                f"Krea 2 training chunk did not produce the expected checkpoint. Expected step {next_target_steps}, got {completed_steps}."
+            )
+
+        copied_lora_path = ""
+        if copy_latest_to_comfy_loras:
+            copied_lora_path = self._export_latest_native_lora_to_comfy(latest_lora_path, output_name)
+            if copied_lora_path:
+                latest_lora_path = copied_lora_path
+
+        self._log_message(
+            f"[VRGDG] Latest Krea 2 state path selected: {os.path.normpath(latest_state_path) if latest_state_path else '(none)'}",
+            log_path,
+        )
+        self._log_message(
+            f"[VRGDG] Latest native Krea 2 LoRA selected: {os.path.normpath(latest_lora_path) if latest_lora_path else '(none)'}",
+            log_path,
+        )
+        self._log_message("[VRGDG] Krea 2 LoRA conversion skipped; upstream docs use native --lora_weight safetensors.", log_path)
+
+        return (
+            os.path.normpath(latest_lora_path) if latest_lora_path else "",
+            os.path.normpath(latest_state_path) if latest_state_path else "",
+            os.path.normpath(log_path),
+            output_name,
+            int(completed_steps),
+            int(total_target_steps),
+        )
+
+
 class VRGDG_ZImageSpeedCharacterLoraTraining(VRGDG_ZImageLoraTrainChunk):
     DESCRIPTION = (
         "Runs the Z-Image trainer with a fast character-LoRA preset using dynamic IMAGE and caption inputs."
@@ -6259,6 +6787,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXAudioVideoLoraTrainChunk": VRGDG_LTXAudioVideoLoraTrainChunk,
     "VRGDG_LTXAudioOnlyLoraTrainChunk": VRGDG_LTXAudioOnlyLoraTrainChunk,
     "VRGDG_ZImageLoraTrainChunk": VRGDG_ZImageLoraTrainChunk,
+    "VRGDG_Krea2LoraTrainChunk": VRGDG_Krea2LoraTrainChunk,
     "VRGDG_ZImageSpeedCharacterLoraTraining": VRGDG_ZImageSpeedCharacterLoraTraining,
     "VRGDG_SpeedCharacterLoraTraining": VRGDG_SpeedCharacterLoraTraining,
     "VRGDG_LTXPreviewXYZPlot": VRGDG_LTXPreviewXYZPlot,
@@ -6271,6 +6800,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LTXAudioVideoLoraTrainChunk": "VRGDG LTX Audio Video LoRA Train Chunk",
     "VRGDG_LTXAudioOnlyLoraTrainChunk": "VRGDG LTX Audio Only LoRA Train Chunk",
     "VRGDG_ZImageLoraTrainChunk": "VRGDG Z-Image LoRA Train Chunk",
+    "VRGDG_Krea2LoraTrainChunk": "VRGDG Krea 2 LoRA Train Chunk",
     "VRGDG_ZImageSpeedCharacterLoraTraining": "VRGDG Z-Image Speed Character Lora Training",
     "VRGDG_SpeedCharacterLoraTraining": "VRGDG LTX Speed Character Lora Training",
     "VRGDG_LTXPreviewXYZPlot": "VRGDG LTX Preview XYZ Plot",

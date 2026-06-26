@@ -365,6 +365,7 @@ if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console
         ["powershell", "-NoProfile", "-STA", "-Command", script],
         capture_output=True,
         text=True,
+        errors="replace",
         timeout=300,
         check=False,
     )
@@ -4061,32 +4062,85 @@ def _combine_story_reference_batch(images, cell_size=512):
 
 
 def _clear_comfy_model_memory():
+    result = {
+        "comfy_loaded_before": None,
+        "comfy_loaded_after": None,
+        "comfy_cleanup_calls": [],
+        "comfy_cleanup_errors": [],
+        "torch_cuda_cache_cleared": False,
+    }
     try:
         import comfy.model_management as model_management
+        import torch
+
+        loaded_models = getattr(model_management, "loaded_models", None)
+        if callable(loaded_models):
+            try:
+                result["comfy_loaded_before"] = len(loaded_models())
+            except Exception as exc:
+                result["comfy_cleanup_errors"].append(f"loaded_models before: {exc}")
 
         unload_all_models = getattr(model_management, "unload_all_models", None)
         if callable(unload_all_models):
             unload_all_models()
+            result["comfy_cleanup_calls"].append("unload_all_models")
+
+        cleanup_models_gc = getattr(model_management, "cleanup_models_gc", None)
+        if callable(cleanup_models_gc):
+            cleanup_models_gc()
+            result["comfy_cleanup_calls"].append("cleanup_models_gc")
+
+        cleanup_models = getattr(model_management, "cleanup_models", None)
+        if callable(cleanup_models):
+            cleanup_models()
+            result["comfy_cleanup_calls"].append("cleanup_models")
+
         soft_empty_cache = getattr(model_management, "soft_empty_cache", None)
         if callable(soft_empty_cache):
-            soft_empty_cache()
-    except Exception:
-        pass
+            try:
+                soft_empty_cache(force=True)
+            except TypeError:
+                soft_empty_cache()
+            result["comfy_cleanup_calls"].append("soft_empty_cache")
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+            ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+            if callable(ipc_collect):
+                ipc_collect()
+            result["torch_cuda_cache_cleared"] = True
+
+        gc.collect()
+        if callable(loaded_models):
+            try:
+                result["comfy_loaded_after"] = len(loaded_models())
+            except Exception as exc:
+                result["comfy_cleanup_errors"].append(f"loaded_models after: {exc}")
+    except Exception as exc:
+        result["comfy_cleanup_errors"].append(str(exc))
+    return result
 
 
 def _clear_builder_memory_direct():
     from .LLM import _clear_vrgdg_llm_caches
 
-    _clear_comfy_model_memory()
+    comfy_result = _clear_comfy_model_memory()
     llm_result = _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
     gc.collect()
+    cleanup_calls = ", ".join(comfy_result.get("comfy_cleanup_calls") or []) or "none"
+    cleanup_errors = "; ".join(comfy_result.get("comfy_cleanup_errors") or [])
     return {
         "message": (
             "Memory cleanup finished.\n"
+            f"Comfy cleanup calls: {cleanup_calls}\n"
+            f"Comfy loaded models: {comfy_result.get('comfy_loaded_before')} -> {comfy_result.get('comfy_loaded_after')}\n"
             f"GGUF models unloaded: {llm_result.get('gguf_models_unloaded', 0)}\n"
             f"HF pipelines unloaded: {llm_result.get('hf_pipelines_unloaded', 0)}\n"
-            f"CUDA cache cleared: {bool(llm_result.get('cuda_cache_cleared'))}"
+            f"CUDA cache cleared: {bool(llm_result.get('cuda_cache_cleared') or comfy_result.get('torch_cuda_cache_cleared'))}"
+            + (f"\nCleanup warnings: {cleanup_errors}" if cleanup_errors else "")
         ),
+        **comfy_result,
         **llm_result,
     }
 
@@ -5963,7 +6017,7 @@ def _trim_scene_audio(payload):
         "pcm_s16le",
         target_path,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=False)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to trim scene audio.").strip())
     return {"audio_path": target_path, "scene_number": scene_number, "start": start, "duration": duration, "format": "pcm_s16le_wav"}
@@ -6077,7 +6131,7 @@ def _prepare_scene_audio_mix(payload):
                 "pcm_s16le",
                 silence_path,
             ]
-            result = subprocess.run(silence_cmd, capture_output=True, text=True, check=False)
+            result = subprocess.run(silence_cmd, capture_output=True, text=True, errors="replace", check=False)
             if result.returncode != 0:
                 raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to create silence.").strip())
             part_paths.append(silence_path)
@@ -6116,7 +6170,7 @@ def _prepare_scene_audio_mix(payload):
                 "pcm_s16le",
                 clip_path,
             ]
-        result = subprocess.run(clip_cmd, capture_output=True, text=True, check=False)
+        result = subprocess.run(clip_cmd, capture_output=True, text=True, errors="replace", check=False)
         if result.returncode != 0:
             raise RuntimeError((result.stderr or result.stdout or f"ffmpeg failed to prepare scene {item['index']} audio.").strip())
         part_paths.append(clip_path)
@@ -6142,7 +6196,7 @@ def _prepare_scene_audio_mix(payload):
         "pcm_s16le",
         mix_path,
     ]
-    result = subprocess.run(mix_cmd, capture_output=True, text=True, check=False)
+    result = subprocess.run(mix_cmd, capture_output=True, text=True, errors="replace", check=False)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to create scene audio mix.").strip())
 
@@ -6276,7 +6330,7 @@ def _ensure_builder_scene_video_thumbnail(video_path):
                 "3",
                 thumbnail_path,
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=False)
             if result.returncode == 0 and os.path.isfile(thumbnail_path):
                 return thumbnail_path
         error_text = (result.stderr or result.stdout or "ffmpeg could not extract a thumbnail.").strip()

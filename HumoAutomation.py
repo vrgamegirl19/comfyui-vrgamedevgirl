@@ -2609,7 +2609,7 @@ class VRGDG_CreateFinalVideo:
         ]
 
         try:
-            subprocess.run(cmd_concat, capture_output=True, text=True, check=True)
+            subprocess.run(cmd_concat, capture_output=True, text=True, errors="replace", check=True)
             print(f"✅ [Video] Videos concatenated (no audio)")
         except subprocess.CalledProcessError as e:
             print(f"❌ [Video] Concatenation failed: {e.stderr}")
@@ -2641,7 +2641,7 @@ class VRGDG_CreateFinalVideo:
         ]
 
         try:
-            subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
+            subprocess.run(cmd_combine, capture_output=True, text=True, errors="replace", check=True)
             os.remove(temp_video)
             os.remove(temp_audio)
 
@@ -2788,7 +2788,7 @@ class VRGDG_CreateFinalVideo_SRT:
         ]
 
         try:
-            subprocess.run(cmd_concat, capture_output=True, text=True, check=True)
+            subprocess.run(cmd_concat, capture_output=True, text=True, errors="replace", check=True)
             print("✅ [CreateFinalVideo] Videos concatenated (no audio)")
         except subprocess.CalledProcessError as e:
             print(f"❌ [CreateFinalVideo] Concatenation failed: {e.stderr}")
@@ -2851,7 +2851,7 @@ class VRGDG_CreateFinalVideo_SRT:
         ]
 
         try:
-            subprocess.run(cmd_combine, capture_output=True, text=True, check=True)
+            subprocess.run(cmd_combine, capture_output=True, text=True, errors="replace", check=True)
         except subprocess.CalledProcessError as e:
             if _is_libtorchcodec_error(e.stderr):
                 print("[CreateFinalVideo] FFmpeg mux failed (libtorchcodec).")

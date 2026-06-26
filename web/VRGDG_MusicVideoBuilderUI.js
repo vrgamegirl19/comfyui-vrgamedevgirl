@@ -19689,6 +19689,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress.set("Autosaving session/SRT before Krea 2...", 8);
       await autoSaveSessionQuiet("Krea 2 image");
       await createKrea2TwoPassImageForSegment(segment, progress, 15, 75, "Krea 2 image");
+      await runClearMemoryWorkflowQuiet(progress, "Krea 2 image", 94);
       await autoSaveSessionQuiet("Krea 2 image complete");
       progress.set("Krea 2 image ready.", 100);
       progress.close(900);
@@ -20722,11 +20723,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function i2vImagesFolder() {
-    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\zimage_approved`;
+    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}/zimage_approved`;
   }
 
   function i2vVideoOutputFolder() {
-    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\image_to_video_clips`;
+    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}/image_to_video_clips`;
   }
 
   function t2vVideoOutputFolder() {

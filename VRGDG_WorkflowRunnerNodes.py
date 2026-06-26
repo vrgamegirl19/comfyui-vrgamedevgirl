@@ -2134,7 +2134,7 @@ def _create_scene_video_thumbnail(video_path, thumbnail_path=None):
             "3",
             thumbnail_path,
         ]
-        return subprocess.run(cmd, capture_output=True, text=True)
+        return subprocess.run(cmd, capture_output=True, text=True, errors="replace")
 
     result = _run_extract(0.5)
     if result.returncode != 0 or not os.path.isfile(thumbnail_path):
@@ -2514,7 +2514,7 @@ def _stitch_scene_videos(payload):
         "copy",
         temp_video,
     ]
-    subprocess.run(concat_cmd, capture_output=True, text=True, check=True)
+    subprocess.run(concat_cmd, capture_output=True, text=True, errors="replace", check=True)
 
     insert_items = []
     for index, item in enumerate(raw_overlay_items, start=1):
@@ -2558,7 +2558,7 @@ def _stitch_scene_videos(payload):
                 "veryfast",
                 part_path,
             ])
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
             flatten_parts.append(part_path)
 
         for item in insert_items:
@@ -2585,7 +2585,7 @@ def _stitch_scene_videos(payload):
             "copy",
             flattened_video,
         ]
-        subprocess.run(flatten_cmd, capture_output=True, text=True, check=True)
+        subprocess.run(flatten_cmd, capture_output=True, text=True, errors="replace", check=True)
         try:
             os.remove(temp_video)
         except Exception:
@@ -2620,7 +2620,7 @@ def _stitch_scene_videos(payload):
                     if duration:
                         trim_cmd.extend(["-t", str(duration)])
                     trim_cmd.extend(["-vn", "-c:a", "aac", part_path])
-                    subprocess.run(trim_cmd, capture_output=True, text=True, check=True)
+                    subprocess.run(trim_cmd, capture_output=True, text=True, errors="replace", check=True)
                     temp_audio_parts.append(part_path)
                     path = part_path
                 handle.write(f"file '{_concat_file_path(path)}'\n")
@@ -2638,7 +2638,7 @@ def _stitch_scene_videos(payload):
             "aac",
             temp_audio,
         ]
-        subprocess.run(audio_concat_cmd, capture_output=True, text=True, check=True)
+        subprocess.run(audio_concat_cmd, capture_output=True, text=True, errors="replace", check=True)
         mux_audio_path = temp_audio
     elif preview_audio_start or preview_audio_duration:
         trim_audio_cmd = [ffmpeg_path, "-y"]
@@ -2648,7 +2648,7 @@ def _stitch_scene_videos(payload):
         if preview_audio_duration:
             trim_audio_cmd.extend(["-t", f"{preview_audio_duration:.6f}"])
         trim_audio_cmd.extend(["-vn", "-c:a", "aac", temp_global_audio])
-        subprocess.run(trim_audio_cmd, capture_output=True, text=True, check=True)
+        subprocess.run(trim_audio_cmd, capture_output=True, text=True, errors="replace", check=True)
         mux_audio_path = temp_global_audio
 
     mux_cmd = [
@@ -2666,7 +2666,7 @@ def _stitch_scene_videos(payload):
         final_output,
     ]
     try:
-        subprocess.run(mux_cmd, capture_output=True, text=True, check=True)
+        subprocess.run(mux_cmd, capture_output=True, text=True, errors="replace", check=True)
     finally:
         try:
             if os.path.exists(temp_video):
