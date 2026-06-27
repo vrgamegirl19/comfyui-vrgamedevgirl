@@ -18470,7 +18470,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (lyricPath) await syncLyricAndSubjectNoteFiles("SRT path load");
       syncInspector();
       render();
-      if (activeProjectFolderForSave()) await saveSession({ quiet: true, throwOnError: true });
+      if (!options.skipSessionSave && activeProjectFolderForSave()) await saveSession({ quiet: true, throwOnError: true });
       toast(`Loaded ${state.segments.length} SRT segment${state.segments.length === 1 ? "" : "s"}.\nTiming is frozen.`);
     } catch (error) {
       if (options.throwOnError) throw error;
@@ -18897,7 +18897,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.useVrgdgTextContext = true;
       useVrgdgTextContext.input.checked = true;
       if (paths.audio_path) await loadAudio();
-      await loadSrt({ throwOnError: true });
+      await loadSrt({ throwOnError: true, skipSessionSave: true });
       let importedPrompts = [];
       let importedMotionNotes = [];
       let importedLyrics = [];
