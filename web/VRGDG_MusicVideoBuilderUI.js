@@ -21,6 +21,7 @@ const DEFAULT_LTX_INGREDIENTS_WIDTH = 768;
 const DEFAULT_LTX_INGREDIENTS_HEIGHT = 448;
 const LOCATION_TRIGGER_GPT_URL = "https://chatgpt.com/g/g-6a36e98d149c8191832005c2050a8c89-ltx-2-3-full-location-mapping-with-lora-trigger";
 const LOCATION_MAPPER_GPT_URL = "https://chatgpt.com/g/g-6a2df090651c819190b00d7974677ad2-ltx-2-3-video-builder-location-creator-mapper";
+const LOCATION_SCOUT_GPT_URL = "https://chatgpt.com/g/g-6a3ff63879048191b30df4168cbea80a-music-video-location-scout";
 const SCENE_MAPPING_GPT_URL = "https://chatgpt.com/g/g-6a3a00f5cd508191a0a94ab5356e0b63-ltx-2-3-scene-mapping-assistant";
 const TIMELINE_HEIGHT = 210;
 const TIMELINE_OVERLAY_TOP = 24;
@@ -5739,6 +5740,52 @@ function openBuilder(node) {
     return applied;
   }
 
+  function locationScoutLyricsPayloadForGpt() {
+    return allEditableSegments()
+      .map((segment, index) => {
+        const lyric = String(segment?.lyric_text || "").trim();
+        if (!lyric) return "";
+        const section = String(segment?.lyric_section || "").trim();
+        return `${section ? `[${section}] ` : ""}Scene ${index + 1}: ${lyric}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  function locationScoutCharacterPayloadForGpt(refsInput = state.fluxReferenceBuilder) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refsInput);
+    const rows = [];
+    const seen = new Set();
+    const addRow = (item, fallbackType = "character") => {
+      const name = String(item?.name || "").trim();
+      const description = String(item?.description || "").trim();
+      const type = String(item?.reference_type || item?.referenceType || item?.type || fallbackType).trim() || fallbackType;
+      if (!name && !description) return;
+      const key = `${name.toLowerCase()}|${description.toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({ name, type, description });
+    };
+    for (const subject of normalizedRefs.subjects || []) addRow(subject, "character");
+    for (const sheet of normalizedRefs.ingredients_sheets || []) addRow(sheet, "ingredients_sheet");
+    return rows;
+  }
+
+  async function openLocationScoutGptForRefs(refsInput = state.fluxReferenceBuilder, styleTheme = "") {
+    const payload = {
+      lyrics: locationScoutLyricsPayloadForGpt(),
+      style_theme: String(styleTheme || "").trim(),
+      character_descriptions: locationScoutCharacterPayloadForGpt(refsInput),
+    };
+    if (!payload.lyrics) {
+      toast("Create or paste lyric scenes before opening the Location Scout GPT.", true);
+      return;
+    }
+    const copied = await copyTextToClipboard(JSON.stringify(payload, null, 2)).catch(() => false);
+    const gptWindow = window.open(LOCATION_SCOUT_GPT_URL, "_blank", "noopener,noreferrer");
+    toast(`${copied ? "Copied location scout JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}`);
+  }
+
   function syncIngredientsSceneMapFromSubjectMappings(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
     const normalizedRefs = normalizeFluxReferenceBuilder(refs);
     const sheets = normalizedRefs.ingredients_sheets || [];
@@ -10425,6 +10472,61 @@ function openBuilder(node) {
     throw new Error("Timestamped transcription finished, but no timestamped lyrics JSON was found.");
   }
 
+  function mergeTimestampedLyricText(a, b, instrumentalText = "[instrumental]") {
+    const values = [a, b].map((value) => String(value || "").trim()).filter(Boolean);
+    const nonInstrumental = values.filter((value) => !isInstrumentalLyricText(value));
+    if (!nonInstrumental.length) return values[0] || instrumentalText;
+    return Array.from(new Set(nonInstrumental)).join("\n");
+  }
+
+  function normalizeTimestampedSceneDurations(segments = [], options = {}, payload = {}) {
+    const minSceneSeconds = Math.max(1, Number(options.minSceneSeconds ?? payload?.min_scene_seconds ?? payload?.minSceneSeconds ?? 1) || 1);
+    const instrumentalText = String(options.instrumentalText || payload?.instrumental_text || payload?.instrumentalText || "[instrumental]").trim() || "[instrumental]";
+    const items = (Array.isArray(segments) ? segments : [])
+      .filter(Boolean)
+      .map((segment) => ensureSegmentRuntimeFields(segment))
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0) || Number(a.end || 0) - Number(b.end || 0));
+    if (!items.length) return items;
+
+    for (let index = 0; index < items.length; index += 1) {
+      const segment = items[index];
+      segment.start = Math.max(0, Number(segment.start || 0));
+      segment.end = Math.max(segment.start + 0.05, Number(segment.end || segment.start + 0.05));
+      const duration = segment.end - segment.start;
+      if (duration >= minSceneSeconds || items.length <= 1) continue;
+
+      const prev = items[index - 1] || null;
+      const next = items[index + 1] || null;
+      const prevDuration = prev ? Math.max(0, Number(prev.end || 0) - Number(prev.start || 0)) : -1;
+      const nextDuration = next ? Math.max(0, Number(next.end || 0) - Number(next.start || 0)) : -1;
+      const target = next && (!prev || nextDuration <= prevDuration) ? next : prev;
+      if (!target) continue;
+
+      target.start = Math.min(Number(target.start || 0), segment.start);
+      target.end = Math.max(Number(target.end || target.start + minSceneSeconds), segment.end);
+      target.lyric_text = mergeTimestampedLyricText(target.lyric_text, segment.lyric_text, instrumentalText);
+      target.lyric_no_lip_sync = isInstrumentalLyricText(target.lyric_text);
+      target.timeline_note = [target.timeline_note, segment.timeline_note]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join("\n");
+      items.splice(index, 1);
+      index = Math.max(-1, index - 2);
+    }
+
+    for (let index = 0; index < items.length; index += 1) {
+      const segment = items[index];
+      const prev = items[index - 1] || null;
+      if (prev) {
+        segment.start = Math.max(Number(prev.end || 0), Number(segment.start || 0));
+        if (segment.end <= segment.start + 0.05) segment.end = segment.start + minSceneSeconds;
+      }
+      segment.end = Math.max(Number(segment.start || 0) + 0.05, Number(segment.end || 0));
+      ensureSegmentRuntimeFields(segment);
+    }
+    return items;
+  }
+
   function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
     const sourceSegments = Array.isArray(payload?.segments) ? payload.segments : [];
     const ordered = sourceSegments
@@ -10489,10 +10591,12 @@ function openBuilder(node) {
       if (!filledTail && created.length) created[created.length - 1].end = duration;
     }
     sortSegments(created);
-    created.forEach((segment, index) => {
+    const normalized = normalizeTimestampedSceneDurations(created, options, payload);
+    sortSegments(normalized);
+    normalized.forEach((segment, index) => {
       segment.label = `SCENE ${index + 1}`;
     });
-    return created;
+    return normalized;
   }
 
   function normalizeLyricSectionLookupText(value = "") {
@@ -11587,9 +11691,19 @@ function openBuilder(node) {
     };
 
     const mergeReviewRows = (targetRow, absorbedRow) => {
+      if (!targetRow || !absorbedRow || targetRow === absorbedRow) {
+        toast("Choose two different lyric review scenes to merge.", true);
+        return;
+      }
       const targetSegment = reviewSegmentForRow(targetRow);
       const absorbedSegment = reviewSegmentForRow(absorbedRow);
       if (!targetSegment || !absorbedSegment) return;
+      if (targetSegment.id === absorbedSegment.id) {
+        toast("Choose two different lyric review scenes to merge.", true);
+        return;
+      }
+      ensureSegmentRuntimeFields(targetSegment);
+      ensureSegmentRuntimeFields(absorbedSegment);
       pushHistory();
       const targetStartInput = targetRow.querySelector("[data-review-start]");
       const targetEndInput = targetRow.querySelector("[data-review-end]");
@@ -11636,6 +11750,7 @@ function openBuilder(node) {
       if (refs.scene_map) delete refs.scene_map[absorbedSegment.id];
       if (refs.subject_scene_map) delete refs.subject_scene_map[absorbedSegment.id];
       state.fluxReferenceBuilder = refs;
+      ensureSegmentRuntimeFields(targetSegment);
       absorbedRow.remove();
       refreshReviewRowLabels();
       updateReviewTimingDisplay(targetRow);
@@ -11644,6 +11759,8 @@ function openBuilder(node) {
     };
 
     const maybeWarnShortReviewScene = async (shortRow, mergeTargetRow, mergeAbsorbedRow, mergeText) => {
+      if (!shortRow?.isConnected || !mergeTargetRow?.isConnected || !mergeAbsorbedRow?.isConnected) return;
+      if (mergeTargetRow === mergeAbsorbedRow) return;
       const start = parseBulkTimeValue(shortRow.querySelector("[data-review-start]")?.value);
       const end = parseBulkTimeValue(shortRow.querySelector("[data-review-end]")?.value);
       if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
@@ -11652,7 +11769,7 @@ function openBuilder(node) {
       const segment = reviewSegmentForRow(shortRow);
       const sceneName = segment?.label || "This scene";
       const shouldMerge = await showShortReviewSceneConfirm(sceneName, seconds, mergeText);
-      if (shouldMerge && mergeTargetRow && mergeAbsorbedRow) mergeReviewRows(mergeTargetRow, mergeAbsorbedRow);
+      if (shouldMerge && mergeTargetRow?.isConnected && mergeAbsorbedRow?.isConnected) mergeReviewRows(mergeTargetRow, mergeAbsorbedRow);
     };
 
     const showMergeWithNextConfirm = (currentLabel, nextLabel) => new Promise((resolve) => {
@@ -12792,7 +12909,8 @@ function openBuilder(node) {
     const locationsTitle = document.createElement("div");
     locationsTitle.textContent = "Location References";
     locationsTitle.style.cssText = subjectTitle.style.cssText;
-    const extractLocations = makeButton("Extract Locations", "primary");
+    const extractLocations = makeButton("Gemma Extract", "primary");
+    const gptLocationScout = makeButton("GPT Scout", "primary");
     const autoMapLocations = makeButton("Auto Map Locations with Gemma", "primary");
     const describeMissingLocations = makeButton("Gemma - Create Location Description if missing", "primary");
     const importLocations = makeButton("Import Location List", "primary");
@@ -12800,7 +12918,8 @@ function openBuilder(node) {
     const createAllMissingLocationZImages = makeButton("Generate Missing Images", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const removeAllLocations = makeButton("Remove All Locations");
-    extractLocations.textContent = "Extract";
+    extractLocations.textContent = "Gemma Extract";
+    gptLocationScout.textContent = "GPT Scout";
     autoMapLocations.textContent = "Auto Map";
     importLocations.textContent = "Import List";
     exportLocations.textContent = "Export";
@@ -12808,6 +12927,7 @@ function openBuilder(node) {
     addLocation.textContent = "Add";
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
+    gptLocationScout.title = "Copy lyrics, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
     describeMissingLocations.title = "Use vision Gemma to describe location reference images that do not already have descriptions.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
@@ -12843,7 +12963,7 @@ function openBuilder(node) {
       return group;
     };
     locationActions.append(
-      locationActionGroup("Gemma", [extractLocations, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
+      locationActionGroup("Gemma", [extractLocations, gptLocationScout, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
       locationActionGroup("Manage", [importLocations, exportLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
@@ -14564,7 +14684,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         toast(message, true);
         extractLocations.disabled = false;
         autoMapLocations.disabled = false;
-        extractLocations.textContent = "Extract Locations";
+        extractLocations.textContent = "Gemma Extract";
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
@@ -14574,7 +14694,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         toast(message, true);
         extractLocations.disabled = false;
         autoMapLocations.disabled = false;
-        extractLocations.textContent = "Extract Locations";
+        extractLocations.textContent = "Gemma Extract";
         return;
       }
       try {
@@ -14628,7 +14748,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       } finally {
         extractLocations.disabled = false;
         autoMapLocations.disabled = false;
-        extractLocations.textContent = "Extract Locations";
+        extractLocations.textContent = "Gemma Extract";
       }
     }
 
@@ -15623,6 +15743,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     });
     extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
+    gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "");
     autoMapLocations.onclick = autoMapLocationsWithGemma;
     createAllMissingLocationZImages.onclick = openMissingLocationImageGeneratorDialog;
     importLocations.onclick = openImportLocationSourceDialog;
@@ -15832,15 +15953,22 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const locationHeader = document.createElement("div");
     locationHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Location Text</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Optional text-only locations for Gemma/prompt planning. No location images or triggers are used here.</div>`;
     const locationToolActions = document.createElement("div");
-    locationToolActions.style.cssText = "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;";
+    locationToolActions.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;";
+    const extractLocations = makeButton("Gemma Extract", "primary");
+    const gptLocationScout = makeButton("GPT Scout", "primary");
     const importLocations = makeButton("Import JSON", "primary");
     const addLocation = makeButton("Add Location", "primary");
     const autoMapLocations = makeButton("Auto Map", "primary");
     const clearLocations = makeButton("Clear Locations");
-    locationToolActions.append(importLocations, addLocation, autoMapLocations, clearLocations);
+    extractLocations.title = "Ask Gemma to extract a reusable text-only location list from the song lyrics and scene text.";
+    gptLocationScout.title = "Copy lyrics, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
+    locationToolActions.append(extractLocations, gptLocationScout, importLocations, addLocation, autoMapLocations, clearLocations);
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
     locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
+    locationStyleTheme.addEventListener("input", () => {
+      refs.location_style_theme = locationStyleTheme.value;
+    });
     const locationHint = document.createElement("div");
     locationHint.textContent = "Import location lists or scene-to-location JSON, then choose those locations in the scene dropdowns above.";
     locationHint.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
@@ -16052,6 +16180,16 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const locationKey = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
     const locationByName = (name) => (refs.locations || []).find((location) => locationKey(location.name) === locationKey(name)) || null;
     const locationById = (id) => (refs.locations || []).find((location) => String(location.id || "") === String(id || "")) || null;
+    const ingredientSubjectContextForLocations = () => locationScoutCharacterPayloadForGpt(refs)
+      .map((item) => {
+        const type = String(item.type || "character").trim();
+        const name = String(item.name || "").trim();
+        const description = String(item.description || "").trim();
+        if (!name && !description) return "";
+        return `${name || "Reference"}${type ? ` (${type})` : ""}${description ? `: ${description}` : ""}`;
+      })
+      .filter(Boolean)
+      .join("\n");
     const upsertLocationText = (items = []) => {
       refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
       let added = 0;
@@ -16463,6 +16601,73 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.ingredients_scene_map = {};
       renderScenes();
     };
+    extractLocations.onclick = async () => {
+      let progress = null;
+      try {
+        collectMappingsFromDom();
+        extractLocations.disabled = true;
+        autoMapLocations.disabled = true;
+        extractLocations.textContent = "Extracting...";
+        progress = createProgressWindow("Extracting Ingredients locations", { zIndex: 100008 });
+        const sceneInputs = allEditableSegments().map((segment, index) => {
+          const planningNotes = [segment.notes || "", segment.timeline_note || "", segment.i2v_notes || ""].filter(Boolean).join("\n");
+          return {
+            id: segment.id,
+            label: segment.label || `Scene ${index + 1}`,
+            concept: sceneConceptPromptText(segment),
+            notes: planningNotes,
+            lyric: segment.lyric_text || "",
+          };
+        });
+        const planningScenes = sceneInputs
+          .map((scene) => ({ id: scene.id, label: scene.label, concept: scene.concept, notes: scene.notes }))
+          .filter((scene) => String(scene.concept || scene.notes || "").trim());
+        const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
+        if (!planningScenes.length && !lyricScenes.length) throw new Error("Gemma Extract needs scene prompts, notes, lyrics, or timeline notes first.");
+        const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.");
+        const useLyricsScout = Boolean(!planningScenes.length && lyricScenes.length);
+        progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
+        const data = useLyricsScout
+          ? await postJson("/vrgdg/music_builder/wizard_locations_from_lyrics", {
+            ...textGemmaRunnerPayload(),
+            model_file: modelFile,
+            lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
+            style_theme: locationStyleTheme.value || "",
+            subject_context: ingredientSubjectContextForLocations(),
+            existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            n_ctx: 10000,
+            max_new_tokens: 2200,
+            unload_after: true,
+          }, 10 * 60 * 1000)
+          : await postJson("/vrgdg/music_builder/flux_reference_extract_locations", {
+            ...textGemmaRunnerPayload(),
+            model_file: modelFile,
+            scenes: planningScenes,
+            subject_scene_text: "",
+            style_theme: locationStyleTheme.value || "",
+            subject_context: ingredientSubjectContextForLocations(),
+            existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            n_ctx: 10000,
+            unload_after: true,
+          }, 10 * 60 * 1000);
+        const { added, updated } = upsertLocationText((data.locations || []).map((item) => ({ name: item.name, description: item.description })));
+        if (added || updated) refs.locations_cleared = false;
+        refs.use_location_references = true;
+        renderAll();
+        progress.set(`Extracted Ingredients location text.\nAdded: ${added}\nUpdated: ${updated}`, 100);
+        progress.close(1800);
+        toast(`Extracted ${added} location${added === 1 ? "" : "s"}.`);
+      } catch (error) {
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      } finally {
+        extractLocations.disabled = false;
+        autoMapLocations.disabled = false;
+        extractLocations.textContent = "Gemma Extract";
+      }
+    };
+    gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "");
     addLocation.onclick = () => {
       collectMappingsFromDom();
       refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
@@ -16695,12 +16900,14 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     locationsHeader.append(locationsTitle, locationTextHeaderActions);
     const locationTools = document.createElement("div");
     locationTools.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;border:1px solid #334155;border-radius:7px;background:#111827;padding:8px;";
-    const extractLocations = makeButton("Extract", "primary");
+    const extractLocations = makeButton("Gemma Extract", "primary");
+    const gptLocationScout = makeButton("GPT Scout", "primary");
+    gptLocationScout.title = "Copy lyrics, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     const autoMapLocations = makeButton("Auto Map", "primary");
     const importLocations = makeButton("Import List", "primary");
     const exportLocations = makeButton("Export", "primary");
     const removeAllLocations = makeButton("Remove");
-    locationTools.append(extractLocations, autoMapLocations, importLocations, exportLocations, removeAllLocations);
+    locationTools.append(extractLocations, gptLocationScout, autoMapLocations, importLocations, exportLocations, removeAllLocations);
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
     locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
@@ -16764,6 +16971,35 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
       })
       .filter(Boolean)
       .join("\n");
+    const locationScoutLyricsPayload = () => allEditableSegments()
+      .map((segment, index) => {
+        const lyric = String(segment?.lyric_text || "").trim();
+        if (!lyric) return "";
+        const section = String(segment?.lyric_section || "").trim();
+        return `${section ? `[${section}] ` : ""}Scene ${index + 1}: ${lyric}`;
+      })
+      .filter(Boolean)
+      .join("\n");
+    const openLocationScoutGpt = async () => {
+      const payload = {
+        lyrics: locationScoutLyricsPayload(),
+        style_theme: String(locationStyleTheme.value || "").trim(),
+        character_descriptions: (refs.subjects || [])
+          .map((subject) => ({
+            name: String(subject?.name || "").trim(),
+            type: String(subject?.reference_type || "character").trim(),
+            description: String(subject?.description || "").trim(),
+          }))
+          .filter((subject) => subject.name || subject.description),
+      };
+      if (!payload.lyrics) {
+        toast("Create or paste lyric scenes before opening the Location Scout GPT.", true);
+        return;
+      }
+      const copied = await copyTextToClipboard(JSON.stringify(payload, null, 2)).catch(() => false);
+      const gptWindow = window.open(LOCATION_SCOUT_GPT_URL, "_blank", "noopener,noreferrer");
+      toast(`${copied ? "Copied location scout JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}`);
+    };
     const parseLocationListForTextMap = (rawText) => {
       const text = String(rawText || "").trim();
       if (!text) return { locations: [], sceneMap: [] };
@@ -17119,6 +17355,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     };
     describeTextSubjects.onclick = () => describeTextMapItemsWithGemma(refs.subjects || [], "subject");
     describeTextLocations.onclick = () => describeTextMapItemsWithGemma(refs.locations || [], "location");
+    gptLocationScout.onclick = openLocationScoutGpt;
     extractLocations.onclick = async () => {
       let progress = null;
       try {
@@ -17179,7 +17416,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         toast(String(error?.message || error), true);
       } finally {
         extractLocations.disabled = false;
-        extractLocations.textContent = "Extract";
+        extractLocations.textContent = "Gemma Extract";
       }
     };
     autoMapLocations.onclick = async () => {

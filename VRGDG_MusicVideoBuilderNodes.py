@@ -2247,6 +2247,48 @@ def _looks_like_unfilled_prompt_template(text):
     if re.search(r"\[[^\]]*(?:subject|setting|environment|camera|motion|weather|lighting|dynamic|framing)[^\]]*\]", lowered):
         return True
     return False
+
+
+def _looks_like_bad_reference_description(text):
+    sample = re.sub(r"\s+", " ", str(text or "").strip())
+    if not sample:
+        return True
+    if _looks_like_gemma_repeat_failure(sample) or _looks_like_unfilled_prompt_template(sample):
+        return True
+    tokens = re.findall(r"[\w']+", sample.lower(), flags=re.UNICODE)
+    tokens = [token.strip("_'") for token in tokens if token.strip("_'")]
+    if not tokens:
+        return True
+    if len(tokens) < 6 and len(set(tokens)) <= 2:
+        return True
+    counts = {}
+    for token in tokens:
+        counts[token] = counts.get(token, 0) + 1
+    if counts:
+        max_count = max(counts.values())
+        if max_count >= 3 and max_count / float(len(tokens)) >= 0.45:
+            return True
+    for size in (1, 2, 3):
+        if len(tokens) < size * 3:
+            continue
+        for index in range(0, len(tokens) - (size * 3) + 1):
+            chunk = tokens[index:index + size]
+            if all(tokens[index + offset:index + offset + size] == chunk for offset in range(size, size * 3, size)):
+                return True
+    alpha_chars = re.findall(r"[a-zA-Z]", sample)
+    if len(alpha_chars) < 18:
+        return True
+    return False
+
+
+def _validate_reference_description(text, label):
+    if _looks_like_bad_reference_description(text):
+        raise ValueError(
+            f"Gemma returned unusable repeated text for the {label} description. "
+            "Try again, or use a clearer reference image."
+        )
+
+
 def _validate_builder_gemma_prompt(text, label):
     if not str(text or "").strip():
         raise ValueError(f"Gemma returned an empty {label} prompt.")
@@ -4227,38 +4269,59 @@ def _generate_builder_reference_description(payload):
             chat_format=chat_format,
             mmproj_path=mmproj_path,
         )
-        text = llm._run_gguf_vision_pipeline(
-            model=model,
-            pil_images=[image],
-            instruction_text=instruction,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-            seed=int(seed) if seed is not None else None,
-        )
-        text = _clean_visual_gemma_text(text)
-        text = re.sub(r"^\s*(character|subject|location|description)\s*:\s*", "", text, flags=re.I).strip()
-        if reference_type in {"subject", "character"}:
-            if subject_label:
-                text = re.sub(r"\bthe character\b", subject_label, text, flags=re.I)
-                text = re.sub(r"\bthe subject\b", subject_label, text, flags=re.I)
-                text = re.sub(r"\ba character\b", subject_label, text, flags=re.I)
-                text = re.sub(r"\ba subject\b", subject_label, text, flags=re.I)
-            text = re.sub(
-                r"\b(?:with|has|having|featuring)?\s*(?:very\s+|pale\s+|fair\s+|light\s+|medium\s+|tan\s+|tanned\s+|olive\s+|brown\s+|dark\s+|deep\s+|warm\s+|cool\s+|golden\s+|porcelain\s+|dusky\s+|caramel\s+|bronze\s+|dark-skinned\s+|light-skinned\s+)+(?:skin|skin tone|complexion)\b,?\s*(?:and\s+)?",
-                "",
-                text,
-                flags=re.I,
+        def clean_reference_description(raw_text):
+            text = _clean_visual_gemma_text(raw_text)
+            text = re.sub(r"^\s*(character|subject|location|description)\s*:\s*", "", text, flags=re.I).strip()
+            if reference_type in {"subject", "character"}:
+                if subject_label:
+                    text = re.sub(r"\bthe character\b", subject_label, text, flags=re.I)
+                    text = re.sub(r"\bthe subject\b", subject_label, text, flags=re.I)
+                    text = re.sub(r"\ba character\b", subject_label, text, flags=re.I)
+                    text = re.sub(r"\ba subject\b", subject_label, text, flags=re.I)
+                text = re.sub(
+                    r"\b(?:with|has|having|featuring)?\s*(?:very\s+|pale\s+|fair\s+|light\s+|medium\s+|tan\s+|tanned\s+|olive\s+|brown\s+|dark\s+|deep\s+|warm\s+|cool\s+|golden\s+|porcelain\s+|dusky\s+|caramel\s+|bronze\s+|dark-skinned\s+|light-skinned\s+)+(?:skin|skin tone|complexion)\b,?\s*(?:and\s+)?",
+                    "",
+                    text,
+                    flags=re.I,
+                )
+                text = re.sub(r"\b(?:skin|skin tone|complexion)\s*(?:is|appears|looks)\s+[^,.]+,?\s*(?:and\s+)?", "", text, flags=re.I)
+                text = re.sub(r"\s+,", ",", text)
+                text = re.sub(r"(?:^|\.\s*)and\s+", "", text, flags=re.I).strip()
+                text = re.sub(r"\s{2,}", " ", text).strip(" ,")
+            words = text.split()
+            if len(words) > 100:
+                text = " ".join(words[:100]).rstrip(" ,.;:") + "."
+            if not text:
+                raise ValueError("Gemma returned an empty reference description.")
+            _validate_reference_description(text, reference_type)
+            return text
+
+        last_error = None
+        text = ""
+        for attempt in range(2):
+            attempt_instruction = instruction
+            if attempt:
+                attempt_instruction += (
+                    "\n\nPrevious output was rejected because it repeated words or was not a usable description. "
+                    "Write a normal visual description with varied concrete nouns. Do not repeat any word more than twice."
+                )
+            raw_text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[image],
+                instruction_text=attempt_instruction,
+                temperature=0.05 if attempt else temperature,
+                top_p=0.75 if attempt else top_p,
+                max_new_tokens=max_new_tokens,
+                seed=int(seed) if seed is not None else None,
             )
-            text = re.sub(r"\b(?:skin|skin tone|complexion)\s*(?:is|appears|looks)\s+[^,.]+,?\s*(?:and\s+)?", "", text, flags=re.I)
-            text = re.sub(r"\s+,", ",", text)
-            text = re.sub(r"(?:^|\.\s*)and\s+", "", text, flags=re.I).strip()
-            text = re.sub(r"\s{2,}", " ", text).strip(" ,")
-        words = text.split()
-        if len(words) > 100:
-            text = " ".join(words[:100]).rstrip(" ,.;:") + "."
-        if not text:
-            raise ValueError("Gemma returned an empty reference description.")
+            try:
+                text = clean_reference_description(raw_text)
+                last_error = None
+                break
+            except ValueError as exc:
+                last_error = exc
+        if last_error:
+            raise last_error
         return {"description": text, "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after}
     finally:
         if unload_after:

@@ -2011,7 +2011,7 @@ def _patch_timestamped_transcribe_api_prompt(prompt, payload):
     _set_api_input(prompt, extractor_id, "include_instrumental_gaps", _bool_payload(payload, "include_instrumental_gaps", True))
     _set_api_input(prompt, extractor_id, "instrumental_text", str(payload.get("instrumental_text", "") or "[instrumental]"))
     _set_api_input(prompt, extractor_id, "min_gap_seconds", _float_payload(payload, "min_gap_seconds", 1.0, minimum=0.0, maximum=30.0))
-    _set_api_input(prompt, extractor_id, "min_scene_seconds", _float_payload(payload, "min_scene_seconds", 1.0, minimum=0.1, maximum=30.0))
+    _set_api_input(prompt, extractor_id, "min_scene_seconds", _float_payload(payload, "min_scene_seconds", 1.0, minimum=1.0, maximum=30.0))
     _set_api_input(prompt, extractor_id, "max_scene_seconds", _float_payload(payload, "max_scene_seconds", 8.0, minimum=1.0, maximum=60.0))
     _set_api_input(prompt, extractor_id, "vocal_tail_padding_seconds", _float_payload(payload, "vocal_tail_padding_seconds", 0.6, minimum=0.0, maximum=3.0))
     model_name = str(payload.get("model_name", "") or "large-v3").strip()
