@@ -20976,6 +20976,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const runnerName = promptRunnerActionName();
     const progress = options.progress || createProgressWindow(`${runnerName} ${modeLabel} All Scenes`);
