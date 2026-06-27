@@ -1344,6 +1344,10 @@ function storyboardScenesForGpt(state) {
         name: String(normalized.setting || "").trim(),
         description: String(normalized.setting || "").trim(),
       },
+      location_ref: locationRef || {
+        name: String(normalized.setting || "").trim(),
+        description: String(normalized.setting || "").trim(),
+      },
       shot_type: shotType,
       camera_motion: imageMode ? "" : cameraMotion,
       still_camera_style: imageMode ? cameraMotion : "",
