@@ -56,6 +56,7 @@ Rules:
 * Do not default to zoom-in, push-in, dolly-in, crash-zoom, or close-up endings. Use those inward camera moves only when `camera_motion`, `shot_type`, or the user notes explicitly ask for them.
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
+* If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * Use `performance_style` and `performance_direction` to choose the vocal wording, facial emotion, body language, gesture intensity, and camera energy. For rap/hip-hop, describe rapping or performing the lyric with rhythmic delivery, hand gestures, head nods, and confident body language instead of soft singing. For rock, punk, or metal, use stronger facial intensity and performance energy.
 * If `story_layer` exists, use `song_story_brief`, `user_story_arc`, `lyric_section`, and `scene_story_beat` as narrative guidance for emotion, symbolic action, continuity, and visual motivation. Do not quote the story layer or explain it; weave it into the scene naturally.
 * If the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
@@ -98,6 +99,7 @@ Rules:
 * If the scene is a singing scene, show performance energy and emotion, but do not describe mouth shapes, lip sync, or audio behavior.
 * If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
 * Use `shot_type` as the still-frame composition when available.
+* If `global_consistency_phrase` is present, include it in the final image prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * Use `performance_style` and `performance_direction` for facial emotion, body language, wardrobe energy, and genre feel.
 * Do not describe future camera movement, animation, transitions, frame changes, or what happens next.
 * Do not mention JSON, IDs, file paths, image names, or metadata.
@@ -451,6 +453,9 @@ def _default_storyboard(payload):
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
         "mode": "image_to_video_prep" if any(scene.get("image_path") for scene in normalized) else "storyboard_prompts",
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
+        "image_shot_flow": _clean_scene_text(payload.get("image_shot_flow") or "intimate", 80),
+        "image_aesthetic": _clean_scene_text(payload.get("image_aesthetic") or "", 120),
+        "global_consistency_phrase": _clean_scene_text(payload.get("global_consistency_phrase") or "", 1200),
         "story_layer": _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {}),
         "reference_builder": _normalize_reference_catalog(payload.get("reference_builder") or payload.get("referenceBuilder") or {}),
         "scenes": normalized,
@@ -491,6 +496,9 @@ def _save_storyboard(payload):
         "project_folder": project_folder,
         "mode": storyboard.get("mode") or "storyboard_prompts",
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
+        "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),
+        "image_aesthetic": _clean_scene_text(storyboard.get("image_aesthetic") or "", 120),
+        "global_consistency_phrase": _clean_scene_text(storyboard.get("global_consistency_phrase") or "", 1200),
         "story_layer": _normalize_story_layer(storyboard.get("story_layer") or storyboard.get("storyLayer") or {}),
         "reference_builder": _normalize_reference_catalog(storyboard.get("reference_builder") or storyboard.get("referenceBuilder") or {}),
         "scenes": [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)],

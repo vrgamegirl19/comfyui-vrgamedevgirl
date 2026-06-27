@@ -4946,6 +4946,8 @@ def _generate_flux_reference_locations(payload):
         raise ValueError("Scenes need lyrics, scene notes, concept prompts, or timeline notes before Gemma can extract locations.")
 
     subject_scene = _clean_location_context_text(payload.get("subject_scene_text", ""))
+    style_theme = _clean_location_context_text(payload.get("style_theme", ""))
+    subject_context = _clean_location_context_text(payload.get("subject_context", ""))
     existing_locations = payload.get("existing_locations") or []
     existing_lines = []
     if isinstance(existing_locations, list):

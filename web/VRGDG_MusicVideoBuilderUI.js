@@ -2933,6 +2933,7 @@ function openBuilder(node) {
   const multiSelectButton = makeButton("Select Multi");
   const multiSelectHintButton = makeButton("?");
   const deleteSegmentButton = makeButton("Del");
+  const deleteAllSegmentsButton = makeButton("Delete ALL segments");
   const zoomOutButton = makeButton("-");
   const zoomInButton = makeButton("+");
   bulkSegmentsButton.title = "Create many manual timeline scenes from pasted durations or start/end times.";
@@ -2952,6 +2953,7 @@ function openBuilder(node) {
   multiSelectButton.title = "Select multiple scenes, then batch-apply image/video settings or stitch a preview.";
   multiSelectHintButton.title = "What does Select Multi do?";
   deleteSegmentButton.title = "Delete selected segment";
+  deleteAllSegmentsButton.title = "Delete every base and insert/overlay segment from the timeline.";
   zoomOutButton.title = "Zoom out timeline";
   zoomInButton.title = "Zoom in timeline";
   bulkSegmentsButton.textContent = "Bulk Segments";
@@ -2966,7 +2968,9 @@ function openBuilder(node) {
   deleteSegmentButton.textContent = "×";
   deleteSegmentButton.style.borderColor = "#7f1d1d";
   deleteSegmentButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  deleteAllSegmentsButton.style.borderColor = "#7f1d1d";
+  deleteAllSegmentsButton.style.color = "#fecaca";
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
@@ -2981,6 +2985,7 @@ function openBuilder(node) {
   addTimelineMarkerButton.style.width = "max-content";
   addSegmentButton.style.width = "max-content";
   addOverlaySegmentButton.style.width = "max-content";
+  deleteAllSegmentsButton.style.width = "max-content";
   for (const button of [undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.width = "34px";
   }
@@ -3039,7 +3044,7 @@ function openBuilder(node) {
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
-  timelineHeader.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, selectedMediaTools);
+  timelineHeader.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
   const timelineViewport = document.createElement("div");
   timelineViewport.style.cssText = "position:relative;overflow:auto;min-height:0;padding:12px;";
   const timelineCanvas = document.createElement("canvas");
@@ -11009,7 +11014,7 @@ function openBuilder(node) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1220px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(1480px,calc(100vw - 24px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
@@ -11296,7 +11301,7 @@ function openBuilder(node) {
     audioPanel.append(prevScene, jumpSelected, nextScene);
 
     const rowList = document.createElement("div");
-    rowList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow:auto;padding-right:4px;";
+    rowList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto;overflow-x:hidden;padding-right:4px;";
 
     const reviewPlayheadTime = () => {
       if (Number.isFinite(Number(reviewAudio?.currentTime))) return Math.max(0, Number(reviewAudio.currentTime));
@@ -11857,7 +11862,7 @@ function openBuilder(node) {
       segment.lyric_no_lip_sync = instrumental || broll;
       segment.no_character_present = noCharacterPresent;
       segment.lyric_singers = [...row.querySelectorAll("[data-review-singer-choice='1']")]
-        .filter((input) => !noCharacterPresent && input.checked)
+        .filter((input) => !instrumental && !broll && !noCharacterPresent && input.checked)
         .map((input) => input.value)
         .filter(Boolean);
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
@@ -12099,11 +12104,12 @@ function openBuilder(node) {
     for (const [index, segment] of scenes.entries()) {
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
-      row.style.cssText = "display:grid;grid-template-columns:112px minmax(150px,180px) minmax(240px,1fr) minmax(260px,340px) minmax(160px,220px) 150px 86px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
+      row.style.cssText = "display:grid;grid-template-columns:86px minmax(130px,150px) minmax(180px,1fr) minmax(210px,1.25fr) minmax(140px,190px) minmax(120px,140px) 92px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
       const meta = document.createElement("div");
+      meta.style.minWidth = "0";
       meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
       const timing = document.createElement("div");
-      timing.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+      timing.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
       const startInput = makeInput(formatTime(segment.start));
       const endInput = makeInput(formatTime(segment.end));
       startInput.dataset.reviewStart = "1";
@@ -12163,20 +12169,20 @@ function openBuilder(node) {
       text.value = String(segment.lyric_text || "");
       text.dataset.reviewRawLyricText = text.value;
       text.placeholder = "Lyrics / vocal line, or [instrumental]...";
-      text.style.cssText = "width:100%;box-sizing:border-box;min-height:64px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;";
+      text.style.cssText = "width:100%;box-sizing:border-box;min-height:64px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;min-width:0;";
       text.addEventListener("input", () => {
         if (applyingBoundaryOverlapPreview) return;
         text.dataset.reviewRawLyricText = text.value;
         if (boundaryOverlapCheckbox.input.checked) refreshBoundaryOverlapPreview();
       });
       const subjectSingerPanel = document.createElement("div");
-      subjectSingerPanel.style.cssText = "display:flex;flex-direction:column;gap:7px;";
+      subjectSingerPanel.style.cssText = "display:flex;flex-direction:column;gap:7px;min-width:0;";
       const presentPanel = document.createElement("div");
       presentPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
       const singerPanel = document.createElement("div");
       singerPanel.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px;min-height:42px;box-sizing:border-box;";
       const flags = document.createElement("div");
-      flags.style.cssText = "display:flex;flex-direction:column;gap:8px;padding-top:4px;";
+      flags.style.cssText = "display:flex;flex-direction:column;gap:8px;padding-top:4px;min-width:0;";
       const instrumental = makeCheckbox("Instrumental", isInstrumentalLyricText(segment.lyric_text));
       const broll = makeCheckbox("B-roll / no lip-sync", Boolean(segment.lyric_no_lip_sync) && !isInstrumentalLyricText(segment.lyric_text));
       const noCharacter = makeCheckbox("No character present", Boolean(segment.no_character_present));
@@ -12190,12 +12196,13 @@ function openBuilder(node) {
           input.disabled = disabled;
           if (disabled) input.checked = false;
         }
+        const noLipSync = Boolean(instrumental.input.checked || broll.input.checked);
         for (const input of singerPanel.querySelectorAll("[data-review-singer-choice='1']")) {
-          input.disabled = disabled;
-          if (disabled) input.checked = false;
+          input.disabled = disabled || noLipSync;
+          if (disabled || noLipSync) input.checked = false;
         }
         presentPanel.style.opacity = disabled ? "0.55" : "1";
-        singerPanel.style.opacity = disabled ? "0.55" : "1";
+        singerPanel.style.opacity = (disabled || noLipSync) ? "0.55" : "1";
       };
       const updateDisabled = () => {
         if (instrumental.input.checked) {
@@ -12203,18 +12210,23 @@ function openBuilder(node) {
           text.dataset.reviewRawLyricText = "[instrumental]";
           broll.input.checked = false;
         }
+        if (broll.input.checked && isInstrumentalLyricText(text.value)) {
+          text.value = text.dataset.reviewRawLyricText && !isInstrumentalLyricText(text.dataset.reviewRawLyricText)
+            ? text.dataset.reviewRawLyricText
+            : "";
+        }
         updateNoCharacterState();
         refreshBoundaryOverlapPreview();
       };
       renderSubjectPresenceChoices(segment, index, presentPanel);
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
       subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Singer / lip-sync", singerPanel));
-      updateNoCharacterState();
       instrumental.input.onchange = updateDisabled;
       broll.input.onchange = updateDisabled;
       noCharacter.input.onchange = updateDisabled;
+      updateDisabled();
       const locationWrap = document.createElement("div");
-      locationWrap.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+      locationWrap.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
       const locationSelect = document.createElement("select");
       locationSelect.dataset.reviewLocation = "1";
       locationSelect.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:8px;font-size:12px;";
@@ -12232,12 +12244,13 @@ function openBuilder(node) {
       locationHint.style.cssText = "font-size:10px;color:#94a3b8;line-height:1.25;";
       locationWrap.append(makeField("Location", locationSelect), locationHint);
       const buttons = document.createElement("div");
-      buttons.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+      buttons.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
       const play = makeButton("Play Scene");
       const playFrom = makeButton("Play From Here");
       const select = makeButton("Select");
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
+      select.style.padding = "7px 8px";
       play.dataset.playLabel = "Play Scene";
       playFrom.dataset.playLabel = "Play From Here";
       play.onclick = () => playRange(segment, play);
@@ -16591,6 +16604,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
   }
 
   function openSceneTextMappingModal() {
+    const wizardLocationMode = currentVideoMode() === "i2v" || currentVideoMode() === "t2v";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     if (!Array.isArray(refs.subjects)) refs.subjects = [];
@@ -18479,9 +18493,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       clearMemoryButton.disabled = true;
       clearMemoryButton.textContent = "Clearing...";
       progress = createProgressWindow("Clearing memory");
-      progress.set("Clearing memory directly without queueing a workflow...", 35);
-      const data = await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
-      progress.set(data.message || "Memory cleanup finished.", 100);
+      const output = await runFullMemoryCleanup(progress, "manual clear memory", 35);
+      progress.set(output || "Memory cleanup finished.", 100);
       progress.close(4500);
       toast("Memory cleanup workflow finished.");
     } catch (error) {
@@ -18494,11 +18507,41 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function runClearMemoryWorkflowQuiet(progress, label, percent = 95) {
-    progress?.set(`Clearing memory directly after ${label}...`, percent);
-    const data = await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
-    const output = data.message || `Memory cleanup finished after ${label}.`;
+    const output = await runFullMemoryCleanup(progress, label, percent);
     progress?.set(output, percent);
     return output;
+  }
+
+  async function runClearMemoryNodeWorkflow(progress, label, percent = 95) {
+    progress?.set(`Running RAM/VRAM cleanup workflow after ${label}...`, percent);
+    const built = await postJson("/vrgdg/workflow_runner/build_clear_memory_prompt", {}, 120000);
+    const queued = await queueWorkflowPrompt(built.prompt, {
+      onStatus: (status) => progress?.set(`${status}\n\nWaiting to run RAM/VRAM cleanup workflow...`, percent),
+    });
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the memory cleanup workflow but did not return a prompt_id.");
+    const text = await waitForText(promptId, (message) => {
+      progress?.set(`${message}\nPrompt ID: ${promptId}`, percent);
+    }, null, 3 * 60 * 1000);
+    return text.join("\n").trim();
+  }
+
+  async function runFullMemoryCleanup(progress, label, percent = 95) {
+    let workflowOutput = "";
+    let workflowError = null;
+    try {
+      workflowOutput = await runClearMemoryNodeWorkflow(progress, label, percent);
+    } catch (error) {
+      workflowError = error;
+      console.warn(`[VRGDG Music Builder] RAM/VRAM cleanup workflow after ${label} failed:`, error);
+    }
+    progress?.set(`Running direct Comfy/Gemma cache cleanup after ${label}...`, percent);
+    const direct = await postJson("/vrgdg/music_builder/clear_memory_direct", {}, 120000);
+    const directOutput = direct.message || `Direct memory cleanup finished after ${label}.`;
+    return [
+      workflowOutput || (workflowError ? `RAM/VRAM cleanup workflow failed: ${String(workflowError?.message || workflowError)}` : ""),
+      directOutput,
+    ].filter(Boolean).join("\n\n");
   }
 
   async function runImageMemoryCleanupQuiet(progress, label, percent = 95) {
@@ -23047,6 +23090,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     autoSaveSessionQuiet("segment deleted");
   }
 
+  async function deleteAllSegments() {
+    const baseCount = Array.isArray(state.segments) ? state.segments.length : 0;
+    const overlayCount = Array.isArray(state.overlaySegments) ? state.overlaySegments.length : 0;
+    const total = baseCount + overlayCount;
+    if (!total) {
+      toast("No segments to delete.", true);
+      return;
+    }
+    const confirmed = window.confirm(`Delete ALL ${total} segment${total === 1 ? "" : "s"}?\n\nThis removes ${baseCount} base segment${baseCount === 1 ? "" : "s"} and ${overlayCount} insert/overlay segment${overlayCount === 1 ? "" : "s"} from the timeline.`);
+    if (!confirmed) return;
+    pushHistory();
+    state.segments = [];
+    state.overlaySegments = [];
+    state.selectedSegmentIds = [];
+    state.activeId = "";
+    state.activeTrack = "base";
+    state.sceneAudioSegmentId = "";
+    syncInspector();
+    render();
+    await syncPromptJsonFromSegments("all segments deleted");
+    await syncI2VMotionJsonFromSegments("all segments deleted");
+    await autoSaveSessionQuiet("all segments deleted");
+    toast(`Deleted ${total} segment${total === 1 ? "" : "s"}.`);
+  }
+
   async function deleteSelectedMedia() {
     const media = selectedMediaForDelete();
     if (!media.segment || !media.path) {
@@ -27222,6 +27290,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   wireVisionReferenceDrop(krea2TwoPassRefImageDrop);
   wireVisionReferenceDrop(t2vRefImageDrop, { forT2V: true });
   deleteSegmentButton.onclick = deleteSegment;
+  deleteAllSegmentsButton.onclick = deleteAllSegments;
   useFrameAsImageButton.onclick = captureSelectedVideoFrameAsImage;
   deleteSelectedMediaButton.onclick = deleteSelectedMedia;
   globalAudioMuteButton.onclick = (event) => {
