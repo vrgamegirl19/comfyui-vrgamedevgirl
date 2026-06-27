@@ -5771,7 +5771,78 @@ function openBuilder(node) {
     return rows;
   }
 
-  async function openLocationScoutGptForRefs(refsInput = state.fluxReferenceBuilder, styleTheme = "") {
+  async function showLocationScoutGptHandoff(payloadJson, options = {}) {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(860px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 22px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#cffafe;">Open Location Scout GPT</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Copy this JSON, paste it into the GPT, then paste the GPT output back into Import List.</div>`;
+    const close = makeButton("Close");
+    header.append(title, close);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto;";
+    const note = document.createElement("div");
+    note.style.cssText = "border:1px solid #155e75;border-radius:7px;background:#083344;color:#e0f2fe;padding:10px 12px;font-size:12px;line-height:1.5;";
+    note.textContent = "We will copy the JSON below to your clipboard. In the GPT, paste it as the input. When the GPT gives you locations, come back here and use Import List / Import JSON to paste that output into the builder.";
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:12px;color:#94a3b8;min-height:18px;";
+    const text = document.createElement("textarea");
+    text.value = payloadJson;
+    text.spellcheck = false;
+    text.style.cssText = "min-height:300px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;white-space:pre;overflow:auto;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const copy = makeButton("Copy JSON", "primary");
+    const continueButton = makeButton("Continue to GPT", "primary");
+    const importButton = makeButton("Continue to Import List", "primary");
+    importButton.style.display = "none";
+    actions.append(cancel, copy, continueButton, importButton);
+    body.append(note, status, text, actions);
+    box.append(header, body);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const closeModal = () => backdrop.remove();
+    const copyJson = async () => {
+      const copied = await copyTextToClipboard(text.value).catch(() => false);
+      status.textContent = copied
+        ? "Copied JSON to clipboard. Paste it into the GPT when it opens."
+        : "Clipboard copy was blocked. You can manually select and copy the JSON from the box.";
+      status.style.color = copied ? "#67e8f9" : "#fbbf24";
+      return copied;
+    };
+    close.onclick = closeModal;
+    cancel.onclick = closeModal;
+    copy.onclick = copyJson;
+    continueButton.onclick = async () => {
+      await copyJson();
+      const gptWindow = window.open(LOCATION_SCOUT_GPT_URL, "_blank", "noopener,noreferrer");
+      toast(gptWindow ? "Opened Location Scout GPT. Paste the copied JSON there." : "The GPT popup was blocked. Copy the JSON, then open the GPT manually.", !gptWindow);
+      if (typeof options.onImportList === "function") {
+        importButton.style.display = "";
+        status.textContent = "After the GPT gives you locations, click Continue to Import List and paste the GPT output there.";
+        status.style.color = "#67e8f9";
+      }
+    };
+    importButton.onclick = () => {
+      closeModal();
+      if (typeof options.onImportList === "function") {
+        setTimeout(() => options.onImportList(), 40);
+      }
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    await copyJson();
+    text.focus();
+    text.select();
+  }
+
+  async function openLocationScoutGptForRefs(refsInput = state.fluxReferenceBuilder, styleTheme = "", options = {}) {
     const payload = {
       lyrics: locationScoutLyricsPayloadForGpt(),
       style_theme: String(styleTheme || "").trim(),
@@ -5781,9 +5852,7 @@ function openBuilder(node) {
       toast("Create or paste lyric scenes before opening the Location Scout GPT.", true);
       return;
     }
-    const copied = await copyTextToClipboard(JSON.stringify(payload, null, 2)).catch(() => false);
-    const gptWindow = window.open(LOCATION_SCOUT_GPT_URL, "_blank", "noopener,noreferrer");
-    toast(`${copied ? "Copied location scout JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}`);
+    await showLocationScoutGptHandoff(JSON.stringify(payload, null, 2), options);
   }
 
   function syncIngredientsSceneMapFromSubjectMappings(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
@@ -9471,6 +9540,85 @@ function openBuilder(node) {
       segment.flux_prompt = text;
       segment.nb_prompt = text;
     }
+  }
+
+  function segmentPromptFindReplaceTargets(segment, targetKinds = []) {
+    const targets = [];
+    const hasKind = (kind) => targetKinds.includes(kind);
+    if (hasKind("t2i")) {
+      targets.push(
+        { key: "t2i_prompt", label: "T2I prompt" },
+        { key: "flux_prompt", label: "Flux/Klein prompt" },
+        { key: "nb_prompt", label: "Nano B prompt" },
+        { key: "ernie_t2i_prompt", label: "Ernie prompt" },
+        { key: "krea2_t2i_prompt", label: "Krea 2 prompt" },
+      );
+    }
+    if (hasKind("i2v")) {
+      targets.push({ key: "i2v_prompt", label: "I2V / T2V / video prompt" });
+      targets.push({ key: "t2v_prompt", label: "T2V prompt" });
+    }
+    const seen = new Set();
+    return targets.filter((target) => {
+      if (seen.has(target.key)) return false;
+      seen.add(target.key);
+      return Object.prototype.hasOwnProperty.call(segment || {}, target.key) || String(segment?.[target.key] || "").trim();
+    });
+  }
+
+  function buildPromptFindReplaceRegex(findText, { caseSensitive = false } = {}) {
+    const escaped = String(findText || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, caseSensitive ? "gu" : "giu");
+  }
+
+  function countPromptFindReplaceMatches(findText, targetKinds, options = {}) {
+    if (!String(findText || "").trim()) return { matches: 0, scenes: 0, fields: 0 };
+    const regex = buildPromptFindReplaceRegex(findText, options);
+    let matches = 0;
+    const sceneIds = new Set();
+    let fields = 0;
+    for (const segment of allEditableSegments()) {
+      for (const target of segmentPromptFindReplaceTargets(segment, targetKinds)) {
+        const text = String(segment?.[target.key] || "");
+        if (!text) continue;
+        const found = text.match(regex);
+        if (!found?.length) continue;
+        matches += found.length;
+        fields += 1;
+        sceneIds.add(segment.id || sceneDisplayName(segment, segmentIndexInfo(segment).index));
+      }
+    }
+    return { matches, scenes: sceneIds.size, fields };
+  }
+
+  async function replacePromptPhraseAcrossScenes(findText, replaceText, targetKinds, options = {}) {
+    const regex = buildPromptFindReplaceRegex(findText, options);
+    let matches = 0;
+    let fields = 0;
+    const sceneIds = new Set();
+    pushHistory();
+    for (const segment of allEditableSegments()) {
+      let changed = false;
+      for (const target of segmentPromptFindReplaceTargets(segment, targetKinds)) {
+        const original = String(segment?.[target.key] || "");
+        if (!original) continue;
+        let localMatches = 0;
+        const replaced = original.replace(regex, () => {
+          localMatches += 1;
+          return String(replaceText || "");
+        });
+        if (!localMatches || replaced === original) continue;
+        segment[target.key] = replaced.trim();
+        matches += localMatches;
+        fields += 1;
+        changed = true;
+      }
+      if (changed) sceneIds.add(segment.id || sceneDisplayName(segment, segmentIndexInfo(segment).index));
+    }
+    syncInspector();
+    render();
+    await autoSaveSessionQuiet("prompt find replace");
+    return { matches, scenes: sceneIds.size, fields };
   }
 
   function promptKindFile(kind) {
@@ -15743,7 +15891,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     });
     extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
-    gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "");
+    gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "", {
+      onImportList: openImportLocationSourceDialog,
+    });
     autoMapLocations.onclick = autoMapLocationsWithGemma;
     createAllMissingLocationZImages.onclick = openMissingLocationImageGeneratorDialog;
     importLocations.onclick = openImportLocationSourceDialog;
@@ -16667,7 +16817,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         extractLocations.textContent = "Gemma Extract";
       }
     };
-    gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "");
+    gptLocationScout.onclick = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "", {
+      onImportList: () => importLocations.click(),
+    });
     addLocation.onclick = () => {
       collectMappingsFromDom();
       refs.locations = Array.isArray(refs.locations) ? refs.locations : [];
@@ -16971,35 +17123,9 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
       })
       .filter(Boolean)
       .join("\n");
-    const locationScoutLyricsPayload = () => allEditableSegments()
-      .map((segment, index) => {
-        const lyric = String(segment?.lyric_text || "").trim();
-        if (!lyric) return "";
-        const section = String(segment?.lyric_section || "").trim();
-        return `${section ? `[${section}] ` : ""}Scene ${index + 1}: ${lyric}`;
-      })
-      .filter(Boolean)
-      .join("\n");
-    const openLocationScoutGpt = async () => {
-      const payload = {
-        lyrics: locationScoutLyricsPayload(),
-        style_theme: String(locationStyleTheme.value || "").trim(),
-        character_descriptions: (refs.subjects || [])
-          .map((subject) => ({
-            name: String(subject?.name || "").trim(),
-            type: String(subject?.reference_type || "character").trim(),
-            description: String(subject?.description || "").trim(),
-          }))
-          .filter((subject) => subject.name || subject.description),
-      };
-      if (!payload.lyrics) {
-        toast("Create or paste lyric scenes before opening the Location Scout GPT.", true);
-        return;
-      }
-      const copied = await copyTextToClipboard(JSON.stringify(payload, null, 2)).catch(() => false);
-      const gptWindow = window.open(LOCATION_SCOUT_GPT_URL, "_blank", "noopener,noreferrer");
-      toast(`${copied ? "Copied location scout JSON to clipboard" : "Clipboard copy was blocked by the browser"}${gptWindow ? " and opened the GPT." : ", but the GPT popup was blocked."}`);
-    };
+    const openLocationScoutGpt = () => openLocationScoutGptForRefs(refs, locationStyleTheme.value || "", {
+      onImportList: () => importLocations.click(),
+    });
     const parseLocationListForTextMap = (rawText) => {
       const text = String(rawText || "").trim();
       if (!text) return { locations: [], sceneMap: [] };
@@ -18137,7 +18263,36 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     imageGroup.append(imageHeading, createConceptPrompts, editT2I, reloadT2I, originalT2I, clearT2I);
     videoGroup.append(videoHeading, createMotionNotes, editI2V, reloadI2V, originalI2V, clearI2V);
     grid.append(imageGroup, videoGroup);
-    box.append(header, note, transcribeLyrics, grid);
+    const replaceGroup = document.createElement("div");
+    replaceGroup.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:9px;";
+    const replaceHeading = document.createElement("div");
+    replaceHeading.textContent = "Find / Replace Prompts";
+    replaceHeading.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;";
+    const replaceNote = document.createElement("div");
+    replaceNote.textContent = "Finds the full phrase only, such as replacing \"the woman\" with a character LoRA trigger word across saved prompts.";
+    replaceNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    const replaceFields = document.createElement("div");
+    replaceFields.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const findInput = makeInput("");
+    findInput.placeholder = "Find exact phrase, e.g. the woman";
+    const replaceInput = makeInput("");
+    replaceInput.placeholder = "Replace with, e.g. f4nt4syw0m3n";
+    replaceFields.append(makeField("Find", findInput), makeField("Replace with", replaceInput));
+    const replaceChecks = document.createElement("div");
+    replaceChecks.style.cssText = "display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center;";
+    const includeT2I = makeCheckbox("Text-to-image prompts", true);
+    const includeI2V = makeCheckbox("I2V / T2V video prompts", true);
+    const caseSensitive = makeCheckbox("Case sensitive", false);
+    replaceChecks.append(includeT2I.wrapper, includeI2V.wrapper, caseSensitive.wrapper);
+    const replaceStatus = document.createElement("div");
+    replaceStatus.style.cssText = "min-height:18px;font-size:12px;color:#94a3b8;";
+    const replaceActions = document.createElement("div");
+    replaceActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const previewReplace = makeButton("Preview Matches", "primary");
+    const applyReplace = makeButton("Replace All");
+    replaceActions.append(previewReplace, applyReplace);
+    replaceGroup.append(replaceHeading, replaceNote, replaceFields, replaceChecks, replaceStatus, replaceActions);
+    box.append(header, note, transcribeLyrics, grid, replaceGroup);
     backdrop.append(box);
     document.body.append(backdrop);
     const run = (action) => {
@@ -18168,6 +18323,40 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     reloadI2V.onclick = () => run(() => reloadFinalPromptList("i2v", false));
     originalI2V.onclick = () => run(() => reloadFinalPromptList("i2v", true));
     clearI2V.onclick = () => run(() => clearFinalPromptList("i2v"));
+    const selectedReplaceKinds = () => [
+      includeT2I.input.checked ? "t2i" : "",
+      includeI2V.input.checked ? "i2v" : "",
+    ].filter(Boolean);
+    const previewPromptReplace = () => {
+      const findText = String(findInput.value || "").trim();
+      if (!findText) {
+        replaceStatus.textContent = "Enter a phrase to find first.";
+        replaceStatus.style.color = "#fbbf24";
+        return null;
+      }
+      const targetKinds = selectedReplaceKinds();
+      if (!targetKinds.length) {
+        replaceStatus.textContent = "Choose at least one prompt type.";
+        replaceStatus.style.color = "#fbbf24";
+        return null;
+      }
+      const result = countPromptFindReplaceMatches(findText, targetKinds, { caseSensitive: caseSensitive.input.checked });
+      replaceStatus.textContent = `Found ${result.matches} match${result.matches === 1 ? "" : "es"} in ${result.fields} prompt field${result.fields === 1 ? "" : "s"} across ${result.scenes} scene${result.scenes === 1 ? "" : "s"}.`;
+      replaceStatus.style.color = result.matches ? "#67e8f9" : "#fbbf24";
+      return { ...result, targetKinds };
+    };
+    previewReplace.onclick = previewPromptReplace;
+    applyReplace.onclick = async () => {
+      const preview = previewPromptReplace();
+      if (!preview || !preview.matches) return;
+      const findText = String(findInput.value || "").trim();
+      const replaceText = String(replaceInput.value || "");
+      if (!window.confirm(`Replace ${preview.matches} exact phrase match${preview.matches === 1 ? "" : "es"} for "${findText}"?`)) return;
+      const result = await replacePromptPhraseAcrossScenes(findText, replaceText, preview.targetKinds, { caseSensitive: caseSensitive.input.checked });
+      replaceStatus.textContent = `Replaced ${result.matches} match${result.matches === 1 ? "" : "es"} across ${result.scenes} scene${result.scenes === 1 ? "" : "s"}.`;
+      replaceStatus.style.color = "#67e8f9";
+      toast(`Prompt find/replace complete. Replaced ${result.matches} match${result.matches === 1 ? "" : "es"}.`);
+    };
   }
 
   function render() {

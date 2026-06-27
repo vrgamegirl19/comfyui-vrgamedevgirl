@@ -884,21 +884,21 @@ export const STORYBOARD_IMAGE_SHOT_FLOW_PRESETS = {
 };
 
 export const STORYBOARD_IMAGE_AESTHETIC_PRESETS = [
-  { value: "", label: "Default cinematic still", description: "Balanced cinematic lighting, color, and texture for a polished text-to-image prompt." },
-  { value: "music_video_gloss", label: "Glossy music video", description: "Glossy high-production music-video still, dramatic color contrast, stylish lighting, album-cover polish." },
-  { value: "dark_neon", label: "Dark neon", description: "Dark cinematic neon lighting, saturated color accents, glossy reflections, smoky atmosphere, night-club energy." },
-  { value: "editorial_fashion", label: "Editorial fashion", description: "High-fashion editorial photography, intentional posing, refined wardrobe detail, magazine-grade lighting." },
-  { value: "editorial_fashion_photography", label: "Editorial fashion photography", description: "Editorial fashion photography with confident model posing, dramatic styling, creative wardrobe themes, magazine-grade composition, bold makeup and hair, and polished high-resolution lighting." },
-  { value: "conceptual_portrait_photography", label: "Conceptual portrait photography", description: "Conceptual portrait photography built around a clear visual idea, symbolic prop, emotional pose, controlled environment, cinematic lighting, and a strong central portrait composition." },
-  { value: "avant_garde_fashion_photography", label: "Avant-garde fashion photography", description: "Avant-garde fashion photography with unusual makeup, sculptural hair, strange or powerful poses, experimental styling, abstract studio or surreal setting, and bold high-contrast lighting." },
-  { value: "beauty_editorial_photography", label: "Beauty editorial photography", description: "Beauty editorial photography focused on close-up makeup, hair, skin texture, eyes, lips, jewelry or face details, soft luxury lighting, and clean magazine beauty composition." },
-  { value: "high_fashion_editorial", label: "High fashion editorial", description: "High fashion editorial photography inspired by dramatic fashion competition shoots: couture wardrobe, expressive posing, epic location, wind or fabric movement, glamorous styling, and cinematic full-body framing." },
-  { value: "creative_portrait_photography", label: "Creative portrait photography", description: "Creative portrait photography with a posed subject, strong visual theme, props or animals when appropriate, colorful art direction, expressive styling, and a memorable environment." },
-  { value: "gritty_analog", label: "Gritty analog", description: "Gritty analog film look, visible texture, natural imperfections, moody documentary realism." },
-  { value: "soft_dream_pop", label: "Soft dream pop", description: "Soft dreamy pop aesthetic, gentle bloom, pastel color, romantic haze, delicate cinematic lighting." },
-  { value: "high_contrast_drama", label: "High-contrast drama", description: "Bold shadows, sculpted highlights, intense facial emotion, dramatic production-still lighting." },
-  { value: "surreal_symbolic", label: "Surreal symbolic", description: "Surreal symbolic music-video still, heightened atmosphere, poetic objects, dreamlike composition." },
-  { value: "clean_studio", label: "Clean studio", description: "Clean studio photography, crisp subject detail, controlled lighting, uncluttered composition." },
+  { value: "", label: "Default cinematic still", description: "Balanced cinematic lighting, color, and texture for a polished text-to-image prompt.", prompt_guidance: "Create a polished cinematic still with clear subject placement, believable wardrobe and environment details, purposeful lighting, readable composition, lens/framing detail, and a strong music-video production still feeling." },
+  { value: "music_video_gloss", label: "Glossy music video", description: "Glossy high-production music-video still, dramatic color contrast, stylish lighting, album-cover polish.", prompt_guidance: "Build a glossy high-production music-video still. Specify stylized wardrobe, intentional pose, dramatic color contrast, polished hair and makeup, expensive-looking lighting, reflective or atmospheric set details, album-cover composition, crisp lens choice, and cinematic depth. Do not merely say glossy music video." },
+  { value: "dark_neon", label: "Dark neon", description: "Dark cinematic neon lighting, saturated color accents, glossy reflections, smoky atmosphere, night-club energy.", prompt_guidance: "Build a dark neon cinematic still. Use saturated colored light sources, glossy reflections, wet or polished surfaces, smoke/haze, rim light, deep shadows, vivid accent colors on the subject, and a nightlife or futuristic music-video atmosphere. Describe where the neon comes from and how it shapes the face, outfit, and environment." },
+  { value: "editorial_fashion", label: "Editorial fashion", description: "High-fashion editorial photography, intentional posing, refined wardrobe detail, magazine-grade lighting.", prompt_guidance: "Build an editorial fashion photograph, not a plain portrait. Give the subject a deliberate model pose with body angles, hand placement, posture, and gaze. Describe refined wardrobe styling, fabric behavior, accessories, hair/makeup direction, fashion-magazine lighting, background styling, composition, lens/framing, and a strong art-directed theme." },
+  { value: "editorial_fashion_photography", label: "Editorial fashion photography", description: "Editorial fashion photography with confident model posing, dramatic styling, creative wardrobe themes, magazine-grade composition, bold makeup and hair, and polished high-resolution lighting.", prompt_guidance: "Build a detailed editorial fashion photograph. Include a confident model pose, strong body line, hand/shoulder/hip placement, dramatic styling choices, creative wardrobe concept, fabric texture and silhouette, bold hair and makeup, accessories, modern magazine composition, art-directed setting, high-resolution studio or location lighting, and a clear fashion story. Do not just write 'editorial fashion composition'." },
+  { value: "conceptual_portrait_photography", label: "Conceptual portrait photography", description: "Conceptual portrait photography built around a clear visual idea, symbolic prop, emotional pose, controlled environment, cinematic lighting, and a strong central portrait composition.", prompt_guidance: "Build a conceptual portrait around one clear visual idea. Choose a symbolic prop, object arrangement, or environmental metaphor that fits the scene. Describe the subject's pose, relation to the prop, wardrobe, hair/makeup, controlled setting, color palette, lighting direction, mood, lens/framing, and how the composition communicates the concept visually without explaining it." },
+  { value: "avant_garde_fashion_photography", label: "Avant-garde fashion photography", description: "Avant-garde fashion photography with unusual makeup, sculptural hair, strange or powerful poses, experimental styling, abstract studio or surreal setting, and bold high-contrast lighting.", prompt_guidance: "Build an avant-garde fashion photograph. Use unusual makeup, sculptural or geometric hair, experimental wardrobe shape, exaggerated silhouette, strange powerful pose, asymmetrical composition, abstract studio or surreal set design, hard shadows or high-contrast light, unexpected materials, and a bold futuristic or theatrical fashion mood. Make it visually daring, not casual." },
+  { value: "beauty_editorial_photography", label: "Beauty editorial photography", description: "Beauty editorial photography focused on close-up makeup, hair, skin texture, eyes, lips, jewelry or face details, soft luxury lighting, and clean magazine beauty composition.", prompt_guidance: "Build a beauty editorial photograph. Use close-up or tight portrait framing focused on eyes, lips, makeup, hair texture, jewelry, nails, skin glow, and face-framing styling. Describe makeup colors, glossy or matte finish, hair placement, accessories near the face, soft diffused lighting, clean backdrop, shallow depth of field, and luxury magazine composition." },
+  { value: "high_fashion_editorial", label: "High fashion editorial", description: "High fashion editorial photography inspired by dramatic fashion competition shoots: couture wardrobe, expressive posing, epic location, wind or fabric movement, glamorous styling, and cinematic full-body framing.", prompt_guidance: "Build a high fashion editorial shoot like a dramatic fashion competition photo. Use couture-level wardrobe, exaggerated fabric movement, strong full-body or three-quarter pose, elongated body line, expressive hands and face, wind or motion in hair/fabric, glamorous accessories, bold makeup, epic location styling, low or cinematic camera angle, dramatic natural or studio lighting, and a clear fashion-story payoff. The prompt must describe the actual fashion shoot details, not just name the style." },
+  { value: "creative_portrait_photography", label: "Creative portrait photography", description: "Creative portrait photography with a posed subject, strong visual theme, props or animals when appropriate, colorful art direction, expressive styling, and a memorable environment.", prompt_guidance: "Build a creative portrait photograph with a strong visual theme. Include a posed subject, purposeful prop or themed object if appropriate, color-directed wardrobe, expressive hair/makeup, layered environment details, playful or artistic composition, lens/framing, lighting style, and a memorable subject-environment relationship. If an animal or prop is used, make it clearly integrated into the scene concept." },
+  { value: "gritty_analog", label: "Gritty analog", description: "Gritty analog film look, visible texture, natural imperfections, moody documentary realism.", prompt_guidance: "Build a gritty analog film still with imperfect realism: visible film grain, practical lighting, worn textures, imperfect surfaces, muted color response, handheld or documentary-feeling framing, natural body posture, atmospheric shadows, and a lived-in environment. Avoid overly polished studio language." },
+  { value: "soft_dream_pop", label: "Soft dream pop", description: "Soft dreamy pop aesthetic, gentle bloom, pastel color, romantic haze, delicate cinematic lighting.", prompt_guidance: "Build a soft dream-pop still with gentle bloom, pastel color palette, romantic haze, delicate backlight, floating or soft fabric details, dreamy hair/makeup styling, graceful pose, shallow depth of field, soft environment edges, and a light emotional music-video mood." },
+  { value: "high_contrast_drama", label: "High-contrast drama", description: "Bold shadows, sculpted highlights, intense facial emotion, dramatic production-still lighting.", prompt_guidance: "Build a high-contrast dramatic still with sculpted highlights, deep shadows, strong key light direction, visible tension in posture, intense facial emotion, dramatic wardrobe silhouette, textured environment, cinematic contrast ratio, and a composition that creates visual pressure." },
+  { value: "surreal_symbolic", label: "Surreal symbolic", description: "Surreal symbolic music-video still, heightened atmosphere, poetic objects, dreamlike composition.", prompt_guidance: "Build a surreal symbolic music-video still. Use poetic visual motifs, dreamlike composition, unusual scale or placement of objects, symbolic set dressing, atmospheric light, controlled color palette, and a subject pose that feels ritualistic or uncanny. Keep the imagery visual and concrete rather than explanatory." },
+  { value: "clean_studio", label: "Clean studio", description: "Clean studio photography, crisp subject detail, controlled lighting, uncluttered composition.", prompt_guidance: "Build a clean studio photograph with crisp subject detail, controlled lighting setup, precise wardrobe styling, polished hair/makeup, uncluttered backdrop, intentional pose, clear silhouette, lens/framing detail, and professional commercial or editorial clarity." },
 ];
 
 export function storyboardImageShotFlowEntry(profileKey, sceneIndex) {
@@ -910,6 +910,11 @@ export function storyboardImageShotFlowEntry(profileKey, sceneIndex) {
 
 export function storyboardImageAestheticPreset(value = "") {
   return STORYBOARD_IMAGE_AESTHETIC_PRESETS.find((item) => item.value === value) || STORYBOARD_IMAGE_AESTHETIC_PRESETS[0];
+}
+
+function storyboardImageAestheticGuidance(value = "") {
+  const preset = storyboardImageAestheticPreset(value);
+  return preset.prompt_guidance || preset.description || "";
 }
 
 function referenceChipHtml(ref, fallbackLabel = "Reference") {
@@ -1238,13 +1243,22 @@ function slimStoryboardForRequest(state) {
 }
 
 const STORYBOARD_GPT_URL = "https://chatgpt.com/g/g-6a28d15f04e88191a2375d564ff8d90c-ltx-2-3-video-builder-from-storyboard-builder";
+const STORYBOARD_IMAGE_GPT_URL = "https://chatgpt.com/g/g-6a40129fc12c81919878b79eaa5ae94f-text-to-image-prompt-builder-for-krea-2";
 
-function storyboardReferenceForGpt(ref) {
+function storyboardReferenceForGpt(ref, options = {}) {
   if (!ref) return null;
   const name = String(ref.name || "").trim();
   const description = String(ref.description || "").trim();
-  if (!name && !description) return null;
-  return { name, description };
+  const triggerPhrase = String(ref.trigger_phrase || ref.trigger || ref.Trigger || "").trim();
+  const promptName = options.subject && triggerPhrase ? triggerPhrase : name;
+  if (!promptName && !description) return null;
+  return {
+    name: promptName,
+    display_name: name,
+    description,
+    trigger_phrase: triggerPhrase,
+    prompt_name_source: options.subject && triggerPhrase ? "subject_trigger_phrase" : "reference_name",
+  };
 }
 
 function storyboardVideoPromptTypeLabel(type) {
@@ -1270,9 +1284,9 @@ function storyboardScenesForGpt(state) {
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync);
     const noCharacterPresent = Boolean(normalized.no_character_present);
-    const shouldLipSync = Boolean(lyricText) && !instrumental && !noLipSync && !noCharacterPresent;
+    const shouldLipSync = !imageMode && Boolean(lyricText) && !instrumental && !noLipSync && !noCharacterPresent;
     const subjectRefs = noCharacterPresent ? [] : (Array.isArray(normalized.subject_refs) ? normalized.subject_refs : [])
-      .map(storyboardReferenceForGpt)
+      .map((ref) => storyboardReferenceForGpt(ref, { subject: true }))
       .filter(Boolean);
     const subjectFallbacks = noCharacterPresent ? [] : (Array.isArray(normalized.subjects) ? normalized.subjects : [])
       .map((name) => ({ name: String(name || "").trim(), description: "" }))
@@ -1281,8 +1295,14 @@ function storyboardScenesForGpt(state) {
       ? subjectRefs.map((subject) => subject.name).filter(Boolean)
       : subjectFallbacks.map((subject) => subject.name).filter(Boolean);
     const subjectCount = subjectRefs.length || subjectFallbacks.length;
+    const subjectPromptNameByLabel = new Map(
+      subjectRefs
+        .map((subject) => [String(subject.display_name || subject.name || "").trim().toLowerCase(), subject.name])
+        .filter(([label, promptName]) => label && promptName),
+    );
     const explicitSingers = (Array.isArray(normalized.lyric_singers) ? normalized.lyric_singers : [])
       .map((name) => String(name || "").trim())
+      .map((name) => subjectPromptNameByLabel.get(name.toLowerCase()) || name)
       .filter(Boolean);
     const singers = shouldLipSync ? (explicitSingers.length ? explicitSingers : subjectNames) : [];
     const singerKeySet = new Set(singers.map((name) => String(name || "").trim().toLowerCase()));
@@ -1305,15 +1325,17 @@ function storyboardScenesForGpt(state) {
         no_character_present: noCharacterPresent,
       },
       vocal_direction: {
-        mode: shouldLipSync ? "sing exact lyric line" : (instrumental ? "instrumental / no vocals" : (noLipSync ? "b-roll / no lip sync" : "no lyric line provided")),
+        mode: imageMode ? "still image / no singing" : (shouldLipSync ? "sing exact lyric line" : (instrumental ? "instrumental / no vocals" : (noLipSync ? "b-roll / no lip sync" : "no lyric line provided"))),
         lyric_line: lyricText,
         singers,
         non_singing_visible_subjects: nonSingingSubjects,
-        instruction: shouldLipSync
+        instruction: imageMode
+          ? "This is a text-to-image still prompt, not a video or lip-sync prompt. Use lyric_line only for mood, symbolism, emotion, and visual direction. Do not mention singing, lip-syncing, performing vocals, singing the line, or mouth movement. The subject can pose, look emotional, move naturally, or appear in a fashion/editorial scene, but should not be described as singing unless the scene notes explicitly ask for a live singing image."
+          : shouldLipSync
           ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Every non_singing_visible_subjects entry must still appear in the scene as a visible non-singing subject who reacts, watches, moves, or shares the moment without singing. Do not describe mouth shapes or mouth position."
           : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene. Every listed subject must still appear as a visible non-singing subject unless no_character_present is true.",
       },
-      scene_summary: normalized.prompt_summary,
+      scene_summary: imageMode ? "" : normalized.prompt_summary,
       story_layer: {
         lyric_section: normalized.lyric_section,
         scene_story_beat: normalized.story_beat,
@@ -1323,10 +1345,13 @@ function storyboardScenesForGpt(state) {
       },
       motion_summary: imageMode ? "" : normalized.motion_summary,
       still_image_notes: imageMode ? normalized.motion_summary : "",
-      image_aesthetic: imageMode ? storyboardImageAestheticPreset(state.imageAesthetic).description : "",
+      image_aesthetic: imageMode ? storyboardImageAestheticGuidance(state.imageAesthetic) : "",
+      image_aesthetic_instruction: imageMode
+        ? "Translate the selected image aesthetic into concrete prompt details: pose, wardrobe styling, hair, makeup, accessories, lighting setup, lens/framing, composition, environment treatment, texture, weather/time if useful, and art direction. Do not merely name the preset or append it as a short tag."
+        : "",
       global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
       global_consistency_instruction: String(state.globalConsistencyPhrase || "").trim()
-        ? "Incorporate the global_consistency_phrase into this prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally."
+        ? "Incorporate the global_consistency_phrase naturally into the prompt where it fits. Preserve its key wording, but do not force it to the beginning unless that is the most natural phrasing."
         : "",
       performance_style: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).label,
       performance_direction: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).direction,
@@ -1342,8 +1367,9 @@ function storyboardScenesForGpt(state) {
           ? "No main character or mapped subject is present in this scene. Do not include, mention, imply, or describe the mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and still-image composition instead."
           : "No main character or mapped subject is present in this scene. Do not include, mention, imply, or describe the mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and camera motion instead.")
         : subjectCount === 1
-        ? "This scene has exactly one subject. Treat the listed subject as one individual person even if the label sounds plural. Do not create a group, duplicates, backup singers, or multiple versions of the subject. Use singular wording and do not use they/them/their for this one subject."
-        : "This scene has multiple mapped subjects. Every listed subject must be visibly present in the prompt. Do not drop any listed subject. Only the names in vocal_status.singers should sing; the other listed subjects should be visible but not singing. Do not add extra people unless the scene notes explicitly ask for them.",
+        ? "This scene has exactly one mapped subject. Use the exact visible_subjects name/phrase as the subject phrase in the prompt. If that phrase came from a subject trigger_phrase, treat it as the subject identity, e.g. 'a photo of TRIGGER_PHRASE' instead of 'a photo of a woman'. Do not rewrite it as 'one woman', 'a woman', 'one man', 'a man', or any generic count phrase. Treat that exact subject phrase as one individual person and do not create duplicates, groups, backup singers, or multiple versions of the subject."
+        : "This scene has multiple mapped subjects. Every listed subject must be visibly present in the prompt. Use each exact visible_subjects name/phrase when referring to them. If a phrase came from a subject trigger_phrase, treat it as that subject's identity. Do not drop any listed subject, rename them, or replace them with generic count phrases. Only the names in vocal_status.singers should sing; the other listed subjects should be visible but not singing. Do not add extra people unless the scene notes explicitly ask for them.",
+      subject_name_rule: "Preserve mapped subject prompt names exactly as provided in visible_subjects and subjects.name. For subjects with trigger_phrase, subjects.name is already the prompt-facing trigger phrase and must be used as the subject instead of generic wording like 'a woman' or 'a man'.",
       visible_subjects: subjectNames,
       subjects: subjectRefs.length ? subjectRefs : subjectFallbacks,
       setting: locationRef || {
@@ -1378,17 +1404,33 @@ function storyboardScenesForGpt(state) {
 export function storyboardGptPayload(state, scenesOverride = null) {
   const payloadState = scenesOverride ? { ...state, scenes: scenesOverride } : state;
   const selectedScene = scenesOverride?.length === 1 ? normalizeScene(scenesOverride[0], 0) : null;
+  const imageMode = state.mode !== "image_to_video_prep";
   return {
     scope: selectedScene ? "single_scene" : "all_scenes",
     selected_scene_number: selectedScene ? selectedScene.scene_number : null,
     storyboard_mode: state.mode === "image_to_video_prep" ? "video prompt planning" : "text-to-image prompt planning",
+    ...(imageMode
+      ? {
+        task_instruction: "Create detailed Krea 2 text-to-image prompts for Image Prep. These are still-image prompts, not video or lip-sync prompts. Use lyrics and story beats for mood, symbolism, emotion, styling, and scene direction only. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless the scene notes explicitly ask for a live singing image. Preserve mapped subject prompt names exactly as provided in each scene's visible_subjects and subjects.name. When a subject has a trigger_phrase, that trigger phrase is the subject identity for prompt wording, so write natural phrases like 'a photo of TRIGGER_PHRASE' instead of 'a photo of a woman'. Do not rename 'the woman' as 'one woman' or 'a woman', and do not rename trigger phrases. If global_consistency_phrase is present, weave it naturally into the prompt where it fits instead of slapping it onto the front.",
+        output_format: {
+          type: "image_prompt_import_json",
+          instruction: "Return only a JSON code block with an array of objects. Include every scene. Each object must have scene_number and image_prompt. Do not include prose outside the JSON code block.",
+          example: [
+            { scene_number: 1, image_prompt: "Full detailed Krea 2 text-to-image prompt for scene 1..." },
+            { scene_number: 2, image_prompt: "Full detailed Krea 2 text-to-image prompt for scene 2..." },
+          ],
+        },
+      }
+      : {}),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
   };
 }
 
 function openStoryboardGptUrl(payload) {
-  window.open(STORYBOARD_GPT_URL, "_blank", "noopener,noreferrer");
+  const isImagePayload = String(payload?.storyboard_mode || "").toLowerCase().includes("text-to-image")
+    || String(payload?.scenes?.[0]?.prompt_type || "").toLowerCase().includes("text to image");
+  window.open(isImagePayload ? STORYBOARD_IMAGE_GPT_URL : STORYBOARD_GPT_URL, "_blank", "noopener,noreferrer");
 }
 
 async function copyTextToClipboard(text) {
@@ -1522,6 +1564,8 @@ function openStoryboardBuilder(payload = {}) {
   search.style.width = "260px";
   const gptButton = makeButton("GPT All", "purple");
   gptButton.title = "Copy all Storyboard scene-card inputs as JSON for your custom GPT.";
+  const importImagePromptsButton = makeButton("Import prompts from GPT", "purple");
+  importImagePromptsButton.title = "Paste JSON from the Text to Image Prompt Builder GPT and update Image Prep prompts.";
   const gemmaAllButton = makeButton("Gemma All", "primary");
   gemmaAllButton.title = "Use Gemma4 to create video prompts for every storyboard scene.";
   const clearPromptsButton = makeButton("Clear Prompts");
@@ -1537,7 +1581,7 @@ function openStoryboardBuilder(payload = {}) {
   keepGemmaLoadedLabel.title = "When checked, Gemma All keeps the text model loaded until the batch finishes. Turn this off for lower VRAM systems.";
   const add = makeButton("+ Add Scene", "purple");
   const close = makeButton("Close");
-  headerActions.append(gptButton, gemmaAllButton, clearPromptsButton, keepGemmaLoadedLabel, search, add, close);
+  headerActions.append(gptButton, importImagePromptsButton, gemmaAllButton, clearPromptsButton, keepGemmaLoadedLabel, search, add, close);
   header.append(titleBlock, steps, headerActions);
 
   const note = document.createElement("div");
@@ -1701,6 +1745,11 @@ function openStoryboardBuilder(payload = {}) {
     gemmaAllButton.title = mode === "image_to_video_prep"
       ? "Create video prompts for the visible scenes. If a scene has an image path, Gemma Vision uses it as guidance."
       : "Create text-to-image prompts for the visible scenes.";
+    gptButton.textContent = mode === "image_to_video_prep" ? "GPT Video All" : "GPT Image All";
+    gptButton.title = mode === "image_to_video_prep"
+      ? "Copy all Storyboard scene-card inputs as JSON and open the video prompt GPT."
+      : "Copy all Image Prep scene-card inputs as JSON and open the Krea 2 text-to-image prompt GPT.";
+    importImagePromptsButton.style.display = isVideoPrepMode ? "none" : "";
     imageShotControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageShotInfo.style.display = isVideoPrepMode ? "none" : "";
     imageAestheticControls.style.display = isVideoPrepMode ? "none" : "flex";
@@ -2591,7 +2640,7 @@ function openStoryboardBuilder(payload = {}) {
     if (isVideoPrepMode) {
       advancedGrid.append(field("Prompt summary", summary), field("Motion / video prompt summary", motion), field("Character details", subjectDetails), field("Location details", locationDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
     } else {
-      advancedGrid.append(field("Prompt summary", summary), t2iPromptField, field("Character details", subjectDetails), field("Location details", locationDetails), field("Still photography notes", motion));
+      advancedGrid.append(t2iPromptField, field("Character details", subjectDetails), field("Location details", locationDetails), field("Still photography notes", motion));
     }
     const notesWrap = document.createElement("div");
     notesWrap.append(notes);
@@ -2720,7 +2769,7 @@ function openStoryboardBuilder(payload = {}) {
       scene.lyric_section = lyricSection.value.trim();
       scene.lyrics = lyrics.value.trim();
       scene.story_beat = storyBeat.value.trim();
-      scene.prompt_summary = summary.value.trim();
+      scene.prompt_summary = isVideoPrepMode ? summary.value.trim() : "";
       scene.motion_summary = motion.value.trim();
       scene.video_prompt_type = isVideoPrepMode ? (videoPromptType.value || "i2v") : "i2v";
       scene.no_character_present = Boolean(noCharacterInput.checked);
@@ -2968,7 +3017,7 @@ function openStoryboardBuilder(payload = {}) {
             lyrics: fresh.lyrics || normalized.lyrics,
             lyric_section: fresh.lyric_section || normalized.lyric_section,
             story_beat: fresh.story_beat || normalized.story_beat,
-            prompt_summary: fresh.prompt_summary || normalized.prompt_summary,
+            prompt_summary: state.mode === "image_to_video_prep" ? (fresh.prompt_summary || normalized.prompt_summary) : "",
             motion_summary: fresh.motion_summary || normalized.motion_summary,
             image_path: fresh.image_path || normalized.image_path,
             no_character_present: Boolean(fresh.no_character_present || normalized.no_character_present),
@@ -3091,13 +3140,129 @@ function openStoryboardBuilder(payload = {}) {
     }
   }
 
+  function imagePromptImportJsonText(rawText) {
+    const text = String(rawText || "").trim();
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced) return fenced[1].trim();
+    const firstArray = text.indexOf("[");
+    const firstObject = text.indexOf("{");
+    const starts = [firstArray, firstObject].filter((index) => index >= 0);
+    if (!starts.length) return text;
+    const start = Math.min(...starts);
+    const end = Math.max(text.lastIndexOf("]"), text.lastIndexOf("}"));
+    return end > start ? text.slice(start, end + 1).trim() : text.slice(start).trim();
+  }
+
+  function parseImagePromptImportJson(rawText) {
+    const text = imagePromptImportJsonText(rawText);
+    if (!text) return [];
+    const data = JSON.parse(text);
+    const source = Array.isArray(data)
+      ? data
+      : Array.isArray(data.prompts)
+        ? data.prompts
+        : Array.isArray(data.scenes)
+          ? data.scenes
+          : data && typeof data === "object"
+            ? Object.entries(data).map(([key, value]) => {
+              if (value && typeof value === "object") return { scene: key, ...value };
+              return { scene: key, prompt: value };
+            })
+            : [];
+    const rows = [];
+    for (const item of source) {
+      if (!item || typeof item !== "object") continue;
+      const sceneRaw = item.scene_number ?? item.sceneNumber ?? item.scene ?? item.number ?? item.id ?? "";
+      const sceneNumber = Number(String(sceneRaw).match(/\d+/)?.[0] || sceneRaw || 0);
+      const prompt = String(
+        item.image_prompt
+        ?? item.text_to_image_prompt
+        ?? item.t2i_prompt
+        ?? item.prompt
+        ?? item.text
+        ?? "",
+      ).trim();
+      if (!sceneNumber || !prompt) continue;
+      rows.push({ sceneNumber, prompt });
+    }
+    return rows;
+  }
+
+  function openImportImagePromptsFromGptModal() {
+    const importBackdrop = document.createElement("div");
+    importBackdrop.style.cssText = "position:fixed;inset:0;z-index:100013;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;";
+    const importBox = document.createElement("div");
+    importBox.style.cssText = "width:min(840px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.62);display:flex;flex-direction:column;overflow:hidden;";
+    const importHeader = document.createElement("div");
+    importHeader.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:#083f4f;border-bottom:1px solid #155e75;padding:13px 15px;";
+    const importTitle = document.createElement("div");
+    importTitle.innerHTML = `<div style="font-size:17px;font-weight:900;color:#cffafe;">Import Image Prompts From GPT</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Paste the JSON code block from the Krea 2 text-to-image GPT. This updates Image Prep prompts only.</div>`;
+    const importClose = makeButton("Close");
+    importHeader.append(importTitle, importClose);
+    const help = document.createElement("div");
+    help.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+    help.innerHTML = `Accepted examples:<br><code>[{"scene":1,"image_prompt":"..."},{"scene":2,"prompt":"..."}]</code><br><code>{"scene1":"prompt text","scene2":"prompt text"}</code>`;
+    const input = document.createElement("textarea");
+    input.placeholder = "Paste GPT JSON output here...";
+    input.spellcheck = false;
+    input.style.cssText = "min-height:340px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:18px;font-size:12px;color:#94a3b8;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const cancel = makeButton("Cancel");
+    const apply = makeButton("Import Image Prompts", "purple");
+    actions.append(cancel, apply);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:14px;display:flex;flex-direction:column;gap:10px;overflow:auto;";
+    body.append(help, input, status, actions);
+    importBox.append(importHeader, body);
+    importBackdrop.append(importBox);
+    document.body.append(importBackdrop);
+    const closeImport = () => importBackdrop.remove();
+    importClose.onclick = closeImport;
+    cancel.onclick = closeImport;
+    importBackdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === importBackdrop) closeImport();
+    });
+    apply.onclick = () => {
+      try {
+        const rows = parseImagePromptImportJson(input.value);
+        if (!rows.length) throw new Error("No usable image prompts found. Make sure each row has a scene number and image_prompt or prompt.");
+        let updated = 0;
+        const missing = [];
+        for (const row of rows) {
+          const scene = state.scenes.find((item) => Number(item.scene_number) === Number(row.sceneNumber));
+          if (!scene) {
+            missing.push(row.sceneNumber);
+            continue;
+          }
+          scene.image_prompt = row.prompt;
+          scene.prompt_summary = "";
+          scene.status = "image_prompt_ready";
+          updated += 1;
+        }
+        renderTable();
+        status.textContent = `Updated ${updated} Image Prep prompt${updated === 1 ? "" : "s"}${missing.length ? `; missing scenes: ${missing.join(", ")}` : ""}.`;
+        status.style.color = updated ? "#67e8f9" : "#fbbf24";
+        createToast(`Imported ${updated} image prompt${updated === 1 ? "" : "s"} from GPT.`);
+        if (updated) closeImport();
+      } catch (error) {
+        status.textContent = String(error?.message || error);
+        status.style.color = "#fca5a5";
+        createToast(String(error?.message || error), true);
+      }
+    };
+    input.focus();
+  }
+
   function storyboardGemmaPayload(scene, overrides = {}) {
     const payload = storyboardGptPayload(state, [scene]);
     return {
       ...(state.gemmaSettings || {}),
       ...overrides,
       storyboard_payload: payload,
-      max_new_tokens: 1400,
+      max_new_tokens: 2000,
       temperature: 0.35,
       top_p: 0.90,
     };
@@ -3112,6 +3277,7 @@ function openStoryboardBuilder(payload = {}) {
       const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
       if (!prompt) throw new Error("Gemma returned an empty Storyboard image prompt.");
       scene.image_prompt = prompt;
+      scene.prompt_summary = "";
       scene.status = "image_prompt_ready";
       if (!quiet) createToast(`Gemma created image prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || "Gemma"}`);
       return prompt;
@@ -3281,6 +3447,7 @@ function openStoryboardBuilder(payload = {}) {
     renderTable();
   };
   gptButton.onclick = copyStoryboardForGpt;
+  importImagePromptsButton.onclick = openImportImagePromptsFromGptModal;
   gemmaAllButton.onclick = createAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   storyLayerEnabledInput.addEventListener("change", syncStoryLayerFromInputs);

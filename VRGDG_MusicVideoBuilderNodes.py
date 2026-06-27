@@ -3509,7 +3509,7 @@ def _generate_builder_t2i_prompt(payload):
             "- Do not mention reference image, composite, source images, ingredient images, or image grid.\n"
             "- Do not include labels, notes, quotes, markdown, or explanations.\n"
             "- Keep it cinematic, detailed, and visually specific.\n"
-            "- Keep the prompt under 120 words.\n\n"
+            "- For detailed image models such as Krea 2, write a rich prompt with enough concrete visual detail to control styling, pose, wardrobe, lighting, camera framing, environment, materials, and atmosphere. Aim for 120-220 words when the scene has enough context.\n\n"
             f"User notes:\n{user_notes or 'Create a cinematic image using the available scene notes.'}"
         )
     elif prompt_mode == "nano_banana":
