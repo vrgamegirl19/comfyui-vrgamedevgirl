@@ -1134,10 +1134,21 @@ export function openMusicVideoWizard(api = {}) {
     const drop = el("div", "vrgdg-wizard-drop");
     drop.innerHTML = `<div><strong style="color:#cffafe;">Drop audio here</strong><br><span style="font-size:12px;color:#94a3b8;">or click to choose WAV, MP3, FLAC, M4A, or OGG.</span></div>`;
     const loaded = el("div", "vrgdg-wizard-note", data.audioPath ? `Loaded audio: ${data.audioPath}` : "No audio is loaded yet. The audio becomes the global project audio.");
+    const status = el("div", "vrgdg-wizard-copy", "");
     const loadFile = async (file) => {
       if (!file) return;
       drop.textContent = "Loading audio into the project...";
-      await api.chooseAudioFile?.(file);
+      status.textContent = "";
+      const result = await api.chooseAudioFile?.(file);
+      const refreshed = snapshot();
+      const savedPath = String(refreshed.audioPath || result?.saved_path || result?.audio_path || "").trim();
+      if (!savedPath) {
+        done.delete("audio");
+        drop.innerHTML = `<div><strong style="color:#cffafe;">Drop audio here</strong><br><span style="font-size:12px;color:#94a3b8;">or click to choose WAV, MP3, FLAC, M4A, or OGG.</span></div>`;
+        status.textContent = "Audio was not loaded. Make sure the project is saved first, then try the file again.";
+        status.style.color = "#fca5a5";
+        return;
+      }
       done.add("audio");
       await saveWizardProgress("wizard audio");
       render();
@@ -1160,7 +1171,7 @@ export function openMusicVideoWizard(api = {}) {
       const file = Array.from(event.dataTransfer?.files || []).find((item) => item.type?.startsWith?.("audio/") || /\.(wav|mp3|flac|m4a|ogg)$/i.test(item.name || ""));
       loadFile(file);
     });
-    content.append(fileInput, loaded, drop);
+    content.append(fileInput, loaded, drop, status);
   }
 
   function renderLyrics() {

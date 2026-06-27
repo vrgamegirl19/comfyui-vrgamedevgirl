@@ -472,6 +472,17 @@ function parseOutputMapping(text, prefix, label) {
   return output;
 }
 
+function isSceneLabelOnlyPromptMap(mapping = {}) {
+  const entries = Object.entries(mapping || {});
+  if (!entries.length) return false;
+  return entries.every(([key, value]) => {
+    const keyNumber = String(key || "").match(/(\d+)/)?.[1] || "";
+    const text = String(value || "").trim();
+    const valueNumber = text.match(/^scene\s*(\d+)$/i)?.[1] || "";
+    return Boolean(keyNumber && valueNumber && Number(keyNumber) === Number(valueNumber));
+  });
+}
+
 function prettyJson(value) {
   try {
     return JSON.stringify(value || {}, null, 2);
@@ -1814,6 +1825,12 @@ function openPromptCreator(options = {}) {
     progress?.set("Step 6/6: Saving prompt creator files into the project folder...", 92);
     const editedConceptPrompts = parseOutputMapping(conceptOutput.value, "Prompt", "ConceptPrompts");
     const editedI2VMotionNotes = parseOutputMapping(i2vMotionOutput.value, "Motion", "I2V Motion Notes");
+    if (!Object.keys(editedConceptPrompts).length && String(conceptOutput.value || "").trim()) {
+      throw new Error("ConceptPrompts editor does not contain any Prompt1/Prompt2 JSON values.");
+    }
+    if (isSceneLabelOnlyPromptMap(editedConceptPrompts)) {
+      throw new Error("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to Video Creator.");
+    }
     state.conceptPrompts = Object.keys(editedConceptPrompts).length ? editedConceptPrompts : (state.conceptPrompts || {});
     state.i2vMotionNotes = Object.keys(editedI2VMotionNotes).length ? editedI2VMotionNotes : (state.i2vMotionNotes || {});
     const payload = buildPayload(controls, modelSelect);
@@ -1823,6 +1840,9 @@ function openPromptCreator(options = {}) {
     payload.prompts = state.conceptPrompts && Object.keys(state.conceptPrompts).length
       ? state.conceptPrompts
       : parseJsonSafe(conceptOutput.value, {});
+    if (isSceneLabelOnlyPromptMap(payload.prompts)) {
+      throw new Error("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to Video Creator.");
+    }
     payload.i2v_motion_notes = state.i2vMotionNotes && Object.keys(state.i2vMotionNotes).length
       ? state.i2vMotionNotes
       : parseJsonSafe(i2vMotionOutput.value, {});

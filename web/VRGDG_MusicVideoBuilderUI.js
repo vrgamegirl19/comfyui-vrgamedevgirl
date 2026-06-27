@@ -8,7 +8,7 @@ import {
   storyboardGptPayload,
   storyboardPerformancePreset,
 } from "./VRGDG_StoryboardBuilderUI.js";
-import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260623-story-layer";
+import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260627-audio-sync";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -18419,6 +18419,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         target_peaks: 1800,
       }, 90000);
       audioInput.value = data.audio_path || audioInput.value;
+      state.audioPath = audioInput.value;
       state.duration = Number(data.duration || 0);
       state.peaks = data.peaks || [];
       state.beats = data.beats || [];
@@ -18508,6 +18509,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             audio_name: file.name || "project_audio.wav",
           }, 180000);
           audioInput.value = data.saved_path || "";
+          state.audioPath = audioInput.value;
           state.duration = Number(data.duration || 0);
           state.peaks = data.peaks || [];
           state.beats = data.beats || [];

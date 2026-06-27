@@ -750,6 +750,18 @@ def _canonical_prompt_mapping(value):
     return {key: fixed[key] for key in sorted(fixed, key=lambda item: int(re.search(r"\d+", item).group(0)))}
 
 
+def _is_scene_label_only_prompt_mapping(value):
+    items = list((value or {}).items())
+    if not items:
+        return False
+    for key, prompt in items:
+        key_match = re.search(r"(\d+)", str(key or ""))
+        value_match = re.match(r"^\s*scene\s*(\d+)\s*$", str(prompt or ""), flags=re.IGNORECASE)
+        if not key_match or not value_match or int(key_match.group(1)) != int(value_match.group(1)):
+            return False
+    return True
+
+
 def _prompt_map_key_number(key):
     match = re.search(r"(\d+)", str(key or ""))
     return int(match.group(1)) if match else 999999
@@ -1319,6 +1331,8 @@ def _save_prompt_creator_outputs(payload):
         corrected_segments = _canonical_segment_mapping(corrected_segments)
     if concept_prompts:
         concept_prompts = _canonical_prompt_mapping(concept_prompts)
+        if _is_scene_label_only_prompt_mapping(concept_prompts):
+            raise ValueError("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before sending to Video Creator.")
         if _payload_bool(payload.get("append_subject_to_prompts", True), True):
             concept_prompts = _prepend_subject_to_prompts(
                 concept_prompts,
@@ -1510,6 +1524,8 @@ def _save_prompt_creator_draft(payload):
     if draft["concept_prompts_text"].strip():
         concept_prompts = _canonical_prompt_mapping(_extract_json_object(draft["concept_prompts_text"]))
         if concept_prompts:
+            if _is_scene_label_only_prompt_mapping(concept_prompts):
+                raise ValueError("ConceptPrompts only contains scene labels like SCENE 1. Create or paste real concept prompts before saving.")
             concept_path = os.path.join(context, "ConceptPrompts.txt")
             with open(concept_path, "w", encoding="utf-8") as handle:
                 json.dump(concept_prompts, handle, indent=2, ensure_ascii=False)
