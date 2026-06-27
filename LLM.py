@@ -361,6 +361,10 @@ class VRGDG_LLM_Multi:
             "grok-3-latest",
             "grok-3-mini",
             "grok-3-mini-latest",
+            "grok-imagine-image",
+            "grok-imagine-image-quality",
+            "grok-imagine-video",
+            "grok-imagine-video-1.5",
         ],
         "grok": [
             "grok-4.3",
@@ -374,6 +378,10 @@ class VRGDG_LLM_Multi:
             "grok-3-latest",
             "grok-3-mini",
             "grok-3-mini-latest",
+            "grok-imagine-image",
+            "grok-imagine-image-quality",
+            "grok-imagine-video",
+            "grok-imagine-video-1.5",
         ],
         "deepseek": [
             "deepseek-chat",

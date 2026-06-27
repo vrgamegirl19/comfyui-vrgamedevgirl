@@ -577,6 +577,9 @@ function buildPayload(controls, modelSelect) {
     lmstudio_base_url: controls.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
     lmstudio_model: controls.lmStudioModel || "",
     lmstudio_api_key: controls.lmStudioApiKey || "",
+    llm_api_provider: controls.llmApiProvider || "openai",
+    llm_api_model: controls.llmApiModel || "",
+    llm_api_key: controls.llmApiKey || "",
     text_gemma_runner: controls.textGemmaRunner || "builtin",
     lm_studio_base_url: controls.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
     lm_studio_model: controls.lmStudioModel || "",
@@ -692,10 +695,14 @@ function openPromptCreator(options = {}) {
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
+    llmApiProvider: "openai",
+    llmApiModel: "",
+    llmApiKey: "",
+    llmApiChoices: null,
   };
 
   function gemmaRunnerLine() {
-    return `Runner: ${state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Built-in GGUF"}`;
+    return `Runner: ${state.textGemmaRunner === "llm_api" ? "LLM API" : state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local"}`;
   }
 
   const instructionLabels = {
@@ -939,6 +946,9 @@ function openPromptCreator(options = {}) {
     controls.lmStudioBaseUrl = state.lmStudioBaseUrl;
     controls.lmStudioModel = state.lmStudioModel;
     controls.lmStudioApiKey = state.lmStudioApiKey;
+    controls.llmApiProvider = state.llmApiProvider;
+    controls.llmApiModel = state.llmApiModel;
+    controls.llmApiKey = state.llmApiKey;
   }
 
   function openGemmaRunnerModal() {
@@ -949,10 +959,13 @@ function openPromptCreator(options = {}) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Prompt Creator Gemma Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Prompt Creator is text-only, so LM Studio can run these Gemma steps.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Prompt Creator LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Prompt Creator is text-only, so it can use Gemma Local, LM Studio, or LLM API.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
-    const runner = makeSelect(["builtin", "lm_studio"], state.textGemmaRunner || "builtin");
+    const runner = makeSelect(["builtin", "lm_studio", "llm_api"], state.textGemmaRunner || "builtin");
+    runner.options[0].textContent = "Gemma Local";
+    runner.options[1].textContent = "LM Studio";
+    runner.options[2].textContent = "LLM API";
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
     const modelSelectLm = makeSelect([""], "");
@@ -1006,8 +1019,83 @@ function openPromptCreator(options = {}) {
       makeField("LM Studio model name", model),
       makeField("API key (usually blank for local LM Studio)", apiKey),
     );
+    const apiPanel = document.createElement("div");
+    apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
+    const apiNote = document.createElement("div");
+    apiNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    apiNote.textContent = "API key is session-only. It is not saved with the Prompt Creator draft and may need to be pasted again after refresh or restart.";
+    const apiProvider = makeSelect(["openai"], state.llmApiProvider || "openai");
+    const apiModel = makeSelect([""], state.llmApiModel || "");
+    const llmApiKey = makeInput(state.llmApiKey || "", "password");
+    const testApi = makeButton("Test LLM API", "primary");
+    const apiStatus = document.createElement("div");
+    apiStatus.style.cssText = "font-size:12px;color:#94a3b8;min-height:16px;";
+    const llmProviders = () => Array.isArray(state.llmApiChoices?.providers) ? state.llmApiChoices.providers : [];
+    const providerById = (id) => llmProviders().find((item) => String(item.id || "") === String(id || ""));
+    const populateApiModels = () => {
+      const provider = providerById(apiProvider.value) || llmProviders()[0] || { id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" };
+      const models = Array.isArray(provider.models) && provider.models.length ? provider.models : [provider.default_model || ""].filter(Boolean);
+      apiModel.replaceChildren();
+      models.forEach((modelId) => {
+        const option = document.createElement("option");
+        option.value = modelId;
+        option.textContent = modelId;
+        apiModel.append(option);
+      });
+      const wanted = String(state.llmApiModel || "").trim();
+      apiModel.value = wanted && models.includes(wanted) ? wanted : (provider.default_model || models[0] || "");
+    };
+    const populateApiProviders = () => {
+      const providers = llmProviders().length ? llmProviders() : [{ id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" }];
+      apiProvider.replaceChildren();
+      providers.forEach((provider) => {
+        const option = document.createElement("option");
+        option.value = provider.id;
+        option.textContent = String(provider.label || provider.id || "");
+        apiProvider.append(option);
+      });
+      const wanted = String(state.llmApiProvider || "").trim();
+      apiProvider.value = providers.some((provider) => String(provider.id) === wanted) ? wanted : String(providers[0]?.id || "openai");
+      populateApiModels();
+    };
+    const loadApiChoices = async () => {
+      try {
+        apiStatus.textContent = "Loading LLM API model list...";
+        const data = await getJson("/vrgdg/music_builder/llm_api_choices");
+        state.llmApiChoices = { providers: Array.isArray(data.providers) ? data.providers : [] };
+        populateApiProviders();
+        apiStatus.textContent = "";
+      } catch (error) {
+        apiStatus.textContent = `Could not load API model list: ${String(error?.message || error)}`;
+        apiStatus.style.color = "#fca5a5";
+        populateApiProviders();
+      }
+    };
+    apiProvider.onchange = () => {
+      state.llmApiProvider = apiProvider.value || "openai";
+      state.llmApiModel = "";
+      populateApiModels();
+    };
+    apiModel.onchange = () => {
+      state.llmApiModel = apiModel.value || "";
+    };
+    llmApiKey.oninput = () => {
+      state.llmApiKey = llmApiKey.value || "";
+      syncRunnerControls();
+    };
+    apiPanel.append(
+      apiNote,
+      makeField("Provider", apiProvider),
+      makeField("Model", apiModel),
+      makeField("API key", llmApiKey),
+      testApi,
+      apiStatus,
+    );
     const syncVisibility = () => {
+      state.textGemmaRunner = runner.value || "builtin";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
+      apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
+      syncRunnerControls();
     };
     runner.onchange = syncVisibility;
     const actions = document.createElement("div");
@@ -1015,19 +1103,58 @@ function openPromptCreator(options = {}) {
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Runner", "primary");
     actions.append(cancel, save);
-    box.append(header, makeField("Text Gemma runner", runner), lmPanel, actions);
+    box.append(header, makeField("Text LLM runner", runner), lmPanel, apiPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     syncVisibility();
+    loadApiChoices();
     close.onclick = cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
       state.lmStudioApiKey = apiKey.value || "";
+      state.llmApiProvider = apiProvider.value || "openai";
+      state.llmApiModel = apiModel.value || "";
+      state.llmApiKey = runner.value === "llm_api" ? llmApiKey.value || "" : state.llmApiKey || "";
       syncRunnerControls();
-      setStatus(status, state.textGemmaRunner === "lm_studio" ? "Prompt Creator Gemma runner set to LM Studio." : "Prompt Creator Gemma runner set to built-in GGUF.");
+      setStatus(status, `Prompt Creator runner set to ${state.textGemmaRunner === "llm_api" ? "LLM API" : state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local"}.`);
       backdrop.remove();
+    };
+    testApi.onclick = async () => {
+      const provider = apiProvider.value || "openai";
+      const modelId = apiModel.value || "";
+      const key = llmApiKey.value || "";
+      if (!key.trim()) {
+        setStatus(status, "Enter an API key before testing LLM API.", true);
+        return;
+      }
+      state.textGemmaRunner = "llm_api";
+      state.llmApiProvider = provider;
+      state.llmApiModel = modelId;
+      state.llmApiKey = key;
+      syncRunnerControls();
+      testApi.disabled = true;
+      testApi.textContent = "Testing...";
+      try {
+        const data = await postJson("/vrgdg/music_builder/test_llm_api", {
+          provider,
+          model: modelId,
+          api_key: key,
+          prompt: "Reply with OK only.",
+        });
+        apiStatus.textContent = `Test passed: ${data.used_provider || provider} / ${data.used_model || modelId}`;
+        apiStatus.style.color = "#67e8f9";
+        setStatus(status, "LLM API test passed.");
+      } catch (error) {
+        const message = String(error?.message || error);
+        apiStatus.textContent = `Test failed: ${message}`;
+        apiStatus.style.color = "#fca5a5";
+        setStatus(status, `LLM API test failed: ${message}`, true);
+      } finally {
+        testApi.disabled = false;
+        testApi.textContent = "Test LLM API";
+      }
     };
   }
 
@@ -1404,6 +1531,8 @@ function openPromptCreator(options = {}) {
     state.lmStudioBaseUrl = draft.lm_studio_base_url || draft.lmstudio_base_url || draft.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = draft.lm_studio_model || draft.lmstudio_model || draft.lmStudioModel || state.lmStudioModel || "";
     state.lmStudioApiKey = draft.lm_studio_api_key || draft.lmstudio_api_key || draft.lmStudioApiKey || state.lmStudioApiKey || "";
+    state.llmApiProvider = draft.llm_api_provider || draft.llmApiProvider || state.llmApiProvider || "openai";
+    state.llmApiModel = draft.llm_api_model || draft.llmApiModel || state.llmApiModel || "";
     syncRunnerControls();
   }
 
@@ -1496,7 +1625,7 @@ function openPromptCreator(options = {}) {
     const target = targetByField[fieldKey];
     const modelFile = String(modelSelect.value || "").trim();
     if (!target) return;
-    if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+    if (!modelFile && state.textGemmaRunner === "builtin") {
       setStatus(status, "Choose a Gemma4 text model first.");
       return;
     }
@@ -1539,6 +1668,9 @@ function openPromptCreator(options = {}) {
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
+      llm_api_provider: state.llmApiProvider || "openai",
+      llm_api_model: state.llmApiModel || "",
+      llm_api_key: state.llmApiKey || "",
     };
 
     let progress = null;

@@ -897,7 +897,8 @@ def _run_text_gemma(model_file, prompt, overrides=None, payload=None):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
     runner_payload = dict(payload or {})
-    if _llm_runner_from_payload(runner_payload) == "lm_studio":
+    runner = _llm_runner_from_payload(runner_payload)
+    if runner != "builtin":
         settings = dict(_LLM_SETTINGS)
         if isinstance(overrides, dict):
             settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
@@ -913,7 +914,7 @@ def _run_text_gemma(model_file, prompt, overrides=None, payload=None):
         text = _clean_llm_json_text(text)
         if not text:
             raise ValueError("Gemma returned an empty response.")
-        return {"text": text, "used_model": run_info.get("used_model", ""), "runner": run_info.get("runner", "lm_studio")}
+        return {"text": text, "used_model": run_info.get("used_model", ""), "runner": run_info.get("runner", runner)}
 
     if not str(model_file or "").strip():
         raise ValueError("Choose a Gemma4 text model first.")
@@ -961,7 +962,8 @@ def _run_text_gemma_custom(model_file, custom_instructions, user_input, override
     from .LLM import VRGDG_SuperGemmaGGUFChat
 
     runner_payload = dict(payload or {})
-    if _llm_runner_from_payload(runner_payload) == "lm_studio":
+    runner = _llm_runner_from_payload(runner_payload)
+    if runner != "builtin":
         settings = dict(_LLM_SETTINGS)
         if isinstance(overrides, dict):
             settings.update({key: value for key, value in overrides.items() if value not in (None, "")})
@@ -978,7 +980,7 @@ def _run_text_gemma_custom(model_file, custom_instructions, user_input, override
         text = _clean_llm_json_text(text)
         if not text:
             raise ValueError("Gemma returned an empty response.")
-        return {"text": text, "used_model": run_info.get("used_model", ""), "runner": run_info.get("runner", "lm_studio")}
+        return {"text": text, "used_model": run_info.get("used_model", ""), "runner": run_info.get("runner", runner)}
 
     if not str(model_file or "").strip():
         raise ValueError("Choose a Gemma4 text model first.")
@@ -1462,7 +1464,9 @@ def _save_prompt_creator_draft(payload):
         "text_gemma_runner": str(payload.get("text_gemma_runner") or payload.get("text_runner") or "builtin"),
         "lm_studio_base_url": str(payload.get("lm_studio_base_url") or payload.get("lmstudio_base_url") or "http://127.0.0.1:1234/v1"),
         "lm_studio_model": str(payload.get("lm_studio_model") or payload.get("lmstudio_model") or ""),
-        "lm_studio_api_key": str(payload.get("lm_studio_api_key") or payload.get("lmstudio_api_key") or ""),
+        "lm_studio_api_key": "",
+        "llm_api_provider": str(payload.get("llm_api_provider") or "openai"),
+        "llm_api_model": str(payload.get("llm_api_model") or ""),
         "full_lyrics": str(payload.get("full_lyrics", "") or ""),
         "style_theme": str(payload.get("style_theme", "") or ""),
         "story_idea": str(payload.get("story_idea", "") or ""),

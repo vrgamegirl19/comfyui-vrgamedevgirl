@@ -1569,13 +1569,13 @@ function openBuilder(node) {
   const lyricMapperButton = makeButton("Lyric Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");
-  const gemmaRunnerButton = makeButton("Gemma Runner");
+  const gemmaRunnerButton = makeButton("LLM Runner");
   const builderAgentButton = makeButton("Agent");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
   const stitchPreviewButton = makeButton("Stitch Preview");
-  const gemmaT2IAllButton = makeButton("Gemma T2I All");
-  const gemmaVideoAllButton = makeButton("Gemma Video All");
+  const gemmaT2IAllButton = makeButton("LLM T2I All");
+  const gemmaVideoAllButton = makeButton("LLM Video All");
   const zImageAllButton = makeButton("Image All");
   const fullBuildButton = makeButton("Build Full Video");
   const remakeModeButton = makeButton("Remake Mode");
@@ -3309,6 +3309,10 @@ function openBuilder(node) {
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
+    llmApiProvider: "openai",
+    llmApiModel: "",
+    llmApiKey: "",
+    llmApiChoices: null,
     customModelsRoot: "",
     notificationSettings: defaultNotificationSettings(),
     imageModelMode: "zimage",
@@ -3353,7 +3357,7 @@ function openBuilder(node) {
     const text = String(message || "");
     if (settings.mode === "errors") return false;
     if (settings.mode === "all") return true;
-    const batchDone = /\b(?:Build Full Video|Image All|Render All|Stitch Preview|Gemma (?:T2I|I2V|T2V|Video) All|Flux\/Klein All|NanoBanana All|Ernie All|ZImage All)\b[\s\S]{0,80}\b(?:complete|finished|ready|saved)\b/i.test(text) ||
+    const batchDone = /\b(?:Build Full Video|Image All|Render All|Stitch Preview|(?:Gemma|LM Studio|API LLM) (?:T2I|I2V|T2V|Video) All|Flux\/Klein All|NanoBanana All|Ernie All|ZImage All)\b[\s\S]{0,80}\b(?:complete|finished|ready|saved)\b/i.test(text) ||
       /\b(?:complete after \d+ attempts|final video|stitched video)\b/i.test(text);
     if (settings.mode === "batch") return batchDone;
     const completedThing = /\b(?:complete|completed|finished|created|ready|rendered|stitched|saved)\b/i.test(text);
@@ -3431,6 +3435,9 @@ function openBuilder(node) {
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
+      llm_api_provider: state.llmApiProvider || "openai",
+      llm_api_model: state.llmApiModel || "",
+      llm_api_key: state.llmApiKey || "",
     };
   }
 
@@ -3445,12 +3452,25 @@ function openBuilder(node) {
 
   function gemmaRunnerLabel(options = {}) {
     if (options.forceBuiltin) return options.vision ? "Built-in GGUF vision" : "Built-in GGUF";
+    if (state.textGemmaRunner === "llm_api") return options.vision ? "Built-in GGUF vision" : "LLM API";
     if (options.vision) return state.textGemmaRunner === "lm_studio" ? "LM Studio vision" : "Built-in GGUF vision";
-    return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Built-in GGUF";
+    return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local";
   }
 
   function gemmaRunnerLine(options = {}) {
     return `Runner: ${gemmaRunnerLabel(options)}`;
+  }
+
+  function promptRunnerActionName() {
+    if (state.textGemmaRunner === "lm_studio") return "LM Studio";
+    if (state.textGemmaRunner === "llm_api") return "API LLM";
+    return "Gemma";
+  }
+
+  function updatePromptRunnerButtonLabels() {
+    const runner = promptRunnerActionName();
+    gemmaT2IAllButton.textContent = `${runner} T2I All`;
+    gemmaVideoAllButton.textContent = `${runner} Video All`;
   }
 
   function referenceDescriptionVisionModel() {
@@ -4409,6 +4429,12 @@ function openBuilder(node) {
     if (Object.prototype.hasOwnProperty.call(defaults, "lm_studio_api_key") || Object.prototype.hasOwnProperty.call(defaults, "lmStudioApiKey")) {
       state.lmStudioApiKey = defaults.lm_studio_api_key ?? defaults.lmStudioApiKey ?? state.lmStudioApiKey ?? "";
     }
+    if (defaults.llm_api_provider || defaults.llmApiProvider) {
+      state.llmApiProvider = defaults.llm_api_provider || defaults.llmApiProvider || state.llmApiProvider || "openai";
+    }
+    if (defaults.llm_api_model || defaults.llmApiModel) {
+      state.llmApiModel = defaults.llm_api_model || defaults.llmApiModel || state.llmApiModel || "";
+    }
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
     if (defaults.zimage_settings || defaults.zimageSettings) {
       state.zimageSettings = cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings);
@@ -4565,6 +4591,8 @@ function openBuilder(node) {
       lmStudioBaseUrl: state.lmStudioBaseUrl,
       lmStudioModel: state.lmStudioModel,
       lmStudioApiKey: state.lmStudioApiKey,
+      llmApiProvider: state.llmApiProvider,
+      llmApiModel: state.llmApiModel,
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
       waveformMode: state.waveformMode,
       snapToBeats: state.snapToBeats,
@@ -4621,6 +4649,8 @@ function openBuilder(node) {
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
     state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";
+    state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
+    state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
@@ -14837,7 +14867,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
       if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.";
+        const message = "Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         extractLocations.disabled = false;
@@ -14927,7 +14957,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
       if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.";
+        const message = "Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         extractSubjects.disabled = false;
@@ -15042,7 +15072,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
       if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.";
+        const message = "Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         autoMapLocations.disabled = false;
@@ -16775,7 +16805,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!planningScenes.length && !lyricScenes.length) throw new Error("Gemma Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.");
+        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.");
         const useLyricsScout = Boolean(!planningScenes.length && lyricScenes.length);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
@@ -17504,7 +17534,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!scenes.length && !lyricScenes.length) throw new Error("Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.");
+        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.");
         const useLyricsScout = Boolean((wizardLocationMode && lyricScenes.length) || (!scenes.length && lyricScenes.length));
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
@@ -17588,7 +17618,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
           .filter((scene) => String(scene.concept || scene.notes || "").trim());
         if (!scenes.length) throw new Error("Auto Map needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.");
+        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.");
         progress.set(`Sending scene text and lyric fallbacks to Gemma...\n${gemmaRunnerLine()}`, 15);
         const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
           ...textGemmaRunnerPayload(),
@@ -19054,6 +19084,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lm_studio_model: state.lmStudioModel || "",
       lm_studio_api_key: state.lmStudioApiKey || "",
+      llm_api_provider: state.llmApiProvider || "openai",
+      llm_api_model: state.llmApiModel || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
@@ -19264,6 +19296,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
         state.storyIdeaPath = data.session.story_idea_path || state.storyIdeaPath;
         state.subjectScenePath = data.session.subject_scene_path || state.subjectScenePath;
+        state.llmApiProvider = data.session.llm_api_provider || state.llmApiProvider || "openai";
+        state.llmApiModel = data.session.llm_api_model || state.llmApiModel || "";
         state.builderAgentMessages = Array.isArray(data.session.builder_agent_messages) ? data.session.builder_agent_messages : state.builderAgentMessages || [];
         state.builderAgentAutoApply = data.session.builder_agent_auto_apply ?? state.builderAgentAutoApply ?? false;
         state.builderAgentPurpose = data.session.builder_agent_purpose || state.builderAgentPurpose || "scene_work";
@@ -19430,6 +19464,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.themeStylePath = session.theme_style_path || "";
       state.storyIdeaPath = session.story_idea_path || "";
       state.subjectScenePath = session.subject_scene_path || "";
+      state.llmApiProvider = session.llm_api_provider || state.llmApiProvider || "openai";
+      state.llmApiModel = session.llm_api_model || state.llmApiModel || "";
       state.builderAgentMessages = Array.isArray(session.builder_agent_messages) ? session.builder_agent_messages : [];
       state.builderAgentAutoApply = Boolean(session.builder_agent_auto_apply);
       state.builderAgentPurpose = session.builder_agent_purpose || "scene_work";
@@ -19762,12 +19798,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (segment?.use_vision_reference && !String(segment.ref_image_path || "").trim()) {
       return "vision reference is turned on, but no reference image is loaded.";
     }
-    if (!segment?.use_vision_reference && !String(segment?.notes || "").trim() && !state.useVrgdgTextContext) {
-      return "scene notes are missing.";
-    }
-    if (!String(segment?.notes || "").trim() && !segment?.use_vision_reference) {
-      return "scene notes are missing.";
-    }
     return "";
   }
 
@@ -19784,16 +19814,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     add("Scene notes", segment?.notes);
     add("Flux/Klein notes", segment?.flux_notes);
     add("NanoBanana notes", segment?.nb_notes);
-    if (imageMode === "flux_klein" || imageMode === "nano_banana") {
-      const context = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
-      add("Reference subject description", context?.subject_description);
-      add("Reference location name", context?.location_name);
-      add("Reference location description", context?.location_description);
+    add("Mapped subject / character", segmentMappedSubjectText(segment));
+    add("Mapped location", segmentMappedLocationText(segment));
+    add("Lyric line as still-image mood context", isInstrumentalLyricText(segment?.lyric_text) ? "" : segment?.lyric_text);
+    add("Lyric section", segment?.lyric_section);
+    add("Scene story beat", segment?.story_beat);
+    add("Still shot direction", segment?.shot_type);
+    const context = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
+    add("Reference subject description", context?.subject_description);
+    add("Reference location name", context?.location_name);
+    add("Reference location description", context?.location_description);
+    const storyLayer = normalizeBuilderStoryLayer(state.builderStoryLayer);
+    if (storyLayer.enabled !== false) {
+      add("User story arc", storyLayer.user_story_arc);
+      add("Song story brief", storyLayer.song_story_brief);
     }
     if (!parts.length) {
       parts.push(`Scene:\n${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`);
       parts.push("Direction:\nCreate a cinematic image prompt that fits this scene.");
     }
+    parts.push("Image Prep rule:\nCreate a still text-to-image prompt. Use lyrics only for mood, symbolism, emotion, styling, and visual direction. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless scene notes explicitly request a live singing image.");
     return parts.join("\n\n");
   }
 
@@ -19848,7 +19888,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     syncInspector();
     const useVision = Boolean(segment.use_vision_reference);
-    progress?.set(`${label}: preparing Gemma input...\n${gemmaRunnerLine({ vision: useVision })}`, percent);
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const notesAreBlank = !String(segment.notes || "").trim() && !useVision;
+    const userNotes = notesAreBlank ? textOnlyFallbackNotesForSegment(segment, imageMode) : (segment.notes || "");
+    const referenceContext = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
+    if (useVision && state.textGemmaRunner === "llm_api") {
+      throw new Error(`${label}: LLM API is text-only for this prompt step right now. Turn off Use vision reference image or choose Local LLM/LM Studio in LLM Runner.`);
+    }
+    progress?.set(`${label}: preparing Gemma input...\n${notesAreBlank ? "Scene notes are empty, using Storyboard Image Prep context instead.\n" : ""}${gemmaRunnerLine({ vision: useVision })}`, percent);
     const gemmaSelect = state.imageModelMode === "ernie_image"
       ? (useVision ? ernieGemmaModelSelect : ernieTextGemmaModelSelect)
       : (useVision ? gemmaModelSelect : t2iTextGemmaModelSelect);
@@ -19859,8 +19906,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mmproj_file: useVision ? mmprojSelectForMode.value : "",
       use_vision: useVision,
       ref_image_path: segment.ref_image_path || "",
+      prompt_mode: imageMode,
+      reference_context: referenceContext || {},
       repair_model_file: state.imageModelMode === "ernie_image" ? ernieTextGemmaModelSelect.value : t2iTextGemmaModelSelect.value,
-      user_notes: segment.notes || "",
+      user_notes: userNotes,
       theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
       story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
       subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
@@ -19872,7 +19921,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     pushHistory();
     syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, state.imageModelMode, { validateJunk: true }), segment));
     render();
-    return data;
+    return { ...data, used_storyboard_context_fallback: notesAreBlank };
   }
 
   async function createZImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "ZImage") {
@@ -20665,7 +20714,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await autoSaveSessionQuiet("Gemma T2I complete");
       progress.set("T2I prompt ready.", 100);
       progress.close(900);
-      toast(data.used_reference_image ? "Gemma created T2I from reference image." : "Gemma created T2I from notes.");
+      toast(data.used_reference_image
+        ? "Gemma created T2I from reference image."
+        : data.used_storyboard_context_fallback
+          ? "Scene notes were empty, so Gemma created T2I from Storyboard Image Prep context."
+          : "Gemma created T2I from notes.");
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -20922,7 +20975,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
-    const progress = options.progress || createProgressWindow(`Gemma ${modeLabel} All Scenes`);
+    const runnerName = promptRunnerActionName();
+    const progress = options.progress || createProgressWindow(`${runnerName} ${modeLabel} All Scenes`);
     const closeProgress = !options.progress;
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const allScenes = batchTargetItems(sceneScope).map(({ segment }) => segment);
@@ -20946,7 +21000,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
       if ((isRTV || isIngredients) && !sceneConceptPromptText(segment)) {
-        missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running Gemma.`);
+        missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running ${runnerName}.`);
       } else if ((isT2V || !useImageReference) && !sceneConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: T2I/concept prompt is missing.`);
       }
@@ -20954,7 +21008,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (missing.length) {
       progress.setHtml(`
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="font-weight:900;color:#fecaca;">Gemma ${escapeHtml(modeLabel)} All cannot start yet.</div>
+          <div style="font-weight:900;color:#fecaca;">${escapeHtml(runnerName)} ${escapeHtml(modeLabel)} All cannot start yet.</div>
           <div>Fix these first:</div>
           <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
         </div>
@@ -20964,12 +21018,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     try {
       createI2VButton.disabled = true;
-      progress.set(`Autosaving session/SRT before Gemma ${modeLabel} All (${batchScopeLabel(sceneScope)})...`, 3);
+      progress.set(`Autosaving session/SRT before ${runnerName} ${modeLabel} All (${batchScopeLabel(sceneScope)})...`, 3);
       await saveSessionForSceneVideo();
       if (!scenes.length) {
-        progress.set(`All scenes already have ${modeLabel} prompts. Skipping Gemma ${modeLabel} All.`, 100);
+        progress.set(`All scenes already have ${modeLabel} prompts. Skipping ${runnerName} ${modeLabel} All.`, 100);
         if (closeProgress) progress.close(1800);
-        toast(`All scenes already have ${modeLabel} prompts. Gemma ${modeLabel} skipped.`);
+        toast(`All scenes already have ${modeLabel} prompts. ${runnerName} ${modeLabel} skipped.`);
         return;
       }
       for (let index = 0; index < scenes.length; index += 1) {
@@ -20981,24 +21035,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const base = Math.floor((index / scenes.length) * (deferEnhancement ? 68 : 100));
         const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
         const displayIndex = segmentIndexInfo(segment).index;
-        progress.set(`Gemma ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `Gemma ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly, forceVision, deferEnhancement });
-        await autoSaveSessionQuiet(`Gemma ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
+        progress.set(`${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
+        await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly, forceVision, deferEnhancement });
+        await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
       if (deferEnhancement) {
-        await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} draft prompt pass`, 72);
+        await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} draft prompt pass`, 72);
         await runVideoPromptEnhancementBatch(scenes, progress, {
           sceneScope,
           percentBase: 72,
           percentSpan: 23,
         });
       }
-      await runClearMemoryWorkflowQuiet(progress, `Gemma ${modeLabel} prompt pass`, 96);
-      await autoSaveSessionQuiet(`Gemma ${modeLabel} All complete`);
-      progress.set(`Gemma ${modeLabel} All complete.`, 100);
+      await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${modeLabel} prompt pass`, 96);
+      await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All complete`);
+      progress.set(`${runnerName} ${modeLabel} All complete.`, 100);
       if (closeProgress) progress.close(1800);
     } catch (error) {
-      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `Gemma ${modeLabel} All` });
+      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${modeLabel} All` });
       progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
       if (options.throwOnError) throw error;
       toast(String(error?.message || error), true);
@@ -21021,12 +21075,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     updateActiveFromInputs();
     const imageMode = state.imageModelMode || "zimage";
     const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : "ZImage";
+    const runnerName = promptRunnerActionName();
     const promptRunMode = options.promptRunMode || "redo_all";
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const redoPrompts = promptRunMode === "redo_all";
     const allScenes = batchTargetItems(sceneScope);
     const targetScenes = promptAllModeTargets(promptRunMode, imageMode, sceneScope);
-    const progress = createProgressWindow(`Gemma T2I All (${modelLabel})`);
+    const progress = createProgressWindow(`${runnerName} T2I All (${modelLabel})`);
     const missing = [];
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
@@ -21043,12 +21098,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (missing.length) {
       progress.setHtml(`
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="font-weight:900;color:#fecaca;">Gemma T2I All cannot start yet.</div>
+          <div style="font-weight:900;color:#fecaca;">${escapeHtml(runnerName)} T2I All cannot start yet.</div>
           <div>Fix these first:</div>
           <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
         </div>
       `, 100);
-      toast("Gemma T2I All needs scene inputs first.", true);
+      toast(`${runnerName} T2I All needs scene inputs first.`, true);
       return;
     }
     try {
@@ -21059,7 +21114,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ernieCreateT2IButton.disabled = true;
       krea2TwoPassCreateT2IButton.disabled = true;
       createFluxPromptButton.disabled = true;
-      progress.set(`Autosaving session/SRT before Gemma T2I All (${batchScopeLabel(sceneScope)})...`, 3);
+      progress.set(`Autosaving session/SRT before ${runnerName} T2I All (${batchScopeLabel(sceneScope)})...`, 3);
       await saveSessionForSceneVideo();
       if (redoPrompts) {
         targetScenes.forEach(({ segment }) => {
@@ -21084,7 +21139,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.activeId = segment.id;
         syncInspector();
         render();
-        const promptLabel = `Gemma T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}`;
+        const promptLabel = `${runnerName} T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}`;
         if (imageMode === "flux_klein") {
           await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateFluxKleinPromptForSegment, {
             clearBeforeLoad: index === 0,
@@ -21103,23 +21158,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           });
         }
         assertBatchNotStopped();
-        await autoSaveSessionQuiet(`Gemma T2I All ${sceneLabel}`);
+        await autoSaveSessionQuiet(`${runnerName} T2I All ${sceneLabel}`);
       }
-      await runClearMemoryWorkflowQuiet(progress, "Gemma T2I prompt pass", 96);
-      await autoSaveSessionQuiet("Gemma T2I All complete");
-      progress.set("Gemma T2I All complete. Review or edit the image prompts before creating images.", 100);
+      await runClearMemoryWorkflowQuiet(progress, `${runnerName} T2I prompt pass`, 96);
+      await autoSaveSessionQuiet(`${runnerName} T2I All complete`);
+      progress.set(`${runnerName} T2I All complete. Review or edit the image prompts before creating images.`, 100);
       progress.close(2500);
-      toast("Gemma T2I All complete.");
+      toast(`${runnerName} T2I All complete.`);
     } catch (error) {
       const message = String(error?.message || error);
       const stopped = /stopped by user/i.test(message);
       progress.set(`${stopped ? "Stopped" : "Error"}:\n${message}\n\nRunning memory cleanup...`, 100);
       toast(message, !stopped);
       try {
-        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? "stopped Gemma T2I All" : "Gemma T2I All error", 100);
+        const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, stopped ? `stopped ${runnerName} T2I All` : `${runnerName} T2I All error`, 100);
         progress.set(`${stopped ? "Stopped" : "Error"}:\n${message}\n\n${cleanupOutput}`, 100);
       } catch (cleanupError) {
-        console.warn("[VRGDG Music Builder] Cleanup after Gemma T2I All failed:", cleanupError);
+        console.warn(`[VRGDG Music Builder] Cleanup after ${runnerName} T2I All failed:`, cleanupError);
       }
     } finally {
       gemmaT2IAllButton.disabled = false;
@@ -21139,10 +21194,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     gemmaVideoAllButton.disabled = true;
     const changedReferenceFlags = [];
     const videoLabel = videoModeDisplayLabel(currentVideoMode(), true);
+    const runnerName = promptRunnerActionName();
     const sceneScope = normalizeBatchScope(options.sceneScope);
     try {
       if (options.promptRunMode === "enhance_existing") {
-        const progress = createProgressWindow(`Gemma ${videoLabel} Enhancement All`);
+        const progress = createProgressWindow(`${runnerName} ${videoLabel} Enhancement All`);
         try {
           const targets = batchTargetItems(sceneScope).map(({ segment }) => segment).filter((segment) => String(segment?.i2v_prompt || "").trim());
           if (!targets.length) {
@@ -21158,13 +21214,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             percentBase: 5,
             percentSpan: 88,
           });
-          await runClearMemoryWorkflowQuiet(progress, `Gemma ${videoLabel} enhancement pass`, 96);
-          await autoSaveSessionQuiet(`Gemma ${videoLabel} enhancement complete`);
-          progress.set(`Gemma ${videoLabel} enhancement pass complete.`, 100);
+          await runClearMemoryWorkflowQuiet(progress, `${runnerName} ${videoLabel} enhancement pass`, 96);
+          await autoSaveSessionQuiet(`${runnerName} ${videoLabel} enhancement complete`);
+          progress.set(`${runnerName} ${videoLabel} enhancement pass complete.`, 100);
           progress.close(1800);
-          toast(`Gemma ${videoLabel} enhancement pass complete.`);
+          toast(`${runnerName} ${videoLabel} enhancement pass complete.`);
         } catch (error) {
-          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `Gemma ${videoLabel} Enhancement All` });
+          const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `${runnerName} ${videoLabel} Enhancement All` });
           progress.set(`Stopped/Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
           toast(String(error?.message || error), true);
         }
@@ -21611,13 +21667,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
       storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       gemmaSettings: {
-        text_runner: state.textGemmaRunner || "builtin",
+        ...textGemmaRunnerPayload(),
         model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
         vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
         mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-        lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
-        lmstudio_model: state.lmStudioModel || "",
-        lmstudio_api_key: state.lmStudioApiKey || "",
         n_ctx: 8000,
         n_gpu_layers: 99,
         n_threads: 8,
@@ -22202,7 +22255,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const batch = document.createElement("div");
     batch.innerHTML = `<strong style="color:#e0f2fe;">Batch scene settings</strong><br>Turn Select Multi on, click the scenes you want, then change image or video model settings. Those settings are saved only to the selected scenes as custom scene settings.`;
     const selectedBatch = document.createElement("div");
-    selectedBatch.innerHTML = `<strong style="color:#e0f2fe;">Batch render selected scenes</strong><br>When two or more scenes are selected, Image All, Gemma All, Render All, and Build Full Video offer a selected-scenes option. Use it to generate prompts, images, or videos for only those selected scenes. Selected Render/Build does not stitch a final video.`;
+    selectedBatch.innerHTML = `<strong style="color:#e0f2fe;">Batch render selected scenes</strong><br>When two or more scenes are selected, Image All, LLM All, Render All, and Build Full Video offer a selected-scenes option. Use it to generate prompts, images, or videos for only those selected scenes. Selected Render/Build does not stitch a final video.`;
     const preview = document.createElement("div");
     preview.innerHTML = `<strong style="color:#e0f2fe;">Stitch Preview</strong><br>Use the Stitch Preview menu option to make a quick complete video from selected scenes or from a start/end scene range. Inserts are included automatically, and no Gemma, image generation, or video rendering is run.`;
     const note = document.createElement("div");
@@ -25584,7 +25637,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const message = String(input.value || "").trim();
       if (!message) return;
       if (state.textGemmaRunner !== "lm_studio" && !String(t2iTextGemmaModelSelect.value || "").trim()) {
-        toast("Choose a non-vision text Gemma model first, or use LM Studio in Gemma Runner.", true);
+        toast("Choose a non-vision text Gemma model first, or use LM Studio in LLM Runner.", true);
         return;
       }
       if (purpose.value === "story_builder") {
@@ -25963,27 +26016,94 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(640px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(700px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Gemma Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">LM Studio is used for text-only Gemma steps. Vision/image-reference Gemma stays on the built-in GGUF runner for now.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the text LLM runner. Vision/image-reference steps still use the built-in GGUF vision runner for now.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
-    const runner = makeSelect(["builtin", "lm_studio"], state.textGemmaRunner || "builtin");
+    const runner = makeSelect(["builtin", "lm_studio", "llm_api"], state.textGemmaRunner || "builtin");
+    runner.options[0].textContent = "Gemma Local";
+    runner.options[1].textContent = "LM Studio";
+    runner.options[2].textContent = "LLM API";
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
     const modelSelect = makeSelect([""], "");
     const loadModels = makeButton("Load LM Studio Models");
     const modelPickerRow = document.createElement("div");
     modelPickerRow.style.cssText = "display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;";
-    const apiKey = makeInput(state.lmStudioApiKey || "", "password");
+    const lmStudioApiKey = makeInput(state.lmStudioApiKey || "", "password");
     const lmPanel = document.createElement("div");
     lmPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
     note.textContent = "In LM Studio, load your Gemma GGUF model, open the Local Server tab, start the server, then copy the model name shown there. No extra Python install is needed.";
     const test = makeButton("Test LM Studio", "primary");
+    const apiPanel = document.createElement("div");
+    apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
+    const apiNote = document.createElement("div");
+    apiNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    apiNote.textContent = "API key is session-only. It is not saved with the project and may need to be pasted again after refresh or restart. LLM API is used for text-only prompt generation; vision/image-reference steps still use Local LLM or LM Studio.";
+    const apiProvider = makeSelect(["openai"], state.llmApiProvider || "openai");
+    const apiModel = makeSelect([""], state.llmApiModel || "");
+    const llmApiKey = makeInput(state.llmApiKey || "", "password");
+    const testApi = makeButton("Test LLM API", "primary");
+    const apiStatus = document.createElement("div");
+    apiStatus.style.cssText = "font-size:12px;color:#94a3b8;min-height:16px;";
+    const providerLabel = (provider = {}) => String(provider.label || provider.id || "").trim();
+    const llmProviders = () => Array.isArray(state.llmApiChoices?.providers) ? state.llmApiChoices.providers : [];
+    const providerById = (id) => llmProviders().find((item) => String(item.id || "") === String(id || ""));
+    const populateApiModels = () => {
+      const provider = providerById(apiProvider.value) || llmProviders()[0] || { id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" };
+      const models = Array.isArray(provider.models) && provider.models.length ? provider.models : [provider.default_model || ""].filter(Boolean);
+      apiModel.innerHTML = "";
+      models.forEach((modelId) => {
+        const option = document.createElement("option");
+        option.value = modelId;
+        option.textContent = modelId;
+        apiModel.append(option);
+      });
+      const wanted = String(state.llmApiModel || "").trim();
+      apiModel.value = wanted && models.includes(wanted) ? wanted : (provider.default_model || models[0] || "");
+    };
+    const populateApiProviders = () => {
+      const providers = llmProviders().length ? llmProviders() : [{ id: "openai", label: "OpenAI", models: ["gpt-4o"], default_model: "gpt-4o" }];
+      apiProvider.innerHTML = "";
+      providers.forEach((provider) => {
+        const option = document.createElement("option");
+        option.value = provider.id;
+        option.textContent = providerLabel(provider);
+        apiProvider.append(option);
+      });
+      const wanted = String(state.llmApiProvider || "").trim();
+      apiProvider.value = providers.some((provider) => String(provider.id) === wanted) ? wanted : String(providers[0]?.id || "openai");
+      populateApiModels();
+    };
+    const loadApiChoices = async () => {
+      try {
+        apiStatus.textContent = "Loading LLM API model list...";
+        const data = await getJson("/vrgdg/music_builder/llm_api_choices");
+        state.llmApiChoices = { providers: Array.isArray(data.providers) ? data.providers : [] };
+        populateApiProviders();
+        apiStatus.textContent = "";
+      } catch (error) {
+        apiStatus.textContent = `Could not load API model list: ${String(error?.message || error)}`;
+        apiStatus.style.color = "#fca5a5";
+        populateApiProviders();
+      }
+    };
+    apiProvider.onchange = () => {
+      state.llmApiProvider = apiProvider.value || "openai";
+      state.llmApiModel = "";
+      populateApiModels();
+    };
+    apiModel.onchange = () => {
+      state.llmApiModel = apiModel.value || "";
+    };
+    llmApiKey.oninput = () => {
+      state.llmApiKey = llmApiKey.value || "";
+    };
     modelSelect.onchange = () => {
       if (modelSelect.value) model.value = modelSelect.value;
     };
@@ -25993,7 +26113,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       try {
         const data = await postJson("/vrgdg/music_builder/lm_studio_models", {
           lmstudio_base_url: baseUrl.value || "http://127.0.0.1:1234/v1",
-          lmstudio_api_key: apiKey.value || "",
+          lmstudio_api_key: lmStudioApiKey.value || "",
         }, 45000);
         const allIds = Array.isArray(data?.models) ? data.models.map((item) => String(item || "").trim()).filter(Boolean) : [];
         const ids = allIds.filter((id) => !isLikelyEmbeddingModelId(id));
@@ -26026,18 +26146,28 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       makeField("LM Studio base URL", baseUrl),
       modelPickerRow,
       makeField("LM Studio model name", model),
-      makeField("API key (usually blank for local LM Studio)", apiKey),
+      makeField("API key (usually blank for local LM Studio)", lmStudioApiKey),
       test,
     );
+    apiPanel.append(
+      apiNote,
+      makeField("Provider", apiProvider),
+      makeField("Model", apiModel),
+      makeField("API key", llmApiKey),
+      testApi,
+      apiStatus,
+    );
     const syncVisibility = () => {
+      state.textGemmaRunner = runner.value || "builtin";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
+      apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
     };
     runner.onchange = syncVisibility;
     test.onclick = async () => {
       state.textGemmaRunner = "lm_studio";
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
-      state.lmStudioApiKey = apiKey.value || "";
+      state.lmStudioApiKey = lmStudioApiKey.value || "";
       let progress = null;
       try {
         progress = createProgressWindow("Testing LM Studio");
@@ -26063,19 +26193,70 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Runner", "primary");
     actions.append(cancel, save);
-    box.append(header, makeField("Text Gemma runner", runner), lmPanel, actions);
+    box.append(header, makeField("Text LLM runner", runner), lmPanel, apiPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     syncVisibility();
+    loadApiChoices();
     close.onclick = cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
-      state.lmStudioApiKey = apiKey.value || "";
-      await autoSaveSessionQuiet("Gemma runner settings");
-      toast(state.textGemmaRunner === "lm_studio" ? "Gemma text runner set to LM Studio." : "Gemma text runner set to built-in GGUF.");
+      state.lmStudioApiKey = lmStudioApiKey.value || "";
+      state.llmApiProvider = apiProvider.value || "openai";
+      state.llmApiModel = apiModel.value || "";
+      state.llmApiKey = runner.value === "llm_api" ? llmApiKey.value || "" : state.llmApiKey || "";
+      await autoSaveSessionQuiet("LLM runner settings");
+      toast(state.textGemmaRunner === "llm_api"
+        ? "LLM API settings saved for this session. API key was not saved with the project."
+        : state.textGemmaRunner === "lm_studio"
+          ? "Text LLM runner set to LM Studio."
+          : "Text LLM runner set to Gemma Local.");
+      updatePromptRunnerButtonLabels();
       backdrop.remove();
+    };
+    testApi.onclick = async () => {
+      const provider = apiProvider.value || "openai";
+      const modelId = apiModel.value || "";
+      const key = llmApiKey.value || "";
+      if (!key.trim()) {
+        toast("Enter an API key before testing LLM API.", true);
+        return;
+      }
+      state.llmApiProvider = provider;
+      state.llmApiModel = modelId;
+      state.llmApiKey = key;
+      state.textGemmaRunner = "llm_api";
+      updatePromptRunnerButtonLabels();
+      let progress = null;
+      try {
+        testApi.disabled = true;
+        testApi.textContent = "Testing...";
+        progress = createProgressWindow("Testing LLM API");
+        progress.set(`Sending a tiny test prompt...\nProvider: ${provider}\nModel: ${modelId || "(default)"}`, 30);
+        const data = await postJson("/vrgdg/music_builder/test_llm_api", {
+          provider,
+          model: modelId,
+          api_key: key,
+          prompt: "Reply with OK only.",
+        }, 120000);
+        const responseText = String(data.text || "").trim();
+        progress.set(`LLM API responded successfully.\nProvider: ${data.used_provider || provider}\nModel: ${data.used_model || modelId}\nResponse: ${responseText}`, 100);
+        progress.close(4000);
+        apiStatus.textContent = `Test passed: ${data.used_provider || provider} / ${data.used_model || modelId}`;
+        apiStatus.style.color = "#67e8f9";
+        toast("LLM API test passed.");
+      } catch (error) {
+        const message = String(error?.message || error);
+        progress?.set(`LLM API test failed.\nProvider: ${provider}\nModel: ${modelId || "(default)"}\nReason: ${message}`, 100);
+        apiStatus.textContent = `Test failed: ${message}`;
+        apiStatus.style.color = "#fca5a5";
+        toast(`LLM API test failed: ${message}`, true);
+      } finally {
+        testApi.disabled = false;
+        testApi.textContent = "Test LLM API";
+      }
     };
   }
 
@@ -26254,22 +26435,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function confirmAndRunGemmaT2IAll() {
     const imageMode = state.imageModelMode || "zimage";
     const modelLabel = imageMode === "flux_klein" ? "Flux/Klein" : imageMode === "nano_banana" ? "NanoBanana" : imageMode === "ernie_image" ? "Ernie" : imageMode === "krea2_2pass" ? "Krea 2" : "ZImage";
+    const runnerName = promptRunnerActionName();
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
-      title: "Run Gemma T2I All?",
+      title: `Run ${runnerName} T2I All?`,
       intro: `This only creates text-to-image prompts for review. It will not create images, videos, or the final stitched video. Current image model: ${modelLabel}.`,
-      confirmLabel: "Run Gemma T2I All",
+      confirmLabel: `Run ${runnerName} T2I All`,
       returnAll: true,
       choices: [
         {
           value: "missing_only",
           label: "Missing prompts only",
-          description: "Keep existing T2I/Flux prompts. Only run Gemma for scenes with no saved image prompt.",
+          description: `Keep existing T2I/Flux prompts. Only run ${runnerName} for scenes with no saved image prompt.`,
         },
         {
           value: "redo_all",
           label: "Redo all T2I prompts",
-          description: "Replace every scene's saved T2I/Flux prompt with a fresh Gemma prompt. Images and videos stay untouched.",
+          description: `Replace every scene's saved T2I/Flux prompt with a fresh ${runnerName} prompt. Images and videos stay untouched.`,
         },
       ],
       extraGroups: scopeChoices.length ? [{
@@ -26285,6 +26467,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function confirmAndRunGemmaVideoAll() {
     const videoMode = currentVideoMode();
     const videoLabel = videoModeDisplayLabel(videoMode, true);
+    const runnerName = promptRunnerActionName();
     const targets = allEditableSegments().filter((segment) => !String(segment.i2v_prompt || "").trim());
     const hasVisionTargets = targets.length
       ? targets.some((segment) => videoVisionReferenceEnabled(segment))
@@ -26305,7 +26488,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       {
         value: "enhance_existing",
         label: "Enhance existing prompts only",
-        description: `Do not create new ${videoLabel} drafts. Load the text Gemma runner once, rewrite existing video prompts with the enhancement pass, then unload at the end.`,
+        description: `Do not create new ${videoLabel} drafts. Load the text LLM runner once, rewrite existing video prompts with the enhancement pass, then unload at the end.`,
       },
     ];
     const visionChoices = [
@@ -26322,9 +26505,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ];
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
-      title: `Run Gemma ${videoLabel} All?`,
+      title: `Run ${runnerName} ${videoLabel} All?`,
       intro: `This only creates ${videoLabel} prompts for review. It will not render videos or stitch the final video. ${hasVisionTargets ? "Image-reference scenes were detected, so vision options are listed first." : "No image-reference scenes were detected, so text-only options are listed first."}`,
-      confirmLabel: `Run Gemma ${videoLabel} All`,
+      confirmLabel: `Run ${runnerName} ${videoLabel} All`,
       defaultValue: hasVisionTargets ? "missing_vision" : "missing_text",
       choices: hasVisionTargets ? [...visionChoices, ...textChoices, ...enhanceChoices] : [...textChoices, ...visionChoices, ...enhanceChoices],
       returnAll: true,
@@ -26593,7 +26776,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
       if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        toast("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.", true);
+        toast("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.", true);
         return { added: 0, updated: 0 };
       }
       const progress = createProgressWindow("Wizard Location Scout", { zIndex: 100012 });
@@ -26650,7 +26833,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
       if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        toast("Choose a non-vision Gemma model first, or use LM Studio in Gemma Runner.", true);
+        toast("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.", true);
         return { mapped: 0 };
       }
       const progress = createProgressWindow("Wizard Location Mapping", { zIndex: 100012 });
@@ -26794,12 +26977,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       try {
         progress.set("Creating compact story brief from lyrics, sections, and story arc...", 18);
         const data = await postJson("/vrgdg/storyboard/story_brief", {
-          ...(state.textGemmaRunner === "lm_studio" ? textGemmaRunnerPayload() : {}),
-          text_runner: state.textGemmaRunner || "builtin",
+          ...textGemmaRunnerPayload(),
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-          lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
-          lmstudio_model: state.lmStudioModel || "",
-          lmstudio_api_key: state.lmStudioApiKey || "",
           story_layer: layer,
           lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
           scenes,
@@ -26833,12 +27012,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       try {
         progress.set("Creating a short song-structure story arc from lyrics, subjects, and locations...", 18);
         const data = await postJson("/vrgdg/storyboard/story_arc", {
-          ...(state.textGemmaRunner === "lm_studio" ? textGemmaRunnerPayload() : {}),
-          text_runner: state.textGemmaRunner || "builtin",
+          ...textGemmaRunnerPayload(),
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-          lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
-          lmstudio_model: state.lmStudioModel || "",
-          lmstudio_api_key: state.lmStudioApiKey || "",
           story_layer: layer,
           story_idea: draft?.storyIdea ?? draft?.story_idea ?? layer.user_story_arc,
           lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
@@ -26904,12 +27079,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const base = 8 + Math.round((index / Math.max(1, targets.length)) * 84);
           progress.set(`Scene Beat ${index + 1}/${targets.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`, base);
           const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
-            ...(state.textGemmaRunner === "lm_studio" ? textGemmaRunnerPayload() : {}),
-            text_runner: state.textGemmaRunner || "builtin",
+            ...textGemmaRunnerPayload(),
             model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
-            lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
-            lmstudio_model: state.lmStudioModel || "",
-            lmstudio_api_key: state.lmStudioApiKey || "",
             story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
             storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
             previous_beat: previousBeat,
@@ -26954,28 +27125,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
         referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
         gemmaSettings: {
-          text_runner: state.textGemmaRunner || "builtin",
+          ...textGemmaRunnerPayload(),
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
           vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
           mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-          lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
-          lmstudio_model: state.lmStudioModel || "",
-          lmstudio_api_key: state.lmStudioApiKey || "",
           n_ctx: 8000,
           n_gpu_layers: 99,
           n_threads: 8,
           unload_after: true,
         },
       };
-      const progress = createProgressWindow("Storyboard Gemma All", { zIndex: 100012 });
+      const runnerName = promptRunnerActionName();
+      const runnerGenericName = runnerName === "Gemma" ? "Gemma" : "LLM";
+      const progress = createProgressWindow(`Storyboard ${runnerName} All`, { zIndex: 100012 });
       let created = 0;
       try {
-        progress.set(`Starting Storyboard Gemma All...\nScenes: ${scenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
+        progress.set(`Starting Storyboard ${runnerName} All...\nScenes: ${scenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
         for (let index = 0; index < scenes.length; index += 1) {
           const scene = scenes[index];
           const segment = segmentById.get(String(scene.id || "")) || segments[index];
           const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
-          const label = `Storyboard Gemma All ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
+          const label = `Storyboard ${runnerName} All ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
           progress.set(`${label}\nCreating storyboard video prompt...`, base);
           const data = await postJson("/vrgdg/storyboard/gemma_video_prompt", {
             ...(storyboardState.gemmaSettings || {}),
@@ -26986,7 +27156,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             top_p: 0.90,
           }, 240000);
           const prompt = applyWizardStoryboardTriggerPhrases(data.prompt, scene);
-          if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: Gemma returned an empty Storyboard video prompt.`);
+          if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
             setSegmentPromptForEdit(segment, "i2v", prompt);
             segment.video_prompt_type = "rtv";
@@ -26999,13 +27169,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         progress.set("Saving storyboard prompts into the project...", 96);
-        await autoSaveSessionQuiet("wizard storyboard gemma all");
-        progress.set(`Storyboard Gemma All complete.\nCreated ${created} video prompt${created === 1 ? "" : "s"}.`, 100);
+        await autoSaveSessionQuiet("wizard storyboard llm all");
+        progress.set(`Storyboard ${runnerName} All complete.\nCreated ${created} video prompt${created === 1 ? "" : "s"}.`, 100);
         progress.close(1800);
-        toast(`Storyboard Gemma All created ${created} video prompt${created === 1 ? "" : "s"}.`);
+        toast(`Storyboard ${runnerName} All created ${created} video prompt${created === 1 ? "" : "s"}.`);
       } catch (error) {
-        progress.set(`Storyboard Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
-        toast(`Storyboard Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
+        progress.set(`Storyboard ${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
+        toast(`Storyboard ${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
       }
     };
     const wizardSnapshot = () => {
@@ -27373,6 +27543,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   stitchPreviewButton.onclick = openStitchPreviewModal;
   gemmaT2IAllButton.onclick = confirmAndRunGemmaT2IAll;
   gemmaVideoAllButton.onclick = confirmAndRunGemmaVideoAll;
+  updatePromptRunnerButtonLabels();
   zImageAllButton.onclick = confirmAndRunZImageAll;
   fullBuildButton.onclick = confirmAndRunFullBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;
@@ -28308,3 +28479,4 @@ app.registerExtension({
     };
   },
 });
+

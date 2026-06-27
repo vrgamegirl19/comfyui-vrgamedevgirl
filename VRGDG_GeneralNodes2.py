@@ -823,7 +823,8 @@ def _run_gemma4_prompt(payload):
 
     target = str(payload.get("target", "") or "").strip()
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+    runner = _llm_runner_from_payload(payload)
+    if not model_file and runner == "builtin":
         raise ValueError("No Gemma4 model_file was selected.")
 
     prompt = _build_gemma4_prompt(target, payload)
@@ -840,7 +841,7 @@ def _run_gemma4_prompt(payload):
     max_new_tokens = int(payload.get("max_new_tokens") or 32000)
     unload_after = bool(payload.get("unload_after"))
 
-    if _llm_runner_from_payload(payload) == "lm_studio":
+    if runner != "builtin":
         text, run_info = _run_builder_text_llm(
             payload,
             prompt,
@@ -864,7 +865,7 @@ def _run_gemma4_prompt(payload):
         return {
             "text": text,
             "used_model": run_info.get("used_model", ""),
-            "runner": run_info.get("runner", "lm_studio"),
+            "runner": run_info.get("runner", runner),
             "unloaded": False,
         }
 

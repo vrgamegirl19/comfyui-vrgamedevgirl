@@ -283,6 +283,74 @@ def _default_audio_srt_paths():
     }
 
 
+def _llm_multi_choices():
+    try:
+        from .LLM import VRGDG_LLM_Multi
+    except Exception as exc:
+        raise RuntimeError(f"Could not load VRGDG LLM Multi choices: {exc}") from exc
+    provider_models = getattr(VRGDG_LLM_Multi, "PROVIDER_MODELS", {}) or {}
+    default_model = getattr(VRGDG_LLM_Multi, "DEFAULT_MODEL", {}) or {}
+    label_map = {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "google": "Google Gemini",
+        "grok": "Grok",
+        "xai": "xAI / Grok",
+        "deepseek": "DeepSeek",
+        "openrouter": "OpenRouter",
+        "apifreellm": "APIFreeLLM",
+    }
+    providers = []
+    for provider, models in provider_models.items():
+        clean_provider = str(provider or "").strip()
+        if not clean_provider:
+            continue
+        model_list = [str(model or "").strip() for model in (models or []) if str(model or "").strip()]
+        providers.append({
+            "id": clean_provider,
+            "label": label_map.get(clean_provider, clean_provider),
+            "models": model_list,
+            "default_model": str(default_model.get(clean_provider) or (model_list[0] if model_list else "")),
+        })
+    return {"providers": providers}
+
+
+def _test_llm_api(payload):
+    try:
+        from .LLM import VRGDG_LLM_Multi
+    except Exception as exc:
+        raise RuntimeError(f"Could not load LLM API runner: {exc}") from exc
+    provider = str(payload.get("provider") or payload.get("llm_api_provider") or "openai").strip().lower()
+    model = str(payload.get("model") or payload.get("llm_api_model") or "").strip()
+    api_key = str(payload.get("api_key") or payload.get("llm_api_key") or "").strip()
+    custom_model = str(payload.get("custom_model") or "").strip()
+    if not api_key:
+        raise ValueError("API key is missing.")
+    if not provider:
+        raise ValueError("Provider is missing.")
+    prompt = str(payload.get("prompt") or "Reply with OK only.").strip() or "Reply with OK only."
+    runner = VRGDG_LLM_Multi()
+    text, used_provider, used_model, status, _image = runner.generate_text(
+        api_key=api_key,
+        provider=provider,
+        model=model,
+        prompt=prompt,
+        custom_model=custom_model,
+    )
+    status = str(status or "").strip()
+    if status.lower().startswith("error"):
+        raise RuntimeError(status)
+    text = str(text or "").strip()
+    if not text:
+        raise RuntimeError("LLM API returned empty text.")
+    return {
+        "text": text[:1000],
+        "used_provider": used_provider,
+        "used_model": used_model,
+        "status": status or "ok",
+    }
+
+
 def _open_native_picker(kind):
     try:
         return _open_tk_picker(kind)
@@ -2311,7 +2379,9 @@ def _llm_runner_from_payload(payload):
     runner = str(payload.get("text_runner") or payload.get("gemma_runner") or "builtin").strip().lower()
     if runner in {"lmstudio", "lm-studio", "lm_studio"}:
         runner = "lm_studio"
-    if runner not in {"builtin", "lm_studio"}:
+    if runner in {"llmapi", "llm-api", "llm_api", "api", "outside_api", "outside_llm_api"}:
+        runner = "llm_api"
+    if runner not in {"builtin", "lm_studio", "llm_api"}:
         runner = "builtin"
     return runner
 
@@ -2382,6 +2452,41 @@ def _run_lm_studio_text(payload, instruction_text, temperature=0.6, top_p=0.95, 
     if not text:
         raise ValueError("LM Studio returned empty text.")
     return text
+
+
+def _run_llm_api_text(payload, instruction_text):
+    try:
+        from .LLM import VRGDG_LLM_Multi
+    except Exception as exc:
+        raise RuntimeError(f"Could not load LLM API runner: {exc}") from exc
+    provider = str(payload.get("llm_api_provider") or payload.get("provider") or "openai").strip().lower()
+    model = str(payload.get("llm_api_model") or payload.get("model") or "").strip()
+    api_key = str(payload.get("llm_api_key") or payload.get("api_key") or "").strip()
+    custom_model = str(payload.get("llm_api_custom_model") or payload.get("custom_model") or "").strip()
+    if not api_key:
+        raise ValueError("LLM API key is missing. Open LLM Runner and paste your API key.")
+    if not provider:
+        raise ValueError("LLM API provider is missing.")
+    runner = VRGDG_LLM_Multi()
+    text, used_provider, used_model, status, _image = runner.generate_text(
+        api_key=api_key,
+        provider=provider,
+        model=model,
+        prompt=str(instruction_text or ""),
+        custom_model=custom_model,
+    )
+    status = str(status or "").strip()
+    if status.lower().startswith("error"):
+        raise RuntimeError(status)
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("LLM API returned empty text.")
+    return text, {
+        "runner": "llm_api",
+        "used_provider": used_provider or provider,
+        "used_model": used_model or model,
+        "unloaded": False,
+    }
 
 
 def _pil_image_to_data_url(image, max_height=512, quality=88):
@@ -2506,6 +2611,11 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
             "used_model": str(payload.get("lmstudio_model") or "").strip(),
             "unloaded": False,
         }
+
+    if _llm_runner_from_payload(payload) == "llm_api":
+        text, info = _run_llm_api_text(payload, instruction_text)
+        cleaned = _clean_lm_studio_plain_text(text) if preserve_paragraphs else _clean_visual_gemma_text(text)
+        return cleaned, info
 
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -3460,7 +3570,9 @@ def _generate_builder_t2i_prompt(payload):
     use_vision = bool(payload.get("use_vision"))
     has_ref_image = bool(use_vision and ((ref_image_path and os.path.isfile(ref_image_path)) or ref_image_data))
     text_runner = _llm_runner_from_payload(payload)
-    if not model_file and text_runner != "lm_studio":
+    if has_ref_image and text_runner == "llm_api":
+        raise ValueError("LLM API is text-only for this prompt path right now. Turn off Use vision reference image or choose Local LLM/LM Studio.")
+    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a Gemma model first.")
     if use_vision and not has_ref_image:
         raise ValueError("Choose a valid reference image path/data or turn off vision reference.")
@@ -6794,6 +6906,23 @@ def _ensure_music_builder_routes():
     async def vrgdg_music_builder_gemma_choices(request):
         try:
             result = _gemma_choices()
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.get("/vrgdg/music_builder/llm_api_choices")
+    async def vrgdg_music_builder_llm_api_choices(request):
+        try:
+            result = _llm_multi_choices()
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/test_llm_api")
+    async def vrgdg_music_builder_test_llm_api(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_test_llm_api, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

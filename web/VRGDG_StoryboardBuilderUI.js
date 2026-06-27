@@ -1129,7 +1129,7 @@ function createToast(message, error = false) {
   setTimeout(() => toast.remove(), error ? 8500 : 4200);
 }
 
-function createStoryboardProgressWindow(title = "Storyboard Gemma") {
+function createStoryboardProgressWindow(title = "Storyboard LLM") {
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100030;background:rgba(0,0,0,.18);pointer-events:none;display:flex;align-items:flex-start;justify-content:center;padding-top:72px;";
   const box = document.createElement("div");
@@ -1476,6 +1476,18 @@ function openStoryboardBuilder(payload = {}) {
     performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
   };
 
+  const promptRunnerName = () => {
+    const runner = String(state.gemmaSettings?.text_runner || state.gemmaSettings?.gemma_runner || "builtin").trim().toLowerCase();
+    if (runner === "lm_studio" || runner === "lmstudio" || runner === "lm-studio") return "LM Studio";
+    if (runner === "llm_api" || runner === "llmapi" || runner === "llm-api" || runner === "api") return "API LLM";
+    return "Gemma";
+  };
+  const promptRunnerGenericName = () => promptRunnerName() === "Gemma" ? "Gemma" : "LLM";
+  const promptAllButtonText = () => {
+    const kind = state.mode === "image_to_video_prep" ? "Video" : "Image";
+    return `${promptRunnerName()} ${kind} All`;
+  };
+
   const absorbSceneReferencesIntoCatalog = (scenes = []) => {
     const refs = normalizeReferenceBuilderCatalog(state.referenceBuilder || {});
     const locationIds = new Set(refs.locations.map((location) => String(location.id || "")).filter(Boolean));
@@ -1566,8 +1578,8 @@ function openStoryboardBuilder(payload = {}) {
   gptButton.title = "Copy all Storyboard scene-card inputs as JSON for your custom GPT.";
   const importImagePromptsButton = makeButton("Import prompts from GPT", "purple");
   importImagePromptsButton.title = "Paste JSON from the Text to Image Prompt Builder GPT and update Image Prep prompts.";
-  const gemmaAllButton = makeButton("Gemma All", "primary");
-  gemmaAllButton.title = "Use Gemma4 to create video prompts for every storyboard scene.";
+  const gemmaAllButton = makeButton(promptAllButtonText(), "primary");
+  gemmaAllButton.title = "Use the selected LLM runner to create prompts for every storyboard scene.";
   const clearPromptsButton = makeButton("Clear Prompts");
   clearPromptsButton.title = "Clear Storyboard scene-card prompt summaries, generated prompts, and extra notes without changing subjects, locations, camera, motion, or lyrics.";
   clearPromptsButton.style.borderColor = "#991b1b";
@@ -1577,8 +1589,8 @@ function openStoryboardBuilder(payload = {}) {
   const keepGemmaLoadedInput = document.createElement("input");
   keepGemmaLoadedInput.type = "checkbox";
   keepGemmaLoadedInput.checked = Boolean(state.gemmaSettings?.keep_loaded_for_storyboard_all);
-  keepGemmaLoadedLabel.append(keepGemmaLoadedInput, document.createTextNode("Keep Gemma loaded"));
-  keepGemmaLoadedLabel.title = "When checked, Gemma All keeps the text model loaded until the batch finishes. Turn this off for lower VRAM systems.";
+  keepGemmaLoadedLabel.append(keepGemmaLoadedInput, document.createTextNode("Keep local LLM loaded"));
+  keepGemmaLoadedLabel.title = "When checked, local Gemma keeps the text model loaded until the batch finishes. This has no effect on API runners.";
   const add = makeButton("+ Add Scene", "purple");
   const close = makeButton("Close");
   headerActions.append(gptButton, importImagePromptsButton, gemmaAllButton, clearPromptsButton, keepGemmaLoadedLabel, search, add, close);
@@ -1741,10 +1753,10 @@ function openStoryboardBuilder(payload = {}) {
     note.textContent = mode === "image_to_video_prep"
       ? "Video Prep uses existing scene images when available, plus subjects, locations, lyrics, story beats, and motion notes to create video prompts."
       : "Image Prep creates text-to-image prompts from subjects, locations, lyrics, story beats, shot direction, and the story layer.";
-    gemmaAllButton.textContent = mode === "image_to_video_prep" ? "Gemma Video All" : "Gemma Image All";
+    gemmaAllButton.textContent = promptAllButtonText();
     gemmaAllButton.title = mode === "image_to_video_prep"
-      ? "Create video prompts for the visible scenes. If a scene has an image path, Gemma Vision uses it as guidance."
-      : "Create text-to-image prompts for the visible scenes.";
+      ? "Create video prompts for the visible scenes. If a scene has an image path, local vision uses it as guidance."
+      : "Create text-to-image prompts for the visible scenes with the selected LLM runner.";
     gptButton.textContent = mode === "image_to_video_prep" ? "GPT Video All" : "GPT Image All";
     gptButton.title = mode === "image_to_video_prep"
       ? "Copy all Storyboard scene-card inputs as JSON and open the video prompt GPT."
@@ -2550,7 +2562,7 @@ function openStoryboardBuilder(payload = {}) {
     }
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;";
-    const gemmaBeat = makeButton("Gemma Story Beat", "primary");
+    const gemmaBeat = makeButton(`${promptRunnerGenericName()} Story Beat`, "primary");
     const gemma = makeButton("Generate Prompt", "purple");
     const cancel = makeButton("Cancel");
     const apply = makeButton("Save Scene Card", "primary");
@@ -2832,11 +2844,12 @@ function openStoryboardBuilder(payload = {}) {
     gemma.onclick = async () => {
       const previous = gemma.textContent;
       gemma.disabled = true;
-      gemma.textContent = "Running Gemma...";
-      const progress = createStoryboardProgressWindow("Storyboard Gemma");
+      const runnerName = promptRunnerName();
+      gemma.textContent = `Running ${runnerName}...`;
+      const progress = createStoryboardProgressWindow(`Storyboard ${runnerName}`);
       try {
         saveEditorFieldsToScene();
-        progress.set(`Preparing ${scene.label || "scene"} for Gemma...`, 12);
+        progress.set(`Preparing ${scene.label || "scene"} for ${runnerName}...`, 12);
         await createScenePromptForActiveMode(scene, { progress, progressPercent: 32 });
         progress.set(state.mode === "image_to_video_prep" ? "Storyboard video prompt ready." : "Storyboard image prompt ready.", 100);
         progress.close(1200);
@@ -2898,13 +2911,14 @@ function openStoryboardBuilder(payload = {}) {
       const sceneActionStyle = "border:1px solid #155e75;border-radius:6px;background:#0f172a;color:#a5f3fc;padding:8px 10px;font-weight:800;cursor:pointer;";
       const sceneGptStyle = "border:1px solid #06b6d4;border-radius:6px;background:#0e7490;color:#f8fafc;padding:8px 10px;font-weight:900;cursor:pointer;";
       const sceneGemmaStyle = "border:1px solid #22c55e;border-radius:6px;background:#166534;color:#f0fdf4;padding:8px 10px;font-weight:900;cursor:pointer;";
+      const runnerName = promptRunnerName();
       const gemmaTitle = mode === "image_to_video_prep"
-        ? "Create this scene's video prompt with Gemma. If the scene has an image, Gemma Vision uses it as guidance."
-        : "Create this scene's text-to-image prompt with Gemma.";
+        ? `Create this scene's video prompt with ${runnerName}. If the scene has an image, local vision uses it as guidance.`
+        : `Create this scene's text-to-image prompt with ${runnerName}.`;
       const actionHtml = `
         <div style="display:flex;align-items:center;gap:7px;white-space:nowrap;">
           <button data-action="edit" style="${sceneActionStyle}">Open Scene Card</button>
-          <button data-action="gemma" style="${sceneGemmaStyle}" title="${escapeHtml(gemmaTitle)}">Gemma</button>
+          <button data-action="gemma" style="${sceneGemmaStyle}" title="${escapeHtml(gemmaTitle)}">${escapeHtml(runnerName)}</button>
           <button data-action="gpt" style="${sceneGptStyle}" title="Copy only this scene card as GPT JSON.">GPT</button>
         </div>`;
       const status = `<span style="display:inline-flex;align-items:center;gap:6px;color:${meta.color};font-weight:900;"><span style="width:8px;height:8px;border-radius:999px;background:${meta.color};display:inline-block;"></span>${escapeHtml(meta.label)}</span>`;
@@ -2944,9 +2958,10 @@ function openStoryboardBuilder(payload = {}) {
       tr.querySelector('[data-action="load-subject-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("subject", scene));
       tr.querySelector('[data-action="load-location-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("location", scene));
       tr.querySelector('[data-action="gemma"]')?.addEventListener("click", async () => {
-        const progress = createStoryboardProgressWindow("Storyboard Gemma");
+        const runnerName = promptRunnerName();
+        const progress = createStoryboardProgressWindow(`Storyboard ${runnerName}`);
         try {
-          progress.set(`Preparing ${scene.label || "scene"} for Gemma...`, 12);
+          progress.set(`Preparing ${scene.label || "scene"} for ${runnerName}...`, 12);
           await createScenePromptForActiveMode(scene, { progress, progressPercent: 32 });
           progress.set(state.mode === "image_to_video_prep" ? "Storyboard video prompt ready." : "Storyboard image prompt ready.", 100);
           progress.close(1200);
@@ -3270,19 +3285,21 @@ function openStoryboardBuilder(payload = {}) {
 
   async function createSceneImagePromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
     const normalized = normalizeScene(scene, 0);
+    const runnerName = promptRunnerName();
+    const genericName = promptRunnerGenericName();
     try {
-      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending image scene card to Gemma...\nThis creates the text-to-image prompt for Image Prep.`, progressPercent);
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending image scene card to ${runnerName}...\nThis creates the text-to-image prompt for Image Prep.`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter, max_new_tokens: 1200 }), 240000);
-      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: Gemma response received.\nRunner: ${data.runner || "Gemma"}\nSaving image prompt into the scene card...`, Math.min(96, progressPercent + 45));
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving image prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
-      if (!prompt) throw new Error("Gemma returned an empty Storyboard image prompt.");
+      if (!prompt) throw new Error(`${genericName} returned an empty Storyboard image prompt.`);
       scene.image_prompt = prompt;
       scene.prompt_summary = "";
       scene.status = "image_prompt_ready";
-      if (!quiet) createToast(`Gemma created image prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || "Gemma"}`);
+      if (!quiet) createToast(`${genericName} created image prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || runnerName}`);
       return prompt;
     } catch (error) {
-      if (!quiet) createToast(`Gemma Storyboard image prompt failed:\n${String(error?.message || error)}`, true);
+      if (!quiet) createToast(`${genericName} Storyboard image prompt failed:\n${String(error?.message || error)}`, true);
       throw error;
     } finally {
       renderTable();
@@ -3340,18 +3357,20 @@ function openStoryboardBuilder(payload = {}) {
 
   async function createSceneVideoPromptWithGemma(scene, { quiet = false, unloadAfter = true, progress = null, progressPercent = 35, progressLabel = "" } = {}) {
     const normalized = normalizeScene(scene, 0);
+    const runnerName = promptRunnerName();
+    const genericName = promptRunnerGenericName();
     try {
-      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to Gemma...\nThis can take a minute depending on runner/model speed.`, progressPercent);
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to ${runnerName}...\nThis can take a minute depending on runner/model speed.`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), 240000);
-      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: Gemma response received.\nRunner: ${data.runner || "Gemma"}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
+      progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
       const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
-      if (!prompt) throw new Error("Gemma returned an empty Storyboard video prompt.");
+      if (!prompt) throw new Error(`${genericName} returned an empty Storyboard video prompt.`);
       scene.video_prompt = prompt;
       scene.status = "video_prompt_ready";
-      if (!quiet) createToast(`Gemma created video prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || "Gemma"}`);
+      if (!quiet) createToast(`${genericName} created video prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || runnerName}`);
       return prompt;
     } catch (error) {
-      if (!quiet) createToast(`Gemma Storyboard prompt failed:\n${String(error?.message || error)}`, true);
+      if (!quiet) createToast(`${genericName} Storyboard prompt failed:\n${String(error?.message || error)}`, true);
       throw error;
     } finally {
       renderTable();
@@ -3374,28 +3393,30 @@ function openStoryboardBuilder(payload = {}) {
     const promptKind = videoMode ? "video" : "image";
     gemmaAllButton.disabled = true;
     const previousText = gemmaAllButton.textContent;
-    const progress = createStoryboardProgressWindow("Storyboard Gemma All");
+    const runnerName = promptRunnerName();
+    const genericName = promptRunnerGenericName();
+    const progress = createStoryboardProgressWindow(`Storyboard ${runnerName} All`);
     let created = 0;
     try {
       const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
-      progress.set(`Starting Storyboard Gemma All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScenes: ${scenes.length}\nKeep Gemma loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+      progress.set(`Starting Storyboard ${runnerName} All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScenes: ${scenes.length}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
-        gemmaAllButton.textContent = `Gemma ${index + 1}/${scenes.length}`;
+        gemmaAllButton.textContent = `${runnerName} ${index + 1}/${scenes.length}`;
         const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
-        const label = `Gemma All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
+        const label = `${runnerName} All ${index + 1}/${scenes.length}: ${scenes[index].label || `Scene ${scenes[index].scene_number || index + 1}`}`;
         progress.set(`${label}\nCreating storyboard ${promptKind} prompt...`, base);
         await createScenePromptForActiveMode(scenes[index], { quiet: true, unloadAfter, progress, progressPercent: base, progressLabel: label });
         created += 1;
       }
       progress.set("Saving storyboard prompts...", 96);
       await saveStoryboard();
-      progress.set(`Gemma All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`, 100);
+      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`, 100);
       progress.close(1800);
-      createToast(`Gemma created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`);
+      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`);
     } catch (error) {
-      progress.set(`Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
-      createToast(`Gemma All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
+      progress.set(`${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
+      createToast(`${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
     } finally {
       gemmaAllButton.disabled = false;
       gemmaAllButton.textContent = previousText;
