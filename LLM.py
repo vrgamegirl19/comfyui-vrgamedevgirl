@@ -312,25 +312,62 @@ class VRGDG_LLM_Multi:
 
     PROVIDER_MODELS = {
         "openai": [
+            "gpt-image-2",
             "gpt-image-1",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.4-nano",
+            "gpt-5",
+            "gpt-5-mini",
             "gpt-5-nano",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
             "o4-mini",
             "gpt-4.1",
             "gpt-4o",
         ],
         "anthropic": [
+            "claude-fable-5",
+            "claude-opus-4-8",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5",
+            "claude-opus-4-1-20250805",
             "claude-sonnet-4-20250514",
             "claude-3-7-sonnet-20250219",
             "claude-3-5-haiku-20241022",
         ],
         "google": [
+            "gemini-3.5-flash",
+            "gemini-3.1-pro-preview",
+            "gemini-3.1-flash",
+            "gemini-3.1-flash-lite",
             "gemini-3-pro-preview",
             "gemini-3-pro-image-preview",
             "gemini-3-flash-preview",
             "gemini-2.5-pro",
             "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
         ],
         "xai": [
+            "grok-4.3",
+            "grok-4.3-latest",
+            "grok-build-0.1",
+            "grok-4.1-fast",
+            "grok-4.1-fast-latest",
+            "grok-4",
+            "grok-4-latest",
+            "grok-3",
+            "grok-3-latest",
+            "grok-3-mini",
+            "grok-3-mini-latest",
+        ],
+        "grok": [
+            "grok-4.3",
+            "grok-4.3-latest",
+            "grok-build-0.1",
+            "grok-4.1-fast",
+            "grok-4.1-fast-latest",
             "grok-4",
             "grok-4-latest",
             "grok-3",
@@ -343,6 +380,12 @@ class VRGDG_LLM_Multi:
             "deepseek-reasoner",
         ],
         "openrouter": [
+            "openai/gpt-5.5",
+            "openai/gpt-5.4",
+            "openai/gpt-5.4-mini",
+            "anthropic/claude-sonnet-4.6",
+            "anthropic/claude-opus-4.8",
+            "google/gemini-3.5-flash",
             "openai/gpt-4o",
             "anthropic/claude-3.5-sonnet",
             "meta-llama/llama-3.1-70b-instruct",
@@ -352,12 +395,13 @@ class VRGDG_LLM_Multi:
         ],
     }
     DEFAULT_MODEL = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-sonnet-4-20250514",
-        "google": "gemini-2.5-flash",
-        "xai": "grok-3-latest",
+        "openai": "gpt-5.4-mini",
+        "anthropic": "claude-sonnet-4-6",
+        "google": "gemini-3.5-flash",
+        "xai": "grok-4.3",
+        "grok": "grok-4.3",
         "deepseek": "deepseek-chat",
-        "openrouter": "openai/gpt-4o",
+        "openrouter": "openai/gpt-5.4-mini",
         "apifreellm": "apifreellm",
     }
     ALL_MODELS = [m for models in PROVIDER_MODELS.values() for m in models]
@@ -457,7 +501,7 @@ class VRGDG_LLM_Multi:
                 "error: DeepSeek account has insufficient balance (HTTP 402). "
                 "Add credits or switch provider/model."
             )
-        if provider == "xai" and "http 403" in low and "1010" in low:
+        if provider in ("xai", "grok") and "http 403" in low and "1010" in low:
             return (
                 "error: xAI request blocked (HTTP 403 code 1010). "
                 "Usually account/region/firewall edge blocking. Verify xAI API access, "
@@ -816,7 +860,7 @@ class VRGDG_LLM_Multi:
 
         try:
             if provider == "openai":
-                if chosen_model == "gpt-image-1":
+                if chosen_model.startswith("gpt-image-"):
                     text, image_out = self._call_openai_image_generation(api_key, chosen_model, prompt, pil_images)
                 else:
                     text, image_out = self._call_openai_compatible(
@@ -826,7 +870,7 @@ class VRGDG_LLM_Multi:
                         prompt,
                         pil_images,
                     )
-            elif provider == "xai":
+            elif provider in ("xai", "grok"):
                 text, image_out = self._call_openai_compatible(
                     "https://api.x.ai/v1",
                     api_key,
