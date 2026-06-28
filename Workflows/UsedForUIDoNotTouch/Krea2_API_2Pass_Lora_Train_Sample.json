@@ -1,0 +1,372 @@
+{
+  "49": {
+    "inputs": {
+      "aspect_ratio": "3:4 (Portrait Standard)",
+      "megapixels": 2.5,
+      "multiple": 8
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector"
+    }
+  },
+  "216": {
+    "inputs": {
+      "images": [
+        "225",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "225": {
+    "inputs": {
+      "samples": [
+        "230",
+        0
+      ],
+      "vae": [
+        "234",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "226": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "width": [
+        "49",
+        0
+      ],
+      "height": [
+        "49",
+        1
+      ],
+      "crop": "center",
+      "samples": [
+        "231",
+        0
+      ]
+    },
+    "class_type": "LatentUpscale",
+    "_meta": {
+      "title": "Upscale Latent"
+    }
+  },
+  "227": {
+    "inputs": {
+      "steps": 10,
+      "start_at_step": [
+        "242",
+        0
+      ],
+      "end_at_step": 10,
+      "base_image_seq_len": 256,
+      "base_shift": 0.5,
+      "invert_sigmas": "disable",
+      "max_image_seq_len": 8192,
+      "max_shift": 1.15,
+      "num_train_timesteps": 1000,
+      "shift": 3,
+      "shift_terminal": 0,
+      "stochastic_sampling": "disable",
+      "time_shift_type": "exponential",
+      "use_beta_sigmas": "disable",
+      "use_dynamic_shifting": "disable",
+      "use_exponential_sigmas": "disable",
+      "use_karras_sigmas": "disable",
+      "device": "cuda"
+    },
+    "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
+    "_meta": {
+      "title": "FlowMatch Euler Discrete Scheduler (Custom)"
+    }
+  },
+  "228": {
+    "inputs": {
+      "text": "an artistic close-up face shot of a woman with smooth luminous skin and bold editorial styling, the readable text \"Krea 2 Enhancer\" written across the neck and rising onto the lower cheek in vivid liquid paint splashes, using chartreuse, deep indigo, and soft rose tones, glossy wet drips, sharp studio lighting, dark background, reflective texture, high-fashion beauty photography, visible skin texture, dramatic framing, ultra-detailed realistic beauty photography.",
+      "clip": [
+        "233",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "229": {
+    "inputs": {
+      "text": "low quality, blurry, pixelated, distorted, deformed, bad anatomy, bad proportions, extra fingers, missing fingers, extra limbs, missing limbs, fused limbs, malformed hands, malformed feet, mutated, disfigured, ugly, asymmetrical, poorly drawn face, poorly drawn eyes, cross-eyed, bad teeth, unnatural skin, artifacts, jpeg artifacts, noise, grain, watermark, logo, text, signature, cropped, out of frame, duplicate, cloned face, oversaturated, underexposed, overexposed, bad lighting, flat lighting, unrealistic shadows, messy background",
+      "clip": [
+        "233",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "230": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 12345454,
+      "cfg": 1.2,
+      "model": [
+        "250",
+        0
+      ],
+      "positive": [
+        "228",
+        0
+      ],
+      "negative": [
+        "229",
+        0
+      ],
+      "sampler": [
+        "235",
+        0
+      ],
+      "sigmas": [
+        "232",
+        0
+      ],
+      "latent_image": [
+        "226",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "SamplerCustom"
+    }
+  },
+  "231": {
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 12345454,
+      "cfg": 1.2,
+      "model": [
+        "250",
+        0
+      ],
+      "positive": [
+        "228",
+        0
+      ],
+      "negative": [
+        "229",
+        0
+      ],
+      "sampler": [
+        "235",
+        0
+      ],
+      "sigmas": [
+        "227",
+        0
+      ],
+      "latent_image": [
+        "243",
+        0
+      ]
+    },
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "SamplerCustom"
+    }
+  },
+  "232": {
+    "inputs": {
+      "steps": 20,
+      "start_at_step": 10,
+      "end_at_step": 20,
+      "base_image_seq_len": 256,
+      "base_shift": 0.5,
+      "invert_sigmas": "disable",
+      "max_image_seq_len": 8192,
+      "max_shift": 1.15,
+      "num_train_timesteps": 1000,
+      "shift": 3,
+      "shift_terminal": 0,
+      "stochastic_sampling": "disable",
+      "time_shift_type": "exponential",
+      "use_beta_sigmas": "disable",
+      "use_dynamic_shifting": "disable",
+      "use_exponential_sigmas": "disable",
+      "use_karras_sigmas": "disable",
+      "device": "cuda"
+    },
+    "class_type": "FlowMatchEulerDiscreteScheduler (Custom)",
+    "_meta": {
+      "title": "FlowMatch Euler Discrete Scheduler (Custom)"
+    }
+  },
+  "233": {
+    "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "234": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "235": {
+    "inputs": {
+      "sampler_name": "euler_ancestral_cfg_pp"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "236": {
+    "inputs": {
+      "unet_name": "krea2_turbo_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "238": {
+    "inputs": {
+      "aspect_ratio": "3:4 (Portrait Standard)",
+      "megapixels": 1,
+      "multiple": 8
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector"
+    }
+  },
+  "240": {
+    "inputs": {
+      "width": [
+        "238",
+        0
+      ],
+      "height": [
+        "238",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "241": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "242": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "241",
+        0
+      ],
+      "on_true": [
+        "245",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "use image to image"
+    }
+  },
+  "243": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "240",
+        0
+      ],
+      "on_true": [
+        "244",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "use image to image"
+    }
+  },
+  "244": {
+    "inputs": {
+      "pixels": [
+        "249",
+        0
+      ],
+      "vae": [
+        "234",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "245": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "denoise when using image to image"
+    }
+  },
+  "249": {
+    "inputs": {
+      "image": "vrgdg_placeholder_i2i.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "250": {
+    "inputs": {
+      "lora_path": "",
+      "strength_model": 1,
+      "model": [
+        "236",
+        0
+      ]
+    },
+    "class_type": "VRGDG_LoraFromPathModelOnly",
+    "_meta": {
+      "title": "VRGDG LoRA From Path Model Only"
+    }
+  }
+}

@@ -2042,6 +2042,58 @@ class VRGDG_OptionalMultiLoraTwoPassStrengths(VRGDG_OptionalMultiLoraModelOnly):
         return (first_pass_model, second_pass_model, lora_names)
 
 
+class VRGDG_LoraFromPathModelOnly:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "lora_path": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Full path to a .safetensors LoRA file. This is useful for hidden workflows that need to preview a freshly trained LoRA before it is copied into ComfyUI's loras folder.",
+                    },
+                ),
+                "strength_model": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": -100.0,
+                        "max": 100.0,
+                        "step": 0.01,
+                        "tooltip": "How strongly to apply the LoRA to the model. 1.0 is normal, 0.5 is lighter, and 0.0 passes the model through unchanged.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL",)
+    RETURN_NAMES = ("model",)
+    FUNCTION = "apply_lora"
+    CATEGORY = "VRGDG/Loaders"
+    DESCRIPTION = "Applies one LoRA to a MODEL from a direct filesystem path and returns the patched MODEL."
+
+    @staticmethod
+    def _norm(path):
+        return os.path.normpath(str(path or "").strip().strip('"'))
+
+    def apply_lora(self, model, lora_path, strength_model):
+        lora_path = self._norm(lora_path)
+        strength = float(strength_model)
+        if not lora_path or strength == 0:
+            return (model,)
+        if not os.path.isfile(lora_path):
+            raise ValueError(f"LoRA path does not exist: {lora_path}")
+        if os.path.splitext(lora_path)[1].lower() not in {".safetensors", ".pt", ".pth", ".ckpt"}:
+            raise ValueError(f"LoRA path must be a torch/safetensors file: {lora_path}")
+
+        lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+        model_lora, _ = comfy.sd.load_lora_for_models(model, None, lora, strength, 0)
+        return (model_lora,)
+
+
 class VRGDG_NoteBox:
     RETURN_TYPES = ()
     FUNCTION = "run"
@@ -4077,6 +4129,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_ImageIndex0HUMOEDIT": VRGDG_ImageIndex0HUMOEDIT,
     "VRGDG_OptionalMultiLoraModelOnly": VRGDG_OptionalMultiLoraModelOnly,
     "VRGDG_OptionalMultiLoraTwoPassStrengths": VRGDG_OptionalMultiLoraTwoPassStrengths,
+    "VRGDG_LoraFromPathModelOnly": VRGDG_LoraFromPathModelOnly,
     "VRGDG_NoteBox": VRGDG_NoteBox,
     "VRGDG_SetMuteStateMulti": VRGDG_SetMuteStateMulti,
     "VRGDG_SetGroupStateMulti": VRGDG_SetGroupStateMulti,
@@ -4114,6 +4167,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_ImageIndex0HUMOEDIT": "VRGDG_ImageIndex0HUMOEDIT",
     "VRGDG_OptionalMultiLoraModelOnly": "VRGDG Optional Multi LoRA Model Only",
     "VRGDG_OptionalMultiLoraTwoPassStrengths": "VRGDG Optional Multi LoRA Two Pass Strengths",
+    "VRGDG_LoraFromPathModelOnly": "VRGDG LoRA From Path Model Only",
     "VRGDG_NoteBox": "VRGDG_NoteBox",
     "VRGDG_SetMuteStateMulti": "VRGDG_SetMuteStateMulti",
     "VRGDG_SetGroupStateMulti": "VRGDG_SetGroupStateMulti",

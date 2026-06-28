@@ -42,6 +42,12 @@ _VRGDG_TENSORBOARD_RUNS = {}
 _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED = False
 _VRGDG_MUSUBI_INSTALL_LOCK = threading.Lock()
 _VRGDG_MUSUBI_INSTALL_JOB = None
+_VRGDG_KREA2_INSTALL_ROUTE_REGISTERED = False
+_VRGDG_KREA2_INSTALL_LOCK = threading.Lock()
+_VRGDG_KREA2_INSTALL_JOB = None
+_VRGDG_KREA2_STUDIO_ROUTE_REGISTERED = False
+_VRGDG_KREA2_STUDIO_TRAIN_LOCK = threading.Lock()
+_VRGDG_KREA2_CAPTION_CANCEL_REQUESTED = False
 
 AUDIO_EXTENSIONS = {
     ".wav",
@@ -805,6 +811,1080 @@ print(f"[VRGDG] Model download root: {{os.path.join(install_path, 'models')}}")
     _VRGDG_MUSUBI_INSTALL_JOB = _run_musubi_install_job
 
     _VRGDG_MUSUBI_INSTALL_ROUTE_REGISTERED = True
+
+
+def _ensure_krea2_install_route_registered():
+    global _VRGDG_KREA2_INSTALL_ROUTE_REGISTERED
+    global _VRGDG_KREA2_INSTALL_JOB
+    if _VRGDG_KREA2_INSTALL_ROUTE_REGISTERED:
+        return
+
+    server_instance = getattr(PromptServer, "instance", None)
+    if server_instance is None:
+        return
+
+    def _emit(log_lines, message):
+        message = str(message)
+        print(message)
+        log_lines.append(message)
+
+    def _download_file(url, destination, log_lines):
+        _emit(log_lines, f"[VRGDG] Downloading: {url}")
+        request = urllib.request.Request(url, headers={"User-Agent": "VRGDG-Krea2-Installer/1.0"})
+        with urllib.request.urlopen(request) as response, open(destination, "wb") as output_handle:
+            total_size = int(response.headers.get("Content-Length") or 0)
+            downloaded = 0
+            last_reported = 0
+            report_step = max(1, total_size // 10) if total_size else 5 * 1024 * 1024
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                output_handle.write(chunk)
+                downloaded += len(chunk)
+                if downloaded - last_reported >= report_step or (total_size and downloaded >= total_size):
+                    if total_size:
+                        _emit(log_lines, f"[VRGDG] Download progress: {downloaded}/{total_size} bytes ({downloaded / total_size * 100:.1f}%)")
+                    else:
+                        _emit(log_lines, f"[VRGDG] Downloaded {downloaded} bytes")
+                    last_reported = downloaded
+
+    def _run_command(command, cwd, log_lines):
+        _emit(log_lines, "$ " + " ".join(command))
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            _emit(log_lines, line.rstrip("\n"))
+        process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"Command failed with exit code {process.returncode}: {' '.join(command)}")
+
+    def _resolve_supported_python():
+        launcher = shutil.which("py")
+        if launcher:
+            for minor in (12, 11, 10):
+                command = [launcher, f"-3.{minor}"]
+                try:
+                    result = subprocess.run(command + ["--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+                except Exception:
+                    continue
+                version_text = (result.stdout or result.stderr or "").strip()
+                if re.search(r"Python 3\.(10|11|12)\.\d+", version_text):
+                    return command, version_text
+        if sys.version_info.major == 3 and 10 <= sys.version_info.minor <= 12:
+            return [sys.executable], f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        raise RuntimeError("Krea 2 musubi install requires Python 3.10, 3.11, or 3.12.")
+
+    def _resolve_unique_install_path(parent_root):
+        for name in ("VRGDG_Krea2_Musubi-tuner", "Musubi-tuner-Krea2", "VRGDG_Krea2_Musubi-tuner_2"):
+            candidate = os.path.join(parent_root, name)
+            if not os.path.exists(candidate):
+                return candidate
+        index = 3
+        while True:
+            candidate = os.path.join(parent_root, f"VRGDG_Krea2_Musubi-tuner_{index}")
+            if not os.path.exists(candidate):
+                return candidate
+            index += 1
+
+    def _resolve_existing_install_path(target_root):
+        target_root = os.path.normpath(str(target_root or "").strip())
+        if not target_root:
+            return ""
+        candidates = [target_root]
+        candidates.extend(os.path.join(target_root, name) for name in ("VRGDG_Krea2_Musubi-tuner", "Musubi-tuner-Krea2", "Musubi-tuner", "VRGDG_Musubi-tuner"))
+        if os.path.isdir(target_root):
+            for entry in os.scandir(target_root):
+                if entry.is_dir():
+                    candidates.append(entry.path)
+        for candidate in candidates:
+            venv_python = os.path.join(candidate, "venv", "Scripts", "python.exe")
+            if (
+                os.path.isfile(venv_python)
+                and os.path.isfile(os.path.join(candidate, "krea2_train_network.py"))
+                and os.path.isfile(os.path.join(candidate, "krea2_cache_latents.py"))
+            ):
+                return os.path.normpath(candidate)
+        return ""
+
+    def _extract_zip_download(url, temp_root, archive_name, log_lines):
+        zip_path = os.path.join(temp_root, archive_name)
+        extract_root = os.path.join(temp_root, os.path.splitext(archive_name)[0])
+        _download_file(url, zip_path, log_lines)
+        _emit(log_lines, f"[VRGDG] Extracting: {zip_path}")
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(extract_root)
+        dirs = [entry.path for entry in os.scandir(extract_root) if entry.is_dir()]
+        if not dirs:
+            raise RuntimeError(f"Archive had no top-level folder: {url}")
+        return dirs[0]
+
+    def _install_base_musubi(parent_root, branch, torch_index_url, log_lines):
+        os.makedirs(parent_root, exist_ok=True)
+        install_path = _resolve_unique_install_path(parent_root)
+        temp_root = tempfile.mkdtemp(prefix="vrgdg_krea2_base_")
+        try:
+            source_dir = _extract_zip_download(
+                f"https://github.com/kohya-ss/musubi-tuner/archive/refs/heads/{branch}.zip",
+                temp_root,
+                f"musubi-tuner-{branch}.zip",
+                log_lines,
+            )
+            _emit(log_lines, f"[VRGDG] Installing native Krea 2 Musubi-Tuner to: {install_path}")
+            shutil.move(source_dir, install_path)
+
+            python_command, version_text = _resolve_supported_python()
+            _emit(log_lines, f"[VRGDG] Using Python interpreter: {version_text}")
+            _run_command(python_command + ["-m", "venv", "venv"], install_path, log_lines)
+            venv_python = os.path.join(install_path, "venv", "Scripts", "python.exe")
+            _run_command([venv_python, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], install_path, log_lines)
+            _run_command([venv_python, "-m", "pip", "install", "torch", "torchvision", "--index-url", torch_index_url], install_path, log_lines)
+            _run_command([venv_python, "-m", "pip", "install", "-e", "."], install_path, log_lines)
+            return os.path.normpath(install_path), version_text
+        finally:
+            shutil.rmtree(temp_root, ignore_errors=True)
+
+    def _verify_krea2_install(install_path, log_lines):
+        venv_python = os.path.join(install_path, "venv", "Scripts", "python.exe")
+        checks = [
+            ("Krea architecture constants", "import musubi_tuner.dataset.architectures as a; print(a.ARCHITECTURE_KREA2, a.ARCHITECTURE_KREA2_FULL)"),
+            ("Krea cache helpers", "from musubi_tuner.dataset.image_video_dataset import save_latent_cache_krea2, save_text_encoder_output_cache_krea2; print('cache helpers ok')"),
+            ("Krea LoRA network", "import musubi_tuner.networks.lora_krea2; print('lora_krea2 ok')"),
+            ("Krea train module", "import musubi_tuner.krea2_train_network; print('krea2_train_network ok')"),
+        ]
+        results = []
+        for label, code in checks:
+            try:
+                _run_command([venv_python, "-c", code], install_path, log_lines)
+                results.append({"label": label, "ok": True, "message": "PASS"})
+            except Exception as exc:
+                results.append({"label": label, "ok": False, "message": str(exc)})
+        return results
+
+    def _write_report(install_path, model_root, checks, log_lines):
+        report_path = os.path.join(install_path, "vrgdg_krea2_install_report.txt")
+        lines = [
+            "VRGDG Krea 2 Musubi Installation Report",
+            f"Install path: {install_path}",
+            f"Model root: {model_root}",
+            "",
+            "Checks:",
+        ]
+        for item in checks:
+            state = "PASS" if item.get("ok") else "FAIL"
+            lines.append(f"- [{state}] {item.get('label')}: {item.get('message')}")
+        lines.append("")
+        lines.extend(log_lines[-200:])
+        with open(report_path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+        return os.path.normpath(report_path)
+
+    def _download_krea2_models(install_path, model_root, log_lines):
+        venv_python = os.path.join(install_path, "venv", "Scripts", "python.exe")
+        model_root = os.path.normpath(str(model_root or "").strip() or os.path.join(os.path.dirname(install_path), "models"))
+        script = f'''
+import os
+import shutil
+from huggingface_hub import hf_hub_download
+
+model_root = {model_root!r}
+targets = {{
+    "raw_dit": os.path.join(model_root, "krea2", "raw.safetensors"),
+    "turbo_dit": os.path.join(model_root, "krea2", "turbo.safetensors"),
+    "vae": os.path.join(model_root, "qwen_image", "qwen_image_vae.safetensors"),
+    "text_encoder": os.path.join(model_root, "qwen3vl", "qwen3vl_4b_bf16.safetensors"),
+}}
+for path in targets.values():
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+downloads = [
+    ("raw_dit", "krea/Krea-2-Raw", "raw.safetensors"),
+    ("turbo_dit", "krea/Krea-2-Turbo", "turbo.safetensors"),
+    ("vae", "Comfy-Org/Qwen-Image-Edit_ComfyUI", "split_files/vae/qwen_image_vae.safetensors"),
+    ("text_encoder", "Comfy-Org/Qwen3-VL", "text_encoders/qwen3vl_4b_bf16.safetensors"),
+]
+
+for key, repo, filename in downloads:
+    print(f"[VRGDG] Downloading {{key}} from {{repo}}/{{filename}}")
+    downloaded = hf_hub_download(repo_id=repo, filename=filename, local_dir=os.path.dirname(targets[key]), local_dir_use_symlinks=False)
+    if os.path.normcase(os.path.normpath(downloaded)) != os.path.normcase(os.path.normpath(targets[key])):
+        shutil.copy2(downloaded, targets[key])
+    print(f"[VRGDG] Ready {{key}}: {{targets[key]}}")
+print("[VRGDG] Krea 2 model download complete")
+'''
+        _run_command([venv_python, "-c", script], install_path, log_lines)
+        return {
+            "model_root": os.path.normpath(model_root),
+            "raw_dit_path": os.path.join(model_root, "krea2", "raw.safetensors"),
+            "turbo_dit_path": os.path.join(model_root, "krea2", "turbo.safetensors"),
+            "vae_path": os.path.join(model_root, "qwen_image", "qwen_image_vae.safetensors"),
+            "text_encoder_path": os.path.join(model_root, "qwen3vl", "qwen3vl_4b_bf16.safetensors"),
+        }
+
+    async def _run_krea2_install_job(payload):
+        acquired = _VRGDG_KREA2_INSTALL_LOCK.acquire(blocking=False)
+        if not acquired:
+            return {"ok": False, "error": "A Krea 2 installation is already running."}
+        log_lines = []
+        try:
+            target_root = os.path.abspath(os.path.normpath(str(payload.get("target_root", "") or "").strip()))
+            model_root = os.path.normpath(str(payload.get("model_root", "") or "").strip() or os.path.join(target_root, "models"))
+            action = str(payload.get("action", "") or "install_and_download").strip() or "install_and_download"
+            branch = str(payload.get("branch", "") or "main").strip() or "main"
+            torch_index_url = str(payload.get("torch_index_url", "") or "https://download.pytorch.org/whl/cu124").strip()
+            if not target_root:
+                raise ValueError("target_root is required.")
+
+            install_path = _resolve_existing_install_path(target_root)
+            version_text = ""
+            if action in {"install_tuner", "install_and_download"}:
+                if not install_path:
+                    install_path, version_text = await asyncio.to_thread(_install_base_musubi, target_root, branch, torch_index_url, log_lines)
+                else:
+                    _emit(log_lines, f"[VRGDG] Reusing existing native Krea 2 Musubi-Tuner install: {install_path}")
+                checks = await asyncio.to_thread(_verify_krea2_install, install_path, log_lines)
+                if any(not item.get("ok") for item in checks):
+                    raise RuntimeError("Native Krea 2 Musubi-Tuner verification failed. See install log for details.")
+            else:
+                if not install_path:
+                    raise RuntimeError("Could not find an existing Krea 2 musubi install under target_root.")
+                checks = await asyncio.to_thread(_verify_krea2_install, install_path, log_lines)
+
+            model_result = {
+                "model_root": os.path.normpath(model_root),
+                "raw_dit_path": "",
+                "turbo_dit_path": "",
+                "vae_path": "",
+                "text_encoder_path": "",
+            }
+            if action in {"download_models", "install_and_download"}:
+                model_result = await asyncio.to_thread(_download_krea2_models, install_path, model_root, log_lines)
+
+            report_path = await asyncio.to_thread(_write_report, install_path, model_result.get("model_root", model_root), checks, log_lines)
+            status = "Native Krea 2 Musubi-Tuner installed successfully."
+            if action == "download_models":
+                status = "Krea 2 model assets downloaded successfully."
+            elif action == "install_and_download":
+                status = "Native Krea 2 Musubi-Tuner and model assets installed successfully."
+            return {
+                "ok": True,
+                "install_path": os.path.normpath(install_path),
+                "python_version": version_text,
+                "report_path": report_path,
+                "checks": checks,
+                "messages": log_lines,
+                "status": status,
+                **model_result,
+            }
+        finally:
+            if acquired:
+                _VRGDG_KREA2_INSTALL_LOCK.release()
+
+    @server_instance.routes.post("/vrgdg/krea2/install")
+    async def vrgdg_install_krea2(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = await _run_krea2_install_job(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        status_code = 200 if result.get("ok") else 500
+        if "already running" in str(result.get("error", "")).lower():
+            status_code = 409
+        return web.json_response(result, status=status_code)
+
+    _VRGDG_KREA2_INSTALL_JOB = _run_krea2_install_job
+    _VRGDG_KREA2_INSTALL_ROUTE_REGISTERED = True
+
+
+def _ensure_krea2_lora_studio_route_registered():
+    global _VRGDG_KREA2_STUDIO_ROUTE_REGISTERED
+    global _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED
+    if _VRGDG_KREA2_STUDIO_ROUTE_REGISTERED:
+        return
+
+    server_instance = getattr(PromptServer, "instance", None)
+    if server_instance is None:
+        return
+
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+    caption_exts = {".txt", ".caption"}
+
+    def _safe_name(value, fallback="Krea2Studio"):
+        text = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("._")
+        return text or fallback
+
+    def _norm_path(value):
+        text = str(value or "").strip().strip('"')
+        return os.path.normpath(text) if text else ""
+
+    def _default_project_root():
+        try:
+            return os.path.normpath(os.path.join(folder_paths.get_output_directory(), "VRGDG_Krea2_Studio"))
+        except Exception:
+            return os.path.normpath(os.path.join(os.getcwd(), "VRGDG_Krea2_Studio"))
+
+    def _settings_base():
+        return {
+            "resolution_width": 1920,
+            "resolution_height": 1080,
+            "network_dim": 32,
+            "network_alpha": 32,
+            "blocks_to_swap": 0,
+            "clear_memory_before_text_encoder": True,
+            "learning_rate": 0.0001,
+            "num_repeats": 1,
+            "cache_strategy": "auto",
+            "copy_latest_to_comfy_loras": False,
+            "create_captions": False,
+            "caption_text": "",
+            "add_trigger_word": False,
+            "trigger_text": "",
+            "musubi_root": "A:/MUSUBI/musubi-tuner-ltx2",
+            "krea2_raw_dit": "A:/MUSUBI/models/krea2/raw.safetensors",
+            "vae": "A:/MUSUBI/models/qwen_image/qwen_image_vae.safetensors",
+            "text_encoder": "A:/MUSUBI/models/qwen3vl/qwen3vl_4b_bf16.safetensors",
+            "fp8_base": True,
+            "fp8_scaled": True,
+            "timestep_sampling": "shift",
+            "discrete_flow_shift": 2.5,
+        }
+
+    def _preset_settings(name):
+        key = str(name or "Fast").strip().lower()
+        settings = _settings_base()
+        if key == "medium":
+            settings.update({"steps_per_run": 500, "total_target_steps": 1000, "learning_rate_preset": "7e-5", "image_guidance": "Up to 20 images recommended."})
+        elif key == "long":
+            settings.update({"steps_per_run": 1000, "total_target_steps": 3000, "learning_rate_preset": "7e-5", "image_guidance": "More than 20 images recommended."})
+        else:
+            settings.update({"steps_per_run": 250, "total_target_steps": 500, "learning_rate_preset": "1e-4", "image_guidance": "Use 10 images or fewer."})
+        return settings
+
+    def _presets():
+        return {
+            "Fast": _preset_settings("Fast"),
+            "Medium": _preset_settings("Medium"),
+            "Long": _preset_settings("Long"),
+        }
+
+    def _default_caption_instructions():
+        return (
+            "You are captioning images for training a text-to-image LoRA.\n\n"
+            "Your goal is to create a simple, accurate caption file for each image.\n\n"
+            "Caption rules:\n\n"
+            "* Describe only what is clearly visible in the image.\n"
+            "* Keep captions short and useful.\n"
+            "* Use plain descriptive language.\n"
+            "* Do not write full paragraphs.\n"
+            "* Do not guess hidden meaning, backstory, emotions, or intent.\n"
+            "* Do not mention camera metadata unless visually obvious.\n"
+            "* Do not use marketing language.\n"
+            "* Do not over-caption tiny details unless they are important.\n"
+            "* Do not include \"image of,\" \"photo of,\" or \"this shows.\"\n"
+            "* Do not mention image quality issues unless they are part of the intended style.\n"
+            "* Use commas to separate visual concepts.\n\n"
+            "Each caption should include:\n\n"
+            "1. Main subject\n"
+            "2. Clothing, objects, pose, or action if relevant\n"
+            "3. Setting or background if visible\n"
+            "4. Visual style, aesthetic, or theme if provided by the user\n\n"
+            "User-provided global tags:\n"
+            "[INSERT GLOBAL STYLE / AESTHETIC / THEME TAGS HERE]\n\n"
+            "If global tags are provided, include them naturally in every caption.\n\n"
+            "Output format:\n"
+            "Return one caption per image.\n"
+            "Each caption should be suitable to save as a `.txt` file with the same filename as the image.\n\n"
+            "Caption examples:\n\n"
+            "Image: woman standing in a forest wearing a white dress\n"
+            "Caption: woman in a white dress standing in a forest, soft natural light, [global tags]\n\n"
+            "Image: futuristic city street at night\n"
+            "Caption: neon city street at night, tall buildings, glowing signs, cyberpunk aesthetic\n\n"
+            "Image: close-up portrait of a man wearing sunglasses\n"
+            "Caption: close-up portrait of a man wearing sunglasses, neutral background, [global tags]"
+        )
+
+    def _project_paths(project_dir):
+        project_dir = os.path.abspath(_norm_path(project_dir))
+        return {
+            "project_dir": project_dir,
+            "project_json": os.path.join(project_dir, "project.json"),
+            "import_manifest": os.path.join(project_dir, "import_manifest.json"),
+            "dataset_dir": os.path.join(project_dir, "dataset"),
+            "images_dir": os.path.join(project_dir, "dataset", "images"),
+            "workspace_dir": os.path.join(project_dir, "workspace"),
+            "samples_dir": os.path.join(project_dir, "samples"),
+            "xyz_dir": os.path.join(project_dir, "xyz"),
+        }
+
+    def _read_project(project_dir):
+        paths = _project_paths(project_dir)
+        if os.path.isfile(paths["project_json"]):
+            with open(paths["project_json"], "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        else:
+            data = {}
+        data.setdefault("project_dir", paths["project_dir"])
+        data.setdefault("samples", [])
+        return data
+
+    def _write_project(project):
+        paths = _project_paths(project.get("project_dir", ""))
+        for key in ("project_dir", "dataset_dir", "images_dir", "workspace_dir", "samples_dir", "xyz_dir"):
+            os.makedirs(paths[key], exist_ok=True)
+        project["project_dir"] = paths["project_dir"]
+        project["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        with open(paths["project_json"], "w", encoding="utf-8") as handle:
+            json.dump(project, handle, indent=2)
+        return project
+
+    def _copy_file_like(data, target_path):
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        with open(target_path, "wb") as handle:
+            handle.write(data)
+
+    def _image_to_tensor(path):
+        from PIL import Image
+        image = Image.open(path).convert("RGB")
+        arr = np.asarray(image).astype(np.float32) / 255.0
+        return torch.from_numpy(arr)[None,]
+
+    def _clean_caption_text(text):
+        cleaned = str(text or "").strip()
+        cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+        cleaned = re.sub(r"^\s*```(?:text)?\s*", "", cleaned, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()
+        cleaned = re.sub(r"^(?:Caption|Answer|Final)\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()
+        lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+        if lines:
+            cleaned = lines[0]
+        cleaned = cleaned.strip().strip('"').strip("'").strip()
+        return cleaned
+
+    def _caption_prompt(instructions, image_name):
+        return (
+            f"{str(instructions or '').strip()}\n\n"
+            f"Image filename: {image_name}\n"
+            "Create one caption for this single image. Return only the caption text, with no label and no explanation."
+        )
+
+    def _run_caption_llm(payload, image_path, instructions):
+        runner = str(payload.get("caption_runner") or payload.get("text_runner") or "builtin").strip().lower()
+        if runner in {"gemma", "local", "gemma_local"}:
+            runner = "builtin"
+        if runner in {"lmstudio", "lm-studio"}:
+            runner = "lm_studio"
+        if runner in {"api", "llmapi", "llm-api"}:
+            runner = "llm_api"
+
+        prompt = _caption_prompt(instructions, os.path.basename(image_path))
+        if runner == "lm_studio":
+            from PIL import Image
+            try:
+                from .VRGDG_MusicVideoBuilderNodes import _run_lm_studio_vision, _clean_lm_studio_plain_text
+            except Exception:
+                from VRGDG_MusicVideoBuilderNodes import _run_lm_studio_vision, _clean_lm_studio_plain_text
+            image = Image.open(image_path).convert("RGB")
+            text = _run_lm_studio_vision(
+                payload,
+                prompt,
+                [image],
+                temperature=float(payload.get("caption_temperature") or 0.25),
+                top_p=float(payload.get("caption_top_p") or 0.95),
+                max_new_tokens=int(payload.get("caption_max_new_tokens") or 160),
+            )
+            return _clean_caption_text(_clean_lm_studio_plain_text(text)), {"runner": "lm_studio", "used_model": str(payload.get("lmstudio_model") or "")}
+
+        image_tensor = _image_to_tensor(image_path)
+        if runner == "llm_api":
+            try:
+                from .LLM import VRGDG_LLM_Multi
+            except Exception:
+                from LLM import VRGDG_LLM_Multi
+            api_key = str(payload.get("llm_api_key") or payload.get("api_key") or "").strip()
+            if not api_key:
+                raise ValueError("LLM API key is missing.")
+            llm = VRGDG_LLM_Multi()
+            text, used_provider, used_model, status, _image = llm.generate_text(
+                api_key=api_key,
+                provider=str(payload.get("llm_api_provider") or "openai"),
+                model=str(payload.get("llm_api_model") or ""),
+                prompt=prompt,
+                custom_model=str(payload.get("llm_api_custom_model") or ""),
+                image1=image_tensor,
+            )
+            if str(status or "").lower().startswith("error"):
+                raise RuntimeError(status)
+            return _clean_caption_text(text), {"runner": "llm_api", "used_provider": used_provider, "used_model": used_model}
+
+        try:
+            from .LLM import VRGDG_SuperGemmaGGUFChat
+        except Exception:
+            from LLM import VRGDG_SuperGemmaGGUFChat
+        llm = VRGDG_SuperGemmaGGUFChat()
+        text, used_model, status = llm.generate_prompt(
+            model_file=str(payload.get("model_file") or payload.get("caption_gemma_model") or ""),
+            mmproj_file=str(payload.get("mmproj_file") or payload.get("caption_mmproj_file") or ""),
+            task_preset="captioner_training",
+            user_input=prompt,
+            custom_instructions=str(instructions or ""),
+            trigger_word="",
+            image_count=1,
+            advanced=True,
+            unload_after_run=bool(payload.get("unload_after", True)),
+            n_ctx=int(payload.get("n_ctx") or 8000),
+            n_gpu_layers=int(payload.get("n_gpu_layers") or 99),
+            n_threads=int(payload.get("n_threads") or 8),
+            chat_format=str(payload.get("chat_format") or ""),
+            temperature=float(payload.get("caption_temperature") or 0.25),
+            top_p=float(payload.get("caption_top_p") or 0.95),
+            max_new_tokens=int(payload.get("caption_max_new_tokens") or 160),
+            image1=image_tensor,
+        )
+        if str(status or "").strip().lower() != "ok":
+            raise RuntimeError(status)
+        return _clean_caption_text(text), {"runner": "builtin", "used_model": used_model}
+
+    def _workflow_template_path():
+        return os.path.join(os.path.dirname(__file__), "Workflows", "UsedForUIDoNotTouch", "Krea2_API_2Pass_Lora_Train_Sample.json")
+
+    def _resolve_comfy_image_path(info):
+        filename = os.path.basename(str(info.get("filename", "") or ""))
+        subfolder = str(info.get("subfolder", "") or "").strip().replace("\\", os.sep).replace("/", os.sep)
+        image_type = str(info.get("type", "output") or "output").lower()
+        if not filename:
+            return ""
+        if image_type == "temp" and hasattr(folder_paths, "get_temp_directory"):
+            base_dir = folder_paths.get_temp_directory()
+        elif image_type == "input":
+            base_dir = folder_paths.get_input_directory()
+        else:
+            base_dir = folder_paths.get_output_directory()
+        return os.path.normpath(os.path.join(base_dir, subfolder, filename))
+
+    def _make_xyz(samples, destination):
+        readable = []
+        for sample in samples:
+            path = _norm_path(sample.get("path", ""))
+            if os.path.isfile(path):
+                image = cv2.imread(path, cv2.IMREAD_COLOR)
+                if image is not None:
+                    readable.append((sample, image))
+        if not readable:
+            raise ValueError("No sample images were found for the XYZ plot.")
+
+        thumb_w = 360
+        thumb_h = 360
+        label_h = 42
+        cols = max(1, int(math.ceil(math.sqrt(len(readable)))))
+        rows = int(math.ceil(len(readable) / cols))
+        grid = np.full((rows * (thumb_h + label_h), cols * thumb_w, 3), (22, 24, 28), dtype=np.uint8)
+
+        for index, (sample, image) in enumerate(readable):
+            row = index // cols
+            col = index % cols
+            h, w = image.shape[:2]
+            scale = min(thumb_w / max(1, w), thumb_h / max(1, h))
+            resized = cv2.resize(image, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+            y0 = row * (thumb_h + label_h)
+            x0 = col * thumb_w
+            grid[y0:y0 + label_h, x0:x0 + thumb_w] = (31, 34, 42)
+            label = f"Step {int(sample.get('step', 0) or 0)}"
+            cv2.putText(grid, label, (x0 + 14, y0 + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (238, 241, 245), 2, cv2.LINE_AA)
+            iy = y0 + label_h + (thumb_h - resized.shape[0]) // 2
+            ix = x0 + (thumb_w - resized.shape[1]) // 2
+            grid[iy:iy + resized.shape[0], ix:ix + resized.shape[1]] = resized
+
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        if not cv2.imwrite(destination, grid):
+            raise RuntimeError(f"Could not write XYZ plot: {destination}")
+        return os.path.normpath(destination)
+
+    @server_instance.routes.get("/vrgdg/krea2_studio/defaults")
+    async def vrgdg_krea2_studio_defaults(request):
+        return web.json_response({
+            "ok": True,
+            "project_root": _default_project_root(),
+            "project_name": "Krea2_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "presets": _presets(),
+            "aspect_ratios": [
+                "1:1 (Square)",
+                "3:4 (Portrait Standard)",
+                "4:3 (Landscape Standard)",
+                "9:16 (Portrait)",
+                "16:9 (Widescreen)",
+                "2:3 (Portrait)",
+                "3:2 (Landscape)",
+            ],
+            "sample_prompt": "portrait photo of the trained subject, cinematic studio lighting, detailed skin texture, clean background",
+            "caption_instructions": _default_caption_instructions(),
+            "caption_user_notes": "",
+            "caption_runner": "builtin",
+            "lmstudio_base_url": "http://127.0.0.1:1234/v1",
+        })
+
+    @server_instance.routes.get("/vrgdg/krea2_studio/llm_choices")
+    async def vrgdg_krea2_studio_llm_choices(request):
+        try:
+            try:
+                from .VRGDG_MusicVideoBuilderNodes import _gemma_choices, _llm_multi_choices
+            except Exception:
+                from VRGDG_MusicVideoBuilderNodes import _gemma_choices, _llm_multi_choices
+            gemma = _gemma_choices()
+            api_choices = _llm_multi_choices()
+            return web.json_response({"ok": True, **gemma, **api_choices})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/lm_studio_models")
+    async def vrgdg_krea2_studio_lm_studio_models(request):
+        try:
+            try:
+                from .VRGDG_MusicVideoBuilderNodes import _list_lm_studio_models
+            except Exception:
+                from VRGDG_MusicVideoBuilderNodes import _list_lm_studio_models
+            payload = await request.json()
+            result = await asyncio.to_thread(_list_lm_studio_models, payload)
+            return web.json_response({"ok": True, **result})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/cancel_captions")
+    async def vrgdg_krea2_studio_cancel_captions(request):
+        global _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED
+        _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED = True
+        return web.json_response({"ok": True, "status": "Caption cancellation requested. The current image may need to finish before it stops."})
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/clear_memory")
+    async def vrgdg_krea2_studio_clear_memory(request):
+        try:
+            try:
+                from .LLM import _clear_vrgdg_llm_caches
+            except Exception:
+                from LLM import _clear_vrgdg_llm_caches
+            result = await asyncio.to_thread(_clear_vrgdg_llm_caches, True, False)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+            return web.json_response({"ok": True, "status": "Krea Studio memory cleanup complete.", "result": result})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/create_project")
+    async def vrgdg_krea2_studio_create_project(request):
+        try:
+            payload = await request.json()
+            project_root = _norm_path(payload.get("project_root", "")) or _default_project_root()
+            project_name = _safe_name(payload.get("project_name", "Krea2Studio"))
+            project_dir = os.path.join(project_root, project_name)
+            preset_name = str(payload.get("preset_name", "Fast") or "Fast")
+            settings = _preset_settings(preset_name)
+            settings.update(payload.get("settings") or {})
+            existing_project_json = _project_paths(project_dir)["project_json"]
+            project = _read_project(project_dir) if os.path.isfile(existing_project_json) else {
+                "project_dir": project_dir,
+                "samples": [],
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            project["project_name"] = project_name
+            project["preset_name"] = preset_name
+            project["settings"] = settings
+            project["sample_prompt"] = str(payload.get("sample_prompt", "") or project.get("sample_prompt", ""))
+            project["aspect_ratio"] = str(payload.get("aspect_ratio", "") or project.get("aspect_ratio", "3:4 (Portrait Standard)"))
+            project["caption_instructions"] = str(payload.get("caption_instructions", "") or project.get("caption_instructions", _default_caption_instructions()))
+            project["caption_user_notes"] = str(payload.get("caption_user_notes", "") or project.get("caption_user_notes", ""))
+            project["caption_final_instructions"] = str(payload.get("caption_final_instructions", "") or project.get("caption_final_instructions", project["caption_instructions"]))
+            project["caption_llm_settings"] = payload.get("caption_llm_settings") or project.get("caption_llm_settings", {})
+            project.setdefault("samples", [])
+            project = _write_project(project)
+            return web.json_response({"ok": True, "project": project, "paths": _project_paths(project_dir)})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/load_project")
+    async def vrgdg_krea2_studio_load_project(request):
+        try:
+            payload = await request.json()
+            project_dir = _norm_path(payload.get("project_dir", ""))
+            if not project_dir:
+                raise ValueError("project_dir is required.")
+            paths = _project_paths(project_dir)
+            if not os.path.isfile(paths["project_json"]):
+                raise FileNotFoundError(f"project.json was not found in: {project_dir}")
+            project = _read_project(project_dir)
+            return web.json_response({"ok": True, "project": project, "paths": paths})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/list_projects")
+    async def vrgdg_krea2_studio_list_projects(request):
+        try:
+            payload = await request.json()
+            project_root = _norm_path(payload.get("project_root", "")) or _default_project_root()
+            projects = []
+            if os.path.isdir(project_root):
+                for entry in os.scandir(project_root):
+                    if not entry.is_dir():
+                        continue
+                    project_json = os.path.join(entry.path, "project.json")
+                    if not os.path.isfile(project_json):
+                        continue
+                    try:
+                        with open(project_json, "r", encoding="utf-8") as handle:
+                            data = json.load(handle)
+                    except Exception:
+                        data = {}
+                    projects.append({
+                        "project_name": str(data.get("project_name") or os.path.basename(entry.path)),
+                        "project_dir": os.path.normpath(entry.path),
+                        "updated_at": str(data.get("updated_at") or data.get("created_at") or ""),
+                        "completed_steps": int(data.get("completed_steps") or 0),
+                        "total_target_steps": int(data.get("total_target_steps") or data.get("settings", {}).get("total_target_steps") or 0),
+                    })
+            projects.sort(key=lambda item: item.get("updated_at") or item.get("project_name") or "", reverse=True)
+            return web.json_response({"ok": True, "project_root": project_root, "projects": projects})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/save_project")
+    async def vrgdg_krea2_studio_save_project(request):
+        try:
+            payload = await request.json()
+            project = _read_project(payload.get("project_dir", ""))
+            for key in ("preset_name", "settings", "sample_prompt", "aspect_ratio", "custom_presets", "caption_instructions", "caption_user_notes", "caption_final_instructions", "caption_llm_settings"):
+                if key in payload:
+                    project[key] = payload[key]
+            project = _write_project(project)
+            return web.json_response({"ok": True, "project": project})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/import_files")
+    async def vrgdg_krea2_studio_import_files(request):
+        try:
+            reader = await request.multipart()
+            project_dir = ""
+            uploads = []
+            saved = []
+            async for part in reader:
+                if part.name == "project_dir":
+                    project_dir = _norm_path(await part.text())
+                    continue
+                if not part.filename:
+                    continue
+                filename = _safe_name(part.filename, "file")
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in image_exts and ext not in caption_exts:
+                    continue
+                data = await part.read(decode=False)
+                uploads.append({
+                    "original_name": filename,
+                    "original_stem": os.path.splitext(filename)[0].lower(),
+                    "ext": ext,
+                    "type": "caption" if ext in caption_exts else "image",
+                    "data": data,
+                })
+            if not project_dir:
+                raise ValueError("project_dir is required.")
+            paths = _project_paths(project_dir)
+            os.makedirs(paths["images_dir"], exist_ok=True)
+            project = _read_project(project_dir)
+
+            next_index = 1
+            for filename in os.listdir(paths["images_dir"]) if os.path.isdir(paths["images_dir"]) else []:
+                match = re.match(r"image_(\d+)\.", filename, flags=re.IGNORECASE)
+                if match:
+                    next_index = max(next_index, int(match.group(1)) + 1)
+
+            images = [item for item in uploads if item["type"] == "image"]
+            captions = [item for item in uploads if item["type"] == "caption"]
+            captions_by_stem = {}
+            for caption in captions:
+                captions_by_stem.setdefault(caption["original_stem"], []).append(caption)
+
+            manifest = {"imports": []}
+            if os.path.isfile(paths["import_manifest"]):
+                try:
+                    with open(paths["import_manifest"], "r", encoding="utf-8") as handle:
+                        manifest = json.load(handle)
+                    manifest.setdefault("imports", [])
+                except Exception:
+                    manifest = {"imports": []}
+
+            import_batch = {
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+                "entries": [],
+                "orphan_captions": [],
+            }
+            used_caption_ids = set()
+            for image in images:
+                new_base = f"image_{next_index:03d}"
+                next_index += 1
+                image_target = os.path.join(paths["images_dir"], new_base + image["ext"])
+                _copy_file_like(image["data"], image_target)
+                image_record = {
+                    "name": os.path.basename(image_target),
+                    "path": os.path.normpath(image_target),
+                    "type": "image",
+                    "original_name": image["original_name"],
+                }
+                saved.append(image_record)
+
+                caption_record = None
+                matched_caption = None
+                stem_captions = captions_by_stem.get(image["original_stem"], [])
+                while stem_captions and id(stem_captions[0]) in used_caption_ids:
+                    stem_captions.pop(0)
+                if stem_captions:
+                    matched_caption = stem_captions.pop(0)
+                    used_caption_ids.add(id(matched_caption))
+                    caption_target = os.path.join(paths["images_dir"], new_base + ".txt")
+                    _copy_file_like(matched_caption["data"], caption_target)
+                    caption_record = {
+                        "name": os.path.basename(caption_target),
+                        "path": os.path.normpath(caption_target),
+                        "type": "caption",
+                        "original_name": matched_caption["original_name"],
+                    }
+                    saved.append(caption_record)
+
+                import_batch["entries"].append({
+                    "new_stem": new_base,
+                    "image": image_record,
+                    "caption": caption_record,
+                })
+
+            for caption in captions:
+                if id(caption) in used_caption_ids:
+                    continue
+                import_batch["orphan_captions"].append({
+                    "original_name": caption["original_name"],
+                    "reason": "No image with the same original filename stem was included in this import.",
+                })
+
+            manifest["imports"].append(import_batch)
+            with open(paths["import_manifest"], "w", encoding="utf-8") as handle:
+                json.dump(manifest, handle, indent=2)
+
+            imported = project.setdefault("imported_files", [])
+            imported.extend(saved)
+            project["import_manifest_path"] = os.path.normpath(paths["import_manifest"])
+            project = _write_project(project)
+            return web.json_response({"ok": True, "saved": saved, "project": project, "manifest": import_batch})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/generate_captions_placeholder")
+    async def vrgdg_krea2_studio_generate_captions_placeholder(request):
+        global _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED
+        try:
+            _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED = False
+            payload = await request.json()
+            project = _read_project(payload.get("project_dir", ""))
+            paths = _project_paths(project["project_dir"])
+            instructions = str(payload.get("caption_final_instructions") or project.get("caption_final_instructions") or project.get("caption_instructions") or "").strip()
+            if not instructions:
+                raise ValueError("Caption instructions are empty.")
+            created = []
+            skipped = []
+            for filename in sorted(os.listdir(paths["images_dir"])):
+                if _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED:
+                    break
+                ext = os.path.splitext(filename)[1].lower()
+                if ext not in image_exts:
+                    continue
+                image_path = os.path.join(paths["images_dir"], filename)
+                caption_path = os.path.join(paths["images_dir"], os.path.splitext(filename)[0] + ".txt")
+                if os.path.isfile(caption_path):
+                    skipped.append(os.path.basename(caption_path))
+                    continue
+                caption, info = await asyncio.to_thread(_run_caption_llm, payload, image_path, instructions)
+                if not caption:
+                    raise RuntimeError(f"LLM returned an empty caption for {filename}.")
+                with open(caption_path, "w", encoding="utf-8") as handle:
+                    handle.write(caption + "\n")
+                created.append({"image": filename, "caption_file": os.path.basename(caption_path), "caption": caption, **info})
+            cancelled = bool(_VRGDG_KREA2_CAPTION_CANCEL_REQUESTED)
+            _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED = False
+            project["caption_generation"] = {
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "created": created,
+                "skipped_existing": skipped,
+                "runner": str(payload.get("caption_runner") or payload.get("text_runner") or "builtin"),
+                "cancelled": cancelled,
+            }
+            project = _write_project(project)
+            status = f"Created {len(created)} caption file(s). Skipped {len(skipped)} existing caption(s)."
+            if cancelled:
+                status = "Caption generation stopped. " + status
+            return web.json_response({"ok": True, "status": status, "created": created, "skipped": skipped, "cancelled": cancelled, "project": project})
+        except Exception as exc:
+            _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED = False
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/train_chunk")
+    async def vrgdg_krea2_studio_train_chunk(request):
+        try:
+            payload = await request.json()
+            project = _read_project(payload.get("project_dir", ""))
+            if "settings" in payload:
+                project["settings"] = payload["settings"]
+            if "sample_prompt" in payload:
+                project["sample_prompt"] = payload["sample_prompt"]
+            if "aspect_ratio" in payload:
+                project["aspect_ratio"] = payload["aspect_ratio"]
+            project = _write_project(project)
+            settings = project.get("settings") or _preset_settings(project.get("preset_name", "Fast"))
+            paths = _project_paths(project["project_dir"])
+            run_name = _safe_name(project.get("project_name", "Krea2Studio"))
+            acquired = _VRGDG_KREA2_STUDIO_TRAIN_LOCK.acquire(blocking=False)
+            if not acquired:
+                return web.json_response({"ok": False, "error": "A Krea 2 Studio training chunk is already running."}, status=409)
+            try:
+                trainer = VRGDG_Krea2LoraTrainChunk()
+                result = await asyncio.to_thread(
+                    trainer.run,
+                    paths["images_dir"],
+                    paths["workspace_dir"],
+                    run_name,
+                    run_name,
+                    int(settings.get("resolution_width", 1920)),
+                    int(settings.get("resolution_height", 1080)),
+                    int(settings.get("steps_per_run", 250)),
+                    int(settings.get("total_target_steps", 500)),
+                    int(settings.get("network_dim", 32)),
+                    int(settings.get("network_alpha", 32)),
+                    int(settings.get("blocks_to_swap", 0)),
+                    bool(settings.get("clear_memory_before_text_encoder", True)),
+                    str(settings.get("learning_rate_preset", "1e-4")),
+                    float(settings.get("learning_rate", 0.0001)),
+                    int(settings.get("num_repeats", 1)),
+                    str(settings.get("cache_strategy", "auto")),
+                    bool(settings.get("copy_latest_to_comfy_loras", False)),
+                    bool(settings.get("create_captions", False)),
+                    str(settings.get("caption_text", "")),
+                    bool(settings.get("add_trigger_word", False)),
+                    str(settings.get("trigger_text", "")),
+                    str(settings.get("musubi_root", "")),
+                    str(settings.get("krea2_raw_dit", "")),
+                    str(settings.get("vae", "")),
+                    str(settings.get("text_encoder", "")),
+                    bool(settings.get("fp8_base", True)),
+                    bool(settings.get("fp8_scaled", True)),
+                    str(settings.get("timestep_sampling", "shift")),
+                    float(settings.get("discrete_flow_shift", 2.5)),
+                )
+            finally:
+                if acquired:
+                    _VRGDG_KREA2_STUDIO_TRAIN_LOCK.release()
+
+            latest_lora_path, latest_state_path, log_path, output_name, completed_steps, total_target_steps = result
+            project["latest_lora_path"] = latest_lora_path
+            project["latest_state_path"] = latest_state_path
+            project["latest_log_path"] = log_path
+            project["output_name"] = output_name
+            project["completed_steps"] = completed_steps
+            project["total_target_steps"] = total_target_steps
+            project = _write_project(project)
+            return web.json_response({"ok": True, "project": project, "result": {
+                "latest_lora_path": latest_lora_path,
+                "latest_state_path": latest_state_path,
+                "log_path": log_path,
+                "output_name": output_name,
+                "completed_steps": completed_steps,
+                "total_target_steps": total_target_steps,
+            }})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/build_sample_prompt")
+    async def vrgdg_krea2_studio_build_sample_prompt(request):
+        try:
+            payload = await request.json()
+            project = _read_project(payload.get("project_dir", ""))
+            lora_path = _norm_path(payload.get("lora_path", "") or project.get("latest_lora_path", ""))
+            if not lora_path:
+                raise ValueError("No LoRA path is available for sampling.")
+            template_path = _workflow_template_path()
+            with open(template_path, "r", encoding="utf-8") as handle:
+                workflow = json.load(handle)
+            aspect_ratio = str(payload.get("aspect_ratio", "") or project.get("aspect_ratio", "") or "3:4 (Portrait Standard)")
+            prompt_text = str(payload.get("sample_prompt", "") or project.get("sample_prompt", "") or "")
+            workflow["49"]["inputs"]["aspect_ratio"] = aspect_ratio
+            workflow["238"]["inputs"]["aspect_ratio"] = aspect_ratio
+            workflow["228"]["inputs"]["text"] = prompt_text
+            workflow["250"]["inputs"]["lora_path"] = lora_path
+            workflow["250"]["inputs"]["strength_model"] = float(payload.get("strength_model", 1.0) or 1.0)
+            return web.json_response({"ok": True, "prompt": workflow})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/save_sample")
+    async def vrgdg_krea2_studio_save_sample(request):
+        try:
+            payload = await request.json()
+            project = _read_project(payload.get("project_dir", ""))
+            paths = _project_paths(project["project_dir"])
+            source = _resolve_comfy_image_path(payload.get("image") or {})
+            if not source or not os.path.isfile(source):
+                raise FileNotFoundError(f"Could not find generated sample image: {source}")
+            step = int(payload.get("step", project.get("completed_steps", 0)) or 0)
+            stem = _safe_name(project.get("project_name", "Krea2Studio"))
+            ext = os.path.splitext(source)[1].lower() or ".png"
+            target = os.path.join(paths["samples_dir"], f"{stem}_step_{step:06d}{ext}")
+            shutil.copy2(source, target)
+            sample = {
+                "step": step,
+                "path": os.path.normpath(target),
+                "source": os.path.normpath(source),
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            samples = project.setdefault("samples", [])
+            samples.append(sample)
+            samples.sort(key=lambda item: int(item.get("step", 0) or 0))
+            project = _write_project(project)
+            return web.json_response({"ok": True, "sample": sample, "project": project})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/create_xyz")
+    async def vrgdg_krea2_studio_create_xyz(request):
+        try:
+            payload = await request.json()
+            project = _read_project(payload.get("project_dir", ""))
+            paths = _project_paths(project["project_dir"])
+            destination = os.path.join(paths["xyz_dir"], _safe_name(project.get("project_name", "Krea2Studio")) + "_steps_xyz.png")
+            xyz_path = await asyncio.to_thread(_make_xyz, project.get("samples", []), destination)
+            project["xyz_plot_path"] = xyz_path
+            project = _write_project(project)
+            return web.json_response({"ok": True, "xyz_path": xyz_path, "project": project})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.get("/vrgdg/krea2_studio/file")
+    async def vrgdg_krea2_studio_file(request):
+        path = _norm_path(request.query.get("path", ""))
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in image_exts or not os.path.isfile(path):
+            return web.Response(status=404, text="Not found")
+        return web.FileResponse(path)
+
+    _VRGDG_KREA2_STUDIO_ROUTE_REGISTERED = True
 
 
 class VRGDG_LTXLoraTrainChunk:
@@ -5655,7 +6735,7 @@ class VRGDG_Krea2LoraTrainChunk(VRGDG_ZImageLoraTrainChunk):
                 }),
                 "musubi_root": ("STRING", {
                     "default": "A:/MUSUBI/musubi-tuner-ltx2", "multiline": False,
-                    "tooltip": "Root folder of your musubi-tuner install with the Krea 2 backport applied."
+                    "tooltip": "Root folder of a native Krea 2-capable musubi-tuner install."
                 }),
                 "krea2_raw_dit": ("STRING", {
                     "default": "A:/MUSUBI/models/krea2/raw.safetensors", "multiline": False,
@@ -5679,7 +6759,7 @@ class VRGDG_Krea2LoraTrainChunk(VRGDG_ZImageLoraTrainChunk):
                 }),
                 "timestep_sampling": (["shift", "qwen_shift", "flux_shift"], {
                     "default": "shift",
-                    "tooltip": "Krea 2 docs recommend shift with discrete_flow_shift=2.5 for 1024px. qwen_shift/flux_shift are available in this backported tuner; krea2_shift is not exposed by the older shared parser."
+                    "tooltip": "Krea 2 docs recommend shift with discrete_flow_shift=2.5 for 1024px."
                 }),
                 "discrete_flow_shift": ("FLOAT", {
                     "default": 2.5, "min": 0.0, "max": 10.0, "step": 0.1,
@@ -6782,6 +7862,115 @@ class VRGDG_MusubiTunerInstaller:
         )
 
 
+class VRGDG_Krea2MusubiInstaller:
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = (
+        "install_root",
+        "status",
+        "raw_dit_path",
+        "turbo_dit_path",
+        "vae_path",
+        "text_encoder_path",
+        "models_root",
+        "report_path",
+    )
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/Training"
+    DESCRIPTION = (
+        "Installs a native Krea 2-ready Musubi-Tuner and can download the Krea 2 training model assets."
+    )
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "target_root": ("STRING", {
+                    "default": "A:/MUSUBI",
+                    "multiline": False,
+                    "tooltip": "Parent folder where the Krea 2-ready Musubi install should be created or found."
+                }),
+                "models_root": ("STRING", {
+                    "default": "A:/MUSUBI/models",
+                    "multiline": False,
+                    "tooltip": "Folder where Krea 2 RAW/Turbo, Qwen-Image VAE, and Qwen3-VL files should be downloaded."
+                }),
+            },
+            "hidden": {
+                "install_root": ("STRING", {"default": "", "multiline": False}),
+                "raw_dit_path": ("STRING", {"default": "", "multiline": False}),
+                "turbo_dit_path": ("STRING", {"default": "", "multiline": False}),
+                "vae_path": ("STRING", {"default": "", "multiline": False}),
+                "text_encoder_path": ("STRING", {"default": "", "multiline": False}),
+                "report_path": ("STRING", {"default": "", "multiline": False}),
+                "status_text": ("STRING", {"default": "", "multiline": False}),
+            }
+        }
+
+    @staticmethod
+    def _norm(path):
+        text = str(path or "").strip()
+        return os.path.normpath(text) if text else ""
+
+    def run(
+        self,
+        target_root,
+        models_root,
+        install_root="",
+        raw_dit_path="",
+        turbo_dit_path="",
+        vae_path="",
+        text_encoder_path="",
+        report_path="",
+        status_text="",
+    ):
+        target_root = self._norm(target_root)
+        models_root = self._norm(models_root) or os.path.join(target_root, "models")
+        status = "Use the buttons to install Krea 2 Musubi, download Krea 2 model assets, or do both."
+        return (
+            self._norm(install_root) or target_root,
+            str(status_text or "").strip() or status,
+            self._norm(raw_dit_path),
+            self._norm(turbo_dit_path),
+            self._norm(vae_path),
+            self._norm(text_encoder_path),
+            models_root,
+            self._norm(report_path),
+        )
+
+
+class VRGDG_Krea2LoraStudio:
+    RETURN_TYPES = ("STRING", "STRING")
+    RETURN_NAMES = ("project_root", "project_name")
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/Training"
+    DESCRIPTION = "Opens the VRGDG Krea 2 LoRA Studio UI for preset-based chunk training, sampling, and comparison grids."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "project_root": ("STRING", {
+                    "default": "A:/MUSUBI/Training/Krea2Studio",
+                    "multiline": False,
+                    "tooltip": "Parent folder where Krea 2 Studio projects should be created."
+                }),
+                "project_name": ("STRING", {
+                    "default": "Krea2Studio",
+                    "multiline": False,
+                    "tooltip": "Name for the training session folder created by the UI."
+                }),
+            }
+        }
+
+    @staticmethod
+    def _norm(path):
+        text = str(path or "").strip()
+        return os.path.normpath(text) if text else ""
+
+    def run(self, project_root, project_name):
+        return (self._norm(project_root), str(project_name or "").strip() or "Krea2Studio")
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXLoraTrainChunk": VRGDG_LTXLoraTrainChunk,
     "VRGDG_LTXAudioVideoLoraTrainChunk": VRGDG_LTXAudioVideoLoraTrainChunk,
@@ -6793,6 +7982,8 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXPreviewXYZPlot": VRGDG_LTXPreviewXYZPlot,
     "VRGDG_VideoFolderGridPlot": VRGDG_VideoFolderGridPlot,
     "VRGDG_MusubiTunerInstaller": VRGDG_MusubiTunerInstaller,
+    "VRGDG_Krea2MusubiInstaller": VRGDG_Krea2MusubiInstaller,
+    "VRGDG_Krea2LoraStudio": VRGDG_Krea2LoraStudio,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -6806,6 +7997,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_LTXPreviewXYZPlot": "VRGDG LTX Preview XYZ Plot",
     "VRGDG_VideoFolderGridPlot": "VRGDG Video Folder Grid Plot",
     "VRGDG_MusubiTunerInstaller": "VRGDG Musubi-Tuner Installer",
+    "VRGDG_Krea2MusubiInstaller": "VRGDG Krea 2 Musubi Installer",
+    "VRGDG_Krea2LoraStudio": "VRGDG Krea 2 LoRA Studio",
 }
 
 try:
@@ -6817,3 +8010,13 @@ try:
     _ensure_musubi_install_route_registered()
 except Exception as exc:
     print(f"[VRGDG] Failed to register Musubi installer route: {exc}")
+
+try:
+    _ensure_krea2_install_route_registered()
+except Exception as exc:
+    print(f"[VRGDG] Failed to register Krea 2 installer route: {exc}")
+
+try:
+    _ensure_krea2_lora_studio_route_registered()
+except Exception as exc:
+    print(f"[VRGDG] Failed to register Krea 2 LoRA Studio route: {exc}")
