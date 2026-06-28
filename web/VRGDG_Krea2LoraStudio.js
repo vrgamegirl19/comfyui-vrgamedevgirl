@@ -682,6 +682,18 @@ function extractImagesFromHistory(historyPayload, promptId) {
   return images;
 }
 
+function extractTextFromHistory(historyPayload, promptId) {
+  const item = historyPayload?.[promptId] || historyPayload;
+  const outputs = item?.outputs || {};
+  const values = [];
+  for (const output of Object.values(outputs)) {
+    const text = output?.text ?? output?.ui?.text;
+    if (Array.isArray(text)) values.push(...text);
+    else if (text != null) values.push(text);
+  }
+  return values.flat(Infinity).map((value) => String(value ?? "")).filter((value) => value.trim());
+}
+
 async function queuePrompt(prompt) {
   const response = await api.fetchApi("/prompt", {
     method: "POST",
@@ -703,6 +715,19 @@ async function waitForImageOutput(promptId, onStatus) {
     if (images.length) return images;
   }
   throw new Error("Timed out waiting for the sample image.");
+}
+
+async function waitForTextOutput(promptId, onStatus) {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    onStatus?.(`Waiting for clear-memory workflow... ${attempt + 1}s`);
+    const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
+    const history = await response.json();
+    if (!response.ok) throw new Error(`History request failed: ${response.status}`);
+    const text = extractTextFromHistory(history, promptId);
+    if (text.length) return text;
+  }
+  throw new Error("Timed out waiting for the clear-memory workflow result.");
 }
 
 class Krea2Studio {
@@ -1567,7 +1592,7 @@ class Krea2Studio {
         try {
           await api.fetchApi("/interrupt", { method: "POST" }).catch(() => null);
           await jsonFetch("/vrgdg/krea2_studio/cancel_captions", {});
-          await this.clearCaptionMemory(false);
+          await this.clearCaptionMemory(false, (message) => progress.set(message));
           progress.set("Stop request sent. If Gemma is inside one long model call, it may finish that current image before the backend returns.");
         } catch (error) {
           progress.set(`Stop request hit an error:\n${error.message || error}`);
@@ -1576,8 +1601,8 @@ class Krea2Studio {
       progress.onClear(async () => {
         progress.set("Clearing VRGDG Gemma/GGUF caches and CUDA memory...");
         try {
-          await this.clearCaptionMemory(false);
-          progress.set("Memory cleanup request finished.");
+          await this.clearCaptionMemory(false, (message) => progress.set(message));
+          progress.set("Clear-memory workflow and direct cleanup finished.");
         } catch (error) {
           progress.set(`Memory cleanup failed:\n${error.message || error}`);
         }
@@ -1615,13 +1640,34 @@ class Krea2Studio {
     }
   }
 
-  async clearCaptionMemory(updateStatus = true) {
-    const data = await jsonFetch("/vrgdg/krea2_studio/clear_memory", {});
+  async clearCaptionMemory(updateStatus = true, onStatus = null) {
     if (updateStatus) {
-      this.status = data.status || "Memory cleanup complete.";
+      this.status = "Building clear-memory workflow...";
       this.render();
     }
-    return data;
+    onStatus?.("Building clear-memory workflow...");
+    const built = await jsonFetch("/vrgdg/krea2_studio/build_clear_memory_prompt", {});
+    onStatus?.("Queueing clear-memory workflow...");
+    const promptId = await queuePrompt(built.prompt);
+    if (!promptId) throw new Error("ComfyUI queued the clear-memory workflow but did not return a prompt_id.");
+    if (updateStatus) {
+      this.status = `Clear-memory workflow queued: ${promptId}`;
+      this.render();
+    }
+    const text = await waitForTextOutput(promptId, (message) => {
+      onStatus?.(`${message}\nPrompt ID: ${promptId}`);
+      if (updateStatus) {
+        this.status = message;
+        this.render();
+      }
+    });
+    onStatus?.(`Clear-memory workflow finished.\n${text.join("\n\n")}\n\nRunning direct cleanup fallback...`);
+    const data = await jsonFetch("/vrgdg/krea2_studio/clear_memory", {});
+    if (updateStatus) {
+      this.status = `Clear-memory workflow finished. ${data.status || "Direct cleanup complete."}`;
+      this.render();
+    }
+    return { ...data, prompt_id: promptId, workflow_text: text };
   }
 
   async loadLmStudioModels() {
@@ -1681,8 +1727,8 @@ class Krea2Studio {
       progress.onClear(async () => {
         progress.set("Clearing VRGDG Gemma/GGUF caches and CUDA memory...");
         try {
-          await this.clearCaptionMemory(false);
-          progress.set("Memory cleanup request finished. Training subprocesses may keep their own memory until the current chunk exits.");
+          await this.clearCaptionMemory(false, (message) => progress.set(message));
+          progress.set("Clear-memory workflow and direct cleanup finished. Training subprocesses may keep their own memory until the current chunk exits.");
         } catch (error) {
           progress.set(`Memory cleanup failed:\n${error.message || error}`);
         }

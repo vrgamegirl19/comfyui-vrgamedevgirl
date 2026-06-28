@@ -1362,6 +1362,9 @@ def _ensure_krea2_lora_studio_route_registered():
     def _workflow_template_path():
         return os.path.join(os.path.dirname(__file__), "Workflows", "UsedForUIDoNotTouch", "Krea2_API_2Pass_Lora_Train_Sample.json")
 
+    def _clear_memory_workflow_template_path():
+        return os.path.join(os.path.dirname(__file__), "Workflows", "UsedForUIDoNotTouch", "ClearMemory_API.json")
+
     def _resolve_comfy_image_path(info):
         filename = os.path.basename(str(info.get("filename", "") or ""))
         subfolder = str(info.get("subfolder", "") or "").strip().replace("\\", os.sep).replace("/", os.sep)
@@ -1500,6 +1503,16 @@ def _ensure_krea2_lora_studio_route_registered():
                 torch.cuda.empty_cache()
                 torch.cuda.ipc_collect()
             return web.json_response({"ok": True, "status": "Krea Studio memory cleanup complete.", "result": result})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/build_clear_memory_prompt")
+    async def vrgdg_krea2_studio_build_clear_memory_prompt(request):
+        try:
+            workflow_path = _clear_memory_workflow_template_path()
+            with open(workflow_path, "r", encoding="utf-8") as handle:
+                prompt = json.load(handle)
+            return web.json_response({"ok": True, "workflow_path": workflow_path, "prompt": prompt})
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
 
