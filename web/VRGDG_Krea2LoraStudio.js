@@ -711,6 +711,15 @@ async function waitForImageOutput(promptId, onStatus) {
     onStatus?.(`Sampling... ${Math.floor((attempt + 1) * 1.5)}s`);
     const response = await api.fetchApi(`/history/${promptId}`);
     const history = await response.json();
+    if (!response.ok) throw new Error(`History request failed: ${response.status}`);
+    const item = history?.[promptId];
+    const status = item?.status || {};
+    const statusText = String(status.status_str || status.status || "").toLowerCase();
+    if (statusText.includes("error")) {
+      const messages = Array.isArray(status.messages) ? status.messages : [];
+      const lastMessage = messages.length ? JSON.stringify(messages[messages.length - 1]) : "";
+      throw new Error(`Sample workflow failed.${lastMessage ? ` ${lastMessage}` : ""}`);
+    }
     const images = extractImagesFromHistory(history, promptId);
     if (images.length) return images;
   }
@@ -1670,6 +1679,22 @@ class Krea2Studio {
     return { ...data, prompt_id: promptId, workflow_text: text };
   }
 
+  async cleanupMemoryAfterSample(progress = null) {
+    const message = "Clearing Krea sample workflow memory before the next training chunk...";
+    this.status = message;
+    progress?.set(message);
+    this.render();
+    try {
+      await this.clearCaptionMemory(false, (status) => progress?.set(status));
+      this.status = "Krea sample workflow memory cleared.";
+      progress?.set("Krea sample workflow memory cleared.");
+    } catch (error) {
+      this.status = `Memory cleanup warning: ${error.message || error}`;
+      progress?.set(`Memory cleanup warning:\n${error.message || error}\n\nContinuing, but the next chunk may run slower if sample models stayed loaded.`);
+    }
+    this.render();
+  }
+
   async loadLmStudioModels() {
     try {
       this.collectForm();
@@ -1759,7 +1784,11 @@ class Krea2Studio {
         this.status = `Chunk finished at step ${data.result.completed_steps}. Sampling...`;
         progress.set(`Chunk finished at step ${data.result.completed_steps}/${data.result.total_target_steps}.\nGenerating sample image...`);
         this.render();
-        await this.sampleLatest(data.result.latest_lora_path, data.result.completed_steps, progress);
+        try {
+          await this.sampleLatest(data.result.latest_lora_path, data.result.completed_steps, progress);
+        } finally {
+          await this.cleanupMemoryAfterSample(progress);
+        }
 
         const newCompleted = Number(this.project?.completed_steps || data.result.completed_steps || 0);
         const newTarget = Number(this.project?.total_target_steps || this.settings.total_target_steps || 0);
