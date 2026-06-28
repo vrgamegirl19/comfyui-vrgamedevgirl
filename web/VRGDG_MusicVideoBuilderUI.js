@@ -3441,6 +3441,10 @@ function openBuilder(node) {
     };
   }
 
+  function llmApiVisionModelSelected() {
+    return Boolean(String(state.llmApiModel || "").trim());
+  }
+
   function defaultNBImageSettings() {
     return {
       api_key: "",
@@ -3452,7 +3456,7 @@ function openBuilder(node) {
 
   function gemmaRunnerLabel(options = {}) {
     if (options.forceBuiltin) return options.vision ? "Built-in GGUF vision" : "Built-in GGUF";
-    if (state.textGemmaRunner === "llm_api") return options.vision ? "Built-in GGUF vision" : "LLM API";
+    if (state.textGemmaRunner === "llm_api") return options.vision ? "API LLM vision" : "LLM API";
     if (options.vision) return state.textGemmaRunner === "lm_studio" ? "LM Studio vision" : "Built-in GGUF vision";
     return state.textGemmaRunner === "lm_studio" ? "LM Studio" : "Gemma Local";
   }
@@ -20840,6 +20844,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         : "Hey, you need a scene image first. Save/load an image, or turn off image reference to create I2V from the T2I prompt instead.", true);
       return;
     }
+    if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+      toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
+      return;
+    }
     if ((isT2V || isRTV || isIngredients || !useImageReference) && !conceptPrompt) {
       toast(isT2V || isRTV || isIngredients
         ? "Hey, you need a T2I/concept prompt first so Gemma has scene content to turn into a text-to-video prompt."
@@ -20939,6 +20947,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (useImageReference && !imageReference.path && !imageReference.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
+    if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM API vision needs a vision-capable API model selected. Open LLM Runner and choose an API model that supports images.`);
+    }
     if ((isT2V || isRTV || isIngredients || !useImageReference) && !t2iText) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I/concept prompt is missing.`);
     }
@@ -21001,6 +21012,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
+      }
+      if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+        missing.push(`${sceneDisplayName(segment, index)}: LLM API vision needs a vision-capable API model selected in LLM Runner.`);
       }
       if ((isRTV || isIngredients) && !sceneConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running ${runnerName}.`);
@@ -26023,7 +26037,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the text LLM runner. Vision/image-reference steps still use the built-in GGUF vision runner for now.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">LLM Runner</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the LLM runner for prompt writing. Image-reference video prompts can use LM Studio vision or a vision-capable LLM API model.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
     const runner = makeSelect(["builtin", "lm_studio", "llm_api"], state.textGemmaRunner || "builtin");
@@ -26047,7 +26061,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     apiPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const apiNote = document.createElement("div");
     apiNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    apiNote.textContent = "API key is session-only. It is not saved with the project and may need to be pasted again after refresh or restart. LLM API is used for text-only prompt generation; vision/image-reference steps still use Local LLM or LM Studio.";
+    apiNote.textContent = "API key is session-only. It is not saved with the project and may need to be pasted again after refresh or restart. For image-reference Video Prep, choose an API model that supports vision/images.";
     const apiProvider = makeSelect(["openai"], state.llmApiProvider || "openai");
     const apiModel = makeSelect([""], state.llmApiModel || "");
     const llmApiKey = makeInput(state.llmApiKey || "", "password");

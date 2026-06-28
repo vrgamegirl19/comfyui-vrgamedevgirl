@@ -2489,6 +2489,52 @@ def _run_llm_api_text(payload, instruction_text):
     }
 
 
+def _run_llm_api_vision(payload, instruction_text, pil_images):
+    try:
+        from .LLM import VRGDG_LLM_Multi
+    except Exception as exc:
+        raise RuntimeError(f"Could not load LLM API runner: {exc}") from exc
+    provider = str(payload.get("llm_api_provider") or payload.get("provider") or "openai").strip().lower()
+    model = str(payload.get("llm_api_model") or payload.get("model") or "").strip()
+    api_key = str(payload.get("llm_api_key") or payload.get("api_key") or "").strip()
+    custom_model = str(payload.get("llm_api_custom_model") or payload.get("custom_model") or "").strip()
+    if not api_key:
+        raise ValueError("LLM API key is missing. Open LLM Runner and paste your API key.")
+    if not provider:
+        raise ValueError("LLM API provider is missing.")
+    if not (model or custom_model):
+        raise ValueError("LLM API vision model is missing. Open LLM Runner and select a vision-capable API model before running Video All with image reference.")
+    if provider in {"deepseek", "apifreellm"}:
+        raise ValueError(f"{provider} is not configured for image/vision input here. Choose a vision-capable LLM API provider/model, or use LM Studio/Gemma Local vision.")
+    images = list(pil_images or [])
+    if not images:
+        raise ValueError("LLM API vision needs at least one image reference.")
+    runner = VRGDG_LLM_Multi()
+    image_tensors = [runner._pil_to_tensor(image.convert("RGB")) for image in images[:4]]
+    kwargs = {
+        "api_key": api_key,
+        "provider": provider,
+        "model": model,
+        "prompt": str(instruction_text or ""),
+        "custom_model": custom_model,
+    }
+    for index, tensor in enumerate(image_tensors, start=1):
+        kwargs[f"image{index}"] = tensor
+    text, used_provider, used_model, status, _image = runner.generate_text(**kwargs)
+    status = str(status or "").strip()
+    if status.lower().startswith("error"):
+        raise RuntimeError(status)
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("LLM API vision returned empty text.")
+    return text, {
+        "runner": "llm_api_vision",
+        "used_provider": used_provider or provider,
+        "used_model": used_model or model or custom_model,
+        "unloaded": False,
+    }
+
+
 def _pil_image_to_data_url(image, max_height=512, quality=88):
     if image is None:
         raise ValueError("LM Studio vision image is missing.")
@@ -3738,9 +3784,9 @@ def _generate_builder_i2v_prompt(payload):
     location_context = str(payload.get("location_context", "") or "").strip()
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     text_runner = _llm_runner_from_payload(payload)
-    if not model_file and text_runner != "lm_studio":
+    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose an I2V Gemma model first.")
-    if model_file and text_runner != "lm_studio" and not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
         raise ValueError("The I2V model field is not a GGUF model.")
 
     image = None
@@ -3753,7 +3799,7 @@ def _generate_builder_i2v_prompt(payload):
         image = Image.open(image_path).convert("RGB")
         has_image_reference = True
 
-    if has_image_reference and text_runner != "lm_studio" and not model_file:
+    if has_image_reference and text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose an I2V vision Gemma model first.")
     if not has_image_reference and not t2i_prompt:
         raise ValueError("Create or paste a T2I prompt first, or save/load an image reference.")
@@ -3777,7 +3823,7 @@ def _generate_builder_i2v_prompt(payload):
         if context_parts:
             user_notes = "\n\n".join(context_parts + ([f"Segment motion notes:\n{user_notes}"] if user_notes else []))
 
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_image_reference and llm else ""
     if has_image_reference:
@@ -3804,7 +3850,13 @@ def _generate_builder_i2v_prompt(payload):
     seed = payload.get("seed")
 
     try:
-        if has_image_reference and text_runner == "lm_studio":
+        if has_image_reference and text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(
+                payload,
+                prompt,
+                [image],
+            )
+        elif has_image_reference and text_runner == "lm_studio":
             text = _run_lm_studio_vision(
                 payload,
                 prompt,
@@ -3818,6 +3870,15 @@ def _generate_builder_i2v_prompt(payload):
                 "used_model": str(payload.get("lmstudio_model") or "").strip(),
                 "unloaded": False,
             }
+        elif text_runner in {"lm_studio", "llm_api"}:
+            text, run_info = _run_builder_text_llm(
+                payload,
+                prompt,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                label="I2V LLM",
+            )
         else:
             model = llm._load_gguf_model(
                 model_path=model_path,
@@ -3877,9 +3938,9 @@ def _generate_builder_t2v_prompt(payload):
     location_context = str(payload.get("location_context", "") or "").strip()
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     text_runner = _llm_runner_from_payload(payload)
-    if not model_file and text_runner != "lm_studio":
+    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a T2V Gemma model first.")
-    if model_file and text_runner != "lm_studio" and not model_file.lower().endswith(".gguf"):
+    if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
         raise ValueError("The T2V model field is not a GGUF model.")
     if not scene_prompt:
         raise ValueError("Create or paste a T2I/concept prompt first.")
@@ -3893,7 +3954,7 @@ def _generate_builder_t2v_prompt(payload):
         image_path = _resolve_existing_file(image_reference_path, "T2V Gemma image reference")
         image = Image.open(image_path).convert("RGB")
         has_image_reference = True
-    if has_image_reference and text_runner != "lm_studio" and not model_file:
+    if has_image_reference and text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a T2V vision Gemma model first.")
     if has_image_reference:
         max_height = 512
@@ -3933,7 +3994,7 @@ def _generate_builder_t2v_prompt(payload):
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference and text_runner != "lm_studio" else None
+    llm = VRGDG_SuperGemmaGGUFChat() if has_image_reference and text_runner not in {"lm_studio", "llm_api"} else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -3946,7 +4007,13 @@ def _generate_builder_t2v_prompt(payload):
     unload_after = bool(payload.get("unload_after", True))
 
     try:
-        if has_image_reference and text_runner == "lm_studio":
+        if has_image_reference and text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(
+                payload,
+                prompt,
+                [image],
+            )
+        elif has_image_reference and text_runner == "lm_studio":
             text = _run_lm_studio_vision(
                 payload,
                 prompt,
