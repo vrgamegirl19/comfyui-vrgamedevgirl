@@ -271,6 +271,13 @@ function addStyles() {
     .vrgdg-krea2-details summary::-webkit-details-marker {
       display: none;
     }
+    .vrgdg-krea2-caption-editor {
+      margin-top: 12px;
+      display: grid;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(148, 163, 184, 0.12);
+    }
     .vrgdg-krea2-top {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -637,6 +644,7 @@ function settingHints() {
 }
 
 function settingLabel(key) {
+  if (key === "aspect_ratio") return "sample aspect ratio";
   return key.replaceAll("_", " ");
 }
 
@@ -720,6 +728,8 @@ class Krea2Studio {
     this.llmApiProvider = "openai";
     this.llmApiModel = "";
     this.llmApiKey = "";
+    this.aspectRatio = "";
+    this.samplePrompt = "";
     this.captionInstructions = "";
     this.captionUserNotes = "";
     this.captionOverwrite = false;
@@ -735,6 +745,8 @@ class Krea2Studio {
     this.settings = cloneData(this.defaults.presets.Fast);
     this.captionRunner = this.defaults.caption_runner || "builtin";
     this.lmStudioBaseUrl = this.defaults.lmstudio_base_url || this.lmStudioBaseUrl;
+    this.aspectRatio = "3:4 (Portrait Standard)";
+    this.samplePrompt = this.defaults.sample_prompt || "";
     this.captionInstructions = this.defaults.caption_instructions || "";
     this.captionUserNotes = "";
     await this.refreshLlmChoices();
@@ -772,8 +784,8 @@ class Krea2Studio {
 
     const projectRoot = getWidget(this.node, "project_root")?.value || this.defaults.project_root;
     const projectName = getWidget(this.node, "project_name")?.value || this.defaults.project_name;
-    const samplePrompt = this.project?.sample_prompt || this.defaults.sample_prompt || "";
-    const aspectRatio = this.project?.aspect_ratio || "3:4 (Portrait Standard)";
+    const samplePrompt = this.samplePrompt || this.project?.sample_prompt || this.defaults.sample_prompt || "";
+    const aspectRatio = this.aspectRatio || this.project?.aspect_ratio || "3:4 (Portrait Standard)";
     const captionInstructions = this.captionInstructions || this.project?.caption_instructions || this.defaults.caption_instructions || "";
     const captionUserNotes = this.captionUserNotes || this.project?.caption_user_notes || this.defaults.caption_user_notes || "";
     this.applyProjectCaptionSettings();
@@ -877,19 +889,16 @@ class Krea2Studio {
                     <input data-bind="caption_overwrite" type="checkbox" ${this.captionOverwrite ? "checked" : ""}>
                     <span>Overwrite existing captions</span>
                   </label>
-                  <details class="vrgdg-krea2-details">
-                    <summary><button class="vrgdg-krea2-btn vrgdg-krea2-full-button">Caption Instructions</button></summary>
-                    <div style="margin-top:10px;">
-                      <div class="vrgdg-krea2-field">
-                        <label>Base LLM instructions</label>
-                        <textarea data-bind="caption_instructions">${esc(captionInstructions)}</textarea>
-                      </div>
-                      <div class="vrgdg-krea2-field">
-                        <label>User notes / global tags appended at the end</label>
-                        <textarea data-bind="caption_user_notes">${esc(captionUserNotes)}</textarea>
-                      </div>
+                  <div class="vrgdg-krea2-caption-editor">
+                    <div class="vrgdg-krea2-field">
+                      <label>Caption instructions</label>
+                      <textarea data-bind="caption_instructions">${esc(captionInstructions)}</textarea>
                     </div>
-                  </details>
+                    <div class="vrgdg-krea2-field">
+                      <label>User input / global tags appended at the end</label>
+                      <textarea data-bind="caption_user_notes">${esc(captionUserNotes)}</textarea>
+                    </div>
+                  </div>
                 </div>
                 <div class="vrgdg-krea2-step">
                   <h3>4. Train</h3>
@@ -1095,6 +1104,8 @@ class Krea2Studio {
     this.lmStudioApiKey = settings.lmstudio_api_key || this.lmStudioApiKey || "";
     this.llmApiProvider = settings.llm_api_provider || this.llmApiProvider || "openai";
     this.llmApiModel = settings.llm_api_model || this.llmApiModel || "";
+    this.aspectRatio = this.project?.aspect_ratio || this.aspectRatio || "3:4 (Portrait Standard)";
+    this.samplePrompt = this.project?.sample_prompt || this.samplePrompt || this.defaults?.sample_prompt || "";
     this.captionInstructions = this.project?.caption_instructions || this.captionInstructions || this.defaults?.caption_instructions || "";
     this.captionUserNotes = this.project?.caption_user_notes || this.captionUserNotes || "";
   }
@@ -1196,6 +1207,7 @@ class Krea2Studio {
 
     for (const input of this.overlay.querySelectorAll("[data-bind]")) {
       input.addEventListener("input", () => {
+        if (input.dataset.bind === "sample_prompt") this.samplePrompt = input.value;
         if (input.dataset.bind === "caption_instructions") this.captionInstructions = input.value;
         if (input.dataset.bind === "caption_user_notes") this.captionUserNotes = input.value;
       });
@@ -1231,6 +1243,10 @@ class Krea2Studio {
     }
     const captionInstructions = this.overlay?.querySelector('[data-bind="caption_instructions"]')?.value ?? this.captionInstructions ?? "";
     const captionUserNotes = this.overlay?.querySelector('[data-bind="caption_user_notes"]')?.value ?? this.captionUserNotes ?? "";
+    const aspectRatio = this.overlay?.querySelector('[data-bind="aspect_ratio"]')?.value ?? this.aspectRatio ?? "3:4 (Portrait Standard)";
+    const samplePrompt = this.overlay?.querySelector('[data-bind="sample_prompt"]')?.value ?? this.samplePrompt ?? "";
+    this.aspectRatio = aspectRatio;
+    this.samplePrompt = samplePrompt;
     this.captionInstructions = captionInstructions;
     this.captionUserNotes = captionUserNotes;
     this.captionRunner = this.overlay?.querySelector('[data-bind="caption_runner"]')?.value || this.captionRunner || "builtin";
@@ -1246,8 +1262,8 @@ class Krea2Studio {
     return {
       project_root: this.overlay?.querySelector('[data-bind="project_root"]')?.value || getWidget(this.node, "project_root")?.value || this.defaults?.project_root || "",
       project_name: this.overlay?.querySelector('[data-bind="project_name"]')?.value || getWidget(this.node, "project_name")?.value || this.defaults?.project_name || "",
-      aspect_ratio: this.overlay?.querySelector('[data-bind="aspect_ratio"]')?.value || "3:4 (Portrait Standard)",
-      sample_prompt: this.overlay?.querySelector('[data-bind="sample_prompt"]')?.value || "",
+      aspect_ratio: aspectRatio,
+      sample_prompt: samplePrompt,
       caption_instructions: captionInstructions,
       caption_user_notes: captionUserNotes,
       caption_final_instructions: this.finalCaptionInstructions(captionInstructions, captionUserNotes),
@@ -1349,6 +1365,8 @@ class Krea2Studio {
     this.project = data.project;
     this.currentPreset = this.project.preset_name || this.currentPreset || "Fast";
     this.settings = cloneData(this.project.settings || this.defaults.presets[this.currentPreset] || this.defaults.presets.Fast);
+    this.aspectRatio = this.project.aspect_ratio || "3:4 (Portrait Standard)";
+    this.samplePrompt = this.project.sample_prompt || this.defaults.sample_prompt || "";
     this.captionInstructions = this.project.caption_instructions || this.defaults.caption_instructions || "";
     this.captionUserNotes = this.project.caption_user_notes || "";
     this.__captionSettingsAppliedFor = "";
