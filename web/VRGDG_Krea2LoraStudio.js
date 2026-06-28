@@ -720,6 +720,9 @@ class Krea2Studio {
     this.llmApiProvider = "openai";
     this.llmApiModel = "";
     this.llmApiKey = "";
+    this.captionInstructions = "";
+    this.captionUserNotes = "";
+    this.captionOverwrite = false;
     this.projectList = [];
     this.overlay = null;
   }
@@ -732,6 +735,8 @@ class Krea2Studio {
     this.settings = cloneData(this.defaults.presets.Fast);
     this.captionRunner = this.defaults.caption_runner || "builtin";
     this.lmStudioBaseUrl = this.defaults.lmstudio_base_url || this.lmStudioBaseUrl;
+    this.captionInstructions = this.defaults.caption_instructions || "";
+    this.captionUserNotes = "";
     await this.refreshLlmChoices();
     this.render();
   }
@@ -769,8 +774,8 @@ class Krea2Studio {
     const projectName = getWidget(this.node, "project_name")?.value || this.defaults.project_name;
     const samplePrompt = this.project?.sample_prompt || this.defaults.sample_prompt || "";
     const aspectRatio = this.project?.aspect_ratio || "3:4 (Portrait Standard)";
-    const captionInstructions = this.project?.caption_instructions || this.defaults.caption_instructions || "";
-    const captionUserNotes = this.project?.caption_user_notes || this.defaults.caption_user_notes || "";
+    const captionInstructions = this.captionInstructions || this.project?.caption_instructions || this.defaults.caption_instructions || "";
+    const captionUserNotes = this.captionUserNotes || this.project?.caption_user_notes || this.defaults.caption_user_notes || "";
     this.applyProjectCaptionSettings();
     const completed = Number(this.project?.completed_steps || 0);
     const target = Number(this.project?.total_target_steps || this.settings.total_target_steps || 0);
@@ -868,6 +873,10 @@ class Krea2Studio {
                     <button class="vrgdg-krea2-btn primary" data-action="captionPlaceholder">Generate Missing Captions</button>
                     <button class="vrgdg-krea2-btn" data-action="clearCaptionMemory">Clear Memory</button>
                   </div>
+                  <label class="vrgdg-krea2-check" style="margin-top:10px;" title="When enabled, existing image_###.txt caption files are replaced using the current instructions.">
+                    <input data-bind="caption_overwrite" type="checkbox" ${this.captionOverwrite ? "checked" : ""}>
+                    <span>Overwrite existing captions</span>
+                  </label>
                   <details class="vrgdg-krea2-details">
                     <summary><button class="vrgdg-krea2-btn vrgdg-krea2-full-button">Caption Instructions</button></summary>
                     <div style="margin-top:10px;">
@@ -1086,6 +1095,8 @@ class Krea2Studio {
     this.lmStudioApiKey = settings.lmstudio_api_key || this.lmStudioApiKey || "";
     this.llmApiProvider = settings.llm_api_provider || this.llmApiProvider || "openai";
     this.llmApiModel = settings.llm_api_model || this.llmApiModel || "";
+    this.captionInstructions = this.project?.caption_instructions || this.captionInstructions || this.defaults?.caption_instructions || "";
+    this.captionUserNotes = this.project?.caption_user_notes || this.captionUserNotes || "";
   }
 
   captionLlmSettings() {
@@ -1179,8 +1190,15 @@ class Krea2Studio {
       this.collectForm();
       this.render();
     });
+    this.overlay.querySelector('[data-bind="caption_overwrite"]')?.addEventListener("change", (event) => {
+      this.captionOverwrite = Boolean(event.target.checked);
+    });
 
     for (const input of this.overlay.querySelectorAll("[data-bind]")) {
+      input.addEventListener("input", () => {
+        if (input.dataset.bind === "caption_instructions") this.captionInstructions = input.value;
+        if (input.dataset.bind === "caption_user_notes") this.captionUserNotes = input.value;
+      });
       input.addEventListener("change", () => {
         this.collectForm();
         if (input.dataset.bind === "caption_runner" || input.dataset.bind === "llm_api_provider") this.render();
@@ -1211,9 +1229,12 @@ class Krea2Studio {
       if (value === "false") value = false;
       this.settings[key] = coerceByExisting(value, current);
     }
-    const captionInstructions = this.overlay?.querySelector('[data-bind="caption_instructions"]')?.value || "";
-    const captionUserNotes = this.overlay?.querySelector('[data-bind="caption_user_notes"]')?.value || "";
+    const captionInstructions = this.overlay?.querySelector('[data-bind="caption_instructions"]')?.value ?? this.captionInstructions ?? "";
+    const captionUserNotes = this.overlay?.querySelector('[data-bind="caption_user_notes"]')?.value ?? this.captionUserNotes ?? "";
+    this.captionInstructions = captionInstructions;
+    this.captionUserNotes = captionUserNotes;
     this.captionRunner = this.overlay?.querySelector('[data-bind="caption_runner"]')?.value || this.captionRunner || "builtin";
+    this.captionOverwrite = Boolean(this.overlay?.querySelector('[data-bind="caption_overwrite"]')?.checked);
     this.captionGemmaModel = this.overlay?.querySelector('[data-bind="caption_gemma_model"]')?.value || this.captionGemmaModel || "";
     this.captionMmprojFile = this.overlay?.querySelector('[data-bind="caption_mmproj_file"]')?.value || this.captionMmprojFile || "";
     this.lmStudioBaseUrl = this.overlay?.querySelector('[data-bind="lmstudio_base_url"]')?.value || this.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
@@ -1328,6 +1349,8 @@ class Krea2Studio {
     this.project = data.project;
     this.currentPreset = this.project.preset_name || this.currentPreset || "Fast";
     this.settings = cloneData(this.project.settings || this.defaults.presets[this.currentPreset] || this.defaults.presets.Fast);
+    this.captionInstructions = this.project.caption_instructions || this.defaults.caption_instructions || "";
+    this.captionUserNotes = this.project.caption_user_notes || "";
     this.__captionSettingsAppliedFor = "";
     this.applyProjectCaptionSettings();
     this.rememberProject(this.project);
@@ -1503,6 +1526,7 @@ class Krea2Studio {
         project_dir: this.project.project_dir,
         caption_final_instructions: form.caption_final_instructions,
         caption_runner: this.captionRunner,
+        overwrite_existing: this.captionOverwrite,
         model_file: this.captionGemmaModel,
         mmproj_file: this.captionMmprojFile,
         lmstudio_base_url: this.lmStudioBaseUrl,

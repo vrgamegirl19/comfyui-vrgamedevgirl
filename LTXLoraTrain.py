@@ -1700,6 +1700,7 @@ def _ensure_krea2_lora_studio_route_registered():
             instructions = str(payload.get("caption_final_instructions") or project.get("caption_final_instructions") or project.get("caption_instructions") or "").strip()
             if not instructions:
                 raise ValueError("Caption instructions are empty.")
+            overwrite_existing = bool(payload.get("overwrite_existing"))
             created = []
             skipped = []
             for filename in sorted(os.listdir(paths["images_dir"])):
@@ -1710,7 +1711,7 @@ def _ensure_krea2_lora_studio_route_registered():
                     continue
                 image_path = os.path.join(paths["images_dir"], filename)
                 caption_path = os.path.join(paths["images_dir"], os.path.splitext(filename)[0] + ".txt")
-                if os.path.isfile(caption_path):
+                if os.path.isfile(caption_path) and not overwrite_existing:
                     skipped.append(os.path.basename(caption_path))
                     continue
                 caption, info = await asyncio.to_thread(_run_caption_llm, payload, image_path, instructions)
@@ -1726,6 +1727,7 @@ def _ensure_krea2_lora_studio_route_registered():
                 "created": created,
                 "skipped_existing": skipped,
                 "runner": str(payload.get("caption_runner") or payload.get("text_runner") or "builtin"),
+                "overwrite_existing": overwrite_existing,
                 "cancelled": cancelled,
             }
             project = _write_project(project)
