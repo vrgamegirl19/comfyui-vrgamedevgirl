@@ -730,6 +730,8 @@ class Krea2Studio {
     this.llmApiKey = "";
     this.aspectRatio = "";
     this.samplePrompt = "";
+    this.sampleModelChoices = { diffusion_models: [], text_encoders: [], vae: [] };
+    this.sampleModelSettings = { diffusion_model: "", text_encoder: "", vae: "" };
     this.captionInstructions = "";
     this.captionUserNotes = "";
     this.captionOverwrite = false;
@@ -747,6 +749,12 @@ class Krea2Studio {
     this.lmStudioBaseUrl = this.defaults.lmstudio_base_url || this.lmStudioBaseUrl;
     this.aspectRatio = "3:4 (Portrait Standard)";
     this.samplePrompt = this.defaults.sample_prompt || "";
+    this.sampleModelChoices = this.defaults.sample_model_choices || { diffusion_models: [], text_encoders: [], vae: [] };
+    this.sampleModelSettings = {
+      diffusion_model: this.defaults.sample_model_defaults?.diffusion_model || this.sampleModelChoices.diffusion_models?.[0] || "",
+      text_encoder: this.defaults.sample_model_defaults?.text_encoder || this.sampleModelChoices.text_encoders?.[0] || "",
+      vae: this.defaults.sample_model_defaults?.vae || this.sampleModelChoices.vae?.[0] || "",
+    };
     this.captionInstructions = this.defaults.caption_instructions || "";
     this.captionUserNotes = "";
     await this.refreshLlmChoices();
@@ -788,6 +796,7 @@ class Krea2Studio {
     const aspectRatio = this.aspectRatio || this.project?.aspect_ratio || "3:4 (Portrait Standard)";
     const captionInstructions = this.captionInstructions || this.project?.caption_instructions || this.defaults.caption_instructions || "";
     const captionUserNotes = this.captionUserNotes || this.project?.caption_user_notes || this.defaults.caption_user_notes || "";
+    const sampleModels = this.sampleModelSettings || {};
     this.applyProjectCaptionSettings();
     const completed = Number(this.project?.completed_steps || 0);
     const target = Number(this.project?.total_target_steps || this.settings.total_target_steps || 0);
@@ -818,6 +827,7 @@ class Krea2Studio {
                 </div>
                 <div class="vrgdg-krea2-nav-group">
                   <div class="vrgdg-krea2-nav-label">Settings</div>
+                  <button class="vrgdg-krea2-nav-btn" data-action="scrollKreaModels"><span class="vrgdg-krea2-nav-ico">K</span><span>Krea Models</span></button>
                   <button class="vrgdg-krea2-nav-btn" data-action="toggleAdvanced"><span class="vrgdg-krea2-nav-ico">S</span><span>Training Settings</span></button>
                   <button class="vrgdg-krea2-nav-btn" data-action="clearCaptionMemory"><span class="vrgdg-krea2-nav-ico">M</span><span>Clear Memory</span></button>
                 </div>
@@ -865,8 +875,24 @@ class Krea2Studio {
                     </div>
                   </details>
                 </div>
+                <div class="vrgdg-krea2-step" data-section="krea-models">
+                  <h3>2. Krea Models</h3>
+                  <div class="vrgdg-krea2-hint" style="margin-bottom:10px;">Sample image workflow models. These do not change training checkpoints.</div>
+                  <div class="vrgdg-krea2-field">
+                    <label>Sample diffusion model</label>
+                    <select data-bind="sample_diffusion_model">${this.renderOptions(this.sampleModelChoices.diffusion_models, sampleModels.diffusion_model)}</select>
+                  </div>
+                  <div class="vrgdg-krea2-field">
+                    <label>Sample text encoder</label>
+                    <select data-bind="sample_text_encoder">${this.renderOptions(this.sampleModelChoices.text_encoders, sampleModels.text_encoder)}</select>
+                  </div>
+                  <div class="vrgdg-krea2-field">
+                    <label>Sample VAE</label>
+                    <select data-bind="sample_vae">${this.renderOptions(this.sampleModelChoices.vae, sampleModels.vae)}</select>
+                  </div>
+                </div>
                 <div class="vrgdg-krea2-step">
-                  <h3>2. Dataset</h3>
+                  <h3>3. Dataset</h3>
                   <div class="vrgdg-krea2-drop" data-dropzone>
                     <div>
                       <strong>Drop images and .txt captions here</strong>
@@ -879,7 +905,7 @@ class Krea2Studio {
                   ${this.renderImportList()}
                 </div>
                 <div class="vrgdg-krea2-step">
-                  <h3>3. Captioning</h3>
+                  <h3>4. Captioning</h3>
                   ${this.renderCaptionRunner()}
                   <div class="vrgdg-krea2-actions" style="margin-top:10px;">
                     <button class="vrgdg-krea2-btn primary" data-action="captionPlaceholder">Generate Missing Captions</button>
@@ -901,7 +927,7 @@ class Krea2Studio {
                   </div>
                 </div>
                 <div class="vrgdg-krea2-step">
-                  <h3>4. Train</h3>
+                  <h3>5. Train</h3>
                   <button class="vrgdg-krea2-btn hot vrgdg-krea2-full-button" data-action="trainChunk">${this.autoContinue ? "Start Training + Samples" : "Train One Chunk + Sample"}</button>
                   ${this.isTraining ? `<button class="vrgdg-krea2-btn vrgdg-krea2-full-button" data-action="stopTraining" style="margin-top:8px;">Stop After Current Chunk</button>` : ""}
                   <label class="vrgdg-krea2-check" style="margin-top:12px;" title="When enabled, Studio keeps training the next chunk after each sample is saved until total_target_steps is reached. Turn this off to review each LoRA before continuing.">
@@ -1025,7 +1051,8 @@ class Krea2Studio {
   }
 
   renderOptions(values, selected) {
-    const list = values?.length ? values : [""];
+    const list = values?.length ? [...values] : [""];
+    if (selected && !list.includes(selected)) list.unshift(selected);
     return list.map((value) => `<option value="${esc(value)}" ${String(value) === String(selected) ? "selected" : ""}>${esc(value || "(none found)")}</option>`).join("");
   }
 
@@ -1106,6 +1133,10 @@ class Krea2Studio {
     this.llmApiModel = settings.llm_api_model || this.llmApiModel || "";
     this.aspectRatio = this.project?.aspect_ratio || this.aspectRatio || "3:4 (Portrait Standard)";
     this.samplePrompt = this.project?.sample_prompt || this.samplePrompt || this.defaults?.sample_prompt || "";
+    this.sampleModelSettings = {
+      ...this.sampleModelSettings,
+      ...(this.project?.sample_model_settings || {}),
+    };
     this.captionInstructions = this.project?.caption_instructions || this.captionInstructions || this.defaults?.caption_instructions || "";
     this.captionUserNotes = this.project?.caption_user_notes || this.captionUserNotes || "";
   }
@@ -1138,6 +1169,9 @@ class Krea2Studio {
       button.addEventListener("click", () => this.openProjectWindow());
     }
     this.overlay.querySelector('[data-action="saveProject"]')?.addEventListener("click", () => this.saveProjectWithStatus());
+    this.overlay.querySelector('[data-action="scrollKreaModels"]')?.addEventListener("click", () => {
+      this.overlay.querySelector('[data-section="krea-models"]')?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
     for (const button of this.overlay.querySelectorAll('[data-action="toggleAdvanced"]')) {
       button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -1245,8 +1279,14 @@ class Krea2Studio {
     const captionUserNotes = this.overlay?.querySelector('[data-bind="caption_user_notes"]')?.value ?? this.captionUserNotes ?? "";
     const aspectRatio = this.overlay?.querySelector('[data-bind="aspect_ratio"]')?.value ?? this.aspectRatio ?? "3:4 (Portrait Standard)";
     const samplePrompt = this.overlay?.querySelector('[data-bind="sample_prompt"]')?.value ?? this.samplePrompt ?? "";
+    const sampleModelSettings = {
+      diffusion_model: this.overlay?.querySelector('[data-bind="sample_diffusion_model"]')?.value || this.sampleModelSettings.diffusion_model || "",
+      text_encoder: this.overlay?.querySelector('[data-bind="sample_text_encoder"]')?.value || this.sampleModelSettings.text_encoder || "",
+      vae: this.overlay?.querySelector('[data-bind="sample_vae"]')?.value || this.sampleModelSettings.vae || "",
+    };
     this.aspectRatio = aspectRatio;
     this.samplePrompt = samplePrompt;
+    this.sampleModelSettings = sampleModelSettings;
     this.captionInstructions = captionInstructions;
     this.captionUserNotes = captionUserNotes;
     this.captionRunner = this.overlay?.querySelector('[data-bind="caption_runner"]')?.value || this.captionRunner || "builtin";
@@ -1264,6 +1304,7 @@ class Krea2Studio {
       project_name: this.overlay?.querySelector('[data-bind="project_name"]')?.value || getWidget(this.node, "project_name")?.value || this.defaults?.project_name || "",
       aspect_ratio: aspectRatio,
       sample_prompt: samplePrompt,
+      sample_model_settings: sampleModelSettings,
       caption_instructions: captionInstructions,
       caption_user_notes: captionUserNotes,
       caption_final_instructions: this.finalCaptionInstructions(captionInstructions, captionUserNotes),
@@ -1289,6 +1330,7 @@ class Krea2Studio {
         settings: this.settings,
         aspect_ratio: form.aspect_ratio,
         sample_prompt: form.sample_prompt,
+        sample_model_settings: form.sample_model_settings,
         caption_instructions: form.caption_instructions,
         caption_user_notes: form.caption_user_notes,
         caption_final_instructions: form.caption_final_instructions,
@@ -1313,6 +1355,7 @@ class Krea2Studio {
       settings: this.settings,
       aspect_ratio: form.aspect_ratio,
       sample_prompt: form.sample_prompt,
+      sample_model_settings: form.sample_model_settings,
       caption_instructions: form.caption_instructions,
       caption_user_notes: form.caption_user_notes,
       caption_final_instructions: form.caption_final_instructions,
@@ -1367,6 +1410,11 @@ class Krea2Studio {
     this.settings = cloneData(this.project.settings || this.defaults.presets[this.currentPreset] || this.defaults.presets.Fast);
     this.aspectRatio = this.project.aspect_ratio || "3:4 (Portrait Standard)";
     this.samplePrompt = this.project.sample_prompt || this.defaults.sample_prompt || "";
+    this.sampleModelSettings = {
+      diffusion_model: this.project.sample_model_settings?.diffusion_model || this.defaults.sample_model_defaults?.diffusion_model || this.sampleModelChoices.diffusion_models?.[0] || "",
+      text_encoder: this.project.sample_model_settings?.text_encoder || this.defaults.sample_model_defaults?.text_encoder || this.sampleModelChoices.text_encoders?.[0] || "",
+      vae: this.project.sample_model_settings?.vae || this.defaults.sample_model_defaults?.vae || this.sampleModelChoices.vae?.[0] || "",
+    };
     this.captionInstructions = this.project.caption_instructions || this.defaults.caption_instructions || "";
     this.captionUserNotes = this.project.caption_user_notes || "";
     this.__captionSettingsAppliedFor = "";
@@ -1717,6 +1765,7 @@ class Krea2Studio {
       lora_path: loraPath,
       aspect_ratio: this.project.aspect_ratio,
       sample_prompt: this.project.sample_prompt,
+      sample_model_settings: this.project.sample_model_settings || this.sampleModelSettings,
       strength_model: 1,
     });
     if (!build?.prompt) throw new Error("The hidden sample workflow did not return a prompt to queue.");

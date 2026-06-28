@@ -1416,6 +1416,18 @@ def _ensure_krea2_lora_studio_route_registered():
 
     @server_instance.routes.get("/vrgdg/krea2_studio/defaults")
     async def vrgdg_krea2_studio_defaults(request):
+        def _choices(folder_name):
+            try:
+                values = folder_paths.get_filename_list(folder_name)
+                return [str(value) for value in values]
+            except Exception:
+                return []
+
+        sample_model_defaults = {
+            "diffusion_model": "krea2_turbo_fp8_scaled.safetensors",
+            "text_encoder": "qwen3vl_4b_fp8_scaled.safetensors",
+            "vae": "qwen_image_vae.safetensors",
+        }
         return web.json_response({
             "ok": True,
             "project_root": _default_project_root(),
@@ -1435,6 +1447,12 @@ def _ensure_krea2_lora_studio_route_registered():
             "caption_user_notes": "",
             "caption_runner": "builtin",
             "lmstudio_base_url": "http://127.0.0.1:1234/v1",
+            "sample_model_defaults": sample_model_defaults,
+            "sample_model_choices": {
+                "diffusion_models": _choices("diffusion_models"),
+                "text_encoders": _choices("text_encoders"),
+                "vae": _choices("vae"),
+            },
         })
 
     @server_instance.routes.get("/vrgdg/krea2_studio/llm_choices")
@@ -1506,6 +1524,7 @@ def _ensure_krea2_lora_studio_route_registered():
             project["settings"] = settings
             project["sample_prompt"] = str(payload.get("sample_prompt", "") or project.get("sample_prompt", ""))
             project["aspect_ratio"] = str(payload.get("aspect_ratio", "") or project.get("aspect_ratio", "3:4 (Portrait Standard)"))
+            project["sample_model_settings"] = payload.get("sample_model_settings") or project.get("sample_model_settings", {})
             project["caption_instructions"] = str(payload.get("caption_instructions", "") or project.get("caption_instructions", _default_caption_instructions()))
             project["caption_user_notes"] = str(payload.get("caption_user_notes", "") or project.get("caption_user_notes", ""))
             project["caption_final_instructions"] = str(payload.get("caption_final_instructions", "") or project.get("caption_final_instructions", project["caption_instructions"]))
@@ -1566,7 +1585,7 @@ def _ensure_krea2_lora_studio_route_registered():
         try:
             payload = await request.json()
             project = _read_project(payload.get("project_dir", ""))
-            for key in ("preset_name", "settings", "sample_prompt", "aspect_ratio", "custom_presets", "caption_instructions", "caption_user_notes", "caption_final_instructions", "caption_llm_settings"):
+            for key in ("preset_name", "settings", "sample_prompt", "aspect_ratio", "sample_model_settings", "custom_presets", "caption_instructions", "caption_user_notes", "caption_final_instructions", "caption_llm_settings"):
                 if key in payload:
                     project[key] = payload[key]
             project = _write_project(project)
@@ -1827,9 +1846,16 @@ def _ensure_krea2_lora_studio_route_registered():
                 workflow = json.load(handle)
             aspect_ratio = str(payload.get("aspect_ratio", "") or project.get("aspect_ratio", "") or "3:4 (Portrait Standard)")
             prompt_text = str(payload.get("sample_prompt", "") or project.get("sample_prompt", "") or "")
+            sample_models = payload.get("sample_model_settings") or project.get("sample_model_settings") or {}
             workflow["49"]["inputs"]["aspect_ratio"] = aspect_ratio
             workflow["238"]["inputs"]["aspect_ratio"] = aspect_ratio
             workflow["228"]["inputs"]["text"] = prompt_text
+            if sample_models.get("diffusion_model"):
+                workflow["236"]["inputs"]["unet_name"] = str(sample_models.get("diffusion_model"))
+            if sample_models.get("text_encoder"):
+                workflow["233"]["inputs"]["clip_name"] = str(sample_models.get("text_encoder"))
+            if sample_models.get("vae"):
+                workflow["234"]["inputs"]["vae_name"] = str(sample_models.get("vae"))
             workflow["250"]["inputs"]["lora_path"] = lora_path
             workflow["250"]["inputs"]["strength_model"] = float(payload.get("strength_model", 1.0) or 1.0)
             return web.json_response({"ok": True, "prompt": workflow})
