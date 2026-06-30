@@ -158,6 +158,50 @@ models/
   latent_upscale_models/
     ltx-2.3-spatial-upscaler-x2-1.1.safetensors`,
 };
+
+const builderResponsiveStyle = document.createElement("style");
+builderResponsiveStyle.textContent = `
+  .vrgdg-builder-tools-pane {
+    container-type: inline-size;
+  }
+  .vrgdg-builder-tool-row {
+    display: grid;
+    grid-template-columns: minmax(132px, max-content) minmax(150px, 1fr);
+    gap: 8px;
+    align-items: center;
+    border: 1px solid #3f3f46;
+    border-radius: 7px;
+    background: #27272a;
+    padding: 8px;
+    margin-bottom: 8px;
+    min-width: 0;
+  }
+  .vrgdg-builder-tool-row > button {
+    width: 100%;
+    min-width: 0;
+    min-height: 30px;
+    justify-content: center;
+    white-space: normal;
+  }
+  .vrgdg-builder-tool-hint {
+    min-width: 0;
+    font-size: 11px;
+    line-height: 1.25;
+    color: #a1a1aa;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+  @container (max-width: 360px) {
+    .vrgdg-builder-tool-row {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .vrgdg-builder-tool-hint {
+      padding: 0 4px 2px;
+    }
+  }
+`;
+document.head.appendChild(builderResponsiveStyle);
 const WAVEFORM_MODES = {
   small: { label: "Small wave", height: 150, gain: 1 },
   medium: { label: "Medium wave", height: 190, gain: 1.35 },
@@ -221,6 +265,8 @@ function makeButton(label, kind = "neutral") {
     font-weight: 800;
     padding: 8px 11px;
     cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.2;
   `;
   return button;
 }
@@ -277,6 +323,31 @@ function makeSelect(options = [], value = "") {
     select.append(option);
   }
   select.value = value;
+  return select;
+}
+
+const VIDEO_TYPE_OPTIONS = [
+  { value: "singing", label: "Singing (music video)" },
+  { value: "speaking", label: "Speaking (short film)" },
+  { value: "no_lip_sync", label: "No lip sync" },
+];
+
+function normalizeVideoType(value) {
+  const text = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["speaking", "short_film", "dialogue", "dialog"].includes(text)) return "speaking";
+  if (["no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"].includes(text)) return "no_lip_sync";
+  return "singing";
+}
+
+function makeVideoTypeSelect(value = "singing") {
+  const select = makeSelect([], normalizeVideoType(value));
+  for (const optionInfo of VIDEO_TYPE_OPTIONS) {
+    const option = document.createElement("option");
+    option.value = optionInfo.value;
+    option.textContent = optionInfo.label;
+    select.append(option);
+  }
+  select.value = normalizeVideoType(value);
   return select;
 }
 
@@ -1534,7 +1605,7 @@ function openBuilder(node) {
   let builderFullscreen = false;
 
   const topbar = document.createElement("div");
-  topbar.style.cssText = "position:relative;display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding:12px;border-bottom:1px solid #27272a;background:#202024;";
+  topbar.style.cssText = "position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid #27272a;background:#202024;min-width:0;";
   const audioInput = makeInput(String(getWidget(node, "audio_path")?.value || ""));
   const projectInput = makeInput(String(getWidget(node, "project_folder")?.value || ""));
   const srtInput = makeInput("");
@@ -1551,6 +1622,9 @@ function openBuilder(node) {
   const newProjectButton = makeButton("New Project");
   const saveProjectAsButton = makeButton("Save Project As");
   const saveButton = makeButton("Quick Save", "primary");
+  const videoTypeSelect = makeVideoTypeSelect("singing");
+  const videoTypeField = makeField("Video Type", videoTypeSelect);
+  videoTypeField.style.minWidth = "180px";
   const autoSaveControl = makeCheckbox("Auto save", true);
   autoSaveControl.wrapper.style.cssText += "border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:7px 10px;";
   const fullscreenButton = makeButton("Fullscreen");
@@ -1566,7 +1640,7 @@ function openBuilder(node) {
   const wizardButton = makeButton("Wizard", "primary");
   const storyboardBuilderButton = makeButton("Storyboard Builder");
   const fluxReferenceBuilderButton = makeButton("Reference Builder");
-  const lyricMapperButton = makeButton("Lyric Mapping");
+  const lyricMapperButton = makeButton("Line Mapping");
   const sendToPromptCreatorButton = makeButton("Send To Prompt Creator");
   const promptOptionsButton = makeButton("Prompt Options");
   const gemmaRunnerButton = makeButton("LLM Runner");
@@ -1591,31 +1665,67 @@ function openBuilder(node) {
     button.style.textAlign = "left";
     button.style.justifyContent = "flex-start";
   };
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, promptCreatorButton, autoLoadAllButton, importSceneNotesButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
   autoSaveControl.wrapper.style.marginTop = "4px";
   menuDropdown.append(autoSaveControl.wrapper);
   const projectActions = document.createElement("div");
-  projectActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-right:auto;";
-  projectActions.append(menuButton, saveButton);
+  projectActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
+  projectActions.append(menuButton, videoTypeField, saveButton);
   const batchActions = document.createElement("div");
-  batchActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-left:1px solid #3f3f46;border-right:1px solid #3f3f46;padding:0 10px;";
+  batchActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;border-left:1px solid #3f3f46;border-right:1px solid #3f3f46;padding:0 10px;flex:0 0 auto;";
   batchActions.style.display = "none";
   const importActions = document.createElement("div");
-  importActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
-  importActions.append(wizardButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, sendToPromptCreatorButton, gemmaRunnerButton, builderAgentButton, promptOptionsButton);
+  importActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:nowrap;min-width:0;overflow:visible;";
+  importActions.append(wizardButton, storyboardBuilderButton, fluxReferenceBuilderButton, lyricMapperButton, gemmaRunnerButton, promptOptionsButton);
+  const centerActions = document.createElement("div");
+  centerActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:center;min-width:0;overflow:visible;";
+  centerActions.append(importActions, batchActions);
   const utilityActions = document.createElement("div");
-  utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
+  utilityActions.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:nowrap;min-width:max-content;";
   utilityActions.append(stopWorkflowButton, downloadModelsButton, clearMemoryButton, fullscreenButton, closeButton);
-  topbar.append(projectActions, importActions, batchActions, utilityActions, menuDropdown);
+  topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
   const main = document.createElement("div");
   main.style.cssText = "display:grid;grid-template-columns:260px 7px minmax(0,1fr) 7px 360px;min-height:0;";
   const segmentList = document.createElement("div");
-  segmentList.style.cssText = "overflow:auto;padding:10px;border-right:1px solid #27272a;background:#202024;";
+  segmentList.style.cssText = "display:flex;flex-direction:column;min-height:0;border-right:1px solid #27272a;background:#202024;";
   segmentList.style.gridColumn = "1";
+  const leftTabBar = document.createElement("div");
+  leftTabBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 8px 0;background:#202024;flex:0 0 auto;";
+  const scenesTabButton = makeButton("Scenes");
+  const toolsTabButton = makeButton("Tools");
+  scenesTabButton.title = "Show the vertical scene list.";
+  toolsTabButton.title = "Show project tools and prompt handoff actions.";
+  const sceneListPane = document.createElement("div");
+  sceneListPane.style.cssText = "overflow:auto;padding:10px;min-height:0;flex:1 1 auto;";
+  const toolsPane = document.createElement("div");
+  toolsPane.style.cssText = "display:none;overflow:auto;padding:10px;min-height:0;flex:1 1 auto;";
+  toolsPane.className = "vrgdg-builder-tools-pane";
+  const toolIntro = document.createElement("div");
+  toolIntro.textContent = "Project tools";
+  toolIntro.style.cssText = "font-size:12px;font-weight:900;color:#cffafe;margin:2px 0 8px;";
+  const makeToolRow = (button, hint) => {
+    const row = document.createElement("div");
+    row.className = "vrgdg-builder-tool-row";
+    const note = document.createElement("div");
+    note.textContent = hint;
+    note.className = "vrgdg-builder-tool-hint";
+    row.append(button, note);
+    return row;
+  };
+  toolsPane.append(
+    toolIntro,
+    makeToolRow(promptCreatorButton, "Open Prompt Creator to build source text, SRT timing, concept prompts, and context files."),
+    makeToolRow(sendToPromptCreatorButton, "Send this Video Builder timeline back into Prompt Creator as an editable draft."),
+    makeToolRow(autoLoadAllButton, "Import the latest Prompt Creator outputs into this project, including timing and prompt data."),
+    makeToolRow(importSceneNotesButton, "Load a scene-notes JSON file and map its notes onto the current scenes."),
+    makeToolRow(builderAgentButton, "Open Builder Agent for scene help, prompt edits, image references, and project guidance.")
+  );
+  leftTabBar.append(scenesTabButton, toolsTabButton);
+  segmentList.append(leftTabBar, sceneListPane, toolsPane);
   const leftResizeHandle = document.createElement("div");
   leftResizeHandle.title = "Drag to resize scene list";
   leftResizeHandle.style.cssText = "cursor:col-resize;background:#18181b;border-left:1px solid #27272a;border-right:1px solid #27272a;";
@@ -1999,6 +2109,14 @@ function openBuilder(node) {
   nbGlobalIngredientDrop.style.cssText = fluxGlobalIngredientDrop.style.cssText;
   const nbGlobalIngredientList = document.createElement("div");
   nbGlobalIngredientList.style.cssText = fluxGlobalIngredientList.style.cssText;
+  const editImagePromptButtons = [];
+  function makeEditImagePromptButton() {
+    const button = makeButton("Edit Prompt");
+    button.title = "Ask Gemma to make a focused edit to the current image prompt.";
+    button.style.display = "none";
+    editImagePromptButtons.push(button);
+    return button;
+  }
   const nbGlobalIngredientActions = document.createElement("div");
   nbGlobalIngredientActions.style.cssText = fluxGlobalIngredientActions.style.cssText;
   const nbGlobalIngredientButton = makeButton("Upload Global References", "primary");
@@ -2059,6 +2177,7 @@ function openBuilder(node) {
   fluxGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   fluxGrid.append(makeField("Width", fluxWidth), makeField("Height", fluxHeight), makeField("Seed", fluxSeed));
   const createFluxPromptButton = makeButton("Gemma Flux Prompt", "primary");
+  const editFluxPromptButton = makeEditImagePromptButton();
   const previewFluxButton = makeButton("Create with Flux/Klein", "primary");
   const sendFluxPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const nbImagePanel = document.createElement("div");
@@ -2088,6 +2207,7 @@ function openBuilder(node) {
   const nbIngredientClearButton = makeButton("Clear References");
   nbIngredientActions.append(nbIngredientButton, nbIngredientClearButton);
   const createNBPromptButton = makeButton("Gemma NB Prompt", "primary");
+  const editNBPromptButton = makeEditImagePromptButton();
   const previewNBButton = makeButton("Create with NanoBanana", "primary");
   const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
@@ -2200,10 +2320,10 @@ function openBuilder(node) {
   i2vNotesInput.placeholder = "Extra video motion notes, camera movement, character movement...";
   i2vNotesInput.style.cssText = notesInput.style.cssText;
   const lyricTextInput = document.createElement("textarea");
-  lyricTextInput.placeholder = "Lyrics/vocals for this scene. Used by Gemma to help lip sync...";
+  lyricTextInput.placeholder = "Lyric, dialogue, or timing line for this scene...";
   lyricTextInput.style.cssText = notesInput.style.cssText;
   const lyricSingersInput = makeInput("");
-  lyricSingersInput.placeholder = "Optional singer names, comma separated...";
+  lyricSingersInput.placeholder = "Optional performer/speaker names, comma separated...";
   const t2iTextGemmaModelSelect = makeSelect([""], "");
   const gemmaModelSelect = makeSelect([""], "");
   const mmprojSelect = makeSelect([""], "");
@@ -2242,6 +2362,7 @@ function openBuilder(node) {
   const refImageLoadButton = makeButton("Load Reference Image", "primary");
   refImagePanel.append(refImageNote, refImageDrop, refImageLoadButton, refImageInput);
   const createT2IButton = makeButton("Gemma T2I", "primary");
+  const editT2IPromptButton = makeEditImagePromptButton();
   const createI2VButton = makeButton("Gemma I2V", "primary");
   const sendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const t2iPrompt = document.createElement("textarea");
@@ -2292,9 +2413,14 @@ function openBuilder(node) {
   const t2vRefImageLoadButton = makeButton("Load Reference Image", "primary");
   t2vRefImagePanel.append(t2vRefImageNote, t2vRefImageDrop, t2vRefImageLoadButton);
   const ernieCreateT2IButton = makeButton("Gemma T2I", "primary");
+  const editErnieT2IPromptButton = makeEditImagePromptButton();
   const ernieSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const krea2TwoPassCreateT2IButton = makeButton("Gemma T2I", "primary");
+  const editKrea2TwoPassT2IPromptButton = makeEditImagePromptButton();
   const krea2TwoPassSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
+  const editI2VPromptButton = makeButton("Edit Prompt");
+  editI2VPromptButton.title = "Ask Gemma to make a focused text-only edit to the current video prompt.";
+  editI2VPromptButton.style.display = "none";
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
@@ -2563,6 +2689,7 @@ function openBuilder(node) {
     useVisionReference.wrapper,
     refImagePanel,
     createT2IButton,
+    editT2IPromptButton,
     makeField("T2I prompt", t2iPrompt),
     sendT2IPromptToEnhanceButton,
     makeZCreateButton(),
@@ -2618,6 +2745,7 @@ function openBuilder(node) {
         ernieUseVisionReference.wrapper,
         ernieRefImagePanel,
         ernieCreateT2IButton,
+        editErnieT2IPromptButton,
         makeField("T2I prompt", ernieT2IPrompt),
         ernieSendT2IPromptToEnhanceButton,
         makeErnieCreateButton(),
@@ -2665,6 +2793,7 @@ function openBuilder(node) {
         krea2TwoPassUseVisionReference.wrapper,
         krea2TwoPassRefImagePanel,
         krea2TwoPassCreateT2IButton,
+        editKrea2TwoPassT2IPromptButton,
         makeField("T2I prompt", krea2TwoPassT2IPrompt),
         krea2TwoPassSendT2IPromptToEnhanceButton,
         makeKrea2TwoPassCreateButton(),
@@ -2710,6 +2839,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         makeField("Flux/Klein notes", fluxNotes),
         createFluxPromptButton,
+        editFluxPromptButton,
         makeField("Flux/Klein prompt", fluxPrompt),
         sendFluxPromptToEnhanceButton,
         makeFluxCreateButton(),
@@ -2756,6 +2886,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         makeField("NanoBanana notes", nbNotes),
         createNBPromptButton,
+        editNBPromptButton,
         makeField("NanoBanana prompt", nbPrompt),
         sendNBPromptToEnhanceButton,
         previewNBButton,
@@ -2880,8 +3011,8 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         useI2VPromptEnhancementPass.wrapper,
         i2vPromptEnhancementNote,
-        makeField("Lyrics / vocal line", lyricTextInput),
-        makeField("Singer(s)", lyricSingersInput),
+        makeField("Line / lyric / dialogue", lyricTextInput),
+        makeField("Performer(s) / speaker(s)", lyricSingersInput),
         makeField("Video motion notes", i2vNotesInput),
         useI2VVisionReference.wrapper,
         i2vReferenceNote,
@@ -2890,6 +3021,7 @@ function openBuilder(node) {
         t2vLocationNote,
         t2vRefImagePanel,
         createI2VButton,
+        editI2VPromptButton,
         makeField("Video prompt", i2vPrompt),
         makeCreateSceneVideoButton(),
       ]),
@@ -2920,7 +3052,7 @@ function openBuilder(node) {
   const bulkSegmentsButton = makeButton("Bulk Segments");
   const sceneNoteButton = makeButton("+ Scene Note");
   const videoNoteButton = makeButton("+ Video Note");
-  const lyricNoteButton = makeButton("+ Lyric Note");
+  const lyricNoteButton = makeButton("+ Line Note");
   const setInButton = makeButton("Set In");
   const setOutButton = makeButton("Set Out");
   const clearRangeButton = makeButton("Clear Range");
@@ -2940,7 +3072,7 @@ function openBuilder(node) {
   bulkSegmentsButton.title = "Create many manual timeline scenes from pasted durations or start/end times.";
   sceneNoteButton.title = "Show editable note boxes under each base scene in the timeline.";
   videoNoteButton.title = "Show editable video motion/action notes under each base scene in the timeline.";
-  lyricNoteButton.title = "Show editable lyric/vocal line boxes under each base scene in the timeline.";
+  lyricNoteButton.title = "Show editable line/lyric/dialogue boxes under each base scene in the timeline.";
   setInButton.title = "Set the selected timeline range start at the playhead.";
   setOutButton.title = "Set the selected timeline range end at the playhead.";
   clearRangeButton.title = "Clear the selected timeline range.";
@@ -3270,6 +3402,7 @@ function openBuilder(node) {
     multiSelectMode: false,
     selectedSegmentIds: [],
     inspectorTab: "scene",
+    leftPanelTab: "scenes",
     pxPerSecond: 45,
     timelineZoom: 45,
     selectedTimelineRange: { in: null, out: null },
@@ -3315,6 +3448,7 @@ function openBuilder(node) {
     llmApiChoices: null,
     customModelsRoot: "",
     notificationSettings: defaultNotificationSettings(),
+    videoType: "singing",
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
@@ -3345,6 +3479,38 @@ function openBuilder(node) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+
+  function syncLeftPanelTabs() {
+    const active = state.leftPanelTab === "tools" ? "tools" : "scenes";
+    state.leftPanelTab = active;
+    const styleTab = (button, selected) => {
+      button.style.background = selected ? "#0e7490" : "#18181b";
+      button.style.borderColor = selected ? "#22d3ee" : "#3f3f46";
+      button.style.color = selected ? "#ecfeff" : "#fafafa";
+      button.style.fontWeight = "900";
+    };
+    styleTab(scenesTabButton, active === "scenes");
+    styleTab(toolsTabButton, active === "tools");
+    sceneListPane.style.display = active === "scenes" ? "block" : "none";
+    toolsPane.style.display = active === "tools" ? "block" : "none";
+  }
+
+  scenesTabButton.onclick = () => {
+    state.leftPanelTab = "scenes";
+    syncLeftPanelTabs();
+    autoSaveSessionQuiet("left panel scenes tab").catch(() => null);
+  };
+  toolsTabButton.onclick = () => {
+    state.leftPanelTab = "tools";
+    syncLeftPanelTabs();
+    autoSaveSessionQuiet("left panel tools tab").catch(() => null);
+  };
+  syncLeftPanelTabs();
+
+  function syncVideoTypeControl() {
+    state.videoType = normalizeVideoType(state.videoType);
+    videoTypeSelect.value = state.videoType;
+  }
   const LAST_PROJECT_KEY = "vrgdg_music_builder_last_project_folder";
 
   let notificationAudioContext = null;
@@ -3504,10 +3670,11 @@ function openBuilder(node) {
     }
     const modelFile = referenceDescriptionVisionModel();
     const mmprojFile = referenceDescriptionMmproj();
-    if (!modelFile || !mmprojFile) {
+    if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
       throw new Error("Choose a Gemma vision model and Vision mmproj first.");
     }
     const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
+      ...textGemmaRunnerPayload(),
       model_file: modelFile,
       mmproj_file: mmprojFile,
       reference_type: referenceType === "subject" ? (target?.reference_type || "character") : referenceType,
@@ -4440,6 +4607,7 @@ function openBuilder(node) {
       state.llmApiModel = defaults.llm_api_model || defaults.llmApiModel || state.llmApiModel || "";
     }
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
+    state.videoType = normalizeVideoType(defaults.video_type || defaults.videoType || state.videoType);
     if (defaults.zimage_settings || defaults.zimageSettings) {
       state.zimageSettings = cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings);
     }
@@ -4474,6 +4642,7 @@ function openBuilder(node) {
     syncKrea2TwoPassPanel();
     syncNBImagePanel();
     syncZEnhanceSettingsPanel();
+    syncVideoTypeControl();
     syncI2VVideoSettingsPanel();
     syncVideoModePanel();
     return true;
@@ -4772,7 +4941,7 @@ function openBuilder(node) {
     lyricNoteButton.style.background = state.showTimelineLyricNotes ? "#164e63" : "#27272a";
     lyricNoteButton.style.borderColor = state.showTimelineLyricNotes ? "#0891b2" : "#3f3f46";
     lyricNoteButton.style.color = state.showTimelineLyricNotes ? "#cffafe" : "#f4f4f5";
-    lyricNoteButton.textContent = state.showTimelineLyricNotes ? "Hide Lyric Notes" : "+ Lyric Note";
+    lyricNoteButton.textContent = state.showTimelineLyricNotes ? "Hide Line Notes" : "+ Line Note";
   }
 
   function showBeatMarkersIfAvailable() {
@@ -5016,6 +5185,13 @@ function openBuilder(node) {
     return cleanPrompt;
   }
 
+  function syncConceptPromptToStoryBeat(segment, prompt) {
+    if (!segment) return "";
+    const text = String(prompt || "").trim();
+    segment.story_beat = text;
+    return text;
+  }
+
   function ensureSegmentT2IPromptHasTrigger(segment, imageMode = state.imageModelMode, fallback = "") {
     const rawPrompt = String(
       imageMode === "flux_klein"
@@ -5114,18 +5290,29 @@ function openBuilder(node) {
 
   function videoGemmaNotesForSegment(segment) {
     const notes = String(segment?.i2v_notes || "").trim();
+    const performanceMode = normalizeVideoType(state.videoType);
     const noCharacterNote = segment?.no_character_present
-      ? "Subject visibility: no main character is present in this scene. Do not include, mention, show, imply, or describe the mapped character/subject/singer. Build the shot from the location, props, environment, objects, atmosphere, and camera motion instead."
+      ? "Subject visibility: no main character is present in this scene. Do not include, mention, show, imply, or describe the mapped character/subject/performer. Build the shot from the location, props, environment, objects, atmosphere, and camera motion instead."
       : "";
     const withNoCharacterNote = (text) => [noCharacterNote, text, notes].filter(Boolean).join("\n\n");
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText);
+    if (performanceMode === "no_lip_sync") {
+      const visualOnlyNote = "Video Type: no lip sync / visual-only. Do not make any visible subject sing, speak, say dialogue, lip-sync, or move their mouth to the lyric. Use the lyric only as hidden mood/story context, and focus on visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere.";
+      return withNoCharacterNote(visualOnlyNote);
+    }
     if (lyricText && !isInstrumentalLyricText(lyricText)) {
       if (segment?.lyric_no_lip_sync) {
         const brollNote = "Vocal/performance direction: b-roll / no lip-sync. Do not make any visible subject sing or lip-sync in this shot. Use visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere instead.";
         return withNoCharacterNote(brollNote);
       }
       const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
+      if (performanceMode === "speaking") {
+        const speakingNote = singers.length
+          ? `Video Type: speaking / short film. ${singers.length > 1 ? `all listed speakers (${singers.join(", ")}) should say the dialogue line in this shot. Other visible subjects should react, watch, move, or share the moment silently unless also listed.` : `only ${singers[0]} should say the dialogue line in this shot; other visible subjects should react, watch, move, or share the moment silently unless also listed.`} Do not use singing, rapping, vocals, lyrics, or music-performance wording.`
+          : "Video Type: speaking / short film. The visible subject should say the dialogue line naturally. Do not use singing, rapping, vocals, lyrics, or music-performance wording.";
+        return withNoCharacterNote(segment?.no_character_present ? "" : speakingNote);
+      }
       const performanceNote = singers.length
         ? `Vocal/performance direction: ${singers.length > 1 ? `all listed singers (${singers.join(", ")}) must visibly sing together in this shot. Do not describe one listed singer as only listening, watching, reacting, or dancing while another listed singer sings.` : `only ${singers[0]} should visibly sing in this shot; other visible subjects should react, perform, dance, listen, or move without singing unless also listed.`} The exact lyric text will be inserted into the final prompt automatically.`
         : "Vocal/performance direction: the visible subject should perform as if singing in sync with the audio. The exact lyric text will be inserted into the final prompt automatically.";
@@ -5138,6 +5325,8 @@ function openBuilder(node) {
 
   function vocalDirectiveForSegment(segment) {
     if (segment?.no_character_present) return "";
+    const performanceMode = normalizeVideoType(state.videoType);
+    if (performanceMode === "no_lip_sync") return "";
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
     if (!lyricText) return "";
@@ -5148,9 +5337,15 @@ function openBuilder(node) {
     const performer = singers.length ? singers.join(" and ") : "the visible subject";
     const pluralPerformers = singers.length > 1 || /\b(group|duet|all visible)\b/i.test(performer);
     if (lyricText.includes("\n") || /:\s*["'“”]/.test(lyricText)) {
+      if (performanceMode === "speaking") {
+        return `${performer} ${pluralPerformers ? "say" : "says"} the exact dialogue cues naturally: ${lyricText.replace(/\s*\n\s*/g, " ")}`;
+      }
       return `${performer} ${pluralPerformers ? "perform" : "performs"} the exact vocal cues in sync with the audio: ${lyricText.replace(/\s*\n\s*/g, " ")}`;
     }
     const cleanLyric = lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
+    if (performanceMode === "speaking") {
+      return `${performer} ${pluralPerformers ? "say" : "says"} "${cleanLyric}" naturally.`;
+    }
     return `${performer} visibly ${pluralPerformers ? "sing" : "sings"} "${cleanLyric}" in sync with the audio.`;
   }
 
@@ -5160,6 +5355,8 @@ function openBuilder(node) {
 
   function vocalClauseForSegment(segment) {
     if (segment?.no_character_present) return null;
+    const performanceMode = normalizeVideoType(state.videoType);
+    if (performanceMode === "no_lip_sync") return null;
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
     if (!lyricText || isInstrumentalLyricText(lyricText) || segment?.lyric_no_lip_sync) return null;
@@ -5172,7 +5369,9 @@ function openBuilder(node) {
         performer,
         lyricText,
         cueText,
-        clause: `who ${pluralPerformers ? "perform" : "performs"} the exact vocal cues in sync with the audio: ${cueText}`,
+        clause: performanceMode === "speaking"
+          ? `who ${pluralPerformers ? "say" : "says"} the exact dialogue cues naturally: ${cueText}`
+          : `who ${pluralPerformers ? "perform" : "performs"} the exact vocal cues in sync with the audio: ${cueText}`,
       };
     }
     const cleanLyric = lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
@@ -5180,11 +5379,14 @@ function openBuilder(node) {
       performer,
       lyricText: cleanLyric,
       singleLineLyric: cleanLyric,
-      clause: `who ${pluralPerformers ? "are" : "is"} singing "${cleanLyric}" in sync with the audio`,
+      clause: performanceMode === "speaking"
+        ? `who ${pluralPerformers ? "say" : "says"} "${cleanLyric}" naturally`
+        : `who ${pluralPerformers ? "are" : "is"} singing "${cleanLyric}" in sync with the audio`,
     };
   }
 
   function applyVocalDirectiveToVideoPrompt(prompt, segment) {
+    const performanceMode = normalizeVideoType(state.videoType);
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
@@ -5221,7 +5423,9 @@ function openBuilder(node) {
         if (vocalVerb.test(base)) {
           return base.replace(vocalVerb, (match) => {
             const cleanMatch = String(match || "").toLowerCase();
-            const verb = cleanMatch.includes("lip") ? "singing" : match;
+            const verb = performanceMode === "speaking"
+              ? (/\bspeaks|says\b/i.test(cleanMatch) ? "says" : "saying")
+              : cleanMatch.includes("lip") ? "singing" : match;
             return `${verb} "${vocalClause.singleLineLyric}"`;
           });
         }
@@ -5302,7 +5506,7 @@ function openBuilder(node) {
     };
     for (const subject of logicalReferenceSubjects(refs)) {
       const subjectName = String(subject.name || "").trim();
-      add(subject.id, subjectName && subjectName !== "Character 1" ? subjectName : "the singer");
+      add(subject.id, subjectName && subjectName !== "Character 1" ? subjectName : "the performer");
     }
     if (!choices.length && (refs.subject?.description || refs.subject?.image?.path || refs.subject?.image?.data)) {
       add("subject", "Subject");
@@ -5311,9 +5515,9 @@ function openBuilder(node) {
     if (!hasReferenceSubjects) {
       add("female", "Female");
       add("male", "Male");
-      add("other", "Other singer");
+      add("other", "Other performer");
     }
-    add("group", "Group / all visible singers");
+    add("group", "Group / all visible performers");
     add("b_roll", "B-roll / no lip-sync");
     choices.hasReferenceSubjects = hasReferenceSubjects;
     return choices;
@@ -6118,6 +6322,7 @@ function openBuilder(node) {
       "notes",
       "flux_notes",
       "nb_notes",
+      "story_beat",
       "prompt_summary",
       "scene_summary",
       "image_prompt",
@@ -6255,7 +6460,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, createI2VButton, zEnhanceGemmaButton]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -6296,6 +6501,10 @@ function openBuilder(node) {
       krea2TwoPassT2IPrompt.value = "";
       nbPrompt.value = "";
       i2vPrompt.value = "";
+      editI2VPromptButton.style.display = "none";
+      editImagePromptButtons.forEach((button) => {
+        button.style.display = "none";
+      });
       useVisionReference.input.checked = false;
       ernieUseVisionReference.input.checked = false;
       krea2TwoPassUseVisionReference.input.checked = false;
@@ -6333,6 +6542,10 @@ function openBuilder(node) {
     fluxPrompt.value = segment.t2i_prompt || segment.flux_prompt || "";
     nbPrompt.value = segment.t2i_prompt || segment.nb_prompt || "";
     i2vPrompt.value = segment.i2v_prompt || "";
+    editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
+    editImagePromptButtons.forEach((button) => {
+      button.style.display = String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "").trim() ? "" : "none";
+    });
     useVisionReference.input.checked = Boolean(segment.use_vision_reference);
     ernieUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
     krea2TwoPassUseVisionReference.input.checked = Boolean(segment.use_vision_reference);
@@ -7630,6 +7843,10 @@ function openBuilder(node) {
     if (fluxPrompt.value !== editedT2IPrompt) fluxPrompt.value = editedT2IPrompt;
     if (nbPrompt.value !== editedT2IPrompt) nbPrompt.value = editedT2IPrompt;
     segment.i2v_prompt = i2vPrompt.value || "";
+    editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
+    editImagePromptButtons.forEach((button) => {
+      button.style.display = String(editedT2IPrompt || "").trim() ? "" : "none";
+    });
     segment.enhance_notes = zEnhanceGemmaNotes.value || "";
     segment.enhance_prompt = zEnhancePromptPreview.value || segment.enhance_prompt || "";
     segment.use_vision_reference = Boolean(useVisionReference.input.checked);
@@ -8051,7 +8268,7 @@ function openBuilder(node) {
     endInput.value = target.end == null ? "" : formatTime(target.end);
     const noteInput = document.createElement("textarea");
     noteInput.value = target.note || "";
-    noteInput.placeholder = "What happens here? Singer, chorus, verse, camera idea, story beat...";
+    noteInput.placeholder = "What happens here? Performer, dialogue, chorus, camera idea, story beat...";
     noteInput.style.cssText = "min-height:96px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;";
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
@@ -8302,8 +8519,8 @@ function openBuilder(node) {
       if (!isOverlay && state.showTimelineLyricNotes) {
         const lyricBox = document.createElement("textarea");
         lyricBox.value = String(segment.lyric_text || "");
-        lyricBox.placeholder = "Lyrics / vocal line...";
-        lyricBox.title = "Lyric text for this scene. Gemma uses this for lip-sync and no-vocal behavior.";
+        lyricBox.placeholder = "Line / lyric / dialogue...";
+        lyricBox.title = "Line text for this scene. Gemma uses this for singing, speaking, or visual-only behavior based on Video Type.";
         lyricBox.style.cssText = `
           position:absolute;left:${left}px;top:${timelineLyricNoteTop()}px;width:${Math.max(24, width)}px;height:${TIMELINE_NOTE_HEIGHT}px;
           box-sizing:border-box;resize:none;z-index:3;pointer-events:auto;
@@ -8330,7 +8547,7 @@ function openBuilder(node) {
           segment.lyric_text = lyricBox.value || "";
           segment.lyric_no_lip_sync = isInstrumentalLyricText(segment.lyric_text);
           if (segment.id === state.activeId) syncInspector();
-          autoSaveSessionQuiet("timeline lyric note edited");
+          autoSaveSessionQuiet("timeline line note edited");
         };
         segmentLayer.append(lyricBox);
       }
@@ -8786,7 +9003,7 @@ function openBuilder(node) {
   }
 
   function renderList() {
-    segmentList.textContent = "";
+    sceneListPane.textContent = "";
     ensureAllSegmentRuntimeFields();
     for (const [index, segment] of state.segments.entries()) {
       const row = document.createElement("div");
@@ -8797,8 +9014,10 @@ function openBuilder(node) {
       const t2iDone = Boolean(segmentImageSource(segment));
       const i2vDone = Boolean(String(segment.i2v_prompt || "").trim());
       const videoDone = Boolean(segment.video_path);
-      const historyStatus = segment.image_history.length ? `<span style="border:1px solid #67e8f9;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#bae6fd;">IMG ${segment.image_history.length}</span>` : "";
-      const videoHistoryStatus = segment.video_history.length ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#f3e8ff;">VID ${segment.video_history.length}</span>` : "";
+      const imageHistory = Array.isArray(segment?.image_history) ? segment.image_history : [];
+      const videoHistory = Array.isArray(segment?.video_history) ? segment.video_history : [];
+      const historyStatus = imageHistory.length ? `<span style="border:1px solid #67e8f9;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#bae6fd;">IMG ${imageHistory.length}</span>` : "";
+      const videoHistoryStatus = videoHistory.length ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#f3e8ff;">VID ${videoHistory.length}</span>` : "";
       const zStatus = segment.use_scene_zimage_settings ? `<span style="border:1px solid #f59e0b;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#fde68a;">Z custom</span>` : "";
       const audioStatus = segment.custom_audio_path ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#ddd6fe;">AUD</span>` : "";
       const status = `
@@ -8843,13 +9062,13 @@ function openBuilder(node) {
         };
       }
       enableImageDrop(row, segment);
-      segmentList.append(row);
+      sceneListPane.append(row);
     }
     if (state.overlaySegments.length) {
       const header = document.createElement("div");
       header.textContent = "Insert timeline";
       header.style.cssText = "margin:10px 0 8px;color:#fdba74;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;";
-      segmentList.append(header);
+      sceneListPane.append(header);
     }
     for (const [index, segment] of state.overlaySegments.entries()) {
       const row = document.createElement("div");
@@ -8868,7 +9087,7 @@ function openBuilder(node) {
         }
       };
       enableImageDrop(row, segment);
-      segmentList.append(row);
+      sceneListPane.append(row);
     }
   }
 
@@ -9518,7 +9737,7 @@ function openBuilder(node) {
       "",
       `Lyrics/vocal line:\n${String(segment?.lyric_text || "").trim()}`,
       "",
-      `Singer(s):\n${Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.join(", ") : String(segment?.lyric_singers || "")}`,
+      `Performer(s) / speaker(s):\n${Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.join(", ") : String(segment?.lyric_singers || "")}`,
     ].join("\n");
     try {
       const result = await savePromptTextFile(path, content);
@@ -10057,8 +10276,19 @@ function openBuilder(node) {
     }).join("\n") + "\n";
   }
 
+  function isNonVocalLyricMarkerLabel(label = "") {
+    const clean = String(label || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    return /^(instrumental|break|interlude|solo|no vocal|no vocals|no lyrics|silence|b roll|music only)$/.test(clean);
+  }
+
+  function stripStructuralLyricHeaders(text = "") {
+    return String(text || "").replace(/\[([^\]]{2,80})\]/g, (match, label) => (
+      isNonVocalLyricMarkerLabel(label) ? match : " "
+    ));
+  }
+
   function cleanTimestampedLyricText(text) {
-    return String(text || "")
+    return stripStructuralLyricHeaders(text)
       .replace(/\s+/g, " ")
       .replace(/\s+([,.;:!?])/g, "$1")
       .replace(/([([{])\s+/g, "$1")
@@ -10451,11 +10681,11 @@ function openBuilder(node) {
       const header = document.createElement("div");
       header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
       const title = document.createElement("div");
-      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Transcribe Lyrics For Timeline</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Uses the current audio and builder SRT timing to fill each scene's Lyrics / vocal line field.</div>`;
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Transcribe Lines For Timeline</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Uses the current audio and builder SRT timing to fill each scene's Line / lyric / dialogue field.</div>`;
       const close = makeButton("Close");
       header.append(title, close);
       const note = document.createElement("div");
-      note.textContent = "Full lyrics are optional, but strongly recommended. They help Whisper/stable-ts fix typos and align the exact words per scene.";
+      note.textContent = "Full lyrics or dialogue are optional, but strongly recommended. They help Whisper/stable-ts fix typos and align the exact words per scene.";
       note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
       const lyrics = document.createElement("textarea");
       lyrics.placeholder = "Optional full lyrics...";
@@ -10463,7 +10693,7 @@ function openBuilder(node) {
       const language = makeInput("english");
       const mode = makeSelect(["fill_missing", "replace_all"], "fill_missing");
       mode.options[0].textContent = "Fill missing only";
-      mode.options[1].textContent = "Replace all lyric notes";
+      mode.options[1].textContent = "Replace all line notes";
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
       grid.append(
@@ -10473,9 +10703,9 @@ function openBuilder(node) {
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
       const cancel = makeButton("Cancel");
-      const run = makeButton("Transcribe Lyrics", "primary");
+      const run = makeButton("Transcribe Lines", "primary");
       actions.append(cancel, run);
-      box.append(header, note, makeField("Reference lyrics", lyrics), grid, actions);
+      box.append(header, note, makeField("Reference lyrics/dialogue", lyrics), grid, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -10525,7 +10755,7 @@ function openBuilder(node) {
       header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #164e63;background:#083344;";
       const title = document.createElement("div");
       title.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
-      title.textContent = "Timestamped Lyrics Settings";
+      title.textContent = "Timestamped Line Settings";
       const close = makeButton("Close");
       header.append(title, close);
       const body = document.createElement("div");
@@ -10561,14 +10791,14 @@ function openBuilder(node) {
       const header = document.createElement("div");
       header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
       const title = document.createElement("div");
-      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Create Scenes From Timestamped Lyrics</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Uses audio and optional reference lyrics to create timeline scenes before an SRT exists.</div>`;
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Create Scenes From Timestamped Lines</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Uses audio and optional reference lyrics/dialogue to create timeline scenes before an SRT exists.</div>`;
       const close = makeButton("Close");
       header.append(title, close);
       const warning = document.createElement("div");
       warning.style.cssText = "font-size:12px;line-height:1.45;border:1px solid #92400e;border-radius:7px;background:#451a03;color:#fed7aa;padding:9px;";
       warning.textContent = "This replaces the current base timeline scenes with timestamped lyric scenes. Existing generated images/videos are not deleted, but they may no longer line up with the new timing.";
       const lyrics = document.createElement("textarea");
-      lyrics.placeholder = "Optional reference lyrics. Put each desired scene chunk on its own line. Use [instrumental] / [break] / [outro] for no-vocal sections.";
+      lyrics.placeholder = "Optional reference lyrics/dialogue. Put each desired scene chunk on its own line. Use [instrumental] / [break] / [outro] for no-vocal sections.";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:230px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
       const segmentMode = makeSelect(["whisper_chunks", "reference_lines", "reference_stanzas"], "reference_lines");
@@ -10582,7 +10812,7 @@ function openBuilder(node) {
       const maxScene = makeInput("8.0");
       const vocalTail = makeInput("0.6");
       const hint = makeButton("?");
-      hint.title = "Explain timestamped lyrics settings";
+      hint.title = "Explain timestamped line settings";
       hint.style.width = "44px";
       hint.onclick = async () => {
         await showTimestampedLyricsHintModal();
@@ -10606,7 +10836,7 @@ function openBuilder(node) {
       const cancel = makeButton("Cancel");
       const run = makeButton("Create Timeline Scenes", "primary");
       actions.append(cancel, run);
-      box.append(header, warning, makeField("Reference lyrics", lyrics), grid, gapRow, actions);
+      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), grid, gapRow, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -10681,12 +10911,26 @@ function openBuilder(node) {
       const next = items[index + 1] || null;
       const prevDuration = prev ? Math.max(0, Number(prev.end || 0) - Number(prev.start || 0)) : -1;
       const nextDuration = next ? Math.max(0, Number(next.end || 0) - Number(next.start || 0)) : -1;
-      const target = next && (!prev || nextDuration <= prevDuration) ? next : prev;
+      const segmentIsInstrumental = isInstrumentalLyricText(segment.lyric_text);
+      const prevIsVocal = prev && !isInstrumentalLyricText(prev.lyric_text);
+      const nextIsVocal = next && !isInstrumentalLyricText(next.lyric_text);
+      const target = segmentIsInstrumental
+        ? (next && (!prev || nextDuration <= prevDuration) ? next : prev)
+        : (prevIsVocal ? prev : (nextIsVocal ? next : null));
+      if (!target && !segmentIsInstrumental) {
+        const nextStart = next ? Number(next.start || 0) : null;
+        const desiredEnd = segment.start + minSceneSeconds;
+        segment.end = nextStart && nextStart > segment.start ? Math.min(desiredEnd, nextStart) : desiredEnd;
+        continue;
+      }
       if (!target) continue;
 
+      const targetStartedBeforeSegment = Number(target.start || 0) <= Number(segment.start || 0);
       target.start = Math.min(Number(target.start || 0), segment.start);
       target.end = Math.max(Number(target.end || target.start + minSceneSeconds), segment.end);
-      target.lyric_text = mergeTimestampedLyricText(target.lyric_text, segment.lyric_text, instrumentalText);
+      target.lyric_text = targetStartedBeforeSegment
+        ? mergeTimestampedLyricText(target.lyric_text, segment.lyric_text, instrumentalText)
+        : mergeTimestampedLyricText(segment.lyric_text, target.lyric_text, instrumentalText);
       target.lyric_no_lip_sync = isInstrumentalLyricText(target.lyric_text);
       target.timeline_note = [target.timeline_note, segment.timeline_note]
         .map((value) => String(value || "").trim())
@@ -10773,12 +11017,10 @@ function openBuilder(node) {
       if (!filledTail && created.length) created[created.length - 1].end = duration;
     }
     sortSegments(created);
-    const normalized = normalizeTimestampedSceneDurations(created, options, payload);
-    sortSegments(normalized);
-    normalized.forEach((segment, index) => {
+    created.forEach((segment, index) => {
       segment.label = `SCENE ${index + 1}`;
     });
-    return normalized;
+    return created;
   }
 
   function normalizeLyricSectionLookupText(value = "") {
@@ -10857,7 +11099,7 @@ function openBuilder(node) {
     }
     let progress = null;
     try {
-      progress = createProgressWindow("Creating Scenes From Timestamped Lyrics");
+      progress = createProgressWindow("Creating Scenes From Timestamped Lines");
       progress.set("Building hidden timestamp transcription workflow...", 8);
       const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
         audio_path: audioInput.value || state.audioPath || "",
@@ -10887,7 +11129,7 @@ function openBuilder(node) {
       );
       const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
       const created = createSegmentsFromTimestampedLyricsPayload(payload, options);
-      if (!created.length) throw new Error("Timestamped lyrics did not produce any usable scene segments.");
+      if (!created.length) throw new Error("Timestamped lines did not produce any usable scene segments.");
       applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
       pushHistory();
       state.segments = created;
@@ -10904,7 +11146,7 @@ function openBuilder(node) {
       if (activeProjectFolderForSave()) {
         await saveSession({ quiet: true, throwOnError: true });
       }
-      progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lyrics.\nMode: ${payload.segment_mode || options.segmentMode}\n${lyricPath ? `Saved lyric notes: ${lyricPath}` : "Lyric notes saved in session only."}`, 100);
+      progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lines.\nMode: ${payload.segment_mode || options.segmentMode}\n${lyricPath ? `Saved line notes: ${lyricPath}` : "Line notes saved in session only."}`, 100);
       progress.close(1800);
       toast(`Created ${created.length} timestamped lyric scene${created.length === 1 ? "" : "s"}.`);
     } catch (error) {
@@ -10926,7 +11168,7 @@ function openBuilder(node) {
     }
     let progress = null;
     try {
-      progress = createProgressWindow("Transcribing Timeline Lyrics");
+      progress = createProgressWindow("Transcribing Timeline Lines");
       progress.set("Saving current builder SRT...", 5);
       await autoSaveSessionQuiet("timeline lyric transcription");
       const srtPath = state.srtPath || srtInput.value || "";
@@ -10980,9 +11222,9 @@ function openBuilder(node) {
       syncInspector();
       render();
       await saveSession({ quiet: true, throwOnError: true });
-      progress.set(`Transcribed timeline lyrics from existing scene windows.\nApplied ${applied} scene lyric note${applied === 1 ? "" : "s"}.\nDetected lyric sections on ${sectioned} scene${sectioned === 1 ? "" : "s"}.\nMapped singers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
+      progress.set(`Transcribed timeline lines from existing scene windows.\nApplied ${applied} scene line note${applied === 1 ? "" : "s"}.\nDetected sections on ${sectioned} scene${sectioned === 1 ? "" : "s"}.\nMapped performers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
       progress.close(1800);
-      toast(`Transcribed ${applied} lyric note${applied === 1 ? "" : "s"} from existing scene windows; detected ${sectioned} section${sectioned === 1 ? "" : "s"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
+      toast(`Transcribed ${applied} scene line${applied === 1 ? "" : "s"} from existing scene windows; detected ${sectioned} section${sectioned === 1 ? "" : "s"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -10999,18 +11241,18 @@ function openBuilder(node) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Lyric Mapper</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Assign Reference Builder subjects to lyric lines so Gemma knows who should sing each scene.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Line Mapper</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Assign Reference Builder subjects to lyric/dialogue lines so Gemma knows who performs each scene.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
-    note.textContent = "Paste clean lyrics, split them into lines, then choose one or more singers for each line. Instrumental and B-roll mean no one should lip-sync, but selected characters can still appear in the shot. After timeline transcription, Apply To Timeline matches scene lyric notes to these mapped lines.";
+    note.textContent = "Paste clean lyrics or dialogue, split them into lines, then choose one or more performers/speakers for each line. Instrumental and B-roll mean no one should lip-sync, but selected characters can still appear in the shot. After timeline transcription, Apply To Timeline matches scene line notes to these mapped lines.";
 
     const initialChoices = referenceBuilderSubjectChoices();
     const subjectWarning = document.createElement("div");
     subjectWarning.style.cssText = `font-size:12px;line-height:1.45;border:1px solid #92400e;border-radius:7px;background:#451a03;color:#fed7aa;padding:9px;${initialChoices.hasReferenceSubjects ? "display:none;" : ""}`;
-    subjectWarning.textContent = "No Reference Builder subjects found. Add your characters in Reference Builder first for accurate singer mapping. Until then, Lyric Mapper uses fallback choices: Female, Male, Other singer, Group, and B-roll / no lip-sync.";
+    subjectWarning.textContent = "No Reference Builder subjects found. Add your characters in Reference Builder first for accurate performer mapping. Until then, Line Mapper uses fallback choices: Female, Male, Other performer, Group, and B-roll / no lip-sync.";
 
     const audioPanel = document.createElement("div");
     audioPanel.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
@@ -11041,13 +11283,13 @@ function openBuilder(node) {
 
     const sourceLyrics = document.createElement("textarea");
     sourceLyrics.value = mapper.source_text || "";
-    sourceLyrics.placeholder = "Paste full lyrics here. You can also prefix lines like [Sarah] lyric text or [Sarah + Daniel] lyric text.";
+    sourceLyrics.placeholder = "Paste full lyrics or dialogue here. You can also prefix lines like [Sarah] line text or [Sarah + Daniel] line text.";
     sourceLyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:170px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
     const sourceActions = document.createElement("div");
     sourceActions.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
-    const splitButton = makeButton("Split Lyrics Into Lines", "primary");
+    const splitButton = makeButton("Split Into Lines", "primary");
     const addInstrumental = makeButton("Add Instrumental Line");
-    const addLine = makeButton("Add Lyric Line");
+    const addLine = makeButton("Add Line");
     sourceActions.append(splitButton, addInstrumental, addLine);
 
     const lineList = document.createElement("div");
@@ -11138,7 +11380,7 @@ function openBuilder(node) {
       const cleanLines = Array.isArray(lines) ? lines : [];
       if (!cleanLines.length) {
         const empty = document.createElement("div");
-        empty.textContent = "No lyric lines yet. Paste lyrics above, then click Split Lyrics Into Lines.";
+        empty.textContent = "No lines yet. Paste lyrics or dialogue above, then click Split Into Lines.";
         empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:14px;text-align:center;color:#94a3b8;font-size:12px;";
         lineList.append(empty);
         return;
@@ -11154,7 +11396,7 @@ function openBuilder(node) {
         const text = document.createElement("textarea");
         text.dataset.lyricText = "1";
         text.value = line.instrumental ? "" : (line.text || "");
-        text.placeholder = "Lyric line...";
+        text.placeholder = "Line text...";
         text.disabled = Boolean(line.instrumental);
         text.style.cssText = "width:100%;box-sizing:border-box;min-height:54px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;";
         const singers = document.createElement("div");
@@ -11241,7 +11483,7 @@ function openBuilder(node) {
     const apply = makeButton("Apply To Timeline", "primary");
     const cancel = makeButton("Close");
     actions.append(cancel, save, apply);
-    box.append(header, note, subjectWarning, audioPanel, makeField("Lyrics source", sourceLyrics), sourceActions, lineList, ingredientsMappingPanel, actions);
+    box.append(header, note, subjectWarning, audioPanel, makeField("Source text", sourceLyrics), sourceActions, lineList, ingredientsMappingPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     renderLines(mapper.lines);
@@ -11256,7 +11498,7 @@ function openBuilder(node) {
       collectLyricIngredientsMappings();
       if (currentVideoMode() === "ingredients") applyIngredientsReferenceMappings(state.fluxReferenceBuilder);
       await saveSession({ quiet: true, throwOnError: true });
-      toast(`Saved ${state.lyricMapper.lines.length} mapped lyric line${state.lyricMapper.lines.length === 1 ? "" : "s"}.`);
+      toast(`Saved ${state.lyricMapper.lines.length} mapped line${state.lyricMapper.lines.length === 1 ? "" : "s"}.`);
     };
     close.onclick = () => backdrop.remove();
     cancel.onclick = () => backdrop.remove();
@@ -11282,7 +11524,7 @@ function openBuilder(node) {
         syncInspector();
         render();
         await saveSession({ quiet: true, throwOnError: true });
-        toast(`Applied Lyric Mapper to ${count} scene${count === 1 ? "" : "s"}.`);
+        toast(`Applied Line Mapper to ${count} scene${count === 1 ? "" : "s"}.`);
       } catch (error) {
         toast(String(error?.message || error), true);
       } finally {
@@ -11300,11 +11542,11 @@ function openBuilder(node) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1480px,calc(100vw - 24px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+    box.style.cssText = "width:min(1720px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lyrics + Map Singers</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen scene by scene, correct transcribed lyrics, assign singers, and mark instrumental or B-roll before running Gemma.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Review Lines + Map Performers</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Listen scene by scene, correct transcribed lyrics/dialogue, assign performers or speakers, and mark instrumental or B-roll before running Gemma.</div>`;
     const lyricReviewHint = makeButton("?");
     lyricReviewHint.title = "Explain lyric review controls";
     lyricReviewHint.style.width = "44px";
@@ -11314,35 +11556,35 @@ function openBuilder(node) {
     lyricReviewHint.onclick = () => showInfoModal({
       title: "Lyric Review Help",
       lines: [
-        "Use this window to fix the lyric text, scene timing, singers, locations, and no-lip-sync flags before Gemma creates video prompts.",
+        "Use this window to fix the line text, scene timing, performers/speakers, locations, and no-lip-sync flags before Gemma creates video prompts.",
         "Timing edit mode: Lock rest only changes the shared boundary between two neighboring scenes. Ripple following scenes shifts every later scene and is mainly for fixing timeline drift.",
         "Play Scene plays only that scene's current start/end range. Play From Here starts at that scene and keeps playing so you can stop where the next boundary should be.",
         "Set Start uses the audio playhead as this scene's start and moves the previous scene's end to match. Set End uses the audio playhead as this scene's end.",
-        "Split At Playhead cuts that scene into two scenes at the current audio playhead. It copies lyrics, singers, B-roll/instrumental state, motion notes, and location mapping into both pieces.",
+        "Split At Playhead cuts that scene into two scenes at the current audio playhead. It copies line text, performer/speaker mapping, B-roll/instrumental state, motion notes, and location mapping into both pieces.",
         "Instrumental means nobody should sing or lip-sync in that scene. B-roll / no lip-sync means the scene can have visuals or movement, but visible people should not mouth the lyric.",
-        "Singer choices tell Gemma who should visibly sing the lyric. Location connects the scene to a Reference Builder location image.",
+        "Performer/speaker choices tell Gemma who should sing, say, or carry the line depending on the global Video Type. Location connects the scene to a Reference Builder location image.",
         "Copy boundary words is optional. It appends the first word or words from the next vocal scene onto the current scene, which can help LTX warm-up and cooldown frames keep lyric context.",
         "Move end words to next is text-only. It removes the last word or words from each lyric scene and prepends them to the next vocal scene when the transcript split landed too early. If the next scene is instrumental or no-lip-sync, the words are only removed and are not added to that scene.",
-        "Save Lyrics + Timing + Singers + Locations applies the edited rows to the real timeline and saves the project.",
+        "Save Lines + Timing + Performers + Locations applies the edited rows to the real timeline and saves the project.",
       ],
     });
 
     const note = document.createElement("div");
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
-    note.textContent = "These fields are the timeline lyric notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who sings each scene. Use B-roll or Instrumental when nobody should lip-sync.";
+    note.textContent = "These fields are the timeline line notes Gemma uses for I2V/T2V prompting. Fix typos or timing mistakes here, then choose who performs or speaks in each scene. Use B-roll or Instrumental when nobody should lip-sync.";
 
     const reviewReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     if (!reviewReferenceBuilder.subject_scene_map || typeof reviewReferenceBuilder.subject_scene_map !== "object") reviewReferenceBuilder.subject_scene_map = {};
     const singleReviewSubject = Array.isArray(reviewReferenceBuilder.subjects) && reviewReferenceBuilder.subjects.length === 1 ? reviewReferenceBuilder.subjects[0] : null;
     const performerLabelPanel = document.createElement("div");
     performerLabelPanel.style.cssText = `display:${singleReviewSubject ? "grid" : "none"};grid-template-columns:minmax(220px,360px) minmax(0,1fr);gap:10px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;`;
-    const performerLabelInput = makeInput(singleReviewSubject?.name && singleReviewSubject.name !== "Character 1" ? singleReviewSubject.name : "the singer");
-    performerLabelInput.placeholder = "the woman, the man, the singer, lead vocalist...";
+    const performerLabelInput = makeInput(singleReviewSubject?.name && singleReviewSubject.name !== "Character 1" ? singleReviewSubject.name : "the performer");
+    performerLabelInput.placeholder = "the woman, the man, the performer, lead character...";
     const performerLabelHelp = document.createElement("div");
     performerLabelHelp.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    performerLabelHelp.textContent = "This is the phrase Gemma/LTX sees for your single character. Use natural wording like the woman, the man, or the singer instead of Character 1.";
-    performerLabelPanel.append(makeField("Single character singer label", performerLabelInput), performerLabelHelp);
-    const performerLabelValue = () => String(performerLabelInput.value || singleReviewSubject?.name || "the singer").trim() || "the singer";
+    performerLabelHelp.textContent = "This is the phrase Gemma/LTX sees for your single character. Use natural wording like the woman, the man, or the performer instead of Character 1.";
+    performerLabelPanel.append(makeField("Single character performer label", performerLabelInput), performerLabelHelp);
+    const performerLabelValue = () => String(performerLabelInput.value || singleReviewSubject?.name || "the performer").trim() || "the performer";
     const isSingleSubjectChoice = (choice) => Boolean(singleReviewSubject?.id && choice?.id === singleReviewSubject.id);
     const reviewChoiceLabel = (choice) => isSingleSubjectChoice(choice) ? performerLabelValue() : String(choice?.label || "");
     const syncSingleSubjectPerformerLabel = () => {
@@ -11367,7 +11609,7 @@ function openBuilder(node) {
     });
 
     const timingModePanel = document.createElement("div");
-    timingModePanel.style.cssText = "display:grid;grid-template-columns:minmax(180px,260px) minmax(0,1fr) minmax(300px,380px) minmax(170px,230px);gap:10px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
+    timingModePanel.style.cssText = "display:grid;grid-template-columns:minmax(220px,280px) minmax(260px,1fr) minmax(360px,420px) minmax(280px,360px);gap:10px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
     const timingModeSelect = makeSelect(["lock", "ripple"], "lock");
     timingModeSelect.options[0].textContent = "Lock rest of timeline";
     timingModeSelect.options[1].textContent = "Ripple following scenes";
@@ -12381,7 +12623,7 @@ function openBuilder(node) {
             render();
             await saveSession({ quiet: true, throwOnError: true });
             showInfoModal({
-              title: "Lyric Review Saved",
+              title: "Line Review Saved",
               lines: [subjectIds.length
                 ? `${reviewChoiceLabel(choice)} was assigned as a visible scene character everywhere. Instrumental and B-roll scenes remain no-lip-sync. No-character scenes stay empty.`
                 : `${reviewChoiceLabel(choice)} was added to every scene.`],
@@ -12403,7 +12645,7 @@ function openBuilder(node) {
     for (const [index, segment] of scenes.entries()) {
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
-      row.style.cssText = "display:grid;grid-template-columns:86px minmax(130px,150px) minmax(180px,1fr) minmax(210px,1.25fr) minmax(140px,190px) minmax(120px,140px) 92px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
+      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
       const meta = document.createElement("div");
       meta.style.minWidth = "0";
       meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
@@ -12467,7 +12709,7 @@ function openBuilder(node) {
       text.dataset.reviewLyricText = "1";
       text.value = String(segment.lyric_text || "");
       text.dataset.reviewRawLyricText = text.value;
-      text.placeholder = "Lyrics / vocal line, or [instrumental]...";
+      text.placeholder = "Line / lyric / dialogue, or [instrumental]...";
       text.style.cssText = "width:100%;box-sizing:border-box;min-height:64px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;min-width:0;";
       text.addEventListener("input", () => {
         if (applyingBoundaryOverlapPreview) return;
@@ -12519,7 +12761,7 @@ function openBuilder(node) {
       };
       renderSubjectPresenceChoices(segment, index, presentPanel);
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
-      subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Singer / lip-sync", singerPanel));
+      subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Performer / speaker / lip-sync", singerPanel));
       instrumental.input.onchange = updateDisabled;
       broll.input.onchange = updateDisabled;
       noCharacter.input.onchange = updateDisabled;
@@ -12543,13 +12785,16 @@ function openBuilder(node) {
       locationHint.style.cssText = "font-size:10px;color:#94a3b8;line-height:1.25;";
       locationWrap.append(makeField("Location", locationSelect), locationHint);
       const buttons = document.createElement("div");
-      buttons.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
+      buttons.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:124px;";
       const play = makeButton("Play Scene");
       const playFrom = makeButton("Play From Here");
       const select = makeButton("Select");
       play.style.padding = "7px 8px";
       playFrom.style.padding = "7px 8px";
       select.style.padding = "7px 8px";
+      play.style.width = "100%";
+      playFrom.style.width = "100%";
+      select.style.width = "100%";
       play.dataset.playLabel = "Play Scene";
       playFrom.dataset.playLabel = "Play From Here";
       play.onclick = () => playRange(segment, play);
@@ -12564,7 +12809,7 @@ function openBuilder(node) {
     const actions = document.createElement("div");
     actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
     const cancel = makeButton("Close");
-    const save = makeButton("Save Lyrics + Timing + Singers + Locations", "primary");
+    const save = makeButton("Save Lines + Timing + Performers + Locations", "primary");
     actions.append(cancel, save);
     box.append(header, note, performerLabelPanel, timingModePanel, audioPanel, rowList, actions);
     backdrop.append(box);
@@ -12605,14 +12850,37 @@ function openBuilder(node) {
         render();
         await saveSession({ quiet: true, throwOnError: true });
         showInfoModal({
-          title: "Lyric Review Saved",
-          lines: ["Lyrics, scene timing, singer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
+          title: "Line Review Saved",
+          lines: ["Lines, scene timing, performer labels, no-lip-sync/no-character flags, and location mapping were saved to the timeline."],
           confirmLabel: "OK",
         });
       } catch (error) {
+        const message = String(error?.message || error);
+        if (/image_history/i.test(message)) {
+          try {
+            ensureAllSegmentRuntimeFields();
+            state.duration = timelineDuration();
+            syncInspector();
+            render();
+            await saveSession({ quiet: true, throwOnError: true });
+            showInfoModal({
+              title: "Line Review Saved",
+              lines: ["Lines, timing, performers, no-lip-sync/no-character flags, and locations were saved. A stale media history value was cleaned up automatically."],
+              confirmLabel: "OK",
+            });
+            return;
+          } catch (retryError) {
+            showInfoModal({
+              title: "Line Review Save Error",
+              lines: [String(retryError?.message || retryError)],
+              confirmLabel: "OK",
+            });
+            return;
+          }
+        }
         showInfoModal({
-          title: "Lyric Review Save Error",
-          lines: [String(error?.message || error)],
+          title: "Line Review Save Error",
+          lines: [message],
           confirmLabel: "OK",
         });
       } finally {
@@ -12629,14 +12897,14 @@ function openBuilder(node) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Lyric Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Transcribe lyrics, review scene timing, then assign singers for Gemma lip-sync prompts.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Line Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Transcribe lyrics/dialogue, review scene timing, then assign performers for Gemma prompts.</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
     const subjectChoices = referenceBuilderSubjectChoices();
     const warning = document.createElement("div");
     warning.style.cssText = `font-size:12px;line-height:1.45;border:1px solid #92400e;border-radius:7px;background:#451a03;color:#fed7aa;padding:9px;${subjectChoices.hasReferenceSubjects ? "display:none;" : ""}`;
-    warning.textContent = "No Reference Builder subjects found. Set up Reference Builder first for best singer mapping. If you skip that, Review + Map Singers uses fallback singer choices.";
+    warning.textContent = "No Reference Builder subjects found. Set up Reference Builder first for best performer mapping. If you skip that, Review + Map Performers uses fallback performer choices.";
 
     const tabBar = document.createElement("div");
     tabBar.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
@@ -12644,7 +12912,7 @@ function openBuilder(node) {
     pane.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:14px;min-height:260px;";
     const tabs = [
       { id: "transcribe", label: "Step 1: Transcribe" },
-      { id: "review", label: "Step 2: Review + Map Singers" },
+      { id: "review", label: "Step 2: Review + Map Performers" },
       { id: "manual_timing", label: "Manual Timing" },
     ];
     const tabButtons = new Map();
@@ -12660,7 +12928,7 @@ function openBuilder(node) {
       const scenes = allEditableSegments();
       const lyricCount = scenes.filter((segment) => String(segment.lyric_text || "").trim()).length;
       const singerCount = scenes.filter((segment) => (Array.isArray(segment.lyric_singers) && segment.lyric_singers.length) || segment.lyric_no_lip_sync || segment.no_character_present).length;
-      statusLine.textContent = `${lyricCount}/${scenes.length} scenes have lyric notes. ${singerCount}/${scenes.length} scenes have singer/no-lip-sync/no-character mapping.`;
+      statusLine.textContent = `${lyricCount}/${scenes.length} scenes have line notes. ${singerCount}/${scenes.length} scenes have performer/no-lip-sync/no-character mapping.`;
     };
     let activeLyricMappingTab = "transcribe";
     let manualTimingAudio = null;
@@ -12733,10 +13001,10 @@ function openBuilder(node) {
       if (id === "transcribe") {
         const title = document.createElement("div");
         title.style.cssText = "font-size:15px;font-weight:900;color:#cffafe;margin-bottom:8px;";
-        title.textContent = "Step 1: Transcribe lyrics or create scenes";
+        title.textContent = "Step 1: Transcribe lines or create scenes";
         const copy = document.createElement("div");
         copy.style.cssText = "font-size:13px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;";
-        copy.textContent = "Choose the workflow that matches where you are. If scenes already exist, transcribe lyrics into those scene windows. If the project has no scenes yet, create scenes from timestamped lyrics first.";
+        copy.textContent = "Choose the workflow that matches where you are. If scenes already exist, transcribe lines into those scene windows. If the project has no scenes yet, create scenes from timestamped lyrics or dialogue first.";
         const actions = document.createElement("div");
         actions.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;";
         const existingCard = document.createElement("div");
@@ -12746,7 +13014,7 @@ function openBuilder(node) {
         existingTitle.textContent = "Option 1: Existing scenes";
         const existingText = document.createElement("div");
         existingText.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-        existingText.textContent = "Use this when your timeline already has scenes. It keeps current timing and fills the Lyrics / vocal line field for each scene.";
+        existingText.textContent = "Use this when your timeline already has scenes. It keeps current timing and fills the Line / lyric / dialogue field for each scene.";
         const run = makeStepButton("Transcribe Existing Scenes", "primary");
         existingCard.append(existingTitle, existingText, run);
         const timestampCard = document.createElement("div");
@@ -12756,8 +13024,8 @@ function openBuilder(node) {
         timestampTitle.textContent = "Option 2: No scenes yet";
         const timestampText = document.createElement("div");
         timestampText.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-        timestampText.textContent = "Use this when the project is blank. It uses stable-ts timestamps to create timeline scenes and lyric notes from the audio.";
-        const createScenes = makeStepButton("Create Scenes From Lyrics", "primary");
+        timestampText.textContent = "Use this when the project is blank. It uses stable-ts timestamps to create timeline scenes and line notes from the audio.";
+        const createScenes = makeStepButton("Create Scenes From Lines", "primary");
         timestampCard.append(timestampTitle, timestampText, createScenes);
         const srtCard = document.createElement("div");
         srtCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#111827;padding:12px;display:flex;flex-direction:column;gap:8px;";
@@ -12766,13 +13034,13 @@ function openBuilder(node) {
         srtTitle.textContent = "Option 3: Import SRT file";
         const srtText = document.createElement("div");
         srtText.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-        srtText.textContent = "Use this when you already have an SRT. It creates timeline scenes from the SRT timestamps and fills the Lyric Notes lane with each subtitle line.";
+        srtText.textContent = "Use this when you already have an SRT. It creates timeline scenes from the SRT timestamps and fills the Line Notes lane with each subtitle line.";
         const importSrt = makeStepButton("Import SRT File", "primary");
         srtCard.append(srtTitle, srtText, importSrt);
         actions.append(existingCard, timestampCard, srtCard);
         const utilityActions = document.createElement("div");
         utilityActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;";
-        const showNotes = makeStepButton(state.showTimelineLyricNotes ? "Hide Timeline Lyric Notes" : "Show Timeline Lyric Notes");
+        const showNotes = makeStepButton(state.showTimelineLyricNotes ? "Hide Timeline Line Notes" : "Show Timeline Line Notes");
         const hint = makeStepButton("Timestamp Settings Hint");
         run.onclick = async () => {
           await transcribeLyricsForTimeline();
@@ -12792,31 +13060,31 @@ function openBuilder(node) {
           state.showTimelineLyricNotes = !state.showTimelineLyricNotes;
           syncLyricNoteControls();
           render();
-          showNotes.textContent = state.showTimelineLyricNotes ? "Hide Timeline Lyric Notes" : "Show Timeline Lyric Notes";
-          autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline lyric notes shown" : "timeline lyric notes hidden");
+          showNotes.textContent = state.showTimelineLyricNotes ? "Hide Timeline Line Notes" : "Show Timeline Line Notes";
+          autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline line notes shown" : "timeline line notes hidden");
         };
         utilityActions.append(showNotes, hint);
         pane.append(title, copy, actions, utilityActions);
       } else if (id === "review") {
         const title = document.createElement("div");
         title.style.cssText = "font-size:15px;font-weight:900;color:#cffafe;margin-bottom:8px;";
-        title.textContent = "Step 2: Review lyrics and map singers";
+        title.textContent = "Step 2: Review lines and map performers";
         const copy = document.createElement("div");
         copy.style.cssText = "font-size:13px;color:#cbd5e1;line-height:1.5;margin-bottom:12px;";
-        copy.textContent = "Open the scene-based editor to listen by scene, correct transcription mistakes, assign singers, mark instrumental/B-roll sections, and save the exact lyric notes Gemma will read.";
+        copy.textContent = "Open the scene-based editor to listen by scene, correct transcription mistakes, assign performers/speakers, mark instrumental/B-roll sections, and save the exact line notes Gemma will read.";
         const actions = document.createElement("div");
         actions.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
-        const review = makeStepButton("Open Review + Singer Mapping", "primary");
-        const showNotes = makeStepButton(state.showTimelineLyricNotes ? "Hide Timeline Lyric Notes" : "Show Timeline Lyric Notes");
-        const autoMap = makeStepButton("Optional: Full Lyrics Auto-Mapper");
+        const review = makeStepButton("Open Review + Performer Mapping", "primary");
+        const showNotes = makeStepButton(state.showTimelineLyricNotes ? "Hide Timeline Line Notes" : "Show Timeline Line Notes");
+        const autoMap = makeStepButton("Optional: Full Text Auto-Mapper");
         review.onclick = () => openLyricReviewModal();
         autoMap.onclick = () => openLyricMapperModal();
         showNotes.onclick = () => {
           state.showTimelineLyricNotes = !state.showTimelineLyricNotes;
           syncLyricNoteControls();
           render();
-          showNotes.textContent = state.showTimelineLyricNotes ? "Hide Timeline Lyric Notes" : "Show Timeline Lyric Notes";
-          autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline lyric notes shown" : "timeline lyric notes hidden");
+          showNotes.textContent = state.showTimelineLyricNotes ? "Hide Timeline Line Notes" : "Show Timeline Line Notes";
+          autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline line notes shown" : "timeline line notes hidden");
         };
         actions.append(review, showNotes, autoMap);
         pane.append(title, copy, actions);
@@ -13044,8 +13312,8 @@ function openBuilder(node) {
         prompts_only: "Prompts / scene notes only",
       }[option.value] || option.value;
     }
-    const subjectNameInput = makeInput(refs.subjects?.[0]?.name && refs.subjects[0].name !== "Character 1" ? refs.subjects[0].name : "the singer");
-    subjectNameInput.placeholder = "the woman, the man, the singer, lead vocalist...";
+    const subjectNameInput = makeInput(refs.subjects?.[0]?.name && refs.subjects[0].name !== "Character 1" ? refs.subjects[0].name : "the performer");
+    subjectNameInput.placeholder = "the woman, the man, the performer, lead character...";
     const referenceTypeOptions = [
       ["character", "Character / person"],
       ["prop", "Prop"],
@@ -13109,7 +13377,7 @@ function openBuilder(node) {
     addLocation.textContent = "Add";
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
-    gptLocationScout.title = "Copy lyrics, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
+    gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
     describeMissingLocations.title = "Use vision Gemma to describe location reference images that do not already have descriptions.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
@@ -13166,7 +13434,7 @@ function openBuilder(node) {
     const mapSubjectsFromSceneNotes = makeButton("Map Subjects From Scene Notes", "primary");
     const exportGptSceneContext = makeButton("Export GPT Context", "primary");
     const importGptSceneMap = makeButton("Import GPT Map", "primary");
-    mapSubjectsFromLyrics.title = "Use saved Lyric Review singer choices to assign character references per scene.";
+    mapSubjectsFromLyrics.title = "Use saved Line Review performer choices to assign character references per scene.";
     mapSubjectsFromSceneNotes.title = "Read SceneNotes.json and assign character references when scene notes mention saved character names.";
     exportGptSceneContext.title = "Copy subjects, locations, lyric lines, and current scene mappings as JSON, then open the Scene Mapping Assistant GPT.";
     importGptSceneMap.title = "Paste GPT scene mapping JSON to assign saved subjects and locations back to scenes.";
@@ -14074,7 +14342,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -14161,7 +14429,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -14286,7 +14554,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -14449,7 +14717,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
         toast("Choose a non-vision Gemma model first.", true);
         return;
       }
@@ -14870,8 +15138,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.";
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         extractLocations.disabled = false;
@@ -14960,8 +15228,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.";
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         extractSubjects.disabled = false;
@@ -15075,8 +15343,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        const message = "Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.";
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        const message = "Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.";
         progress.set(`Error:\n${message}`, 100);
         toast(message, true);
         autoMapLocations.disabled = false;
@@ -15873,14 +16141,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         refs.subject_scene_map = {};
         refs.use_subject_reference = true;
         refs.subject = {
-          name: imported[0].name || "the singer",
+          name: imported[0].name || "the performer",
           description: imported[0].description || "",
           reference_type: imported[0].reference_type || "character",
           image: imported[0].image || { path: "", data: "", name: "" },
         };
         useSubject.input.checked = true;
         subjectCountInput.value = String(refs.subject_count);
-        subjectNameInput.value = refs.subject.name || "the singer";
+        subjectNameInput.value = refs.subject.name || "the performer";
         subjectTypeSelect.value = refs.subject.reference_type || "character";
         subjectDescription.value = refs.subject.description || "";
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
@@ -15940,8 +16208,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       useSubject.input.checked = true;
       renderAll();
       toast(mapped
-        ? `Mapped character references from lyric singers for ${mapped} scene${mapped === 1 ? "" : "s"}.`
-        : "No lyric singer assignments matched Reference Builder subjects yet.");
+        ? `Mapped character references from line performer choices for ${mapped} scene${mapped === 1 ? "" : "s"}.`
+        : "No line performer assignments matched Reference Builder subjects yet.");
     };
     mapSubjectsFromSceneNotes.onclick = async () => {
       try {
@@ -16144,8 +16412,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const addLocation = makeButton("Add Location", "primary");
     const autoMapLocations = makeButton("Auto Map", "primary");
     const clearLocations = makeButton("Clear Locations");
-    extractLocations.title = "Ask Gemma to extract a reusable text-only location list from the song lyrics and scene text.";
-    gptLocationScout.title = "Copy lyrics, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
+    extractLocations.title = "Ask Gemma to extract a reusable text-only location list from the source text and scene text.";
+    gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     locationToolActions.append(extractLocations, gptLocationScout, importLocations, addLocation, autoMapLocations, clearLocations);
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
@@ -16809,7 +17077,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!planningScenes.length && !lyricScenes.length) throw new Error("Gemma Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.");
+        if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
         const useLyricsScout = Boolean(!planningScenes.length && lyricScenes.length);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
@@ -17538,7 +17806,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         const lyricScenes = sceneInputs.filter((scene) => String(scene.lyric || "").trim());
         if (!scenes.length && !lyricScenes.length) throw new Error("Extract needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.");
+        if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
         const useLyricsScout = Boolean((wizardLocationMode && lyricScenes.length) || (!scenes.length && lyricScenes.length));
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
@@ -17622,7 +17890,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
           .filter((scene) => String(scene.concept || scene.notes || "").trim());
         if (!scenes.length) throw new Error("Auto Map needs scene prompts, notes, lyrics, or timeline notes first.");
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-        if (!modelFile && state.textGemmaRunner !== "lm_studio") throw new Error("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.");
+        if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
         progress.set(`Sending scene text and lyric fallbacks to Gemma...\n${gemmaRunnerLine()}`, 15);
         const data = await postJson("/vrgdg/music_builder/flux_reference_location_map", {
           ...textGemmaRunnerPayload(),
@@ -18010,9 +18278,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const promptText = String(prompts[`Scene${index + 1}`] || prompts[`Scene ${index + 1}`] || "").trim();
           if (!promptText) continue;
           segment.notes = promptText;
+          segment.flux_notes = promptText;
+          segment.nb_notes = promptText;
+          syncConceptPromptToStoryBeat(segment, promptText);
           if (segment.id === activeSegment()?.id) {
             notesInput.value = promptText;
             ernieNotesInput.value = promptText;
+            krea2TwoPassNotesInput.value = promptText;
+            nbNotes.value = promptText;
           }
           appliedKeys.push(`Scene${index + 1}`);
           updated += 1;
@@ -18022,7 +18295,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       await syncPromptJsonFromSegments("Concept Prompt Creator").catch(() => null);
       await autoSaveSessionQuiet("Concept Prompt Creator").catch(() => null);
-      progress.set(`Updated ${updated} scene note${updated === 1 ? "" : "s"} with generated concept prompts.`, 100);
+      progress.set(`Updated ${updated} scene note${updated === 1 ? "" : "s"} and story beat${updated === 1 ? "" : "s"} with generated concept prompts.`, 100);
       if (closeProgress) progress.close(1200);
       toast(`Concept prompts updated: ${updated}`);
       return { updated, applied: appliedKeys };
@@ -18053,9 +18326,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     source.options[1].textContent = "Director notes";
     source.options[2].textContent = "Scene notes";
     source.options[3].textContent = "Timeline notes";
-    source.options[4].textContent = "Lyric notes";
-    source.options[5].textContent = "Subject / singer mapping";
-    source.options[6].textContent = "Lyric notes + subject/singers";
+    source.options[4].textContent = "Line notes";
+    source.options[5].textContent = "Subject / performer mapping";
+    source.options[6].textContent = "Line notes + subjects/performers";
     source.options[7].textContent = "Director + scene notes";
     const scope = makeSelect(["all", "selected", "range"], "all");
     scope.options[0].textContent = "All scenes";
@@ -18266,8 +18539,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const note = document.createElement("div");
     note.textContent = "Edit or reload the final generated prompt text files for this project. Reload updates the scene boxes immediately and saves the session.";
     note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    const transcribeLyrics = makeButton("Transcribe Lyrics For Timeline", "primary");
-    transcribeLyrics.title = "Use the current audio and builder SRT timing to fill each scene's Lyrics / vocal line field.";
+    const transcribeLyrics = makeButton("Transcribe Lines For Timeline", "primary");
+    transcribeLyrics.title = "Use the current audio and builder SRT timing to fill each scene's Line / lyric / dialogue field.";
     const grid = document.createElement("div");
     grid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;";
     const imageGroup = document.createElement("div");
@@ -18754,13 +19027,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.notes = prompts[index];
         segment.flux_notes = prompts[index];
         segment.nb_notes = prompts[index];
+        syncConceptPromptToStoryBeat(segment, prompts[index]);
         if (!state.segments[index].label || /^Prompt\s+\d+$/i.test(state.segments[index].label)) {
           state.segments[index].label = `Scene ${index + 1}`;
         }
       }
       syncInspector();
       render();
-      if (!options.quiet) toast(`Imported ${prompts.length} prompt${prompts.length === 1 ? "" : "s"} into segment notes.`);
+      if (!options.quiet) toast(`Imported ${prompts.length} prompt${prompts.length === 1 ? "" : "s"} into segment notes and scene story beats.`);
       return prompts;
     } catch (error) {
       if (options.throwOnError) throw error;
@@ -19105,10 +19379,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
       beat_markers: Array.isArray(state.beats) ? state.beats : [],
       left_panel_width: state.leftPanelWidth,
+      left_panel_tab: state.leftPanelTab === "tools" ? "tools" : "scenes",
       right_panel_width: state.rightPanelWidth,
       timeline_panel_height: state.timelinePanelHeight,
       timeline_zoom: state.timelineZoom,
       auto_save_enabled: state.autoSaveEnabled,
+      video_type: normalizeVideoType(state.videoType),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -19329,10 +19605,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.beats = Array.isArray(data.session.beat_markers) ? data.session.beat_markers : state.beats;
         setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
         state.leftPanelWidth = data.session.left_panel_width || state.leftPanelWidth;
+        state.leftPanelTab = data.session.left_panel_tab === "tools" ? "tools" : "scenes";
         state.rightPanelWidth = data.session.right_panel_width || state.rightPanelWidth;
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
         state.timelineZoom = data.session.timeline_zoom || state.timelineZoom;
         state.autoSaveEnabled = data.session.auto_save_enabled ?? state.autoSaveEnabled;
+        state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -19341,6 +19619,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncVideoNoteControls();
         syncLyricNoteControls();
         autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
+        syncVideoTypeControl();
+        syncLeftPanelTabs();
         applyLayoutSizes();
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
         state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.session.reference_krea2_settings || state.referenceKrea2Settings);
@@ -19497,10 +19777,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
       state.leftPanelWidth = session.left_panel_width || state.leftPanelWidth || 260;
+      state.leftPanelTab = session.left_panel_tab === "tools" ? "tools" : "scenes";
       state.rightPanelWidth = session.right_panel_width || state.rightPanelWidth || 360;
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
       state.timelineZoom = session.timeline_zoom || state.timelineZoom || 45;
       state.autoSaveEnabled = session.auto_save_enabled ?? state.autoSaveEnabled ?? true;
+      state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -19509,6 +19791,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncVideoNoteControls();
       syncLyricNoteControls();
       autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
+      syncVideoTypeControl();
+      syncLeftPanelTabs();
       applyLayoutSizes();
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);
@@ -19801,9 +20085,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function t2iMissingReason(segment) {
-    if (segment?.use_vision_reference && !String(segment.ref_image_path || "").trim()) {
-      return "vision reference is turned on, but no reference image is loaded.";
-    }
     return "";
   }
 
@@ -19888,46 +20169,50 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return { ...data, used_text_only_fallback: true };
   }
 
+  async function generateStoryboardT2IPromptForSegment(segment, progress = null, percent = 30, label = "Storyboard Gemma T2I", options = {}) {
+    if (!segment) throw new Error("Scene is missing.");
+    state.activeId = segment.id;
+    syncInspector();
+    const conceptText = String(segment.notes || segment.flux_notes || segment.nb_notes || "").trim();
+    if (!String(segment.story_beat || "").trim() && conceptText) {
+      syncConceptPromptToStoryBeat(segment, conceptText);
+    }
+    const scenes = storyboardScenePayload();
+    const scene = scenes.find((item) => item.id === segment.id);
+    if (!scene) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: storyboard scene card could not be built.`);
+    const storyboardState = {
+      projectFolder: activeProjectFolderForSave(),
+      mode: "storyboard_prompts",
+      performanceMode: normalizeVideoType(state.videoType),
+      videoType: normalizeVideoType(state.videoType),
+      scenes,
+      storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+      referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+    };
+    progress?.set(`${label}: sending storyboard scene card to ${promptRunnerActionName()}...\nConcept prompt is included as the scene story beat.`, percent);
+    const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", {
+      ...textGemmaRunnerPayload(),
+      model_file: t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "",
+      storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+      unload_after: options.unloadAfter !== false,
+      seed: options.seed,
+      temperature: options.temperature ?? 0.35,
+      top_p: options.topP ?? 0.90,
+      max_new_tokens: options.maxNewTokens ?? 1200,
+    }, 240000);
+    pushHistory();
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    render();
+    return { ...data, used_storyboard_prompt_writer: true };
+  }
+
   async function generateT2IPromptForSegment(segment, progress = null, percent = 30, label = "Gemma T2I", options = {}) {
     const missing = t2iMissingReason(segment);
     if (missing) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${missing}`);
     state.activeId = segment.id;
     syncInspector();
-    const useVision = Boolean(segment.use_vision_reference);
-    const imageMode = options.imageMode || state.imageModelMode || "zimage";
-    const notesAreBlank = !String(segment.notes || "").trim() && !useVision;
-    const userNotes = notesAreBlank ? textOnlyFallbackNotesForSegment(segment, imageMode) : (segment.notes || "");
-    const referenceContext = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
-    if (useVision && state.textGemmaRunner === "llm_api") {
-      throw new Error(`${label}: LLM API is text-only for this prompt step right now. Turn off Use vision reference image or choose Local LLM/LM Studio in LLM Runner.`);
-    }
-    progress?.set(`${label}: preparing Gemma input...\n${notesAreBlank ? "Scene notes are empty, using Storyboard Image Prep context instead.\n" : ""}${gemmaRunnerLine({ vision: useVision })}`, percent);
-    const gemmaSelect = state.imageModelMode === "ernie_image"
-      ? (useVision ? ernieGemmaModelSelect : ernieTextGemmaModelSelect)
-      : (useVision ? gemmaModelSelect : t2iTextGemmaModelSelect);
-    const mmprojSelectForMode = state.imageModelMode === "ernie_image" ? ernieMmprojSelect : mmprojSelect;
-    const data = await postJson("/vrgdg/music_builder/generate_t2i", {
-      ...textGemmaRunnerPayload(),
-      model_file: gemmaSelect.value,
-      mmproj_file: useVision ? mmprojSelectForMode.value : "",
-      use_vision: useVision,
-      ref_image_path: segment.ref_image_path || "",
-      prompt_mode: imageMode,
-      reference_context: referenceContext || {},
-      repair_model_file: state.imageModelMode === "ernie_image" ? ernieTextGemmaModelSelect.value : t2iTextGemmaModelSelect.value,
-      user_notes: userNotes,
-      theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-      story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-      subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
-      unload_after: options.unloadAfter !== false,
-      seed: options.seed,
-      temperature: options.temperature,
-      top_p: options.topP,
-    }, useVision ? 10 * 60 * 1000 : 120000);
-    pushHistory();
-    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, state.imageModelMode, { validateJunk: true }), segment));
-    render();
-    return { ...data, used_storyboard_context_fallback: notesAreBlank };
+    return generateStoryboardT2IPromptForSegment(segment, progress, percent, label, options);
   }
 
   async function createZImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "ZImage") {
@@ -20288,6 +20573,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     progress?.set(`${label}: combining global and scene image ingredients for Gemma vision...\n${gemmaRunnerLine({ vision: true })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_flux_klein_prompt", {
+      ...textGemmaRunnerPayload(),
       model_file: fluxGemmaModelSelect.value,
       mmproj_file: fluxMmprojSelect.value,
       image_ingredients: settings.image_ingredients || [],
@@ -20720,10 +21006,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await autoSaveSessionQuiet("Gemma T2I complete");
       progress.set("T2I prompt ready.", 100);
       progress.close(900);
-      toast(data.used_reference_image
-        ? "Gemma created T2I from reference image."
-        : data.used_storyboard_context_fallback
-          ? "Scene notes were empty, so Gemma created T2I from Storyboard Image Prep context."
+      toast(data.used_storyboard_prompt_writer
+        ? "Gemma created T2I from the storyboard scene card."
+        : data.used_reference_image
+          ? "Gemma created T2I from reference image."
           : "Gemma created T2I from notes.");
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
@@ -20760,6 +21046,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       repair_model_file: i2vTextGemmaModelSelect.value,
       draft_prompt: base,
       mode_label: modeLabel,
+      performance_mode: normalizeVideoType(state.videoType),
       t2i_prompt: sceneConceptPromptText(segment),
       user_notes: String(segment?.i2v_notes || "").trim(),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
@@ -20826,6 +21113,328 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return targets.length;
   }
 
+  function showVideoPromptEditModal(currentPrompt, modeLabel, options = {}) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(760px,calc(100vw - 36px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(modeLabel)} Prompt</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Text-only edit: sends only the current prompt and your requested change.</div>`;
+      const close = makeButton("Close");
+      header.append(title, close);
+      const request = document.createElement("textarea");
+      request.placeholder = "What would you like to change?";
+      request.style.cssText = "width:100%;box-sizing:border-box;min-height:120px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
+      const useSceneContext = makeCheckbox("Use full scene context", false);
+      const sceneContextHint = document.createElement("div");
+      sceneContextHint.textContent = "Off: sends only this prompt and your change request for a small edit. On: also sends scene notes, lyrics, motion notes, subject/location context, and the current image prompt for a fuller rewrite.";
+      sceneContextHint.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;margin-top:-6px;";
+      const useStartingImage = makeCheckbox("Use starting image", false);
+      const imageHint = document.createElement("div");
+      imageHint.textContent = "Off: text-only prompt edit. On: also sends the current scene image so Gemma can make visual-aware motion or camera changes.";
+      imageHint.style.cssText = sceneContextHint.style.cssText;
+      const showStartingImage = Boolean(options.canUseStartingImage);
+      useStartingImage.wrapper.style.display = showStartingImage ? "flex" : "none";
+      imageHint.style.display = showStartingImage ? "" : "none";
+      const promptPreview = document.createElement("pre");
+      promptPreview.textContent = currentPrompt;
+      promptPreview.style.cssText = "margin:0;max-height:220px;overflow:auto;white-space:pre-wrap;border:1px solid #334155;border-radius:7px;background:#020617;color:#cbd5e1;padding:10px;font-size:11px;line-height:1.4;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const update = makeButton("Update Prompt", "primary");
+      actions.append(cancel, update);
+      box.append(header, makeField("What would you like to change?", request), useSceneContext.wrapper, sceneContextHint, useStartingImage.wrapper, imageHint, makeField("Current prompt", promptPreview), actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      close.onclick = () => finish(null);
+      cancel.onclick = () => finish(null);
+      update.onclick = () => {
+        const editRequest = String(request.value || "").trim();
+        if (!editRequest) {
+          toast("Tell Gemma what you want changed first.", true);
+          request.focus();
+          return;
+        }
+        finish({
+          editRequest,
+          useFullSceneContext: Boolean(useSceneContext.input.checked),
+          useStartingImage: showStartingImage && Boolean(useStartingImage.input.checked),
+        });
+      };
+      request.focus();
+    });
+  }
+
+  function showImagePromptEditModal(currentPrompt, modeLabel, options = {}) {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(760px,calc(100vw - 36px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(modeLabel)} Image Prompt</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Focused edit: sends the current image prompt and your requested change.</div>`;
+      const close = makeButton("Close");
+      header.append(title, close);
+      const request = document.createElement("textarea");
+      request.placeholder = "What would you like to change?";
+      request.style.cssText = "width:100%;box-sizing:border-box;min-height:120px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
+      const useSceneContext = makeCheckbox("Use full scene context", false);
+      const sceneContextHint = document.createElement("div");
+      sceneContextHint.textContent = "Off: sends only this prompt and your change request. On: also sends scene notes, lyrics, subject/location context, and reference descriptions for a fuller rewrite.";
+      sceneContextHint.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;margin-top:-6px;";
+      const useReferenceImage = makeCheckbox("Use current scene image as visual reference", false);
+      const imageHint = document.createElement("div");
+      imageHint.textContent = "Off: text-only prompt edit. On: also sends the selected scene image so Gemma can make visual-aware prompt changes.";
+      imageHint.style.cssText = sceneContextHint.style.cssText;
+      const showReferenceImage = Boolean(options.canUseReferenceImage);
+      useReferenceImage.wrapper.style.display = showReferenceImage ? "flex" : "none";
+      imageHint.style.display = showReferenceImage ? "" : "none";
+      const promptPreview = document.createElement("pre");
+      promptPreview.textContent = currentPrompt;
+      promptPreview.style.cssText = "margin:0;max-height:220px;overflow:auto;white-space:pre-wrap;border:1px solid #334155;border-radius:7px;background:#020617;color:#cbd5e1;padding:10px;font-size:11px;line-height:1.4;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const update = makeButton("Update Prompt", "primary");
+      actions.append(cancel, update);
+      box.append(header, makeField("What would you like to change?", request), useSceneContext.wrapper, sceneContextHint, useReferenceImage.wrapper, imageHint, makeField("Current prompt", promptPreview), actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      close.onclick = () => finish(null);
+      cancel.onclick = () => finish(null);
+      update.onclick = () => {
+        const editRequest = String(request.value || "").trim();
+        if (!editRequest) {
+          toast("Tell Gemma what you want changed first.", true);
+          request.focus();
+          return;
+        }
+        finish({
+          editRequest,
+          useFullSceneContext: Boolean(useSceneContext.input.checked),
+          useReferenceImage: showReferenceImage && Boolean(useReferenceImage.input.checked),
+        });
+      };
+      request.focus();
+    });
+  }
+
+  function imagePromptEditModelPayload(imageMode, useReferenceImage) {
+    if (imageMode === "ernie_image") {
+      return {
+        model_file: useReferenceImage ? ernieGemmaModelSelect.value : ernieTextGemmaModelSelect.value,
+        repair_model_file: ernieTextGemmaModelSelect.value,
+        mmproj_file: useReferenceImage ? ernieMmprojSelect.value : "",
+      };
+    }
+    if (imageMode === "flux_klein") {
+      return {
+        model_file: useReferenceImage ? fluxGemmaModelSelect.value : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || ""),
+        repair_model_file: t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "",
+        mmproj_file: useReferenceImage ? fluxMmprojSelect.value : "",
+      };
+    }
+    if (imageMode === "nano_banana") {
+      return {
+        model_file: useReferenceImage ? nbGemmaModelSelect.value : (t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || ""),
+        repair_model_file: t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "",
+        mmproj_file: useReferenceImage ? nbMmprojSelect.value : "",
+      };
+    }
+    return {
+      model_file: useReferenceImage ? gemmaModelSelect.value : t2iTextGemmaModelSelect.value,
+      repair_model_file: t2iTextGemmaModelSelect.value,
+      mmproj_file: useReferenceImage ? mmprojSelect.value : "",
+    };
+  }
+
+  async function editCurrentImagePromptWithGemma() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const imageMode = state.imageModelMode || "zimage";
+    if (imageMode === "z_enhance") {
+      toast("Enhance has its own Gemma Enhance Prompt tool. Switch to an image model prompt to edit scene image prompts.", true);
+      return;
+    }
+    const currentPrompt = String(segmentPromptForEdit(segment, "t2i") || "").trim();
+    if (!currentPrompt) {
+      toast("Create or type an image prompt first, then Gemma can edit it.", true);
+      return;
+    }
+    const modeLabel = imageModeDisplayLabel(imageMode, true);
+    const imageReference = segmentImageSource(segment) || (segment.ref_image_path ? { path: segment.ref_image_path } : null);
+    const canUseReferenceImage = Boolean(imageReference?.path || imageReference?.data);
+    const editOptions = await showImagePromptEditModal(currentPrompt, modeLabel, { canUseReferenceImage });
+    if (!editOptions) return;
+    const editRequest = String(editOptions.editRequest || "").trim();
+    const useFullSceneContext = Boolean(editOptions.useFullSceneContext);
+    const useReferenceImage = canUseReferenceImage && Boolean(editOptions.useReferenceImage);
+    if (useReferenceImage && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+      toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
+      return;
+    }
+    const buttons = editImagePromptButtons;
+    let progress = null;
+    try {
+      buttons.forEach((button) => {
+        button.disabled = true;
+        button.textContent = "Editing...";
+      });
+      progress = createProgressWindow(`Editing ${modeLabel} image prompt`);
+      progress.set(`Running ${useReferenceImage ? "vision-assisted" : "text-only"} image prompt edit${useFullSceneContext ? " with scene context" : ""}...\n${gemmaRunnerLine({ vision: useReferenceImage })}`, 35);
+      const data = await postJson("/vrgdg/music_builder/edit_image_prompt", {
+        ...textGemmaRunnerPayload(),
+        ...imagePromptEditModelPayload(imageMode, useReferenceImage),
+        current_prompt: currentPrompt,
+        edit_request: editRequest,
+        mode_label: modeLabel,
+        prompt_mode: imageMode,
+        use_vision_reference: useReferenceImage,
+        ref_image_path: useReferenceImage ? (imageReference.path || "") : "",
+        ref_image_data: useReferenceImage ? (imageReference.data || "") : "",
+        use_full_scene_context: useFullSceneContext,
+        reference_context: imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : imageMode === "flux_klein" ? fluxReferenceContextForSegment(segment) : {},
+        scene_context: useFullSceneContext ? {
+          label: sceneDisplayName(segment, segmentIndexInfo(segment).index),
+          scene_notes: String(segment.notes || segment.nb_notes || segment.flux_notes || "").trim(),
+          director_note: String(segment.timeline_note || "").trim(),
+          lyric_text: String(segment.lyric_text || "").trim(),
+          lyric_section: String(segment.lyric_section || "").trim(),
+          subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
+          location_context: segmentMappedLocationText(segment),
+          no_character_present: Boolean(segment.no_character_present),
+        } : {},
+        unload_after: true,
+        n_ctx: 8000,
+        temperature: 0.25,
+        top_p: 0.9,
+        max_new_tokens: 1200,
+      }, 180000);
+      const nextPrompt = String(data.prompt || "").trim();
+      if (!nextPrompt) throw new Error("Gemma returned an empty edited image prompt.");
+      pushHistory();
+      syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(nextPrompt, segment, imageMode, { validateJunk: true }), segment));
+      editImagePromptButtons.forEach((button) => {
+        button.style.display = "";
+      });
+      render();
+      await autoSaveSessionQuiet(`Gemma edited ${modeLabel} image prompt`);
+      progress.set("Edited image prompt ready.", 100);
+      progress.close(900);
+      toast(`Gemma edited the ${modeLabel} image prompt.`);
+    } catch (error) {
+      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `edit ${modeLabel} image prompt`, segment });
+      progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      buttons.forEach((button) => {
+        button.disabled = false;
+        button.textContent = "Edit Prompt";
+      });
+      syncInspector();
+    }
+  }
+
+  async function editCurrentVideoPromptWithGemma() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const currentPrompt = String(segment.i2v_prompt || i2vPrompt.value || "").trim();
+    if (!currentPrompt) {
+      toast("Create or type a video prompt first, then Gemma can edit it.", true);
+      return;
+    }
+    const modeLabel = videoModeDisplayLabel(currentVideoMode(), true);
+    const videoMode = currentVideoMode();
+    const imageReference = videoMode === "i2v" ? getI2VImageReference(segment) : { path: "", data: "" };
+    const canUseStartingImage = videoMode === "i2v" && Boolean(imageReference.path || imageReference.data);
+    const editOptions = await showVideoPromptEditModal(currentPrompt, modeLabel, { canUseStartingImage });
+    if (!editOptions) return;
+    const editRequest = String(editOptions.editRequest || "").trim();
+    const useFullSceneContext = Boolean(editOptions.useFullSceneContext);
+    const useStartingImage = canUseStartingImage && Boolean(editOptions.useStartingImage);
+    if (useStartingImage && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+      toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
+      return;
+    }
+    const singers = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    let progress = null;
+    try {
+      editI2VPromptButton.disabled = true;
+      editI2VPromptButton.textContent = "Editing...";
+      progress = createProgressWindow(`Editing ${modeLabel} prompt`);
+      progress.set(`Running ${useStartingImage ? "vision-assisted" : "text-only"} prompt edit${useFullSceneContext ? " with scene context" : ""}...\n${gemmaRunnerLine({ vision: useStartingImage })}`, 35);
+      const data = await postJson("/vrgdg/music_builder/edit_video_prompt", {
+        ...textGemmaRunnerPayload(),
+        model_file: useStartingImage ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
+        repair_model_file: i2vTextGemmaModelSelect.value,
+        mmproj_file: useStartingImage ? i2vMmprojSelect.value : "",
+        current_prompt: currentPrompt,
+        edit_request: editRequest,
+        mode_label: modeLabel,
+        performance_mode: normalizeVideoType(state.videoType),
+        use_vision_reference: useStartingImage,
+        image_reference_path: useStartingImage ? imageReference.path : "",
+        image_reference_data: useStartingImage ? imageReference.data : "",
+        use_full_scene_context: useFullSceneContext,
+        scene_context: useFullSceneContext ? {
+          label: sceneDisplayName(segment, segmentIndexInfo(segment).index),
+          image_prompt: sceneConceptPromptText(segment),
+          scene_notes: String(segment.notes || "").trim(),
+          director_note: String(segment.timeline_note || "").trim(),
+          motion_notes: String(segment.i2v_notes || "").trim(),
+          lyric_text: String(segment.lyric_text || "").trim(),
+          lyric_section: String(segment.lyric_section || "").trim(),
+          performance_mode: normalizeVideoType(state.videoType),
+          singers: segment.no_character_present ? [] : singers,
+          subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
+          location_context: segmentMappedLocationText(segment),
+          no_character_present: Boolean(segment.no_character_present),
+        } : {},
+        unload_after: true,
+        n_ctx: 8000,
+        temperature: 0.25,
+        top_p: 0.9,
+        max_new_tokens: 1200,
+      }, GEMMA_VIDEO_ENHANCE_TIMEOUT_MS);
+      const nextPrompt = String(data.prompt || "").trim();
+      if (!nextPrompt) throw new Error("Gemma returned an empty edited prompt.");
+      pushHistory();
+      segment.i2v_prompt = nextPrompt;
+      i2vPrompt.value = nextPrompt;
+      editI2VPromptButton.style.display = "";
+      render();
+      await autoSaveSessionQuiet(`Gemma edited ${modeLabel} prompt`);
+      progress.set("Edited prompt ready.", 100);
+      progress.close(900);
+      toast(`Gemma edited the ${modeLabel} prompt.`);
+    } catch (error) {
+      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `edit ${modeLabel} prompt`, segment });
+      progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw Gemma output saved to:\n${debugPath}` : ""}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      editI2VPromptButton.disabled = false;
+      editI2VPromptButton.textContent = "Edit Prompt";
+      syncVideoModePanel();
+      syncInspector();
+    }
+  }
+
   async function createI2VPromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -20870,6 +21479,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isT2V || isRTV || isIngredients ? conceptPrompt : useImageReference ? "" : conceptPrompt,
+        performance_mode: normalizeVideoType(state.videoType),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
@@ -20910,6 +21520,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       model_file: i2vTextGemmaModelSelect.value,
       mmproj_file: "",
       t2i_prompt: t2iText,
+      performance_mode: normalizeVideoType(state.videoType),
       image_reference_path: "",
       image_reference_data: "",
       repair_model_file: i2vTextGemmaModelSelect.value,
@@ -20961,6 +21572,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
       mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
       t2i_prompt: isT2V || isRTV || isIngredients ? t2iText : useImageReference ? "" : t2iText,
+      performance_mode: normalizeVideoType(state.videoType),
       image_reference_path: imageReference.path,
       image_reference_data: imageReference.data,
       repair_model_file: i2vTextGemmaModelSelect.value,
@@ -21291,6 +21903,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return compact ? "I2V" : "Image to Video";
   }
 
+  function imageModeDisplayLabel(mode = state.imageModelMode || "zimage", compact = false) {
+    if (mode === "flux_klein") return compact ? "Flux/Klein" : "Flux/Klein";
+    if (mode === "nano_banana") return compact ? "Nano B" : "NanoBanana";
+    if (mode === "ernie_image") return compact ? "Ernie" : "Ernie Image";
+    if (mode === "krea2_2pass") return compact ? "Krea 2" : "Krea 2";
+    if (mode === "z_enhance") return compact ? "Enhance" : "Enhance";
+    return compact ? "ZImage" : "ZImage";
+  }
+
   function activeVideoOutputFolder(mode = currentVideoMode()) {
     if (mode === "ingredients") return ingredientsVideoOutputFolder();
     if (mode === "rtv") return rtvVideoOutputFolder();
@@ -21516,6 +22137,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           lyrics: lyric,
           lyric_section: String(segment.lyric_section || "").trim(),
           story_beat: String(segment.story_beat || "").trim(),
+          performance_mode: normalizeVideoType(state.videoType),
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
           lyric_singers: Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : [],
@@ -21680,6 +22302,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     window.VRGDGStoryboardBuilder.open({
       projectFolder: projectInput.value || state.projectFolder || "",
       videoPromptType: currentVideoMode(),
+      performanceMode: normalizeVideoType(state.videoType),
+      videoType: normalizeVideoType(state.videoType),
       scenes: storyboardScenePayload(),
       referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
       storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
@@ -23752,6 +24376,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxGlobalImageIngredients = [];
     state.fluxReferenceBuilder = defaultFluxReferenceBuilder();
     state.zEnhanceSettings = defaultZEnhanceSettings();
+    state.videoType = "singing";
     state.videoModelMode = "i2v";
     state.i2vVideoSettings = defaultI2VVideoSettings();
     state.promptToolsHintPrefs = {};
@@ -23782,6 +24407,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncErnieImagePanel();
     syncKrea2TwoPassPanel();
     syncZEnhanceSettingsPanel();
+    syncVideoTypeControl();
     syncI2VVideoSettingsPanel();
     syncVideoModePanel();
     syncInspector();
@@ -25454,7 +26080,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const count = Array.isArray(state.builderStoryReferenceImages) ? state.builderStoryReferenceImages.length : 0;
       storyRefDrop.textContent = count
         ? `${count} Story/Style image${count === 1 ? "" : "s"} loaded`
-        : "Drop singers, characters, locations, or aesthetic images";
+        : "Drop performers, characters, locations, or aesthetic images";
     };
     const storyRefUpload = makeButton("Upload Story Images");
     const storyRefAnalyze = makeButton("Analyze Images");
@@ -25653,8 +26279,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sendMessage = async () => {
       const message = String(input.value || "").trim();
       if (!message) return;
-      if (state.textGemmaRunner !== "lm_studio" && !String(t2iTextGemmaModelSelect.value || "").trim()) {
-        toast("Choose a non-vision text Gemma model first, or use LM Studio in LLM Runner.", true);
+      if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && !String(t2iTextGemmaModelSelect.value || "").trim()) {
+        toast("Choose a non-vision text Gemma model first, or use LM Studio/LLM API in LLM Runner.", true);
         return;
       }
       if (purpose.value === "story_builder") {
@@ -25844,7 +26470,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       const modelFile = String(gemmaModelSelect.value || fluxGemmaModelSelect.value || nbGemmaModelSelect.value || i2vGemmaModelSelect.value || "").trim();
       const mmprojFile = String(mmprojSelect.value || fluxMmprojSelect.value || nbMmprojSelect.value || i2vMmprojSelect.value || "").trim();
-      if (!modelFile) {
+      if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && !modelFile) {
         toast("Choose a vision Gemma model first.", true);
         return;
       }
@@ -25853,12 +26479,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         storyRefAnalyze.disabled = true;
         storyRefAnalyze.textContent = "Analyzing...";
         progress = createProgressWindow("Story Builder reference images");
-        progress.set("Compressing Story/Style images into 512px tiles and running vision Gemma...", 18);
+        progress.set(`Compressing Story/Style images into 512px tiles and running ${gemmaRunnerLabel({ vision: true })}...`, 18);
         const data = await postJson("/vrgdg/music_builder/analyze_story_references", {
+          ...textGemmaRunnerPayload(),
           model_file: modelFile,
           mmproj_file: mmprojFile,
           image_ingredients: refs,
-          user_notes: "These are singer, character, location, and aesthetic references for the whole project.",
+          user_notes: "These are performer, character, location, and aesthetic references for the whole project.",
           unload_after: true,
           n_ctx: 4096,
           max_new_tokens: 500,
@@ -26792,8 +27419,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return { added: 0, updated: 0 };
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        toast("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.", true);
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.", true);
         return { added: 0, updated: 0 };
       }
       const progress = createProgressWindow("Wizard Location Scout", { zIndex: 100012 });
@@ -26849,8 +27476,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return { mapped: 0 };
       }
       const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
-      if (!modelFile && state.textGemmaRunner !== "lm_studio") {
-        toast("Choose a non-vision Gemma model first, or use LM Studio in LLM Runner.", true);
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.", true);
         return { mapped: 0 };
       }
       const progress = createProgressWindow("Wizard Location Mapping", { zIndex: 100012 });
@@ -27080,6 +27707,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const storyboardState = {
         projectFolder: activeProjectFolderForSave(),
         mode: "storyboard_prompts",
+        performanceMode: normalizeVideoType(state.videoType),
+        videoType: normalizeVideoType(state.videoType),
         scenes,
         storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
         referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
@@ -27138,6 +27767,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const storyboardState = {
         projectFolder: activeProjectFolderForSave(),
         mode: "storyboard_prompts",
+        performanceMode: normalizeVideoType(state.videoType),
+        videoType: normalizeVideoType(state.videoType),
         scenes,
         storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
         referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
@@ -27521,6 +28152,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (menuDropdown.contains(event.target) || menuButton.contains(event.target)) return;
     menuDropdown.style.display = "none";
   });
+  videoTypeSelect.onchange = async () => {
+    state.videoType = normalizeVideoType(videoTypeSelect.value);
+    syncVideoTypeControl();
+    await autoSaveSessionQuiet("video type changed");
+    toast(`Video Type set to ${VIDEO_TYPE_OPTIONS.find((item) => item.value === state.videoType)?.label || "Singing (music video)"}.`);
+  };
   loadButton.onclick = () => {
     if (loadButton.disabled) return;
     loadAudio();
@@ -27562,6 +28199,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   gemmaVideoAllButton.onclick = confirmAndRunGemmaVideoAll;
   updatePromptRunnerButtonLabels();
   zImageAllButton.onclick = confirmAndRunZImageAll;
+  editI2VPromptButton.onclick = editCurrentVideoPromptWithGemma;
   fullBuildButton.onclick = confirmAndRunFullBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
@@ -27613,6 +28251,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   createT2IButton.onclick = createT2IPromptWithGemma;
   ernieCreateT2IButton.onclick = createT2IPromptWithGemma;
   krea2TwoPassCreateT2IButton.onclick = createT2IPromptWithGemma;
+  editImagePromptButtons.forEach((button) => {
+    button.onclick = editCurrentImagePromptWithGemma;
+  });
   createI2VButton.onclick = createI2VPromptWithGemma;
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
@@ -27951,8 +28592,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   timelineViewport.addEventListener("click", (event) => {
     if (event.target === timelineViewport || event.target === timelineCanvas) clearActiveSegment();
   });
-  segmentList.addEventListener("click", (event) => {
-    if (event.target === segmentList) clearActiveSegment();
+  sceneListPane.addEventListener("click", (event) => {
+    if (event.target === sceneListPane) clearActiveSegment();
   });
   previewStage.addEventListener("click", (event) => {
     if (event.target === previewStage || event.target === previewEmpty) clearActiveSegment();
@@ -27988,7 +28629,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.showTimelineLyricNotes = !state.showTimelineLyricNotes;
     syncLyricNoteControls();
     render();
-    autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline lyric notes shown" : "timeline lyric notes hidden");
+    autoSaveSessionQuiet(state.showTimelineLyricNotes ? "timeline line notes shown" : "timeline line notes hidden");
   };
   zoomOutButton.onclick = () => setTimelineZoom(state.pxPerSecond / 1.25);
   zoomInButton.onclick = () => setTimelineZoom(state.pxPerSecond * 1.25);

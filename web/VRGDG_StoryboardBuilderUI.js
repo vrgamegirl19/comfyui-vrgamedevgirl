@@ -756,7 +756,7 @@ export const PERFORMANCE_STYLE_PRESETS = [
   {
     value: "rap_hiphop",
     label: "Rap / hip-hop",
-    direction: "Use rap-style delivery instead of soft singing: confident direct-to-camera energy, expressive hand gestures, head nods, shoulder movement, and sharper body language.",
+    direction: "Use rap-style energy instead of soft singing: confident direct-to-camera presence, expressive hand gestures, head nods, shoulder movement, and sharper body language.",
   },
   {
     value: "pop_performance",
@@ -771,7 +771,7 @@ export const PERFORMANCE_STYLE_PRESETS = [
   {
     value: "rnb_smooth",
     label: "R&B / smooth",
-    direction: "Use smooth R&B performance energy: relaxed confident expression, controlled sensual movement, gentle hand gestures, soft rhythmic body motion, and close emotional delivery.",
+    direction: "Use smooth R&B performance energy: relaxed confident expression, controlled sensual movement, gentle hand gestures, soft rhythmic body motion, and close emotional intensity.",
   },
   {
     value: "edm_club",
@@ -781,7 +781,7 @@ export const PERFORMANCE_STYLE_PRESETS = [
   {
     value: "spoken_word",
     label: "Spoken word",
-    direction: "Use spoken-word delivery instead of singing: focused eyes, intentional gestures, restrained intensity, and poetic performance energy.",
+    direction: "Use spoken-word energy instead of singing: focused eyes, intentional gestures, restrained intensity, and poetic performance presence.",
   },
   {
     value: "no_vocals_broll",
@@ -1046,6 +1046,13 @@ function storyboardIsInstrumentalText(value = "") {
   return /\binstrumental|no vocals?|no singing|silence\b/i.test(text);
 }
 
+function normalizeStoryboardPerformanceMode(value = "") {
+  const text = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (["speaking", "short_film", "dialogue", "dialog"].includes(text)) return "speaking";
+  if (["no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"].includes(text)) return "no_lip_sync";
+  return "singing";
+}
+
 function normalizeScene(scene = {}, index = 0) {
   const rawVideoType = String(scene.video_prompt_type || scene.video_type || scene.mode || "").trim();
   const videoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(rawVideoType) ? rawVideoType : "i2v";
@@ -1063,6 +1070,7 @@ function normalizeScene(scene = {}, index = 0) {
     lyrics,
     lyric_section: scene.lyric_section || scene.section || scene.song_section || "",
     story_beat: scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "",
+    performance_mode: normalizeStoryboardPerformanceMode(scene.performance_mode || scene.performanceMode || scene.video_performance_mode || scene.videoPerformanceMode),
     lyric_singers: lyricSingers,
     lyric_no_lip_sync: lyricNoLipSync,
     lyric_instrumental: lyricInstrumental,
@@ -1098,6 +1106,7 @@ function scenesFromBuilderPayload(payload = {}) {
     lyrics: scene.lyric_text || scene.lyrics || "",
     lyric_section: scene.lyric_section || scene.section || scene.song_section || "",
     story_beat: scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "",
+    performance_mode: scene.performance_mode || scene.performanceMode || payload.performance_mode || payload.performanceMode || "",
     lyric_singers: scene.lyric_singers || scene.singers || [],
     lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync),
     lyric_instrumental: Boolean(scene.lyric_instrumental || scene.instrumental),
@@ -1228,6 +1237,7 @@ function mergeStoryLayers(primary = {}, fallback = {}) {
 function slimStoryboardForRequest(state) {
   return {
     mode: state.mode,
+    performance_mode: normalizeStoryboardPerformanceMode(state.performanceMode || state.performance_mode),
     camera_flow: state.cameraFlow || "balanced",
     image_shot_flow: state.imageShotFlow || "intimate",
     image_aesthetic: state.imageAesthetic || "",
@@ -1281,10 +1291,11 @@ function storyboardScenesForGpt(state) {
     const cameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
+    const performanceMode = normalizeStoryboardPerformanceMode(normalized.performance_mode || state.performanceMode || state.videoType || state.performance_mode);
     const instrumental = Boolean(normalized.lyric_instrumental);
-    const noLipSync = Boolean(normalized.lyric_no_lip_sync);
+    const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
-    const shouldLipSync = !imageMode && Boolean(lyricText) && !instrumental && !noLipSync && !noCharacterPresent;
+    const shouldLipSync = !imageMode && performanceMode !== "no_lip_sync" && Boolean(lyricText) && !instrumental && !noLipSync && !noCharacterPresent;
     const subjectRefs = noCharacterPresent ? [] : (Array.isArray(normalized.subject_refs) ? normalized.subject_refs : [])
       .map((ref) => storyboardReferenceForGpt(ref, { subject: true }))
       .filter(Boolean);
@@ -1314,8 +1325,11 @@ function storyboardScenesForGpt(state) {
       scene_number: normalized.scene_number,
       label: normalized.label,
       prompt_type: imageMode ? "text to image" : storyboardVideoPromptTypeLabel(normalized.video_prompt_type),
-      lyric_line_to_sing: shouldLipSync ? lyricText : "",
+      performance_mode: performanceMode,
+      lyric_line_to_sing: shouldLipSync && performanceMode === "singing" ? lyricText : "",
+      line_to_say: shouldLipSync && performanceMode === "speaking" ? lyricText : "",
       vocal_status: {
+        performance_mode: performanceMode,
         lyric_text: lyricText,
         lyric_section: normalized.lyric_section,
         singers,
@@ -1325,15 +1339,25 @@ function storyboardScenesForGpt(state) {
         no_character_present: noCharacterPresent,
       },
       vocal_direction: {
-        mode: imageMode ? "still image / no singing" : (shouldLipSync ? "sing exact lyric line" : (instrumental ? "instrumental / no vocals" : (noLipSync ? "b-roll / no lip sync" : "no lyric line provided"))),
+        mode: imageMode
+          ? "still image / no singing"
+          : performanceMode === "speaking" && shouldLipSync
+            ? "say exact dialogue line"
+            : performanceMode === "no_lip_sync"
+              ? "visual only / no lip sync"
+              : (shouldLipSync ? "sing exact lyric line" : (instrumental ? "instrumental / no vocals" : (noLipSync ? "b-roll / no lip sync" : "no lyric line provided"))),
         lyric_line: lyricText,
         singers,
         non_singing_visible_subjects: nonSingingSubjects,
         instruction: imageMode
           ? "This is a text-to-image still prompt, not a video or lip-sync prompt. Use lyric_line only for mood, symbolism, emotion, and visual direction. Do not mention singing, lip-syncing, performing vocals, singing the line, or mouth movement. The subject can pose, look emotional, move naturally, or appear in a fashion/editorial scene, but should not be described as singing unless the scene notes explicitly ask for a live singing image."
-          : shouldLipSync
-          ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Every non_singing_visible_subjects entry must still appear in the scene as a visible non-singing subject who reacts, watches, moves, or shares the moment without singing. Do not describe mouth shapes or mouth position."
-          : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene. Every listed subject must still appear as a visible non-singing subject unless no_character_present is true.",
+          : performanceMode === "speaking" && shouldLipSync
+            ? "Treat lyric_line as dialogue being said. The listed singer(s) field means the visible speaker(s). Use only wording like 'as she says \"...\"', 'as he says \"...\"', or 'as [subject name] says \"...\"'. Do not use alternate verbs for the dialogue line; use says only. Never use singing, rapping, music, lyric, vocal, or performance wording for speaking mode. Every non_singing_visible_subjects entry must still appear in the scene as visible non-speaking subjects who react, watch, move, or share the moment silently. Do not describe mouth shapes or mouth position."
+            : performanceMode === "no_lip_sync"
+              ? "Visual-only scene. Do not quote lyric_line. Do not mention saying, speaking, dialogue, singing, rapping, lyrics, vocals, lip-syncing, mouth movement, or no-vocal status. Use lyric_line only as hidden mood or story context."
+              : shouldLipSync
+                ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Every non_singing_visible_subjects entry must still appear in the scene as a visible non-singing subject who reacts, watches, moves, or shares the moment without singing. Do not describe mouth shapes or mouth position."
+                : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene. Every listed subject must still appear as a visible non-singing subject unless no_character_present is true.",
       },
       scene_summary: imageMode ? "" : normalized.prompt_summary,
       story_layer: {
@@ -1408,6 +1432,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
   return {
     scope: selectedScene ? "single_scene" : "all_scenes",
     selected_scene_number: selectedScene ? selectedScene.scene_number : null,
+    performance_mode: normalizeStoryboardPerformanceMode(selectedScene?.performance_mode || state.performanceMode || state.videoType || state.performance_mode),
     storyboard_mode: state.mode === "image_to_video_prep" ? "video prompt planning" : "text-to-image prompt planning",
     ...(imageMode
       ? {
@@ -1453,12 +1478,14 @@ function openStoryboardBuilder(payload = {}) {
   const payloadVideoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
     ? String(payload.videoPromptType || payload.video_prompt_type || "").trim()
     : "";
+  const payloadPerformanceMode = normalizeStoryboardPerformanceMode(payload.performanceMode || payload.performance_mode || payload.videoType || payload.video_type);
   const state = {
     projectFolder,
     mode: "storyboard_prompts",
     scenes: scenesFromBuilderPayload(payload).map((scene) => ({
       ...scene,
       video_prompt_type: payloadVideoPromptType || scene.video_prompt_type,
+      performance_mode: scene.performance_mode || payloadPerformanceMode,
     })),
     referenceBuilder: normalizeReferenceBuilderCatalog(payload.referenceBuilder || payload.reference_builder || {}),
     storyLayer: normalizeStoryLayer(payload.storyLayer || payload.story_layer || {}),
@@ -1474,6 +1501,7 @@ function openStoryboardBuilder(payload = {}) {
     imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || ""),
     globalConsistencyPhrase: String(payload.globalConsistencyPhrase || payload.global_consistency_phrase || ""),
     performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
+    performanceMode: payloadPerformanceMode,
   };
 
   const promptRunnerName = () => {
@@ -3032,6 +3060,7 @@ function openStoryboardBuilder(payload = {}) {
             lyrics: fresh.lyrics || normalized.lyrics,
             lyric_section: fresh.lyric_section || normalized.lyric_section,
             story_beat: fresh.story_beat || normalized.story_beat,
+            performance_mode: fresh.performance_mode || normalized.performance_mode || state.performanceMode,
             prompt_summary: state.mode === "image_to_video_prep" ? (fresh.prompt_summary || normalized.prompt_summary) : "",
             motion_summary: fresh.motion_summary || normalized.motion_summary,
             image_path: fresh.image_path || normalized.image_path,
@@ -3051,6 +3080,7 @@ function openStoryboardBuilder(payload = {}) {
         absorbSceneReferencesIntoCatalog(state.scenes);
       }
       state.mode = saved.mode || state.mode;
+      state.performanceMode = normalizeStoryboardPerformanceMode(saved.performance_mode || saved.performanceMode || state.performanceMode);
       if (saved.camera_flow && STORYBOARD_CAMERA_FLOW_PRESETS[saved.camera_flow]) {
         state.cameraFlow = saved.camera_flow;
         cameraFlowSelect.value = state.cameraFlow;

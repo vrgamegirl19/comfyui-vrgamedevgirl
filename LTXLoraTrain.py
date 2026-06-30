@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import hashlib
 import re
 import shutil
 import subprocess
@@ -1252,6 +1253,121 @@ def _ensure_krea2_lora_studio_route_registered():
             json.dump(project, handle, indent=2)
         return project
 
+    def _sync_project_dataset_from_folder(project):
+        paths = _project_paths(project.get("project_dir", ""))
+        os.makedirs(paths["images_dir"], exist_ok=True)
+
+        records = []
+        caption_records = []
+        manifest_entries = []
+        signature_parts = []
+
+        for filename in sorted(os.listdir(paths["images_dir"]), key=lambda value: value.lower()):
+            image_ext = os.path.splitext(filename)[1].lower()
+            if image_ext not in image_exts:
+                continue
+
+            image_path = os.path.normpath(os.path.join(paths["images_dir"], filename))
+            stem = os.path.splitext(filename)[0]
+            caption_path = os.path.join(paths["images_dir"], stem + ".txt")
+            caption_text = ""
+            caption_record = None
+            if os.path.isfile(caption_path):
+                with open(caption_path, "r", encoding="utf-8", errors="replace") as handle:
+                    caption_text = handle.read().strip()
+                caption_record = {
+                    "name": os.path.basename(caption_path),
+                    "path": os.path.normpath(caption_path),
+                    "type": "caption",
+                    "caption": caption_text,
+                }
+                caption_records.append(caption_record)
+
+            try:
+                image_mtime = os.path.getmtime(image_path)
+            except OSError:
+                image_mtime = 0
+            try:
+                caption_mtime = os.path.getmtime(caption_path) if os.path.isfile(caption_path) else 0
+            except OSError:
+                caption_mtime = 0
+
+            image_record = {
+                "name": filename,
+                "path": image_path,
+                "type": "image",
+                "caption_file": os.path.basename(caption_path) if caption_record else "",
+                "caption": caption_text,
+            }
+            records.append(image_record)
+            manifest_entries.append({
+                "new_stem": stem,
+                "image": image_record,
+                "caption": caption_record,
+            })
+            signature_parts.append(f"{filename}\0{image_mtime:.6f}\0{os.path.basename(caption_path)}\0{caption_mtime:.6f}\0{caption_text}")
+
+        previous_sync = project.get("dataset_sync") or {}
+        signature = hashlib.sha256("\n".join(signature_parts).encode("utf-8", errors="replace")).hexdigest()
+        previous_signature = str(previous_sync.get("signature") or "")
+        changed = signature != previous_signature
+        pending_cache_rebuild = bool(previous_sync.get("pending_cache_rebuild")) or changed
+
+        project["imported_files"] = records + caption_records
+        project["import_manifest_path"] = os.path.normpath(paths["import_manifest"])
+        project["caption_generation"] = {
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "created": [
+                {
+                    "image": item["name"],
+                    "caption_file": item["caption_file"],
+                    "caption": item["caption"],
+                    "runner": "folder_sync",
+                }
+                for item in records
+                if item.get("caption_file")
+            ],
+            "skipped_existing": [],
+            "runner": "folder_sync",
+            "overwrite_existing": False,
+            "cancelled": False,
+        }
+        project["dataset_sync"] = {
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+            "signature": signature,
+            "image_count": len(records),
+            "caption_count": len(caption_records),
+            "source": paths["images_dir"],
+            "changed": changed,
+            "pending_cache_rebuild": pending_cache_rebuild,
+        }
+
+        manifest = {
+            "imports": [
+                {
+                    "created_at": datetime.now().isoformat(timespec="seconds"),
+                    "source": "folder_sync_before_training",
+                    "entries": manifest_entries,
+                    "orphan_captions": [],
+                }
+            ]
+        }
+        image_stems = {os.path.splitext(item["name"])[0].lower() for item in records}
+        for filename in sorted(os.listdir(paths["images_dir"]), key=lambda value: value.lower()):
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in caption_exts:
+                continue
+            if os.path.splitext(filename)[0].lower() in image_stems:
+                continue
+            manifest["imports"][0]["orphan_captions"].append({
+                "original_name": filename,
+                "reason": "No image with the same filename stem exists in the dataset folder.",
+            })
+        with open(paths["import_manifest"], "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2)
+
+        return project, changed
+
     def _copy_file_like(data, target_path):
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as handle:
@@ -1416,6 +1532,57 @@ def _ensure_krea2_lora_studio_route_registered():
         if not cv2.imwrite(destination, grid):
             raise RuntimeError(f"Could not write XYZ plot: {destination}")
         return os.path.normpath(destination)
+
+    def _read_krea2_training_progress(project_dir):
+        paths = _project_paths(project_dir)
+        logs_dir = os.path.join(paths["workspace_dir"], "logs")
+        if not os.path.isdir(logs_dir):
+            return {"ok": True, "active": False, "status": "No log folder yet."}
+        log_files = [
+            entry.path
+            for entry in os.scandir(logs_dir)
+            if entry.is_file() and entry.name.lower().endswith(".log")
+        ]
+        if not log_files:
+            return {"ok": True, "active": False, "status": "No training log yet."}
+        log_path = max(log_files, key=lambda path: os.path.getmtime(path))
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as handle:
+                tail = handle.readlines()[-240:]
+        except Exception as exc:
+            return {"ok": True, "active": False, "log_path": os.path.normpath(log_path), "status": f"Could not read log: {exc}"}
+
+        progress = None
+        pattern = re.compile(
+            r"steps:\s*(?P<percent>\d+)%\|.*?\|\s*"
+            r"(?P<current>\d+)/(?:\s*)?(?P<total>\d+)\s*"
+            r"\[(?P<elapsed>[^<\]]+)<(?P<eta>[^,\]]+),\s*"
+            r"(?P<seconds>[0-9.]+)s/it,\s*avr_loss=(?P<loss>[0-9.eE+-]+)\]"
+        )
+        for line in tail:
+            match = pattern.search(line)
+            if not match:
+                continue
+            progress = {
+                "percent": int(match.group("percent")),
+                "current": int(match.group("current")),
+                "total": int(match.group("total")),
+                "elapsed": match.group("elapsed").strip(),
+                "eta": match.group("eta").strip(),
+                "seconds_per_it": float(match.group("seconds")),
+                "avr_loss": match.group("loss"),
+                "raw": line.strip(),
+            }
+        if progress:
+            return {"ok": True, "active": True, "log_path": os.path.normpath(log_path), **progress}
+
+        status = "Waiting for step progress..."
+        for line in reversed(tail):
+            cleaned = line.strip()
+            if cleaned:
+                status = cleaned[-300:]
+                break
+        return {"ok": True, "active": False, "log_path": os.path.normpath(log_path), "status": status}
 
     @server_instance.routes.get("/vrgdg/krea2_studio/defaults")
     async def vrgdg_krea2_studio_defaults(request):
@@ -1601,6 +1768,10 @@ def _ensure_krea2_lora_studio_route_registered():
             for key in ("preset_name", "settings", "sample_prompt", "aspect_ratio", "sample_model_settings", "custom_presets", "caption_instructions", "caption_user_notes", "caption_final_instructions", "caption_llm_settings"):
                 if key in payload:
                     project[key] = payload[key]
+            project, dataset_changed = _sync_project_dataset_from_folder(project)
+            if dataset_changed:
+                project["dataset_sync"]["pending_cache_rebuild"] = True
+                project["dataset_sync"]["cache_reason"] = "Dataset images or caption sidecars changed when the project was saved."
             project = _write_project(project)
             return web.json_response({"ok": True, "project": project})
         except Exception as exc:
@@ -1782,8 +1953,16 @@ def _ensure_krea2_lora_studio_route_registered():
                 project["sample_prompt"] = payload["sample_prompt"]
             if "aspect_ratio" in payload:
                 project["aspect_ratio"] = payload["aspect_ratio"]
+            project, dataset_changed = _sync_project_dataset_from_folder(project)
+            dataset_changed = dataset_changed or bool((project.get("dataset_sync") or {}).get("pending_cache_rebuild"))
             project = _write_project(project)
             settings = project.get("settings") or _preset_settings(project.get("preset_name", "Fast"))
+            cache_strategy_for_run = str(settings.get("cache_strategy", "auto"))
+            if dataset_changed:
+                cache_strategy_for_run = "force"
+                project["dataset_sync"]["cache_strategy_for_run"] = "force"
+                project["dataset_sync"]["cache_reason"] = "Dataset images or caption sidecars changed before training."
+                project = _write_project(project)
             paths = _project_paths(project["project_dir"])
             run_name = _safe_name(project.get("project_name", "Krea2Studio"))
             acquired = _VRGDG_KREA2_STUDIO_TRAIN_LOCK.acquire(blocking=False)
@@ -1808,7 +1987,7 @@ def _ensure_krea2_lora_studio_route_registered():
                     str(settings.get("learning_rate_preset", "1e-4")),
                     float(settings.get("learning_rate", 0.0001)),
                     int(settings.get("num_repeats", 1)),
-                    str(settings.get("cache_strategy", "auto")),
+                    cache_strategy_for_run,
                     bool(settings.get("copy_latest_to_comfy_loras", False)),
                     bool(settings.get("create_captions", False)),
                     str(settings.get("caption_text", "")),
@@ -1834,6 +2013,8 @@ def _ensure_krea2_lora_studio_route_registered():
             project["output_name"] = output_name
             project["completed_steps"] = completed_steps
             project["total_target_steps"] = total_target_steps
+            if project.get("dataset_sync"):
+                project["dataset_sync"]["pending_cache_rebuild"] = False
             project = _write_project(project)
             return web.json_response({"ok": True, "project": project, "result": {
                 "latest_lora_path": latest_lora_path,
@@ -1843,6 +2024,17 @@ def _ensure_krea2_lora_studio_route_registered():
                 "completed_steps": completed_steps,
                 "total_target_steps": total_target_steps,
             }})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
+    @server_instance.routes.post("/vrgdg/krea2_studio/training_progress")
+    async def vrgdg_krea2_studio_training_progress(request):
+        try:
+            payload = await request.json()
+            project_dir = _norm_path(payload.get("project_dir", ""))
+            if not project_dir:
+                raise ValueError("project_dir is required.")
+            return web.json_response(_read_krea2_training_progress(project_dir))
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
 
@@ -2512,6 +2704,12 @@ class VRGDG_LTXLoraTrainChunk:
             return "", 0
         step, path = max(candidates, key=lambda item: item[0])
         return os.path.normpath(path), step
+
+    def _final_output_file(self, output_dir, output_name, suffix):
+        path = os.path.join(output_dir, f"{output_name}{suffix}")
+        if os.path.isfile(path):
+            return os.path.normpath(path)
+        return ""
 
     def _write_dataset_config(self, path, dataset_images_dir, cache_dir, width, height, num_repeats):
         content = (
@@ -7152,6 +7350,10 @@ class VRGDG_Krea2LoraTrainChunk(VRGDG_ZImageLoraTrainChunk):
 
         latest_lora_path, latest_lora_step = self._latest_file(output_dir, output_name, ".safetensors")
         latest_state_path, latest_state_step = self._latest_state_dir(output_dir, output_name)
+        final_lora_path = self._final_output_file(output_dir, output_name, ".safetensors")
+        if final_lora_path and os.path.getmtime(final_lora_path) >= os.path.getmtime(log_path):
+            latest_lora_path = final_lora_path
+            latest_lora_step = next_target_steps
 
         completed_steps = max(latest_lora_step, latest_state_step)
         if completed_steps < next_target_steps:

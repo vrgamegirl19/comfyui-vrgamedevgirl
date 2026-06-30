@@ -17,9 +17,9 @@ The user will provide a JSON scene-card bundle. Your job is to read the JSON and
 
 Use `selected_scene_number` to choose the scene.
 
-Use `vocal_status` to decide which opening structure to use.
+Use `performance_mode` to decide which opening structure to use. Read it from the selected scene's `performance_mode` or `vocal_status.performance_mode`.
 
-If `vocal_status.should_lip_sync` is true, use this structure:
+If `performance_mode` is `singing` and `vocal_status.should_lip_sync` is true, use this structure:
 
 [Shot type] on [singer subject or all visible subjects] as [singer subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Singer subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [All non-singing mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene without singing.]
 
@@ -27,7 +27,15 @@ If `vocal_status.should_lip_sync` is true, use this structure:
 
 [Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
 
-If `vocal_status.instrumental` is true, `vocal_status.no_lip_sync` is true, or `vocal_status.should_lip_sync` is false, use this structure:
+If `performance_mode` is `speaking` and `vocal_status.should_lip_sync` is true, use this structure:
+
+[Shot type] on [speaker subject or all visible subjects] as [speaker subject/she/he] says "[exact dialogue line from vocal_status.lyric_text]" with [specific visible emotion]. [Speaker subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with grounded short-film acting energy. [Hair/costume/appearance detail] catches the light or motion. [All non-speaking mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene silently.]
+
+[Speaker subject] [performs a clear motivated action that fits the dialogue, emotion, and scene mood] [position/framing], while [each non-speaking mapped subject performs a visible silent reaction or action]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the scene], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
+
+[Background/environment details]. [Lighting description]. [Atmosphere, haze, reflections, motion blur, particles, or texture]. [Mood/style/genre tone].
+
+If `performance_mode` is `no_lip_sync`, `vocal_status.instrumental` is true, `vocal_status.no_lip_sync` is true, or `vocal_status.should_lip_sync` is false, use this structure:
 
 [Shot type] on [all visible mapped subjects] in [location/setting], framed by [key environmental perspective/detail]. [Each mapped subject is visibly present; describe their shared blocking or relationship in the frame.] [Subject faces show specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with [hair/costume/appearance details] catching the light or motion.
 
@@ -42,12 +50,14 @@ Rules:
 * If a person, singer, partner, lover, husband, wife, or other character appears in the story idea but is not listed in the selected scene's `subject_refs`, treat that person as off-screen, implied, reflected only if explicitly requested, or absent. Do not describe their body, face, clothing, beard, hair, or reference image.
 * If `subject_refs` has one subject, the prompt may include only that one visible subject. Secondary characters are not allowed unless there is a second subject object in `subject_refs`.
 * If `subject_refs` has more than one subject, every listed subject must be visibly present in the final prompt. Do not drop, merge, hide, imply, or omit any listed subject.
-* If `vocal_status.singers` lists only one subject while `subject_refs` lists multiple subjects, only the singer should sing the lyric. The other mapped subjects must still be visible as non-singing subjects who react, watch, move, pose, confront, avoid, touch the environment, or otherwise participate silently.
-* If `vocal_status.singers` is empty but `subject_refs` has multiple subjects, include every mapped subject as visible non-singing subjects.
+* In `singing` mode, if `vocal_status.singers` lists only one subject while `subject_refs` lists multiple subjects, only the singer should sing the lyric. The other mapped subjects must still be visible as non-singing subjects who react, watch, move, pose, confront, avoid, touch the environment, or otherwise participate silently.
+* In `speaking` mode, treat `vocal_status.singers` as the speaker list. If it lists only one subject while `subject_refs` lists multiple subjects, only the speaker should say the line. The other mapped subjects must still be visible as silent subjects who react, watch, move, pose, confront, avoid, touch the environment, or otherwise participate silently.
+* If `vocal_status.singers` is empty but `subject_refs` has multiple subjects, include every mapped subject as visible non-singing or non-speaking subjects, depending on `performance_mode`.
 * If `subject_refs` contains exactly one subject, treat it as one individual person even if the subject label sounds plural, collective, or awkwardly worded. Do not create extra copies, duplicate singers, a group, or multiple people unless multiple subject objects are provided or the user explicitly asks for a group.
-* When there is one subject, use singular phrasing and pronouns that fit the subject description. For example, "The woman sings..." rather than "The women sing..." if the provided description is a single feminine character.
+* When there is one subject, use singular phrasing and pronouns that fit the subject description. For example, "The woman sings..." or "The woman says..." rather than plural wording if the provided description is a single feminine character.
 * When there is one subject, never use "they", "them", or "their" for that subject. If the subject is a woman/girl/feminine character, use she/her. If the subject is a man/boy/masculine character, use he/him. If gender is unclear, repeat the subject label instead of using plural pronouns.
-* When there is one subject, write "she sings", "he sings", or "[subject label] sings", never "they sing".
+* When there is one subject in singing mode, write "she sings", "he sings", or "[subject label] sings", never "they sing".
+* When there is one subject in speaking mode, write only "she says", "he says", or "[subject label] says", never "they say".
 * Pull the location from `location_ref`.
 * Use `shot_type` from the scene when available.
 * Use `motion_video_summary` or `camera_motion` for camera movement.
@@ -57,16 +67,21 @@ Rules:
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
 * If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
-* Use `performance_style` and `performance_direction` to choose the vocal wording, facial emotion, body language, gesture intensity, and camera energy. For rap/hip-hop, describe rapping or performing the lyric with rhythmic delivery, hand gestures, head nods, and confident body language instead of soft singing. For rock, punk, or metal, use stronger facial intensity and performance energy.
+* Use `performance_style` and `performance_direction` to choose facial emotion, body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
 * If `story_layer` exists, use `song_story_brief`, `user_story_arc`, `lyric_section`, and `scene_story_beat` as narrative guidance for emotion, symbolic action, continuity, and visual motivation. Do not quote the story layer or explain it; weave it into the scene naturally.
-* If the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
-* If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
+* If `performance_mode` is `singing` and the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
+* If `performance_mode` is `speaking` and the scene has a line, use the exact line from `vocal_status.lyric_text` only inside "as she says \"...\"", "as he says \"...\"", or "as [subject label] says \"...\"".
+* In speaking mode, do not use alternate verbs for the dialogue line or any wording that could be interpreted as a physical handoff action. Use "says" only.
+* In speaking mode, do not mention music, singing, rapping, vocals, lyrics, song, beat, performing vocals, or lip-syncing to music.
+* If `performance_mode` is `no_lip_sync`, do not quote `vocal_status.lyric_text` and do not mention saying, speaking, dialogue, singing, rapping, lyrics, vocals, mouth movement, lip-syncing, or no-vocal status.
+* If the scene is instrumental or no-lip-sync, do not mention singing, speaking, lip-syncing, vocals, dialogue, mouth movement, or no-vocal status.
 * Do not mention or add a microphone, mic stand, headset mic, studio mic, or microphone prop unless `microphone.include` is true or the user's scene notes explicitly ask for a microphone.
 * If `microphone.include` is true, include a handheld microphone or stand microphone only when it naturally fits the scene, stage, studio, club, or live performance setup.
 * Every prompt must include visible facial emotion or facial performance. Describe what the eyes, brows, jaw, cheeks, gaze, posture, or expression are doing.
 * Singing prompts must identify the exact lyric line and include visible emotion, body language, gestures, and performance energy that fit the lyric, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
+* Speaking prompts must identify the exact line with "says" only and include visible emotion, body language, gestures, and grounded acting energy that fit the line, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
 * Do not describe open mouth, parted lips, mouth shapes, lip movement, or mouth position. Lip sync is handled by LTX/audio, not prompt wording.
-* Non-singing prompts must still include visible emotional expression or restrained facial tension. Do not leave the subject blank-faced.
+* Non-singing and non-speaking prompts must still include visible emotional expression or restrained facial tension. Do not leave the subject blank-faced.
 * Do not use "expressionless", "blank expression", "empty face", "emotionless", "unreadable face", "deadpan", or "perfectly still face" unless the user's scene notes explicitly ask for that exact effect.
 * If the character is described as calm, silent, stoic, robotic, alien, or controlled, translate that into visible restrained emotion: tense jaw, focused eyes, narrowed gaze, lifted brow, suppressed tears, soft smile, or subtle unease.
 * Do not copy reference image composition unless the scene card explicitly asks for it.
@@ -184,10 +199,10 @@ def _single_subject_pronouns(scene):
         desc = ""
     probe = f"{name}\n{desc}".lower()
     if re.search(r"\b(woman|girl|female|feminine|she|her)\b", probe):
-        return {"subject": name, "they": "she", "them": "her", "their": "her", "theirs": "hers", "are": "is", "sing": "sings", "perform": "performs"}
+        return {"subject": name, "they": "she", "them": "her", "their": "her", "theirs": "hers", "are": "is", "sing": "sings", "perform": "performs", "say": "says"}
     if re.search(r"\b(man|boy|male|masculine|he|him|his)\b", probe):
-        return {"subject": name, "they": "he", "them": "him", "their": "his", "theirs": "his", "are": "is", "sing": "sings", "perform": "performs"}
-    return {"subject": name or "the subject", "they": name or "the subject", "them": name or "the subject", "their": f"{name or 'the subject'}'s", "theirs": f"{name or 'the subject'}'s", "are": "is", "sing": "sings", "perform": "performs"}
+        return {"subject": name, "they": "he", "them": "him", "their": "his", "theirs": "his", "are": "is", "sing": "sings", "perform": "performs", "say": "says"}
+    return {"subject": name or "the subject", "they": name or "the subject", "them": name or "the subject", "their": f"{name or 'the subject'}'s", "theirs": f"{name or 'the subject'}'s", "are": "is", "sing": "sings", "perform": "performs", "say": "says"}
 
 
 def _match_case(replacement, original):
@@ -208,6 +223,7 @@ def _fix_single_subject_prompt_pronouns(prompt, scene_bundle):
     phrase_map = [
         (r"\bthey\s+are\b", f"{pronouns['they']} {pronouns['are']}"),
         (r"\bthey\s+sing\b", f"{pronouns['they']} {pronouns['sing']}"),
+        (r"\bthey\s+say\b", f"{pronouns['they']} {pronouns['say']}"),
         (r"\bthey\s+perform\b", f"{pronouns['they']} {pronouns['perform']}"),
         (r"\bthey\s+stand\b", f"{pronouns['they']} stands"),
         (r"\bthey\s+move\b", f"{pronouns['they']} moves"),
@@ -253,6 +269,15 @@ def _normalize_tags(value):
     if not text:
         return []
     return [item.strip()[:120] for item in re.split(r"[,;\n]+", text) if item.strip()][:12]
+
+
+def _normalize_performance_mode(value):
+    text = re.sub(r"[\s-]+", "_", str(value or "").strip().lower())
+    if text in {"speaking", "short_film", "dialogue", "dialog"}:
+        return "speaking"
+    if text in {"no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"}:
+        return "no_lip_sync"
+    return "singing"
 
 
 def _normalize_reference_image(value):
@@ -391,6 +416,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     lyrics = _clean_scene_text(scene.get("lyrics") or scene.get("lyric_text") or scene.get("lyricNote") or "", 4000)
     lyric_section = _clean_scene_text(scene.get("lyric_section") or scene.get("section") or scene.get("song_section") or "", 160)
     story_beat = _clean_scene_text(scene.get("story_beat") or scene.get("scene_story_beat") or scene.get("narrative_beat") or "", 1800)
+    performance_mode = _normalize_performance_mode(scene.get("performance_mode") or scene.get("performanceMode") or scene.get("video_performance_mode") or scene.get("videoPerformanceMode"))
     image_prompt = _clean_scene_text(scene.get("image_prompt") or scene.get("t2i_prompt") or scene.get("prompt") or "", 12000)
     video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 12000)
     image_path = _clean_scene_text(scene.get("image_path") or scene.get("approved_image_path") or scene.get("image") or "", 2000)
@@ -418,6 +444,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "lyrics": lyrics,
         "lyric_section": lyric_section,
         "story_beat": story_beat,
+        "performance_mode": performance_mode,
         "prompt_summary": prompt_summary,
         "motion_summary": motion_summary,
         "subjects": subjects,
@@ -452,6 +479,7 @@ def _default_storyboard(payload):
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
         "mode": "image_to_video_prep" if any(scene.get("image_path") for scene in normalized) else "storyboard_prompts",
+        "performance_mode": _normalize_performance_mode(payload.get("performance_mode") or payload.get("performanceMode") or payload.get("video_type") or payload.get("videoType")),
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
         "image_shot_flow": _clean_scene_text(payload.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(payload.get("image_aesthetic") or "", 120),
@@ -495,6 +523,7 @@ def _save_storyboard(payload):
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": project_folder,
         "mode": storyboard.get("mode") or "storyboard_prompts",
+        "performance_mode": _normalize_performance_mode(storyboard.get("performance_mode") or storyboard.get("performanceMode") or storyboard.get("video_type") or storyboard.get("videoType")),
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
         "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(storyboard.get("image_aesthetic") or "", 120),
@@ -552,11 +581,13 @@ def _export_storyboard_prompts(payload):
         "version": 1,
         "exported_at": datetime.now().isoformat(timespec="seconds"),
         "type": "storyboard_video_prompts",
+        "performance_mode": saved.get("performance_mode") or "singing",
         "scene_count": len(scenes),
         "scenes": [
             {
                 **_prompt_json_entry(scene, index, "video_prompt"),
                 "video_prompt_type": _clean_scene_text(scene.get("video_prompt_type") or "", 80),
+                "performance_mode": _normalize_performance_mode(scene.get("performance_mode") or saved.get("performance_mode")),
             }
             for index, scene in enumerate(scenes, start=1)
         ],
@@ -653,9 +684,19 @@ def _build_storyboard_video_prompt(payload):
         if isinstance(location_ref, dict):
             location_context = f"{_clean_scene_text(location_ref.get('name') or 'Location', 120)}: {_clean_scene_text(location_ref.get('description') or '', 1000)}".strip()
         vocal_status = selected_scene.get("vocal_status") or {}
+        performance_mode = _normalize_performance_mode(
+            selected_scene.get("performance_mode")
+            or vocal_status.get("performance_mode")
+            or scene_bundle.get("performance_mode")
+            or payload.get("performance_mode")
+            or payload.get("performanceMode")
+            or payload.get("video_type")
+            or payload.get("videoType")
+        )
         story_layer = selected_scene.get("story_layer") or {}
         user_notes = "\n\n".join(
             part for part in [
+                f"Performance mode:\n{performance_mode}",
                 f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
@@ -672,6 +713,7 @@ def _build_storyboard_video_prompt(payload):
             "t2i_prompt": _clean_scene_text(selected_scene.get("text_to_image_prompt") or selected_scene.get("scene_summary") or "", 12000),
             "image_reference_path": image_path,
             "user_notes": user_notes,
+            "performance_mode": performance_mode,
             "subject_context": subject_context,
             "location_context": location_context,
             "no_character_present": bool(vocal_status.get("no_character_present")),

@@ -3616,8 +3616,6 @@ def _generate_builder_t2i_prompt(payload):
     use_vision = bool(payload.get("use_vision"))
     has_ref_image = bool(use_vision and ((ref_image_path and os.path.isfile(ref_image_path)) or ref_image_data))
     text_runner = _llm_runner_from_payload(payload)
-    if has_ref_image and text_runner == "llm_api":
-        raise ValueError("LLM API is text-only for this prompt path right now. Turn off Use vision reference image or choose Local LLM/LM Studio.")
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a Gemma model first.")
     if use_vision and not has_ref_image:
@@ -3625,9 +3623,9 @@ def _generate_builder_t2i_prompt(payload):
     if not has_ref_image and not user_notes:
         raise ValueError("Enter scene notes or provide a reference image.")
 
-    llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image else None
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if has_ref_image else ""
-    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_ref_image else ""
+    llm = VRGDG_SuperGemmaGGUFChat() if has_ref_image and text_runner not in {"lm_studio", "llm_api"} else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     image = None
     if has_ref_image:
         image = _image_from_data_url(ref_image_data).convert("RGB") if ref_image_data else Image.open(ref_image_path).convert("RGB")
@@ -3721,7 +3719,23 @@ def _generate_builder_t2i_prompt(payload):
     seed = payload.get("seed")
 
     try:
-        if has_ref_image:
+        if has_ref_image and text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(payload, prompt, [image])
+        elif has_ref_image and text_runner == "lm_studio":
+            text = _run_lm_studio_vision(
+                payload,
+                prompt,
+                [image],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            run_info = {
+                "runner": "lm_studio_vision",
+                "used_model": str(payload.get("lmstudio_model") or "").strip(),
+                "unloaded": False,
+            }
+        elif has_ref_image:
             model = llm._load_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -3753,13 +3767,13 @@ def _generate_builder_t2i_prompt(payload):
         return {
             "prompt": text,
             "used_reference_image": has_ref_image,
-            "used_model": model_path if has_ref_image else run_info.get("used_model", ""),
+            "used_model": run_info.get("used_model", model_path) if has_ref_image and text_runner in {"lm_studio", "llm_api"} else model_path if has_ref_image else run_info.get("used_model", ""),
             "used_mmproj": mmproj_path,
-            "runner": "builtin" if has_ref_image else run_info.get("runner", "builtin"),
-            "unloaded": unload_after if has_ref_image else run_info.get("unloaded", unload_after),
+            "runner": run_info.get("runner", "builtin") if has_ref_image and text_runner in {"lm_studio", "llm_api"} else "builtin" if has_ref_image else run_info.get("runner", "builtin"),
+            "unloaded": run_info.get("unloaded", unload_after) if has_ref_image and text_runner in {"lm_studio", "llm_api"} else unload_after if has_ref_image else run_info.get("unloaded", unload_after),
         }
     finally:
-        if has_ref_image and unload_after:
+        if llm and has_ref_image and unload_after:
             llm._unload_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -3783,6 +3797,35 @@ def _generate_builder_i2v_prompt(payload):
     subject_context = str(payload.get("subject_context", "") or "").strip()
     location_context = str(payload.get("location_context", "") or "").strip()
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
+    performance_mode = str(
+        payload.get("performance_mode")
+        or payload.get("performanceMode")
+        or payload.get("video_type")
+        or payload.get("videoType")
+        or ""
+    ).strip().lower().replace("-", "_").replace(" ", "_")
+    if performance_mode in {"speaking", "short_film", "dialogue", "dialog"}:
+        performance_mode = "speaking"
+    elif performance_mode in {"no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"}:
+        performance_mode = "no_lip_sync"
+    else:
+        performance_mode = "singing"
+    if performance_mode == "speaking":
+        mode_note = (
+            "Video Type / performance mode:\nspeaking / short film. "
+            "If a line is present, the visible speaker says it naturally. Do not use singing, rapping, vocals, lyric, lip-sync, or music-performance wording."
+        )
+    elif performance_mode == "no_lip_sync":
+        mode_note = (
+            "Video Type / performance mode:\nno lip sync / visual-only. "
+            "Do not quote lyric text. Do not mention saying, speaking, dialogue, singing, rapping, vocals, lyric, lip-sync, mouth movement, or no-vocal status. "
+            "Use visible action, camera motion, environmental motion, mood, and physical movement instead."
+        )
+    else:
+        mode_note = (
+            "Video Type / performance mode:\nsinging / music video. "
+            "Use singing behavior only when the scene notes or lyric context call for a vocal performance."
+        )
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose an I2V Gemma model first.")
@@ -3822,6 +3865,8 @@ def _generate_builder_i2v_prompt(payload):
             context_parts.append(f"Story idea:\n{story_idea}")
         if context_parts:
             user_notes = "\n\n".join(context_parts + ([f"Segment motion notes:\n{user_notes}"] if user_notes else []))
+
+    user_notes = "\n\n".join([mode_note, user_notes]).strip()
 
     llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
@@ -4083,6 +4128,19 @@ def _video_prompt_enhancement_instructions(payload):
     scene_prompt = str(payload.get("t2i_prompt") or payload.get("scene_prompt") or "").strip()
     user_notes = str(payload.get("user_notes") or "").strip()
     lyric_text = str(payload.get("lyric_text") or "").strip()
+    performance_mode = str(
+        payload.get("performance_mode")
+        or payload.get("performanceMode")
+        or payload.get("video_type")
+        or payload.get("videoType")
+        or ""
+    ).strip().lower().replace("-", "_").replace(" ", "_")
+    if performance_mode in {"speaking", "short_film", "dialogue", "dialog"}:
+        performance_mode = "speaking"
+    elif performance_mode in {"no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"}:
+        performance_mode = "no_lip_sync"
+    else:
+        performance_mode = "singing"
     singers_raw = payload.get("singers") or []
     if isinstance(singers_raw, str):
         singers = [item.strip() for item in singers_raw.split(",") if item.strip()]
@@ -4090,7 +4148,7 @@ def _video_prompt_enhancement_instructions(payload):
         singers = [str(item or "").strip() for item in singers_raw if str(item or "").strip()]
     else:
         singers = []
-    no_vocal = bool(payload.get("no_vocal") or payload.get("instrumental") or payload.get("broll"))
+    no_vocal = bool(payload.get("no_vocal") or payload.get("instrumental") or payload.get("broll") or performance_mode == "no_lip_sync")
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
     has_multiple_singers = len(singers) > 1
     has_one_singer = len(singers) == 1
@@ -4112,7 +4170,37 @@ def _video_prompt_enhancement_instructions(payload):
             "[Subject or main visual focus] [visible action only]. [Clothing, hair, objects, or props] move naturally if visible. "
             "The camera [camera motion] while keeping the main visual focus clearly framed and visible. "
             "The environment [visible motion/reaction].\n\n"
-            "No-vocal rule: do not mention singing, lip-syncing, vocals, lyric, mouth movement, instrumental status, or no-vocal status in the final prompt."
+            "Visual-only rule: do not quote or mention the lyric line. Do not mention singing, speaking, saying, dialogue, lip-syncing, vocals, lyric, mouth movement, instrumental status, or no-vocal status in the final prompt."
+        )
+    elif performance_mode == "speaking" and has_multiple_singers:
+        template = (
+            "Use this final prompt shape:\n"
+            f"The [speakers: {singer_text}] in [location/environment] during [time/weather/lighting]. "
+            f"[Speakers] say the dialogue line \"{lyric_text}\" with expressive facial emotion, intentional gestures, and natural body movement. "
+            "[Clothing/hair] moves naturally with their body motion. "
+            "The camera [camera motion] while keeping all speakers clearly framed and visible. "
+            "The environment [visible motion/reaction].\n\n"
+            "Speaking-mode rule: use says/say wording only. Do not use singing, rapping, vocals, lyric, lip-sync, or music-performance wording."
+        )
+    elif performance_mode == "speaking" and has_one_singer:
+        template = (
+            "Use this final prompt shape:\n"
+            f"The [speaker: {singer_text}] in [location/environment] during [time/weather/lighting]. "
+            f"[Speaker] says the dialogue line \"{lyric_text}\" with expressive facial emotion, intentional gestures, and natural body movement. "
+            "[Clothing/hair] moves naturally with their body motion. "
+            "The camera [camera motion] while keeping the speaker clearly framed and visible. "
+            "The environment [visible motion/reaction].\n\n"
+            "Speaking-mode rule: use says wording only. Do not use singing, rapping, vocals, lyric, lip-sync, or music-performance wording."
+        )
+    elif performance_mode == "speaking" and lyric_text:
+        template = (
+            "Use this final prompt shape:\n"
+            "The [visible speaker] in [location/environment] during [time/weather/lighting]. "
+            f"The visible speaker says the dialogue line \"{lyric_text}\" with expressive facial emotion, intentional gestures, and natural body movement. "
+            "[Clothing/hair] moves naturally with their body motion. "
+            "The camera [camera motion] while keeping the speaker clearly framed and visible. "
+            "The environment [visible motion/reaction].\n\n"
+            "Speaking-mode rule: use says wording only. Do not use singing, rapping, vocals, lyric, lip-sync, or music-performance wording."
         )
     elif has_multiple_singers:
         template = (
@@ -4159,11 +4247,12 @@ def _video_prompt_enhancement_instructions(payload):
         "Preserve the subject, location, outfit, scene identity, and any user-requested camera/motion notes from the inputs.\n"
         "If the no-character rule is present, ignore any subject/character/singer from the draft and preserve only location, props, objects, atmosphere, and camera/motion notes.\n"
         "Only describe visible physical actions or visible scene motion. Do not mention invisible sensations, internal thoughts, symbolism, breath, heartbeat, sound-only details, or audio instructions.\n"
-        "Do not use the word lip-sync. Use singing language only when this is a vocal scene.\n"
+        "Do not use the word lip-sync. Use singing language only in singing mode. Use saying/dialogue language only in speaking mode. Use neither in no-lip-sync mode.\n"
         "Do not add microphones unless they are visible or explicitly requested.\n"
         "Do not add captions, text overlays, dialogue explanations, unrelated characters, new locations, markdown, labels, or explanations.\n"
         "Output one polished paragraph only.\n\n"
         f"{template}\n\n"
+        f"Video Type / performance mode:\n{performance_mode}\n\n"
         f"Draft prompt:\n{draft_prompt}\n\n"
         f"Scene/T2I context:\n{scene_prompt or '(none)'}\n\n"
         f"User/video notes:\n{user_notes or '(none)'}\n\n"
@@ -4197,6 +4286,385 @@ def _enhance_builder_video_prompt(payload):
         "used_model": run_info.get("used_model", ""),
         "unloaded": run_info.get("unloaded", bool(payload.get("unload_after", True))),
     }
+
+
+def _video_prompt_edit_instructions(payload):
+    current_prompt = str(payload.get("current_prompt") or "").strip()
+    edit_request = str(payload.get("edit_request") or "").strip()
+    mode_label = str(payload.get("mode_label") or "video").strip() or "video"
+    performance_mode = str(
+        payload.get("performance_mode")
+        or payload.get("performanceMode")
+        or payload.get("video_type")
+        or payload.get("videoType")
+        or ""
+    ).strip().lower().replace("-", "_").replace(" ", "_")
+    if performance_mode in {"speaking", "short_film", "dialogue", "dialog"}:
+        performance_mode = "speaking"
+    elif performance_mode in {"no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"}:
+        performance_mode = "no_lip_sync"
+    else:
+        performance_mode = "singing"
+    if performance_mode == "speaking":
+        performance_rule = (
+            "Video Type is speaking / short film. Preserve speaking/dialogue behavior. "
+            "Use says/say wording for dialogue and do not introduce singing, rapping, vocals, lyric, lip-sync, or music-performance wording."
+        )
+    elif performance_mode == "no_lip_sync":
+        performance_rule = (
+            "Video Type is no lip sync / visual-only. Do not quote lyric text. "
+            "Do not introduce saying, speaking, dialogue, singing, rapping, vocals, lyric, lip-sync, mouth movement, or no-vocal status. "
+            "Keep the edit focused on visible action, camera motion, environment, mood, and physical movement."
+        )
+    else:
+        performance_rule = (
+            "Video Type is singing / music video. Preserve singing behavior only when the current prompt or edit request calls for a vocal performance."
+        )
+    use_full_scene_context = bool(payload.get("use_full_scene_context"))
+    use_vision_reference = bool(payload.get("use_vision_reference"))
+    scene_context = payload.get("scene_context") if isinstance(payload.get("scene_context"), dict) else {}
+    if not current_prompt:
+        raise ValueError("Current video prompt is empty.")
+    if not edit_request:
+        raise ValueError("Edit request is empty.")
+    context_text = ""
+    if use_full_scene_context:
+        singers = scene_context.get("singers")
+        if isinstance(singers, list):
+            singers_text = ", ".join(str(item or "").strip() for item in singers if str(item or "").strip())
+        else:
+            singers_text = str(singers or "").strip()
+        context_text = (
+            "\n\nFull scene context is enabled. Use this context only when it helps satisfy the requested edit. "
+            "Do not rewrite unrelated parts just because context is present.\n"
+            f"Scene label: {str(scene_context.get('label') or '').strip() or '(none)'}\n"
+            f"Image/concept prompt: {str(scene_context.get('image_prompt') or '').strip() or '(none)'}\n"
+            f"Scene notes: {str(scene_context.get('scene_notes') or '').strip() or '(none)'}\n"
+            f"Director note: {str(scene_context.get('director_note') or '').strip() or '(none)'}\n"
+            f"Motion notes: {str(scene_context.get('motion_notes') or '').strip() or '(none)'}\n"
+            f"Lyric section: {str(scene_context.get('lyric_section') or '').strip() or '(none)'}\n"
+            f"Lyric text: {str(scene_context.get('lyric_text') or '').strip() or '(none)'}\n"
+            f"Performance mode: {str(scene_context.get('performance_mode') or performance_mode).strip() or performance_mode}\n"
+            f"Singer(s): {singers_text or '(none)'}\n"
+            f"Subject context: {str(scene_context.get('subject_context') or '').strip() or '(none)'}\n"
+            f"Location context: {str(scene_context.get('location_context') or '').strip() or '(none)'}\n"
+            f"No character present: {bool(scene_context.get('no_character_present'))}"
+        )
+    return (
+        f"You are editing an existing {mode_label} generation prompt.\n"
+        "Make the smallest useful edit that satisfies the user's request.\n"
+        "Preserve the subject, setting, style, lighting, wardrobe, identity, mood, and continuity unless the user explicitly asks to change them.\n"
+        "If a starting image is provided, use it only as visual reference for subject, setting, framing, and visible motion/camera feasibility.\n"
+        "If the user asks for a camera or motion change, replace conflicting camera/motion language instead of stacking contradictions.\n"
+        "When full scene context is disabled, use only the current prompt and user requested change.\n"
+        "When full scene context is enabled, you may use the supplied scene context for a larger but still controlled rewrite.\n"
+        f"{performance_rule}\n"
+        "Do not add new characters, new locations, unrelated actions, captions, text overlays, markdown, labels, or explanations.\n"
+        "Do not mention this edit request. Do not describe what changed.\n"
+        "Return only one clean revised prompt paragraph.\n\n"
+        f"Current prompt:\n{current_prompt}\n\n"
+        f"User requested change:\n{edit_request}\n\n"
+        f"Starting image provided: {use_vision_reference}"
+        f"{context_text}"
+    )
+
+
+def _edit_builder_video_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    current_prompt = str(payload.get("current_prompt") or "").strip()
+    if not current_prompt:
+        raise ValueError("Current video prompt is empty.")
+    model_file = str(payload.get("model_file") or payload.get("repair_model_file") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file") or "").strip()
+    image_reference_path = str(payload.get("image_reference_path") or "").strip().strip('"')
+    image_reference_data = str(payload.get("image_reference_data") or "").strip()
+    use_vision_reference = bool(payload.get("use_vision_reference"))
+    text_runner = _llm_runner_from_payload(payload)
+    if model_file:
+        payload = dict(payload)
+        payload["model_file"] = model_file
+    instruction = _video_prompt_edit_instructions(payload)
+    image = None
+    if use_vision_reference:
+        if image_reference_data:
+            image = _image_from_data_url(image_reference_data).convert("RGB")
+        elif image_reference_path:
+            image_path = _resolve_existing_file(image_reference_path, "Prompt edit starting image")
+            image = Image.open(image_path).convert("RGB")
+        else:
+            raise ValueError("Prompt edit requested the starting image, but no image reference was provided.")
+
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.9)
+    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    unload_after = bool(payload.get("unload_after", True))
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format") or "").strip()
+    seed = payload.get("seed")
+    llm = None
+    model_path = ""
+    mmproj_path = ""
+    try:
+        if use_vision_reference and text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(payload, instruction, [image])
+        elif use_vision_reference and text_runner == "lm_studio":
+            text = _run_lm_studio_vision(
+                payload,
+                instruction,
+                [image],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            run_info = {
+                "runner": "lm_studio_vision",
+                "used_model": str(payload.get("lmstudio_model") or "").strip(),
+                "unloaded": False,
+            }
+        elif use_vision_reference:
+            if not model_file:
+                raise ValueError("Choose an I2V vision Gemma model first.")
+            if not model_file.lower().endswith(".gguf"):
+                raise ValueError("The I2V model field is not a GGUF model.")
+            llm = VRGDG_SuperGemmaGGUFChat()
+            model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+            mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[image],
+                instruction_text=instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                seed=int(seed) if seed is not None else None,
+            )
+            run_info = {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
+        else:
+            text, run_info = _run_builder_text_llm(
+                payload,
+                instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                label="video prompt edit",
+            )
+        text = _clean_gemma_prompt_text(text)
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, str(payload.get("mode_label") or "Video"))
+        return {
+            "prompt": text,
+            "runner": run_info.get("runner", "builtin"),
+            "used_model": run_info.get("used_model", model_path),
+            "used_mmproj": mmproj_path,
+            "used_image_reference": use_vision_reference,
+            "unloaded": run_info.get("unloaded", unload_after),
+        }
+    finally:
+        if llm and unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+
+
+def _image_prompt_edit_instructions(payload):
+    current_prompt = str(payload.get("current_prompt") or "").strip()
+    edit_request = str(payload.get("edit_request") or "").strip()
+    mode_label = str(payload.get("mode_label") or "image").strip() or "image"
+    prompt_mode = str(payload.get("prompt_mode") or "").strip().lower()
+    use_full_scene_context = bool(payload.get("use_full_scene_context"))
+    use_vision_reference = bool(payload.get("use_vision_reference"))
+    scene_context = payload.get("scene_context") if isinstance(payload.get("scene_context"), dict) else {}
+    reference_context = payload.get("reference_context") if isinstance(payload.get("reference_context"), dict) else {}
+    if not current_prompt:
+        raise ValueError("Current image prompt is empty.")
+    if not edit_request:
+        raise ValueError("Edit request is empty.")
+    mode_rules = ""
+    if prompt_mode == "nano_banana":
+        mode_rules = (
+            "This is a NanoBanana image prompt. Preserve any required wording about provided character or location references unless the user explicitly asks to change reference usage. "
+            "Keep it practical as one image-generation prompt paragraph."
+        )
+    elif prompt_mode == "flux_klein":
+        mode_rules = (
+            "This is a Flux/Klein image prompt. Preserve mapped subject and location identity from the prompt/reference context unless the user explicitly asks to change them. "
+            "Do not mention image indexes or internal reference labels."
+        )
+    elif prompt_mode == "krea2_2pass":
+        mode_rules = "This is a Krea 2 image prompt. Keep enough concrete detail for pose, wardrobe, lighting, camera framing, environment, materials, and atmosphere."
+    else:
+        mode_rules = "This is a text-to-image prompt. Keep it visually specific and usable directly by an image generation model."
+
+    context_text = ""
+    if use_full_scene_context:
+        context_text = (
+            "\n\nFull scene context is enabled. Use this context only when it helps satisfy the requested edit. "
+            "Do not rewrite unrelated parts just because context is present.\n"
+            f"Scene label: {str(scene_context.get('label') or '').strip() or '(none)'}\n"
+            f"Scene notes: {str(scene_context.get('scene_notes') or '').strip() or '(none)'}\n"
+            f"Director note: {str(scene_context.get('director_note') or '').strip() or '(none)'}\n"
+            f"Lyric section: {str(scene_context.get('lyric_section') or '').strip() or '(none)'}\n"
+            f"Lyric text: {str(scene_context.get('lyric_text') or '').strip() or '(none)'}\n"
+            f"Subject context: {str(scene_context.get('subject_context') or '').strip() or '(none)'}\n"
+            f"Location context: {str(scene_context.get('location_context') or '').strip() or '(none)'}\n"
+            f"No character present: {bool(scene_context.get('no_character_present'))}"
+        )
+    ref_bits = []
+    for label, key in (
+        ("Reference subject description", "subject_description"),
+        ("Reference location name", "location_name"),
+        ("Reference location description", "location_description"),
+    ):
+        value = str(reference_context.get(key) or "").strip()
+        if value:
+            ref_bits.append(f"{label}: {value}")
+    reference_text = f"\n\nReference Builder context:\n{chr(10).join(ref_bits)}" if ref_bits else ""
+    return (
+        f"You are editing an existing {mode_label} image generation prompt.\n"
+        "Make the smallest useful edit that satisfies the user's request.\n"
+        "Preserve the subject, setting, identity, style, lighting, wardrobe, camera framing, mood, and continuity unless the user explicitly asks to change them.\n"
+        "If a reference image is provided, use it only as visual reference for subject, setting, composition, color, and concrete visible details.\n"
+        "When full scene context is disabled, use only the current prompt and user requested change.\n"
+        "When full scene context is enabled, you may use the supplied scene context for a larger but still controlled rewrite.\n"
+        f"{mode_rules}\n"
+        "Do not add captions, text overlays, markdown, labels, bullet points, explanations, or commentary.\n"
+        "Do not mention this edit request. Do not describe what changed.\n"
+        "Return only one clean revised image prompt paragraph.\n\n"
+        f"Current prompt:\n{current_prompt}\n\n"
+        f"User requested change:\n{edit_request}\n\n"
+        f"Reference image provided: {use_vision_reference}"
+        f"{context_text}"
+        f"{reference_text}"
+    )
+
+
+def _edit_builder_image_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    current_prompt = str(payload.get("current_prompt") or "").strip()
+    if not current_prompt:
+        raise ValueError("Current image prompt is empty.")
+    model_file = str(payload.get("model_file") or payload.get("repair_model_file") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file") or "").strip()
+    ref_image_path = str(payload.get("ref_image_path") or payload.get("image_reference_path") or "").strip().strip('"')
+    ref_image_data = str(payload.get("ref_image_data") or payload.get("image_reference_data") or "").strip()
+    use_vision_reference = bool(payload.get("use_vision_reference"))
+    text_runner = _llm_runner_from_payload(payload)
+    if model_file:
+        payload = dict(payload)
+        payload["model_file"] = model_file
+    instruction = _image_prompt_edit_instructions(payload)
+    image = None
+    if use_vision_reference:
+        if ref_image_data:
+            image = _image_from_data_url(ref_image_data).convert("RGB")
+        elif ref_image_path:
+            image_path = _resolve_existing_file(ref_image_path, "Image prompt edit reference image")
+            image = Image.open(image_path).convert("RGB")
+        else:
+            raise ValueError("Prompt edit requested a reference image, but no image reference was provided.")
+
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.9)
+    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    unload_after = bool(payload.get("unload_after", True))
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format") or "").strip()
+    seed = payload.get("seed")
+    llm = None
+    model_path = ""
+    mmproj_path = ""
+    try:
+        if use_vision_reference and text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(payload, instruction, [image])
+        elif use_vision_reference and text_runner == "lm_studio":
+            text = _run_lm_studio_vision(
+                payload,
+                instruction,
+                [image],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            run_info = {
+                "runner": "lm_studio_vision",
+                "used_model": str(payload.get("lmstudio_model") or "").strip(),
+                "unloaded": False,
+            }
+        elif use_vision_reference:
+            if not model_file:
+                raise ValueError("Choose a vision Gemma model first.")
+            if not model_file.lower().endswith(".gguf"):
+                raise ValueError("The vision Gemma model field is not a GGUF model.")
+            llm = VRGDG_SuperGemmaGGUFChat()
+            model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
+            mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[image],
+                instruction_text=instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                seed=int(seed) if seed is not None else None,
+            )
+            run_info = {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
+        else:
+            text, run_info = _run_builder_text_llm(
+                payload,
+                instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                label="image prompt edit",
+            )
+        text = _clean_visual_gemma_text(text)
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, str(payload.get("mode_label") or "Image"))
+        return {
+            "prompt": text,
+            "runner": run_info.get("runner", "builtin"),
+            "used_model": run_info.get("used_model", model_path),
+            "used_mmproj": mmproj_path,
+            "used_image_reference": use_vision_reference,
+            "unloaded": run_info.get("unloaded", unload_after),
+        }
+    finally:
+        if llm and unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
 def _image_from_prompt_payload(path, data, label):
@@ -4371,6 +4839,7 @@ def _generate_builder_reference_description(payload):
 
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
+    text_runner = _llm_runner_from_payload(payload)
     reference_type = str(payload.get("reference_type") or "subject").strip().lower()
     name_hint = str(payload.get("name") or "").strip()
     subject_label = re.sub(r"\s+", " ", name_hint).strip()
@@ -4379,7 +4848,7 @@ def _generate_builder_reference_description(payload):
     object_reference_types = {"prop", "object", "vehicle", "creature", "animal", "outfit", "style", "environment", "other"}
     if reference_type not in {"subject", "character", "location", *object_reference_types}:
         reference_type = "subject"
-    if not model_file:
+    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
     image = _image_from_prompt_payload(payload.get("image_path", ""), payload.get("image_data", ""), "Reference image")
 
@@ -4422,9 +4891,9 @@ def _generate_builder_reference_description(payload):
         if name_hint:
             instruction += f"\nUse this label only as the reference name if needed: {name_hint}"
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
-    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 2048)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
@@ -4437,17 +4906,19 @@ def _generate_builder_reference_description(payload):
     unload_after = bool(payload.get("unload_after", True))
 
     try:
-        if clear_before_load:
+        if clear_before_load and llm:
             _clear_comfy_model_memory()
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-            mmproj_path=mmproj_path,
-        )
+        model = None
+        if llm:
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
         def clean_reference_description(raw_text):
             text = _clean_visual_gemma_text(raw_text)
             text = re.sub(r"^\s*(character|subject|location|description)\s*:\s*", "", text, flags=re.I).strip()
@@ -4484,15 +4955,27 @@ def _generate_builder_reference_description(payload):
                     "\n\nPrevious output was rejected because it repeated words or was not a usable description. "
                     "Write a normal visual description with varied concrete nouns. Do not repeat any word more than twice."
                 )
-            raw_text = llm._run_gguf_vision_pipeline(
-                model=model,
-                pil_images=[image],
-                instruction_text=attempt_instruction,
-                temperature=0.05 if attempt else temperature,
-                top_p=0.75 if attempt else top_p,
-                max_new_tokens=max_new_tokens,
-                seed=int(seed) if seed is not None else None,
-            )
+            if text_runner == "llm_api":
+                raw_text, _run_info = _run_llm_api_vision(payload, attempt_instruction, [image])
+            elif text_runner == "lm_studio":
+                raw_text = _run_lm_studio_vision(
+                    payload,
+                    attempt_instruction,
+                    [image],
+                    temperature=0.05 if attempt else temperature,
+                    top_p=0.75 if attempt else top_p,
+                    max_new_tokens=max_new_tokens,
+                )
+            else:
+                raw_text = llm._run_gguf_vision_pipeline(
+                    model=model,
+                    pil_images=[image],
+                    instruction_text=attempt_instruction,
+                    temperature=0.05 if attempt else temperature,
+                    top_p=0.75 if attempt else top_p,
+                    max_new_tokens=max_new_tokens,
+                    seed=int(seed) if seed is not None else None,
+                )
             try:
                 text = clean_reference_description(raw_text)
                 last_error = None
@@ -4501,9 +4984,9 @@ def _generate_builder_reference_description(payload):
                 last_error = exc
         if last_error:
             raise last_error
-        return {"description": text, "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after}
+        return {"description": text, "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in {"lm_studio", "llm_api"} else unload_after}
     finally:
-        if unload_after:
+        if llm and unload_after:
             llm._unload_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -4521,7 +5004,8 @@ def _generate_flux_klein_prompt(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
-    if not model_file:
+    text_runner = _llm_runner_from_payload(payload)
+    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
 
     ingredients = payload.get("image_ingredients") or []
@@ -4596,9 +5080,9 @@ def _generate_flux_klein_prompt(payload):
         f"User input:\n{user_notes or 'Create a new image using the available reference images.'}"
     )
 
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
-    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     # Flux/Klein only needs one short prompt, and vision GGUF context is expensive.
     # Keep this lower than the broader Gemma prompt tools to reduce crash risk.
     n_ctx = int(payload.get("n_ctx") or 2048)
@@ -4613,31 +5097,43 @@ def _generate_flux_klein_prompt(payload):
     unload_after = bool(payload.get("unload_after", True))
 
     try:
-        if clear_before_load:
+        if clear_before_load and llm:
             _clear_comfy_model_memory()
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-            mmproj_path=mmproj_path,
-        )
-        text = llm._run_gguf_vision_pipeline(
-            model=model,
-            pil_images=[combined_image],
-            instruction_text=instruction,
-            temperature=temperature,
-            top_p=top_p,
-            max_new_tokens=max_new_tokens,
-            seed=int(seed) if seed is not None else None,
-        )
+        if text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(payload, instruction, [combined_image])
+        elif text_runner == "lm_studio":
+            text = _run_lm_studio_vision(
+                payload,
+                instruction,
+                [combined_image],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+        else:
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[combined_image],
+                instruction_text=instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                seed=int(seed) if seed is not None else None,
+            )
         text = _clean_visual_gemma_text(text)
         text = _repair_and_validate_builder_gemma_prompt(payload, text, "Flux/Klein")
-        return {"prompt": text, "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after}
+        return {"prompt": text, "used_model": run_info.get("used_model", model_path) if text_runner == "llm_api" else model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in {"lm_studio", "llm_api"} else unload_after}
     finally:
-        if unload_after:
+        if llm and unload_after:
             llm._unload_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -4656,7 +5152,8 @@ def _analyze_builder_story_references(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
-    if not model_file:
+    text_runner = _llm_runner_from_payload(payload)
+    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
     ingredients = payload.get("image_ingredients") or []
     if isinstance(ingredients, str):
@@ -4676,9 +5173,9 @@ def _analyze_builder_story_references(payload):
     if not images:
         raise ValueError("Add at least one Story Builder reference image first.")
     batches = [images[index:index + 4] for index in range(0, len(images), 4)]
-    llm = VRGDG_SuperGemmaGGUFChat()
-    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION)
-    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file)
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     n_ctx = int(payload.get("n_ctx") or 4096)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
     n_threads = int(payload.get("n_threads") or 8)
@@ -4688,16 +5185,18 @@ def _analyze_builder_story_references(payload):
     max_new_tokens = int(payload.get("max_new_tokens") or 500)
     unload_after = bool(payload.get("unload_after", True))
     try:
-        _clear_comfy_model_memory()
-        _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
-        model = llm._load_gguf_model(
-            model_path=model_path,
-            n_ctx=n_ctx,
-            n_gpu_layers=n_gpu_layers,
-            n_threads=n_threads,
-            chat_format=chat_format,
-            mmproj_path=mmproj_path,
-        )
+        model = None
+        if llm:
+            _clear_comfy_model_memory()
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
         batch_notes = []
         for batch_index, batch in enumerate(batches, start=1):
             combined_image = _combine_story_reference_batch(batch, cell_size=512)
@@ -4711,23 +5210,35 @@ def _analyze_builder_story_references(payload):
                 f"Batch {batch_index} of {len(batches)}.\n"
                 f"User notes:\n{user_notes or 'Summarize the characters, locations, style, and aesthetic shown in the images.'}"
             )
-            text = llm._run_gguf_vision_pipeline(
-                model=model,
-                pil_images=[combined_image],
-                instruction_text=instruction,
-                temperature=temperature,
-                top_p=top_p,
-                max_new_tokens=max_new_tokens,
-            )
+            if text_runner == "llm_api":
+                text, _run_info = _run_llm_api_vision(payload, instruction, [combined_image])
+            elif text_runner == "lm_studio":
+                text = _run_lm_studio_vision(
+                    payload,
+                    instruction,
+                    [combined_image],
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_new_tokens=max_new_tokens,
+                )
+            else:
+                text = llm._run_gguf_vision_pipeline(
+                    model=model,
+                    pil_images=[combined_image],
+                    instruction_text=instruction,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_new_tokens=max_new_tokens,
+                )
             text = _clean_visual_gemma_text(text)
             if _looks_like_gemma_repeat_failure(text):
                 raise ValueError(f"Gemma returned repeated/thought junk instead of usable Story reference notes for batch {batch_index}.")
             if text.strip():
                 prefix = f"Reference batch {batch_index}: " if len(batches) > 1 else ""
                 batch_notes.append(prefix + text.strip())
-        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": model_path, "used_mmproj": mmproj_path, "unloaded": unload_after, "batches": len(batches)}
+        return {"notes": "\n\n".join(batch_notes).strip(), "used_model": model_path, "used_mmproj": mmproj_path, "runner": "llm_api_vision" if text_runner == "llm_api" else "lm_studio_vision" if text_runner == "lm_studio" else "builtin", "unloaded": False if text_runner in {"lm_studio", "llm_api"} else unload_after, "batches": len(batches)}
     finally:
-        if unload_after:
+        if llm and unload_after:
             llm._unload_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -4747,7 +5258,7 @@ def _generate_nb_image_prompt(payload):
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
     text_runner = _llm_runner_from_payload(payload)
-    if text_runner != "lm_studio" and not model_file:
+    if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a NanoBanana Gemma vision model first.")
 
     ingredients = payload.get("image_ingredients") or []
@@ -4969,11 +5480,13 @@ def _generate_nb_image_prompt(payload):
         return {"prompt": text, **info}
 
     combined_image = _combine_flux_ingredient_images(images)
-    llm = VRGDG_SuperGemmaGGUFChat() if text_runner != "lm_studio" else None
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else str(payload.get("lmstudio_model") or "").strip()
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
     try:
-        if text_runner == "lm_studio":
+        if text_runner == "llm_api":
+            text, info = _run_llm_api_vision(payload, instruction, [combined_image])
+        elif text_runner == "lm_studio":
             text = _run_lm_studio_vision(
                 payload,
                 instruction,
@@ -5043,7 +5556,7 @@ def _generate_nb_image_prompt(payload):
 
 def _generate_flux_reference_location_map(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a non-vision Gemma model first.")
 
     scenes = payload.get("scenes") or []
@@ -5166,7 +5679,7 @@ def _generate_flux_reference_location_map(payload):
 
 def _generate_flux_reference_locations(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a non-vision Gemma model first.")
     scenes = payload.get("scenes") or []
     if not isinstance(scenes, list) or not scenes:
@@ -5354,7 +5867,7 @@ def _generate_flux_reference_locations(payload):
 
 def _generate_wizard_locations_from_lyrics(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a non-vision Gemma model first.")
     lyrics_text = str(payload.get("lyrics_text", "") or payload.get("lyrics", "") or "").strip()
     user_input = str(payload.get("user_input", "") or payload.get("notes", "") or "").strip()
@@ -5484,7 +5997,7 @@ def _generate_wizard_locations_from_lyrics(payload):
 
 def _generate_flux_reference_subjects(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
-    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a non-vision Gemma model first.")
     scenes = payload.get("scenes") or []
     if not isinstance(scenes, list) or not scenes:
@@ -5583,7 +6096,7 @@ def _generate_flux_reference_zimage_prompt(payload):
     style_theme = str(payload.get("style_theme", "") or "").strip()
     if reference_type not in {"subject", "location"}:
         raise ValueError("Reference type must be subject or location.")
-    if not model_file and _llm_runner_from_payload(payload) != "lm_studio":
+    if not model_file and _llm_runner_from_payload(payload) not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a non-vision Gemma model first.")
     if not source_text:
         raise ValueError("Enter a subject or location description first.")
@@ -7070,6 +7583,24 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _enhance_builder_video_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/edit_video_prompt")
+    async def vrgdg_music_builder_edit_video_prompt(request):
+        try:
+            payload = await request.json()
+            result = _edit_builder_video_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/edit_image_prompt")
+    async def vrgdg_music_builder_edit_image_prompt(request):
+        try:
+            payload = await request.json()
+            result = _edit_builder_image_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

@@ -2011,7 +2011,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         clean = str(text or "").strip().lower()
         if not self._is_reference_marker_line(clean):
             return False
-        return bool(re.search(r"\b(instrumental|intro|outro|break|interlude|solo|no\s*vocal|no\s*lyrics|silence|b-?roll)\b", clean))
+        return bool(re.search(r"\b(instrumental|break|interlude|solo|no\s*vocal|no\s*lyrics|silence|b-?roll)\b", clean))
 
     def _reference_units(self, reference_lyrics, segment_mode, instrumental_text):
         mode = str(segment_mode or "whisper_chunks")
@@ -2100,6 +2100,18 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         min_required = max(1, min(len(tokens), math.ceil(len(tokens) * 0.55)))
         if start_idx is None or len(matched_indices) < min_required:
             return None, cursor
+
+        # If the line was accepted but stable-ts skipped a trailing word during the
+        # fuzzy scan, recover immediately following words so line endings do not
+        # become tiny orphan scenes.
+        while token_idx < len(tokens) and matched_indices:
+            next_idx = matched_indices[-1] + 1
+            if next_idx >= len(word_items):
+                break
+            if word_items[next_idx]["norm"] != tokens[token_idx]:
+                break
+            matched_indices.append(next_idx)
+            token_idx += 1
 
         first = word_items[matched_indices[0]]
         last = word_items[matched_indices[-1]]
@@ -2325,16 +2337,21 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                     piece["start"] = round(previous_end, 3)
                     piece["duration"] = round(max(0.0, float(piece.get("end", previous_end)) - previous_end), 3)
             elif piece_start > 0.001 and include_instrumental_gaps:
-                for gap_piece in split_instrumental_segment({
-                    "type": "instrumental",
-                    "start": 0.0,
-                    "end": round(piece_start, 3),
-                    "duration": round(piece_start, 3),
-                    "text": label,
-                    "words": [],
-                    "timing_warning": "Inserted before the first timed segment.",
-                }):
-                    output.append(gap_piece)
+                if piece_start >= min_gap:
+                    for gap_piece in split_instrumental_segment({
+                        "type": "instrumental",
+                        "start": 0.0,
+                        "end": round(piece_start, 3),
+                        "duration": round(piece_start, 3),
+                        "text": label,
+                        "words": [],
+                        "timing_warning": "Inserted before the first timed segment.",
+                    }):
+                        output.append(gap_piece)
+                else:
+                    piece = dict(piece)
+                    piece["start"] = 0.0
+                    piece["duration"] = round(max(0.0, float(piece.get("end", 0.0))), 3)
             if float(piece.get("end", piece.get("start", 0.0))) - float(piece.get("start", 0.0)) > 0.001:
                 output.append(piece)
 

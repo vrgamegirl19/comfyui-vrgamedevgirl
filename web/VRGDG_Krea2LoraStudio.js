@@ -505,12 +505,13 @@ function addStyles() {
     }
     .vrgdg-krea2-progress {
       position: fixed;
-      inset: 0;
+      right: 18px;
+      bottom: 18px;
       z-index: 10080;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(3, 6, 12, 0.68);
+      pointer-events: none;
     }
     .vrgdg-krea2-progress-box {
       width: min(560px, calc(100vw - 32px));
@@ -520,11 +521,29 @@ function addStyles() {
       color: #eef2f7;
       box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
       padding: 16px;
+      pointer-events: auto;
+    }
+    .vrgdg-krea2-progress-box.minimized {
+      width: min(360px, calc(100vw - 32px));
+      padding: 10px 12px;
+    }
+    .vrgdg-krea2-progress-box.minimized .vrgdg-krea2-progress-text,
+    .vrgdg-krea2-progress-box.minimized .vrgdg-krea2-progress-prompt,
+    .vrgdg-krea2-progress-box.minimized .vrgdg-krea2-progress-bar,
+    .vrgdg-krea2-progress-box.minimized .vrgdg-krea2-actions {
+      display: none;
+    }
+    .vrgdg-krea2-progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
     .vrgdg-krea2-progress-title {
       font-size: 16px;
       font-weight: 800;
       margin-bottom: 8px;
+      min-width: 0;
     }
     .vrgdg-krea2-progress-title.done {
       color: #67e8f9;
@@ -538,6 +557,19 @@ function addStyles() {
       color: #cbd5e1;
       font-size: 12px;
       line-height: 1.45;
+    }
+    .vrgdg-krea2-progress-prompt {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 8px;
+      background: #0f172a;
+      color: #dbeafe;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      max-height: 120px;
+      overflow: auto;
     }
     .vrgdg-krea2-progress-bar {
       height: 8px;
@@ -982,6 +1014,9 @@ class Krea2Studio {
                 </div>
                 <div class="vrgdg-krea2-card">
                   <h3>Samples</h3>
+                  <div class="vrgdg-krea2-actions" style="margin-bottom:10px;">
+                    <button class="vrgdg-krea2-btn primary" data-action="createSample">Create Sample</button>
+                  </div>
                   <div class="vrgdg-krea2-gallery">${this.renderGallery()}</div>
                 </div>
               </section>
@@ -1096,8 +1131,12 @@ class Krea2Studio {
     const started = Date.now();
     modal.innerHTML = `
       <div class="vrgdg-krea2-progress-box">
-        <div class="vrgdg-krea2-progress-title">${esc(title)}</div>
+        <div class="vrgdg-krea2-progress-head">
+          <div class="vrgdg-krea2-progress-title">${esc(title)}</div>
+          <button class="vrgdg-krea2-icon" data-progress-minimize title="Minimize">_</button>
+        </div>
         <div class="vrgdg-krea2-progress-text" data-progress-text>${esc(initialText || "Starting...")}</div>
+        <div class="vrgdg-krea2-progress-prompt" data-progress-prompt>Next sample prompt: ${esc(this.project?.sample_prompt || this.samplePrompt || "(empty)")}</div>
         <div class="vrgdg-krea2-progress-bar"><div></div></div>
         <div class="vrgdg-krea2-actions">
           <button class="vrgdg-krea2-btn hot" data-progress-stop>Stop</button>
@@ -1109,14 +1148,23 @@ class Krea2Studio {
     document.body.appendChild(modal);
     const titleEl = modal.querySelector(".vrgdg-krea2-progress-title");
     const textEl = modal.querySelector("[data-progress-text]");
+    const promptEl = modal.querySelector("[data-progress-prompt]");
     const closeButton = modal.querySelector("[data-progress-close]");
     const stopButton = modal.querySelector("[data-progress-stop]");
     const clearButton = modal.querySelector("[data-progress-clear]");
+    const box = modal.querySelector(".vrgdg-krea2-progress-box");
+    const minimizeButton = modal.querySelector("[data-progress-minimize]");
     const timer = setInterval(() => {
       const elapsed = Math.floor((Date.now() - started) / 1000);
       const current = textEl?.dataset.current || initialText || "Working...";
       if (textEl) textEl.textContent = `${current}\n\nElapsed: ${elapsed}s`;
     }, 1000);
+    minimizeButton?.addEventListener("click", () => {
+      const minimized = !box?.classList.contains("minimized");
+      box?.classList.toggle("minimized", minimized);
+      minimizeButton.textContent = minimized ? "[]" : "_";
+      minimizeButton.title = minimized ? "Restore" : "Minimize";
+    });
     closeButton?.addEventListener("click", () => {
       clearInterval(timer);
       modal.remove();
@@ -1126,6 +1174,11 @@ class Krea2Studio {
         if (!textEl) return;
         textEl.dataset.current = String(message || "");
         textEl.textContent = String(message || "");
+      },
+      setSamplePrompt(prompt) {
+        if (!promptEl) return;
+        const text = String(prompt || "").trim() || "(empty)";
+        promptEl.textContent = `Next sample prompt:\n${text}`;
       },
       done(message, doneTitle = "Completed", failed = false) {
         clearInterval(timer);
@@ -1223,6 +1276,7 @@ class Krea2Studio {
       }));
     }
     this.overlay.querySelector('[data-action="trainChunk"]')?.addEventListener("click", () => this.trainChunk());
+    this.overlay.querySelector('[data-action="createSample"]')?.addEventListener("click", () => this.createSampleNow());
     this.overlay.querySelector('[data-action="browseFiles"]')?.addEventListener("click", () => {
       this.overlay.querySelector("[data-file-input]")?.click();
     });
@@ -1398,6 +1452,7 @@ class Krea2Studio {
     });
     this.project = data.project;
     this.rememberProject(this.project);
+    this.activeTrainingProgress?.setSamplePrompt?.(this.project.sample_prompt || this.samplePrompt || "");
   }
 
   async saveProjectWithStatus() {
@@ -1744,6 +1799,8 @@ class Krea2Studio {
         "Training Krea 2 LoRA",
         "Preparing project and starting the first training chunk..."
       );
+      this.activeTrainingProgress = progress;
+      progress.setSamplePrompt(this.project.sample_prompt || this.samplePrompt || "");
       progress.onStop(async () => {
         this.stopRequested = true;
         progress.set("Stop requested. Studio will stop after the current chunk and sample finish. Sending Comfy interrupt too...");
@@ -1779,7 +1836,13 @@ class Krea2Studio {
           "The backend is running musubi. Detailed per-step progress is still in the terminal/log for now."
         );
         this.render();
-        const data = await this.trainOneChunk();
+        const stopProgressPolling = this.startTrainingProgressPolling(progress);
+        let data;
+        try {
+          data = await this.trainOneChunk();
+        } finally {
+          stopProgressPolling();
+        }
         this.project = data.project;
         this.status = `Chunk finished at step ${data.result.completed_steps}. Sampling...`;
         progress.set(`Chunk finished at step ${data.result.completed_steps}/${data.result.total_target_steps}.\nGenerating sample image...`);
@@ -1821,6 +1884,7 @@ class Krea2Studio {
     } finally {
       this.isTraining = false;
       this.stopRequested = false;
+      if (this.activeTrainingProgress === progress) this.activeTrainingProgress = null;
       this.render();
     }
   }
@@ -1834,7 +1898,86 @@ class Krea2Studio {
     });
   }
 
+  startTrainingProgressPolling(progress) {
+    let stopped = false;
+    let inFlight = false;
+    const poll = async () => {
+      if (stopped || inFlight || !this.project?.project_dir) return;
+      inFlight = true;
+      try {
+        const data = await jsonFetch("/vrgdg/krea2_studio/training_progress", {
+          project_dir: this.project.project_dir,
+        });
+        if (stopped) return;
+        if (data?.active) {
+          progress?.set(
+            `Training chunk\n` +
+            `Step: ${data.current}/${data.total} (${data.percent}%)\n` +
+            `Elapsed: ${data.elapsed}\n` +
+            `ETA: ${data.eta}\n` +
+            `Speed: ${data.seconds_per_it}s/it\n` +
+            `Avg loss: ${data.avr_loss}`
+          );
+        } else if (data?.status) {
+          progress?.set(`Training chunk\n${data.status}`);
+        }
+      } catch {
+        // Keep the long-running training request as the source of truth.
+      } finally {
+        inFlight = false;
+      }
+    };
+    poll();
+    const timer = setInterval(poll, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }
+
+  async createSampleNow() {
+    let progress = null;
+    try {
+      if (!this.project?.project_dir) {
+        this.status = "Load or create a project before creating a sample.";
+        this.render();
+        return;
+      }
+      await this.saveProject();
+      const loraPath = this.project.latest_lora_path || "";
+      if (!loraPath) {
+        this.status = "No trained LoRA checkpoint is available yet. Train one chunk first.";
+        this.render();
+        return;
+      }
+      const step = Number(this.project.completed_steps || 0);
+      progress = this.openProgressWindow("Creating Krea 2 Sample", "Building sample workflow from the latest saved project...");
+      progress.setSamplePrompt(this.project.sample_prompt || this.samplePrompt || "");
+      await this.sampleLatest(loraPath, step, progress);
+      progress.done(`Sample saved for step ${step}.`, "Sample Complete");
+    } catch (error) {
+      this.status = `Sample error: ${error.message || error}`;
+      progress?.done(`Sample failed:\n${error.message || error}`, "Sample Failed", true);
+      this.render();
+    }
+  }
+
   async sampleLatest(loraPath, step, progress = null) {
+    try {
+      const latest = await jsonFetch("/vrgdg/krea2_studio/load_project", { project_dir: this.project.project_dir });
+      if (latest?.project) {
+        this.project = latest.project;
+        this.aspectRatio = this.project.aspect_ratio || this.aspectRatio;
+        this.samplePrompt = this.project.sample_prompt || this.samplePrompt;
+        this.sampleModelSettings = {
+          ...this.sampleModelSettings,
+          ...(this.project.sample_model_settings || {}),
+        };
+        progress?.setSamplePrompt?.(this.project.sample_prompt || this.samplePrompt || "");
+      }
+    } catch (error) {
+      progress?.set(`Sampling step ${step}...\nCould not reload saved project settings, using current UI state.\n${error.message || error}`);
+    }
     const build = await jsonFetch("/vrgdg/krea2_studio/build_sample_prompt", {
       project_dir: this.project.project_dir,
       lora_path: loraPath,
