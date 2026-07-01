@@ -121,7 +121,7 @@ export function createMusicVideoBuilderLuts(options = {}) {
     }
 
     const hint = document.createElement("div");
-    hint.textContent = "Click a LUT to apply it to the selected scene.";
+    hint.textContent = "Click a LUT to apply it to the selected scene, or drag it onto the scene you want.";
     hint.style.cssText = "color:#a1a1aa;font-size:11px;line-height:1.35;margin:0 0 8px;";
     root.append(hint);
 
@@ -134,7 +134,7 @@ export function createMusicVideoBuilderLuts(options = {}) {
       card.dataset.vrgdgLutName = lut.name;
       const active = state.selectedName === lut.name || getSelectedScene()?.lut?.name === lut.name;
       card.style.cssText = `display:flex;flex-direction:column;gap:5px;min-width:0;text-align:left;border:${active ? "2px" : "1px"} solid ${active ? "#22d3ee" : "#3f3f46"};border-radius:7px;background:${active ? "#083344" : "#18181b"};color:#f8fafc;padding:6px;cursor:pointer;`;
-      card.title = lut.name;
+      card.title = `${lut.name}\nClick to apply to the selected scene, or drag onto the scene you want.`;
       const image = lut.example_url
         ? `<img src="${escapeHtml(lut.example_url)}" alt="" draggable="false" style="width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:4px;background:#09090b;border:1px solid #27272a;">`
         : `<div style="width:100%;aspect-ratio:16/10;border-radius:4px;background:#09090b;border:1px solid #27272a;"></div>`;
