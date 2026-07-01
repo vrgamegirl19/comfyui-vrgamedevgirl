@@ -9,6 +9,7 @@ import {
   storyboardPerformancePreset,
 } from "./VRGDG_StoryboardBuilderUI.js";
 import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260627-audio-sync";
+import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -1694,11 +1695,13 @@ function openBuilder(node) {
   segmentList.style.cssText = "display:flex;flex-direction:column;min-height:0;border-right:1px solid #27272a;background:#202024;";
   segmentList.style.gridColumn = "1";
   const leftTabBar = document.createElement("div");
-  leftTabBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 8px 0;background:#202024;flex:0 0 auto;";
+  leftTabBar.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:8px 8px 0;background:#202024;flex:0 0 auto;";
   const scenesTabButton = makeButton("Scenes");
   const toolsTabButton = makeButton("Tools");
+  const lutsTabButton = makeButton("LUTS");
   scenesTabButton.title = "Show the vertical scene list.";
   toolsTabButton.title = "Show project tools and prompt handoff actions.";
+  lutsTabButton.title = "Browse LUT looks and apply them to the selected scene.";
   const sceneListPane = document.createElement("div");
   sceneListPane.style.cssText = "overflow:auto;padding:10px;min-height:0;flex:1 1 auto;";
   const toolsPane = document.createElement("div");
@@ -1724,8 +1727,19 @@ function openBuilder(node) {
     makeToolRow(importSceneNotesButton, "Load a scene-notes JSON file and map its notes onto the current scenes."),
     makeToolRow(builderAgentButton, "Open Builder Agent for scene help, prompt edits, image references, and project guidance.")
   );
-  leftTabBar.append(scenesTabButton, toolsTabButton);
-  segmentList.append(leftTabBar, sceneListPane, toolsPane);
+  const lutsTools = createMusicVideoBuilderLuts({
+    api,
+    toast,
+    getSelectedScene: () => activeSegment(),
+    applyLutToScene: (lut, segment) => applyLutToSegment(lut, segment),
+    updateScene: (segment) => {
+      if (segment) setActiveSegment(segment);
+    },
+    refresh: () => render(),
+    autoSave: autoSaveSessionQuiet,
+  });
+  leftTabBar.append(scenesTabButton, toolsTabButton, lutsTabButton);
+  segmentList.append(leftTabBar, sceneListPane, toolsPane, lutsTools.element);
   const leftResizeHandle = document.createElement("div");
   leftResizeHandle.title = "Drag to resize scene list";
   leftResizeHandle.style.cssText = "cursor:col-resize;background:#18181b;border-left:1px solid #27272a;border-right:1px solid #27272a;";
@@ -1746,6 +1760,21 @@ function openBuilder(node) {
   previewVideo.playsInline = true;
   previewVideo.muted = false;
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
+  previewVideo.addEventListener("error", () => {
+    const segment = activeSegment();
+    const thumbnailPath = selectedSegmentVideoThumbnailPath(segment);
+    if (!thumbnailPath) return;
+    previewVideo.pause();
+    previewVideo.removeAttribute("src");
+    previewVideo.dataset.path = "";
+    previewVideo.dataset.cacheKey = "";
+    previewVideo.style.display = "none";
+    previewImage.src = makeEditorImageUrl(thumbnailPath);
+    previewImage.title = "Video preview could not decode. Showing thumbnail.";
+    previewImage.style.display = "block";
+    previewEmpty.style.display = "none";
+    toast("The video file was created, but the browser preview could not decode it. Showing the thumbnail instead.", true);
+  });
   previewStage.append(previewEmpty, previewImage, previewVideo);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
@@ -2616,6 +2645,8 @@ function openBuilder(node) {
   const audioTabButton = makeButton("Audio");
   inspectorTabs.append(sceneTabButton, imageTabButton, videoTabButton, audioTabButton);
   const scenePanel = document.createElement("div");
+  const sceneDetailsPanel = document.createElement("div");
+  const sceneToolsPanel = document.createElement("div");
   const imagePanel = document.createElement("div");
   const videoPanel = document.createElement("div");
   const audioPanel = document.createElement("div");
@@ -2623,6 +2654,9 @@ function openBuilder(node) {
   noSceneNotice.style.cssText = "display:none;min-height:220px;align-items:center;justify-content:center;text-align:center;border:1px dashed #3f3f46;border-radius:8px;background:#18181b;color:#a1a1aa;padding:24px;font-size:13px;line-height:1.5;";
   noSceneNotice.innerHTML = `<div><div style="color:#e4e4e7;font-weight:900;font-size:15px;margin-bottom:6px;">Select a scene</div><div>Choose a scene from the list or timeline to edit its prompts, images, video, audio, and timing.</div></div>`;
   for (const panel of [scenePanel, imagePanel, videoPanel, audioPanel]) {
+    panel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+  }
+  for (const panel of [sceneDetailsPanel, sceneToolsPanel]) {
     panel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   }
   function syncInspectorPanels() {
@@ -2936,7 +2970,7 @@ function openBuilder(node) {
     zEnhanceTitle,
     zEnhanceSubTabs.wrapper,
   );
-  scenePanel.append(
+  sceneDetailsPanel.append(
     makeField("Scene label", labelInput),
     freezeTimingControl.wrapper,
     timingGrid,
@@ -2950,6 +2984,11 @@ function openBuilder(node) {
     makeEditField("Global story idea text file", storyIdeaInput, editStoryIdeaButton),
     makeEditField("Global subject/scene text file", subjectSceneInput, editSubjectSceneButton),
   );
+  const sceneSubTabs = makeSubTabs([
+    { label: "Scene details", value: "details", content: sceneDetailsPanel },
+    { label: "Scene Tools", value: "tools", content: sceneToolsPanel },
+  ]);
+  scenePanel.append(sceneSubTabs.wrapper);
   imagePanel.append(
     imageModelChooserWrap,
     zImageModePanel,
@@ -3481,7 +3520,7 @@ function openBuilder(node) {
   };
 
   function syncLeftPanelTabs() {
-    const active = state.leftPanelTab === "tools" ? "tools" : "scenes";
+    const active = state.leftPanelTab === "tools" || state.leftPanelTab === "luts" ? state.leftPanelTab : "scenes";
     state.leftPanelTab = active;
     const styleTab = (button, selected) => {
       button.style.background = selected ? "#0e7490" : "#18181b";
@@ -3491,8 +3530,14 @@ function openBuilder(node) {
     };
     styleTab(scenesTabButton, active === "scenes");
     styleTab(toolsTabButton, active === "tools");
+    styleTab(lutsTabButton, active === "luts");
     sceneListPane.style.display = active === "scenes" ? "block" : "none";
     toolsPane.style.display = active === "tools" ? "block" : "none";
+    lutsTools.element.style.display = active === "luts" ? "block" : "none";
+    if (active === "luts") {
+      lutsTools.loadLuts().catch(() => null);
+      lutsTools.render();
+    }
   }
 
   scenesTabButton.onclick = () => {
@@ -3505,7 +3550,388 @@ function openBuilder(node) {
     syncLeftPanelTabs();
     autoSaveSessionQuiet("left panel tools tab").catch(() => null);
   };
+  lutsTabButton.onclick = () => {
+    state.leftPanelTab = "luts";
+    syncLeftPanelTabs();
+    autoSaveSessionQuiet("left panel LUTS tab").catch(() => null);
+  };
   syncLeftPanelTabs();
+
+  function lutLabelFromName(name = "") {
+    return String(name || "").replace(/\.cube$/i, "").replace(/_/g, " ").trim();
+  }
+
+  function normalizeSceneLut(lut = {}, existing = {}) {
+    const name = String(lut?.name || lut?.lut_name || "").trim();
+    if (!name) return null;
+    return {
+      name,
+      label: String(lut?.label || lutLabelFromName(name)),
+      strength: Number.isFinite(Number(lut?.strength ?? existing?.strength)) ? Math.max(0, Math.min(10, Number(lut?.strength ?? existing?.strength))) : 10,
+      enabled: lut?.enabled !== false,
+    };
+  }
+
+  function applyLutToSegment(lut, segment = activeSegment()) {
+    if (!segment) {
+      toast("Select a scene first, then choose a LUT.", true);
+      return false;
+    }
+    if (segmentTrack(segment) === "overlay") {
+      toast("LUTs can be applied to base scenes for now.", true);
+      return false;
+    }
+    const nextLut = normalizeSceneLut(lut, segment.lut || {});
+    if (!nextLut) {
+      toast("That LUT could not be applied.", true);
+      return false;
+    }
+    pushHistory();
+    clearSegmentLutPreview(segment);
+    segment.lut = nextLut;
+    delete segment.lut_last_applied;
+    delete segment.lut_rendered_path;
+    delete segment.lut_rendered_thumbnail_path;
+    if (String(segment.video_original_path || "").trim()) {
+      activateSegmentVideoPath(segment, segment.video_original_path, segment.video_original_thumbnail_path || "");
+      segment.video_cache_bust = Date.now();
+    }
+    state.activeId = segment.id;
+    state.activeTrack = segmentTrack(segment);
+    render();
+    syncInspector();
+    autoSaveSessionQuiet("scene LUT applied").catch(() => null);
+    toast(`Applied LUT to ${segment.label || "scene"}.`);
+    return true;
+  }
+
+  function applyLutNameToSegment(lutName, segment = activeSegment()) {
+    const name = String(lutName || "").trim();
+    if (!name) return false;
+    const lut = (lutsTools.state.luts || []).find((item) => item.name === name) || { name, label: lutLabelFromName(name) };
+    return applyLutToSegment(lut, segment);
+  }
+
+  function sceneLutBadgeHtml(segment) {
+    const lut = normalizeSceneLut(segment?.lut || {});
+    if (!lut || lut.enabled === false) return "";
+    const label = escapeHtml(lut.label || lutLabelFromName(lut.name));
+    return `<span title="LUT: ${label}" style="border:1px solid #f0abfc;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#f5d0fe;background:rgba(88,28,135,.42);">LUT</span>`;
+  }
+
+  function lutExampleUrl(lutName = "") {
+    const lut = (lutsTools.state.luts || []).find((item) => item.name === lutName);
+    return lut?.example_url || "";
+  }
+
+  function clearSegmentLutPreview(segment = activeSegment(), options = {}) {
+    if (!segment) return;
+    const path = String(segment.lut_preview_image_path || "").trim();
+    delete segment.lut_preview_image_path;
+    delete segment.lut_preview_source_path;
+    delete segment.lut_preview_lut;
+    if (path && options.deleteFile !== false) {
+      postJson("/vrgdg/music_builder/luts/delete_preview", {
+        path,
+        project_folder: projectInput.value || state.projectFolder || "",
+      }).catch(() => null);
+    }
+    if (options.refresh) {
+      if (selectedSegmentVideoPath(segment)) segment.preview_mode = "video";
+      else segment.preview_mode = "image";
+      syncPreview(segment);
+      render();
+      syncInspector();
+    }
+  }
+
+  window.addEventListener("beforeunload", () => {
+    const segments = [
+      ...(Array.isArray(state.segments) ? state.segments : []),
+      ...(Array.isArray(state.overlaySegments) ? state.overlaySegments : []),
+    ];
+    for (const segment of segments) {
+      const path = String(segment?.lut_preview_image_path || "").trim();
+      if (!path) continue;
+      try {
+        const payload = new Blob([JSON.stringify({ path, project_folder: projectInput.value || state.projectFolder || "" })], { type: "application/json" });
+        navigator.sendBeacon?.("/vrgdg/music_builder/luts/delete_preview", payload);
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  });
+
+  function removeLutFromSegment(segment = activeSegment()) {
+    if (!segment?.lut) return;
+    pushHistory();
+    clearSegmentLutPreview(segment);
+    delete segment.lut;
+    delete segment.lut_last_applied;
+    delete segment.lut_rendered_path;
+    delete segment.lut_rendered_thumbnail_path;
+    if (String(segment.video_original_path || "").trim()) {
+      segment.video_path = segment.video_original_path;
+      if (String(segment.video_original_thumbnail_path || "").trim()) {
+        segment.video_thumbnail_path = segment.video_original_thumbnail_path;
+      }
+      normalizeSegmentVideoHistory(segment);
+      const originalIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_original_path));
+      if (originalIndex >= 0) segment.video_history_index = originalIndex;
+      segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || segment.video_thumbnail_path || "";
+      segment.video_cache_bust = Date.now();
+    }
+    render();
+    syncInspector();
+    autoSaveSessionQuiet("scene LUT removed").catch(() => null);
+    toast(`Removed LUT from ${segment.label || "scene"}.`);
+  }
+
+  function applySceneLutToAllScenes(segment = activeSegment()) {
+    const lut = normalizeSceneLut(segment?.lut || {});
+    if (!lut) {
+      toast("Apply a LUT to this scene first.", true);
+      return;
+    }
+    const targets = state.segments.filter((item) => segmentTrack(item) !== "overlay");
+    if (!targets.length) return;
+    pushHistory();
+    for (const target of targets) {
+      clearSegmentLutPreview(target);
+      target.lut = { ...lut };
+      delete target.lut_last_applied;
+      delete target.lut_rendered_path;
+      delete target.lut_rendered_thumbnail_path;
+      if (String(target.video_original_path || "").trim()) {
+        activateSegmentVideoPath(target, target.video_original_path, target.video_original_thumbnail_path || "");
+        target.video_cache_bust = Date.now();
+      }
+    }
+    render();
+    syncInspector();
+    autoSaveSessionQuiet("scene LUT applied to all").catch(() => null);
+    toast(`Applied LUT to ${targets.length} scene${targets.length === 1 ? "" : "s"}.`);
+  }
+
+  function renderSceneToolsPanel() {
+    if (!sceneToolsPanel) return;
+    sceneToolsPanel.textContent = "";
+    const segment = activeSegment();
+    if (!segment) return;
+    const lut = normalizeSceneLut(segment.lut || {});
+    if (!lut) {
+      const empty = document.createElement("div");
+      empty.textContent = "No tools added to scene.";
+      empty.style.cssText = "border:1px dashed #3f3f46;border-radius:7px;background:#18181b;color:#a1a1aa;padding:16px;text-align:center;font-size:12px;font-weight:800;";
+      sceneToolsPanel.append(empty);
+      return;
+    }
+
+    const card = document.createElement("div");
+    card.style.cssText = "display:flex;flex-direction:column;gap:9px;border:1px solid #3f3f46;border-radius:7px;background:#18181b;padding:9px;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:grid;grid-template-columns:96px minmax(0,1fr);gap:9px;align-items:center;";
+    const previewWrap = document.createElement("div");
+    previewWrap.style.cssText = "width:96px;aspect-ratio:16/10;border:1px solid #3f3f46;border-radius:5px;background:#09090b;overflow:hidden;";
+    const exampleUrl = lutExampleUrl(lut.name);
+    if (exampleUrl) {
+      const image = document.createElement("img");
+      image.src = exampleUrl;
+      image.alt = "";
+      image.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+      previewWrap.append(image);
+    }
+    const text = document.createElement("div");
+    text.innerHTML = `<div style="font-size:12px;font-weight:900;color:#f5d0fe;">LUT</div><div style="font-size:12px;line-height:1.25;color:#e4e4e7;overflow-wrap:anywhere;margin-top:3px;">${escapeHtml(lut.label || lutLabelFromName(lut.name))}</div><div style="font-size:10px;color:#a1a1aa;margin-top:5px;overflow-wrap:anywhere;">${escapeHtml(lut.name)}</div>`;
+    header.append(previewWrap, text);
+
+    const enabled = makeCheckbox("Enable LUT", lut.enabled !== false);
+    enabled.input.onchange = () => {
+      const current = activeSegment();
+      if (!current?.lut) return;
+      pushHistory();
+      clearSegmentLutPreview(current);
+      current.lut = normalizeSceneLut({ ...current.lut, enabled: enabled.input.checked }, current.lut);
+      delete current.lut_last_applied;
+      delete current.lut_rendered_path;
+      delete current.lut_rendered_thumbnail_path;
+      if (String(current.video_original_path || "").trim()) {
+        activateSegmentVideoPath(current, current.video_original_path, current.video_original_thumbnail_path || "");
+        current.video_cache_bust = Date.now();
+      }
+      render();
+      syncInspector();
+      autoSaveSessionQuiet("scene LUT enabled").catch(() => null);
+    };
+
+    const strength = document.createElement("input");
+    strength.type = "range";
+    strength.min = "0";
+    strength.max = "10";
+    strength.step = "0.1";
+    strength.value = String(lut.strength ?? 10);
+    const strengthValue = document.createElement("div");
+    strengthValue.textContent = `Strength: ${Number(strength.value).toFixed(1)}`;
+    strengthValue.style.cssText = "font-size:11px;color:#c4b5fd;font-weight:900;";
+    strength.oninput = () => {
+      strengthValue.textContent = `Strength: ${Number(strength.value).toFixed(1)}`;
+    };
+    strength.onchange = () => {
+      const current = activeSegment();
+      if (!current?.lut) return;
+      pushHistory();
+      clearSegmentLutPreview(current);
+      current.lut = normalizeSceneLut({ ...current.lut, strength: Number(strength.value) }, current.lut);
+      delete current.lut_last_applied;
+      delete current.lut_rendered_path;
+      delete current.lut_rendered_thumbnail_path;
+      if (String(current.video_original_path || "").trim()) {
+        activateSegmentVideoPath(current, current.video_original_path, current.video_original_thumbnail_path || "");
+        current.video_cache_bust = Date.now();
+      }
+      render();
+      syncInspector();
+      autoSaveSessionQuiet("scene LUT strength").catch(() => null);
+    };
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const previewActions = document.createElement("div");
+    previewActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const previewLut = makeButton("Preview LUT", "primary");
+    const stopPreview = makeButton("Stop Preview", "secondary");
+    stopPreview.disabled = !String(segment.lut_preview_image_path || "").trim();
+    stopPreview.style.opacity = stopPreview.disabled ? ".55" : "1";
+    const renderLut = makeButton("Render LUT for Scene", "primary");
+    const applyAll = makeButton("Apply to all scenes", "primary");
+    const remove = makeButton("Remove LUT", "danger");
+    previewLut.onclick = async () => {
+      const current = activeSegment();
+      if (!current?.lut) return;
+      const sceneIndex = segmentIndexInfo(current).index;
+      const videoPath = String(current.video_original_path || selectedSegmentVideoPath(current) || "").trim();
+      const imagePath = selectedSegmentImagePath(current);
+      const mediaPath = videoPath || imagePath;
+      const mediaType = videoPath ? "video" : "image";
+      if (!mediaPath) {
+        toast("This scene needs an image or video before previewing a LUT.", true);
+        return;
+      }
+      const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+      if (!projectFolder) {
+        toast("Set a project folder before previewing LUTs.", true);
+        return;
+      }
+      try {
+        previewLut.disabled = true;
+        previewLut.textContent = "Previewing...";
+        clearSegmentLutPreview(current);
+        const data = await postJson("/vrgdg/music_builder/luts/preview", {
+          input_path: mediaPath,
+          media_type: mediaType,
+          lut_name: lut.name,
+          strength: lut.strength,
+          device: "auto",
+          scene_id: current.id || `scene_${sceneIndex}`,
+          project_folder: projectFolder,
+        }, 120000);
+        current.lut_preview_image_path = data.preview_path || data.output || "";
+        current.lut_preview_source_path = mediaPath;
+        current.lut_preview_lut = { name: lut.name, strength: lut.strength, created_at: Date.now() };
+        current.preview_mode = "image";
+        render();
+        syncInspector();
+        showLutPreviewImage(current);
+        toast(`Previewing LUT on ${current.label || "scene"}.`);
+      } catch (error) {
+        toast(error?.message || "Could not preview LUT for this scene.", true);
+        render();
+        syncInspector();
+      }
+    };
+    stopPreview.onclick = () => {
+      const current = activeSegment();
+      clearSegmentLutPreview(current, { refresh: true });
+      toast("Stopped LUT preview.");
+    };
+    renderLut.onclick = async () => {
+      const current = activeSegment();
+      const sceneIndex = segmentIndexInfo(current).index;
+      const videoPath = selectedSegmentVideoPath(current);
+      if (!current || !videoPath) {
+        toast("This scene needs a video before rendering a LUT.", true);
+        return;
+      }
+      const progress = createProgressWindow("Rendering Scene LUT");
+      try {
+        pushHistory();
+        clearSegmentLutPreview(current);
+        renderLut.disabled = true;
+        renderLut.textContent = "Rendering LUT...";
+        progress.set(`Applying LUT to ${current.label || "scene"}...\nThis can take a bit because it processes the video frame by frame.`, 12);
+        const result = await applySceneLutToRenderedVideo(
+          current,
+          sceneIndex,
+          videoPath,
+          current.video_thumbnail_path || "",
+          progress,
+          (value) => value,
+          "",
+        );
+        progress.set("Updating scene video preview...", 92);
+        activateSegmentVideoPath(current, result.video_path || videoPath, result.thumbnail_path || current.video_thumbnail_path || "");
+        current.video_cache_bust = Date.now();
+        render();
+        syncInspector();
+        await autoSaveSessionQuiet("scene LUT rendered");
+        const applied = current.lut_last_applied || {};
+        const encoder = applied.encoder || result.encoder || "unknown";
+        const browserFriendly = Boolean(applied.browser_friendly ?? result.browser_friendly);
+        const sourceHadAudio = applied.source_had_audio ?? result.source_had_audio;
+        const audioLine = sourceHadAudio === false
+          ? "Source audio: none detected"
+          : `Audio preserved in scene clip: ${applied.audio_preserved ? "yes" : "no"}`;
+        progress.set(`Scene LUT render complete.\n\nOutput:\n${current.video_path || result.video_path || ""}\n\nFrames processed: ${applied.processed_frames || "unknown"}\nEncoder: ${encoder}\nBrowser preview: ${browserFriendly ? "expected to work" : "fallback codec, may not preview in browser"}\n${audioLine}\n\nIf browser preview still fails, the scene stays rendered and the player will show the thumbnail fallback.`, 100);
+        toast(`Rendered LUT for ${current.label || "scene"}.`);
+      } catch (error) {
+        progress.set(`LUT render failed:\n${error?.message || error}`, 100);
+        toast(error?.message || "Could not render LUT for this scene.", true);
+        render();
+        syncInspector();
+      }
+    };
+    previewActions.append(previewLut, stopPreview);
+    applyAll.onclick = () => applySceneLutToAllScenes(segment);
+    remove.onclick = () => removeLutFromSegment(segment);
+    actions.append(applyAll, remove);
+
+    card.append(header, enabled.wrapper, strengthValue, strength, previewActions, renderLut, actions);
+    sceneToolsPanel.append(card);
+  }
+
+  function enableLutDrop(element, segment) {
+    if (!element || !segment || segmentTrack(segment) === "overlay") return;
+    element.addEventListener("dragover", (event) => {
+      const types = Array.from(event.dataTransfer?.types || []).map((item) => String(item).toLowerCase());
+      if (!types.includes("application/x-vrgdg-lut-name")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      element.style.outline = "2px solid #f0abfc";
+    });
+    element.addEventListener("dragleave", (event) => {
+      event.stopPropagation();
+      element.style.outline = "";
+    });
+    element.addEventListener("drop", (event) => {
+      const lutName = event.dataTransfer?.getData("application/x-vrgdg-lut-name") || "";
+      if (!lutName) return;
+      event.preventDefault();
+      event.stopPropagation();
+      element.style.outline = "";
+      applyLutNameToSegment(lutName, segment);
+    });
+  }
 
   function syncVideoTypeControl() {
     state.videoType = normalizeVideoType(state.videoType);
@@ -4027,6 +4453,16 @@ function openBuilder(node) {
     }
     segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || "";
     return cleaned;
+  }
+
+  function activateSegmentVideoPath(segment, videoPath, thumbnailPath = "") {
+    if (!segment || !String(videoPath || "").trim()) return;
+    segment.video_path = String(videoPath || "").trim();
+    if (String(thumbnailPath || "").trim()) segment.video_thumbnail_path = String(thumbnailPath || "").trim();
+    normalizeSegmentVideoHistory(segment);
+    const selectedIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_path));
+    if (selectedIndex >= 0) segment.video_history_index = selectedIndex;
+    segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || segment.video_thumbnail_path || "";
   }
 
   function timelineDuration() {
@@ -6178,6 +6614,7 @@ function openBuilder(node) {
 
   function setActiveSegment(segment) {
     if (state.activeId && state.activeId !== segment?.id) {
+      clearSegmentLutPreview(activeSegment());
       updateActiveFromInputs({ skipHistory: true });
       saveI2VVideoSettingsFromPanel();
     }
@@ -6401,6 +6838,10 @@ function openBuilder(node) {
 
   function syncPreview(segment) {
     ensureSegmentRuntimeFields(segment);
+    if (segment?.lut_preview_image_path) {
+      showLutPreviewImage(segment);
+      return;
+    }
     const videoPath = selectedSegmentVideoPath(segment);
     if (segment?.preview_mode !== "image" && videoPath) {
       setPreviewVideoSource(segment, videoPath);
@@ -6452,6 +6893,22 @@ function openBuilder(node) {
     previewEmpty.style.display = "block";
   }
 
+  function showLutPreviewImage(segment) {
+    const path = String(segment?.lut_preview_image_path || "").trim();
+    if (!path) return false;
+    previewVideo.pause();
+    previewVideo.removeAttribute("src");
+    previewVideo.load();
+    previewVideo.dataset.path = "";
+    previewVideo.dataset.cacheKey = "";
+    previewVideo.style.display = "none";
+    previewImage.src = makeEditorImageUrl(path);
+    previewImage.title = "Temporary LUT preview";
+    previewImage.style.display = "block";
+    previewEmpty.style.display = "none";
+    return true;
+  }
+
   function syncInspector() {
     const segment = activeSegment();
     const disabled = !segment;
@@ -6485,6 +6942,7 @@ function openBuilder(node) {
       <div style="margin-top:6px;color:#a1a1aa;">Global audio drives the whole timeline. Use this for music videos, songs, visualizers, and beat/lyric timing.</div>
     `;
     syncInspectorPanels();
+    renderSceneToolsPanel();
     if (!segment) {
       labelInput.value = "";
       startInput.value = "0";
@@ -6576,6 +7034,10 @@ function openBuilder(node) {
   function syncPreviewPlayback(current) {
     const playing = isTimelinePlaying();
     const segment = playing ? playbackSegmentAtTime(current) : activeSegment();
+    if (segment?.lut_preview_image_path) {
+      showLutPreviewImage(segment);
+      return;
+    }
     const videoPath = selectedSegmentVideoPath(segment);
     if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
@@ -8434,6 +8896,15 @@ function openBuilder(node) {
         };
         block.append(modeButton);
       }
+      const sceneLut = normalizeSceneLut(segment?.lut || {});
+      if (!isOverlay && sceneLut?.enabled !== false && sceneLut?.name) {
+        const lutBadge = document.createElement("span");
+        lutBadge.textContent = "LUT";
+        lutBadge.title = `LUT: ${sceneLut.label || lutLabelFromName(sceneLut.name)}`;
+        lutBadge.style.cssText = "position:absolute;left:10px;bottom:5px;min-width:30px;height:18px;display:flex;align-items:center;justify-content:center;border:1px solid #f0abfc;border-radius:4px;background:rgba(88,28,135,.9);color:#f5d0fe;font-size:10px;font-weight:900;z-index:3;";
+        lutBadge.onpointerdown = (event) => event.stopPropagation();
+        block.append(lutBadge);
+      }
       const leftHandle = document.createElement("div");
       leftHandle.style.cssText = "position:absolute;left:0;top:0;bottom:0;width:8px;background:rgba(255,255,255,.25);cursor:ew-resize;z-index:4;";
       const rightHandle = document.createElement("div");
@@ -8442,6 +8913,7 @@ function openBuilder(node) {
       block.onclick = () => handleSegmentPick(segment);
       block.oncontextmenu = (event) => openSegmentContextMenu(event, segment);
       enableImageDrop(block, segment);
+      enableLutDrop(block, segment);
       makeDragHandle(block, segment, "move");
       makeDragHandle(leftHandle, segment, "start");
       makeDragHandle(rightHandle, segment, "end");
@@ -9020,6 +9492,7 @@ function openBuilder(node) {
       const videoHistoryStatus = videoHistory.length ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#f3e8ff;">VID ${videoHistory.length}</span>` : "";
       const zStatus = segment.use_scene_zimage_settings ? `<span style="border:1px solid #f59e0b;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#fde68a;">Z custom</span>` : "";
       const audioStatus = segment.custom_audio_path ? `<span style="border:1px solid #a78bfa;border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:#ddd6fe;">AUD</span>` : "";
+      const lutStatus = sceneLutBadgeHtml(segment);
       const status = `
         <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
           <span style="border:1px solid ${t2iDone ? "#22c55e" : "#52525b"};border-radius:4px;padding:2px 5px;font-size:10px;font-weight:900;color:${t2iDone ? "#bbf7d0" : "#a1a1aa"};">T2I ${t2iDone ? "OK" : "--"}</span>
@@ -9029,6 +9502,7 @@ function openBuilder(node) {
           ${videoHistoryStatus}
           ${zStatus}
           ${audioStatus}
+          ${lutStatus}
         </div>
       `;
       const isActive = Boolean(state.activeId) && segment.id === state.activeId;
@@ -9062,6 +9536,7 @@ function openBuilder(node) {
         };
       }
       enableImageDrop(row, segment);
+      enableLutDrop(row, segment);
       sceneListPane.append(row);
     }
     if (state.overlaySegments.length) {
@@ -18670,6 +19145,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     drawWaveform();
     renderSegments();
     renderList();
+    if (state.leftPanelTab === "luts") {
+      lutsTools.render();
+    }
     updateSelectedMediaTools();
     updateMultiSelectButton();
     timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} insert${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
@@ -19379,7 +19857,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
       beat_markers: Array.isArray(state.beats) ? state.beats : [],
       left_panel_width: state.leftPanelWidth,
-      left_panel_tab: state.leftPanelTab === "tools" ? "tools" : "scenes",
+      left_panel_tab: state.leftPanelTab === "tools" || state.leftPanelTab === "luts" ? state.leftPanelTab : "scenes",
       right_panel_width: state.rightPanelWidth,
       timeline_panel_height: state.timelinePanelHeight,
       timeline_zoom: state.timelineZoom,
@@ -19605,7 +20083,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.beats = Array.isArray(data.session.beat_markers) ? data.session.beat_markers : state.beats;
         setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
         state.leftPanelWidth = data.session.left_panel_width || state.leftPanelWidth;
-        state.leftPanelTab = data.session.left_panel_tab === "tools" ? "tools" : "scenes";
+        state.leftPanelTab = data.session.left_panel_tab === "tools" || data.session.left_panel_tab === "luts" ? data.session.left_panel_tab : "scenes";
         state.rightPanelWidth = data.session.right_panel_width || state.rightPanelWidth;
         state.timelinePanelHeight = data.session.timeline_panel_height || state.timelinePanelHeight;
         state.timelineZoom = data.session.timeline_zoom || state.timelineZoom;
@@ -19777,7 +20255,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
       state.leftPanelWidth = session.left_panel_width || state.leftPanelWidth || 260;
-      state.leftPanelTab = session.left_panel_tab === "tools" ? "tools" : "scenes";
+      state.leftPanelTab = session.left_panel_tab === "tools" || session.left_panel_tab === "luts" ? session.left_panel_tab : "scenes";
       state.rightPanelWidth = session.right_panel_width || state.rightPanelWidth || 360;
       state.timelinePanelHeight = session.timeline_panel_height || state.timelinePanelHeight || 300;
       state.timelineZoom = session.timeline_zoom || state.timelineZoom || 45;
@@ -22402,6 +22880,99 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return segment.approved_image_path;
   }
 
+  async function applySceneLutToRenderedVideo(segment, sceneIndex, videoPath, thumbnailPath = "", progress = null, pct = (value) => value, batchLabel = "") {
+    const lut = normalizeSceneLut(segment?.lut || {});
+    if (!lut || lut.enabled === false || !String(videoPath || "").trim()) {
+      return { video_path: videoPath, thumbnail_path: thumbnailPath };
+    }
+    const currentVideoPath = String(videoPath || "").trim();
+    const currentThumbnailPath = String(thumbnailPath || "").trim();
+    const lastRenderedPath = String(segment.lut_rendered_path || segment.lut_last_applied?.video_path || "").trim();
+    const hasStoredOriginal = String(segment.video_original_path || "").trim();
+    if (!hasStoredOriginal) {
+      segment.video_original_path = currentVideoPath;
+      segment.video_original_thumbnail_path = currentThumbnailPath;
+    } else if (lastRenderedPath && mediaPathKey(currentVideoPath) !== mediaPathKey(lastRenderedPath)) {
+      segment.video_original_path = currentVideoPath;
+      segment.video_original_thumbnail_path = currentThumbnailPath;
+    }
+    const sourcePath = String(segment.video_original_path || currentVideoPath).trim();
+    progress?.set(`${batchLabel}Applying LUT to ${sceneDisplayName(segment, sceneIndex)}...\n${lut.label || lutLabelFromName(lut.name)}`, pct(94));
+    const result = await postJson("/vrgdg/music_builder/luts/apply_video", {
+      input_path: sourcePath,
+      lut_name: lut.name,
+      strength: lut.strength,
+      device: "auto",
+      batch_size: 8,
+      replace_source: false,
+      thumbnail_path: currentThumbnailPath,
+    }, 20 * 60 * 1000);
+    segment.lut_rendered_path = result.output || currentVideoPath;
+    segment.lut_rendered_thumbnail_path = result.thumbnail_path || currentThumbnailPath;
+    segment.lut_last_applied = {
+      name: lut.name,
+      label: lut.label || lutLabelFromName(lut.name),
+      strength: lut.strength,
+      applied_at: Date.now(),
+      elapsed_seconds: Number(result.elapsed_seconds || 0),
+      processed_frames: Number(result.processed_frames || 0),
+      audio_preserved: Boolean(result.audio_preserved),
+      source_video_path: sourcePath,
+      video_path: result.output || currentVideoPath,
+      encoder: result.encoder || "",
+      browser_friendly: Boolean(result.browser_friendly),
+      source_had_audio: result.source_had_audio,
+    };
+    return {
+      video_path: result.output || currentVideoPath,
+      thumbnail_path: result.thumbnail_path || currentThumbnailPath,
+    };
+  }
+
+  function sceneVideoHasCurrentLut(segment, videoPath = "") {
+    const lut = normalizeSceneLut(segment?.lut || {});
+    const applied = segment?.lut_last_applied || {};
+    return Boolean(
+      lut
+      && lut.enabled !== false
+      && String(applied.name || "") === lut.name
+      && Math.abs(Number(applied.strength ?? -1) - Number(lut.strength ?? 10)) < 0.001
+      && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
+    );
+  }
+
+  async function ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options = {}) {
+    const segments = Array.isArray(baseSegments) ? baseSegments : [];
+    const targets = segments
+      .map((segment, index) => ({ segment, index, videoPath: String(selectedSegmentVideoPath(segment) || "").trim() }))
+      .filter(({ segment, videoPath }) => {
+        const lut = normalizeSceneLut(segment?.lut || {});
+        return lut && lut.enabled !== false && videoPath && !sceneVideoHasCurrentLut(segment, videoPath);
+      });
+    if (!targets.length) return;
+    for (let index = 0; index < targets.length; index += 1) {
+      const { segment, videoPath } = targets[index];
+      const sceneIndex = segmentIndexInfo(segment).index;
+      const base = 88 + Math.floor((index / Math.max(1, targets.length)) * 5);
+      progress?.set(`Applying LUT ${index + 1}/${targets.length} before stitching...\n${sceneDisplayName(segment, sceneIndex)}\n${normalizeSceneLut(segment.lut)?.label || ""}`, base);
+      const result = await applySceneLutToRenderedVideo(
+        segment,
+        sceneIndex,
+        videoPath,
+        segment.video_thumbnail_path || "",
+        progress,
+        (value) => Math.min(93, base + (value - 90) * 0.5),
+        "",
+      );
+      activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
+      segment.video_cache_bust = Date.now();
+    }
+    if (options.autoSaveAfter !== false) {
+      await autoSaveSessionQuiet("scene LUTs applied before stitch");
+    }
+    render();
+  }
+
   function validateRenderAllReady(options = {}) {
     const missing = [];
     const sceneScope = normalizeBatchScope(options.sceneScope);
@@ -22650,6 +23221,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
     pushHistory();
+    const lutResult = await applySceneLutToRenderedVideo(
+      segment,
+      sceneIndex,
+      collected.video_path || videoPath,
+      collected.thumbnail_path || "",
+      progress,
+      pct,
+      batchLabel,
+    );
     if (collected.backup_path) {
       if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
       if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_path))) {
@@ -22664,14 +23244,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     segment.video_output = video;
     segment.video_source_path = videoPath;
-    segment.video_path = collected.video_path || videoPath;
-    segment.video_thumbnail_path = collected.thumbnail_path || "";
+    activateSegmentVideoPath(segment, lutResult.video_path || collected.video_path || videoPath, lutResult.thumbnail_path || collected.thumbnail_path || "");
     segment.video_cache_bust = Date.now();
     segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
-    normalizeSegmentVideoHistory(segment);
-    const currentVideoIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_path));
-    if (currentVideoIndex >= 0) segment.video_history_index = currentVideoIndex;
-    segment.video_thumbnail_path = segment.video_thumbnail_history[segment.video_history_index] || segment.video_thumbnail_path || "";
     segment.preview_mode = "video";
     segment.video_status = "done";
     syncPreview(segment);
@@ -22688,6 +23263,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
     const overlaySegments = Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments;
     const timelineOffset = Number(options.timelineOffset || 0);
+    await ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options);
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
     const overlayItems = overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())

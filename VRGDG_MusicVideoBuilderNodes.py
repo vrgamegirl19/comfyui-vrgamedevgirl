@@ -29,6 +29,7 @@ from .VRGDG_VideoEditorNodes import (
     _VISUAL_T2I_INSTRUCTIONS,
 )
 from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
+from .VRGDG_LUTVideoTools import register_lut_routes
 
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
@@ -7168,6 +7169,7 @@ def _ensure_music_builder_routes():
     server_instance = getattr(PromptServer, "instance", None)
     if server_instance is None:
         return
+    register_lut_routes(server_instance)
 
     @server_instance.routes.post("/vrgdg/music_builder/analyze_audio")
     async def vrgdg_music_builder_analyze_audio(request):
