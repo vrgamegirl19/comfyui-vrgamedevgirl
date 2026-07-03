@@ -1,15 +1,34 @@
-# pyproject.toml
 [project]
-name = "comfyui-vrgamedevgirl" # Unique identifier for your node. Immutable after creation.
-description = "Custom nodes for ComfyUI by VRGameDevGirl."
-version = "1.0.0" # Custom Node version. Must be semantically versioned.
-license = { file = "LICENSE.txt" }
-dependencies = [] # Filled in from requirements.txt
+name = "comfyui-vrgamedevgirl"
+description = "VRGameDevGirl custom nodes for ComfyUI music-video, audio, image, video, workflow-runner, prompt-creator, and post-process workflows."
+version = "1.1.0"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "kornia",
+    "librosa",
+    "imageio",
+    "torchcodec",
+    "google-generativeai",
+    "av",
+    "stable-ts",
+    "demucs",
+    "transformers",
+    "accelerate",
+    "huggingface_hub",
+    "voxcpm",
+    "llama-cpp-python",
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
 
 [project.urls]
 Repository = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl"
+"Bug Tracker" = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/issues"
+Documentation = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/tree/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder"
 
 [tool.comfy]
-PublisherId = "vrgamedevgirl" # Your publisher ID from Comfy Registry.
-DisplayName = "VRGameDevGirl Custom Nodes" # Display name for your node.
-Icon = "" # Optional: link to an icon (SVG, PNG, JPG, or GIF; MAX. 800x400px).
+PublisherId = "vrgamedevgirl"
+DisplayName = "VRGameDevGirl Custom Nodes"
