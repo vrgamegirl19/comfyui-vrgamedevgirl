@@ -1729,6 +1729,8 @@ Short snippet:
 
 The Builder UI comes from this repo, but the hidden workflows it launches also use several external custom-node packs. Install these before running full image/video builds.
 
+This list was checked against the hidden workflow templates used by the Builder and Prompt Creator: `text2image_zimage_API.json`, `Krea2_TextToImage_API.json`, `Krea2_API_2Pass.json`, `image_ernie_image_turbo_API.json`, `fluxKleinMultiImage_API.json`, `NB_API.json`, `z_upscaleEnhance_API.json`, `Singlei2vForUI_API.json`, `Singlet2vForUI_API.json`, `SingleRef2VidForUI_API.json`, `SingleIngredients2Video_ForUI_API.json`, `ClearMemory_API.json`, `LTX2.3_Transcribe_API.json`, `LTX2.3_Transcribe_2_API.json`, and `LTX2.3_Music_Video_Creator_Prompt_Creator_API.json`.
+
 Use ComfyUI Manager when possible: open `Manager` -> `Install Custom Nodes`, search the name, install it, then restart ComfyUI. If a workflow still opens with red missing nodes, use ComfyUI Manager's missing-node installer on that workflow.
 
 Core requirement:
@@ -1744,11 +1746,9 @@ Hidden workflow requirements:
 | `ComfyUI-VideoHelperSuite` | Loading audio/video/image paths and combining video outputs. Look for nodes such as `VHS_LoadAudio`, `VHS_LoadVideo`, and `VHS_VideoCombine` |
 | `ComfyUI-LTXVideo` | LTX 2.3 video, audio VAE, I2V/T2V, Reference-to-Video, Ingredients-to-Video, latent upscaling, and LTX guide/reference nodes |
 | `ComfyUI-GGUF` | GGUF model loading for video/text models. Look for nodes such as `UnetLoaderGGUF` and `DualCLIPLoaderGGUF` |
-| `ComfyUI-KJNodes` | Utility image/video nodes used by the hidden workflows, including resize, size/count, calculator, and KJ VAE loader helpers |
-| `ComfyUI_Comfyroll_CustomNodes` | Small utility conversion nodes such as `CM_FloatToInt` |
+| `ComfyUI-KJNodes` | Utility image/video nodes used by the hidden workflows, including resize, image size/count, and KJ VAE loader helpers |
 | `comfyui_memory_cleanup` | RAM/VRAM cleanup nodes used between heavy video and image passes. Look for `RAMCleanup` and `VRAMCleanup` |
 | `erosdiffusion-eulerflowmatchingdiscretescheduler` | Custom FlowMatch scheduler used by ZImage/Krea-style image workflows. Look for `FlowMatchEulerDiscreteScheduler (Custom)` |
-| `ComfyUI-Flux2Klein-Enhancer` | Flux/Klein reference-conditioning helpers used by Flux/Klein image modes. Look for `ReferenceLatent` |
 
 Mode-specific notes:
 
