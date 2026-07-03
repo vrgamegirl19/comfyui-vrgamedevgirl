@@ -8,7 +8,7 @@ This guide is for someone opening the Video Builder for the first time. It expla
 
 - [What the V9 Video Builder Does](#what-the-v9-video-builder-does)
 - [What's New In V9](#whats-new-in-v9)
-- [Switching to the V9 Branch](#switching-to-the-v9-branch)
+- [Installing Or Switching To V9](#installing-or-switching-to-v9)
 - [Opening the Builder](#opening-the-builder)
 - [The Main Layout](#the-main-layout)
 - [Top Bar Buttons](#top-bar-buttons)
@@ -76,11 +76,40 @@ The biggest V9 upgrades are:
 | Flow tools | Flow Browser and Flow image-edit helpers are available as separate VRGDG nodes for browser-driven image generation/edit workflows |
 | V9 Wan/Humo workflow | The current Wan/Humo workflow is `Workflows/WanHumo_Workflows/WanHumoMVC_V9.json` |
 
-## Switching to the V9 Branch
+## Installing Or Switching To V9
+
+If you do not have the `comfyui-vrgamedevgirl` custom nodes installed yet, install the V9 branch first.
+
+### New Install With ComfyUI Manager
+
+1. Open ComfyUI.
+2. Open `Manager` -> `Install Custom Nodes`.
+3. Search for `vrgamedev` or paste this Git URL:
+
+```text
+https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
+```
+
+4. If Manager lets you choose a branch, choose `dev/music-video-builder-ui-test-v9`.
+5. Install, restart ComfyUI, then hard refresh the browser page.
+
+If Manager installs the default branch instead of V9, open a terminal in the installed `ComfyUI/custom_nodes/comfyui-vrgamedevgirl` folder and use the branch-switch commands below.
+
+### New Install With Git
+
+Open a terminal in your `ComfyUI/custom_nodes` folder and run:
+
+```bash
+git clone --branch dev/music-video-builder-ui-test-v9 https://github.com/vrgamegirl19/comfyui-vrgamedevgirl.git
+```
+
+Then restart ComfyUI and hard refresh the browser page.
+
+### If You Already Have The Nodes Installed
 
 If you are already using another branch, stop ComfyUI first, save any open project, and back up anything important before switching.
 
-If you use Git, open a terminal in your `comfyui-vrgamedevgirl` custom node folder and run:
+Open a terminal in your existing `ComfyUI/custom_nodes/comfyui-vrgamedevgirl` folder and run:
 
 ```bash
 git fetch origin
@@ -109,7 +138,7 @@ dev/music-video-builder-ui-test-v9
 
 If you download from GitHub instead of using Git, use the branch dropdown on the repository page, choose `dev/music-video-builder-ui-test-v9`, then download that branch as a ZIP.
 
-After switching branches, restart ComfyUI and hard refresh the browser page so the new JavaScript UI files load.
+After installing or switching branches, restart ComfyUI and hard refresh the browser page so the new JavaScript UI files load.
 
 ## Opening the Builder
 
