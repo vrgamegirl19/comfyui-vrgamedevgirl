@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - dev/music-video-builder-ui-test-v9
     paths:
       - pyproject.toml
       - .comfyignore
