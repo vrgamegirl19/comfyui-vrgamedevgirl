@@ -10,6 +10,7 @@ from urllib.parse import quote
 from aiohttp import web
 
 from .VRGDG_IV_Adjustments import LUTS_DIR, VRGDG_LUTS
+from .VRGDG_PostProcessPreviewHelpers import delete_preview_file_quietly, preview_source_frame_path, save_rgb_preview_frame, source_preview_payload
 
 try:
     import folder_paths
@@ -430,7 +431,6 @@ def apply_adjust_to_image(input_path, output_path="", settings=None, device="aut
 
 def preview_adjust_on_media(input_path, media_type="", settings=None, device="auto", scene_id="", project_folder=""):
     import cv2
-    from PIL import Image
 
     input_path = _resolve_media_path(input_path, "Input media")
     ext = os.path.splitext(input_path)[1].lower()
@@ -451,23 +451,23 @@ def preview_adjust_on_media(input_path, media_type="", settings=None, device="au
     stamp = int(time.time() * 1000)
     output_path = os.path.join(root, f"{safe_scene}_{safe_source}_adjust_{stamp}.jpg")
     frame_path = ""
+    if requested_type == "video":
+        cap = cv2.VideoCapture(input_path)
+        try:
+            if not cap.isOpened():
+                raise RuntimeError(f"Could not open input video: {input_path}")
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            raise RuntimeError("Could not read the first frame from the input video.")
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_path = preview_source_frame_path(root, scene_id, input_path, stamp)
+        save_rgb_preview_frame(frame, frame_path)
+        source_path = frame_path
+    else:
+        source_path = input_path
     try:
-        if requested_type == "video":
-            cap = cv2.VideoCapture(input_path)
-            try:
-                if not cap.isOpened():
-                    raise RuntimeError(f"Could not open input video: {input_path}")
-                ok, frame = cap.read()
-            finally:
-                cap.release()
-            if not ok:
-                raise RuntimeError("Could not read the first frame from the input video.")
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_path = os.path.join(root, f"{safe_scene}_{safe_source}_first_frame_{stamp}.jpg")
-            Image.fromarray(frame).save(frame_path, quality=92)
-            source_path = frame_path
-        else:
-            source_path = input_path
         result = apply_adjust_to_image(
             input_path=source_path,
             output_path=output_path,
@@ -475,18 +475,16 @@ def preview_adjust_on_media(input_path, media_type="", settings=None, device="au
             device=device,
             replace_source=False,
         )
-        return {
-            **result,
-            "preview_path": result["output"],
-            "source_media": input_path,
-            "source_type": requested_type,
-        }
-    finally:
-        if frame_path:
-            try:
-                os.remove(frame_path)
-            except OSError:
-                pass
+    except Exception:
+        delete_preview_file_quietly(frame_path)
+        raise
+    return {
+        **result,
+        "preview_path": result["output"],
+        "source_media": input_path,
+        "source_type": requested_type,
+        **source_preview_payload(source_path, temporary=bool(frame_path)),
+    }
 
 
 def apply_film_grain_to_image(
@@ -547,7 +545,6 @@ def preview_film_grain_on_media(
     seed=None,
 ):
     import cv2
-    from PIL import Image
 
     input_path = _resolve_media_path(input_path, "Input media")
     ext = os.path.splitext(input_path)[1].lower()
@@ -568,23 +565,23 @@ def preview_film_grain_on_media(
     stamp = int(time.time() * 1000)
     output_path = os.path.join(root, f"{safe_scene}_{safe_source}_film_grain_{stamp}.jpg")
     frame_path = ""
+    if requested_type == "video":
+        cap = cv2.VideoCapture(input_path)
+        try:
+            if not cap.isOpened():
+                raise RuntimeError(f"Could not open input video: {input_path}")
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            raise RuntimeError("Could not read the first frame from the input video.")
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_path = preview_source_frame_path(root, scene_id, input_path, stamp)
+        save_rgb_preview_frame(frame, frame_path)
+        source_path = frame_path
+    else:
+        source_path = input_path
     try:
-        if requested_type == "video":
-            cap = cv2.VideoCapture(input_path)
-            try:
-                if not cap.isOpened():
-                    raise RuntimeError(f"Could not open input video: {input_path}")
-                ok, frame = cap.read()
-            finally:
-                cap.release()
-            if not ok:
-                raise RuntimeError("Could not read the first frame from the input video.")
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_path = os.path.join(root, f"{safe_scene}_{safe_source}_first_frame_{stamp}.jpg")
-            Image.fromarray(frame).save(frame_path, quality=92)
-            source_path = frame_path
-        else:
-            source_path = input_path
         result = apply_film_grain_to_image(
             input_path=source_path,
             output_path=output_path,
@@ -594,23 +591,20 @@ def preview_film_grain_on_media(
             replace_source=False,
             seed=seed,
         )
-        return {
-            **result,
-            "preview_path": result["output"],
-            "source_media": input_path,
-            "source_type": requested_type,
-        }
-    finally:
-        if frame_path:
-            try:
-                os.remove(frame_path)
-            except OSError:
-                pass
+    except Exception:
+        delete_preview_file_quietly(frame_path)
+        raise
+    return {
+        **result,
+        "preview_path": result["output"],
+        "source_media": input_path,
+        "source_type": requested_type,
+        **source_preview_payload(source_path, temporary=bool(frame_path)),
+    }
 
 
 def preview_lut_on_media(input_path, lut_name, media_type="", strength=10.0, device="auto", scene_id="", project_folder=""):
     import cv2
-    from PIL import Image
 
     input_path = _resolve_media_path(input_path, "Input media")
     ext = os.path.splitext(input_path)[1].lower()
@@ -635,23 +629,23 @@ def preview_lut_on_media(input_path, lut_name, media_type="", strength=10.0, dev
     stamp = int(time.time() * 1000)
     output_path = os.path.join(root, f"{safe_scene}_{safe_source}_{safe_lut}_{stamp}.jpg")
     frame_path = ""
+    if requested_type == "video":
+        cap = cv2.VideoCapture(input_path)
+        try:
+            if not cap.isOpened():
+                raise RuntimeError(f"Could not open input video: {input_path}")
+            ok, frame = cap.read()
+        finally:
+            cap.release()
+        if not ok:
+            raise RuntimeError("Could not read the first frame from the input video.")
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_path = preview_source_frame_path(root, scene_id, input_path, stamp)
+        save_rgb_preview_frame(frame, frame_path)
+        source_path = frame_path
+    else:
+        source_path = input_path
     try:
-        if requested_type == "video":
-            cap = cv2.VideoCapture(input_path)
-            try:
-                if not cap.isOpened():
-                    raise RuntimeError(f"Could not open input video: {input_path}")
-                ok, frame = cap.read()
-            finally:
-                cap.release()
-            if not ok:
-                raise RuntimeError("Could not read the first frame from the input video.")
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_path = os.path.join(root, f"{safe_scene}_{safe_source}_first_frame_{stamp}.jpg")
-            Image.fromarray(frame).save(frame_path, quality=92)
-            source_path = frame_path
-        else:
-            source_path = input_path
         result = apply_lut_to_image(
             input_path=source_path,
             lut_name=lut_name,
@@ -660,18 +654,16 @@ def preview_lut_on_media(input_path, lut_name, media_type="", strength=10.0, dev
             device=device,
             replace_source=False,
         )
-        return {
-            **result,
-            "preview_path": result["output"],
-            "source_media": input_path,
-            "source_type": requested_type,
-        }
-    finally:
-        if frame_path:
-            try:
-                os.remove(frame_path)
-            except OSError:
-                pass
+    except Exception:
+        delete_preview_file_quietly(frame_path)
+        raise
+    return {
+        **result,
+        "preview_path": result["output"],
+        "source_media": input_path,
+        "source_type": requested_type,
+        **source_preview_payload(source_path, temporary=bool(frame_path)),
+    }
 
 
 def list_adjust_presets():

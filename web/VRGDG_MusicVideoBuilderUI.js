@@ -12,6 +12,7 @@ import {
 } from "./VRGDG_StoryboardBuilderUI.js";
 import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260701-i2v-mode";
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
+import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -1828,6 +1829,7 @@ function openBuilder(node) {
   const previewImage = document.createElement("img");
   previewImage.alt = "";
   previewImage.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
+  const postProcessComparePreview = createPostProcessComparePreview({ makeImageUrl: makeEditorImageUrl });
   const previewVideo = document.createElement("video");
   previewVideo.controls = true;
   previewVideo.playsInline = true;
@@ -1848,7 +1850,7 @@ function openBuilder(node) {
     previewEmpty.style.display = "none";
     toast("The video file was created, but the browser preview could not decode it. Showing the thumbnail instead.", true);
   });
-  previewStage.append(previewEmpty, previewImage, previewVideo);
+  previewStage.append(previewEmpty, previewImage, previewVideo, postProcessComparePreview.element);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -4169,15 +4171,13 @@ function openBuilder(node) {
   function clearSegmentAdjustPreview(segment = activeSegment(), options = {}) {
     if (!segment) return;
     const path = String(segment.adjust_preview_image_path || "").trim();
+    if (options.deleteFile !== false) deletePostProcessSourcePreview(segment, "adjust");
     delete segment.adjust_preview_image_path;
     delete segment.adjust_preview_source_path;
+    delete segment.adjust_preview_source_preview_path;
+    delete segment.adjust_preview_source_temporary;
     delete segment.adjust_preview_settings;
-    if (path && options.deleteFile !== false) {
-      postJson("/vrgdg/music_builder/luts/delete_preview", {
-        path,
-        project_folder: projectInput.value || state.projectFolder || "",
-      }).catch(() => null);
-    }
+    if (path && options.deleteFile !== false) deletePostProcessPreviewFile(path);
     if (options.refresh) {
       if (selectedSegmentVideoPath(segment)) segment.preview_mode = "video";
       else segment.preview_mode = "image";
@@ -4236,6 +4236,8 @@ function openBuilder(node) {
       if (options.token && state.adjustLivePreviewToken !== options.token) return;
       current.adjust_preview_image_path = data.preview_path || data.output || "";
       current.adjust_preview_source_path = mediaPath;
+      current.adjust_preview_source_preview_path = data.source_preview_path || mediaPath;
+      current.adjust_preview_source_temporary = Boolean(data.source_preview_temporary);
       current.adjust_preview_settings = { ...adjust, created_at: Date.now() };
       current.preview_mode = "image";
       if (!options.quiet) {
@@ -4609,15 +4611,13 @@ function openBuilder(node) {
   function clearSegmentFilmGrainPreview(segment = activeSegment(), options = {}) {
     if (!segment) return;
     const path = String(segment.film_grain_preview_image_path || "").trim();
+    if (options.deleteFile !== false) deletePostProcessSourcePreview(segment, "film_grain");
     delete segment.film_grain_preview_image_path;
     delete segment.film_grain_preview_source_path;
+    delete segment.film_grain_preview_source_preview_path;
+    delete segment.film_grain_preview_source_temporary;
     delete segment.film_grain_preview_settings;
-    if (path && options.deleteFile !== false) {
-      postJson("/vrgdg/music_builder/luts/delete_preview", {
-        path,
-        project_folder: projectInput.value || state.projectFolder || "",
-      }).catch(() => null);
-    }
+    if (path && options.deleteFile !== false) deletePostProcessPreviewFile(path);
     if (options.refresh) {
       if (selectedSegmentVideoPath(segment)) segment.preview_mode = "video";
       else segment.preview_mode = "image";
@@ -4672,6 +4672,8 @@ function openBuilder(node) {
       }, 120000);
       current.film_grain_preview_image_path = data.preview_path || data.output || "";
       current.film_grain_preview_source_path = mediaPath;
+      current.film_grain_preview_source_preview_path = data.source_preview_path || mediaPath;
+      current.film_grain_preview_source_temporary = Boolean(data.source_preview_temporary);
       current.film_grain_preview_settings = { ...grain, created_at: Date.now() };
       current.preview_mode = "image";
       render();
@@ -4748,18 +4750,30 @@ function openBuilder(node) {
     return lut?.example_url || "";
   }
 
+  function deletePostProcessPreviewFile(path) {
+    const cleanPath = String(path || "").trim();
+    if (!cleanPath) return;
+    postJson("/vrgdg/music_builder/luts/delete_preview", {
+      path: cleanPath,
+      project_folder: projectInput.value || state.projectFolder || "",
+    }).catch(() => null);
+  }
+
+  function deletePostProcessSourcePreview(segment, prefix) {
+    const path = String(segment?.[`${prefix}_preview_source_preview_path`] || "").trim();
+    if (path && segment?.[`${prefix}_preview_source_temporary`]) deletePostProcessPreviewFile(path);
+  }
+
   function clearSegmentLutPreview(segment = activeSegment(), options = {}) {
     if (!segment) return;
     const path = String(segment.lut_preview_image_path || "").trim();
+    if (options.deleteFile !== false) deletePostProcessSourcePreview(segment, "lut");
     delete segment.lut_preview_image_path;
     delete segment.lut_preview_source_path;
+    delete segment.lut_preview_source_preview_path;
+    delete segment.lut_preview_source_temporary;
     delete segment.lut_preview_lut;
-    if (path && options.deleteFile !== false) {
-      postJson("/vrgdg/music_builder/luts/delete_preview", {
-        path,
-        project_folder: projectInput.value || state.projectFolder || "",
-      }).catch(() => null);
-    }
+    if (path && options.deleteFile !== false) deletePostProcessPreviewFile(path);
     if (options.refresh) {
       if (selectedSegmentVideoPath(segment)) segment.preview_mode = "video";
       else segment.preview_mode = "image";
@@ -4779,6 +4793,9 @@ function openBuilder(node) {
         String(segment?.lut_preview_image_path || "").trim(),
         String(segment?.film_grain_preview_image_path || "").trim(),
         String(segment?.adjust_preview_image_path || "").trim(),
+        segment?.lut_preview_source_temporary ? String(segment?.lut_preview_source_preview_path || "").trim() : "",
+        segment?.film_grain_preview_source_temporary ? String(segment?.film_grain_preview_source_preview_path || "").trim() : "",
+        segment?.adjust_preview_source_temporary ? String(segment?.adjust_preview_source_preview_path || "").trim() : "",
       ].filter(Boolean);
       for (const path of paths) {
         try {
@@ -5126,6 +5143,8 @@ function openBuilder(node) {
         }, 120000);
         current.lut_preview_image_path = data.preview_path || data.output || "";
         current.lut_preview_source_path = mediaPath;
+        current.lut_preview_source_preview_path = data.source_preview_path || mediaPath;
+        current.lut_preview_source_temporary = Boolean(data.source_preview_temporary);
         current.lut_preview_lut = { name: lut.name, strength: lut.strength, created_at: Date.now() };
         current.preview_mode = "image";
         render();
@@ -8215,6 +8234,7 @@ function openBuilder(node) {
       showLutPreviewImage(segment);
       return;
     }
+    postProcessComparePreview.hide();
     const videoPath = selectedSegmentVideoPath(segment);
     if (segment?.preview_mode !== "image" && videoPath) {
       setPreviewVideoSource(segment, videoPath);
@@ -8269,12 +8289,20 @@ function openBuilder(node) {
   function showLutPreviewImage(segment) {
     const path = String(segment?.lut_preview_image_path || "").trim();
     if (!path) return false;
+    const sourcePath = String(segment?.lut_preview_source_preview_path || "").trim();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.load();
     previewVideo.dataset.path = "";
     previewVideo.dataset.cacheKey = "";
     previewVideo.style.display = "none";
+    if (postProcessComparePreview.show({ beforePath: sourcePath, afterPath: path, title: "LUT preview" })) {
+      previewImage.removeAttribute("src");
+      previewImage.style.display = "none";
+      previewEmpty.style.display = "none";
+      return true;
+    }
+    postProcessComparePreview.hide();
     previewImage.src = makeEditorImageUrl(path);
     previewImage.title = "Temporary LUT preview";
     previewImage.style.display = "block";
@@ -8285,12 +8313,20 @@ function openBuilder(node) {
   function showFilmGrainPreviewImage(segment) {
     const path = String(segment?.film_grain_preview_image_path || "").trim();
     if (!path) return false;
+    const sourcePath = String(segment?.film_grain_preview_source_preview_path || "").trim();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.load();
     previewVideo.dataset.path = "";
     previewVideo.dataset.cacheKey = "";
     previewVideo.style.display = "none";
+    if (postProcessComparePreview.show({ beforePath: sourcePath, afterPath: path, title: "Film grain preview" })) {
+      previewImage.removeAttribute("src");
+      previewImage.style.display = "none";
+      previewEmpty.style.display = "none";
+      return true;
+    }
+    postProcessComparePreview.hide();
     previewImage.src = makeEditorImageUrl(path);
     previewImage.title = "Temporary film grain preview";
     previewImage.style.display = "block";
@@ -8301,12 +8337,20 @@ function openBuilder(node) {
   function showAdjustPreviewImage(segment) {
     const path = String(segment?.adjust_preview_image_path || "").trim();
     if (!path) return false;
+    const sourcePath = String(segment?.adjust_preview_source_preview_path || "").trim();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.load();
     previewVideo.dataset.path = "";
     previewVideo.dataset.cacheKey = "";
     previewVideo.style.display = "none";
+    if (postProcessComparePreview.show({ beforePath: sourcePath, afterPath: path, title: "Adjust preview" })) {
+      previewImage.removeAttribute("src");
+      previewImage.style.display = "none";
+      previewEmpty.style.display = "none";
+      return true;
+    }
+    postProcessComparePreview.hide();
     previewImage.src = makeEditorImageUrl(path);
     previewImage.title = "Temporary Adjust preview";
     previewImage.style.display = "block";
@@ -8455,6 +8499,7 @@ function openBuilder(node) {
       showLutPreviewImage(segment);
       return;
     }
+    postProcessComparePreview.hide();
     const videoPath = selectedSegmentVideoPath(segment);
     if (!segment || !videoPath) {
       if (!previewVideo.paused) previewVideo.pause();
@@ -22157,6 +22202,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mmproj_file: "",
       use_vision: false,
       ref_image_path: "",
+      scene_number: sceneSlotNumber(segment),
       prompt_mode: imageMode,
       reference_context: referenceContext || {},
       repair_model_file: textModelSelect.value,
@@ -22884,6 +22930,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         use_vision: true,
         ref_image_path: source.path || "",
         ref_image_data: source.data || "",
+        scene_number: sceneSlotNumber(segment),
         user_notes: userNotes,
         unload_after: true,
         max_new_tokens: 1000,

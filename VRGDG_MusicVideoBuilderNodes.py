@@ -30,6 +30,7 @@ from .VRGDG_VideoEditorNodes import (
 )
 from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
 from .VRGDG_LUTVideoTools import register_lut_routes
+from .VRGDG_GemmaPromptSanitizer import extract_prompt_text_from_gemma_output
 
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
@@ -3768,6 +3769,7 @@ def _generate_builder_t2i_prompt(payload):
                 label="Gemma",
             )
         text = _clean_visual_gemma_text(text)
+        text = extract_prompt_text_from_gemma_output(text, payload.get("scene_number"))
         label = "Flux/Klein" if prompt_mode == "flux_klein" else "NanoBanana" if prompt_mode == "nano_banana" else "T2I"
         text = _repair_and_validate_builder_gemma_prompt(payload, text, label)
         return {
@@ -5021,6 +5023,7 @@ def _edit_builder_image_prompt(payload):
                 label="image prompt edit",
             )
         text = _clean_visual_gemma_text(text)
+        text = extract_prompt_text_from_gemma_output(text, payload.get("scene_number"))
         text = _repair_and_validate_builder_gemma_prompt(payload, text, str(payload.get("mode_label") or "Image"))
         return {
             "prompt": text,

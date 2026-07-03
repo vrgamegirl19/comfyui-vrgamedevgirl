@@ -8,6 +8,8 @@ from datetime import datetime
 from aiohttp import web
 from server import PromptServer
 
+from .VRGDG_GemmaPromptSanitizer import extract_prompt_text_from_gemma_output
+
 
 _VRGDG_STORYBOARD_ROUTES_REGISTERED = False
 
@@ -765,6 +767,7 @@ def _build_storyboard_image_prompt(payload):
         label="Storyboard T2I Gemma",
         preserve_paragraphs=True,
     )
+    prompt = extract_prompt_text_from_gemma_output(prompt, scene_bundle.get("selected_scene_number"))
     prompt = _clean_scene_text(_fix_single_subject_prompt_pronouns(prompt, scene_bundle), 12000)
     if not prompt:
         raise ValueError("Gemma returned an empty Storyboard image prompt.")
