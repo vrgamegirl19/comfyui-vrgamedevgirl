@@ -1,0 +1,24 @@
+name: Publish to Comfy Registry
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/music-video-builder-ui-test-v9
+    paths:
+      - pyproject.toml
+      - .comfyignore
+      - .github/workflows/publish-comfy-registry.yml
+
+jobs:
+  publish-node:
+    name: Publish custom node
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Publish custom node
+        uses: Comfy-Org/publish-node-action@main
+        with:
+          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
