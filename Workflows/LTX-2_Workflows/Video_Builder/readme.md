@@ -1,13 +1,14 @@
-# V8 Video Builder Guide
+# V9 Video Builder Guide
 
 This guide is for someone opening the Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
-![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20V8%20Video%20Builder%20window.png)
+![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20V9%20Video%20Builder%20window.png)
 
 ## Table of Contents
 
-- [What the V8 Video Builder Does](#what-the-v8-video-builder-does)
-- [Switching to the V8 Branch](#switching-to-the-v8-branch)
+- [What the V9 Video Builder Does](#what-the-v9-video-builder-does)
+- [What's New In V9](#whats-new-in-v9)
+- [Switching to the V9 Branch](#switching-to-the-v9-branch)
 - [Opening the Builder](#opening-the-builder)
 - [The Main Layout](#the-main-layout)
 - [Top Bar Buttons](#top-bar-buttons)
@@ -21,24 +22,28 @@ This guide is for someone opening the Video Builder for the first time. It expla
 - [Audio Tab](#audio-tab)
 - [Lyric Mapping](#lyric-mapping)
 - [Review Lyrics and Map Singers](#review-lyrics-and-map-singers)
-- [Creating Scenes From Lyrics](#creating-scenes-from-lyrics)
+- [Option 2: Create Scenes From Lyrics](#option-2-create-scenes-from-lyrics)
 - [Reference Builder](#reference-builder)
+- [Video Wizard](#video-wizard)
+- [Storyboard Builder](#storyboard-builder)
 - [Builder Agent](#builder-agent)
 - [Prompt Options](#prompt-options)
-- [Gemma Runner](#gemma-runner)
+- [LLM Runner](#llm-runner)
 - [Batch Buttons and Full Builds](#batch-buttons-and-full-builds)
+- [Post Process](#post-process)
 - [Prompt Creator Panel](#prompt-creator-panel)
 - [Prompt Creator Import](#prompt-creator-import)
 - [Settings And Audio Notifications](#settings-and-audio-notifications)
+- [Required Custom Nodes](#required-custom-nodes)
 - [Models and Downloads](#models-and-downloads)
 - [Saving Projects](#saving-projects)
 - [Recommended Beginner Workflow](#recommended-beginner-workflow)
 - [Common Problems](#common-problems)
 - [Screenshot Checklist](#screenshot-checklist)
 
-## What the V8 Video Builder Does
+## What the V9 Video Builder Does
 
-V8 Video Builder is a scene-by-scene video creation UI inside ComfyUI. It helps you build a project from audio, SRT timing, lyric timing, scene notes, prompts, images, video clips, and final stitching.
+V9 Video Builder is a scene-by-scene video creation UI inside ComfyUI. It helps you build a project from audio, SRT timing, lyric timing, scene notes, prompts, images, video clips, and final stitching.
 
 The basic idea is:
 
@@ -52,9 +57,26 @@ The basic idea is:
 8. Render scene videos.
 9. Stitch the final video.
 
-V8 adds more tools for lyric-driven music videos, including Lyric Mapping, timeline lyric notes, video notes, better singer/no-lip-sync handling, and audio notifications.
+V9 adds a guided Wizard, Storyboard Builder planning tools, Reference-to-Video and Ingredients-to-Video modes, more image backends, per-scene model overrides, an LLM API runner option, and post-process tools for LUTs, grain, compare previews, and overlays.
 
-## Switching to the V8 Branch
+## What's New In V9
+
+The biggest V9 upgrades are:
+
+| New feature | What it adds |
+| --- | --- |
+| `Wizard` | A guided music-video setup path for mode choice, model settings, audio, lyric scenes, references, story structure, prompt runs, and final builds |
+| `Storyboard Builder` | A planning surface for scene cards, story briefs, story arcs, camera flow, performance style, facial performance, image prompts, and video prompts |
+| `Reference to Video` | LTX/MSR reference-video mode that uses mapped subject references instead of only a generated first frame |
+| `Ingredients to Video` | LTX Ingredients mode that maps complete ingredients-sheet images to scenes and uses the required Ingredients LoRA |
+| `Krea 2` image mode | Two-pass Krea image generation with its own model settings, LoRA strengths, image-to-image controls, and prompt box |
+| Per-scene settings | Individual scenes can override ZImage, Ernie, Krea 2, Flux/Klein, NanoBanana, and video model/LoRA settings |
+| `LLM Runner` | Text-only prompt writing can use the built-in runner, LM Studio, or an OpenAI-compatible LLM API endpoint |
+| `Post Process` | A left-panel tab for LUT browsing, film grain, FX/overlay packs, and before/after compare previews |
+| Flow tools | Flow Browser and Flow image-edit helpers are available as separate VRGDG nodes for browser-driven image generation/edit workflows |
+| V9 Wan/Humo workflow | The current Wan/Humo workflow is `Workflows/WanHumo_Workflows/WanHumoMVC_V9.json` |
+
+## Switching to the V9 Branch
 
 If you are already using another branch, stop ComfyUI first, save any open project, and back up anything important before switching.
 
@@ -62,15 +84,15 @@ If you use Git, open a terminal in your `comfyui-vrgamedevgirl` custom node fold
 
 ```bash
 git fetch origin
-git switch dev/music-video-builder-ui-test-v8
+git switch dev/music-video-builder-ui-test-v9
 git pull
 ```
 
 If Git says the branch does not exist locally yet, run:
 
 ```bash
-git fetch origin dev/music-video-builder-ui-test-v8:dev/music-video-builder-ui-test-v8
-git switch dev/music-video-builder-ui-test-v8
+git fetch origin dev/music-video-builder-ui-test-v9:dev/music-video-builder-ui-test-v9
+git switch dev/music-video-builder-ui-test-v9
 ```
 
 To confirm you are on the right branch:
@@ -82,10 +104,10 @@ git branch --show-current
 It should show:
 
 ```bash
-dev/music-video-builder-ui-test-v8
+dev/music-video-builder-ui-test-v9
 ```
 
-If you download from GitHub instead of using Git, use the branch dropdown on the repository page, choose `dev/music-video-builder-ui-test-v8`, then download that branch as a ZIP.
+If you download from GitHub instead of using Git, use the branch dropdown on the repository page, choose `dev/music-video-builder-ui-test-v9`, then download that branch as a ZIP.
 
 After switching branches, restart ComfyUI and hard refresh the browser page so the new JavaScript UI files load.
 
@@ -95,13 +117,13 @@ Add the node named `VRGDG Music Video Builder UI` in ComfyUI.
 
 When the builder opens, it may show a welcome window where you can create a new project or open an existing project.
 
-![ComfyUI Builder Node](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/ComfyUI%20Builder%20Node.png)
+![ComfyUI Builder Node](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/ComfyUI%20Builder%20Node.png)
 
-![Welcome Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Welcome%20Window.png)
+![Welcome Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Welcome%20Window.png)
 
 Short snippet:
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.gif" alt="Opening the Video Builder node and welcome window" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Opening%20the%20Video%20Builder%20node%20and%20welcome%20window.gif" alt="Opening the Video Builder node and welcome window" width="820"></a>
 
 ## The Main Layout
 
@@ -125,11 +147,15 @@ The top bar contains project-wide tools. These are not tied to only one scene.
 | --- | --- |
 | `Menu` | Opens project actions such as New Project, Load Project, Prompt Creator import, batch runs, and settings |
 | `Quick Save` | Saves the current project immediately |
+| `Wizard` | Opens the guided V9 setup flow |
+| `Storyboard Builder` | Opens the scene-card planning and Storyboard prompt workspace |
 | `Reference Builder` | Opens character/location reference setup for Flux/Klein and Nano B |
-| `Lyric Mapping` | Opens lyric transcription, lyric review, singer mapping, and timing correction tools |
-| `Gemma Runner` | Chooses whether text-only Gemma calls use the built-in runner or LM Studio |
+| `Line Mapping` | Opens lyric transcription, lyric review, singer mapping, and timing correction tools |
+| `LLM Runner` | Chooses whether text-only LLM/Gemma calls use the built-in runner, LM Studio, or an API endpoint |
 | `Agent` | Opens the Builder Agent chat helper |
 | `Prompt Options` | Opens prompt editing, reload, clear, and prompt-file tools |
+| `LLM T2I All` | Creates image prompts for multiple scenes |
+| `LLM Video All` | Creates video prompts for multiple scenes |
 | `Stop` | Stops the current running builder workflow |
 | `Download Models` | Opens model links and model folder guidance |
 | `Clear Memory` | Runs memory cleanup |
@@ -138,7 +164,7 @@ The top bar contains project-wide tools. These are not tied to only one scene.
 
 If a button opens a modal, use that modal's `Close` button to return to the main builder.
 
-![Top bar buttons](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Top%20bar%20buttons%20screenshot.png)
+![Top bar buttons](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Top%20bar%20buttons%20screenshot.png)
 
 ## Starting or Loading a Project
 
@@ -157,19 +183,19 @@ Important project options:
 
 Projects are saved under the ComfyUI output folder. A builder project contains the session JSON, SRT, generated images, scene videos, prompt files, reference images, and copied audio assets.
 
-![Menu Dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Menu%20Dropdown.png)
+![Menu Dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Menu%20Dropdown.png)
 
-![Load Project Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Load%20Project%20Window.png)
+![Load Project Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Load%20Project%20Window.png)
 
 Short snippets:
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20Start%20new%20Project%20window%20display.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Menu%20Start%20new%20Project%20window%20display.gif" alt="Create a new project" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20Start%20new%20Project%20window%20display.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Menu%20Start%20new%20Project%20window%20display.gif" alt="Create a new project" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20load%20project.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/menu%20load%20project.gif" alt="Load an existing project" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20load%20project.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/menu%20load%20project.gif" alt="Load an existing project" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/quicksave%20and%20save%20project%20as.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/quicksave%20and%20save%20project%20as.gif" alt="Quick Save and Save Project As" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/quicksave%20and%20save%20project%20as.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/quicksave%20and%20save%20project%20as.gif" alt="Quick Save and Save Project As" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20save%20project%20as%20window%20display.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/menu%20save%20project%20as%20window%20display.gif" alt="Save Project As window" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/menu%20save%20project%20as%20window%20display.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/menu%20save%20project%20as%20window%20display.gif" alt="Save Project As window" width="820"></a>
 
 ## Adding Audio and SRT Timing
 
@@ -215,15 +241,15 @@ Common scene actions:
 | Edit timing | Right panel `Scene` tab, `Start` and `End` |
 | Prevent timing changes from SRT import | `Freeze SRT timing` |
 
-![Left Scene List](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Left%20Scene%20List.png)
+![Left Scene List](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Left%20Scene%20List.png)
 
 Short snippets:
 
 Click a GIF to open the MP4.
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/adding%20segmnets%20and%20bulk%20segments.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/adding%20segmnets%20and%20bulk%20segments.gif" alt="Adding segments and bulk segments" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/adding%20segmnets%20and%20bulk%20segments.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/adding%20segmnets%20and%20bulk%20segments.gif" alt="Adding segments and bulk segments" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20segment.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20a%20segment.gif" alt="Delete a segment" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20segment.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20a%20segment.gif" alt="Delete a segment" width="820"></a>
 
 ## Using the Timeline
 
@@ -264,33 +290,33 @@ Timeline lanes:
 
 Use `Video Notes` when you want to describe what should happen in motion. Use `Director Notes` or image notes for the still image idea. Use `Lyric Notes` for the exact lyric or vocal line.
 
-![Timeline Controls](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Timeline%20Controls.png)
+![Timeline Controls](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Timeline%20Controls.png)
 
-![Timeline With Scenes](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Timeline%20Scene%20Blocks.png)
+![Timeline With Scenes](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Timeline%20Scene%20Blocks.png)
 
-![Video Notes lane on the timeline](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Notes%20lane%20on%20the%20timeline.png)
+![Video Notes lane on the timeline](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Notes%20lane%20on%20the%20timeline.png)
 
 Short snippets:
 
 Click a GIF to open the MP4.
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20base%20and%20insert%20clips.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/timeline%20base%20and%20insert%20clips.gif" alt="Timeline base and insert clips" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20base%20and%20insert%20clips.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/timeline%20base%20and%20insert%20clips.gif" alt="Timeline base and insert clips" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20showing%20all%20note%20lanes%20.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/timeline%20showing%20all%20note%20lanes%20.gif" alt="Timeline showing all note lanes" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/timeline%20showing%20all%20note%20lanes%20.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/timeline%20showing%20all%20note%20lanes%20.gif" alt="Timeline showing all note lanes" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/hide%20notes.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/hide%20notes.gif" alt="Hide notes" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/hide%20notes.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/hide%20notes.gif" alt="Hide notes" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.gif" alt="Freeze and timeline edits" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/unfreeze%20and%20freeze%20timeline%20and%20timeline%20edits.gif" alt="Freeze and timeline edits" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/select%20multi.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/select%20multi.gif" alt="Select multi" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/select%20multi.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/select%20multi.gif" alt="Select multi" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/waveform%20settings.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/waveform%20settings.gif" alt="Waveform settings" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/waveform%20settings.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/waveform%20settings.gif" alt="Waveform settings" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/beat%20markers%20and%20snap%20to%20beats.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/beat%20markers%20and%20snap%20to%20beats.gif" alt="Beat markers and snap to beats" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/beat%20markers%20and%20snap%20to%20beats.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/beat%20markers%20and%20snap%20to%20beats.gif" alt="Beat markers and snap to beats" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20image.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20image.gif" alt="Delete image" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20image.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20image.gif" alt="Delete image" width="820"></a>
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20video.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20a%20video.gif" alt="Delete video" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/delete%20a%20video.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/delete%20a%20video.gif" alt="Delete video" width="820"></a>
 
 ## Scene Tab
 
@@ -312,7 +338,7 @@ Main fields:
 
 Use this tab first when a scene needs better direction before image or video generation.
 
-![Scene Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Scene%20Tab.png)
+![Scene Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Scene%20Tab.png)
 
 ## Image Tab
 
@@ -326,6 +352,7 @@ Image modes:
 | `Flux Klein` | Flux/Klein image generation, including reference image ingredients |
 | `Nano B` | NanoBanana image generation with optional reference images and API key |
 | `Ernie` | Ernie Image generation |
+| `Krea 2` | Two-pass Krea image generation with optional LoRAs and image-to-image input |
 | `Enhance` | Upscale or enhance a selected image |
 | `+ Custom` | Load your own image for the scene |
 
@@ -416,6 +443,29 @@ Nano B works best when its prompt clearly says the reference images are identity
 
 Use Ernie when you want to compare a scene image against ZImage, Flux/Klein, or Nano B.
 
+### Krea 2
+
+`Krea 2` is a two-pass image mode. It has its own model picks, optional LoRAs, image-to-image controls, prompt trigger phrase, and per-scene override toggle.
+
+Use Krea 2 when you want:
+
+- a polished alternate image pass for the same scene prompt
+- separate LoRA strengths for the first and second image pass
+- image-to-image testing from a loaded reference image
+- a scene-specific image model setup without changing global ZImage, Ernie, Flux/Klein, or Nano B settings
+
+Common Krea 2 controls:
+
+| Control | What it does |
+| --- | --- |
+| `Use custom Krea 2 settings for this scene` | Lets the selected scene override global Krea 2 model and generation settings |
+| `Krea 2 Models` | Sets the Krea workflow model files |
+| `Use LoRAs?` | Enables Krea 2 LoRA rows |
+| `Pass 1` / `Pass 2` strengths | Controls LoRA influence in each generation pass |
+| `Load I2I Image` | Loads a source image for image-to-image generation |
+| `Gemma T2I` | Creates a Krea 2 image prompt |
+| `Create with Krea 2` | Runs the Krea 2 image workflow |
+
 ### Enhance
 
 `Enhance` works on an existing selected image. Use it to upscale, enhance, or perform image-to-image improvement.
@@ -447,17 +497,25 @@ The image trigger phrase is added at the start of image prompts when it is fille
 
 Use it for model-specific trigger words, LoRA trigger phrases, or a short global style phrase. Leave it blank if the model does not need one.
 
-![Image Tab Model Chooser](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Image%20Tab%20Model%20Chooser.png)
+### Per-Scene Image Settings
 
-![ZImage Prompting](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/ZImage%20Prompting.png)
+V9 lets a single scene override the global settings for each supported image mode.
 
-![Flux Reference Images](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Flux%20Reference%20Images.png)
+Use the `Use custom ... settings for this scene` toggles when one scene needs a different model, seed, LoRA, image-to-image source, reference setup, resolution, or trigger phrase. Multi-select can apply many of these model/settings changes to several selected scenes at once.
 
-![Nano B model settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Nano%20B%20model%20settings.png)
+If the toggle is off, the scene follows the global settings for that image mode again.
 
-![Nano B image settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Nano%20B%20image%20settings.png)
+![Image Tab Model Chooser](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Image%20Tab%20Model%20Chooser.png)
 
-![Nano B LLM Prompting settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Nano%20B%20LLM%20Prompting%20settings.png)
+![ZImage Prompting](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/ZImage%20Prompting.png)
+
+![Flux Reference Images](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Flux%20Reference%20Images.png)
+
+![Nano B model settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Nano%20B%20model%20settings.png)
+
+![Nano B image settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Nano%20B%20image%20settings.png)
+
+![Nano B LLM Prompting settings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Nano%20B%20LLM%20Prompting%20settings.png)
 
 ## Video Tab
 
@@ -467,6 +525,8 @@ The `Video` tab creates the selected scene video. At the top, choose between:
 | --- | --- |
 | `Image to Video` | Uses the selected scene image plus a video prompt |
 | `Text to Video` | Uses a text prompt directly, without requiring a scene image |
+| `Reference to Video` | Uses LTX/MSR reference images and text prompting for the selected scene |
+| `Ingredients to Video` | Uses a mapped Ingredients sheet image and the required Ingredients LoRA |
 
 The Video tab has three subtabs:
 
@@ -525,6 +585,50 @@ Use it when:
 For T2V, Gemma uses the concept/image prompt, video notes, lyric notes, singer mapping, and user motion notes to create the video prompt.
 
 Use T2V when image generation is not needed, or when you want the video model to invent the first frame from text.
+
+### Reference To Video
+
+`Reference to Video` is the LTX/MSR reference-video mode. It is useful when the scene should be driven by a mapped subject reference rather than only a generated scene image.
+
+Use it when:
+
+- the same character identity must stay consistent across scenes
+- you have MSR subject references in Reference Builder
+- you want Storyboard Builder prompts to describe motion while references carry identity
+- you are making a lyric-driven video where singer mapping and subject mapping matter
+
+Important controls:
+
+| Control | What it does |
+| --- | --- |
+| `Required MSR LoRA` | Required LoRA for Reference-to-Video |
+| `MSR strength` | Strength for the MSR reference-video LoRA |
+| `Gemma Reference Video` | Writes the reference-video prompt for the selected scene |
+| `Reference Builder` | Opens the MSR reference/mapping setup when this mode is active |
+
+Reference-to-Video works best after saving lyric/singer mapping and Reference Builder subject mapping.
+
+### Ingredients To Video
+
+`Ingredients to Video` uses complete Ingredients sheet images mapped to scenes. Each scene can receive its own Ingredients sheet from the Ingredients Reference Builder.
+
+Use it when:
+
+- you have a prepared reference sheet for a character, pose, outfit, scene, or location
+- you want a reference sheet to act as the scene's visual source
+- you want lyric review and scene mapping to decide which sheet belongs to which moment
+
+Important controls:
+
+| Control | What it does |
+| --- | --- |
+| `Required Ingredients LoRA` | Required LoRA applied for Ingredients-to-Video |
+| `Pass 1` | Strength for the required Ingredients LoRA on the first pass |
+| Width/height | Defaults to the Ingredients training-friendly resolution, with a warning when needed |
+| `Gemma Ingredients Video` | Writes the Ingredients-to-Video prompt |
+| `Ingredients Reference Builder` | Uploads, describes, and maps Ingredients sheets to scenes |
+
+The Ingredients LoRA was trained around `768x448`. Other sizes can work, but unusual aspect ratios may reduce composition quality.
 
 ### Video Notes
 
@@ -602,9 +706,9 @@ Warm up and cool down frames help the hidden video workflow create smoother scen
 
 If a scene starts too stiffly, check that warm up frames are enabled and set to a useful number.
 
-![Video Mode Chooser](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Mode%20Chooser.png)
+![Video Mode Chooser](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Mode%20Chooser.png)
 
-![Video Prompting](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Prompting.png)
+![Video Prompting](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Prompting.png)
 
 ## Audio Tab
 
@@ -619,7 +723,7 @@ Sections:
 
 Use `Scene Audio` for scene-specific dialogue or clips. Use `Timeline Audio` for music-video timing.
 
-![Audio Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Audio%20Tab%20Timeline%20Audio.png)
+![Audio Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Audio%20Tab%20Timeline%20Audio.png)
 
 ## Lyric Mapping
 
@@ -651,7 +755,7 @@ The usual flow is:
 7. Save the lyric mapping.
 8. Run Gemma video prompting.
 
-![Lyric Mapping Step 1 window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Lyric%20Mapping%20Step%201%20window.png)
+![Lyric Mapping Step 1 window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Lyric%20Mapping%20Step%201%20window.png)
 
 ### Step 1: Transcribe Lyrics Or Create Scenes
 
@@ -707,7 +811,7 @@ The Create Scenes window includes these controls:
 | `Create Timeline Scenes` | Runs the timestamped transcription workflow and replaces the current base timeline with generated lyric scenes |
 | `?` hint | Explains the timestamped lyric settings |
 
-![Create Scenes From Lyrics window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Create%20Scenes%20From%20Lyrics%20window.png)
+![Create Scenes From Lyrics window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Create%20Scenes%20From%20Lyrics%20window.png)
 
 Important notes:
 
@@ -786,7 +890,7 @@ Padding helps, but it does not replace manual review. Always check the timing in
 
 This is where you listen scene by scene, fix lyric text, correct timing, choose singers, mark instrumental/B-roll scenes, and save the data that Gemma uses for video prompting.
 
-![Review Lyrics and Map Singers window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Review%20Lyrics%20%20Map%20Singers%20window.png)
+![Review Lyrics and Map Singers window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Review%20Lyrics%20%20Map%20Singers%20window.png)
 
 ### Top Controls
 
@@ -1002,7 +1106,7 @@ This is why reviewing lyrics before running Gemma can improve lip-sync, reduce w
 
 The `Reference Builder` button opens the `Reference Image Builder`. This is for projects where scenes need consistent characters, locations, or visual references across many generated images.
 
-Reference Builder can feed references into `Flux/Klein` or `Nano B`, depending on the current image mode.
+Reference Builder can feed references into `Flux/Klein` or `Nano B`, depending on the current image mode. In V9 it also supports the video-side reference flows for `Reference to Video` and `Ingredients to Video`.
 
 Use it when:
 
@@ -1011,6 +1115,8 @@ Use it when:
 | Keep the same character across scenes | `Character References` |
 | Keep locations consistent | `Location References` |
 | Connect scenes to specific location images | `Scene Mapping` |
+| Drive LTX/MSR Reference-to-Video | `MSR References` and subject mapping |
+| Drive LTX Ingredients-to-Video | `Ingredients Sheets` and scene mapping |
 | Include manually loaded image references too | `Also include manually loaded reference images` |
 
 Main areas:
@@ -1026,17 +1132,22 @@ Main areas:
 | `Extract Locations` | Uses project prompts/director notes to find locations |
 | `Auto Map Locations with Gemma` | Lets Gemma choose which location reference fits each scene |
 | `Scene Mapping` | Manually choose the location reference for each scene |
+| `Ingredients Sheets` | Upload complete Ingredients sheet images for Ingredients-to-Video |
+| `Describe Ingredients Sheets` | Uses vision Gemma to summarize sheet images for mapping/prompt context |
+| `Ingredients Scene Mapping` | Chooses which sheet each scene should use |
 | `Save Reference Builder` | Saves the reference setup into the project |
 
 Basic Reference Builder workflow:
 
-1. Choose `Flux Klein` or `Nano B` in the `Image` tab.
+1. Choose `Flux Klein` or `Nano B` in the `Image` tab, or choose `Reference to Video` / `Ingredients to Video` in the `Video` tab.
 2. Click `Reference Builder` in the top bar.
 3. Turn on `Use subject reference` and/or `Use mapped location references`.
 4. Add character and location references.
 5. Map locations to scenes.
 6. Click `Save Reference Builder`.
 7. Generate images normally from the `Image` tab.
+
+For `Reference to Video`, focus on subject/MSR references and singer/subject mapping. For `Ingredients to Video`, open the Ingredients Reference Builder, upload sheet images, describe them if needed, and map sheets to scenes before running video prompts.
 
 ### Character References
 
@@ -1087,9 +1198,68 @@ Use `Auto Map Locations with Gemma` after location slots exist. If no locations 
 
 It does not overwrite your lyric text. It only helps connect scene references to the subjects used in those lyric/singer choices.
 
-![Reference Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Reference%20Builder%20Window.png)
+### Ingredients Sheet Mapping
 
-![Reference Builder with character and location mappings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Reference%20Builder%20with%20character%20and%20location%20mappings.png)
+Ingredients sheet mapping connects a complete reference sheet image to one or more scenes.
+
+Use it when the selected video mode is `Ingredients to Video`.
+
+The usual flow is:
+
+1. Open `Reference Builder` while `Ingredients to Video` is active.
+2. Add one or more Ingredients sheet images.
+3. Use vision Gemma to describe sheets when the description is blank or unclear.
+4. Map each scene to the matching sheet.
+5. Save Reference Builder.
+6. Run `Gemma Ingredients Video` or `LLM Video All`.
+
+If lyric/singer mapping already knows which subject appears in each scene, V9 can sync Ingredients scene mapping from those subject mappings.
+
+![Reference Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Reference%20Builder%20Window.png)
+
+![Reference Builder with character and location mappings](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Reference%20Builder%20with%20character%20and%20location%20mappings.png)
+
+## Video Wizard
+
+The `Wizard` button opens a guided V9 setup flow. It does not replace the main builder; it calls the same builder tools in a more ordered path.
+
+Use the Wizard when you want the builder to walk through:
+
+| Step | What it helps with |
+| --- | --- |
+| Mode setup | Choose `Image to Video` or `Reference to Video` and choose the image backend |
+| Model settings | Apply video, image, LoRA, Gemma, MSR, and Ingredients defaults back to the builder |
+| Audio | Load global timeline audio |
+| Lyrics and scenes | Paste reference lyrics and create timeline scenes |
+| References | Open the correct Reference Builder mode for the selected video mode |
+| Lyric review | Open lyric timing, singer, B-roll, instrumental, location, and Ingredients mapping tools |
+| Scene defaults | Fill camera flow, performance style, and facial performance across scenes |
+| Story layer | Create a story brief, story arc, lyric sections, and per-scene story beats |
+| Prompts/build | Run LLM image prompts, Storyboard/LLM video prompts, and Build Full Video |
+
+The Wizard saves draft progress into the project when possible, so you can close it and continue later.
+
+For `Reference to Video`, the Wizard can run the same Storyboard prompt writer used by Storyboard Builder. `Ingredients to Video` remains available from the main UI and Ingredients Reference Builder.
+
+## Storyboard Builder
+
+`Storyboard Builder` is a planning workspace for scene cards before or during image/video generation.
+
+Use it when you want stronger control over:
+
+| Tool | What it helps with |
+| --- | --- |
+| Scene cards | Review scene status, prompts, selected images, video prompts, and notes |
+| Story brief | Create a compact project summary from lyrics, sections, subjects, and locations |
+| Story arc | Build a song-structure story plan across verses, chorus, bridge, intro, or outro |
+| Scene beats | Add per-scene story intent from the larger arc |
+| Camera motion | Choose from camera-flow presets or specific camera motion categories |
+| Still style | Choose image prompt style presets such as cinematic, editorial, beauty, analog, surreal, or studio |
+| Performance style | Apply music-video performance presets such as pop, rock, metal, rap, ballad, EDM, or B-roll |
+| Facial performance | Keep singing/acting prompts consistent with the lyric or instrumental state |
+| Storyboard Gemma All | Write video prompts across scenes using Storyboard context |
+
+Storyboard Builder works especially well with saved lyric mapping and Reference Builder data. For Reference-to-Video projects, it can enforce clearer facial/lip-sync behavior and add reference-aware trigger phrasing before writing video prompts back into the Video Builder scenes.
 
 ## Builder Agent
 
@@ -1146,9 +1316,9 @@ Recommended beginner use:
 5. Switch to `Scene work` when you want help with a selected scene.
 6. Use `Auto: update fields` only when you are comfortable letting it make edits.
 
-![Builder Agent Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Builder%20Agent%20Window.png)
+![Builder Agent Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Builder%20Agent%20Window.png)
 
-![Builder Agent Hints](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Builder%20Agent%20Hints.png)
+![Builder Agent Hints](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Builder%20Agent%20Hints.png)
 
 ## Prompt Options
 
@@ -1229,13 +1399,13 @@ For I2V prompts:
 
 Clearing prompts does not delete images, videos, LoRAs, reference images, model choices, seeds, scene notes, video notes, or lyric notes.
 
-![Prompt Options Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Prompt%20Options%20Window.png)
+![Prompt Options Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Prompt%20Options%20Window.png)
 
-![Prompt Options image and video groups](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Prompt%20Options%20image%20and%20video%20groups.png)
+![Prompt Options image and video groups](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Prompt%20Options%20image%20and%20video%20groups.png)
 
-## Gemma Runner
+## LLM Runner
 
-The `Gemma Runner` button controls which runner is used for text-only Gemma steps.
+The `LLM Runner` button controls which runner is used for text-only prompt-writing steps. Vision/image-reference Gemma calls still use the built-in vision path.
 
 Options:
 
@@ -1243,6 +1413,7 @@ Options:
 | --- | --- |
 | `builtin` | Uses the built-in local GGUF runner |
 | `lm_studio` | Uses LM Studio's local server for text-only Gemma calls |
+| `llm_api` | Uses an OpenAI-compatible API endpoint for text-only LLM calls |
 
 LM Studio is only for text-only Gemma steps. Vision/image-reference Gemma still uses the built-in GGUF runner.
 
@@ -1256,7 +1427,16 @@ LM Studio setup fields:
 | `API key` | Usually blank for local LM Studio |
 | `Test LM Studio` | Sends a tiny test prompt to confirm it works |
 
-When a batch run is active, progress windows show the runner name so you can tell whether a text-only pass is using `LM Studio` or the built-in runner.
+LLM API setup fields:
+
+| Field | What to enter |
+| --- | --- |
+| API base URL | OpenAI-compatible `/v1` base URL |
+| Model name | Chat/completions model name exposed by that server |
+| API key | Key required by the server, if any |
+| Test API | Sends a tiny test prompt to confirm the endpoint works |
+
+When a batch run is active, progress windows show the runner name so you can tell whether a text-only pass is using `LM Studio`, `API LLM`, or the built-in runner.
 
 If LM Studio does not list models:
 
@@ -1266,9 +1446,9 @@ If LM Studio does not list models:
 4. Start the server.
 5. Return to the builder and click `Load LM Studio Models`.
 
-![Gemma Runner Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20Window.png)
+![Gemma Runner Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20Window.png)
 
-![Gemma Runner with LM Studio model dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20with%20LM%20Studio%20model%20dropdown.png)
+![Gemma Runner with LM Studio model dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20with%20LM%20Studio%20model%20dropdown.png)
 
 ## Batch Buttons and Full Builds
 
@@ -1276,14 +1456,16 @@ The `Menu` contains batch tools that can work across many scenes.
 
 | Button | What it does |
 | --- | --- |
-| `Gemma T2I All` | Creates image prompts for multiple scenes |
-| `Gemma I2V All` / `Gemma T2V All` | Creates video prompts for multiple scenes |
+| `LLM T2I All` | Creates image prompts for multiple scenes |
+| `LLM Video All` | Creates I2V, T2V, Reference-to-Video, or Ingredients-to-Video prompts for multiple scenes |
 | `Image All` | Creates missing image prompts if needed, then creates missing images |
 | `Render All` | Renders missing scene videos and can stitch when possible |
 | `Stitch Preview` | Stitches selected or ranged existing scene videos into a preview |
 | `Build Full Video` | Runs the larger pipeline from prompts/images/videos through final stitch |
 | `Remake Mode` | Helps rerun or rebuild outputs |
 | `Stop` | Stops the current workflow run |
+
+In `Reference to Video` mode, `LLM Video All` can use the Storyboard prompt writer when launched through the Wizard. In `Ingredients to Video` mode, make sure Ingredients sheets are mapped before running the batch prompt step.
 
 When prompted, choose the safest option first:
 
@@ -1308,11 +1490,35 @@ Some rebuild choices let you keep the current seeds or randomize them. Keep seed
 
 `Render All` is video/stitch focused. It does not regenerate image prompts or images unless the selected build option says so.
 
-![Build Full Video Options](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Build%20Full%20Video%20Options.png)
+![Build Full Video Options](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Build%20Full%20Video%20Options.png)
 
 When the finished video is stitched, the builder shows a `Final Video Ready` popup. Use `Open Video` to preview it.
 
-![Final Video Ready Popup](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Final%20Video%20Ready%20Popup.png)
+![Final Video Ready Popup](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Final%20Video%20Ready%20Popup.png)
+
+## Post Process
+
+The left panel has three tabs: `Scenes`, `Tools`, and `Post Process`.
+
+Use `Post Process` after images or videos exist and you want to style, compare, or finish them.
+
+Post Process tools:
+
+| Tool | What it does |
+| --- | --- |
+| `LUTS` | Shows installed `.cube` LUTs and applies a look to the selected scene |
+| `Film Grain` | Applies film-grain settings to the selected scene media |
+| `FX` | Opens overlay and visual-FX tools |
+| Compare preview | Shows before/after post-process previews in the center preview area |
+
+LUT tips:
+
+- Click a LUT to apply it to the selected scene.
+- Drag a LUT onto a scene when you want to target a specific scene.
+- Use `Refresh` if you add new `.cube` files while ComfyUI is open.
+- The included LUT examples live under the repo's `LUTS/examples` folder.
+
+Post-process changes are scene-level choices. Save the project after choosing looks so the builder can keep those selections with the session.
 
 ## Prompt Creator Panel
 
@@ -1417,7 +1623,7 @@ Useful buttons:
 | `Send To Prompt Creator` | From Video Builder, sends audio/SRT/lyrics back to Prompt Creator so you can create concept prompts |
 | `Back To Video Creator` | Returns to Video Builder; it is navigation, not the same as importing |
 | `Prompt Options` | Opens prompt-related settings/options |
-| `Gemma Runner` | Opens Gemma runner tools |
+| `LLM Runner` | Opens text-only LLM/Gemma runner tools |
 | `Agent` | Opens the builder assistant/agent |
 | `Reference Builder` | Helps build reference material for image workflows |
 
@@ -1427,7 +1633,7 @@ If you manually edit Prompt Creator outputs, use the save buttons before sending
 
 If the file paths appear in the Scene tab but the scene note boxes are empty, use the matching import/reload button so the file contents are copied into the scene fields.
 
-![Prompt Creator Import Buttons](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Prompt%20Creator%20Import%20Buttons.png)
+![Prompt Creator Import Buttons](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Prompt%20Creator%20Import%20Buttons.png)
 
 ## Settings And Audio Notifications
 
@@ -1484,11 +1690,51 @@ Use them for:
 
 Browsers may block sound until you have clicked somewhere in the page at least once.
 
-![Settings window with custom model root and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/Settings%20window%20with%20custom%20model%20root%20and%20audio%20notifications.png)
+![Settings window with custom model root and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Settings%20window%20with%20custom%20model%20root%20and%20audio%20notifications.png)
 
 Short snippet:
 
-<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20settings%2C%20all%20settings.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Menu%20settings%2C%20all%20settings.gif" alt="Settings and audio notifications" width="820"></a>
+<a href="https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/Menu%20settings%2C%20all%20settings.mp4"><img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/video/gifs/Menu%20settings%2C%20all%20settings.gif" alt="Settings and audio notifications" width="820"></a>
+
+## Required Custom Nodes
+
+The Builder UI comes from this repo, but the hidden workflows it launches also use several external custom-node packs. Install these before running full image/video builds.
+
+Use ComfyUI Manager when possible: open `Manager` -> `Install Custom Nodes`, search the name, install it, then restart ComfyUI. If a workflow still opens with red missing nodes, use ComfyUI Manager's missing-node installer on that workflow.
+
+Core requirement:
+
+| Custom node pack | Needed for |
+| --- | --- |
+| `comfyui-vrgamedevgirl` | The Video Builder UI, Prompt Creator, Storyboard Builder, lyric tools, VRGDG audio/SRT/project nodes, NanoBanana node, LUT/post-process helpers, and VRGDG workflow glue |
+
+Hidden workflow requirements:
+
+| Custom node pack | Needed for |
+| --- | --- |
+| `ComfyUI-VideoHelperSuite` | Loading audio/video/image paths and combining video outputs. Look for nodes such as `VHS_LoadAudio`, `VHS_LoadVideo`, and `VHS_VideoCombine` |
+| `ComfyUI-LTXVideo` | LTX 2.3 video, audio VAE, I2V/T2V, Reference-to-Video, Ingredients-to-Video, latent upscaling, and LTX guide/reference nodes |
+| `ComfyUI-GGUF` | GGUF model loading for video/text models. Look for nodes such as `UnetLoaderGGUF` and `DualCLIPLoaderGGUF` |
+| `ComfyUI-KJNodes` | Utility image/video nodes used by the hidden workflows, including resize, size/count, calculator, and KJ VAE loader helpers |
+| `ComfyUI_Comfyroll_CustomNodes` | Small utility conversion nodes such as `CM_FloatToInt` |
+
+Mode-specific notes:
+
+| Builder feature | Extra dependency notes |
+| --- | --- |
+| `Image to Video` / `Text to Video` | Requires the LTXVideo, VideoHelperSuite, GGUF, and KJNodes packs above |
+| `Reference to Video` | Requires LTXVideo plus the MSR LoRA/model files shown in `Download Models` |
+| `Ingredients to Video` | Requires LTXVideo plus the required Ingredients LoRA and Ingredients workflow files |
+| `ZImage`, `Flux/Klein`, `Ernie`, `Krea 2` | Use the model files in `Download Models`; if a hidden workflow reports a missing node, run Manager's missing-node installer for that workflow |
+| `Nano B` | Uses the VRGDG NanoBanana node in this repo and requires the API key/model setting in the Nano B tab |
+| `Prompt Creator` / lyric transcription | Uses this repo's VRGDG lyric/SRT nodes and the Python packages from `requirements.txt`; Whisper/transcription also needs the matching models and packages available in your ComfyUI environment |
+
+Quick missing-node checklist:
+
+1. Restart ComfyUI after installing custom nodes.
+2. Open ComfyUI Manager and use `Install Missing Custom Nodes` if any hidden workflow reports missing classes.
+3. Check the browser console or ComfyUI terminal for the exact missing `class_type`.
+4. Install the missing pack, restart, then reopen the Builder.
 
 ## Models and Downloads
 
@@ -1552,7 +1798,7 @@ ComfyUI/
     latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors
 ```
 
-![Download Models Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v8/Workflows/LTX-2_Workflows/Video_Builder/images/2026-06-01%2016_02_27-.png)
+![Download Models Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/2026-06-01%2016_02_27-.png)
 
 ## Saving Projects
 
@@ -1663,7 +1909,7 @@ Use this when you want to work directly in Video Builder.
 
 Already added:
 
-- Full V8 Video Builder window
+- Full V9 Video Builder window
 - ComfyUI Builder Node
 - Welcome Window
 - Menu Dropdown
@@ -1693,3 +1939,4 @@ Already added:
 - Build Full Video Options
 - Final Video Ready Popup
 - Download Models Window
+
