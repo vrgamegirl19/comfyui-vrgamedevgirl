@@ -3586,6 +3586,9 @@ function openBuilder(node) {
     zEnhanceSettings: defaultZEnhanceSettings(),
     videoModelMode: "i2v",
     i2vVideoSettings: defaultI2VVideoSettings(),
+    continuityMode: "off",
+    autoImg2ImgStartStep: 5,
+    autoImg2ImgCreativity: 5,
     promptToolsHintPrefs: {},
     builderAgentMessages: [],
     builderAgentAutoApply: false,
@@ -6583,6 +6586,9 @@ function openBuilder(node) {
       zEnhanceSettings: state.zEnhanceSettings,
       videoModelMode: state.videoModelMode,
       i2vVideoSettings: state.i2vVideoSettings,
+      continuityMode: normalizeContinuityMode(state.continuityMode, state.autoChainLastFrame),
+      autoImg2ImgStartStep: normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep),
+      autoImg2ImgCreativity: normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity),
       promptToolsHintPrefs: state.promptToolsHintPrefs,
     });
   }
@@ -6603,6 +6609,10 @@ function openBuilder(node) {
     state.videoTriggerPhrase = data.videoTriggerPhrase || "";
     state.useI2VPromptEnhancementPass = data.useI2VPromptEnhancementPass ?? data.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
     state.autoChainLastFrame = data.autoChainLastFrame ?? data.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+    state.continuityMode = normalizeContinuityMode(data.continuityMode || data.continuity_mode || state.continuityMode, state.autoChainLastFrame);
+    state.autoChainLastFrame = state.continuityMode === "i2v_chain";
+    state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(data.autoImg2ImgStartStep ?? data.auto_img2img_start_step ?? state.autoImg2ImgStartStep);
+    state.autoImg2ImgCreativity = normalizeAutoImg2ImgCreativity(data.autoImg2ImgCreativity ?? data.auto_img2img_creativity ?? state.autoImg2ImgCreativity);
     state.autoChainStyle = data.autoChainStyle || data.auto_chain_style || state.autoChainStyle || "continuous";
     state.autoChainDirection = data.autoChainDirection || data.auto_chain_direction || state.autoChainDirection || "";
     state.autoChainTransitionLoraPrompt = data.autoChainTransitionLoraPrompt ?? data.auto_chain_transition_lora_prompt ?? state.autoChainTransitionLoraPrompt ?? false;
@@ -7141,6 +7151,44 @@ function openBuilder(node) {
       return `${performer} ${pluralPerformers ? "say" : "says"} "${cleanLyric}" naturally.`;
     }
     return `${performer} visibly ${pluralPerformers ? "sing" : "sings"} "${cleanLyric}" in sync with the audio.`;
+  }
+
+  function normalizeContinuityMode(value, legacyAutoChain = false) {
+    const mode = String(value || "").trim().toLowerCase();
+    if (mode === "i2v_chain" || mode === "img2img" || mode === "off") return mode;
+    return legacyAutoChain ? "i2v_chain" : "off";
+  }
+
+  function i2vAutoChainEnabled() {
+    state.continuityMode = normalizeContinuityMode(state.continuityMode, state.autoChainLastFrame);
+    return state.continuityMode === "i2v_chain";
+  }
+
+  function img2imgContinuityEnabled() {
+    state.continuityMode = normalizeContinuityMode(state.continuityMode, state.autoChainLastFrame);
+    return state.continuityMode === "img2img";
+  }
+
+  function imageModeSupportsImg2ImgContinuity(imageMode = state.imageModelMode || "zimage") {
+    return ["zimage", "ernie_image", "krea2_2pass"].includes(String(imageMode || "").trim());
+  }
+
+  function imageModeImg2ImgContinuityLabel(imageMode = state.imageModelMode || "zimage") {
+    return {
+      zimage: "ZImage",
+      ernie_image: "Ernie",
+      krea2_2pass: "Krea 2",
+      flux_klein: "Flux/Klein",
+      nano_banana: "NanoBanana",
+    }[String(imageMode || "").trim()] || "current image model";
+  }
+
+  function normalizeAutoImg2ImgStartStep(value) {
+    return Math.max(1, Math.min(8, Number(value || 5)));
+  }
+
+  function normalizeAutoImg2ImgCreativity(value) {
+    return Math.max(0, Math.min(10, Number(value ?? 5)));
   }
 
   function escapeRegExp(value) {
@@ -20946,7 +20994,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       notificationGrid,
       customSoundGrid,
     ], false);
-    const autoChainControl = makeCheckbox("Auto chain last frame into next I2V scene", Boolean(state.autoChainLastFrame));
+    state.continuityMode = normalizeContinuityMode(state.continuityMode, state.autoChainLastFrame);
+    const continuityModeSelect = makeSelect(["off", "i2v_chain", "img2img"], state.continuityMode || "off");
+    for (const option of continuityModeSelect.options) {
+      option.textContent = {
+        off: "Off",
+        i2v_chain: "Chain previous final frame into I2V",
+        img2img: "Use previous final frame for next Img2Img",
+      }[option.value] || option.value;
+    }
     const autoChainStyleSelect = makeSelect(["continuous", "surreal", "transformation", "environment_shift"], state.autoChainStyle || "continuous");
     for (const option of autoChainStyleSelect.options) {
       option.textContent = {
@@ -20961,35 +21017,120 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const autoChainTransitionLoraControl = makeCheckbox("Use Transition LoRA prompt style", Boolean(state.autoChainTransitionLoraPrompt));
     const autoChainTransitionTriggerInput = makeInput(state.autoChainTransitionTrigger || "zhuanchang");
     autoChainTransitionTriggerInput.placeholder = "zhuanchang";
+    const autoImg2ImgStartStepSlider = document.createElement("input");
+    autoImg2ImgStartStepSlider.type = "range";
+    autoImg2ImgStartStepSlider.min = "1";
+    autoImg2ImgStartStepSlider.max = "8";
+    autoImg2ImgStartStepSlider.step = "1";
+    autoImg2ImgStartStepSlider.value = String(normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep));
+    autoImg2ImgStartStepSlider.style.cssText = "width:100%;accent-color:#22d3ee;";
+    const autoImg2ImgStartStepInput = makeInput(String(normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep)), "number");
+    autoImg2ImgStartStepInput.min = "1";
+    autoImg2ImgStartStepInput.max = "8";
+    autoImg2ImgStartStepInput.step = "1";
+    const autoImg2ImgStartStepHint = document.createElement("div");
+    autoImg2ImgStartStepHint.textContent = "ZImage/Ernie: 1 = more creative, 8 = more like the previous final frame.";
+    autoImg2ImgStartStepHint.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
+    const autoImg2ImgCreativitySlider = document.createElement("input");
+    autoImg2ImgCreativitySlider.type = "range";
+    autoImg2ImgCreativitySlider.min = "0";
+    autoImg2ImgCreativitySlider.max = "10";
+    autoImg2ImgCreativitySlider.step = "1";
+    autoImg2ImgCreativitySlider.value = String(normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity));
+    autoImg2ImgCreativitySlider.style.cssText = "width:100%;accent-color:#22d3ee;";
+    const autoImg2ImgCreativityInput = makeInput(String(normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity)), "number");
+    autoImg2ImgCreativityInput.min = "0";
+    autoImg2ImgCreativityInput.max = "10";
+    autoImg2ImgCreativityInput.step = "1";
+    const autoImg2ImgCreativityHint = document.createElement("div");
+    autoImg2ImgCreativityHint.textContent = "Krea 2: 0 ignores the image, 10 keeps the previous final frame most intact.";
+    autoImg2ImgCreativityHint.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
     const autoChainGrid = document.createElement("div");
     autoChainGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+    const continuityModeField = makeField("Continuity mode", continuityModeSelect);
+    const autoChainStyleField = makeField("Chain style", autoChainStyleSelect);
+    const autoChainDirectionField = makeField("Chain direction", autoChainDirectionInput);
+    const autoChainTriggerField = makeField("Transition trigger", autoChainTransitionTriggerInput);
+    const autoChainOnlyControls = document.createElement("div");
+    autoChainOnlyControls.style.cssText = "display:contents;";
+    const autoImg2ImgOnlyControls = document.createElement("div");
+    autoImg2ImgOnlyControls.style.cssText = "display:contents;";
+    const autoImg2ImgStartStepWrap = document.createElement("div");
+    autoImg2ImgStartStepWrap.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+    autoImg2ImgStartStepWrap.append(makeField("Img2Img similarity", autoImg2ImgStartStepSlider), autoImg2ImgStartStepHint, makeField("Similarity value", autoImg2ImgStartStepInput));
+    const autoImg2ImgCreativityWrap = document.createElement("div");
+    autoImg2ImgCreativityWrap.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+    autoImg2ImgCreativityWrap.append(makeField("Krea Img2Img strength", autoImg2ImgCreativitySlider), autoImg2ImgCreativityHint, makeField("Strength value", autoImg2ImgCreativityInput));
     autoChainGrid.append(
-      autoChainControl.wrapper,
-      makeField("Chain style", autoChainStyleSelect),
-      makeField("Chain direction", autoChainDirectionInput),
-      autoChainTransitionLoraControl.wrapper,
-      makeField("Transition trigger", autoChainTransitionTriggerInput),
+      continuityModeField,
+      autoChainOnlyControls,
+      autoImg2ImgOnlyControls,
     );
+    autoChainOnlyControls.append(
+      autoChainStyleField,
+      autoChainDirectionField,
+      autoChainTransitionLoraControl.wrapper,
+      autoChainTriggerField,
+    );
+    autoImg2ImgOnlyControls.append(autoImg2ImgStartStepWrap, autoImg2ImgCreativityWrap);
     const autoChainNote = document.createElement("div");
     autoChainNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
-    autoChainNote.textContent = "Render All only. Scene 1 renders normally, then each rendered scene can feed its final frame and a new Gemma Vision prompt into the next scene. Chained scenes force warmup frames to 1. Transition LoRA prompt style only changes Gemma prompting and trigger text; select the LoRA itself in Models > Video LoRAs.";
-    const autoChainPanel = makeSettingsSection("I2V Auto Chain", [
+    autoChainNote.textContent = "Render All / Build Full Video only. I2V chain feeds each final frame plus a new Gemma Vision prompt into the next video scene. Img2Img continuity feeds each final frame into the next scene's image-to-image source, using the existing Storyboard/Wizard image prompt and the Img2Img strength shown here. Pick one mode or Off.";
+    const autoChainPanel = makeSettingsSection("Scene Continuity", [
       autoChainGrid,
       autoChainNote,
     ], false);
     const saveAutoChainSettings = async () => {
-      state.autoChainLastFrame = Boolean(autoChainControl.input.checked);
+      state.continuityMode = normalizeContinuityMode(continuityModeSelect.value || "off");
+      state.autoChainLastFrame = state.continuityMode === "i2v_chain";
       state.autoChainStyle = autoChainStyleSelect.value || "continuous";
       state.autoChainDirection = autoChainDirectionInput.value || "";
       state.autoChainTransitionLoraPrompt = Boolean(autoChainTransitionLoraControl.input.checked);
       state.autoChainTransitionTrigger = autoChainTransitionTriggerInput.value || "zhuanchang";
+      state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(autoImg2ImgStartStepInput.value || autoImg2ImgStartStepSlider.value);
+      state.autoImg2ImgCreativity = normalizeAutoImg2ImgCreativity(autoImg2ImgCreativityInput.value || autoImg2ImgCreativitySlider.value);
       await autoSaveSessionQuiet("auto chain settings");
     };
-    autoChainControl.input.addEventListener("change", saveAutoChainSettings);
+    const syncContinuityModeVisibility = () => {
+      const mode = normalizeContinuityMode(continuityModeSelect.value || "off");
+      const imageMode = state.imageModelMode || "zimage";
+      autoChainOnlyControls.style.display = mode === "i2v_chain" ? "contents" : "none";
+      autoImg2ImgOnlyControls.style.display = mode === "img2img" ? "contents" : "none";
+      autoImg2ImgStartStepWrap.style.display = mode === "img2img" && imageMode !== "krea2_2pass" ? "flex" : "none";
+      autoImg2ImgCreativityWrap.style.display = mode === "img2img" && imageMode === "krea2_2pass" ? "flex" : "none";
+    };
+    const syncAutoImg2ImgStartStepInputs = () => {
+      const value = normalizeAutoImg2ImgStartStep(autoImg2ImgStartStepInput.value || autoImg2ImgStartStepSlider.value);
+      autoImg2ImgStartStepSlider.value = String(value);
+      autoImg2ImgStartStepInput.value = String(value);
+    };
+    const syncAutoImg2ImgCreativityInputs = () => {
+      const value = normalizeAutoImg2ImgCreativity(autoImg2ImgCreativityInput.value || autoImg2ImgCreativitySlider.value);
+      autoImg2ImgCreativitySlider.value = String(value);
+      autoImg2ImgCreativityInput.value = String(value);
+    };
+    continuityModeSelect.addEventListener("change", saveAutoChainSettings);
+    continuityModeSelect.addEventListener("change", syncContinuityModeVisibility);
     autoChainStyleSelect.addEventListener("change", saveAutoChainSettings);
     autoChainDirectionInput.addEventListener("input", saveAutoChainSettings);
     autoChainTransitionLoraControl.input.addEventListener("change", saveAutoChainSettings);
     autoChainTransitionTriggerInput.addEventListener("input", saveAutoChainSettings);
+    autoImg2ImgStartStepSlider.addEventListener("input", () => {
+      autoImg2ImgStartStepInput.value = autoImg2ImgStartStepSlider.value;
+      saveAutoChainSettings();
+    });
+    autoImg2ImgStartStepInput.addEventListener("input", () => {
+      syncAutoImg2ImgStartStepInputs();
+      saveAutoChainSettings();
+    });
+    autoImg2ImgCreativitySlider.addEventListener("input", () => {
+      autoImg2ImgCreativityInput.value = autoImg2ImgCreativitySlider.value;
+      saveAutoChainSettings();
+    });
+    autoImg2ImgCreativityInput.addEventListener("input", () => {
+      syncAutoImg2ImgCreativityInputs();
+      saveAutoChainSettings();
+    });
     notificationMode.addEventListener("change", saveNotificationSettings);
     successSound.addEventListener("change", saveNotificationSettings);
     errorSound.addEventListener("change", saveNotificationSettings);
@@ -21011,6 +21152,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testSuccessSound.onclick = () => playBuilderNotification("success", true);
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
+    syncContinuityModeVisibility();
     box.append(header, pathGrid, actions, note, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
@@ -21388,6 +21530,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       default_facial_performance: state.defaultFacialPerformance || "",
       default_facial_performance_custom: state.defaultFacialPerformanceCustom || "",
       use_i2v_prompt_enhancement_pass: Boolean(state.useI2VPromptEnhancementPass),
+      continuity_mode: normalizeContinuityMode(state.continuityMode, state.autoChainLastFrame),
+      auto_img2img_start_step: normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep),
+      auto_img2img_creativity: normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity),
       auto_chain_last_frame: Boolean(state.autoChainLastFrame),
       auto_chain_style: state.autoChainStyle || "continuous",
       auto_chain_direction: state.autoChainDirection || "",
@@ -21614,6 +21759,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.defaultFacialPerformanceCustom = data.session.default_facial_performance_custom || data.session.defaultFacialPerformanceCustom || state.defaultFacialPerformanceCustom || "";
         state.useI2VPromptEnhancementPass = data.session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
         state.autoChainLastFrame = data.session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+        state.continuityMode = normalizeContinuityMode(data.session.continuity_mode || state.continuityMode, state.autoChainLastFrame);
+        state.autoChainLastFrame = state.continuityMode === "i2v_chain";
+        state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(data.session.auto_img2img_start_step ?? state.autoImg2ImgStartStep);
+        state.autoImg2ImgCreativity = normalizeAutoImg2ImgCreativity(data.session.auto_img2img_creativity ?? state.autoImg2ImgCreativity);
         state.autoChainStyle = data.session.auto_chain_style || state.autoChainStyle || "continuous";
         state.autoChainDirection = data.session.auto_chain_direction || state.autoChainDirection || "";
         state.autoChainTransitionLoraPrompt = data.session.auto_chain_transition_lora_prompt ?? state.autoChainTransitionLoraPrompt ?? false;
@@ -21793,6 +21942,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.defaultFacialPerformanceCustom = session.default_facial_performance_custom || session.defaultFacialPerformanceCustom || "";
       state.useI2VPromptEnhancementPass = session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
       state.autoChainLastFrame = session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+      state.continuityMode = normalizeContinuityMode(session.continuity_mode || state.continuityMode, state.autoChainLastFrame);
+      state.autoChainLastFrame = state.continuityMode === "i2v_chain";
+      state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(session.auto_img2img_start_step ?? state.autoImg2ImgStartStep);
+      state.autoImg2ImgCreativity = normalizeAutoImg2ImgCreativity(session.auto_img2img_creativity ?? state.autoImg2ImgCreativity);
       state.autoChainStyle = session.auto_chain_style || state.autoChainStyle || "continuous";
       state.autoChainDirection = session.auto_chain_direction || state.autoChainDirection || "";
       state.autoChainTransitionLoraPrompt = session.auto_chain_transition_lora_prompt ?? state.autoChainTransitionLoraPrompt ?? false;
@@ -24596,6 +24749,75 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return { framePath, prompt: nextSegment.i2v_prompt };
   }
 
+  function setSegmentImg2ImgContinuitySource(segment, imageMode, framePath) {
+    if (!segment || !framePath) return null;
+    const imageName = String(framePath || "").split(/[\\/]/).pop() || "previous_final_frame.png";
+    if (imageMode === "ernie_image") {
+      const settings = cloneErnieImageSettings(segment.use_scene_ernie_image_settings ? segment.ernie_image_settings : state.ernieImageSettings);
+      settings.use_image_to_image = true;
+      settings.image_to_image_start_at_step = normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep);
+      settings.image_to_image_path = framePath;
+      settings.image_to_image_data = "";
+      settings.image_to_image_name = imageName;
+      segment.use_scene_ernie_image_settings = true;
+      segment.ernie_image_settings = settings;
+      return settings;
+    }
+    if (imageMode === "krea2_2pass") {
+      const settings = cloneKrea2TwoPassSettings(segment.use_scene_krea2_2pass_settings ? segment.krea2_2pass_settings : state.krea2TwoPassSettings);
+      settings.use_image_to_image = true;
+      settings.image_to_image_creativity = normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity);
+      settings.image_to_image_path = framePath;
+      settings.image_to_image_data = "";
+      settings.image_to_image_name = imageName;
+      segment.use_scene_krea2_2pass_settings = true;
+      segment.krea2_2pass_settings = settings;
+      return settings;
+    }
+    const settings = cloneZImageSettings(segment.use_scene_zimage_settings ? segment.zimage_settings : state.zimageSettings);
+    settings.use_image_to_image = true;
+    settings.image_to_image_start_at_step = normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep);
+    settings.image_to_image_path = framePath;
+    settings.image_to_image_data = "";
+    settings.image_to_image_name = imageName;
+    segment.use_scene_zimage_settings = true;
+    segment.zimage_settings = settings;
+    return settings;
+  }
+
+  async function prepareAutoImg2ImgContinuityForScene(previousSegment, nextSegment, imageMode = state.imageModelMode || "zimage", progress = null, percent = 50, label = "Img2Img Continuity") {
+    if (!previousSegment || !nextSegment) return null;
+    if (!imageModeSupportsImg2ImgContinuity(imageMode)) {
+      throw new Error(`Img2Img continuity is not available for ${imageModeImg2ImgContinuityLabel(imageMode)} yet. Choose ZImage, Ernie, or Krea 2 for the image model, or turn continuity Off.`);
+    }
+    const projectFolder = projectInput.value || state.projectFolder;
+    if (!projectFolder) throw new Error("Project folder is missing.");
+    const previousVideoPath = selectedSegmentVideoPath(previousSegment);
+    if (!previousVideoPath) throw new Error(`${sceneDisplayName(previousSegment, segmentIndexInfo(previousSegment).index)} has no rendered video for Img2Img continuity.`);
+    const nextIndex = segmentIndexInfo(nextSegment).index;
+    progress?.set(`${label}: extracting final frame for ${sceneDisplayName(nextSegment, nextIndex)}...`, percent);
+    const extracted = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
+      project_folder: projectFolder,
+      source_path: previousVideoPath,
+      scene_number: sceneSlotNumber(nextSegment),
+    }, 120000);
+    const framePath = String(extracted.saved_path || "").trim();
+    if (!framePath) throw new Error("Final frame extraction did not return an image path.");
+    pushHistory();
+    setSegmentImg2ImgContinuitySource(nextSegment, imageMode, framePath);
+    nextSegment.auto_img2img_source_video_path = previousVideoPath;
+    nextSegment.auto_img2img_source_frame_path = framePath;
+    nextSegment.auto_img2img_image_mode = imageMode;
+    if (nextSegment.id === state.activeId) {
+      syncZImageSettingsPanel();
+      syncErnieImagePanel();
+      syncKrea2TwoPassPanel();
+      syncInspector();
+    }
+    render();
+    return { framePath };
+  }
+
   function previousAutoChainSourceSegment(segment) {
     if (!segment) return null;
     const track = segmentTrack(segment);
@@ -24613,6 +24835,37 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function canAutoChainFromPreviousRenderedScene(segment) {
     const previousSegment = previousAutoChainSourceSegment(segment);
     return Boolean(previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim());
+  }
+
+  function canImg2ImgContinuityFromPreviousRenderedScene(segment) {
+    const previousSegment = previousAutoChainSourceSegment(segment);
+    return Boolean(previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim());
+  }
+
+  function validateSceneReadyForAutoImg2ImgContinuity(segment, sceneIndex, imageMode = state.imageModelMode || "zimage") {
+    const missing = [];
+    if (!imageModeSupportsImg2ImgContinuity(imageMode)) {
+      missing.push(`${sceneDisplayName(segment, sceneIndex)}: Img2Img continuity needs ZImage, Ernie, or Krea 2 image mode.`);
+    }
+    const prompt = imageMode === "krea2_2pass" || imageMode === "ernie_image" || imageMode === "zimage"
+      ? String(segment?.t2i_prompt || "").trim()
+      : "";
+    if (!prompt) missing.push(`${sceneDisplayName(segment, sceneIndex)}: image prompt is missing.`);
+    if (!canImg2ImgContinuityFromPreviousRenderedScene(segment)) {
+      missing.push(`${sceneDisplayName(segment, sceneIndex)}: previous scene has no rendered video for Img2Img continuity.`);
+    }
+    if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${sceneDisplayName(segment, sceneIndex)}: I2V prompt is missing.`);
+    return missing;
+  }
+
+  async function createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase, percentSpan, label) {
+    if (imageMode === "ernie_image") {
+      await createErnieImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Ernie image`);
+    } else if (imageMode === "krea2_2pass") {
+      await createKrea2TwoPassImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Krea 2 image`);
+    } else {
+      await createZImageForSegment(segment, progress, percentBase, percentSpan, `${label}: ZImage`);
+    }
   }
 
   async function ensureSelectedImageForSceneVideo(segment, sceneIndex) {
@@ -24988,10 +25241,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
     }
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
-    const canAutoChain = Boolean(state.autoChainLastFrame && currentVideoMode() === "i2v");
+    const canAutoChain = Boolean(i2vAutoChainEnabled() && currentVideoMode() === "i2v");
+    const canAutoImg2Img = Boolean(img2imgContinuityEnabled() && currentVideoMode() === "i2v");
+    const autoImg2ImgImageMode = state.imageModelMode || "zimage";
     scenesToRender.forEach(({ segment }, renderIndex) => {
       if (canAutoChain && renderIndex > 0) return;
       if (canAutoChain && renderIndex === 0 && canAutoChainFromPreviousRenderedScene(segment)) return;
+      if (canAutoImg2Img && renderIndex > 0) {
+        const readiness = validateSceneReadyForAutoImg2ImgContinuity(segment, segmentIndexInfo(segment).index, autoImg2ImgImageMode)
+          .filter((message) => !/previous scene has no rendered video/i.test(message));
+        missing.push(...readiness);
+        return;
+      }
+      if (canAutoImg2Img && renderIndex === 0 && canImg2ImgContinuityFromPreviousRenderedScene(segment)) {
+        missing.push(...validateSceneReadyForAutoImg2ImgContinuity(segment, segmentIndexInfo(segment).index, autoImg2ImgImageMode));
+        return;
+      }
       missing.push(...validateSceneReadyForVideo(segment, segmentIndexInfo(segment).index));
     });
     return missing;
@@ -25079,7 +25344,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const missing = validateSceneReadyForVideo(segment, sceneIndex);
     if (missing.length) throw new Error(missing.join("\n"));
-    const autoChainPreFrames = state.autoChainLastFrame && videoMode === "i2v"
+    const autoChainPreFrames = i2vAutoChainEnabled() && videoMode === "i2v"
       ? Math.max(0, Number(segment.auto_chain_pre_frames || 0))
       : 0;
     segment.video_status = "running";
@@ -25553,7 +25818,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
         if (randomizeVideoSeed) setVideoSeedRandom(segment);
-        if (state.autoChainLastFrame && currentVideoMode() === "i2v" && index === 0) {
+        if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && index === 0) {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.12)));
@@ -25566,6 +25831,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             );
           }
         }
+        if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+          const previousSegment = previousAutoChainSourceSegment(segment);
+          if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
+            const imageMode = state.imageModelMode || "zimage";
+            const continuityBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.10)));
+            await prepareAutoImg2ImgContinuityForScene(
+              previousSegment,
+              segment,
+              imageMode,
+              progress,
+              continuityBase,
+              `Img2Img Continuity into ${sceneLabel}`
+            );
+            await createImageForSegmentInCurrentMode(
+              segment,
+              imageMode,
+              progress,
+              Math.min(98, continuityBase + 3),
+              Math.max(1, Math.floor(span * 0.35)),
+              `Img2Img Continuity ${sceneLabel}`
+            );
+            await autoSaveSessionQuiet(`Img2Img continuity image scene ${sceneIndex + 1}`);
+          }
+        }
         progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...`, base);
         await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
           progressBase: base,
@@ -25576,7 +25865,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
           srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
         });
-        if (state.autoChainLastFrame && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
+        if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
           const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
@@ -25700,6 +25989,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         if (forceNewImages) setImageSeedForCurrentMode("zimage");
+        if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+          const previousSegment = previousAutoChainSourceSegment(segment);
+          if (previousSegment) {
+            await prepareAutoImg2ImgContinuityForScene(previousSegment, segment, "zimage", progress, base, `Img2Img Continuity ${index + 1}/${scenes.length}`);
+          }
+        }
         progress.set(`Z-Image image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createZImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Z-Image All ${index + 1}/${scenes.length}: ZImage`);
         assertBatchNotStopped();
@@ -25818,6 +26113,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         if (forceNewImages) setImageSeedForCurrentMode("ernie_image");
+        if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+          const previousSegment = previousAutoChainSourceSegment(segment);
+          if (previousSegment) {
+            await prepareAutoImg2ImgContinuityForScene(previousSegment, segment, "ernie_image", progress, base, `Img2Img Continuity ${index + 1}/${scenes.length}`);
+          }
+        }
         progress.set(`Ernie image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createErnieImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Ernie Image All ${index + 1}/${scenes.length}: Ernie`);
         assertBatchNotStopped();
@@ -25937,6 +26238,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         if (forceNewImages) setImageSeedForCurrentMode("krea2_2pass");
+        if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+          const previousSegment = previousAutoChainSourceSegment(segment);
+          if (previousSegment) {
+            await prepareAutoImg2ImgContinuityForScene(previousSegment, segment, "krea2_2pass", progress, base, `Img2Img Continuity ${index + 1}/${scenes.length}`);
+          }
+        }
         progress.set(`Krea 2 image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved T2I prompt...`, base);
         await createKrea2TwoPassImageForSegment(segment, progress, base + span * 0.35, span * 0.45, `Krea 2 Image All ${index + 1}/${scenes.length}: Krea 2`);
         assertBatchNotStopped();
@@ -25980,6 +26287,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const forceNewImages = imageRunMode === "redo_prompts_images" || imageRunMode === "keep_prompts_redo_images";
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("Flux/Klein All Scenes");
+    if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+      const message = "Img2Img continuity is not available for Flux/Klein yet. Choose ZImage, Ernie, or Krea 2 for the image model, or turn continuity Off.";
+      progress.set(message, 100);
+      toast(message, true);
+      if (options.throwOnError) throw new Error(message);
+      return;
+    }
     try {
       state.batchCancelled = false;
       zImageAllButton.disabled = true;
@@ -26085,6 +26399,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const redoPrompts = imageRunMode === "redo_prompts_images";
     const progress = createProgressWindow("NanoBanana All Scenes");
+    if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+      const message = "Img2Img continuity is not available for NanoBanana yet. Choose ZImage, Ernie, or Krea 2 for the image model, or turn continuity Off.";
+      progress.set(message, 100);
+      toast(message, true);
+      if (options.throwOnError) throw new Error(message);
+      return;
+    }
     if (!String((state.nbImageSettings || {}).api_key || "").trim() && !allEditableSegments().some((segment) => String(segment.nb_image_settings?.api_key || "").trim())) {
       const message = "NanoBanana All needs a NanoBanana API key in the NB Models tab.";
       progress.set(message, 100);
@@ -26262,7 +26583,38 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             progress.set(`Stage 1/3: ${imageStage}...`, 5);
             const imageMode = state.imageModelMode || "zimage";
             const imageRunMode = buildMode === "fresh_rebuild" ? "redo_prompts_images" : "resume_missing";
-            if (imageMode === "flux_klein") {
+            if (img2imgContinuityEnabled() && videoMode === "i2v") {
+              if (!imageModeSupportsImg2ImgContinuity(imageMode)) {
+                throw new Error(`Img2Img continuity is not available for ${imageModeImg2ImgContinuityLabel(imageMode)} yet. Choose ZImage, Ernie, or Krea 2 for the image model, or turn continuity Off.`);
+              }
+              const firstTarget = batchTargetItems(sceneScope)[0] || null;
+              const firstSegment = firstTarget?.segment || null;
+              const firstHasPreviousVideo = Boolean(firstSegment && canImg2ImgContinuityFromPreviousRenderedScene(firstSegment));
+              const needsFirstImage = firstSegment && !firstHasPreviousVideo && (buildMode === "fresh_rebuild" || !segmentImageSource(firstSegment));
+              if (needsFirstImage) {
+                const firstIndex = firstTarget.index;
+                const firstLabel = sceneDisplayName(firstSegment, firstIndex);
+                progress.set(`Stage 1/3: creating starting image for ${firstLabel}. Later images will be created from previous final frames during Render All...`, 8);
+                if (!String(firstSegment.t2i_prompt || "").trim()) {
+                  await runGemmaImagePromptPassWithRetry(
+                    firstSegment,
+                    progress,
+                    10,
+                    `Starting image prompt: ${firstLabel}`,
+                    generateT2IPromptForSegment,
+                    { unloadAfter: false },
+                  );
+                  await runClearMemoryWorkflowQuiet(progress, "starting image prompt", 18);
+                }
+                state.activeId = firstSegment.id;
+                syncInspector();
+                render();
+                await createImageForSegmentInCurrentMode(firstSegment, imageMode, progress, 20, 18, `Starting image ${firstLabel}`);
+                await autoSaveSessionQuiet("Img2Img continuity starting image");
+              } else {
+                progress.set("Stage 1/3: Img2Img continuity will create scene images during Render All.", 20);
+              }
+            } else if (imageMode === "flux_klein") {
               await fluxKleinAllScenes({ throwOnError: true, imageRunMode, sceneScope });
             } else if (imageMode === "nano_banana") {
               await nbImageAllScenes({ throwOnError: true, imageRunMode, sceneScope });
