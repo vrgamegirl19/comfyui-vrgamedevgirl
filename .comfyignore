@@ -1,0 +1,37 @@
+# Git and local agent state
+.git/
+.agents/
+
+# Python/runtime caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs and generated encoding scratch files
+*.log
+*.log.*
+ffmpeg2pass-*.log
+ffmpeg2pass-*.log.mbtree
+
+# Local temp/output folders
+temp/
+srt_files/*.srt
+scripts/photoshop/output/
+
+# Browser automation runtime data
+flow_automation/node_modules/
+flow_automation/chrome-flow-profile/
+flow_automation/chrome-chatgpt-profile/
+flow_automation/browser-profile/
+flow_automation/chatgpt-browser-profile/
+flow_automation/debug/
+flow_automation/runtime/
+flow_automation/inputs/*
+flow_automation/outputs/*
+flow_automation/chatgpt_outputs/*
+!flow_automation/inputs/.gitkeep
+!flow_automation/outputs/.gitkeep
+
+# OS/editor noise
+.DS_Store
+.vscode/
