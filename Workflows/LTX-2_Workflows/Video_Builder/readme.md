@@ -1746,6 +1746,9 @@ Hidden workflow requirements:
 | `ComfyUI-GGUF` | GGUF model loading for video/text models. Look for nodes such as `UnetLoaderGGUF` and `DualCLIPLoaderGGUF` |
 | `ComfyUI-KJNodes` | Utility image/video nodes used by the hidden workflows, including resize, size/count, calculator, and KJ VAE loader helpers |
 | `ComfyUI_Comfyroll_CustomNodes` | Small utility conversion nodes such as `CM_FloatToInt` |
+| `comfyui_memory_cleanup` | RAM/VRAM cleanup nodes used between heavy video and image passes. Look for `RAMCleanup` and `VRAMCleanup` |
+| `erosdiffusion-eulerflowmatchingdiscretescheduler` | Custom FlowMatch scheduler used by ZImage/Krea-style image workflows. Look for `FlowMatchEulerDiscreteScheduler (Custom)` |
+| `ComfyUI-Flux2Klein-Enhancer` | Flux/Klein reference-conditioning helpers used by Flux/Klein image modes. Look for `ReferenceLatent` |
 
 Mode-specific notes:
 
