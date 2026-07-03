@@ -2,13 +2,15 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import "./VRGDG_MusicVideoPromptCreatorUI.js";
 import {
+  FACIAL_PERFORMANCE_PRESETS,
   PERFORMANCE_STYLE_PRESETS,
   STORYBOARD_CAMERA_FLOW_PRESETS,
+  storyboardFacialPerformancePreset,
   storyboardCameraFlowEntry,
   storyboardGptPayload,
   storyboardPerformancePreset,
 } from "./VRGDG_StoryboardBuilderUI.js";
-import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260627-audio-sync";
+import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260701-i2v-mode";
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
@@ -319,8 +321,14 @@ function makeSelect(options = [], value = "") {
   select.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:8px;font-size:12px;";
   for (const optionValue of options) {
     const option = document.createElement("option");
-    option.value = optionValue;
-    option.textContent = optionValue;
+    if (optionValue && typeof optionValue === "object") {
+      option.value = optionValue.value ?? optionValue.label ?? "";
+      option.textContent = optionValue.label ?? option.value;
+      if (optionValue.description || optionValue.direction) option.title = optionValue.description || optionValue.direction;
+    } else {
+      option.value = optionValue;
+      option.textContent = optionValue;
+    }
     select.append(option);
   }
   select.value = value;
@@ -1506,6 +1514,8 @@ function audioUrl(path) {
     lyric_section: "",
     story_beat: "",
     lyric_singers: [],
+    facial_performance: "",
+    facial_performance_custom: "",
     no_character_present: false,
     i2v_notes: "",
     t2i_prompt: "",
@@ -3537,7 +3547,14 @@ function openBuilder(node) {
     lyricSegmentsPath: "",
     imageTriggerPhrase: "",
     videoTriggerPhrase: "",
+    defaultFacialPerformance: "",
+    defaultFacialPerformanceCustom: "",
     useI2VPromptEnhancementPass: false,
+    autoChainLastFrame: false,
+    autoChainStyle: "continuous",
+    autoChainDirection: "",
+    autoChainTransitionLoraPrompt: false,
+    autoChainTransitionTrigger: "zhuanchang",
     useVrgdgTextContext: true,
     themeStylePath: "",
     storyIdeaPath: "",
@@ -3590,6 +3607,33 @@ function openBuilder(node) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+
+  function resolvedFacialPerformanceText(segment = null) {
+    if (segment?.no_character_present) return "";
+    const presetKey = String(segment?.facial_performance || state.defaultFacialPerformance || "").trim();
+    const custom = String(segment?.facial_performance_custom || state.defaultFacialPerformanceCustom || "").trim();
+    const preset = storyboardFacialPerformancePreset(presetKey);
+    const base = presetKey === "custom" && custom
+      ? custom
+      : [preset.direction, custom].filter(Boolean).join(" ");
+    let facialText = base || "Use natural expressive facial performance with visible emotion, engaged eyes, active brows, subtle cheek and jaw movement, subtle eye movement, and occasional natural blinking.";
+    if (!/blink/i.test(facialText)) facialText = `${facialText} Include occasional natural blinking.`;
+    if (!/\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(facialText)) facialText = `${facialText} Include subtle natural eye movement.`;
+    return facialText;
+  }
+
+  function facialPerformanceNoteForSegment(segment = null) {
+    const facialText = resolvedFacialPerformanceText(segment);
+    if (!facialText) return "";
+    const performanceMode = normalizeVideoType(state.videoType);
+    const rawLyricText = String(segment?.lyric_text || "").trim();
+    const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
+    const noVocal = performanceMode === "no_lip_sync" || segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText);
+    if (noVocal) {
+      return `Facial performance direction: ${facialText} For this non-vocal or no-lip-sync shot, keep the mouth relaxed or closed unless naturally reacting; do not mouth words, sing, or move lips like singing.`;
+    }
+    return `Facial performance direction: ${facialText}`;
+  }
 
   function syncLeftPanelTabs() {
     const active = state.leftPanelTab === "tools" || state.leftPanelTab === "luts" ? state.leftPanelTab : "scenes";
@@ -3807,6 +3851,11 @@ function openBuilder(node) {
     return Boolean(settings?.enabled) || SCENE_ADJUST_FIELDS.some((field) => Number(settings?.[field.key] || 0) !== 0);
   }
 
+  function sceneAdjustHasRenderableChanges(adjust) {
+    const settings = normalizeSceneAdjust(adjust || {}, { keepEmpty: true });
+    return Boolean(settings?.enabled) && SCENE_ADJUST_FIELDS.some((field) => Number(settings?.[field.key] || 0) !== 0);
+  }
+
   function sceneAdjustSignature(adjust) {
     const settings = normalizeSceneAdjust(adjust || {}, { keepEmpty: true }) || defaultSceneAdjustSettings();
     return JSON.stringify({
@@ -3956,7 +4005,7 @@ function openBuilder(node) {
   function scheduleAdjustLivePreview(segment = activeSegment()) {
     if (!state.adjustLivePreview || !segment) return;
     const adjust = normalizeSceneAdjust(segment.adjust || {}, { keepEmpty: true });
-    if (!adjust || adjust.enabled === false) return;
+    if (!adjust || !sceneAdjustHasRenderableChanges(adjust)) return;
     state.adjustLivePreviewPending = true;
     setAdjustLivePreviewStatus("Preview waiting...");
     if (state.adjustLivePreviewTimer) clearTimeout(state.adjustLivePreviewTimer);
@@ -3976,7 +4025,7 @@ function openBuilder(node) {
       return;
     }
     const adjust = normalizeSceneAdjust(segment.adjust || {}, { keepEmpty: true });
-    if (!adjust || adjust.enabled === false) return;
+    if (!adjust || !sceneAdjustHasRenderableChanges(adjust)) return;
     const token = (state.adjustLivePreviewToken || 0) + 1;
     state.adjustLivePreviewToken = token;
     state.adjustLivePreviewBusy = true;
@@ -4146,9 +4195,9 @@ function openBuilder(node) {
       return false;
     }
     const adjust = normalizeSceneAdjust(settings, { keepEmpty: true }) || defaultSceneAdjustSettings();
-    if (adjust.enabled === false) {
-      if (options.quiet) throw new Error("Enable scene adjust before previewing it.");
-      toast("Enable scene adjust before previewing it.", true);
+    if (!sceneAdjustHasRenderableChanges(adjust)) {
+      if (options.quiet) throw new Error("Enable scene adjust and set at least one non-zero adjustment before previewing it.");
+      toast("Enable scene adjust and set at least one non-zero adjustment before previewing it.", true);
       return false;
     }
     const sceneIndex = segmentIndexInfo(current).index;
@@ -4241,8 +4290,9 @@ function openBuilder(node) {
       syncInspector();
       autoSaveSessionQuiet("scene adjust enabled").catch(() => null);
     };
+    const hasRenderableAdjust = sceneAdjustHasRenderableChanges(adjust);
     const status = document.createElement("div");
-    status.textContent = sceneAdjustHasChanges(adjust) ? "Scene color settings" : "Defaults";
+    status.textContent = hasRenderableAdjust ? "Scene color settings" : (adjust.enabled === true ? "Enabled, no changes" : "Defaults");
     status.style.cssText = "margin-left:auto;color:#a1a1aa;font-size:11px;font-weight:800;";
     header.append(enabled.wrapper, status);
     card.append(header);
@@ -4250,8 +4300,8 @@ function openBuilder(node) {
     const liveRow = document.createElement("div");
     liveRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:8px;align-items:center;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
     const livePreview = makeCheckbox("Live preview", Boolean(state.adjustLivePreview));
-    livePreview.input.disabled = adjust.enabled === false;
-    livePreview.wrapper.style.opacity = adjust.enabled === false ? ".55" : "1";
+    livePreview.input.disabled = !hasRenderableAdjust;
+    livePreview.wrapper.style.opacity = !hasRenderableAdjust ? ".55" : "1";
     livePreview.input.onchange = () => {
       state.adjustLivePreview = livePreview.input.checked;
       if (!state.adjustLivePreview) {
@@ -4363,10 +4413,10 @@ function openBuilder(node) {
     const renderAdjust = makeButton("Render Adjust for Scene", "primary");
     const applyAll = makeButton("Apply to all scenes", "primary");
     const reset = makeButton("Reset", "secondary");
-    preview.disabled = adjust.enabled === false;
-    preview.style.opacity = adjust.enabled === false ? ".55" : "1";
-    renderAdjust.disabled = adjust.enabled === false;
-    renderAdjust.style.opacity = adjust.enabled === false ? ".55" : "1";
+    preview.disabled = !hasRenderableAdjust;
+    preview.style.opacity = !hasRenderableAdjust ? ".55" : "1";
+    renderAdjust.disabled = !hasRenderableAdjust;
+    renderAdjust.style.opacity = !hasRenderableAdjust ? ".55" : "1";
     const canStopPreview = Boolean(
       String(segment.adjust_preview_image_path || "").trim()
       || state.adjustLivePreview
@@ -4392,8 +4442,8 @@ function openBuilder(node) {
         return;
       }
       const currentAdjust = normalizeSceneAdjust(current.adjust || {}, { keepEmpty: true });
-      if (!currentAdjust || currentAdjust.enabled === false) {
-        toast("Enable scene adjust before rendering it.", true);
+      if (!currentAdjust || !sceneAdjustHasRenderableChanges(currentAdjust)) {
+        toast("Enable scene adjust and set at least one non-zero adjustment before rendering it.", true);
         return;
       }
       const sceneIndex = segmentIndexInfo(current).index;
@@ -6033,6 +6083,8 @@ function openBuilder(node) {
     if (segment.lyric_section == null) segment.lyric_section = "";
     if (segment.story_beat == null) segment.story_beat = "";
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
+    if (segment.facial_performance == null) segment.facial_performance = "";
+    if (segment.facial_performance_custom == null) segment.facial_performance_custom = "";
     segment.lyric_no_lip_sync = Boolean(segment.lyric_no_lip_sync);
     segment.no_character_present = Boolean(segment.no_character_present || segment.no_subject || segment.no_visible_subject);
     if (segment.timeline_note == null) segment.timeline_note = "";
@@ -6468,6 +6520,11 @@ function openBuilder(node) {
       imageTriggerPhrase: state.imageTriggerPhrase,
       videoTriggerPhrase: state.videoTriggerPhrase,
       useI2VPromptEnhancementPass: state.useI2VPromptEnhancementPass,
+      autoChainLastFrame: state.autoChainLastFrame,
+      autoChainStyle: state.autoChainStyle,
+      autoChainDirection: state.autoChainDirection,
+      autoChainTransitionLoraPrompt: state.autoChainTransitionLoraPrompt,
+      autoChainTransitionTrigger: state.autoChainTransitionTrigger,
       useVrgdgTextContext: state.useVrgdgTextContext,
       themeStylePath: state.themeStylePath,
       storyIdeaPath: state.storyIdeaPath,
@@ -6526,6 +6583,11 @@ function openBuilder(node) {
     state.imageTriggerPhrase = data.imageTriggerPhrase || "";
     state.videoTriggerPhrase = data.videoTriggerPhrase || "";
     state.useI2VPromptEnhancementPass = data.useI2VPromptEnhancementPass ?? data.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
+    state.autoChainLastFrame = data.autoChainLastFrame ?? data.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+    state.autoChainStyle = data.autoChainStyle || data.auto_chain_style || state.autoChainStyle || "continuous";
+    state.autoChainDirection = data.autoChainDirection || data.auto_chain_direction || state.autoChainDirection || "";
+    state.autoChainTransitionLoraPrompt = data.autoChainTransitionLoraPrompt ?? data.auto_chain_transition_lora_prompt ?? state.autoChainTransitionLoraPrompt ?? false;
+    state.autoChainTransitionTrigger = data.autoChainTransitionTrigger || data.auto_chain_transition_trigger || state.autoChainTransitionTrigger || "zhuanchang";
     state.useVrgdgTextContext = data.useVrgdgTextContext ?? true;
     state.themeStylePath = data.themeStylePath || "";
     state.storyIdeaPath = data.storyIdeaPath || "";
@@ -6570,7 +6632,7 @@ function openBuilder(node) {
     state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(data.krea2TwoPassSettings || data.krea2_2pass_settings || state.krea2TwoPassSettings);
     state.useFluxGlobalImageIngredients = Boolean(data.useFluxGlobalImageIngredients);
     state.fluxGlobalImageIngredients = Array.isArray(data.fluxGlobalImageIngredients) ? data.fluxGlobalImageIngredients : [];
-    state.builderStoryLayer = normalizeBuilderStoryLayer(data.builderStoryLayer || data.builder_story_layer || state.builderStoryLayer);
+    state.builderStoryLayer = normalizeBuilderStoryLayer(data.builderStoryLayer || data.builder_story_layer || {});
     state.lyricMapper = normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || state.lyricMapper);
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.videoModelMode = data.videoModelMode || data.video_model_mode || state.videoModelMode || "i2v";
@@ -7002,11 +7064,12 @@ function openBuilder(node) {
 
   function videoGemmaNotesForSegment(segment) {
     const notes = String(segment?.i2v_notes || "").trim();
+    const facialNote = facialPerformanceNoteForSegment(segment);
     const performanceMode = normalizeVideoType(state.videoType);
     const noCharacterNote = segment?.no_character_present
       ? "Subject visibility: no main character is present in this scene. Do not include, mention, show, imply, or describe the mapped character/subject/performer. Build the shot from the location, props, environment, objects, atmosphere, and camera motion instead."
       : "";
-    const withNoCharacterNote = (text) => [noCharacterNote, text, notes].filter(Boolean).join("\n\n");
+    const withNoCharacterNote = (text) => [noCharacterNote, text, facialNote, notes].filter(Boolean).join("\n\n");
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText);
     if (performanceMode === "no_lip_sync") {
@@ -7026,8 +7089,8 @@ function openBuilder(node) {
         return withNoCharacterNote(segment?.no_character_present ? "" : speakingNote);
       }
       const performanceNote = singers.length
-        ? `Vocal/performance direction: ${singers.length > 1 ? `all listed singers (${singers.join(", ")}) must visibly sing together in this shot. Do not describe one listed singer as only listening, watching, reacting, or dancing while another listed singer sings.` : `only ${singers[0]} should visibly sing in this shot; other visible subjects should react, perform, dance, listen, or move without singing unless also listed.`} The exact lyric text will be inserted into the final prompt automatically.`
-        : "Vocal/performance direction: the visible subject should perform as if singing in sync with the audio. The exact lyric text will be inserted into the final prompt automatically.";
+        ? `Vocal/performance direction: ${singers.length > 1 ? `all listed singers (${singers.join(", ")}) must visibly sing together in this shot. Do not describe one listed singer as only listening, watching, reacting, or dancing while another listed singer sings.` : `only ${singers[0]} should visibly sing in this shot; other visible subjects should react, perform, dance, listen, or move without singing unless also listed.`} The exact lyric text will be inserted into the final prompt automatically. Do not describe visible singing as quiet; use controlled, focused, intimate, restrained, inward, tender, or simmering intensity instead.`
+        : "Vocal/performance direction: the visible subject should perform as if singing in sync with the audio. The exact lyric text will be inserted into the final prompt automatically. Do not describe visible singing as quiet; use controlled, focused, intimate, restrained, inward, tender, or simmering intensity instead.";
       return withNoCharacterNote(segment?.no_character_present ? "" : performanceNote);
     }
     if (!isInstrumentalLyricText(lyricText)) return withNoCharacterNote("");
@@ -7097,58 +7160,82 @@ function openBuilder(node) {
     };
   }
 
-  function applyVocalDirectiveToVideoPrompt(prompt, segment) {
+  function removeQuietFromSingingPrompt(text) {
+    return String(text || "")
+      .replace(/\bwith\s+a\s+quiet,\s*internal\s+intensity\b/gi, "with controlled internal intensity")
+      .replace(/\bwith\s+quiet\s+internal\s+intensity\b/gi, "with controlled internal intensity")
+      .replace(/\bquiet,\s*internal\s+intensity\b/gi, "controlled internal intensity")
+      .replace(/\bquiet\s+internal\s+intensity\b/gi, "controlled internal intensity")
+      .replace(/\bquiet\s+intensity\b/gi, "controlled intensity")
+      .replace(/\bquiet\s+performance\b/gi, "controlled performance")
+      .replace(/\bquiet\s+emotion\b/gi, "restrained emotion")
+      .replace(/\bquiet\s+singing\b/gi, "focused singing")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
+  function applyVocalDirectiveToVideoPrompt(prompt, segment, options = {}) {
     const performanceMode = normalizeVideoType(state.videoType);
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
+    const facialText = facialPerformanceNoteForSegment(segment);
+    const appendFacial = (text) => {
+      const raw = String(text || "").trim();
+      const clean = performanceMode === "singing" && vocalDirectiveForSegment(segment)
+        ? removeQuietFromSingingPrompt(raw)
+        : raw;
+      if (!facialText || (/facial performance direction/i.test(clean) && /blink/i.test(clean) && /\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(clean))) return clean;
+      return clean ? `${clean} ${facialText}` : facialText;
+    };
     const directive = vocalDirectiveForSegment(segment);
     if (!directive) {
       const rawLyricText = String(segment?.lyric_text || "").trim();
       const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
       if (segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText)) {
-        return base
+        return appendFacial(base
           .replace(/^\s*(?:the visible subject|the subject|[^.]{1,90}?)\s+(?:visibly\s+)?(?:sings?|singing|lip-syncs?|lip syncs?|lip-syncing)\s+(?:"[^"]*"|'[^']*'|“[^”]*”)?\s*(?:in sync with the audio)?\.\s*/i, "")
-          .trim();
+          .trim());
       }
-      return base;
+      return appendFacial(base);
     }
-    if (base.toLowerCase().startsWith(directive.toLowerCase())) return base;
+    if (base.toLowerCase().startsWith(directive.toLowerCase())) return appendFacial(base);
     const vocalClause = vocalClauseForSegment(segment);
     if (vocalClause) {
       const lowerBase = base.toLowerCase();
       const lowerLyric = vocalClause.lyricText.toLowerCase();
-      if (lowerLyric && lowerBase.includes(lowerLyric)) return base;
+      if (lowerLyric && lowerBase.includes(lowerLyric)) return appendFacial(base);
       if (vocalClause.cueText) {
         const cueText = vocalClause.cueText;
         const visibleSinging = /\bvisibly\s+(?:singing|sings|lip-syncing|lip syncs|lip-syncs)(?:\s+together)?\b(?!\s*(?::|["'“”]))/i;
         if (visibleSinging.test(base)) {
-          return base.replace(visibleSinging, `visibly singing the exact vocal cues in sync with the audio: ${cueText}`);
+          return appendFacial(base.replace(visibleSinging, `visibly singing the exact vocal cues in sync with the audio: ${cueText}`));
         }
         const duetPhrase = /\b(?:synchronized\s+)?vocal duet\b(?!\s*(?::|["'“”]))/i;
         if (duetPhrase.test(base)) {
-          return base.replace(duetPhrase, `vocal duet with exact cues in sync with the audio: ${cueText}`);
+          return appendFacial(base.replace(duetPhrase, `vocal duet with exact cues in sync with the audio: ${cueText}`));
         }
       }
       if (vocalClause.singleLineLyric) {
         const vocalVerb = /\b(singing|sings|lip-syncing|lip syncs|lip-syncs|speaking|speaks|talking|says|saying)\b(?!\s*["'“”])/i;
         if (vocalVerb.test(base)) {
-          return base.replace(vocalVerb, (match) => {
+          return appendFacial(base.replace(vocalVerb, (match) => {
             const cleanMatch = String(match || "").toLowerCase();
             const verb = performanceMode === "speaking"
               ? (/\bspeaks|says\b/i.test(cleanMatch) ? "says" : "saying")
               : cleanMatch.includes("lip") ? "singing" : match;
             return `${verb} "${vocalClause.singleLineLyric}"`;
-          });
+          }));
         }
       }
       const performerPattern = escapeRegExp(vocalClause.performer);
       const opener = new RegExp(`^(${performerPattern})(\\s+(?:in|inside|at|on|within|during)\\b)`, "i");
       if (opener.test(base)) {
-        return base.replace(opener, `$1, ${vocalClause.clause},$2`);
+        return appendFacial(base.replace(opener, `$1, ${vocalClause.clause},$2`));
       }
     }
-    return base ? `${directive} ${base}` : directive;
+    if (options.suppressPrefix) return appendFacial(base);
+    return appendFacial(base ? `${directive} ${base}` : directive);
   }
 
   function defaultFluxReferenceBuilder() {
@@ -11217,6 +11304,17 @@ function openBuilder(node) {
     }
   }
 
+  async function locationExtractionStyleTheme(extraStyleTheme = "") {
+    const parts = [];
+    const globalStyleTheme = state.useVrgdgTextContext
+      ? await loadContextTextQuiet(themeStyleInput.value || state.themeStylePath)
+      : "";
+    if (globalStyleTheme) parts.push(`Global theme/style:\n${globalStyleTheme}`);
+    const localStyleTheme = String(extraStyleTheme || "").trim();
+    if (localStyleTheme) parts.push(`Location extraction notes:\n${localStyleTheme}`);
+    return parts.join("\n\n").trim();
+  }
+
   function formatSrtTimestamp(seconds) {
     const totalMs = Math.max(0, Math.round(Number(seconds || 0) * 1000));
     const ms = totalMs % 1000;
@@ -12732,9 +12830,10 @@ function openBuilder(node) {
       const segmentIsInstrumental = isInstrumentalLyricText(segment.lyric_text);
       const prevIsVocal = prev && !isInstrumentalLyricText(prev.lyric_text);
       const nextIsVocal = next && !isInstrumentalLyricText(next.lyric_text);
+      const nearestTarget = next && (!prev || nextDuration <= prevDuration) ? next : prev;
       const target = segmentIsInstrumental
-        ? (next && (!prev || nextDuration <= prevDuration) ? next : prev)
-        : (prevIsVocal ? prev : (nextIsVocal ? next : null));
+        ? nearestTarget
+        : (prevIsVocal ? prev : (nextIsVocal ? next : nearestTarget));
       if (!target && !segmentIsInstrumental) {
         const nextStart = next ? Number(next.start || 0) : null;
         const desiredEnd = segment.start + minSceneSeconds;
@@ -12946,7 +13045,11 @@ function openBuilder(node) {
         45 * 60 * 1000,
       );
       const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
-      const created = createSegmentsFromTimestampedLyricsPayload(payload, options);
+      const created = normalizeTimestampedSceneDurations(
+        createSegmentsFromTimestampedLyricsPayload(payload, options),
+        options,
+        payload,
+      );
       if (!created.length) throw new Error("Timestamped lines did not produce any usable scene segments.");
       applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
       pushHistory();
@@ -14220,6 +14323,8 @@ function openBuilder(node) {
       segment.lyric_text = instrumental ? "[instrumental]" : lyricText;
       segment.lyric_no_lip_sync = instrumental || broll;
       segment.no_character_present = noCharacterPresent;
+      segment.facial_performance = String(row.querySelector("[data-review-facial-performance='1']")?.value || "").trim();
+      segment.facial_performance_custom = String(row.querySelector("[data-review-facial-performance-custom='1']")?.value || "").trim();
       segment.lyric_singers = [...row.querySelectorAll("[data-review-singer-choice='1']")]
         .filter((input) => !instrumental && !broll && !noCharacterPresent && input.checked)
         .map((input) => input.value)
@@ -14263,6 +14368,8 @@ function openBuilder(node) {
       target.lyric_singers = Array.isArray(source.lyric_singers) ? [...source.lyric_singers] : [];
       target.lyric_no_lip_sync = Boolean(source.lyric_no_lip_sync);
       target.no_character_present = Boolean(source.no_character_present);
+      target.facial_performance = source.facial_performance || "";
+      target.facial_performance_custom = source.facial_performance_custom || "";
       target.i2v_notes = source.i2v_notes || "";
       return target;
     };
@@ -14463,7 +14570,7 @@ function openBuilder(node) {
     for (const [index, segment] of scenes.entries()) {
       const row = document.createElement("div");
       row.dataset.reviewSegmentId = segment.id;
-      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
+      row.style.cssText = "display:grid;grid-template-columns:96px minmax(140px,160px) minmax(240px,1fr) minmax(280px,1.15fr) minmax(210px,260px) minmax(190px,230px) minmax(150px,170px) 124px;gap:8px;align-items:start;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;box-sizing:border-box;width:100%;min-width:0;";
       const meta = document.createElement("div");
       meta.style.minWidth = "0";
       meta.innerHTML = `<div data-review-scene-label style="font-weight:900;color:#cffafe;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div data-review-time-display style="font-size:11px;color:#cbd5e1;margin-top:4px;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</div>`;
@@ -14580,6 +14687,16 @@ function openBuilder(node) {
       renderSubjectPresenceChoices(segment, index, presentPanel);
       renderSingerChoices(segment, singerPanel, instrumental.input, broll.input);
       subjectSingerPanel.append(makeField("Subjects present in scene", presentPanel), makeField("Performer / speaker / lip-sync", singerPanel));
+      const facialPanel = document.createElement("div");
+      facialPanel.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
+      const facialSelect = makeSelect(FACIAL_PERFORMANCE_PRESETS, segment.facial_performance || "");
+      facialSelect.dataset.reviewFacialPerformance = "1";
+      const facialCustom = document.createElement("textarea");
+      facialCustom.dataset.reviewFacialPerformanceCustom = "1";
+      facialCustom.value = String(segment.facial_performance_custom || "");
+      facialCustom.placeholder = "Custom facial text...";
+      facialCustom.style.cssText = "width:100%;box-sizing:border-box;min-height:42px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;min-width:0;";
+      facialPanel.append(facialSelect, facialCustom);
       instrumental.input.onchange = updateDisabled;
       broll.input.onchange = updateDisabled;
       noCharacter.input.onchange = updateDisabled;
@@ -14619,7 +14736,7 @@ function openBuilder(node) {
       playFrom.onclick = () => playFromSegment(segment, playFrom);
       select.onclick = () => setActiveReviewScene(segment);
       buttons.append(play, playFrom, select);
-      row.append(meta, timing, text, subjectSingerPanel, locationWrap, flags, buttons);
+      row.append(meta, timing, text, subjectSingerPanel, facialPanel, locationWrap, flags, buttons);
       rowList.append(row);
       rememberReviewRowTiming(row);
     }
@@ -16967,13 +17084,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       try {
         const useLyricsScout = Boolean((wizardLocationMode && lyricScenes.length) || (!planningScenes.length && lyricScenes.length));
+        const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for a reusable location list"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
           ? await postJson("/vrgdg/music_builder/wizard_locations_from_lyrics", {
             ...textGemmaRunnerPayload(),
             model_file: modelFile,
             lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
-            style_theme: locationStyleTheme.value || "",
+            style_theme: styleTheme,
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
@@ -16985,7 +17103,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             model_file: modelFile,
             scenes: planningScenes,
             subject_scene_text: subjectSceneInput.value || "",
-            style_theme: locationStyleTheme.value || "",
+            style_theme: styleTheme,
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
@@ -18897,13 +19015,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
         if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
         const useLyricsScout = Boolean(!planningScenes.length && lyricScenes.length);
+        const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
           ? await postJson("/vrgdg/music_builder/wizard_locations_from_lyrics", {
             ...textGemmaRunnerPayload(),
             model_file: modelFile,
             lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
-            style_theme: locationStyleTheme.value || "",
+            style_theme: styleTheme,
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
@@ -18915,7 +19034,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             model_file: modelFile,
             scenes: planningScenes,
             subject_scene_text: "",
-            style_theme: locationStyleTheme.value || "",
+            style_theme: styleTheme,
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
@@ -19626,13 +19745,14 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
         const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
         if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) throw new Error("Choose a non-vision Gemma model first, or use LM Studio/LLM API in LLM Runner.");
         const useLyricsScout = Boolean((wizardLocationMode && lyricScenes.length) || (!scenes.length && lyricScenes.length));
+        const styleTheme = await locationExtractionStyleTheme(locationStyleTheme.value);
         progress.set(`${useLyricsScout ? "Asking Gemma location scout to create locations from lyrics" : "Asking Gemma for reusable location descriptions"}...\n${gemmaRunnerLine()}`, 15);
         const data = useLyricsScout
           ? await postJson("/vrgdg/music_builder/wizard_locations_from_lyrics", {
             ...textGemmaRunnerPayload(),
             model_file: modelFile,
             lyrics_text: lyricScenes.map((scene, index) => `Scene ${index + 1}: ${scene.lyric}`).join("\n"),
-            style_theme: locationStyleTheme.value || "",
+            style_theme: styleTheme,
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
@@ -19644,7 +19764,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             model_file: modelFile,
             scenes,
             subject_scene_text: subjectSceneInput.value || "",
-            style_theme: locationStyleTheme.value || "",
+            style_theme: styleTheme,
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
             n_ctx: 10000,
@@ -20781,6 +20901,50 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       notificationGrid,
       customSoundGrid,
     ], false);
+    const autoChainControl = makeCheckbox("Auto chain last frame into next I2V scene", Boolean(state.autoChainLastFrame));
+    const autoChainStyleSelect = makeSelect(["continuous", "surreal", "transformation", "environment_shift"], state.autoChainStyle || "continuous");
+    for (const option of autoChainStyleSelect.options) {
+      option.textContent = {
+        continuous: "Continuous",
+        surreal: "Surreal",
+        transformation: "Transformation",
+        environment_shift: "Environment shift",
+      }[option.value] || option.value;
+    }
+    const autoChainDirectionInput = makeInput(state.autoChainDirection || "");
+    autoChainDirectionInput.placeholder = "Optional direction for chained scenes...";
+    const autoChainTransitionLoraControl = makeCheckbox("Use Transition LoRA prompt style", Boolean(state.autoChainTransitionLoraPrompt));
+    const autoChainTransitionTriggerInput = makeInput(state.autoChainTransitionTrigger || "zhuanchang");
+    autoChainTransitionTriggerInput.placeholder = "zhuanchang";
+    const autoChainGrid = document.createElement("div");
+    autoChainGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+    autoChainGrid.append(
+      autoChainControl.wrapper,
+      makeField("Chain style", autoChainStyleSelect),
+      makeField("Chain direction", autoChainDirectionInput),
+      autoChainTransitionLoraControl.wrapper,
+      makeField("Transition trigger", autoChainTransitionTriggerInput),
+    );
+    const autoChainNote = document.createElement("div");
+    autoChainNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;";
+    autoChainNote.textContent = "Render All only. Scene 1 renders normally, then each rendered scene can feed its final frame and a new Gemma Vision prompt into the next scene. Chained scenes force warmup frames to 1. Transition LoRA prompt style only changes Gemma prompting and trigger text; select the LoRA itself in Models > Video LoRAs.";
+    const autoChainPanel = makeSettingsSection("I2V Auto Chain", [
+      autoChainGrid,
+      autoChainNote,
+    ], false);
+    const saveAutoChainSettings = async () => {
+      state.autoChainLastFrame = Boolean(autoChainControl.input.checked);
+      state.autoChainStyle = autoChainStyleSelect.value || "continuous";
+      state.autoChainDirection = autoChainDirectionInput.value || "";
+      state.autoChainTransitionLoraPrompt = Boolean(autoChainTransitionLoraControl.input.checked);
+      state.autoChainTransitionTrigger = autoChainTransitionTriggerInput.value || "zhuanchang";
+      await autoSaveSessionQuiet("auto chain settings");
+    };
+    autoChainControl.input.addEventListener("change", saveAutoChainSettings);
+    autoChainStyleSelect.addEventListener("change", saveAutoChainSettings);
+    autoChainDirectionInput.addEventListener("input", saveAutoChainSettings);
+    autoChainTransitionLoraControl.input.addEventListener("change", saveAutoChainSettings);
+    autoChainTransitionTriggerInput.addEventListener("input", saveAutoChainSettings);
     notificationMode.addEventListener("change", saveNotificationSettings);
     successSound.addEventListener("change", saveNotificationSettings);
     errorSound.addEventListener("change", saveNotificationSettings);
@@ -20802,7 +20966,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testSuccessSound.onclick = () => playBuilderNotification("success", true);
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
-    box.append(header, pathGrid, actions, note, notificationPanel);
+    box.append(header, pathGrid, actions, note, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -21176,7 +21340,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       i2v_motion_json_path: state.i2vMotionJsonPath,
       image_trigger_phrase: state.imageTriggerPhrase,
       video_trigger_phrase: state.videoTriggerPhrase,
+      default_facial_performance: state.defaultFacialPerformance || "",
+      default_facial_performance_custom: state.defaultFacialPerformanceCustom || "",
       use_i2v_prompt_enhancement_pass: Boolean(state.useI2VPromptEnhancementPass),
+      auto_chain_last_frame: Boolean(state.autoChainLastFrame),
+      auto_chain_style: state.autoChainStyle || "continuous",
+      auto_chain_direction: state.autoChainDirection || "",
+      auto_chain_transition_lora_prompt: Boolean(state.autoChainTransitionLoraPrompt),
+      auto_chain_transition_trigger: state.autoChainTransitionTrigger || "zhuanchang",
       use_vrgdg_text_context: state.useVrgdgTextContext,
       theme_style_path: state.themeStylePath,
       story_idea_path: state.storyIdeaPath,
@@ -21394,7 +21565,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.i2vMotionJsonPath = data.session.i2v_motion_json_path || state.i2vMotionJsonPath;
         if (Object.prototype.hasOwnProperty.call(data.session, "image_trigger_phrase")) state.imageTriggerPhrase = data.session.image_trigger_phrase || "";
         if (Object.prototype.hasOwnProperty.call(data.session, "video_trigger_phrase")) state.videoTriggerPhrase = data.session.video_trigger_phrase || "";
+        state.defaultFacialPerformance = data.session.default_facial_performance || data.session.defaultFacialPerformance || state.defaultFacialPerformance || "";
+        state.defaultFacialPerformanceCustom = data.session.default_facial_performance_custom || data.session.defaultFacialPerformanceCustom || state.defaultFacialPerformanceCustom || "";
         state.useI2VPromptEnhancementPass = data.session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
+        state.autoChainLastFrame = data.session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+        state.autoChainStyle = data.session.auto_chain_style || state.autoChainStyle || "continuous";
+        state.autoChainDirection = data.session.auto_chain_direction || state.autoChainDirection || "";
+        state.autoChainTransitionLoraPrompt = data.session.auto_chain_transition_lora_prompt ?? state.autoChainTransitionLoraPrompt ?? false;
+        state.autoChainTransitionTrigger = data.session.auto_chain_transition_trigger || state.autoChainTransitionTrigger || "zhuanchang";
         state.useVrgdgTextContext = data.session.use_vrgdg_text_context ?? state.useVrgdgTextContext;
         state.themeStylePath = data.session.theme_style_path || state.themeStylePath;
         state.storyIdeaPath = data.session.story_idea_path || state.storyIdeaPath;
@@ -21408,7 +21586,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStorySourcePath = data.session.builder_story_source_path || state.builderStorySourcePath || "";
         state.builderStoryReferenceImages = Array.isArray(data.session.builder_story_reference_images) ? data.session.builder_story_reference_images : state.builderStoryReferenceImages || [];
         state.builderStoryReferenceNotes = data.session.builder_story_reference_notes || state.builderStoryReferenceNotes || "";
-        state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || state.builderStoryLayer);
+        state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || {});
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
@@ -21566,7 +21744,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.i2vMotionJsonPath = session.i2v_motion_json_path || "";
       state.imageTriggerPhrase = session.image_trigger_phrase || "";
       state.videoTriggerPhrase = session.video_trigger_phrase || "";
+      state.defaultFacialPerformance = session.default_facial_performance || session.defaultFacialPerformance || "";
+      state.defaultFacialPerformanceCustom = session.default_facial_performance_custom || session.defaultFacialPerformanceCustom || "";
       state.useI2VPromptEnhancementPass = session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
+      state.autoChainLastFrame = session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+      state.autoChainStyle = session.auto_chain_style || state.autoChainStyle || "continuous";
+      state.autoChainDirection = session.auto_chain_direction || state.autoChainDirection || "";
+      state.autoChainTransitionLoraPrompt = session.auto_chain_transition_lora_prompt ?? state.autoChainTransitionLoraPrompt ?? false;
+      state.autoChainTransitionTrigger = session.auto_chain_transition_trigger || state.autoChainTransitionTrigger || "zhuanchang";
       state.useVrgdgTextContext = session.use_vrgdg_text_context ?? true;
       state.themeStylePath = session.theme_style_path || "";
       state.storyIdeaPath = session.story_idea_path || "";
@@ -22869,7 +23054,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       performance_mode: normalizeVideoType(state.videoType),
       t2i_prompt: sceneConceptPromptText(segment),
-      user_notes: String(segment?.i2v_notes || "").trim(),
+      user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim()].filter(Boolean).join("\n\n"),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
       singers: segment?.no_character_present ? [] : singers,
       no_vocal: noVocal,
@@ -22882,9 +23067,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function finalizeVideoPromptForSegment(segment, rawPrompt, progress = null, percent = 82, label = "I2V prompt enhancement", options = {}) {
-    const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment);
+    const directiveOptions = { suppressPrefix: Boolean(options.suppressVocalPrefix) };
+    const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment, directiveOptions);
     const enhanced = await enhanceVideoPromptForSegment(segment, draft, progress, percent, label, options);
-    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment), segment);
+    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment, directiveOptions), segment);
   }
 
   function finalizeVideoPromptDraftOnly(segment, rawPrompt) {
@@ -23965,6 +24151,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           lyric_no_lip_sync: Boolean(segment.lyric_no_lip_sync),
           lyric_instrumental: isInstrumentalLyricText(lyric),
           no_character_present: Boolean(segment.no_character_present),
+          facial_performance: String(segment.facial_performance || "").trim(),
+          facial_performance_custom: String(segment.facial_performance_custom || "").trim(),
           video_prompt_type: ["i2v", "t2v", "rtv", "ingredients"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
@@ -24086,6 +24274,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
       let applied = 0;
       let storyChanged = false;
+      let facialChanged = false;
+      const hasIncomingFacialDefault = Object.prototype.hasOwnProperty.call(updates, "facial_performance_default")
+        || Object.prototype.hasOwnProperty.call(updates, "facialPerformance")
+        || Object.prototype.hasOwnProperty.call(updates, "default_facial_performance");
+      const hasIncomingFacialCustomDefault = Object.prototype.hasOwnProperty.call(updates, "facial_performance_custom_default")
+        || Object.prototype.hasOwnProperty.call(updates, "facialPerformanceCustom")
+        || Object.prototype.hasOwnProperty.call(updates, "default_facial_performance_custom");
+      if (hasIncomingFacialDefault) {
+        const nextDefault = String(updates.facial_performance_default ?? updates.facialPerformance ?? updates.default_facial_performance ?? "").trim();
+        if (state.defaultFacialPerformance !== nextDefault) {
+          state.defaultFacialPerformance = nextDefault;
+          facialChanged = true;
+        }
+      }
+      if (hasIncomingFacialCustomDefault) {
+        const nextCustomDefault = String(updates.facial_performance_custom_default ?? updates.facialPerformanceCustom ?? updates.default_facial_performance_custom ?? "").trim();
+        if (state.defaultFacialPerformanceCustom !== nextCustomDefault) {
+          state.defaultFacialPerformanceCustom = nextCustomDefault;
+          facialChanged = true;
+        }
+      }
       for (const scene of Array.isArray(updates.scenes) ? updates.scenes : []) {
         const segment = segments.find((candidate) => candidate.id === scene.id)
           || segments.find((candidate, index) => Number(index + 1) === Number(scene.scene_number));
@@ -24096,6 +24305,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const videoType = String(scene.video_prompt_type || "").trim();
         segment.lyric_section = String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim();
         segment.story_beat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim();
+        const nextFacial = String(scene.facial_performance ?? scene.facialPerformance ?? segment.facial_performance ?? "").trim();
+        const nextFacialCustom = String(scene.facial_performance_custom ?? scene.facialPerformanceCustom ?? segment.facial_performance_custom ?? "").trim();
+        if (segment.facial_performance !== nextFacial || segment.facial_performance_custom !== nextFacialCustom) facialChanged = true;
+        segment.facial_performance = nextFacial;
+        segment.facial_performance_custom = nextFacialCustom;
         if (imagePrompt) {
           setSegmentPromptForEdit(segment, "t2i", imagePrompt);
           applied += 1;
@@ -24112,7 +24326,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
         storyChanged = true;
       }
-      if (applied || storyChanged) {
+      if (applied || storyChanged || facialChanged) {
         ensureAllSegmentRuntimeFields();
         syncInspector();
         render();
@@ -24125,6 +24339,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       videoPromptType: currentVideoMode(),
       performanceMode: normalizeVideoType(state.videoType),
       videoType: normalizeVideoType(state.videoType),
+      facialPerformance: state.defaultFacialPerformance || "",
+      facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
       scenes: storyboardScenePayload(),
       referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
       storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
@@ -24207,6 +24423,151 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return { srt_segment: srtSegment, srt_duration: srtDuration, ui_duration: uiDuration, srt_path: data.srt_path || srtPath };
   }
 
+  function forceAutoChainWarmupFrames(segment) {
+    if (!segment) return;
+    const settings = segment.use_scene_i2v_video_settings
+      ? cloneI2VVideoSettings(segment.i2v_video_settings || state.i2vVideoSettings)
+      : cloneI2VVideoSettings(state.i2vVideoSettings);
+    settings.pre_frames = 1;
+    segment.use_scene_i2v_video_settings = true;
+    segment.i2v_video_settings = settings;
+    segment.auto_chain_pre_frames = 1;
+    if (segment.id === activeSegment()?.id) syncI2VVideoSettingsPanel();
+  }
+
+  function autoChainReferenceContextForSegment(segment) {
+    const references = storyboardReferenceDataForSegment(segment);
+    const subjectLines = Array.isArray(references.subject_refs)
+      ? references.subject_refs.map((subject) => {
+        const name = String(subject?.name || "").trim();
+        const description = String(subject?.description || "").trim();
+        const trigger = String(subject?.trigger_phrase || "").trim();
+        return [name, description, trigger ? `trigger: ${trigger}` : ""].filter(Boolean).join(" - ");
+      }).filter(Boolean)
+      : [];
+    const location = references.location_ref || null;
+    const locationText = location
+      ? [
+        String(location.name || "").trim(),
+        String(location.description || "").trim(),
+        String(location.trigger_phrase || "").trim() ? `trigger: ${String(location.trigger_phrase || "").trim()}` : "",
+      ].filter(Boolean).join(" - ")
+      : "";
+    return {
+      ...references,
+      subject_context: subjectLines.join("\n"),
+      location_context: locationText,
+    };
+  }
+
+  function autoChainSceneContextForSegment(segment) {
+    const referenceContext = autoChainReferenceContextForSegment(segment);
+    return {
+      scene_concept: sceneConceptPromptText(segment),
+      motion_notes: videoGemmaNotesForSegment(segment),
+      scene_notes: String(segment?.notes || "").trim(),
+      director_note: String(segment?.timeline_note || segment?.director_note || "").trim(),
+      story_beat: String(segment?.story_beat || segment?.beat || "").trim(),
+      lyric_text: String(segment?.lyric_text || segment?.lyrics || "").trim(),
+      lyric_section: String(segment?.lyric_section || segment?.section || "").trim(),
+      mapped_subject_context: segmentMappedSubjectText(segment),
+      mapped_location_context: segmentMappedLocationText(segment),
+      no_character_present: Boolean(segment?.no_character_present),
+      reference_context: referenceContext,
+    };
+  }
+
+  async function prepareAutoChainedNextScene(previousSegment, nextSegment, progress = null, percent = 50, label = "Auto Chain") {
+    if (!previousSegment || !nextSegment) return null;
+    const projectFolder = projectInput.value || state.projectFolder;
+    if (!projectFolder) throw new Error("Project folder is missing.");
+    const previousVideoPath = selectedSegmentVideoPath(previousSegment);
+    if (!previousVideoPath) throw new Error(`${sceneDisplayName(previousSegment, segmentIndexInfo(previousSegment).index)} has no rendered video for auto-chain.`);
+    const nextIndex = segmentIndexInfo(nextSegment).index;
+    progress?.set(`${label}: extracting final frame for ${sceneDisplayName(nextSegment, nextIndex)}...`, percent);
+    const extracted = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
+      project_folder: projectFolder,
+      source_path: previousVideoPath,
+      scene_number: sceneSlotNumber(nextSegment),
+    }, 120000);
+    const framePath = String(extracted.saved_path || "").trim();
+    if (!framePath) throw new Error("Final frame extraction did not return an image path.");
+    pushHistory();
+    addSceneImageHistoryPath(nextSegment, framePath);
+    nextSegment.approved_image_path = "";
+    nextSegment.custom_image_path = "";
+    nextSegment.custom_image_data = "";
+    nextSegment.custom_image_name = "";
+    nextSegment.image = null;
+    forceAutoChainWarmupFrames(nextSegment);
+    const chainContext = autoChainSceneContextForSegment(nextSegment);
+    progress?.set(`${label}: creating chained I2V prompt for ${sceneDisplayName(nextSegment, nextIndex)}...\n${gemmaRunnerLine({ vision: true })}`, Math.min(98, percent + 8));
+    const data = await postJson("/vrgdg/music_builder/generate_chained_i2v", {
+      ...textGemmaRunnerPayload(),
+      model_file: i2vGemmaModelSelect.value,
+      mmproj_file: i2vMmprojSelect.value,
+      image_reference_path: framePath,
+      image_reference_data: "",
+      scene_context: chainContext.scene_concept,
+      user_notes: chainContext.motion_notes,
+      scene_notes: chainContext.scene_notes,
+      director_note: chainContext.director_note,
+      story_beat: chainContext.story_beat,
+      lyric_text: chainContext.lyric_text,
+      lyric_section: chainContext.lyric_section,
+      subject_context: chainContext.mapped_subject_context,
+      location_context: chainContext.mapped_location_context,
+      no_character_present: chainContext.no_character_present,
+      reference_context: chainContext.reference_context,
+      chain_style: state.autoChainStyle || "continuous",
+      chain_direction: state.autoChainDirection || "",
+      transition_lora_prompt: Boolean(state.autoChainTransitionLoraPrompt),
+      transition_lora_trigger: state.autoChainTransitionTrigger || "zhuanchang",
+      performance_mode: normalizeVideoType(state.videoType),
+      repair_model_file: i2vTextGemmaModelSelect.value,
+      unload_after: true,
+      n_ctx: 8000,
+      temperature: 0.25,
+      top_p: 0.9,
+      max_new_tokens: 1200,
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+    const prompt = String(data.prompt || "").trim();
+    if (!prompt) throw new Error("Gemma returned an empty chained I2V prompt.");
+    nextSegment.i2v_prompt = await finalizeVideoPromptForSegment(nextSegment, prompt, progress, Math.min(99, percent + 14), `${label}: prompt cleanup`, {
+      unloadAfter: true,
+      suppressVocalPrefix: Boolean(state.autoChainTransitionLoraPrompt),
+    });
+    nextSegment.auto_chain_source_video_path = previousVideoPath;
+    nextSegment.auto_chain_source_frame_path = framePath;
+    nextSegment.auto_chain_style = state.autoChainStyle || "continuous";
+    nextSegment.auto_chain_direction = state.autoChainDirection || "";
+    if (nextSegment.id === state.activeId) {
+      i2vPrompt.value = nextSegment.i2v_prompt;
+      syncPreview(nextSegment);
+    }
+    render();
+    return { framePath, prompt: nextSegment.i2v_prompt };
+  }
+
+  function previousAutoChainSourceSegment(segment) {
+    if (!segment) return null;
+    const track = segmentTrack(segment);
+    const timelineSegments = allEditableSegments()
+      .filter((item) => segmentTrack(item) === track)
+      .sort((a, b) => {
+        const startDiff = audioTimelineStart(a) - audioTimelineStart(b);
+        if (Math.abs(startDiff) > 0.001) return startDiff;
+        return segmentIndexInfo(a).index - segmentIndexInfo(b).index;
+      });
+    const index = timelineSegments.findIndex((item) => item.id === segment.id);
+    return index > 0 ? timelineSegments[index - 1] : null;
+  }
+
+  function canAutoChainFromPreviousRenderedScene(segment) {
+    const previousSegment = previousAutoChainSourceSegment(segment);
+    return Boolean(previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim());
+  }
+
   async function ensureSelectedImageForSceneVideo(segment, sceneIndex) {
     const source = segmentImageSource(segment);
     if (!source) throw new Error(`${sceneDisplayName(segment, sceneIndex)}: selected scene image is missing.`);
@@ -24223,9 +24584,29 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return segment.approved_image_path;
   }
 
+  const POST_PROCESS_RENDER_CRF = 23;
+  const POST_PROCESS_FILM_GRAIN_RENDER_CRF = 26;
+  const POST_PROCESS_STITCH_CRF = 28;
+
+  function normalizePostProcessEncodeCrf(value, fallback = POST_PROCESS_RENDER_CRF) {
+    const crf = Math.round(Number(value));
+    if (!Number.isFinite(crf)) return fallback;
+    return Math.max(16, Math.min(35, crf));
+  }
+
+  function postProcessEncodeCrf(options = {}, effect = "") {
+    if (options.encodeCrf != null) {
+      return normalizePostProcessEncodeCrf(options.encodeCrf, POST_PROCESS_RENDER_CRF);
+    }
+    return effect === "film_grain" ? POST_PROCESS_FILM_GRAIN_RENDER_CRF : POST_PROCESS_RENDER_CRF;
+  }
+
   async function applySceneAdjustToRenderedVideo(segment, sceneIndex, videoPath, thumbnailPath = "", progress = null, pct = (value) => value, batchLabel = "", options = {}) {
+    if (!segment?.adjust || segment.adjust.enabled !== true) {
+      return { video_path: videoPath, thumbnail_path: thumbnailPath };
+    }
     const adjust = normalizeSceneAdjust(segment?.adjust || {}, { keepEmpty: true });
-    if (!adjust || adjust.enabled === false || !String(videoPath || "").trim()) {
+    if (!adjust || !sceneAdjustHasRenderableChanges(adjust) || !String(videoPath || "").trim()) {
       return { video_path: videoPath, thumbnail_path: thumbnailPath };
     }
     const currentVideoPath = String(videoPath || "").trim();
@@ -24244,6 +24625,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sourceThumbnailPath = lastRenderedPath && mediaPathKey(currentVideoPath) === mediaPathKey(lastRenderedPath) && lastSourceThumbnail
       ? lastSourceThumbnail
       : currentThumbnailPath;
+    const encodeCrf = postProcessEncodeCrf(options, "adjust");
     progress?.set(`${batchLabel}Applying Adjust to ${sceneDisplayName(segment, sceneIndex)}...`, pct(94));
     const result = await postJson("/vrgdg/music_builder/post_process/adjust/apply_video", {
       input_path: sourcePath,
@@ -24253,6 +24635,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       replace_source: false,
       thumbnail_path: currentThumbnailPath,
       preserve_audio: options.preserveAudio !== false,
+      encode_crf: encodeCrf,
     }, 20 * 60 * 1000);
     segment.adjust_rendered_path = result.output || currentVideoPath;
     segment.adjust_rendered_thumbnail_path = result.thumbnail_path || currentThumbnailPath;
@@ -24268,6 +24651,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       source_video_path: sourcePath,
       source_thumbnail_path: sourceThumbnailPath,
       video_path: result.output || currentVideoPath,
+      encode_crf: Number(result.encode_crf || encodeCrf),
       encoder: result.encoder || "",
       browser_friendly: Boolean(result.browser_friendly),
       source_had_audio: result.source_had_audio,
@@ -24298,6 +24682,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       segment.video_original_thumbnail_path = currentThumbnailPath;
     }
     const sourcePath = String(segment.video_original_path || currentVideoPath).trim();
+    const encodeCrf = postProcessEncodeCrf(options, "lut");
     progress?.set(`${batchLabel}Applying LUT to ${sceneDisplayName(segment, sceneIndex)}...\n${lut.label || lutLabelFromName(lut.name)}`, pct(94));
     const result = await postJson("/vrgdg/music_builder/luts/apply_video", {
       input_path: sourcePath,
@@ -24308,6 +24693,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       replace_source: false,
       thumbnail_path: currentThumbnailPath,
       preserve_audio: options.preserveAudio !== false,
+      encode_crf: encodeCrf,
     }, 20 * 60 * 1000);
     segment.lut_rendered_path = result.output || currentVideoPath;
     segment.lut_rendered_thumbnail_path = result.thumbnail_path || currentThumbnailPath;
@@ -24322,6 +24708,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       preserve_audio: result.preserve_audio !== false,
       source_video_path: sourcePath,
       video_path: result.output || currentVideoPath,
+      encode_crf: Number(result.encode_crf || encodeCrf),
       encoder: result.encoder || "",
       browser_friendly: Boolean(result.browser_friendly),
       source_had_audio: result.source_had_audio,
@@ -24353,6 +24740,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sourceThumbnailPath = lastRenderedPath && mediaPathKey(currentVideoPath) === mediaPathKey(lastRenderedPath) && lastSourceThumbnail
       ? lastSourceThumbnail
       : currentThumbnailPath;
+    const encodeCrf = postProcessEncodeCrf(options, "film_grain");
     progress?.set(`${batchLabel}Applying film grain to ${sceneDisplayName(segment, sceneIndex)}...\n${filmGrainLabel(grain)}`, pct(94));
     const result = await postJson("/vrgdg/music_builder/post_process/film_grain/apply_video", {
       input_path: sourcePath,
@@ -24363,6 +24751,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       replace_source: false,
       thumbnail_path: currentThumbnailPath,
       preserve_audio: options.preserveAudio !== false,
+      encode_crf: encodeCrf,
     }, 20 * 60 * 1000);
     segment.film_grain_rendered_path = result.output || currentVideoPath;
     segment.film_grain_rendered_thumbnail_path = result.thumbnail_path || currentThumbnailPath;
@@ -24378,6 +24767,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       source_video_path: sourcePath,
       source_thumbnail_path: sourceThumbnailPath,
       video_path: result.output || currentVideoPath,
+      encode_crf: Number(result.encode_crf || encodeCrf),
       encoder: result.encoder || "",
       browser_friendly: Boolean(result.browser_friendly),
       source_had_audio: result.source_had_audio,
@@ -24400,6 +24790,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       && String(applied.name || "") === lut.name
       && Math.abs(Number(applied.strength ?? -1) - Number(lut.strength ?? 10)) < 0.001
       && (options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
+      && (options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
       && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
     );
   }
@@ -24413,6 +24804,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       && Math.abs(Number(applied.grain_intensity ?? -1) - Number(grain.grain_intensity ?? 0.04)) < 0.0001
       && Math.abs(Number(applied.saturation_mix ?? -1) - Number(grain.saturation_mix ?? 0.5)) < 0.0001
       && (options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
+      && (options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
       && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
     );
   }
@@ -24422,9 +24814,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const applied = segment?.adjust_last_applied || {};
     return Boolean(
       adjust
-      && adjust.enabled === true
+      && sceneAdjustHasRenderableChanges(adjust)
       && String(applied.signature || "") === sceneAdjustSignature(adjust)
       && (options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
+      && (options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
       && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
     );
   }
@@ -24435,7 +24828,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .map((segment, index) => ({ segment, index, videoPath: String(selectedSegmentVideoPath(segment) || "").trim() }))
       .filter(({ segment, videoPath }) => {
         const lut = normalizeSceneLut(segment?.lut || {});
-        return lut && lut.enabled !== false && videoPath && !sceneVideoHasCurrentLut(segment, videoPath, { preserveAudio: false });
+        return lut && lut.enabled !== false && videoPath && !sceneVideoHasCurrentLut(segment, videoPath, { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF });
       });
     if (!targets.length) return;
     for (let index = 0; index < targets.length; index += 1) {
@@ -24451,7 +24844,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress,
         (value) => Math.min(93, base + (value - 90) * 0.5),
         "",
-        { preserveAudio: false },
+        { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF },
       );
       activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
       segment.video_cache_bust = Date.now();
@@ -24467,8 +24860,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const targets = segments
       .map((segment, index) => ({ segment, index, videoPath: String(selectedSegmentVideoPath(segment) || "").trim() }))
       .filter(({ segment, videoPath }) => {
+        if (!segment?.adjust || segment.adjust.enabled !== true) return false;
         const adjust = normalizeSceneAdjust(segment?.adjust || {}, { keepEmpty: true });
-        return adjust && adjust.enabled === true && videoPath && !sceneVideoHasCurrentAdjust(segment, videoPath, { preserveAudio: false });
+        return adjust && sceneAdjustHasRenderableChanges(adjust) && videoPath && !sceneVideoHasCurrentAdjust(segment, videoPath, { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF });
       });
     if (!targets.length) return;
     for (let index = 0; index < targets.length; index += 1) {
@@ -24484,7 +24878,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress,
         (value) => Math.min(95, base + (value - 90) * 0.3),
         "",
-        { preserveAudio: false },
+        { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF },
       );
       activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
       segment.video_cache_bust = Date.now();
@@ -24501,7 +24895,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .map((segment, index) => ({ segment, index, videoPath: String(selectedSegmentVideoPath(segment) || "").trim() }))
       .filter(({ segment, videoPath }) => {
         const grain = normalizeSceneFilmGrain(segment?.film_grain || {});
-        return grain && grain.enabled !== false && videoPath && !sceneVideoHasCurrentFilmGrain(segment, videoPath, { preserveAudio: false });
+        return grain && grain.enabled !== false && videoPath && !sceneVideoHasCurrentFilmGrain(segment, videoPath, { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF });
       });
     if (!targets.length) return;
     for (let index = 0; index < targets.length; index += 1) {
@@ -24517,7 +24911,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         progress,
         (value) => Math.min(97, base + (value - 90) * 0.4),
         "",
-        { preserveAudio: false },
+        { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF },
       );
       activateSegmentVideoPath(segment, result.video_path || videoPath, result.thumbnail_path || segment.video_thumbnail_path || "");
       segment.video_cache_bust = Date.now();
@@ -24547,7 +24941,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
     }
     if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
-    scenesToRender.forEach(({ segment }) => {
+    const canAutoChain = Boolean(state.autoChainLastFrame && currentVideoMode() === "i2v");
+    scenesToRender.forEach(({ segment }, renderIndex) => {
+      if (canAutoChain && renderIndex > 0) return;
+      if (canAutoChain && renderIndex === 0 && canAutoChainFromPreviousRenderedScene(segment)) return;
       missing.push(...validateSceneReadyForVideo(segment, segmentIndexInfo(segment).index));
     });
     return missing;
@@ -24635,6 +25032,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const missing = validateSceneReadyForVideo(segment, sceneIndex);
     if (missing.length) throw new Error(missing.join("\n"));
+    const autoChainPreFrames = state.autoChainLastFrame && videoMode === "i2v"
+      ? Math.max(0, Number(segment.auto_chain_pre_frames || 0))
+      : 0;
     segment.video_status = "running";
     renderList();
     progress?.set(`${batchLabel}Saving current UI session/SRT timing...`, pct(8));
@@ -24655,7 +25055,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!options.audioPathOverride) {
       const videoSettings = i2vVideoSettingsForSegment(segment);
       const fpsForPreroll = Math.max(1, Number(videoSettings.fps || 24));
-      const requestedPreFrames = Math.max(0, Number(videoSettings.pre_frames ?? 0));
+      const requestedPreFrames = autoChainPreFrames > 0 ? autoChainPreFrames : Math.max(0, Number(videoSettings.pre_frames ?? 0));
       const requestedPreSeconds = requestedPreFrames / fpsForPreroll;
       const sourceAudioPath = segment.custom_audio_path || audioInput.value;
       const sceneDuration = Math.max(0.1, timelineSegmentDuration(segment) || 4);
@@ -24699,7 +25099,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       expectedDuration: expectedDurationForScene,
     });
     const videoPromptForRender = applyMappedTriggerPhrases(
-      applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
+      applyVocalDirectiveToVideoPrompt(
+        applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
+        segment,
+        { suppressPrefix: true }
+      ),
       segment
     );
     if (videoPromptForRender && videoPromptForRender !== segment.i2v_prompt) {
@@ -24715,6 +25119,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       srt_path: srtPath,
       project_folder: projectInput.value,
     };
+    if (autoChainPreFrames > 0) payload.pre_frames = autoChainPreFrames;
     if (videoMode === "i2v") {
       payload.image_folder = i2vImagesFolder();
       payload.image_index_zero_based = slotNumber - 1;
@@ -25101,6 +25506,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
         if (randomizeVideoSeed) setVideoSeedRandom(segment);
+        if (state.autoChainLastFrame && currentVideoMode() === "i2v" && index === 0) {
+          const previousSegment = previousAutoChainSourceSegment(segment);
+          if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
+            const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.12)));
+            await prepareAutoChainedNextScene(
+              previousSegment,
+              segment,
+              progress,
+              chainBase,
+              `Auto Chain resume into ${sceneLabel}`
+            );
+          }
+        }
         progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...`, base);
         await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
           progressBase: base,
@@ -25111,6 +25529,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
           srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
         });
+        if (state.autoChainLastFrame && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
+          assertBatchNotStopped();
+          const nextSegment = scenes[index + 1].segment;
+          const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
+          await prepareAutoChainedNextScene(
+            segment,
+            nextSegment,
+            progress,
+            chainBase,
+            `Auto Chain ${index + 1}->${index + 2}`
+          );
+        }
         assertBatchNotStopped();
         await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
       }
@@ -29452,11 +29882,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function openWizardFromBuilder() {
     const setWizardVideoMode = (mode) => {
+      const normalized = String(mode || "").trim().toLowerCase();
+      const allowed = ["i2v", "rtv", "t2v", "ingredients"];
+      if (!allowed.includes(normalized)) return;
       pushHistory();
-      state.videoModelMode = mode === "rtv" ? "rtv" : currentVideoMode();
+      state.videoModelMode = normalized;
       syncVideoModePanel();
       syncI2VVideoSettingsPanel();
       autoSaveSessionQuiet("wizard video mode").catch(() => null);
+    };
+    const normalizeWizardImageMode = (mode) => {
+      const normalized = String(mode || "").trim().toLowerCase();
+      return ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass"].includes(normalized)
+        ? normalized
+        : "zimage";
+    };
+    const setWizardImageMode = async (mode) => {
+      const normalized = normalizeWizardImageMode(mode);
+      pushHistory();
+      state.imageModelMode = normalized;
+      state.fluxKleinSettings.image_model_mode = normalized;
+      state.fluxKleinSettings.enabled = normalized === "flux_klein";
+      syncFluxKleinPanel();
+      syncZImageSettingsPanel();
+      syncErnieImagePanel();
+      syncKrea2TwoPassPanel();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("wizard image mode");
+      return normalized;
     };
     const compactWizardText = (value, limit = 700) => {
       const text = String(value || "").replace(/\s+/g, " ").trim();
@@ -29474,7 +29928,38 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? picker.options.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
     const applyWizardSettings = async (settings = {}) => {
-      setWizardVideoMode("rtv");
+      if (settings.image_model_mode) {
+        const imageMode = normalizeWizardImageMode(settings.image_model_mode);
+        state.imageModelMode = imageMode;
+        state.fluxKleinSettings.image_model_mode = imageMode;
+        state.fluxKleinSettings.enabled = imageMode === "flux_klein";
+        const imageSettings = settings.image_settings || {};
+        if (imageSettings && typeof imageSettings === "object") {
+          if (imageMode === "flux_klein") {
+            state.fluxKleinSettings = {
+              ...state.fluxKleinSettings,
+              ...imageSettings,
+              image_model_mode: imageMode,
+              enabled: true,
+            };
+          } else if (imageMode === "ernie_image") {
+            state.ernieImageSettings = cloneErnieImageSettings({
+              ...state.ernieImageSettings,
+              ...imageSettings,
+            });
+          } else if (imageMode === "krea2_2pass") {
+            state.krea2TwoPassSettings = cloneKrea2TwoPassSettings({
+              ...state.krea2TwoPassSettings,
+              ...imageSettings,
+            });
+          } else if (imageMode === "zimage") {
+            state.zimageSettings = cloneZImageSettings({
+              ...state.zimageSettings,
+              ...imageSettings,
+            });
+          }
+        }
+      }
       i2vUnetPicker.input.value = String(settings.unet_name || i2vUnetPicker.input.value || "");
       i2vVaePicker.input.value = String(settings.vae_name || i2vVaePicker.input.value || "");
       i2vClip1Picker.input.value = String(settings.clip_name1 || i2vClip1Picker.input.value || "");
@@ -29485,8 +29970,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       i2vWidthInput.value = Number(settings.width || i2vWidthInput.value || 1920);
       i2vHeightInput.value = Number(settings.height || i2vHeightInput.value || 1080);
       i2vSeedInput.value = Number(settings.seed || i2vSeedInput.value || 69);
-      ltxMsrLoraPicker.input.value = String(settings.msr_lora_name || ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA);
-      ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength || ltxMsrFirstPassStrength.value || 1);
+      if (settings.msr_lora_name != null) ltxMsrLoraPicker.input.value = String(settings.msr_lora_name || ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA);
+      if (settings.msr_first_pass_strength != null) ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength || ltxMsrFirstPassStrength.value || 1);
       i2vUseLora.input.checked = Boolean(settings.use_loras);
       i2vLoraCount.value = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
       const incomingLoras = Array.isArray(settings.loras) ? settings.loras : [];
@@ -29509,11 +29994,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         i2vMmprojSelect.value = settings.mmproj_file;
       }
       saveI2VVideoSettingsFromPanel();
+      syncFluxKleinPanel();
+      syncZImageSettingsPanel();
+      syncErnieImagePanel();
+      syncKrea2TwoPassPanel();
       syncVideoModePanel();
       syncI2VVideoSettingsPanel();
       render();
       await autoSaveSessionQuiet("wizard settings applied");
-      toast("Wizard RTV settings applied.");
+      toast("Wizard settings applied.");
       return true;
     };
     const upsertWizardLocations = (refs, locations = []) => {
@@ -29562,7 +30051,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .filter(Boolean)
       .join("\n");
     const createWizardLocationsFromLyrics = async (options = {}) => {
-      setWizardVideoMode("rtv");
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const lyricsText = String(options.lyrics || "").trim() || wizardLyricsFromScenes();
       if (!lyricsText) {
@@ -29610,7 +30098,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
     };
     const autoMapWizardLocations = async () => {
-      setWizardVideoMode("rtv");
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       if (!refs.locations.length) {
         toast("Add or import locations in Reference Builder before using wizard Auto Map.", true);
@@ -29676,14 +30163,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const applyWizardSceneDefaults = async (settings = {}) => {
       const cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[settings.cameraFlow] ? settings.cameraFlow : "balanced";
       const performanceStyle = String(settings.performanceStyle || "");
+      const facialPerformance = String(settings.facialPerformance || "");
+      const facialPerformanceCustom = String(settings.facialPerformanceCustom || "");
       const shouldApplyPerformance = Boolean(settings.applyPerformance);
+      const shouldApplyFacial = Boolean(settings.applyFacialPerformance || facialPerformance || facialPerformanceCustom);
       const overwriteCamera = Boolean(settings.overwriteCamera);
       const overwritePerformance = Boolean(settings.overwritePerformance);
+      const overwriteFacial = Boolean(settings.overwriteFacialPerformance);
       let previousMotion = "";
       let cameraChanged = 0;
       let performanceChanged = 0;
+      let facialChanged = 0;
       const scenes = allEditableSegments();
       pushHistory();
+      if (facialPerformance || facialPerformanceCustom) {
+        state.defaultFacialPerformance = facialPerformance;
+        state.defaultFacialPerformanceCustom = facialPerformanceCustom;
+      }
       scenes.forEach((segment, index) => {
         const entry = storyboardCameraFlowEntry(cameraFlow, index, previousMotion);
         if (entry && cameraFlow !== "off") {
@@ -29706,15 +30202,69 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             performanceChanged += 1;
           }
         }
+        if (shouldApplyFacial) {
+          const hadFacial = Boolean(String(segment.facial_performance || "").trim() || String(segment.facial_performance_custom || "").trim());
+          if (overwriteFacial || !hadFacial) {
+            segment.facial_performance = facialPerformance;
+            segment.facial_performance_custom = facialPerformanceCustom;
+            facialChanged += 1;
+          }
+        }
       });
       syncInspector();
       render();
       await autoSaveSessionQuiet("wizard scene defaults");
-      toast(`Wizard scene defaults applied.\nCamera fields: ${cameraChanged}\nPerformance scenes: ${performanceChanged}`);
-      return { cameraChanged, performanceChanged };
+      toast(`Wizard scene defaults applied.\nCamera fields: ${cameraChanged}\nPerformance scenes: ${performanceChanged}\nFacial scenes: ${facialChanged}`);
+      return { cameraChanged, performanceChanged, facialChanged };
+    };
+    const enforceWizardStoryboardVideoFacialRequirements = (prompt, scene = {}) => {
+      let text = String(prompt || "").trim();
+      const promptMentionsFace = /\b(?:woman|man|girl|boy|person|subject|singer|rapper|performer|speaker|character|face|eyes?|brows?|gaze|mouth|jaw|cheeks?|expression|smile|frown|sings?|singing|says|speaks?)\b/i.test(text);
+      const hasCharacter = !scene.no_character_present && !scene.noCharacterPresent && (
+        (Array.isArray(scene.subject_refs) && scene.subject_refs.length)
+        || (Array.isArray(scene.subjects) && scene.subjects.length)
+        || (Array.isArray(scene.visible_subjects) && scene.visible_subjects.length)
+        || promptMentionsFace
+      );
+      if (!text || !hasCharacter) return text;
+      const vocalStatus = scene.vocal_status || {};
+      const promptSaysSinging = /\b(?:sings?|singing|raps?|rapping)\b/i.test(text);
+      const isSinging = promptSaysSinging || (String(scene.performance_mode || vocalStatus.performance_mode || normalizeVideoType(state.videoType)).trim() === "singing"
+        && vocalStatus.should_lip_sync !== false
+        && !vocalStatus.instrumental
+        && !vocalStatus.no_lip_sync
+        && !scene.lyric_no_lip_sync
+        && Boolean(String(vocalStatus.lyric_text || scene.lyrics || scene.lyric_text || "").trim()));
+      if (isSinging) {
+        text = text
+          .replace(/\bwith\s+a\s+quiet,\s*internal\s+intensity\b/gi, "with controlled internal intensity")
+          .replace(/\bwith\s+quiet\s+internal\s+intensity\b/gi, "with controlled internal intensity")
+          .replace(/\bquiet,\s*internal\s+intensity\b/gi, "controlled internal intensity")
+          .replace(/\bquiet\s+internal\s+intensity\b/gi, "controlled internal intensity")
+          .replace(/\bquiet\s+intensity\b/gi, "controlled intensity")
+          .replace(/\bquiet\s+performance\b/gi, "controlled performance")
+          .replace(/\bquiet\s+emotion\b/gi, "restrained emotion")
+          .replace(/\bquiet\s+singing\b/gi, "focused singing");
+      }
+      const hasBlink = /\bblink\w*\b/i.test(text);
+      const hasEyeMovement = /\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(text);
+      const additions = [];
+      if (!hasEyeMovement) additions.push("subtle natural eye movement");
+      if (!hasBlink) additions.push("occasional natural blinking");
+      if (additions.length) {
+        const insert = `, ${additions.join(", ")}`;
+        const faceSentence = text.match(/([^.]*(?:face|eyes?|brows?|gaze|expression)[^.]*)(\.)/i);
+        if (faceSentence && typeof faceSentence.index === "number") {
+          const nextSentence = `${faceSentence[1].trimEnd()}${insert}`;
+          text = `${text.slice(0, faceSentence.index)}${nextSentence}${text.slice(faceSentence.index + faceSentence[1].length)}`;
+        } else {
+          text = `${text.replace(/\.+\s*$/, "")} with ${additions.join(", ")}.`;
+        }
+      }
+      return text.replace(/\s{2,}/g, " ").trim();
     };
     const applyWizardStoryboardTriggerPhrases = (prompt, scene) => {
-      let text = String(prompt || "").trim();
+      let text = enforceWizardStoryboardVideoFacialRequirements(prompt, scene);
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const parts = { start: [], end: [] };
       const add = (trigger, position = "start") => {
@@ -29993,6 +30543,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         sceneCount: allEditableSegments().length,
         videoMode: currentVideoMode(),
         videoModeLabel: videoModeDisplayLabel(currentVideoMode()),
+        imageMode: state.imageModelMode || "zimage",
+        imageModeLabel: imageModeDisplayLabel(state.imageModelMode || "zimage"),
+        imageModeOptions: [
+          { value: "zimage", label: imageModeDisplayLabel("zimage") },
+          { value: "flux_klein", label: imageModeDisplayLabel("flux_klein") },
+          { value: "ernie_image", label: imageModeDisplayLabel("ernie_image") },
+          { value: "krea2_2pass", label: imageModeDisplayLabel("krea2_2pass") },
+          { value: "nano_banana", label: imageModeDisplayLabel("nano_banana") },
+        ],
         subjectCount: Array.isArray(refs.subjects) ? refs.subjects.length : 0,
         locationCount: Array.isArray(refs.locations) ? refs.locations.length : 0,
         storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
@@ -30024,6 +30583,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           vision_model: String(i2vGemmaModelSelect.value || gemmaModelSelect.value || ""),
           mmproj: String(i2vMmprojSelect.value || mmprojSelect.value || ""),
         },
+        imageSettings: {
+          zimage: cloneZImageSettings(state.zimageSettings || defaultZImageSettings()),
+          flux_klein: { ...(state.fluxKleinSettings || defaultFluxKleinSettings()) },
+          ernie_image: cloneErnieImageSettings(state.ernieImageSettings || defaultErnieImageSettings()),
+          krea2_2pass: cloneKrea2TwoPassSettings(state.krea2TwoPassSettings || defaultKrea2TwoPassSettings()),
+          nano_banana: { ...(state.nbImageSettings || {}) },
+        },
+        imageModelOptions: {
+          zimage: {
+            unets: wizardOptionsFromPicker(zUnetPicker),
+            clip: wizardOptionsFromPicker(zClipPicker),
+            vae: wizardOptionsFromPicker(zVaePicker),
+          },
+          flux_klein: {
+            unets: wizardOptionsFromPicker(fluxUnetPicker),
+            clip: wizardOptionsFromPicker(fluxClipPicker),
+            vae: wizardOptionsFromPicker(fluxVaePicker),
+          },
+          ernie_image: {
+            unets: wizardOptionsFromPicker(ernieUnetPicker),
+            clip: wizardOptionsFromPicker(ernieClipPicker),
+            vae: wizardOptionsFromPicker(ernieVaePicker),
+          },
+          krea2_2pass: {
+            unets: wizardOptionsFromPicker(krea2TwoPassUnetPicker),
+            clip: wizardOptionsFromPicker(krea2TwoPassClipPicker),
+            vae: wizardOptionsFromPicker(krea2TwoPassVaePicker),
+          },
+        },
         modelOptions: {
           unets: wizardOptionsFromPicker(i2vUnetPicker),
           vae: wizardOptionsFromPicker(i2vVaePicker),
@@ -30036,6 +30624,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         sceneDefaults: {
           cameraFlow: "balanced",
           performanceStyle: "",
+          facialPerformance: state.defaultFacialPerformance || "",
+          facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
           cameraFlowOptions: Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({
             value,
             label: preset.label || value,
@@ -30047,19 +30637,32 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             label: preset.label,
             description: storyboardPerformancePreset(preset.value).direction || preset.description || "",
           })),
+          facialPerformanceOptions: FACIAL_PERFORMANCE_PRESETS.map((preset) => ({
+            value: preset.value,
+            label: preset.label,
+            description: storyboardFacialPerformancePreset(preset.value).direction || preset.description || "",
+          })),
         },
       };
     };
     openMusicVideoWizard({
       snapshot: wizardSnapshot,
       setVideoMode: setWizardVideoMode,
+      setImageMode: setWizardImageMode,
       chooseAudioFile: chooseProjectAudioFile,
       createScenesFromLyrics: createScenesFromTimestampedLyrics,
       applySettings: applyWizardSettings,
       openGemmaRunner: openGemmaRunnerModal,
-      openReferenceBuilder: () => {
-        setWizardVideoMode("rtv");
-        openFluxReferenceBuilderModal({ wizardMode: true });
+      openReferenceBuilder: (mode = currentVideoMode()) => {
+        const normalized = String(mode || currentVideoMode() || "i2v").trim().toLowerCase();
+        setWizardVideoMode(normalized);
+        if (normalized === "ingredients") {
+          openIngredientsReferenceBuilderModal();
+        } else if (normalized === "rtv") {
+          openFluxReferenceBuilderModal({ wizardMode: true });
+        } else {
+          openSceneTextMappingModal();
+        }
       },
       openLyricMapping: openLyricMappingWorkflowModal,
       openLyricReview: openLyricReviewModal,
@@ -30092,11 +30695,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           project_folder: projectFolder,
         }, 60000);
       },
+      runGemmaImageAll: async () => {
+        await confirmAndRunGemmaT2IAll();
+      },
       runGemmaVideoAll: async () => {
-        await runWizardStoryboardGemmaAll();
+        if (currentVideoMode() === "rtv") await runWizardStoryboardGemmaAll();
+        else await confirmAndRunGemmaVideoAll();
       },
       buildFullVideo: async () => {
-        setWizardVideoMode("rtv");
         await confirmAndRunFullBuild();
       },
       saveProject: (options = {}) => saveSession({ quiet: options?.quiet !== false, throwOnError: false }),

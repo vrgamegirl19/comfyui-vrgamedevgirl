@@ -2229,6 +2229,8 @@ def _looks_like_gemma_repeat_failure(text):
         "thoughtthoughtthought",
         "ownnessownnessownness",
         "nessnessnessness",
+        "model_model_model",
+        "modelmodelmodel",
         "end_anow",
         "thought_turn",
         "turn_turn",
@@ -2239,6 +2241,9 @@ def _looks_like_gemma_repeat_failure(text):
             return True
 
     if re.search(r"([a-z]{2,16})\1{5,}", compact):
+        return True
+
+    if re.search(r"(?:^|_)([a-z]{2,24})(?:_\1){5,}(?:_|$)", compact):
         return True
 
     if re.search(r"\b([a-zA-Z_]{3,})(?:[-\s]+\1){5,}\b", sample):
@@ -3958,6 +3963,376 @@ def _generate_builder_i2v_prompt(payload):
         text = _clean_gemma_prompt_text(text)
         text = _repair_and_validate_builder_gemma_prompt(payload, text, "I2V")
         return {"prompt": text, "used_model": run_info.get("used_model", model_path), "used_mmproj": mmproj_path, "used_image_reference": has_image_reference, "runner": run_info.get("runner", "builtin"), "unloaded": run_info.get("unloaded", unload_after)}
+    finally:
+        if llm and unload_after:
+            llm._unload_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
+
+
+def _chained_i2v_meta_language_error(text):
+    forbidden_patterns = [
+        r"\bcurrent\s+(?:frame|image|picture|photo)\b",
+        r"\bprovided\s+(?:frame|image|picture|photo)\b",
+        r"\bprevious\s+(?:frame|image|picture|photo|scene|video)\b",
+        r"\blast\s+(?:frame|image|picture|photo)\b",
+        r"\bfirst\s+(?:frame|image|picture|photo)\b",
+        r"\bstart(?:ing)?\s+(?:frame|image|picture|photo)\b",
+        r"\b(?:this|the)\s+(?:frame|image|picture|photo)\b",
+        r"\bfrom\s+(?:the\s+)?(?:frame|image|picture|photo)\b",
+    ]
+    for pattern in forbidden_patterns:
+        if re.search(pattern, text or "", flags=re.I):
+            return pattern
+    return ""
+
+
+def _validate_chained_i2v_prompt(text):
+    if _chained_i2v_meta_language_error(text):
+        raise ValueError(
+            "Gemma returned a chained I2V prompt with frame/image meta language. "
+            "Try again or simplify the chain direction."
+        )
+
+
+def _repair_chained_i2v_meta_prompt(payload, text, transition_lora_prompt=False, transition_lora_trigger="zhuanchang"):
+    original = str(text or "").strip()
+    if not original or not _chained_i2v_meta_language_error(original):
+        return original
+    repair_payload = dict(payload or {})
+    repair_model = str(
+        repair_payload.get("repair_model_file")
+        or repair_payload.get("text_model_file")
+        or repair_payload.get("model_file")
+        or ""
+    ).strip()
+    if repair_model:
+        repair_payload["model_file"] = repair_model
+    repair_payload["mmproj_file"] = ""
+    repair_payload["use_vision"] = False
+    trigger = str(transition_lora_trigger or "zhuanchang").strip() or "zhuanchang"
+    trigger_rule = (
+        f"\n- End the prompt with exactly one trigger phrase: {trigger}"
+        if transition_lora_prompt else ""
+    )
+    instruction = (
+        "Rewrite this chained LTX image-to-video prompt into one normal final video prompt paragraph.\n\n"
+        "The prompt is already conceptually useful, but it contains forbidden meta language about frames/images/references/sources. "
+        "Remove that meta language while preserving the visible starting subject, setting, action, camera motion, transformation, lyrics/performance intent, and ending state.\n\n"
+        "Rules:\n"
+        "- Do not mention frames, images, pictures, photos, references, sources, current visuals, provided visuals, previous scenes, or previous videos.\n"
+        "- Do not say use/using/based on/from the image or frame.\n"
+        "- Keep it as a normal cinematic image-to-video prompt only.\n"
+        "- No markdown, labels, quotes around the whole prompt, JSON, or bullet points."
+        f"{trigger_rule}\n\n"
+        f"Prompt to rewrite:\n{original[:5000]}"
+    )
+    try:
+        repaired, _run_info = _run_builder_text_llm(
+            repair_payload,
+            instruction,
+            temperature=0.2,
+            top_p=0.85,
+            max_new_tokens=900,
+            label="Chained I2V repair Gemma",
+        )
+        repaired = _clean_gemma_prompt_text(repaired)
+        if transition_lora_prompt and trigger:
+            repaired = re.sub(rf"(?:,\s*)?{re.escape(trigger)}\s*$", "", repaired, flags=re.I).strip().rstrip(".,;")
+            repaired = f"{repaired}, {trigger}"
+        if repaired and not _chained_i2v_meta_language_error(repaired):
+            return repaired
+    except Exception:
+        pass
+    return original
+
+
+def _fallback_chained_i2v_prompt(
+    scene_context="",
+    user_notes="",
+    story_context="",
+    chain_style="continuous",
+    transition_lora_prompt=False,
+    transition_lora_trigger="zhuanchang",
+):
+    context = " ".join(
+        part
+        for part in (
+            str(scene_context or "").strip(),
+            str(user_notes or "").strip(),
+            str(story_context or "").strip(),
+        )
+        if part
+    )
+    context = re.sub(r"\s+", " ", context).strip()
+    if len(context) > 700:
+        context = context[:700].rsplit(" ", 1)[0].strip()
+    style = str(chain_style or "continuous").strip().lower().replace("-", "_").replace(" ", "_")
+    if style in {"transformation", "surreal"} or transition_lora_prompt:
+        prompt = (
+            "A cinematic shot begins from the visible subject and setting, preserving the existing pose, lighting, colors, and composition. "
+            "As the camera moves smoothly, the subject's outfit, hair, materials, and silhouette begin to transform with fluid detail, while the surrounding environment shifts into a new expressive location shaped by the scene's story and mood. "
+            "Lighting changes across the subject's face and clothing, textures ripple and reform, and the background evolves into a more dramatic visual world while the motion remains continuous and natural."
+        )
+    elif style == "environment_shift":
+        prompt = (
+            "A cinematic shot begins from the visible subject and setting, preserving the existing pose, lighting, colors, and composition. "
+            "As the camera moves smoothly, the surrounding environment transforms with changing atmosphere, architecture, weather, and light, while the visible subject remains grounded in the scene. "
+            "The location gradually becomes a new expressive space shaped by the story and mood, with continuous motion and natural visual flow."
+        )
+    else:
+        prompt = (
+            "A cinematic shot begins from the visible subject and setting, preserving the existing pose, lighting, colors, and composition. "
+            "The camera moves smoothly as the subject continues with natural performance energy, subtle expression changes, and environmental motion. "
+            "The scene develops toward the next story beat while maintaining continuous visual flow."
+        )
+    if context:
+        prompt += f" The transformation direction follows this scene context: {context}"
+    trigger = str(transition_lora_trigger or "zhuanchang").strip() or "zhuanchang"
+    if transition_lora_prompt:
+        prompt = re.sub(rf"(?:,\s*)?{re.escape(trigger)}\s*$", "", prompt, flags=re.I).strip().rstrip(".,;")
+        prompt = f"{prompt}, {trigger}"
+    return prompt
+
+
+def _chained_i2v_style_note(chain_style, chain_direction):
+    style = str(chain_style or "continuous").strip().lower().replace("-", "_").replace(" ", "_")
+    if style not in {"continuous", "surreal", "transformation", "environment_shift"}:
+        style = "continuous"
+    direction = str(chain_direction or "").strip()
+    if style == "surreal":
+        note = "Style mode: surreal continuity. Keep the opening visual state recognizable, then introduce dreamlike impossible motion, altered light, strange materials, or poetic environmental behavior."
+    elif style == "transformation":
+        note = (
+            "Style mode: subject and environment transformation. Start from the visible subject, clothing, pose, lighting, and place exactly as they appear, "
+            "then visibly change them during the shot. Include at least one clear wardrobe/material/body-silhouette transformation and one clear environment, lighting, weather, architecture, or location transformation when a character is visible. "
+            "Do not leave the subject in the same outfit and same location with only posing or wind; the shot must evolve into something else while remaining continuous."
+        )
+    elif style == "environment_shift":
+        note = "Style mode: environment shift. Keep the opening visual state recognizable, then gradually change the surrounding place, weather, architecture, lighting, or atmosphere while maintaining one continuous shot."
+    else:
+        note = "Style mode: continuous video. Keep the opening visual state recognizable and extend it with natural action, camera motion, lighting changes, and environmental motion."
+    if direction:
+        note += f"\nUser chain direction: {direction}"
+    return note
+
+
+def _generate_builder_chained_i2v_prompt(payload):
+    from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
+
+    model_file = str(payload.get("model_file", "") or "").strip()
+    mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
+    image_reference_path = str(payload.get("image_reference_path", "") or payload.get("source_image_path", "") or "").strip().strip('"')
+    image_reference_data = str(payload.get("image_reference_data", "") or "").strip()
+    scene_context = str(payload.get("scene_context", "") or payload.get("t2i_prompt", "") or "").strip()
+    user_notes = str(payload.get("user_notes", "") or "").strip()
+    scene_notes = str(payload.get("scene_notes", "") or "").strip()
+    director_note = str(payload.get("director_note", "") or "").strip()
+    story_beat = str(payload.get("story_beat", "") or "").strip()
+    lyric_text = str(payload.get("lyric_text", "") or payload.get("lyrics", "") or "").strip()
+    lyric_section = str(payload.get("lyric_section", "") or "").strip()
+    subject_context = str(payload.get("subject_context", "") or "").strip()
+    location_context = str(payload.get("location_context", "") or "").strip()
+    no_character_present = bool(payload.get("no_character_present", False))
+    reference_context = payload.get("reference_context") or {}
+    chain_style = str(payload.get("chain_style", "") or payload.get("continuity_style", "") or "continuous").strip()
+    chain_direction = str(payload.get("chain_direction", "") or payload.get("continuity_direction", "") or "").strip()
+    transition_lora_prompt = bool(payload.get("transition_lora_prompt") or payload.get("use_transition_lora_prompt") or False)
+    transition_lora_trigger = str(payload.get("transition_lora_trigger", "") or "zhuanchang").strip() or "zhuanchang"
+    performance_mode = str(payload.get("performance_mode") or payload.get("video_type") or "").strip()
+    text_runner = _llm_runner_from_payload(payload)
+
+    if not image_reference_data and not image_reference_path:
+        raise ValueError("Chained I2V needs an extracted final-frame image.")
+    if not model_file and text_runner not in {"lm_studio", "llm_api"}:
+        raise ValueError("Choose an I2V vision Gemma model first.")
+    if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
+        raise ValueError("The I2V vision model field is not a GGUF model.")
+
+    if image_reference_data:
+        image = _image_from_data_url(image_reference_data).convert("RGB")
+    else:
+        image_path = _resolve_existing_file(image_reference_path, "Chained I2V image reference")
+        image = Image.open(image_path).convert("RGB")
+
+    style_note = _chained_i2v_style_note(chain_style, chain_direction)
+    reference_subject_context = ""
+    reference_location_context = ""
+    if isinstance(reference_context, dict):
+        reference_subject_context = str(reference_context.get("subject_context", "") or "").strip()
+        reference_location_context = str(reference_context.get("location_context", "") or "").strip()
+        if not reference_subject_context:
+            subject_refs = reference_context.get("subject_refs") or []
+            if isinstance(subject_refs, list):
+                subject_lines = []
+                for subject in subject_refs:
+                    if not isinstance(subject, dict):
+                        continue
+                    name = str(subject.get("name", "") or "").strip()
+                    description = str(subject.get("description", "") or "").strip()
+                    trigger = str(subject.get("trigger_phrase", "") or "").strip()
+                    line = " - ".join(part for part in (name, description, f"trigger: {trigger}" if trigger else "") if part)
+                    if line:
+                        subject_lines.append(line)
+                reference_subject_context = "\n".join(subject_lines)
+        if not reference_location_context:
+            location_ref = reference_context.get("location_ref")
+            if isinstance(location_ref, dict):
+                name = str(location_ref.get("name", "") or "").strip()
+                description = str(location_ref.get("description", "") or "").strip()
+                trigger = str(location_ref.get("trigger_phrase", "") or "").strip()
+                reference_location_context = " - ".join(part for part in (name, description, f"trigger: {trigger}" if trigger else "") if part)
+    elif reference_context:
+        reference_subject_context = str(reference_context).strip()
+
+    subject_context = subject_context or reference_subject_context
+    location_context = location_context or reference_location_context
+    story_parts = [
+        ("Scene concept", scene_context),
+        ("Scene notes", scene_notes),
+        ("Director note", director_note),
+        ("Story beat", story_beat),
+        ("Lyric section", lyric_section),
+        ("Lyrics/dialogue", lyric_text),
+        ("Reference Builder subject", subject_context if not no_character_present else ""),
+        ("Reference Builder location", location_context),
+    ]
+    story_context = "\n".join(f"{label}: {value}" for label, value in story_parts if value)
+    no_character_rule = (
+        "\n- The next shot is marked as no-character-present. Do not add the mapped subject unless the visible scene already clearly contains them."
+        if no_character_present else ""
+    )
+    transition_lora_rules = ""
+    if transition_lora_prompt:
+        transition_lora_rules = (
+            "\nTransition LoRA prompt style is active.\n"
+            f"- Write in a transition-LoRA style: visible starting shot, detailed transformation process, changed ending state, lighting/material/environment details, and strong continuous camera movement.\n"
+            "- Make the transformation explicit and temporal with phrases such as gradually, as the camera moves, the clothing shifts into, the environment morphs into, the lighting changes from/to, or the scene reveals.\n"
+            "- For a visible character, include a clear outfit/material/hair/silhouette change and a clear environment/location/lighting/style change unless the user direction forbids one of them.\n"
+            "- For an environment-only shot, transform the place, weather, architecture, terrain, lighting, or style into a different readable destination.\n"
+            "- End the prompt with the transition trigger phrase exactly once.\n"
+            f"- Trigger phrase: {transition_lora_trigger}\n"
+        )
+    instruction = (
+        f"{_I2V_INSTRUCTIONS}\n\n"
+        "Write one normal image-to-video prompt for LTX. The video model will receive a visual source separately, "
+        "but your output must read like an ordinary video prompt only.\n\n"
+        "Rules for the output:\n"
+        "- Begin with a concrete description of only what is actually visible: subject, clothing, pose, lighting, camera angle, colors, and setting. Do not invent a different location, outfit, pose, shot angle, or material from the story context in the opening description.\n"
+        "- Treat the story, lyrics, subject, and location context as the direction the shot may evolve toward, not as permission to replace the visible starting facts.\n"
+        "- Continue with motion and changes that naturally develop from the visible state while moving toward the story context below.\n"
+        "- If transformation style is active, the prompt must include visible change: clothing/materials/body silhouette should transform and the surrounding environment or lighting should transform. Avoid a boring continuation where the subject only poses, stares, walks, wind blows, or the camera moves while the outfit and place stay basically the same.\n"
+        "- Silently assess the visible shot scale before choosing camera motion. If it is already a close-up or extreme close-up, do not zoom or push farther into the face; use a slow pullback, orbit, pan, rack focus, expression change, environmental motion, or transformation instead. If it is already a wide or distant shot, do not pull farther away; use a push-in toward the subject, orbiting push-in, tracking move, subject action, or environmental change instead. If it is a medium shot, choose motion that changes the composition without repeating what is already true.\n"
+        "- Use the story context to make this shot meaningfully different from the last shot when it fits the requested chain style.\n"
+        "- Do not mention frames, images, pictures, photos, references, sources, current visuals, provided visuals, previous scenes, or previous videos.\n"
+        "- Do not write instructions to the model. Output only the final cinematic prompt paragraph.\n"
+        f"- No markdown, labels, quotes, JSON, or bullet points.{no_character_rule}\n"
+        f"{transition_lora_rules}\n"
+        f"{style_note}\n\n"
+        f"Story context for the next shot:\n{story_context or '(none)'}\n\n"
+        f"Motion/performance notes:\n{user_notes or 'Create cinematic motion that fits the visible scene.'}\n\n"
+        f"Performance mode:\n{performance_mode or 'Use the visible scene and notes. Do not force singing unless the notes call for it.'}"
+    )
+
+    llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
+    model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
+    mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if llm else ""
+    n_ctx = int(payload.get("n_ctx") or 8000)
+    n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
+    n_threads = int(payload.get("n_threads") or 8)
+    chat_format = str(payload.get("chat_format", "") or "").strip()
+    temperature = float(payload.get("temperature") or 0.25)
+    top_p = float(payload.get("top_p") or 0.9)
+    max_new_tokens = int(payload.get("max_new_tokens") or 1200)
+    unload_after = bool(payload.get("unload_after", True))
+    seed = payload.get("seed")
+
+    try:
+        model = None
+        if text_runner == "llm_api":
+            text, run_info = _run_llm_api_vision(payload, instruction, [image])
+        elif text_runner == "lm_studio":
+            text = _run_lm_studio_vision(
+                payload,
+                instruction,
+                [image],
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+            )
+            run_info = {
+                "runner": "lm_studio_vision",
+                "used_model": str(payload.get("lmstudio_model") or "").strip(),
+                "unloaded": False,
+            }
+        else:
+            model = llm._load_gguf_model(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_gpu_layers=n_gpu_layers,
+                n_threads=n_threads,
+                chat_format=chat_format,
+                mmproj_path=mmproj_path,
+            )
+            text = llm._run_gguf_vision_pipeline(
+                model=model,
+                pil_images=[image],
+                instruction_text=instruction,
+                temperature=temperature,
+                top_p=top_p,
+                max_new_tokens=max_new_tokens,
+                seed=int(seed) if seed is not None else None,
+            )
+            run_info = {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
+        text = _clean_gemma_prompt_text(text)
+        try:
+            text = _repair_and_validate_builder_gemma_prompt(payload, text, "Chained I2V")
+        except Exception:
+            text = _fallback_chained_i2v_prompt(
+                scene_context=scene_context,
+                user_notes=user_notes,
+                story_context=story_context,
+                chain_style=chain_style,
+                transition_lora_prompt=transition_lora_prompt,
+                transition_lora_trigger=transition_lora_trigger,
+            )
+        if transition_lora_prompt and transition_lora_trigger:
+            text = re.sub(rf"(?:,\s*)?{re.escape(transition_lora_trigger)}\s*$", "", text, flags=re.I).strip().rstrip(".,;")
+            text = f"{text}, {transition_lora_trigger}"
+        text = _repair_chained_i2v_meta_prompt(
+            payload,
+            text,
+            transition_lora_prompt=transition_lora_prompt,
+            transition_lora_trigger=transition_lora_trigger,
+        )
+        if _looks_like_gemma_repeat_failure(text) or _looks_like_unfilled_prompt_template(text):
+            text = _fallback_chained_i2v_prompt(
+                scene_context=scene_context,
+                user_notes=user_notes,
+                story_context=story_context,
+                chain_style=chain_style,
+                transition_lora_prompt=transition_lora_prompt,
+                transition_lora_trigger=transition_lora_trigger,
+            )
+        meta_language_warning = bool(_chained_i2v_meta_language_error(text))
+        return {
+            "prompt": text,
+            "used_model": run_info.get("used_model", model_path),
+            "used_mmproj": mmproj_path,
+            "used_image_reference": True,
+            "runner": run_info.get("runner", "builtin"),
+            "unloaded": run_info.get("unloaded", unload_after),
+            "chain_style": chain_style or "continuous",
+            "transition_lora_prompt": transition_lora_prompt,
+            "transition_lora_trigger": transition_lora_trigger if transition_lora_prompt else "",
+            "meta_language_warning": meta_language_warning,
+        }
     finally:
         if llm and unload_after:
             llm._unload_gguf_model(
@@ -6484,6 +6859,57 @@ def _archive_scene_image(payload):
     }
 
 
+def _extract_video_final_frame_as_scene_image(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    source_path = _resolve_existing_file(payload.get("source_path", ""), "Source video")
+    try:
+        common = os.path.commonpath([project_folder, source_path])
+    except ValueError:
+        common = ""
+    if common != project_folder:
+        raise ValueError("Source video must be inside the current project folder.")
+
+    scene_number = int(payload.get("scene_number") or payload.get("target_scene_number") or 1)
+    target_path = _unique_preview_path(project_folder, scene_number, ".png")
+    ffmpeg_path = _find_ffmpeg_path()
+    attempts = [
+        ["-sseof", "-0.04"],
+        ["-sseof", "-0.12"],
+        ["-sseof", "-0.5"],
+    ]
+    last_error = ""
+    for seek_args in attempts:
+        cmd = [
+            ffmpeg_path,
+            "-y",
+            *seek_args,
+            "-i",
+            source_path,
+            "-frames:v",
+            "1",
+            "-update",
+            "1",
+            target_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=False)
+        if result.returncode == 0 and os.path.isfile(target_path) and os.path.getsize(target_path) > 0:
+            return {
+                "saved_path": target_path,
+                "preview_folder": _scene_preview_folder(project_folder, scene_number),
+                "scene_number": scene_number,
+                "source_path": source_path,
+            }
+        last_error = (result.stderr or result.stdout or "ffmpeg could not extract a final frame.").strip()
+        try:
+            if os.path.isfile(target_path):
+                os.remove(target_path)
+        except Exception:
+            pass
+    raise RuntimeError(last_error or "ffmpeg could not extract a final frame.")
+
+
 def _save_flux_reference_image(payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
@@ -7268,6 +7694,15 @@ def _ensure_music_builder_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/music_builder/extract_video_final_frame")
+    async def vrgdg_music_builder_extract_video_final_frame(request):
+        try:
+            payload = await request.json()
+            result = _extract_video_final_frame_as_scene_image(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/music_builder/save_flux_reference_image")
     async def vrgdg_music_builder_save_flux_reference_image(request):
         try:
@@ -7567,6 +8002,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _generate_builder_i2v_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/generate_chained_i2v")
+    async def vrgdg_music_builder_generate_chained_i2v(request):
+        try:
+            payload = await request.json()
+            result = _generate_builder_chained_i2v_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

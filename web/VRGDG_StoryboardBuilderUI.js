@@ -794,6 +794,73 @@ export function storyboardPerformancePreset(value = "") {
   return PERFORMANCE_STYLE_PRESETS.find((item) => item.value === value) || PERFORMANCE_STYLE_PRESETS[0];
 }
 
+export const FACIAL_PERFORMANCE_PRESETS = [
+  {
+    value: "",
+    label: "Default natural",
+    description: "Natural expressive face",
+    direction: "Use natural expressive facial performance: engaged eyes, subtle natural eye movement, active brows, subtle cheek and jaw movement, visible emotion that fits the lyric or scene, and occasional natural blinking.",
+  },
+  {
+    value: "pop_polished",
+    label: "Pop / polished stage",
+    description: "Camera-ready pop emotion",
+    direction: "Use polished pop-star facial performance: bright eyes, subtle natural eye movement, direct camera gaze, soft confident smile, playful smirk, relaxed brows, slight head tilts, lips slightly parted while singing, charming camera-ready expression, and occasional natural blinking.",
+  },
+  {
+    value: "pop_flirty",
+    label: "Pop / playful flirty",
+    description: "Playful, charming pop face",
+    direction: "Use playful pop facial performance: flirty smile, coy glance, subtle natural eye movement, light pout, glossy pout, raised brows, charming direct gaze, playful smirk, subtle head tilt, lips slightly parted while singing, and occasional natural blinking.",
+  },
+  {
+    value: "love_tender",
+    label: "Love song / tender",
+    description: "Soft romantic expression",
+    direction: "Use tender love-song facial performance: softened eyes, subtle natural eye movement, warm smile, affectionate gaze, raised inner brows, gentle head tilt, relaxed cheeks, subtle vulnerable emotion, and occasional natural blinking.",
+  },
+  {
+    value: "sad_wounded",
+    label: "Sad / wounded",
+    description: "Grief, hurt, vulnerability",
+    direction: "Use wounded sad-song facial performance: lowered gaze, heavy or watery eyes, subtle natural eye movement, raised inner brows, pinched brows, downturned mouth, trembling lips or chin when appropriate, defeated expression, and occasional natural blinking.",
+  },
+  {
+    value: "happy_joyful",
+    label: "Happy / joyful",
+    description: "Bright and joyful",
+    direction: "Use joyful facial performance: bright smile, smiling eyes, subtle natural eye movement, raised cheeks, delighted expression, playful gaze, lifted mouth corners, relaxed brows, head tilt with smile, and occasional natural blinking.",
+  },
+  {
+    value: "rock_intense",
+    label: "Rock / intense",
+    description: "Gritty rock intensity",
+    direction: "Use intense rock facial performance: focused stare, subtle natural eye movement, furrowed brows, defiant smirk, clenched jaw, gritty emotional strain, sharp eye contact, forceful singing expression, and occasional natural blinking.",
+  },
+  {
+    value: "metal_rage",
+    label: "Metal / rage",
+    description: "Aggressive heavy metal face",
+    direction: "Use aggressive heavy metal facial performance: fierce stare, subtle natural eye movement, furrowed brows, wild eyes, clenched jaw, snarling mouth shapes during vocals, bared teeth on powerful notes, flared nostrils, strained neck intensity, raw emotional scream expression, and occasional natural blinking.",
+  },
+  {
+    value: "rap_high_intensity",
+    label: "Rap / high intensity",
+    description: "Sharp rap delivery",
+    direction: "Use high-intensity rap facial performance: intense stare, sharp eye contact, subtle natural eye movement, furrowed brows, animated eyes, confident smirk, tight jaw, mouth open mid-verse, fast-moving mouth during delivery, challenging look, victory grin, and occasional natural blinking.",
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    description: "Use custom facial text",
+    direction: "",
+  },
+];
+
+export function storyboardFacialPerformancePreset(value = "") {
+  return FACIAL_PERFORMANCE_PRESETS.find((item) => item.value === value) || FACIAL_PERFORMANCE_PRESETS[0];
+}
+
 function storyboardMotionFamily(motion = "") {
   const text = String(motion || "").toLowerCase();
   if (/push|dolly in|zoom in|track forward|crash zoom|snap zoom/.test(text)) return "in";
@@ -1088,6 +1155,8 @@ function normalizeScene(scene = {}, index = 0) {
     camera_motion: scene.camera_motion || scene.motion_preset || "",
     character_motion: scene.character_motion || scene.character_motion_preset || scene.subject_motion || "",
     performance_style: scene.performance_style || scene.song_style || scene.music_style || "",
+    facial_performance: scene.facial_performance || scene.facialPerformance || scene.facial_expression || scene.facialExpression || "",
+    facial_performance_custom: scene.facial_performance_custom || scene.facialPerformanceCustom || scene.facial_expression_custom || scene.facialExpressionCustom || "",
     include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
     status: scene.status || "draft",
     image_prompt: scene.image_prompt || scene.t2i_prompt || "",
@@ -1122,6 +1191,8 @@ function scenesFromBuilderPayload(payload = {}) {
       camera_motion: scene.camera_motion || scene.motion_preset || "",
       character_motion: scene.character_motion || scene.character_motion_preset || scene.subject_motion || "",
       performance_style: scene.performance_style || scene.song_style || scene.music_style || "",
+      facial_performance: scene.facial_performance || scene.facialPerformance || scene.facial_expression || scene.facialExpression || "",
+      facial_performance_custom: scene.facial_performance_custom || scene.facialPerformanceCustom || scene.facial_expression_custom || scene.facialExpressionCustom || "",
       include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
       image_prompt: scene.t2i_prompt || "",
     video_prompt: scene.i2v_prompt || scene.t2v_prompt || "",
@@ -1243,6 +1314,8 @@ function slimStoryboardForRequest(state) {
     image_aesthetic: state.imageAesthetic || "",
     global_consistency_phrase: state.globalConsistencyPhrase || "",
     performance_style_default: state.performanceStyle || "",
+    facial_performance_default: state.facialPerformance || "",
+    facial_performance_custom_default: state.facialPerformanceCustom || "",
     story_layer: normalizeStoryLayer(state.storyLayer),
     reference_builder: {
       subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
@@ -1292,6 +1365,11 @@ function storyboardScenesForGpt(state) {
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
     const performanceMode = normalizeStoryboardPerformanceMode(normalized.performance_mode || state.performanceMode || state.videoType || state.performance_mode);
+    const facialPreset = storyboardFacialPerformancePreset(normalized.facial_performance || state.facialPerformance);
+    const facialCustom = String(normalized.facial_performance_custom || state.facialPerformanceCustom || "").trim();
+    const facialDirection = (normalized.facial_performance || state.facialPerformance) === "custom" && facialCustom
+      ? facialCustom
+      : [facialPreset.direction, facialCustom].filter(Boolean).join(" ");
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
@@ -1356,7 +1434,8 @@ function storyboardScenesForGpt(state) {
             : performanceMode === "no_lip_sync"
               ? "Visual-only scene. Do not quote lyric_line. Do not mention saying, speaking, dialogue, singing, rapping, lyrics, vocals, lip-syncing, mouth movement, or no-vocal status. Use lyric_line only as hidden mood or story context."
               : shouldLipSync
-                ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, and performance energy. Every non_singing_visible_subjects entry must still appear in the scene as a visible non-singing subject who reacts, watches, moves, or shares the moment without singing. Do not describe mouth shapes or mouth position."
+                ? "Treat lyric_line as words being sung, not as literal scene action. The listed singer(s) should visibly sing this line with expressive facial emotion, gestures, performance energy, and facial performance guidance when provided. In the singer face sentence, include subtle natural eye movement and occasional natural blinking beside the eyes/brows/gaze description; do not append blinking or eye movement to an environment sentence. Every non_singing_visible_subjects entry must still appear in the scene as a visible non-singing subject who reacts, watches, moves, or shares the moment without singing. Use mouth-shape or jaw/lip wording only for the listed singer(s), never for non-singing subjects."
+                + " Do not describe visible singing as quiet; use controlled, focused, intimate, restrained, inward, tender, or simmering intensity instead."
                 : "Do not mention singing, lip-syncing, mouth movement, or vocal performance for this scene. Every listed subject must still appear as a visible non-singing subject unless no_character_present is true.",
       },
       scene_summary: imageMode ? "" : normalized.prompt_summary,
@@ -1379,6 +1458,9 @@ function storyboardScenesForGpt(state) {
         : "",
       performance_style: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).label,
       performance_direction: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).direction,
+      facial_performance: facialPreset.label,
+      facial_performance_direction: facialDirection,
+      facial_performance_custom: facialCustom,
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone
@@ -1501,6 +1583,8 @@ function openStoryboardBuilder(payload = {}) {
     imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || ""),
     globalConsistencyPhrase: String(payload.globalConsistencyPhrase || payload.global_consistency_phrase || ""),
     performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
+    facialPerformance: String(payload.facialPerformance || payload.facial_performance || payload.facial_performance_default || ""),
+    facialPerformanceCustom: String(payload.facialPerformanceCustom || payload.facial_performance_custom || payload.facial_performance_custom_default || ""),
     performanceMode: payloadPerformanceMode,
   };
 
@@ -1705,7 +1789,32 @@ function openStoryboardBuilder(payload = {}) {
   performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace);
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, performanceControls, performanceInfo);
+  const facialControls = document.createElement("div");
+  facialControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const facialLabel = document.createElement("div");
+  facialLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  facialLabel.textContent = "Global facial performance";
+  const facialSelect = makeSelect(FACIAL_PERFORMANCE_PRESETS, state.facialPerformance);
+  facialSelect.style.width = "max-content";
+  facialSelect.style.minWidth = "180px";
+  const facialApply = makeButton("Fill Missing", "primary");
+  facialApply.title = "Fill only blank per-scene facial performance fields.";
+  const facialReplace = makeButton("Replace All");
+  facialReplace.title = "Replace every scene's facial performance with the selected global facial preset.";
+  facialControls.append(facialLabel, facialSelect, facialApply, facialReplace);
+  const facialInfo = document.createElement("div");
+  facialInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const facialCustomControls = document.createElement("div");
+  facialCustomControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;white-space:nowrap;";
+  const facialCustomLabel = document.createElement("div");
+  facialCustomLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;padding-top:8px;";
+  facialCustomLabel.textContent = "Custom facial text";
+  const facialCustomInput = makeTextarea(state.facialPerformanceCustom || "", "Optional custom facial performance text, e.g. expressive eyes, active brows, natural blinking...", 3);
+  facialCustomInput.style.minWidth = "520px";
+  facialCustomControls.append(facialCustomLabel, facialCustomInput);
+  const facialCustomInfo = document.createElement("div");
+  facialCustomInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, performanceControls, performanceInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
   storyLayerBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;color:#cbd5e1;font-size:12px;";
@@ -1810,9 +1919,10 @@ function openStoryboardBuilder(payload = {}) {
     const imageShotPreset = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[state.imageShotFlow] || STORYBOARD_IMAGE_SHOT_FLOW_PRESETS.intimate;
     const imageAestheticPreset = storyboardImageAestheticPreset(state.imageAesthetic);
     const performancePreset = storyboardPerformancePreset(state.performanceStyle);
+    const facialPreset = storyboardFacialPerformancePreset(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
-      ? `${cameraPreset.label || "Camera flow"} · ${performancePreset.label || "Performance style"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
-      : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
+      ? `${cameraPreset.label || "Camera flow"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
+      : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
     const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
     const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
     const hasBrief = Boolean(String(state.storyLayer.song_story_brief || "").trim());
@@ -1859,6 +1969,17 @@ function openStoryboardBuilder(payload = {}) {
     refreshSetupPanelSummaries();
   };
 
+  const refreshFacialInfo = () => {
+    const preset = storyboardFacialPerformancePreset(state.facialPerformance);
+    facialInfo.textContent = state.facialPerformance
+      ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene facial performance preset.`
+      : `${preset.description} Pick a preset here to use it as the default for blank scenes.`;
+    facialCustomInfo.textContent = state.facialPerformanceCustom
+      ? "Custom facial text is appended to the selected preset, or used directly when Custom is selected."
+      : "Optional custom wording for eyes, brows, cheeks, jaw, mouth behavior, emotion, and blinking.";
+    refreshSetupPanelSummaries();
+  };
+
   const syncStoryLayerFromInputs = ({ notify = false } = {}) => {
     state.storyLayer = normalizeStoryLayer({
       enabled: storyLayerEnabledInput.checked,
@@ -1868,6 +1989,8 @@ function openStoryboardBuilder(payload = {}) {
     if (notify && state.onStoryLayerChanged) {
       state.onStoryLayerChanged({
         story_layer: normalizeStoryLayer(state.storyLayer),
+        facial_performance_default: state.facialPerformance || "",
+        facial_performance_custom_default: state.facialPerformanceCustom || "",
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
       });
     }
@@ -2150,6 +2273,30 @@ function openStoryboardBuilder(payload = {}) {
       createToast(changed ? `Performance style replaced ${changed} scene${changed === 1 ? "" : "s"}.` : "No performance style fields were changed.");
     } else {
       createToast(changed ? `Performance style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank performance style fields needed filling.");
+    }
+  };
+
+  const applyFacialPerformance = ({ overwrite = false } = {}) => {
+    const value = String(state.facialPerformance || "").trim();
+    const custom = String(state.facialPerformanceCustom || "").trim();
+    if (!value && !custom) {
+      createToast("Choose a global facial performance preset or enter custom facial text first.");
+      return;
+    }
+    let changed = 0;
+    state.scenes.forEach((scene) => {
+      const hasPreset = String(scene.facial_performance || "").trim();
+      const hasCustom = String(scene.facial_performance_custom || "").trim();
+      if (!overwrite && (hasPreset || hasCustom)) return;
+      scene.facial_performance = value;
+      scene.facial_performance_custom = custom;
+      changed += 1;
+    });
+    renderTable();
+    if (overwrite) {
+      createToast(changed ? `Facial performance replaced ${changed} scene${changed === 1 ? "" : "s"}.` : "No facial performance fields were changed.");
+    } else {
+      createToast(changed ? `Facial performance filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank facial performance fields needed filling.");
     }
   };
 
@@ -2451,6 +2598,8 @@ function openStoryboardBuilder(payload = {}) {
     const characterMotionPreset = makeGroupedSelect(CHARACTER_MOTION_GROUPS, characterMotionValue);
     const customCharacterMotion = makeInput(scene.character_motion || "", "Custom character motion");
     const performanceStyle = makeSelect(PERFORMANCE_STYLE_PRESETS, scene.performance_style || "");
+    const facialPerformance = makeSelect(FACIAL_PERFORMANCE_PRESETS, scene.facial_performance || "");
+    const facialPerformanceCustom = makeTextarea(scene.facial_performance_custom || "", "Optional custom facial expression/movement text for this scene...", 3);
     const includeMicLabel = document.createElement("label");
     includeMicLabel.style.cssText = "display:flex;align-items:center;gap:8px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:9px 10px;font-size:12px;font-weight:900;";
     const includeMic = document.createElement("input");
@@ -2570,13 +2719,15 @@ function openStoryboardBuilder(payload = {}) {
     const characterMotionField = field("Character motion preset", characterMotionPreset);
     const customCharacterMotionField = field("Custom character motion", customCharacterMotion);
     const performanceStyleField = field("Performance / song style", performanceStyle);
+    const facialPerformanceField = field("Facial performance", facialPerformance);
+    const facialPerformanceCustomField = field("Custom facial performance", facialPerformanceCustom);
     const imagePathField = field("Image path", imagePath);
     const motionField = field("Motion / video summary", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
     if (isVideoPrepMode) {
-      grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
+      grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     } else {
-      grid.append(field("Setting", setting), field("Subjects", subjects), performanceStyleField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
+      grid.append(field("Setting", setting), field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
     }
     const referenceGrid = document.createElement("div");
     referenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:16px 28px;";
@@ -2609,11 +2760,11 @@ function openStoryboardBuilder(payload = {}) {
     const basicsGrid = twoCol();
     basicsGrid.append(field("Scene label", label), field("Lyric section", lyricSection), field("Scene / lyrics", lyrics), field("Scene story beat", storyBeat));
     if (isVideoPrepMode) {
-      basicsGrid.append(field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), includeMicLabel, noCharacterLabel, videoTypeHint);
+      basicsGrid.append(field("Prompt mode", iconField("▣", videoPromptType)), field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), includeMicLabel, noCharacterLabel, videoTypeHint);
     } else {
       const imagePromptType = makeInput("Text to Image", "Text to Image");
       imagePromptType.readOnly = true;
-      basicsGrid.append(field("Image prompt type", iconField("▣", imagePromptType)), field("Performance / song style", performanceStyle), includeMicLabel, noCharacterLabel);
+      basicsGrid.append(field("Image prompt type", iconField("▣", imagePromptType)), field("Performance / song style", performanceStyle), field("Facial performance", facialPerformance), field("Custom facial performance", facialPerformanceCustom), includeMicLabel, noCharacterLabel);
     }
 
     const addSubject = makeButton("+ Add subject");
@@ -2860,6 +3011,8 @@ function openStoryboardBuilder(payload = {}) {
       scene.camera_motion = customCameraMotion.value.trim() || cameraMotionPreset.value.trim();
       scene.character_motion = isVideoPrepMode ? (customCharacterMotion.value.trim() || characterMotionPreset.value.trim()) : "";
       scene.performance_style = performanceStyle.value || "";
+      scene.facial_performance = facialPerformance.value || "";
+      scene.facial_performance_custom = facialPerformanceCustom.value.trim();
       scene.include_microphone = Boolean(includeMic.checked);
       scene.trigger_phrase = triggerPhrase.value.trim();
       scene.trigger_position = triggerPosition.value === "end" ? "end" : "start";
@@ -3095,7 +3248,11 @@ function openStoryboardBuilder(payload = {}) {
       consistencyInput.value = state.globalConsistencyPhrase;
       state.performanceStyle = String(saved.performance_style_default || saved.performance_style || state.performanceStyle || "");
       performanceSelect.value = state.performanceStyle;
-      state.storyLayer = mergeStoryLayers(state.storyLayer, saved.story_layer || saved.storyLayer || {});
+      state.facialPerformance = String(saved.facial_performance_default || saved.facial_performance || state.facialPerformance || "");
+      state.facialPerformanceCustom = String(saved.facial_performance_custom_default || saved.facial_performance_custom || state.facialPerformanceCustom || "");
+      facialSelect.value = state.facialPerformance;
+      facialCustomInput.value = state.facialPerformanceCustom;
+      state.storyLayer = normalizeStoryLayer(saved.story_layer || saved.storyLayer || {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
       userStoryArcInput.value = state.storyLayer.user_story_arc || "";
       songStoryBriefInput.value = state.storyLayer.song_story_brief || "";
@@ -3104,6 +3261,7 @@ function openStoryboardBuilder(payload = {}) {
       refreshImageAestheticInfo();
       refreshConsistencyInfo();
       refreshPerformanceInfo();
+      refreshFacialInfo();
       setMode(state.mode);
       syncReferenceMappingsToVideoCreator();
     } catch (error) {
@@ -3121,6 +3279,9 @@ function openStoryboardBuilder(payload = {}) {
     save.disabled = true;
     try {
       syncStoryLayerFromInputs();
+      state.scenes.forEach((scene) => {
+        if (String(scene.video_prompt || "").trim()) scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
+      });
       const data = await postJson("/vrgdg/storyboard/save", {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
@@ -3142,6 +3303,9 @@ function openStoryboardBuilder(payload = {}) {
     }
     exportPrompts.disabled = true;
     try {
+      state.scenes.forEach((scene) => {
+        if (String(scene.video_prompt || "").trim()) scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
+      });
       const data = await postJson("/vrgdg/storyboard/export_prompts", {
         project_folder: state.projectFolder,
         storyboard: slimStoryboardForRequest(state),
@@ -3336,8 +3500,55 @@ function openStoryboardBuilder(payload = {}) {
     }
   }
 
-  function applyStoryboardTriggerPhrases(prompt, scene) {
+  function enforceStoryboardVideoFacialRequirements(prompt, scene) {
     let text = String(prompt || "").trim();
+    const normalized = normalizeScene(scene, 0);
+    const promptMentionsFace = /\b(?:woman|man|girl|boy|person|subject|singer|rapper|performer|speaker|character|face|eyes?|brows?|gaze|mouth|jaw|cheeks?|expression|smile|frown|sings?|singing|says|speaks?)\b/i.test(text);
+    const hasCharacter = !normalized.no_character_present && (
+      (Array.isArray(normalized.subject_refs) && normalized.subject_refs.length)
+      || (Array.isArray(normalized.subjects) && normalized.subjects.length)
+      || promptMentionsFace
+    );
+    if (!text || !hasCharacter) return text;
+    const vocalStatus = normalized.vocal_status || {};
+    const promptSaysSinging = /\b(?:sings?|singing|raps?|rapping)\b/i.test(text);
+    const isSinging = promptSaysSinging || (String(normalized.performance_mode || vocalStatus.performance_mode || state.performanceMode || "").trim() === "singing"
+      && vocalStatus.should_lip_sync !== false
+      && !vocalStatus.instrumental
+      && !vocalStatus.no_lip_sync
+      && !normalized.lyric_no_lip_sync
+      && Boolean(String(vocalStatus.lyric_text || normalized.lyrics || "").trim()));
+    if (isSinging) {
+      text = text
+        .replace(/\bwith\s+a\s+quiet,\s*internal\s+intensity\b/gi, "with controlled internal intensity")
+        .replace(/\bwith\s+quiet\s+internal\s+intensity\b/gi, "with controlled internal intensity")
+        .replace(/\bquiet,\s*internal\s+intensity\b/gi, "controlled internal intensity")
+        .replace(/\bquiet\s+internal\s+intensity\b/gi, "controlled internal intensity")
+        .replace(/\bquiet\s+intensity\b/gi, "controlled intensity")
+        .replace(/\bquiet\s+performance\b/gi, "controlled performance")
+        .replace(/\bquiet\s+emotion\b/gi, "restrained emotion")
+        .replace(/\bquiet\s+singing\b/gi, "focused singing");
+    }
+    const hasBlink = /\bblink\w*\b/i.test(text);
+    const hasEyeMovement = /\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(text);
+    const additions = [];
+    if (!hasEyeMovement) additions.push("subtle natural eye movement");
+    if (!hasBlink) additions.push("occasional natural blinking");
+    if (additions.length) {
+      const insert = `, ${additions.join(", ")}`;
+      const faceSentence = text.match(/([^.]*(?:face|eyes?|brows?|gaze|expression)[^.]*)(\.)/i);
+      if (faceSentence && typeof faceSentence.index === "number") {
+        const nextSentence = `${faceSentence[1].trimEnd()}${insert}`;
+        text = `${text.slice(0, faceSentence.index)}${nextSentence}${text.slice(faceSentence.index + faceSentence[1].length)}`;
+      } else {
+        text = `${text.replace(/\.+\s*$/, "")} with ${additions.join(", ")}.`;
+      }
+    }
+    return text.replace(/\s{2,}/g, " ").trim();
+  }
+
+  function applyStoryboardTriggerPhrases(prompt, scene) {
+    let text = enforceStoryboardVideoFacialRequirements(prompt, scene);
     const normalized = normalizeScene(scene, 0);
     const refs = normalizeReferenceBuilderCatalog(state.referenceBuilder || {});
     const parts = { start: [], end: [] };
@@ -3489,8 +3700,18 @@ function openStoryboardBuilder(payload = {}) {
     state.performanceStyle = String(performanceSelect.value || "");
     refreshPerformanceInfo();
   };
+  facialSelect.onchange = () => {
+    state.facialPerformance = String(facialSelect.value || "");
+    refreshFacialInfo();
+  };
+  facialCustomInput.oninput = () => {
+    state.facialPerformanceCustom = String(facialCustomInput.value || "");
+    refreshFacialInfo();
+  };
   performanceApply.onclick = () => applyPerformanceStyle({ overwrite: false });
   performanceReplace.onclick = () => applyPerformanceStyle({ overwrite: true });
+  facialApply.onclick = () => applyFacialPerformance({ overwrite: false });
+  facialReplace.onclick = () => applyFacialPerformance({ overwrite: true });
   add.onclick = () => {
     const next = normalizeScene({ scene_number: state.scenes.length + 1, label: `Scene ${state.scenes.length + 1}` }, state.scenes.length);
     state.scenes.push(next);
@@ -3526,6 +3747,7 @@ function openStoryboardBuilder(payload = {}) {
   refreshImageAestheticInfo();
   refreshConsistencyInfo();
   refreshPerformanceInfo();
+  refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
   loadExisting();
 }

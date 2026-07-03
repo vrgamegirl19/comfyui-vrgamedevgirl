@@ -840,7 +840,31 @@ def _probe_video_fps(path):
     return None
 
 
-def _run_ffmpeg_browser_encode(input_path, output_path, audio_source_path=""):
+def _normalize_encode_crf(value, default=23):
+    try:
+        crf = int(round(float(value)))
+    except (TypeError, ValueError):
+        crf = int(default)
+    return max(16, min(35, crf))
+
+
+def _normalize_encode_preset(value, default="medium"):
+    allowed = {
+        "ultrafast",
+        "superfast",
+        "veryfast",
+        "faster",
+        "fast",
+        "medium",
+        "slow",
+        "slower",
+        "veryslow",
+    }
+    preset = str(value or default).strip().lower()
+    return preset if preset in allowed else default
+
+
+def _run_ffmpeg_browser_encode(input_path, output_path, audio_source_path="", encode_crf=23, encode_preset="medium"):
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         return {"ok": False, "error": "ffmpeg was not found on PATH."}
@@ -849,6 +873,8 @@ def _run_ffmpeg_browser_encode(input_path, output_path, audio_source_path=""):
     audio_source_path = os.path.abspath(str(audio_source_path or "").strip().strip('"'))
     use_audio_source = bool(audio_source_path and os.path.isfile(audio_source_path))
     source_had_audio = _media_has_audio(audio_source_path) if use_audio_source else False
+    encode_crf = _normalize_encode_crf(encode_crf, 23)
+    encode_preset = _normalize_encode_preset(encode_preset, "medium")
     try:
         cmd = [ffmpeg, "-y", "-i", input_path]
         if use_audio_source:
@@ -858,6 +884,10 @@ def _run_ffmpeg_browser_encode(input_path, output_path, audio_source_path=""):
         cmd.extend([
             "-c:v",
             "libx264",
+            "-preset",
+            encode_preset,
+            "-crf",
+            str(encode_crf),
             "-pix_fmt",
             "yuv420p",
             "-c:a",
@@ -879,6 +909,8 @@ def _run_ffmpeg_browser_encode(input_path, output_path, audio_source_path=""):
         return {
             "ok": True,
             "encoder": "ffmpeg libx264",
+            "encode_crf": encode_crf,
+            "encode_preset": encode_preset,
             "browser_friendly": True,
             "audio_preserved": bool(source_had_audio and output_has_audio),
             "source_had_audio": source_had_audio,
@@ -902,6 +934,8 @@ def apply_lut_to_video(
     replace_source=False,
     thumbnail_path="",
     preserve_audio=True,
+    encode_crf=23,
+    encode_preset="medium",
 ):
     import cv2
 
@@ -1000,7 +1034,7 @@ def apply_lut_to_video(
     audio_preserved = False
     source_had_audio = _media_has_audio(input_path)
     if os.path.isfile(tmp_output):
-        ffmpeg_result = _run_ffmpeg_browser_encode(tmp_output, tmp_output, input_path if preserve_audio else "")
+        ffmpeg_result = _run_ffmpeg_browser_encode(tmp_output, tmp_output, input_path if preserve_audio else "", encode_crf, encode_preset)
         if ffmpeg_result.get("ok"):
             selected_encoder = ffmpeg_result.get("encoder") or selected_encoder
             browser_friendly = True
@@ -1028,6 +1062,8 @@ def apply_lut_to_video(
         "audio_preserved": audio_preserved,
         "source_had_audio": source_had_audio,
         "preserve_audio": bool(preserve_audio),
+        "encode_crf": _normalize_encode_crf(encode_crf, 23),
+        "encode_preset": _normalize_encode_preset(encode_preset, "medium"),
         "thumbnail_path": thumbnail_path,
         "encoder": selected_encoder,
         "browser_friendly": browser_friendly,
@@ -1047,6 +1083,8 @@ def apply_film_grain_to_video(
     thumbnail_path="",
     seed=None,
     preserve_audio=True,
+    encode_crf=26,
+    encode_preset="medium",
 ):
     import cv2
 
@@ -1147,7 +1185,7 @@ def apply_film_grain_to_video(
     audio_preserved = False
     source_had_audio = _media_has_audio(input_path)
     if os.path.isfile(tmp_output):
-        ffmpeg_result = _run_ffmpeg_browser_encode(tmp_output, tmp_output, input_path if preserve_audio else "")
+        ffmpeg_result = _run_ffmpeg_browser_encode(tmp_output, tmp_output, input_path if preserve_audio else "", encode_crf, encode_preset)
         if ffmpeg_result.get("ok"):
             selected_encoder = ffmpeg_result.get("encoder") or selected_encoder
             browser_friendly = True
@@ -1176,6 +1214,8 @@ def apply_film_grain_to_video(
         "audio_preserved": audio_preserved,
         "source_had_audio": source_had_audio,
         "preserve_audio": bool(preserve_audio),
+        "encode_crf": _normalize_encode_crf(encode_crf, 26),
+        "encode_preset": _normalize_encode_preset(encode_preset, "medium"),
         "thumbnail_path": thumbnail_path,
         "encoder": selected_encoder,
         "browser_friendly": browser_friendly,
@@ -1193,6 +1233,8 @@ def apply_adjust_to_video(
     replace_source=False,
     thumbnail_path="",
     preserve_audio=True,
+    encode_crf=23,
+    encode_preset="medium",
 ):
     import cv2
 
@@ -1290,7 +1332,7 @@ def apply_adjust_to_video(
     audio_preserved = False
     source_had_audio = _media_has_audio(input_path)
     if os.path.isfile(tmp_output):
-        ffmpeg_result = _run_ffmpeg_browser_encode(tmp_output, tmp_output, input_path if preserve_audio else "")
+        ffmpeg_result = _run_ffmpeg_browser_encode(tmp_output, tmp_output, input_path if preserve_audio else "", encode_crf, encode_preset)
         if ffmpeg_result.get("ok"):
             selected_encoder = ffmpeg_result.get("encoder") or selected_encoder
             browser_friendly = True
@@ -1318,6 +1360,8 @@ def apply_adjust_to_video(
         "audio_preserved": audio_preserved,
         "source_had_audio": source_had_audio,
         "preserve_audio": bool(preserve_audio),
+        "encode_crf": _normalize_encode_crf(encode_crf, 23),
+        "encode_preset": _normalize_encode_preset(encode_preset, "medium"),
         "thumbnail_path": thumbnail_path,
         "encoder": selected_encoder,
         "browser_friendly": browser_friendly,
@@ -1431,6 +1475,8 @@ def register_lut_routes(server_instance):
                 replace_source=bool(payload.get("replace_source", False)),
                 thumbnail_path=payload.get("thumbnail_path", ""),
                 preserve_audio=bool(payload.get("preserve_audio", True)),
+                encode_crf=payload.get("encode_crf", 23),
+                encode_preset=payload.get("encode_preset", "medium"),
             )
             return web.json_response({"ok": True, **result})
         except Exception as exc:
@@ -1485,6 +1531,8 @@ def register_lut_routes(server_instance):
                 thumbnail_path=payload.get("thumbnail_path", ""),
                 seed=payload.get("seed", None),
                 preserve_audio=bool(payload.get("preserve_audio", True)),
+                encode_crf=payload.get("encode_crf", 26),
+                encode_preset=payload.get("encode_preset", "medium"),
             )
             return web.json_response({"ok": True, **result})
         except Exception as exc:
@@ -1537,6 +1585,8 @@ def register_lut_routes(server_instance):
                 replace_source=bool(payload.get("replace_source", False)),
                 thumbnail_path=payload.get("thumbnail_path", ""),
                 preserve_audio=bool(payload.get("preserve_audio", True)),
+                encode_crf=payload.get("encode_crf", 23),
+                encode_preset=payload.get("encode_preset", "medium"),
             )
             return web.json_response({"ok": True, **result})
         except Exception as exc:

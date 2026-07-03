@@ -21,7 +21,7 @@ Use `performance_mode` to decide which opening structure to use. Read it from th
 
 If `performance_mode` is `singing` and `vocal_status.should_lip_sync` is true, use this structure:
 
-[Shot type] on [singer subject or all visible subjects] as [singer subject sings/performs] with passion, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Singer subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [All non-singing mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene without singing.]
+[Shot type] on [singer subject or all visible subjects] as [singer subject sings/performs] with controlled expressive intensity, physically singing "[exact lyric line from vocal_status.lyric_text]" in sync with the music. [Singer subject]'s face shows [specific visible emotion] through [specific eye expression], subtle natural eye movement, occasional natural blinking, [specific brows], [jaw/mouth/cheek detail shaped by the lyric], and [gaze/posture/head detail], with expressive performance energy. [Hair/costume/appearance detail] catches the light or motion. [All non-singing mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene without singing.]
 
 [Singer subject] [performs a clear motivated action that fits the lyric, vocal intensity, and scene mood] [position/framing], while [each non-singing mapped subject performs a visible non-vocal reaction or action]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the performance], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
@@ -29,7 +29,7 @@ If `performance_mode` is `singing` and `vocal_status.should_lip_sync` is true, u
 
 If `performance_mode` is `speaking` and `vocal_status.should_lip_sync` is true, use this structure:
 
-[Shot type] on [speaker subject or all visible subjects] as [speaker subject/she/he] says "[exact dialogue line from vocal_status.lyric_text]" with [specific visible emotion]. [Speaker subject]'s face shows [specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with grounded short-film acting energy. [Hair/costume/appearance detail] catches the light or motion. [All non-speaking mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene silently.]
+[Shot type] on [speaker subject or all visible subjects] as [speaker subject/she/he] says "[exact dialogue line from vocal_status.lyric_text]" with [specific visible emotion]. [Speaker subject]'s face shows [specific visible emotion] through [specific eye expression], subtle natural eye movement, occasional natural blinking, [specific brows], [jaw/cheek detail shaped by the dialogue], and [gaze/posture/head detail], with grounded short-film acting energy. [Hair/costume/appearance detail] catches the light or motion. [All non-speaking mapped subjects are also visibly present in the same location, reacting, watching, moving, or sharing the scene silently.]
 
 [Speaker subject] [performs a clear motivated action that fits the dialogue, emotion, and scene mood] [position/framing], while [each non-speaking mapped subject performs a visible silent reaction or action]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the scene], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
@@ -37,7 +37,7 @@ If `performance_mode` is `speaking` and `vocal_status.should_lip_sync` is true, 
 
 If `performance_mode` is `no_lip_sync`, `vocal_status.instrumental` is true, `vocal_status.no_lip_sync` is true, or `vocal_status.should_lip_sync` is false, use this structure:
 
-[Shot type] on [all visible mapped subjects] in [location/setting], framed by [key environmental perspective/detail]. [Each mapped subject is visibly present; describe their shared blocking or relationship in the frame.] [Subject faces show specific visible emotion] through [eyes/brows/jaw/cheeks/gaze/posture], with [hair/costume/appearance details] catching the light or motion.
+[Shot type] on [all visible mapped subjects] in [location/setting], framed by [key environmental perspective/detail]. [Each mapped subject is visibly present; describe their shared blocking or relationship in the frame.] [Subject faces show specific visible emotion] through [specific eye expression], subtle natural eye movement, occasional natural blinking, [specific brows], [jaw/cheek detail], and [gaze/posture/head detail], with [hair/costume/appearance details] catching the light or motion.
 
 [Each mapped subject performs a clear motivated non-vocal action that fits the scene mood, character status, and environment] [position/framing]. [Secondary action or physical interaction with the environment]. The camera [camera movement that follows or reacts to the action], then [optional secondary camera move or reframing that does not repeat the same inward move]. It then [final visual beat such as a hold, drift, reveal, pass-by, pull-back, lateral move, rack focus, tilt, subject gesture, reflection, silhouette, texture, or emotional detail], capturing [specific facial detail, eye emotion, reflection, silhouette, texture, or emotional beat].
 
@@ -67,7 +67,8 @@ Rules:
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
 * If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
-* Use `performance_style` and `performance_direction` to choose facial emotion, body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
+* Use `performance_style` and `performance_direction` to choose body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
+* Use `facial_performance` and `facial_performance_direction` as the main source for facial emotion, eyes, brows, cheeks, jaw, gaze, mouth behavior, and blinking.
 * If `story_layer` exists, use `song_story_brief`, `user_story_arc`, `lyric_section`, and `scene_story_beat` as narrative guidance for emotion, symbolic action, continuity, and visual motivation. Do not quote the story layer or explain it; weave it into the scene naturally.
 * If `performance_mode` is `singing` and the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
 * If `performance_mode` is `speaking` and the scene has a line, use the exact line from `vocal_status.lyric_text` only inside "as she says \"...\"", "as he says \"...\"", or "as [subject label] says \"...\"".
@@ -77,10 +78,12 @@ Rules:
 * If the scene is instrumental or no-lip-sync, do not mention singing, speaking, lip-syncing, vocals, dialogue, mouth movement, or no-vocal status.
 * Do not mention or add a microphone, mic stand, headset mic, studio mic, or microphone prop unless `microphone.include` is true or the user's scene notes explicitly ask for a microphone.
 * If `microphone.include` is true, include a handheld microphone or stand microphone only when it naturally fits the scene, stage, studio, club, or live performance setup.
-* Every prompt must include visible facial emotion or facial performance. Describe what the eyes, brows, jaw, cheeks, gaze, posture, or expression are doing.
+* Every character-present prompt must include visible facial emotion or facial performance. The subject face sentence itself must include subtle natural eye movement and occasional natural blinking, placed beside the eye/brow/gaze description. Do not append blinking or eye movement to an environment sentence.
 * Singing prompts must identify the exact lyric line and include visible emotion, body language, gestures, and performance energy that fit the lyric, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
+* For visible singing prompts, do not use the word "quiet" to describe the singing, performance, intensity, face, or emotion. Use controlled, focused, intimate, restrained, inward, tender, or simmering intensity instead.
 * Speaking prompts must identify the exact line with "says" only and include visible emotion, body language, gestures, and grounded acting energy that fit the line, such as longing, defiance, grief, joy, awe, fear, tenderness, anger, confidence, or desperation.
-* Do not describe open mouth, parted lips, mouth shapes, lip movement, or mouth position. Lip sync is handled by LTX/audio, not prompt wording.
+* For singing or speaking prompts, facial performance may include natural jaw movement, expressive vowel/consonant mouth shapes, lips slightly parted, bared teeth, smiles, pouts, or open-mouth intensity when the selected facial_performance_direction calls for it.
+* For instrumental, no-lip-sync, or non-speaking prompts, do not describe open mouth, parted lips, mouth shapes, lip movement, mouth position, or mouthing words. Keep mouth relaxed or closed unless the scene notes explicitly ask for a visible non-vocal reaction such as a smile, grimace, or gasp.
 * Non-singing and non-speaking prompts must still include visible emotional expression or restrained facial tension. Do not leave the subject blank-faced.
 * Do not use "expressionless", "blank expression", "empty face", "emotionless", "unreadable face", "deadpan", or "perfectly still face" unless the user's scene notes explicitly ask for that exact effect.
 * If the character is described as calm, silent, stoic, robotic, alien, or controlled, translate that into visible restrained emotion: tense jaw, focused eyes, narrowed gaze, lifted brow, suppressed tears, soft smile, or subtle unease.
@@ -111,11 +114,12 @@ Rules:
 * Pull the setting from `location_ref`.
 * Include the mapped subject descriptions and location description when available.
 * Use the scene lyrics, lyric section, story beat, song story brief, and user story arc only as visual guidance. Do not quote long lyrics.
-* If the scene is a singing scene, show performance energy and emotion, but do not describe mouth shapes, lip sync, or audio behavior.
+* If the scene is a singing scene, show performance energy and emotion. For still images, describe a believable expressive singing expression only when facial_performance_direction calls for it, without mentioning lip sync or audio behavior.
 * If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
 * Use `shot_type` as the still-frame composition when available.
 * If `global_consistency_phrase` is present, include it in the final image prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
-* Use `performance_style` and `performance_direction` for facial emotion, body language, wardrobe energy, and genre feel.
+* Use `performance_style` and `performance_direction` for body language, wardrobe energy, and genre feel.
+* Use `facial_performance` and `facial_performance_direction` for facial emotion, eyes, brows, cheeks, jaw, mouth behavior, gaze, and blinking.
 * Do not describe future camera movement, animation, transitions, frame changes, or what happens next.
 * Do not mention JSON, IDs, file paths, image names, or metadata.
 * Do not include explanations.
@@ -431,11 +435,22 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     character_motion = _clean_scene_text(scene.get("character_motion") or scene.get("character_motion_preset") or scene.get("subject_motion") or "", 240)
     performance_style = _clean_scene_text(scene.get("performance_style") or scene.get("song_style") or scene.get("music_style") or "", 120)
     performance_direction = _clean_scene_text(scene.get("performance_direction") or "", 1000)
+    facial_performance = _clean_scene_text(scene.get("facial_performance") or scene.get("facialPerformance") or scene.get("facial_expression") or scene.get("facialExpression") or "", 120)
+    facial_performance_custom = _clean_scene_text(scene.get("facial_performance_custom") or scene.get("facialPerformanceCustom") or scene.get("facial_expression_custom") or scene.get("facialExpressionCustom") or "", 1200)
+    facial_performance_direction = _clean_scene_text(scene.get("facial_performance_direction") or scene.get("facialPerformanceDirection") or facial_performance_custom or "", 1600)
     include_microphone = bool(scene.get("include_microphone") or scene.get("use_microphone") or scene.get("microphone"))
     trigger_position = str(scene.get("trigger_position") or scene.get("triggerPosition") or scene.get("trigger_placement") or "start").strip().lower()
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
     if video_prompt_type not in {"i2v", "t2v", "rtv", "ingredients"}:
         video_prompt_type = "i2v"
+    if video_prompt:
+        video_prompt = _enforce_storyboard_video_facial_requirements(video_prompt, {
+            **scene,
+            "subjects": subjects,
+            "subject_refs": subject_refs,
+            "lyrics": lyrics,
+            "performance_mode": performance_mode,
+        })
     status = _clean_scene_text(scene.get("status") or ("image_ready" if image_path else "draft"), 80)
     return {
         "id": _clean_scene_text(scene.get("id") or f"storyboard_scene_{number}", 160),
@@ -456,6 +471,9 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "character_motion": character_motion,
         "performance_style": performance_style,
         "performance_direction": performance_direction,
+        "facial_performance": facial_performance,
+        "facial_performance_custom": facial_performance_custom,
+        "facial_performance_direction": facial_performance_direction,
         "include_microphone": include_microphone,
         "trigger_phrase": _clean_scene_text(scene.get("trigger_phrase") or scene.get("trigger") or scene.get("Trigger") or "", 1200),
         "trigger_position": "end" if trigger_position == "end" else "start",
@@ -484,6 +502,8 @@ def _default_storyboard(payload):
         "image_shot_flow": _clean_scene_text(payload.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(payload.get("image_aesthetic") or "", 120),
         "global_consistency_phrase": _clean_scene_text(payload.get("global_consistency_phrase") or "", 1200),
+        "facial_performance_default": _clean_scene_text(payload.get("facial_performance_default") or payload.get("facial_performance") or "", 120),
+        "facial_performance_custom_default": _clean_scene_text(payload.get("facial_performance_custom_default") or payload.get("facial_performance_custom") or "", 1200),
         "story_layer": _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {}),
         "reference_builder": _normalize_reference_catalog(payload.get("reference_builder") or payload.get("referenceBuilder") or {}),
         "scenes": normalized,
@@ -528,6 +548,8 @@ def _save_storyboard(payload):
         "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(storyboard.get("image_aesthetic") or "", 120),
         "global_consistency_phrase": _clean_scene_text(storyboard.get("global_consistency_phrase") or "", 1200),
+        "facial_performance_default": _clean_scene_text(storyboard.get("facial_performance_default") or storyboard.get("facial_performance") or "", 120),
+        "facial_performance_custom_default": _clean_scene_text(storyboard.get("facial_performance_custom_default") or storyboard.get("facial_performance_custom") or "", 1200),
         "story_layer": _normalize_story_layer(storyboard.get("story_layer") or storyboard.get("storyLayer") or {}),
         "reference_builder": _normalize_reference_catalog(storyboard.get("reference_builder") or storyboard.get("referenceBuilder") or {}),
         "scenes": [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)],
@@ -628,6 +650,98 @@ def _selected_storyboard_scene(scene_bundle):
     return scenes[0]
 
 
+def _storyboard_scene_has_visible_character(scene):
+    vocal_status = scene.get("vocal_status") if isinstance(scene, dict) else {}
+    if isinstance(vocal_status, dict) and vocal_status.get("no_character_present"):
+        return False
+    if isinstance(scene, dict):
+        if scene.get("no_character_present") or scene.get("noCharacterPresent"):
+            return False
+        return bool(scene.get("subject_refs") or scene.get("subjects") or scene.get("visible_subjects") or scene.get("visibleSubjects"))
+    return False
+
+
+def _storyboard_prompt_mentions_visible_face(prompt):
+    text = _clean_scene_text(prompt or "", 12000).lower()
+    if not text:
+        return False
+    return bool(re.search(
+        r"\b(?:woman|man|girl|boy|person|subject|singer|rapper|performer|speaker|character|face|eyes?|brows?|gaze|mouth|jaw|cheeks?|expression|smile|frown|sings?|singing|says|speaks?)\b",
+        text,
+        flags=re.IGNORECASE,
+    ))
+
+
+def _storyboard_scene_is_visible_singing(scene):
+    if not isinstance(scene, dict) or not _storyboard_scene_has_visible_character(scene):
+        return False
+    vocal_status = scene.get("vocal_status") if isinstance(scene.get("vocal_status"), dict) else {}
+    performance_mode = _normalize_performance_mode(
+        scene.get("performance_mode")
+        or vocal_status.get("performance_mode")
+        or scene.get("video_type")
+        or scene.get("videoType")
+    )
+    if performance_mode != "singing":
+        return False
+    if vocal_status.get("instrumental") or vocal_status.get("no_lip_sync") or vocal_status.get("no_character_present"):
+        return False
+    if vocal_status.get("should_lip_sync") is False:
+        return False
+    return bool(_clean_scene_text(vocal_status.get("lyric_text") or scene.get("lyrics") or scene.get("lyric_line") or "", 1200))
+
+
+def _enforce_storyboard_video_facial_requirements(prompt, scene):
+    text = _clean_scene_text(prompt or "", 12000)
+    if not text:
+        return text
+    vocal_status = scene.get("vocal_status") if isinstance(scene, dict) else {}
+    no_character = bool(
+        (isinstance(vocal_status, dict) and vocal_status.get("no_character_present"))
+        or (isinstance(scene, dict) and (scene.get("no_character_present") or scene.get("noCharacterPresent")))
+    )
+    if no_character:
+        return text
+    if not (_storyboard_scene_has_visible_character(scene) or _storyboard_prompt_mentions_visible_face(text)):
+        return text
+    prompt_says_singing = bool(re.search(r"\b(?:sings?|singing|raps?|rapping)\b", text, flags=re.IGNORECASE))
+    if _storyboard_scene_is_visible_singing(scene) or prompt_says_singing:
+        replacements = [
+            (r"\bwith\s+a\s+quiet,\s*internal\s+intensity\b", "with controlled internal intensity"),
+            (r"\bwith\s+quiet\s+internal\s+intensity\b", "with controlled internal intensity"),
+            (r"\bquiet,\s*internal\s+intensity\b", "controlled internal intensity"),
+            (r"\bquiet\s+internal\s+intensity\b", "controlled internal intensity"),
+            (r"\bquiet\s+intensity\b", "controlled intensity"),
+            (r"\bquiet\s+performance\b", "controlled performance"),
+            (r"\bquiet\s+emotion\b", "restrained emotion"),
+            (r"\bquiet\s+singing\b", "focused singing"),
+        ]
+        for pattern, replacement in replacements:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    has_blink = re.search(r"\bblink\w*\b", text, flags=re.IGNORECASE)
+    has_eye_movement = re.search(r"\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b", text, flags=re.IGNORECASE)
+    additions = []
+    if not has_eye_movement:
+        additions.append("subtle natural eye movement")
+    if not has_blink:
+        additions.append("occasional natural blinking")
+    if additions:
+        insert = ", " + ", ".join(additions)
+        face_sentence = re.search(
+            r"([^.]*(?:face|eyes?|brows?|gaze|expression)[^.]*)(\.)",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if face_sentence:
+            start, end = face_sentence.span(1)
+            sentence = text[start:end]
+            sentence = sentence.rstrip() + insert
+            text = text[:start] + sentence + text[end:]
+        else:
+            text = f"{text.rstrip().rstrip('.')} with {', '.join(additions)}."
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
+
+
 def _build_storyboard_image_prompt(payload):
     scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
     if not isinstance(scene_bundle, dict):
@@ -703,6 +817,7 @@ def _build_storyboard_video_prompt(payload):
                 f"Motion/video summary:\n{_clean_scene_text(selected_scene.get('motion_summary') or '', 1200)}",
                 f"Camera motion:\n{_clean_scene_text(selected_scene.get('camera_motion') or '', 500)}",
                 f"Performance direction:\n{_clean_scene_text(selected_scene.get('performance_direction') or selected_scene.get('performance_style') or '', 1000)}",
+                f"Facial performance direction:\n{_clean_scene_text(selected_scene.get('facial_performance_direction') or selected_scene.get('facial_performance_custom') or selected_scene.get('facial_performance') or '', 1600)}",
             ]
             if part.split(":\n", 1)[-1].strip()
         )
@@ -720,7 +835,10 @@ def _build_storyboard_video_prompt(payload):
             "max_new_tokens": int(payload.get("max_new_tokens") or 1800),
         }
         result = _generate_builder_i2v_prompt(vision_payload)
-        result["prompt"] = _clean_scene_text(_fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle), 12000)
+        result["prompt"] = _enforce_storyboard_video_facial_requirements(
+            _fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle),
+            selected_scene,
+        )
         return result
 
     instruction = (
@@ -739,7 +857,10 @@ def _build_storyboard_video_prompt(payload):
         label="Storyboard Gemma4",
         preserve_paragraphs=True,
     )
-    prompt = _clean_scene_text(_fix_single_subject_prompt_pronouns(prompt, scene_bundle), 12000)
+    prompt = _enforce_storyboard_video_facial_requirements(
+        _fix_single_subject_prompt_pronouns(prompt, scene_bundle),
+        selected_scene,
+    )
     if not prompt:
         raise ValueError("Gemma returned an empty Storyboard video prompt.")
     return {

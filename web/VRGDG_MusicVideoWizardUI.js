@@ -693,7 +693,7 @@ export function openMusicVideoWizard(api = {}) {
     { id: "settings", title: "Settings", caption: "Models and render setup" },
     { id: "audio", title: "Audio", caption: "Load the song file" },
     { id: "lyrics", title: "Lyrics + Scenes", caption: "Create timeline scenes" },
-    { id: "mode", title: "Mode", caption: "V1 is Ref to Video" },
+    { id: "mode", title: "Mode", caption: "Choose i2v or ref video" },
     { id: "references", title: "References", caption: "Subjects and locations" },
     { id: "story", title: "Story Direction", caption: "Arc and scene beats" },
     { id: "finish", title: "Gemma + Render", caption: "Prompt and build" },
@@ -708,6 +708,8 @@ export function openMusicVideoWizard(api = {}) {
     maxSceneSeconds: "8.0",
     cameraFlow: "balanced",
     performanceStyle: "",
+    facialPerformance: "",
+    facialPerformanceCustom: "",
     storyLayer: {
       enabled: true,
       user_story_arc: "",
@@ -732,7 +734,7 @@ export function openMusicVideoWizard(api = {}) {
   const brand = el("div", "vrgdg-wizard-brand");
   brand.append(
     el("div", "vrgdg-wizard-brand-title", "Video Wizard"),
-    el("div", "vrgdg-wizard-brand-subtitle", "A guided path for Reference to Video projects. It reuses the builder tools you already have."),
+    el("div", "vrgdg-wizard-brand-subtitle", "A guided path for Image to Video and Reference to Video projects. It reuses the builder tools you already have."),
   );
   rail.append(brand);
 
@@ -846,6 +848,8 @@ export function openMusicVideoWizard(api = {}) {
       maxSceneSeconds: String(sourceState.maxSceneSeconds || "8.0"),
       cameraFlow: String(sourceState.cameraFlow || "balanced"),
       performanceStyle: String(sourceState.performanceStyle || ""),
+      facialPerformance: String(sourceState.facialPerformance || ""),
+      facialPerformanceCustom: String(sourceState.facialPerformanceCustom || ""),
       storyLayer: sourceState.storyLayer && typeof sourceState.storyLayer === "object"
         ? {
             enabled: sourceState.storyLayer.enabled !== false,
@@ -906,10 +910,17 @@ export function openMusicVideoWizard(api = {}) {
     }
   }
 
-  function setModeToRefVideo() {
-    api.setVideoMode?.("rtv");
+  function setWizardMode(mode = "i2v") {
+    api.setVideoMode?.(mode);
     done.add("mode");
     saveWizardProgress("wizard mode");
+    render();
+  }
+
+  async function setWizardImageMode(mode = "zimage") {
+    await api.setImageMode?.(mode);
+    done.add("settings");
+    await saveWizardProgress("wizard image mode");
     render();
   }
 
@@ -949,6 +960,7 @@ export function openMusicVideoWizard(api = {}) {
       `Audio: ${data.audioPath ? "loaded" : "missing"}`,
       `Scenes: ${Number(data.sceneCount || 0)}`,
       `Mode: ${data.videoModeLabel || "Reference to Video"}`,
+      `Image: ${data.imageModeLabel || data.imageMode || "ZImage"}`,
     ].forEach((text) => statusRow.append(el("div", "vrgdg-wizard-status-pill", text)));
     settingsCard.append(statusRow);
 
@@ -958,27 +970,74 @@ export function openMusicVideoWizard(api = {}) {
       el("div", "vrgdg-wizard-settings-subtitle", "Set the wizard mode or change how text Gemma runs."),
     );
     const actions = el("div", "vrgdg-wizard-settings-actions");
-    const setRtv = button("Set Mode: Reference to Video", "primary");
+    const setI2v = button("Set Mode: Image to Video", "primary");
+    const setRtv = button("Set Mode: Reference to Video");
     const openRunner = button("Open Gemma Runner");
-    setRtv.onclick = setModeToRefVideo;
+    setI2v.onclick = () => setWizardMode("i2v");
+    setRtv.onclick = () => setWizardMode("rtv");
     openRunner.onclick = () => {
       openNestedTool(() => api.openGemmaRunner?.(), "wizard gemma runner");
     };
-    actions.append(setRtv, openRunner);
+    actions.append(setI2v, setRtv, openRunner);
     quickCard.append(actions);
 
-    const modelCard = el("div", "vrgdg-wizard-settings-card span-12");
-    modelCard.append(
-      el("div", "vrgdg-wizard-settings-title", "Video Model Stack"),
-      el("div", "vrgdg-wizard-settings-subtitle", "Models used for Reference to Video generation and decoding."),
-    );
-    const modelGrid = el("div", "vrgdg-wizard-settings-fields");
     const settingField = (label, control, help) => {
       const wrapper = el("label", "vrgdg-wizard-settings-field");
       wrapper.append(el("div", "vrgdg-wizard-settings-label", label), control);
       if (help) wrapper.append(el("div", "vrgdg-wizard-settings-help", help));
       return wrapper;
     };
+
+    const isReferenceToVideo = String(data.videoMode || "i2v") === "rtv";
+    const imageModeOptions = data.imageModeOptions?.length ? data.imageModeOptions : [
+      { value: "zimage", label: "ZImage" },
+      { value: "flux_klein", label: "Flux Klein" },
+      { value: "ernie_image", label: "Ernie Image" },
+      { value: "krea2_2pass", label: "Krea 2" },
+      { value: "nano_banana", label: "NanoBanana" },
+    ];
+    const imageMode = String(data.imageMode || "zimage");
+    const imageModeCard = el("div", "vrgdg-wizard-settings-card span-4");
+    imageModeCard.append(
+      el("div", "vrgdg-wizard-settings-title", "Text-to-Image Mode"),
+      el("div", "vrgdg-wizard-settings-subtitle", "Choose the image generator first. The wizard shows the matching model controls below."),
+    );
+    imageModeCard.style.display = isReferenceToVideo ? "none" : "";
+    const imageModeSelect = select(imageModeOptions, imageMode);
+    imageModeSelect.onchange = () => setWizardImageMode(imageModeSelect.value);
+    imageModeCard.append(field("Image mode", imageModeSelect, "This is the image pass used before Image-to-Video."));
+
+    const imageSettings = data.imageSettings?.[imageMode] || {};
+    const imageModelOptions = data.imageModelOptions?.[imageMode] || {};
+    const imageModelCard = el("div", "vrgdg-wizard-settings-card span-8");
+    imageModelCard.append(
+      el("div", "vrgdg-wizard-settings-title", `${data.imageModeLabel || "Image"} Model Stack`),
+      el("div", "vrgdg-wizard-settings-subtitle", imageMode === "nano_banana"
+        ? "NanoBanana uses its own API settings in the main builder."
+        : "Primary models used by the selected text-to-image path."),
+    );
+    imageModelCard.style.display = isReferenceToVideo ? "none" : "";
+    const imageGrid = el("div", "vrgdg-wizard-settings-fields");
+    const imageUnet = comboInput(imageSettings.unet_name || "", imageModelOptions.unets || modelOptions.unets || [], "vrgdg-wizard-image-unet");
+    const imageClip = comboInput(imageSettings.clip_name || "", imageModelOptions.clip || modelOptions.clip || [], "vrgdg-wizard-image-clip");
+    const imageVae = comboInput(imageSettings.vae_name || "", imageModelOptions.vae || modelOptions.vae || [], "vrgdg-wizard-image-vae");
+    if (imageMode === "nano_banana") {
+      imageGrid.append(el("div", "vrgdg-wizard-copy", "Use the main builder's NanoBanana panel for API/model settings."));
+    } else {
+      imageGrid.append(
+        settingField("Image UNet model", imageUnet.input, "Main model for this text-to-image mode."),
+        settingField("Image CLIP", imageClip.input, "Text encoder for this image mode."),
+        settingField("Image VAE", imageVae.input, "Image decoder/encoder for this image mode."),
+      );
+    }
+    imageModelCard.append(imageUnet.list, imageClip.list, imageVae.list, imageGrid);
+
+    const modelCard = el("div", "vrgdg-wizard-settings-card span-12");
+    modelCard.append(
+      el("div", "vrgdg-wizard-settings-title", "Video Model Stack"),
+      el("div", "vrgdg-wizard-settings-subtitle", "Models used for Image to Video or Reference to Video generation and decoding."),
+    );
+    const modelGrid = el("div", "vrgdg-wizard-settings-fields");
     const unet = comboInput(settings.unet_name || "", modelOptions.unets || [], "vrgdg-wizard-unets");
     const vae = comboInput(settings.vae_name || "", modelOptions.vae || [], "vrgdg-wizard-vae");
     const clip1 = comboInput(settings.clip_name1 || "", modelOptions.clip || [], "vrgdg-wizard-clip1");
@@ -986,7 +1045,7 @@ export function openMusicVideoWizard(api = {}) {
     const upscale = comboInput(settings.upscale_model_name || "", modelOptions.upscale_models || [], "vrgdg-wizard-upscale");
     const audioVae = comboInput(settings.audio_vae_name || "", modelOptions.vae || [], "vrgdg-wizard-audio-vae");
     modelGrid.append(
-      settingField("UNet model", unet.input, "Main video generation model used for Reference to Video."),
+      settingField("UNet model", unet.input, "Main video generation model used for Image to Video or Reference to Video."),
       settingField("Video VAE", vae.input, "Decodes generated video latents into final frames."),
       settingField("Gemma CLIP", clip1.input, "Model used for prompt understanding and scene guidance."),
       settingField("Text projection", clip2.input, "Projection model that aligns text features with video generation."),
@@ -1034,6 +1093,7 @@ export function openMusicVideoWizard(api = {}) {
       el("div", "vrgdg-wizard-settings-title", "LoRA Settings"),
       el("div", "vrgdg-wizard-settings-subtitle", "LoRA models applied on top of the base video model."),
     );
+    const showMsr = isReferenceToVideo;
     const msrLora = comboInput(settings.msr_lora_name || "", modelOptions.loras || [], "vrgdg-wizard-msr-lora");
     const msrStrength = input(settings.msr_first_pass_strength ?? 1, "number");
     msrStrength.step = "0.01";
@@ -1075,9 +1135,13 @@ export function openMusicVideoWizard(api = {}) {
     };
     useExtraLorasInput.onchange = syncExtraLoraVisibility;
     loraCount.oninput = syncExtraLoraVisibility;
+    if (showMsr) {
+      loraTopGrid.append(
+        settingField("Required MSR LoRA", msrLora.input, "Required LoRA applied for Reference to Video."),
+        settingField("MSR strength", msrStrength, "Strength of the required Reference to Video LoRA."),
+      );
+    }
     loraTopGrid.append(
-      settingField("Required MSR LoRA", msrLora.input, "Required LoRA applied for Reference to Video."),
-      settingField("MSR strength", msrStrength, "Strength of the required Reference to Video LoRA."),
       useExtraLoras,
       settingField("Extra LoRA count", loraCount, "Number of additional LoRAs to apply."),
     );
@@ -1100,8 +1164,16 @@ export function openMusicVideoWizard(api = {}) {
           width: Number(width.value || 1920),
           height: Number(height.value || 1080),
           seed: Number(seed.value || 69),
-          msr_lora_name: msrLora.input.value,
-          msr_first_pass_strength: Number(msrStrength.value || 1),
+          ...(showMsr ? {
+            msr_lora_name: msrLora.input.value,
+            msr_first_pass_strength: Number(msrStrength.value || 1),
+          } : {}),
+          image_model_mode: imageModeSelect.value,
+          image_settings: imageModeSelect.value === "nano_banana" ? {} : {
+            unet_name: imageUnet.input.value,
+            clip_name: imageClip.input.value,
+            vae_name: imageVae.input.value,
+          },
           use_loras: Boolean(useExtraLorasInput.checked),
           lora_count: Math.max(0, Math.min(4, Number(loraCount.value || 0))),
           loras: extraLoraControls.map((control) => ({
@@ -1122,7 +1194,7 @@ export function openMusicVideoWizard(api = {}) {
     syncExtraLoraVisibility();
 
     const tip = el("div", "vrgdg-wizard-tip", "Tip: field descriptions explain what each setting controls. Apply Wizard Settings writes these values back to the normal builder settings used during render.");
-    layout.append(settingsCard, quickCard, modelCard, gemmaCard, renderBasicsCard, loraCard, tip);
+    layout.append(settingsCard, quickCard, imageModeCard, imageModelCard, modelCard, gemmaCard, renderBasicsCard, loraCard, tip);
     content.append(layout);
   }
 
@@ -1306,8 +1378,8 @@ export function openMusicVideoWizard(api = {}) {
   function renderMode(data) {
     const grid = el("div", "vrgdg-wizard-grid");
     const modes = [
-      ["rtv", "Reference to Video", "V1 wizard path. Uses LTX Reference-to-Video / MSR reference images and text prompts.", true],
-      ["i2v", "Image to Video", "Coming soon in the wizard. The normal builder mode still works outside this walkthrough.", false],
+      ["i2v", "Image to Video", "Creates image prompts first, generates scene images, then writes I2V prompts and renders videos.", true],
+      ["rtv", "Reference to Video", "Uses LTX Reference-to-Video / MSR reference images and text prompts.", true],
       ["t2v", "Text to Video", "Coming soon in the wizard. Text-only mapping stays available in Reference Builder.", false],
       ["ingredients", "Ingredients to Video", "Coming soon in the wizard. Ingredients Builder stays available from the main UI.", false],
     ];
@@ -1317,10 +1389,7 @@ export function openMusicVideoWizard(api = {}) {
       const action = button(enabled ? "Use This Mode" : "Coming Soon", enabled ? "primary" : "");
       action.disabled = !enabled;
       action.onclick = () => {
-        api.setVideoMode?.(mode);
-        done.add("mode");
-        saveWizardProgress("wizard mode");
-        render();
+        setWizardMode(mode);
       };
       item.append(action);
       grid.append(item);
@@ -1329,13 +1398,22 @@ export function openMusicVideoWizard(api = {}) {
   }
 
   function renderReferences(data) {
-    const note = el("div", "vrgdg-wizard-note", "Use the existing Reference Builder and Lyric Mapping tools here. This keeps subjects, locations, singer/no-lip-sync choices, and Storyboard data synced through the same saved project data.");
+    const videoMode = data.videoMode || "i2v";
+    const isRtv = videoMode === "rtv";
+    const note = el("div", "vrgdg-wizard-note", isRtv
+      ? "Use the LTX Reference Builder and Lyric Mapping tools here. This keeps subjects, locations, singer/no-lip-sync choices, and Storyboard data synced through the same saved project data."
+      : "Use Scene Text Mapping and Lyric Mapping here. This gives Gemma subject/location context for image prompts and I2V prompts without forcing Reference-to-Video image refs.");
     const grid = el("div", "vrgdg-wizard-grid");
-    const ref = card("1. LTX Reference Builder", "Add or generate subject references, create/import locations, and map them to scenes.");
-    const openRef = button("Open LTX Reference Builder", "primary");
+    const ref = card(
+      isRtv ? "1. LTX Reference Builder" : "1. Scene Text Mapping",
+      isRtv
+        ? "Add or generate subject references, create/import locations, and map them to scenes."
+        : "Add subject/location descriptions and map them to scenes for Gemma image and I2V prompt writing."
+    );
+    const openRef = button(isRtv ? "Open LTX Reference Builder" : "Open Scene Text Mapping", "primary");
     openRef.onclick = () => {
       done.add("references");
-      openNestedTool(() => api.openReferenceBuilder?.("rtv"), "wizard references");
+      openNestedTool(() => api.openReferenceBuilder?.(videoMode), "wizard references");
     };
     ref.append(openRef);
     const lyric = card("2. Review Lyrics + Map Singers", "Correct lyric notes, choose who sings, mark B-roll/instrumental sections, and mark no-character scenes when needed.");
@@ -1347,7 +1425,8 @@ export function openMusicVideoWizard(api = {}) {
     const defaultsData = data.sceneDefaults || {};
     const cameraOptions = Array.isArray(defaultsData.cameraFlowOptions) ? defaultsData.cameraFlowOptions : [];
     const performanceOptions = Array.isArray(defaultsData.performanceStyleOptions) ? defaultsData.performanceStyleOptions : [];
-    const defaults = card("3. Scene Defaults", "Fill shot direction, camera motion, and performance style without opening Storyboard Builder.");
+    const facialOptions = Array.isArray(defaultsData.facialPerformanceOptions) ? defaultsData.facialPerformanceOptions : [];
+    const defaults = card("3. Scene Defaults", "Fill shot direction, camera motion, performance style, and facial performance without opening Storyboard Builder.");
     const cameraSelect = select(cameraOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.cameraFlow || defaultsData.cameraFlow || "balanced");
     const cameraInfo = el("div", "vrgdg-wizard-copy", "");
     const refreshCameraInfo = () => {
@@ -1434,6 +1513,54 @@ export function openMusicVideoWizard(api = {}) {
       }
     };
     performanceRow.append(performanceSelect, performanceFill, performanceReplace);
+    const facialSelect = select(facialOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.facialPerformance ?? defaultsData.facialPerformance ?? "");
+    const facialCustom = textarea(wizardState.facialPerformanceCustom ?? defaultsData.facialPerformanceCustom ?? "", "Optional custom facial performance text...");
+    facialCustom.style.minHeight = "62px";
+    const facialInfo = el("div", "vrgdg-wizard-copy", "");
+    const refreshFacialInfo = () => {
+      const selected = facialOptions.find((item) => item.value === facialSelect.value) || facialOptions[0] || {};
+      facialInfo.textContent = facialSelect.value || facialCustom.value
+        ? `${selected.description || "Custom facial performance text"} Used for scenes without per-scene facial performance.`
+        : `${selected.description || "Pick a facial preset or enter custom text to use it as the default for blank scenes."}`;
+    };
+    const facialFill = button("Fill Missing", "primary");
+    const facialReplace = button("Replace All");
+    const facialRow = el("div", "vrgdg-wizard-button-row");
+    facialFill.onclick = async () => {
+      facialFill.disabled = true;
+      try {
+        await api.applySceneDefaults?.({
+          cameraFlow: "off",
+          facialPerformance: wizardState.facialPerformance ?? facialSelect.value ?? "",
+          facialPerformanceCustom: wizardState.facialPerformanceCustom ?? facialCustom.value ?? "",
+          applyFacialPerformance: true,
+          overwriteCamera: false,
+          overwriteFacialPerformance: false,
+        });
+        await saveWizardProgress("wizard facial defaults");
+        render();
+      } finally {
+        facialFill.disabled = false;
+      }
+    };
+    facialReplace.onclick = async () => {
+      facialReplace.disabled = true;
+      try {
+        await api.applySceneDefaults?.({
+          cameraFlow: "off",
+          facialPerformance: wizardState.facialPerformance ?? facialSelect.value ?? "",
+          facialPerformanceCustom: wizardState.facialPerformanceCustom ?? facialCustom.value ?? "",
+          applyFacialPerformance: true,
+          overwriteCamera: false,
+          overwriteFacialPerformance: true,
+        });
+        await saveWizardProgress("wizard facial defaults replace");
+        render();
+      } finally {
+        facialReplace.disabled = false;
+      }
+    };
+    facialRow.append(facialSelect, facialFill, facialReplace);
     cameraSelect.onchange = () => {
       wizardState.cameraFlow = cameraSelect.value || "balanced";
       queueWizardDraftSave();
@@ -1444,6 +1571,16 @@ export function openMusicVideoWizard(api = {}) {
       queueWizardDraftSave();
       refreshPerformanceInfo();
     };
+    facialSelect.onchange = () => {
+      wizardState.facialPerformance = facialSelect.value || "";
+      queueWizardDraftSave();
+      refreshFacialInfo();
+    };
+    facialCustom.oninput = () => {
+      wizardState.facialPerformanceCustom = facialCustom.value || "";
+      queueWizardDraftSave();
+      refreshFacialInfo();
+    };
     defaults.append(
       el("div", "vrgdg-wizard-card-title", "Auto camera flow"),
       cameraRow,
@@ -1451,10 +1588,15 @@ export function openMusicVideoWizard(api = {}) {
       el("div", "vrgdg-wizard-card-title", "Global performance style"),
       performanceRow,
       performanceInfo,
+      el("div", "vrgdg-wizard-card-title", "Global facial performance"),
+      facialRow,
+      facialCustom,
+      facialInfo,
     );
     refreshCameraInfo();
     refreshPerformanceInfo();
-    const status = card("Current Mapping", `Subjects: ${Number(data.subjectCount || 0)} | Locations: ${Number(data.locationCount || 0)} | Scenes: ${Number(data.sceneCount || 0)}`);
+    refreshFacialInfo();
+    const status = card("Current Mapping", `Mode: ${data.videoModeLabel || videoMode} | Subjects: ${Number(data.subjectCount || 0)} | Locations: ${Number(data.locationCount || 0)} | Scenes: ${Number(data.sceneCount || 0)}`);
     grid.append(ref, lyric, defaults, status);
     content.append(note, grid);
   }
@@ -1582,16 +1724,31 @@ export function openMusicVideoWizard(api = {}) {
     content.append(note, grid);
   }
 
-  function renderFinish() {
-    const note = el("div", "vrgdg-wizard-note", "When mapping and scene cards look right, create the video prompts first. Build Full Video can then render the clips and stitch the final video using the current Ref to Video settings.");
+  function renderFinish(data) {
+    const videoMode = data.videoMode || "i2v";
+    const isRtv = videoMode === "rtv";
+    const note = el("div", "vrgdg-wizard-note", isRtv
+      ? "When mapping and scene cards look right, create the Reference-to-Video prompts first. Build Full Video can then render the clips and stitch the final video using the current Ref to Video settings."
+      : "For Image to Video, run Gemma Image All first, create/review images with Image All, then run Gemma Video All before rendering or building.");
     const grid = el("div", "vrgdg-wizard-grid");
-    const prompts = card("Create Video Prompts", "Runs the same Storyboard Gemma All prompt writer used by Storyboard Builder.");
-    const gemma = button("Run Storyboard Gemma All", "primary");
+    if (!isRtv) {
+      const imagePrompts = card("1. Gemma Image All", "Creates text-to-image prompts for every target scene using the current image model mode.");
+      const gemmaImage = button("Run Gemma Image All", "primary");
+      gemmaImage.onclick = () => {
+        openNestedTool(() => api.runGemmaImageAll?.(), "wizard gemma image all");
+      };
+      imagePrompts.append(gemmaImage);
+      grid.append(imagePrompts);
+    }
+    const prompts = card(isRtv ? "Create Video Prompts" : "2. Gemma Video All", isRtv
+      ? "Runs the same Storyboard Gemma All prompt writer used by Storyboard Builder."
+      : "Creates I2V prompts after your image prompts/images are ready.");
+    const gemma = button(isRtv ? "Run Storyboard Gemma All" : "Run Gemma Video All", "primary");
     gemma.onclick = () => {
       openNestedTool(() => api.runGemmaVideoAll?.(), "wizard gemma video all");
     };
     prompts.append(gemma);
-    const build = card("Build Full Video", "Uses the existing full build flow. It will ask whether to resume missing outputs or rebuild.");
+    const build = card(isRtv ? "Build Full Video" : "3. Build Full Video", "Uses the existing full build flow. It will ask whether to resume missing outputs or rebuild.");
     const full = button("Build Full Video", "primary");
     full.onclick = () => {
       openNestedTool(() => api.buildFullVideo?.(), "wizard full build");
