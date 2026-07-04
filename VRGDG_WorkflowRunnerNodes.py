@@ -312,6 +312,38 @@ def _clean_i2v_unet_name(value):
     return _I2V_UNET_ALIASES.get(text, text)
 
 
+def _replace_api_input_refs(prompt, old_ref, new_ref):
+    old = [str(old_ref[0]), int(old_ref[1])]
+    new = [str(new_ref[0]), int(new_ref[1])]
+    replaced = 0
+    for node in prompt.values():
+        if not isinstance(node, dict):
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for key, value in list(inputs.items()):
+            if isinstance(value, list) and len(value) == 2 and str(value[0]) == old[0] and int(value[1] or 0) == old[1]:
+                inputs[key] = list(new)
+                replaced += 1
+    return replaced
+
+
+def _collapse_ltx_video_model_switch(prompt, switch_id, selected_loader_id, unused_loader_id):
+    switch_key = str(switch_id or "").strip()
+    selected_key = str(selected_loader_id or "").strip()
+    unused_key = str(unused_loader_id or "").strip()
+    if not switch_key or not selected_key:
+        return False
+    if switch_key not in prompt or selected_key not in prompt:
+        return False
+    _replace_api_input_refs(prompt, (switch_key, 0), (selected_key, 0))
+    prompt.pop(switch_key, None)
+    if unused_key and unused_key != selected_key:
+        prompt.pop(unused_key, None)
+    return True
+
+
 def _patch_ltx_video_model_loader(prompt, payload):
     use_gguf = _bool_payload(payload, "use_gguf_model", True)
     gguf_name = _clean_i2v_unet_name(payload.get("unet_name", ""))
@@ -325,6 +357,11 @@ def _patch_ltx_video_model_loader(prompt, payload):
     _set_optional_api_input(prompt, "271:215", "unet_name", gguf_name)
     if diffusion_loader_id:
         _set_optional_api_input(prompt, diffusion_loader_id, "model_name", diffusion_name)
+    if switch_id and diffusion_loader_id:
+        if use_gguf:
+            _collapse_ltx_video_model_switch(prompt, switch_id, "271:215", diffusion_loader_id)
+        else:
+            _collapse_ltx_video_model_switch(prompt, switch_id, diffusion_loader_id, "271:215")
 
 
 def _load_workflow_template(path=None):

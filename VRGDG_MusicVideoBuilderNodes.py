@@ -53,13 +53,12 @@ Rules:
 - This is text-to-video
 - Never output square brackets or placeholder text. Replace every bracketed example with concrete scene details.
 - Do not force singing. Follow user notes for singing, speaking, narration, instrumental, b-roll, or no-lip-sync behavior.
-- Do not invent or quote lyric/dialogue text. Exact vocal/lyric directives are added by the UI after Gemma output.
+- Do not invent lyric/dialogue text. If exact lyric or dialogue text is provided in the user notes, use only that exact text when the performance direction calls for singing, speaking, or lip-sync. If no exact text is provided, describe the visible performance without inventing words.
 - Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color grading, camera photo style, or static image-quality descriptions.
 - Keep it vivid, fast, cinematic, dynamic, and video-ready
 - Use one location inferred by the user's concept prompt. If one is not listed use one from the location list.
 - Must use user input to help create the prompt
 - User notes take priority. If user notes ask for no singing, silent b-roll, instrumental motion, no lip movement, or non-performance action, follow the user notes instead.
-- Do not use orbit type camera motion, do not use the word "spin", and the subject should never spin.
 - Do not mention source prompts, notes, lyrics, segments, JSON, or instructions.
 - Do not include markdown, labels, quotes, or explanations."""
 
@@ -4873,12 +4872,31 @@ def _image_prompt_edit_instructions(payload):
         raise ValueError("Current image prompt is empty.")
     if not edit_request:
         raise ValueError("Edit request is empty.")
+    has_subject_reference = bool(reference_context.get("has_subject_reference"))
+    has_location_reference = bool(reference_context.get("has_location_reference"))
+    try:
+        subject_reference_count = int(float(reference_context.get("subject_reference_count") or 1)) if has_subject_reference else 0
+    except (TypeError, ValueError):
+        subject_reference_count = 1 if has_subject_reference else 0
+    subject_reference_count = max(0, min(99, subject_reference_count))
+    character_reference_phrase = "character reference images" if subject_reference_count > 1 else "character reference image"
+    reference_opening = ""
+    if prompt_mode in {"nano_banana", "flow_gpt"}:
+        if has_subject_reference and has_location_reference:
+            reference_opening = f"Using the provided {character_reference_phrase} and location reference image"
+        elif has_subject_reference:
+            reference_opening = f"Using the provided {character_reference_phrase}"
+        elif has_location_reference:
+            reference_opening = "Using the provided location reference image"
     mode_rules = ""
-    if prompt_mode == "nano_banana":
+    if prompt_mode in {"nano_banana", "flow_gpt"}:
         mode_rules = (
-            "This is a NanoBanana image prompt. Preserve any required wording about provided character or location references unless the user explicitly asks to change reference usage. "
+            f"This is a {'Flow/GPT browser image' if prompt_mode == 'flow_gpt' else 'NanoBanana'} prompt. Preserve any required wording about provided character or location reference images unless the user explicitly asks to change reference usage. "
+            "Use advanced Krea 2-style image prompting: concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish. "
             "Keep it practical as one image-generation prompt paragraph."
         )
+        if reference_opening:
+            mode_rules += f" The revised prompt must start with exactly this reference opening before the rest of the prompt: \"{reference_opening}, create\"."
     elif prompt_mode == "flux_klein":
         mode_rules = (
             "This is a Flux/Klein image prompt. Preserve mapped subject and location identity from the prompt/reference context unless the user explicitly asks to change them. "
@@ -4930,6 +4948,42 @@ def _image_prompt_edit_instructions(payload):
         f"{context_text}"
         f"{reference_text}"
     )
+
+
+def _ensure_reference_opening_for_image_edit(prompt, payload):
+    text = str(prompt or "").strip()
+    prompt_mode = str(payload.get("prompt_mode") or "").strip().lower()
+    if prompt_mode not in {"nano_banana", "flow_gpt"} or not text:
+        return text
+    reference_context = payload.get("reference_context") if isinstance(payload.get("reference_context"), dict) else {}
+    has_subject_reference = bool(reference_context.get("has_subject_reference"))
+    has_location_reference = bool(reference_context.get("has_location_reference"))
+    try:
+        subject_reference_count = int(float(reference_context.get("subject_reference_count") or 1)) if has_subject_reference else 0
+    except (TypeError, ValueError):
+        subject_reference_count = 1 if has_subject_reference else 0
+    subject_reference_count = max(0, min(99, subject_reference_count))
+    if not has_subject_reference and not has_location_reference:
+        return text
+    character_reference_phrase = "character reference images" if subject_reference_count > 1 else "character reference image"
+    if has_subject_reference and has_location_reference:
+        opening = f"Using the provided {character_reference_phrase} and location reference image"
+    elif has_subject_reference:
+        opening = f"Using the provided {character_reference_phrase}"
+    else:
+        opening = "Using the provided location reference image"
+    text = re.sub(
+        r"^Using the provided\s+(?:(?:character|location|scene|reference)\s+)+(?:images?|references?)\s*,?\s*(?:create\s+)?",
+        "",
+        text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip()
+    if re.match(r"^(?:create|make|generate)\b", text, flags=re.IGNORECASE):
+        text = re.sub(r"^(?:create|make|generate)\b\s*", "", text, count=1, flags=re.IGNORECASE).strip()
+    if not text:
+        return f"{opening}, create a cinematic still image."
+    return f"{opening}, create {text[:1].lower()}{text[1:] if len(text) > 1 else ''}".strip()
 
 
 def _edit_builder_image_prompt(payload):
@@ -5025,6 +5079,7 @@ def _edit_builder_image_prompt(payload):
         text = _clean_visual_gemma_text(text)
         text = extract_prompt_text_from_gemma_output(text, payload.get("scene_number"))
         text = _repair_and_validate_builder_gemma_prompt(payload, text, str(payload.get("mode_label") or "Image"))
+        text = _ensure_reference_opening_for_image_edit(text, payload)
         return {
             "prompt": text,
             "runner": run_info.get("runner", "builtin"),
@@ -5665,6 +5720,13 @@ def _generate_nb_image_prompt(payload):
     location_description = str(reference_context.get("location_description", "") or "").strip()
     has_subject_reference = bool(reference_context.get("has_subject_reference"))
     has_location_reference = bool(reference_context.get("has_location_reference"))
+    try:
+        subject_reference_count = int(float(reference_context.get("subject_reference_count") or 1)) if has_subject_reference else 0
+    except (TypeError, ValueError):
+        subject_reference_count = 1 if has_subject_reference else 0
+    subject_reference_count = max(0, min(99, subject_reference_count))
+    character_reference_phrase = "character reference images" if subject_reference_count > 1 else "character reference image"
+    character_identity_phrase = "character identities from the character references" if subject_reference_count > 1 else "character identity from the character reference"
 
     if subject_description:
         context_parts.append(f"Subject description:\n{subject_description}")
@@ -5675,7 +5737,7 @@ def _generate_nb_image_prompt(payload):
 
     reference_flags = []
     if has_subject_reference:
-        reference_flags.append("A character reference image is available.")
+        reference_flags.append(f"{subject_reference_count or 1} character reference image{'s are' if (subject_reference_count or 1) != 1 else ' is'} available.")
     if has_location_reference:
         reference_flags.append("A scene/location reference image is available.")
     if reference_flags:
@@ -5709,13 +5771,13 @@ def _generate_nb_image_prompt(payload):
         elif not has_location_reference:
             text = re.sub(
                 r"\bUsing the provided character reference and location reference\b",
-                "Using the provided character reference",
+                f"Using the provided {character_reference_phrase}",
                 text,
                 flags=re.IGNORECASE,
             )
             text = re.sub(
                 r"\bUsing the provided location reference and character reference\b",
-                "Using the provided character reference",
+                f"Using the provided {character_reference_phrase}",
                 text,
                 flags=re.IGNORECASE,
             )
@@ -5744,11 +5806,11 @@ def _generate_nb_image_prompt(payload):
         if not text:
             return text
         if has_subject_reference and has_location_reference:
-            opening = "Using the provided character reference and location reference"
+            opening = f"Using the provided {character_reference_phrase} and location reference image"
         elif has_subject_reference:
-            opening = "Using the provided character reference"
+            opening = f"Using the provided {character_reference_phrase}"
         elif has_location_reference:
-            opening = "Using the provided location reference"
+            opening = "Using the provided location reference image"
         else:
             return text
         if re.search(r"\bUsing the provided (?:character|location|scene|reference image)", text, flags=re.IGNORECASE):
@@ -5759,28 +5821,28 @@ def _generate_nb_image_prompt(payload):
 
     if has_subject_reference and has_location_reference:
         reference_prompt_rules = (
-            "- Start by mentioning both the provided character reference and location reference.\n"
-            "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
+            f"- Start by mentioning both the provided {character_reference_phrase} and location reference image.\n"
+            f"- Preserve the {character_identity_phrase}: face, hair, outfit, makeup, and overall identity.\n"
             "- Preserve the location identity from the location reference: environment, architecture, layout, atmosphere, and major visible setting details.\n"
             "- Use the user's scene/concept notes for action, pose, camera, mood, and story beat.\n"
             "- Do not paste the character into the location image.\n"
             "- Do not copy the exact pose, crop, camera angle, perspective, or composition from either reference.\n"
         )
         example_text = (
-            "Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. "
-            "Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. "
+            f"Using the provided {character_reference_phrase} and location reference image, create a close-up profile shot of the woman in the misty forest. "
+            f"Preserve {'the subjects identities, hair, outfits, makeup, and overall identity details from the character references' if subject_reference_count > 1 else 'her identity, hair, outfit, and crown from the character reference'} while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. "
             "Use a new pose, new camera angle, soft bokeh, atmospheric haze, and dramatic rim lighting."
         )
     elif has_subject_reference:
         reference_prompt_rules = (
-            "- Start by mentioning only the provided character reference. Do not mention a location reference.\n"
-            "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
+            f"- Start by mentioning only the provided {character_reference_phrase}. Do not mention a location reference image.\n"
+            f"- Preserve the {character_identity_phrase}: face, hair, outfit, makeup, and overall identity.\n"
             "- Create the setting, background, atmosphere, and location from the user's scene/concept notes.\n"
-            "- Do not copy the character reference pose, studio background, crop, camera angle, or lens distance.\n"
+            f"- Do not copy the {'character reference poses, studio backgrounds, crops, camera angles, or lens distances' if subject_reference_count > 1 else 'character reference pose, studio background, crop, camera angle, or lens distance'}.\n"
         )
         example_text = (
-            "Using the provided character reference, create an intimate upper body shot of the woman in a misty white forest built from the scene concept. "
-            "Preserve her identity, blonde hair, lace outfit, and delicate facial details while placing her among pale gnarled trees, soft fog, shallow depth of field, and ethereal rim lighting."
+            f"Using the provided {character_reference_phrase}, create an intimate upper body shot of the woman in a misty white forest built from the scene concept. "
+            f"Preserve {'the subjects identities, hair, outfits, and facial details' if subject_reference_count > 1 else 'her identity, blonde hair, lace outfit, and delicate facial details'} while placing the scene among pale gnarled trees, soft fog, shallow depth of field, and ethereal rim lighting."
         )
     elif has_location_reference:
         reference_prompt_rules = (
@@ -5819,6 +5881,7 @@ def _generate_nb_image_prompt(payload):
         "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
         "Prompt style:\n"
         f"{reference_prompt_rules}"
+        "- Use advanced Krea 2-style image prompting: concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.\n"
         "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
         "- Use the user's scene/concept notes as the main creative direction.\n"
         "- Create a new camera angle, new pose, and new composition.\n"

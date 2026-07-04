@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import math
 import os
 import re
 from datetime import datetime
@@ -61,15 +62,28 @@ Rules:
 * When there is one subject in singing mode, write "she sings", "he sings", or "[subject label] sings", never "they sing".
 * When there is one subject in speaking mode, write only "she says", "he says", or "[subject label] says", never "they say".
 * Pull the location from `location_ref`.
+* Treat `first_frame_visual_inventory`, `text_to_image_prompt`, `scene_summary`, and existing image prompt text as first-frame visual inventory only. They may identify visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition.
+* Do not use first-frame visual inventory for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing.
+* Build video action from this hierarchy: `character_motion_guidance`, `camera_motion_speed_guidance`, `camera_guidance`, `performance_direction`, `vocal_status`, and scene story beat first; story layer second; first-frame visual inventory last, and only for visible environment/appearance details.
+* Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across the face, body, camera, environment, and atmosphere sentences.
+* If an emotional idea or trait appears in the face sentence, do not repeat that same idea in the body, camera, environment, or atmosphere sentence. Use a different concrete visual detail instead.
+* Do not duplicate adjacent words or descriptors such as "tall, tall", "vast, vast", "steady, steady", or repeated authority/defiance phrases.
+* Do not copy still-image pose language, stillness language, gentle/poised/static wording, or photography-only wording from `text_to_image_prompt` into the video motion plan.
+* User motion fields, `character_motion_guidance`, `camera_motion_speed_guidance`, `camera_guidance`, `performance_direction`, and scene story beat control animation, body action, camera movement, and performance energy.
+* If motion speed guidance is high, it overrides calm, poised, subtle, static, steady, restrained, quiet, or hold wording from the image prompt or first frame.
+* For camera speed 9-10, include two or more coordinated camera actions in the same scene when readable; do not end with "then holds", "holds on", "settles into a hold", "static hold", or "steady hold" unless the user explicitly asks for a hold.
+* For character motion speed 9-10, make the subject perform a clear full-body action such as striding, turning, crossing the space, forceful gestures, dancing, running, fighting, climbing, or interacting with the set; avoid describing the subject as only poised, still, standing, subtle, quiet, or steady.
 * Use `shot_type` from the scene when available.
 * Use `motion_video_summary` or `camera_motion` for camera movement.
 * If `camera_motion` is empty, use `motion_video_summary`.
 * Follow `camera_guidance` when present. If it says to avoid default inward moves, do not add zoom-in, push-in, dolly-in, crash-zoom, or close-up endings unless the scene explicitly requests that exact motion.
+* Follow `camera_motion_speed_guidance` or `camera_guidance.camera_motion_speed_guidance` when present. Low values mean static/slow camera; high values mean faster or compound camera action with no static hold ending.
 * Do not default to zoom-in, push-in, dolly-in, crash-zoom, or close-up endings. Use those inward camera moves only when `camera_motion`, `shot_type`, or the user notes explicitly ask for them.
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
 * If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * Use `performance_style` and `performance_direction` to choose body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
+* Follow `character_motion_guidance` when present. Low values mean still/subtle body language; high values mean energetic or fast physical action when it fits the scene.
 * Use `facial_performance` and `facial_performance_direction` as the main source for facial emotion, eyes, brows, cheeks, jaw, gaze, mouth behavior, and blinking.
 * If `story_layer` exists, use `song_story_brief`, `user_story_arc`, `lyric_section`, and `scene_story_beat` as narrative guidance for emotion, symbolic action, continuity, and visual motivation. Do not quote the story layer or explain it; weave it into the scene naturally.
 * If `performance_mode` is `singing` and the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
@@ -121,6 +135,7 @@ Rules:
 * Use `shot_type` as the still-frame composition when available.
 * If `global_consistency_phrase` is present, include it in the final image prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * Use `performance_style` and `performance_direction` for body language, wardrobe energy, and genre feel.
+* Follow `character_motion_guidance` when present, but express it as still-image pose/action/body language only. Do not describe animation or future movement.
 * Use `facial_performance` and `facial_performance_direction` only for still-image facial emotion: eye direction, brows, cheeks, jaw tension, mouth expression, gaze, and pose.
 * Do not describe future camera movement, animation, transitions, frame changes, blinking, eye movement, mouth movement, or what happens next.
 * Do not mention JSON, IDs, file paths, image names, or metadata.
@@ -346,11 +361,55 @@ def _normalize_reference_catalog(value):
 
 def _normalize_story_layer(value):
     source = value if isinstance(value, dict) else {}
+    try:
+        lyric_story_strength = int(float(source.get("lyric_story_strength", source.get("lyricStoryStrength", 7))))
+    except Exception:
+        lyric_story_strength = 7
+    lyric_story_strength = max(0, min(10, lyric_story_strength))
     return {
         "enabled": bool(source.get("enabled", True)),
         "user_story_arc": _clean_scene_text(source.get("user_story_arc") or source.get("userStoryArc") or "", 8000),
         "song_story_brief": _clean_scene_text(source.get("song_story_brief") or source.get("songStoryBrief") or "", 4000),
+        "lyric_story_strength": lyric_story_strength,
     }
+
+
+def _lyric_story_strength_guidance(story_layer):
+    try:
+        strength = int(float((story_layer or {}).get("lyric_story_strength", 7)))
+    except Exception:
+        strength = 7
+    strength = max(0, min(10, strength))
+    if strength <= 0:
+        guidance = (
+            "Ignore the lyrics as story source. Use the story arc, style, subjects, and locations instead. "
+            "Do not force lyric objects, actions, or meanings into scenes."
+        )
+    elif strength <= 3:
+        guidance = (
+            "Use lyrics lightly as mood and emotional timing only. Avoid literal lyric objects/actions unless they naturally support the story."
+        )
+    elif strength <= 6:
+        guidance = (
+            "Balance lyrics with the story arc. Each vocal scene should reflect the lyric's emotional intent, and concrete lyric anchors can appear when they fit."
+        )
+    elif strength <= 8:
+        guidance = (
+            "Lyrics strongly shape the story. For each vocal scene, preserve the lyric's main feeling, situation, or image, and include a recognizable lyric anchor when possible."
+        )
+    else:
+        guidance = (
+            "Use lyrics as literally as possible while staying cinematic. For every non-instrumental scene, include at least one concrete object, action, emotion, or situation from that exact lyric line unless it would be impossible or unsafe."
+        )
+    return f"Lyric Story Strength: {strength}/10. {guidance}"
+
+
+def _speed_value(value, fallback=4):
+    try:
+        speed = int(float(value))
+    except Exception:
+        speed = fallback
+    return max(0, min(10, speed))
 
 
 def _safe_file_stem(value, fallback="reference"):
@@ -504,6 +563,9 @@ def _default_storyboard(payload):
         "image_shot_flow": _clean_scene_text(payload.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(payload.get("image_aesthetic") or "", 120),
         "global_consistency_phrase": _clean_scene_text(payload.get("global_consistency_phrase") or "", 1200),
+        "camera_motion_speed": _speed_value(payload.get("camera_motion_speed") or payload.get("cameraMotionSpeed")),
+        "character_motion_speed": _speed_value(payload.get("character_motion_speed") or payload.get("characterMotionSpeed")),
+        "performance_style_default": _clean_scene_text(payload.get("performance_style_default") or payload.get("performance_style") or payload.get("performanceStyle") or "", 120),
         "facial_performance_default": _clean_scene_text(payload.get("facial_performance_default") or payload.get("facial_performance") or "", 120),
         "facial_performance_custom_default": _clean_scene_text(payload.get("facial_performance_custom_default") or payload.get("facial_performance_custom") or "", 1200),
         "story_layer": _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {}),
@@ -550,6 +612,9 @@ def _save_storyboard(payload):
         "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(storyboard.get("image_aesthetic") or "", 120),
         "global_consistency_phrase": _clean_scene_text(storyboard.get("global_consistency_phrase") or "", 1200),
+        "camera_motion_speed": _speed_value(storyboard.get("camera_motion_speed") or storyboard.get("cameraMotionSpeed")),
+        "character_motion_speed": _speed_value(storyboard.get("character_motion_speed") or storyboard.get("characterMotionSpeed")),
+        "performance_style_default": _clean_scene_text(storyboard.get("performance_style_default") or storyboard.get("performance_style") or storyboard.get("performanceStyle") or "", 120),
         "facial_performance_default": _clean_scene_text(storyboard.get("facial_performance_default") or storyboard.get("facial_performance") or "", 120),
         "facial_performance_custom_default": _clean_scene_text(storyboard.get("facial_performance_custom_default") or storyboard.get("facial_performance_custom") or "", 1200),
         "story_layer": _normalize_story_layer(storyboard.get("story_layer") or storyboard.get("storyLayer") or {}),
@@ -744,6 +809,114 @@ def _enforce_storyboard_video_facial_requirements(prompt, scene):
     return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
 
 
+def _storyboard_speed_value(value, fallback=4):
+    try:
+        number = float(value)
+    except Exception:
+        return fallback
+    if not math.isfinite(number):
+        return fallback
+    return max(0, min(10, number))
+
+
+def _enforce_storyboard_high_motion_language(prompt, scene):
+    text = _clean_scene_text(prompt or "", 12000)
+    if not text or not isinstance(scene, dict):
+        return text
+    camera_speed = _storyboard_speed_value(scene.get("camera_motion_speed") or scene.get("cameraMotionSpeed"), 4)
+    character_speed = _storyboard_speed_value(scene.get("character_motion_speed") or scene.get("characterMotionSpeed"), 4)
+    if camera_speed >= 9:
+        replacements = [
+            (r"\bthen\s+holds?\s+on\b", "then continues moving across"),
+            (r"\bthen\s+holds?\b", "then continues moving"),
+            (r"\bsettles?\s+into\s+a\s+(?:static\s+|steady\s+)?hold\b", "flows into another coordinated camera move"),
+            (r"\b(?:static|steady)\s+hold\b", "continued camera motion"),
+            (r"\bholds?\s+on\s+her\s+steady,\s*powerful\s+gaze\b", "tracks her powerful gaze while the camera keeps moving"),
+            (r"\bholds?\s+on\s+(his|her|their|the)\s+([^,.]+)\b", r"keeps moving around \1 \2"),
+        ]
+        for pattern, replacement in replacements:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        camera_terms = re.findall(r"\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|push|dolly|handheld|reveal)\b", text, flags=re.IGNORECASE)
+        if len(camera_terms) < 2:
+            text = f"{text.rstrip().rstrip('.')}, with the camera chaining multiple readable moves instead of stopping on a hold."
+    if character_speed >= 9:
+        replacements = [
+            (r"\bmoves?\s+with\s+a\s+quiet,\s*poised\s+authority\b", "moves with forceful, physically active authority"),
+            (r"\bmoves?\s+with\s+quiet,\s*poised\s+authority\b", "moves with forceful, physically active authority"),
+            (r"\bquiet,\s*poised\s+authority\b", "forceful, physically active authority"),
+            (r"\bquiet\s+poised\s+authority\b", "forceful physical authority"),
+            (r"\bpoised,\s*unyielding\s+head\s+position\b", "forward-driving head posture with sharp turns"),
+            (r"\bpoised\s+posture\b", "active, commanding posture"),
+            (r"\bsubtle\s+body\s+motion\b", "clear full-body movement"),
+            (r"\bstands?\s+still\b", "moves through the space"),
+        ]
+        for pattern, replacement in replacements:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        if not re.search(r"\b(?:strides?|runs?|sprints?|dances?|turns?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushing|sweeping|gestures?)\b", text, flags=re.IGNORECASE):
+            text = f"{text.rstrip().rstrip('.')}, while the subject performs clear full-body movement through the set."
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
+
+
+def _storyboard_video_prompt_writing_rules():
+    return "\n".join([
+        "Prompt writing rules:",
+        "Use the image reference and text-to-image prompt only for visible first-frame details: subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition.",
+        "Do not use the image prompt for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing.",
+        "Use the motion/camera notes, performance direction, vocal direction, facial direction, and scene story beat to decide animation, body action, camera movement, and performance energy.",
+        "Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across the face, body, camera, environment, and atmosphere sentences.",
+        "If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead.",
+        "Do not duplicate adjacent words such as tall, tall or vast, vast.",
+    ])
+
+
+def _storyboard_reference_opening(scene):
+    if not isinstance(scene, dict) or scene.get("no_character_present"):
+        subject_count = 0
+    else:
+        subject_refs = scene.get("subject_refs") if isinstance(scene.get("subject_refs"), list) else []
+        subject_count = 0
+        for subject in subject_refs:
+            if not isinstance(subject, dict):
+                continue
+            image = subject.get("image") if isinstance(subject.get("image"), dict) else subject
+            if image.get("path") or image.get("data") or subject.get("image_path") or subject.get("image_data"):
+                subject_count += 1
+    location_ref = scene.get("location_ref") if isinstance(scene.get("location_ref"), dict) else {}
+    location_image = location_ref.get("image") if isinstance(location_ref.get("image"), dict) else location_ref
+    has_location = bool(location_image.get("path") or location_image.get("data") or location_ref.get("image_path") or location_ref.get("image_data"))
+    if not subject_count and not has_location:
+        return ""
+    character_phrase = "character reference images" if subject_count > 1 else "character reference image"
+    if subject_count and has_location:
+        return f"Using the provided {character_phrase} and location reference image"
+    if subject_count:
+        return f"Using the provided {character_phrase}"
+    return "Using the provided location reference image"
+
+
+def _ensure_storyboard_reference_opening(prompt, scene):
+    text = str(prompt or "").strip()
+    opening = _storyboard_reference_opening(scene)
+    if not opening or not text:
+        return text
+    text = re.sub(
+        r"^Using the provided\s+(?:(?:character|location|scene|reference)\s+)+(?:images?|references?)\s*,?\s*(?:create\s+)?",
+        "",
+        text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip()
+    text = re.sub(r"^(?:create|make|generate)\b\s*", "", text, count=1, flags=re.IGNORECASE).strip()
+    if not text:
+        return f"{opening}, create a cinematic still image."
+    return f"{opening}, create {text[:1].lower()}{text[1:] if len(text) > 1 else ''}".strip()
+
+
+def _storyboard_image_mode_uses_reference_opening(scene_bundle):
+    mode = str((scene_bundle or {}).get("image_model_mode") or (scene_bundle or {}).get("imageMode") or "").strip().lower()
+    return mode in {"nano_banana", "flux_klein", "flow_gpt"}
+
+
 def _build_storyboard_image_prompt(payload):
     scene_bundle = payload.get("storyboard_payload") or payload.get("scene_bundle") or payload.get("gpt_payload")
     if not isinstance(scene_bundle, dict):
@@ -768,7 +941,10 @@ def _build_storyboard_image_prompt(payload):
         preserve_paragraphs=True,
     )
     prompt = extract_prompt_text_from_gemma_output(prompt, scene_bundle.get("selected_scene_number"))
+    selected_scene = _selected_storyboard_scene(scene_bundle)
     prompt = _clean_scene_text(_fix_single_subject_prompt_pronouns(prompt, scene_bundle), 12000)
+    if _storyboard_image_mode_uses_reference_opening(scene_bundle):
+        prompt = _ensure_storyboard_reference_opening(prompt, selected_scene)
     if not prompt:
         raise ValueError("Gemma returned an empty Storyboard image prompt.")
     return {
@@ -788,7 +964,8 @@ def _build_storyboard_video_prompt(payload):
         raise ValueError("Storyboard scene-card payload has no scenes.")
     selected_scene = _selected_storyboard_scene(scene_bundle)
     image_path = _clean_scene_text(selected_scene.get("image_path") or selected_scene.get("approved_image_path") or "", 2000)
-    if image_path:
+    image_data = str(selected_scene.get("image_data") or selected_scene.get("image_reference_data") or "").strip()
+    if image_path or image_data:
         from .VRGDG_MusicVideoBuilderNodes import _generate_builder_i2v_prompt
 
         subject_context = "\n\n".join(
@@ -811,6 +988,22 @@ def _build_storyboard_video_prompt(payload):
             or payload.get("videoType")
         )
         story_layer = selected_scene.get("story_layer") or {}
+        camera_guidance = selected_scene.get("camera_guidance") if isinstance(selected_scene.get("camera_guidance"), dict) else {}
+        camera_speed_guidance = (
+            selected_scene.get("camera_motion_speed_guidance")
+            or camera_guidance.get("camera_motion_speed_guidance")
+            or ""
+        )
+        first_frame_inventory = selected_scene.get("first_frame_visual_inventory")
+        if isinstance(first_frame_inventory, dict):
+            first_frame_inventory = first_frame_inventory.get("text") or ""
+        first_frame_inventory = _clean_scene_text(
+            first_frame_inventory
+            or selected_scene.get("text_to_image_prompt")
+            or selected_scene.get("scene_summary")
+            or "",
+            12000,
+        )
         user_notes = "\n\n".join(
             part for part in [
                 f"Performance mode:\n{performance_mode}",
@@ -819,8 +1012,12 @@ def _build_storyboard_video_prompt(payload):
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
                 f"Motion/video summary:\n{_clean_scene_text(selected_scene.get('motion_summary') or '', 1200)}",
                 f"Camera motion:\n{_clean_scene_text(selected_scene.get('camera_motion') or '', 500)}",
+                f"Camera motion speed guidance:\n{_clean_scene_text(camera_speed_guidance, 1000)}",
+                f"Character motion guidance:\n{_clean_scene_text(selected_scene.get('character_motion_guidance') or '', 1000)}",
                 f"Performance direction:\n{_clean_scene_text(selected_scene.get('performance_direction') or selected_scene.get('performance_style') or '', 1000)}",
                 f"Facial performance direction:\n{_clean_scene_text(selected_scene.get('facial_performance_direction') or selected_scene.get('facial_performance_custom') or selected_scene.get('facial_performance') or '', 1600)}",
+                f"First-frame visual inventory:\n{_clean_scene_text(first_frame_inventory, 1600)}" if first_frame_inventory else "",
+                _storyboard_video_prompt_writing_rules(),
             ]
             if part.split(":\n", 1)[-1].strip()
         )
@@ -828,8 +1025,9 @@ def _build_storyboard_video_prompt(payload):
             **payload,
             "model_file": payload.get("vision_model_file") or payload.get("vision_model") or payload.get("model_file") or "",
             "mmproj_file": payload.get("mmproj_file") or payload.get("mmproj") or "",
-            "t2i_prompt": _clean_scene_text(selected_scene.get("text_to_image_prompt") or selected_scene.get("scene_summary") or "", 12000),
+            "t2i_prompt": "",
             "image_reference_path": image_path,
+            "image_reference_data": image_data,
             "user_notes": user_notes,
             "performance_mode": performance_mode,
             "subject_context": subject_context,
@@ -838,8 +1036,11 @@ def _build_storyboard_video_prompt(payload):
             "max_new_tokens": int(payload.get("max_new_tokens") or 1800),
         }
         result = _generate_builder_i2v_prompt(vision_payload)
-        result["prompt"] = _enforce_storyboard_video_facial_requirements(
-            _fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle),
+        result["prompt"] = _enforce_storyboard_high_motion_language(
+            _enforce_storyboard_video_facial_requirements(
+                _fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle),
+                selected_scene,
+            ),
             selected_scene,
         )
         return result
@@ -860,8 +1061,11 @@ def _build_storyboard_video_prompt(payload):
         label="Storyboard Gemma4",
         preserve_paragraphs=True,
     )
-    prompt = _enforce_storyboard_video_facial_requirements(
-        _fix_single_subject_prompt_pronouns(prompt, scene_bundle),
+    prompt = _enforce_storyboard_high_motion_language(
+        _enforce_storyboard_video_facial_requirements(
+            _fix_single_subject_prompt_pronouns(prompt, scene_bundle),
+            selected_scene,
+        ),
         selected_scene,
     )
     if not prompt:
@@ -904,6 +1108,7 @@ def _build_story_layer_brief(payload):
         "- Keep it useful for music-video scene prompting.\n"
         "- Output plain text only, no markdown table.\n"
         "- Keep it under 250 words.\n\n"
+        f"{_lyric_story_strength_guidance(story_layer)}\n\n"
         "Include these compact headings exactly:\n"
         "Story premise:\n"
         "Emotional arc:\n"
@@ -936,12 +1141,24 @@ def _build_story_layer_brief(payload):
 
 
 def _build_story_layer_arc(payload):
+    storyboard = payload.get("storyboard") if isinstance(payload.get("storyboard"), dict) else {}
     lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 16000)
-    story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or storyboard.get("story_layer") or {})
     story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("user_story_arc") or "", 4000)
     style_theme = _clean_scene_text(payload.get("style_theme") or payload.get("styleTheme") or payload.get("theme") or "", 1600)
+    performance_style = _clean_scene_text(payload.get("performance_style") or payload.get("performanceStyle") or storyboard.get("performance_style_default") or "", 200)
+    facial_performance = _clean_scene_text(payload.get("facial_performance") or payload.get("facialPerformance") or storyboard.get("facial_performance_default") or "", 200)
+    camera_flow = _clean_scene_text(payload.get("camera_flow") or payload.get("cameraFlow") or storyboard.get("camera_flow") or "", 200)
     try:
-        character_motion = int(float(payload.get("character_motion", payload.get("characterMotion", 7))))
+        camera_motion_speed = int(float(payload.get("camera_motion_speed", payload.get("cameraMotionSpeed", storyboard.get("camera_motion_speed", 4)))))
+    except Exception:
+        camera_motion_speed = 4
+    camera_motion_speed = max(0, min(10, camera_motion_speed))
+    try:
+        character_motion = int(float(payload.get(
+            "character_motion",
+            payload.get("characterMotion", payload.get("character_motion_speed", payload.get("characterMotionSpeed", storyboard.get("character_motion_speed", 7))))
+        )))
     except Exception:
         character_motion = 7
     character_motion = max(0, min(10, character_motion))
@@ -1070,7 +1287,14 @@ def _build_story_layer_arc(payload):
         "* If no lyrics are provided, build the arc from the theme or story idea.\n"
         "* Do not ask follow-up questions unless absolutely necessary.\n"
         "* Output only the story arc sections. No intro note, no markdown table, no JSON.\n\n"
+        f"Scene default style settings:\n"
+        f"- Camera flow: {camera_flow or '[not provided]'}\n"
+        f"- Camera motion speed: {camera_motion_speed}/10\n"
+        f"- Character motion speed: {character_motion}/10\n"
+        f"- Performance style: {performance_style or '[not provided]'}\n"
+        f"- Facial performance: {facial_performance or '[not provided]'}\n\n"
         f"{motion_guidance}\n\n"
+        f"{_lyric_story_strength_guidance(story_layer)}\n\n"
         f"Story idea:\n{story_idea or '[not provided]'}\n\n"
         f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
         f"Character descriptions:\n{json.dumps(subjects[:24], ensure_ascii=False, indent=2) if subjects else '[not provided]'}\n\n"
@@ -1123,6 +1347,7 @@ def _build_story_layer_scene_beat(payload):
         "- If no character is present, make the beat about location, objects, atmosphere, memory, or symbolism.\n"
         "- Output one short paragraph only, no label, no bullets.\n"
         "- Keep it under 80 words.\n\n"
+        f"{_lyric_story_strength_guidance(story_layer)}\n\n"
         f"User Story Arc:\n{story_layer.get('user_story_arc') or '[none]'}\n\n"
         f"Song Story Brief:\n{story_layer.get('song_story_brief') or '[none]'}\n\n"
         f"Previous scene beat:\n{previous_beat or '[none]'}\n\n"

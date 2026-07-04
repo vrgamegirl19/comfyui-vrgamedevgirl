@@ -1183,8 +1183,44 @@ function normalizeScene(scene = {}, index = 0) {
     image_prompt: scene.image_prompt || scene.t2i_prompt || "",
     video_prompt: scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "",
     image_path: scene.image_path || scene.approved_image_path || "",
+    image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
   };
+}
+
+function storyboardReferenceOpening(scene = {}) {
+  const normalized = normalizeScene(scene, 0);
+  const subjectCount = normalized.no_character_present
+    ? 0
+    : normalized.subject_refs.filter((subject) => {
+        const image = subject?.image || subject || {};
+        return Boolean(image.path || image.data || subject?.image_path || subject?.image_data);
+      }).length;
+  const locationImage = normalized.location_ref?.image || normalized.location_ref || {};
+  const hasLocation = Boolean(locationImage.path || locationImage.data || normalized.location_ref?.image_path || normalized.location_ref?.image_data);
+  if (!subjectCount && !hasLocation) return "";
+  const characterPhrase = subjectCount > 1 ? "character reference images" : "character reference image";
+  if (subjectCount && hasLocation) return `Using the provided ${characterPhrase} and location reference image`;
+  if (subjectCount) return `Using the provided ${characterPhrase}`;
+  return "Using the provided location reference image";
+}
+
+function storyboardImageModeUsesReferenceOpening(imageMode = "") {
+  return ["nano_banana", "flux_klein", "flow_gpt"].includes(String(imageMode || "").trim());
+}
+
+function ensureStoryboardReferenceOpening(prompt, scene = {}, imageMode = "") {
+  if (!storyboardImageModeUsesReferenceOpening(imageMode)) return String(prompt || "").trim();
+  const opening = storyboardReferenceOpening(scene);
+  let text = String(prompt || "").trim();
+  if (!opening || !text) return text;
+  text = text.replace(
+    /^Using the provided\s+(?:(?:character|location|scene|reference)\s+)+(?:images?|references?)\s*,?\s*(?:create\s+)?/i,
+    "",
+  ).trim();
+  text = text.replace(/^(?:create|make|generate)\b\s*/i, "").trim();
+  if (!text) return `${opening}, create a cinematic still image.`;
+  return `${opening}, create ${text.slice(0, 1).toLowerCase()}${text.slice(1)}`;
 }
 
 function scenesFromBuilderPayload(payload = {}) {
@@ -1218,6 +1254,7 @@ function scenesFromBuilderPayload(payload = {}) {
       image_prompt: scene.t2i_prompt || "",
     video_prompt: scene.i2v_prompt || scene.t2v_prompt || "",
     image_path: scene.image_path || scene.approved_image_path || "",
+    image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
   }, index));
 }
@@ -1309,11 +1346,79 @@ function slimSceneForRequest(scene, index = 0) {
 
 function normalizeStoryLayer(value = {}) {
   const source = value && typeof value === "object" ? value : {};
+  const lyricStoryStrength = Math.max(0, Math.min(10, Number(source.lyric_story_strength ?? source.lyricStoryStrength ?? 7)));
   return {
     enabled: source.enabled !== false,
     user_story_arc: String(source.user_story_arc || source.userStoryArc || ""),
     song_story_brief: String(source.song_story_brief || source.songStoryBrief || ""),
+    lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
   };
+}
+
+function storyboardSpeedValue(value, fallback = 4) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(10, number)) : fallback;
+}
+
+function storyboardSpeedLabel(value, kind = "motion") {
+  const speed = storyboardSpeedValue(value);
+  if (speed <= 0) return kind === "camera" ? "0 / static camera" : "0 / still subject";
+  if (speed <= 3) return `${speed} / subtle`;
+  if (speed <= 6) return `${speed} / active`;
+  if (speed <= 8) return `${speed} / energetic`;
+  return `${speed} / fast action`;
+}
+
+function storyboardSpeedGuidance(value, kind = "motion") {
+  const speed = storyboardSpeedValue(value);
+  if (kind === "camera") {
+    if (speed <= 0) return "Camera speed 0/10: locked-off static camera, no camera movement.";
+    if (speed <= 3) return `Camera speed ${speed}/10: slow, gentle camera motion; one simple move at most.`;
+    if (speed <= 6) return `Camera speed ${speed}/10: controlled cinematic movement such as tracking, pan, dolly, crane, or orbit, usually one clear move.`;
+    if (speed <= 8) return `Camera speed ${speed}/10: energetic camera motion with stronger tracking, orbit, whip pan, rise, reveal, or compound movement.`;
+    return `Camera speed ${speed}/10: fast action camera language; use two or more coordinated camera actions in one scene when readable, such as whip pan into fast tracking plus orbit, reveal, pan, tilt, crane, or pullback. Do not end with "then holds", "holds on", "settles into a hold", static hold, or steady hold unless the user explicitly asks for a hold.`;
+  }
+  if (speed <= 0) return "Character motion speed 0/10: subject stays still or holds a pose; only facial expression or tiny gestures.";
+  if (speed <= 3) return `Character motion speed ${speed}/10: subtle body motion such as shifting weight, hand gestures, turning, swaying, reaching, or small steps.`;
+  if (speed <= 6) return `Character motion speed ${speed}/10: active body performance; walking, dancing, interacting with objects, using the set, expressive arms and torso.`;
+  if (speed <= 8) return `Character motion speed ${speed}/10: energetic character action; running, dancing hard, climbing, struggling, spinning, crossing the space, or forceful environmental interaction.`;
+  return `Character motion speed ${speed}/10: fast action character movement; require clear full-body action such as sprinting, explosive dance, striding, sharp turns, crossing the space, chase/action beats, rapid direction changes, forceful gestures, or intense physical set interaction when it fits the scene. Avoid only poised, still, standing, subtle, quiet, steady, or restrained body language.`;
+}
+
+function enforceHighMotionPromptLanguage(prompt, scene = {}, state = {}) {
+  let text = String(prompt || "").trim();
+  if (!text) return text;
+  const cameraSpeed = storyboardSpeedValue(scene.camera_motion_speed ?? scene.cameraMotionSpeed ?? state.cameraMotionSpeed, 4);
+  const characterSpeed = storyboardSpeedValue(scene.character_motion_speed ?? scene.characterMotionSpeed ?? state.characterMotionSpeed, 4);
+  if (cameraSpeed >= 9) {
+    text = text
+      .replace(/\bthen\s+holds?\s+on\b/gi, "then continues moving across")
+      .replace(/\bthen\s+holds?\b/gi, "then continues moving")
+      .replace(/\bsettles?\s+into\s+a\s+(?:static\s+|steady\s+)?hold\b/gi, "flows into another coordinated camera move")
+      .replace(/\b(?:static|steady)\s+hold\b/gi, "continued camera motion")
+      .replace(/\bholds?\s+on\s+her\s+steady,\s*powerful\s+gaze\b/gi, "tracks her powerful gaze while the camera keeps moving")
+      .replace(/\bholds?\s+on\s+(his|her|their|the)\s+([^,.]+)\b/gi, "keeps moving around $1 $2");
+    if (!/\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|push|dolly|handheld|reveal)\b.*\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|push|dolly|handheld|reveal)\b/i.test(text)) {
+      text = text.replace(/\.+\s*$/, "");
+      text += ", with the camera chaining multiple readable moves instead of stopping on a hold.";
+    }
+  }
+  if (characterSpeed >= 9) {
+    text = text
+      .replace(/\bmoves?\s+with\s+a\s+quiet,\s*poised\s+authority\b/gi, "moves with forceful, physically active authority")
+      .replace(/\bmoves?\s+with\s+quiet,\s*poised\s+authority\b/gi, "moves with forceful, physically active authority")
+      .replace(/\bquiet,\s*poised\s+authority\b/gi, "forceful, physically active authority")
+      .replace(/\bquiet\s+poised\s+authority\b/gi, "forceful physical authority")
+      .replace(/\bpoised,\s*unyielding\s+head\s+position\b/gi, "forward-driving head posture with sharp turns")
+      .replace(/\bpoised\s+posture\b/gi, "active, commanding posture")
+      .replace(/\bsubtle\s+body\s+motion\b/gi, "clear full-body movement")
+      .replace(/\bstands?\s+still\b/gi, "moves through the space");
+    if (!/\b(?:strides?|runs?|sprints?|dances?|turns?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushing|sweeping|gestures?)\b/i.test(text)) {
+      text = text.replace(/\.+\s*$/, "");
+      text += ", while the subject performs clear full-body movement through the set.";
+    }
+  }
+  return text.replace(/\s{2,}/g, " ").trim();
 }
 
 function mergeStoryLayers(primary = {}, fallback = {}) {
@@ -1334,6 +1439,8 @@ function slimStoryboardForRequest(state) {
     image_shot_flow: state.imageShotFlow || "intimate",
     image_aesthetic: state.imageAesthetic || "",
     global_consistency_phrase: state.globalConsistencyPhrase || "",
+    camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+    character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
     performance_style_default: state.performanceStyle || "",
     facial_performance_default: state.facialPerformance || "",
     facial_performance_custom_default: state.facialPerformanceCustom || "",
@@ -1341,6 +1448,12 @@ function slimStoryboardForRequest(state) {
     reference_builder: {
       subjects: (state.referenceBuilder?.subjects || []).map(slimReferenceForRequest).filter(Boolean),
       locations: (state.referenceBuilder?.locations || []).map(slimReferenceForRequest).filter(Boolean),
+    },
+    motion_defaults: {
+      camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+      character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+      camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
+      character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
     },
     scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
   };
@@ -1465,7 +1578,8 @@ function storyboardScenesForGpt(state) {
         scene_story_beat: normalized.story_beat,
         song_story_brief: state.storyLayer?.enabled === false ? "" : String(state.storyLayer?.song_story_brief || ""),
         user_story_arc: state.storyLayer?.enabled === false ? "" : String(state.storyLayer?.user_story_arc || ""),
-        instruction: "Use the story brief and scene story beat as narrative guidance. They should influence emotion, symbolic action, continuity, and visual motivation without turning the prompt into plot exposition.",
+        lyric_story_strength: normalizeStoryLayer(state.storyLayer).lyric_story_strength,
+        instruction: "Use the story brief and scene story beat as narrative guidance. Lyric story strength controls how literally to follow lyric_line: 0 ignores lyrics, 1-3 uses mood only, 4-6 balances lyrics with story, 7-8 strongly follows lyric meaning, and 9-10 uses concrete lyric objects/actions/emotions whenever possible. Do not turn the prompt into plot exposition.",
       },
       motion_summary: imageMode ? "" : normalized.motion_summary,
       still_image_notes: imageMode ? normalized.motion_summary : "",
@@ -1510,6 +1624,8 @@ function storyboardScenesForGpt(state) {
       shot_type: shotType,
       camera_motion: imageMode ? "" : cameraMotion,
       still_camera_style: imageMode ? cameraMotion : "",
+      camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+      camera_motion_speed_guidance: imageMode ? "" : storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
       camera_guidance: imageMode
         ? {
             selected_still_camera_style: cameraMotion,
@@ -1517,11 +1633,22 @@ function storyboardScenesForGpt(state) {
           }
         : {
             selected_camera_motion: cameraMotion,
+            camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+            camera_motion_speed_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
             avoid_default_inward_moves: true,
             instruction: "Use the selected camera motion as written. Do not add zoom-in, push-in, dolly-in, crash-zoom, or a close-up ending unless that exact inward motion is selected or requested in notes.",
           },
       character_motion: imageMode ? "" : normalized.character_motion,
-      text_to_image_prompt: normalized.image_prompt,
+      character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+      character_motion_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
+      first_frame_visual_inventory: imageMode
+        ? ""
+        : {
+            source: "text_to_image_prompt",
+            text: normalized.image_prompt,
+            instruction: "Use only for visible first-frame inventory: subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use this field for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing.",
+          },
+      text_to_image_prompt: imageMode ? normalized.image_prompt : "",
       video_prompt: normalized.video_prompt,
       notes: normalized.notes,
     };
@@ -1532,24 +1659,36 @@ export function storyboardGptPayload(state, scenesOverride = null) {
   const payloadState = scenesOverride ? { ...state, scenes: scenesOverride } : state;
   const selectedScene = scenesOverride?.length === 1 ? normalizeScene(scenesOverride[0], 0) : null;
   const imageMode = state.mode !== "image_to_video_prep";
+  const selectedImageMode = String(state.imageMode || state.image_mode || "zimage").trim() || "zimage";
+  const selectedImageModeLabel = String(state.imageModeLabel || state.image_mode_label || selectedImageMode).trim() || selectedImageMode;
+  const imagePromptTarget = selectedImageMode === "flow_gpt"
+    ? "Flow/GPT browser image prompt"
+    : selectedImageMode === "nano_banana"
+      ? "NanoBanana image prompt"
+      : `${selectedImageModeLabel} image prompt`;
   return {
     scope: selectedScene ? "single_scene" : "all_scenes",
     selected_scene_number: selectedScene ? selectedScene.scene_number : null,
     performance_mode: normalizeStoryboardPerformanceMode(selectedScene?.performance_mode || state.performanceMode || state.videoType || state.performance_mode),
     storyboard_mode: state.mode === "image_to_video_prep" ? "video prompt planning" : "text-to-image prompt planning",
+    image_model_mode: selectedImageMode,
+    image_model_label: selectedImageModeLabel,
+    image_prompt_target: imagePromptTarget,
     ...(imageMode
       ? {
-        task_instruction: "Create detailed Krea 2 text-to-image prompts for Image Prep. These are still-image prompts, not video or lip-sync prompts. Use lyrics and story beats for mood, symbolism, emotion, styling, and scene direction only. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless the scene notes explicitly ask for a live singing image. Preserve mapped subject prompt names exactly as provided in each scene's visible_subjects and subjects.name. When a subject has a trigger_phrase, that trigger phrase is the subject identity for prompt wording, so write natural phrases like 'a photo of TRIGGER_PHRASE' instead of 'a photo of a woman'. Do not rename 'the woman' as 'one woman' or 'a woman', and do not rename trigger phrases. If global_consistency_phrase is present, weave it naturally into the prompt where it fits instead of slapping it onto the front.",
+        task_instruction: `Create detailed ${imagePromptTarget}s for Image Prep using advanced Krea 2-style still-image prompting. These are still-image prompts, not video or lip-sync prompts. Use lyrics and story beats for mood, symbolism, emotion, styling, and scene direction only. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless the scene notes explicitly ask for a live singing image. Preserve mapped subject prompt names exactly as provided in each scene's visible_subjects and subjects.name. When a subject has a trigger_phrase, that trigger phrase is the subject identity for prompt wording, so write natural phrases like 'a photo of TRIGGER_PHRASE' instead of 'a photo of a woman'. Do not rename 'the woman' as 'one woman' or 'a woman', and do not rename trigger phrases. If global_consistency_phrase is present, weave it naturally into the prompt where it fits instead of slapping it onto the front.`,
         output_format: {
           type: "image_prompt_import_json",
           instruction: "Return only a JSON code block with an array of objects. Include every scene. Each object must have scene_number and image_prompt. Do not include prose outside the JSON code block.",
           example: [
-            { scene_number: 1, image_prompt: "Full detailed Krea 2 text-to-image prompt for scene 1..." },
-            { scene_number: 2, image_prompt: "Full detailed Krea 2 text-to-image prompt for scene 2..." },
+            { scene_number: 1, image_prompt: `Full detailed ${imagePromptTarget} for scene 1...` },
+            { scene_number: 2, image_prompt: `Full detailed ${imagePromptTarget} for scene 2...` },
           ],
         },
       }
-      : {}),
+      : {
+        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Build the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 9-10, do not write 'then holds', 'holds on', or static hold endings; use multiple coordinated readable camera moves. At character speed 9-10, do not leave the subject merely poised or standing; include clear full-body action or set interaction.",
+      }),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
   };
@@ -1595,6 +1734,7 @@ function openStoryboardBuilder(payload = {}) {
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
     onStoryLayerChanged: typeof payload.onStoryLayerChanged === "function" ? payload.onStoryLayerChanged : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
+    onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
     query: "",
     selected: new Set(),
     saving: false,
@@ -1606,7 +1746,11 @@ function openStoryboardBuilder(payload = {}) {
     performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
     facialPerformance: String(payload.facialPerformance || payload.facial_performance || payload.facial_performance_default || ""),
     facialPerformanceCustom: String(payload.facialPerformanceCustom || payload.facial_performance_custom || payload.facial_performance_custom_default || ""),
+    cameraMotionSpeed: storyboardSpeedValue(payload.cameraMotionSpeed ?? payload.camera_motion_speed ?? payload.motion_defaults?.camera_motion_speed, 4),
+    characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
     performanceMode: payloadPerformanceMode,
+    imageMode: String(payload.imageMode || payload.image_mode || "zimage").trim() || "zimage",
+    imageModeLabel: String(payload.imageModeLabel || payload.image_mode_label || "").trim(),
   };
 
   const promptRunnerName = () => {
@@ -1615,6 +1759,29 @@ function openStoryboardBuilder(payload = {}) {
     if (runner === "llm_api" || runner === "llmapi" || runner === "llm-api" || runner === "api") return "API LLM";
     return "Gemma";
   };
+  const storyboardDefaultsPayload = () => ({
+    builder_storyboard_defaults: {
+      global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
+      camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+      character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+      camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
+      character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
+      performance_style: String(state.performanceStyle || ""),
+      camera_flow: String(state.cameraFlow || ""),
+      image_shot_flow: String(state.imageShotFlow || ""),
+      image_aesthetic: String(state.imageAesthetic || ""),
+    },
+    global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
+    performance_style_default: String(state.performanceStyle || ""),
+    camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+    character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+    motion_defaults: {
+      camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+      character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+      camera_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
+      character_guidance: storyboardSpeedGuidance(state.characterMotionSpeed, "character"),
+    },
+  });
   const promptRunnerGenericName = () => promptRunnerName() === "Gemma" ? "Gemma" : "LLM";
   const promptAllButtonText = () => {
     const kind = state.mode === "image_to_video_prep" ? "Video" : "Image";
@@ -1682,7 +1849,7 @@ function openStoryboardBuilder(payload = {}) {
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.62);display:flex;align-items:stretch;justify-content:center;padding:18px;";
   const shell = document.createElement("div");
-  shell.style.cssText = "width:min(1820px,calc(100vw - 36px));height:calc(100vh - 36px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#e5e7eb;box-shadow:0 28px 90px rgba(0,0,0,.62);display:grid;grid-template-rows:auto auto auto auto 1fr auto;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
+  shell.style.cssText = "width:min(1820px,calc(100vw - 36px));height:calc(100vh - 36px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#e5e7eb;box-shadow:0 28px 90px rgba(0,0,0,.62);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
 
   const header = document.createElement("div");
   header.style.cssText = "display:grid;grid-template-columns:minmax(280px,1fr) auto auto;gap:22px;align-items:center;padding:24px;border-bottom:1px solid #1f3b46;background:linear-gradient(180deg,#083344,#111827);";
@@ -1731,6 +1898,8 @@ function openStoryboardBuilder(payload = {}) {
 
   const note = document.createElement("div");
   note.style.cssText = "margin:18px 24px 0;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;";
+  const middleContent = document.createElement("div");
+  middleContent.style.cssText = "min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:18px;scrollbar-width:thin;";
 
   const cameraFlowBar = document.createElement("div");
   cameraFlowBar.style.cssText = "display:grid;grid-template-columns:auto minmax(280px,1fr);gap:8px 12px;align-items:center;color:#cbd5e1;font-size:12px;";
@@ -1795,6 +1964,25 @@ function openStoryboardBuilder(payload = {}) {
   cameraFlowControls.append(cameraFlowLabel, cameraFlowSelect, cameraFlowApply, cameraFlowReplace);
   const cameraFlowInfo = document.createElement("div");
   cameraFlowInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const cameraSpeedControls = document.createElement("div");
+  cameraSpeedControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const cameraSpeedLabel = document.createElement("div");
+  cameraSpeedLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  cameraSpeedLabel.textContent = "Camera motion speed";
+  const cameraSpeedInput = makeInput(String(storyboardSpeedValue(state.cameraMotionSpeed, 4)));
+  cameraSpeedInput.type = "range";
+  cameraSpeedInput.min = "0";
+  cameraSpeedInput.max = "10";
+  cameraSpeedInput.step = "1";
+  cameraSpeedInput.style.minWidth = "360px";
+  cameraSpeedInput.style.accentColor = "#22d3ee";
+  const cameraSpeedValue = document.createElement("div");
+  cameraSpeedValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:120px;";
+  const cameraSpeedHint = makeButton("Hint");
+  cameraSpeedHint.title = "Explain camera motion speed.";
+  cameraSpeedControls.append(cameraSpeedLabel, cameraSpeedInput, cameraSpeedValue, cameraSpeedHint);
+  const cameraSpeedInfo = document.createElement("div");
+  cameraSpeedInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const performanceControls = document.createElement("div");
   performanceControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const performanceLabel = document.createElement("div");
@@ -1810,6 +1998,25 @@ function openStoryboardBuilder(payload = {}) {
   performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace);
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const characterSpeedControls = document.createElement("div");
+  characterSpeedControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const characterSpeedLabel = document.createElement("div");
+  characterSpeedLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  characterSpeedLabel.textContent = "Character motion speed";
+  const characterSpeedInput = makeInput(String(storyboardSpeedValue(state.characterMotionSpeed, 4)));
+  characterSpeedInput.type = "range";
+  characterSpeedInput.min = "0";
+  characterSpeedInput.max = "10";
+  characterSpeedInput.step = "1";
+  characterSpeedInput.style.minWidth = "360px";
+  characterSpeedInput.style.accentColor = "#22d3ee";
+  const characterSpeedValue = document.createElement("div");
+  characterSpeedValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:120px;";
+  const characterSpeedHint = makeButton("Hint");
+  characterSpeedHint.title = "Explain character motion speed.";
+  characterSpeedControls.append(characterSpeedLabel, characterSpeedInput, characterSpeedValue, characterSpeedHint);
+  const characterSpeedInfo = document.createElement("div");
+  characterSpeedInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
   const facialControls = document.createElement("div");
   facialControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const facialLabel = document.createElement("div");
@@ -1835,7 +2042,7 @@ function openStoryboardBuilder(payload = {}) {
   facialCustomControls.append(facialCustomLabel, facialCustomInput);
   const facialCustomInfo = document.createElement("div");
   facialCustomInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, performanceControls, performanceInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
   storyLayerBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;color:#cbd5e1;font-size:12px;";
@@ -1852,6 +2059,27 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerHeader.append(storyLayerTitle, storyLayerEnabledLabel);
   const userStoryArcInput = makeTextarea(state.storyLayer.user_story_arc || "", "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...", 5);
   const songStoryBriefInput = makeTextarea(state.storyLayer.song_story_brief || "", "Gemma-created song story brief...", 5);
+  const lyricStoryStrengthInput = makeInput(String(normalizeStoryLayer(state.storyLayer).lyric_story_strength));
+  lyricStoryStrengthInput.type = "range";
+  lyricStoryStrengthInput.min = "0";
+  lyricStoryStrengthInput.max = "10";
+  lyricStoryStrengthInput.step = "1";
+  lyricStoryStrengthInput.style.accentColor = "#22d3ee";
+  const lyricStoryStrengthValue = document.createElement("div");
+  lyricStoryStrengthValue.style.cssText = "font-size:12px;color:#cffafe;font-weight:900;min-width:105px;text-align:right;";
+  const lyricStoryStrengthHintButton = makeButton("Hint");
+  lyricStoryStrengthHintButton.title = "Explain Lyric Story Strength.";
+  const lyricStoryStrengthText = (value) => {
+    const strength = Math.max(0, Math.min(10, Number(value || 7)));
+    if (strength <= 0) return "0 / ignore lyrics";
+    if (strength <= 3) return `${strength} / mood only`;
+    if (strength <= 6) return `${strength} / balanced`;
+    if (strength <= 8) return `${strength} / strong lyric story`;
+    return `${strength} / literal lyric anchors`;
+  };
+  const syncLyricStoryStrengthLabel = () => {
+    lyricStoryStrengthValue.textContent = lyricStoryStrengthText(lyricStoryStrengthInput.value);
+  };
   const storyField = (label, control) => {
     const wrap = document.createElement("label");
     wrap.style.cssText = "display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:900;color:#cbd5e1;";
@@ -1859,6 +2087,10 @@ function openStoryboardBuilder(payload = {}) {
     wrap.append(control);
     return wrap;
   };
+  syncLyricStoryStrengthLabel();
+  const lyricStoryStrengthRow = document.createElement("div");
+  lyricStoryStrengthRow.style.cssText = "grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;";
+  lyricStoryStrengthRow.append(storyField("Lyric Story Strength", lyricStoryStrengthInput), lyricStoryStrengthValue, lyricStoryStrengthHintButton);
   const storyActions = document.createElement("div");
   storyActions.style.cssText = "grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   const createStoryArcButton = makeButton("Create User Story Arc", "primary");
@@ -1869,6 +2101,7 @@ function openStoryboardBuilder(payload = {}) {
   storyActions.append(createStoryArcButton, createStoryBriefButton, createMissingBeatsButton, replaceBeatsButton, detectSectionsButton);
   storyLayerBar.append(
     storyLayerHeader,
+    lyricStoryStrengthRow,
     storyField("User Story Arc", userStoryArcInput),
     storyField("Song Story Brief", songStoryBriefInput),
     storyActions,
@@ -1893,7 +2126,8 @@ function openStoryboardBuilder(payload = {}) {
   footerActions.append(save, exportPrompts);
   footer.append(stats, footerActions);
 
-  shell.append(header, note, sceneDefaultsPanel, storyLayerPanel, tableWrap, footer);
+  middleContent.append(sceneDefaultsPanel, storyLayerPanel, tableWrap);
+  shell.append(header, note, middleContent, footer);
   backdrop.append(shell);
   document.body.append(backdrop);
 
@@ -1926,6 +2160,10 @@ function openStoryboardBuilder(payload = {}) {
     imageAestheticInfo.style.display = isVideoPrepMode ? "none" : "";
     cameraFlowControls.style.display = isVideoPrepMode ? "flex" : "none";
     cameraFlowInfo.style.display = isVideoPrepMode ? "" : "none";
+    cameraSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
+    cameraSpeedInfo.style.display = isVideoPrepMode ? "" : "none";
+    characterSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
+    characterSpeedInfo.style.display = isVideoPrepMode ? "" : "none";
     refreshConsistencyInfo();
     refreshSetupPanelSummaries();
     renderTable();
@@ -1942,13 +2180,14 @@ function openStoryboardBuilder(payload = {}) {
     const performancePreset = storyboardPerformancePreset(state.performanceStyle);
     const facialPreset = storyboardFacialPerformancePreset(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
-      ? `${cameraPreset.label || "Camera flow"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
+      ? `${cameraPreset.label || "Camera flow"} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10 · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
       : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
     const beatCount = state.scenes.filter((scene) => String(scene.story_beat || "").trim()).length;
     const sectionCount = state.scenes.filter((scene) => String(scene.lyric_section || "").trim()).length;
     const hasBrief = Boolean(String(state.storyLayer.song_story_brief || "").trim());
     const hasArc = Boolean(String(state.storyLayer.user_story_arc || "").trim());
-    storyLayerPanel.setSummary(`${state.storyLayer.enabled === false ? "Off" : "On"} · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
+    const lyricStrength = normalizeStoryLayer(state.storyLayer).lyric_story_strength;
+    storyLayerPanel.setSummary(`${state.storyLayer.enabled === false ? "Off" : "On"} · lyric ${lyricStrength}/10 · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
   };
 
   const refreshCameraFlowInfo = () => {
@@ -1957,6 +2196,12 @@ function openStoryboardBuilder(payload = {}) {
     cameraFlowInfo.textContent = state.cameraFlow === "off"
       ? preset.description
       : `${preset.description} For any scene count, it cycles through ${count} camera beats and only fills blank fields.`;
+    refreshSetupPanelSummaries();
+  };
+
+  const refreshCameraSpeedInfo = () => {
+    cameraSpeedValue.textContent = storyboardSpeedLabel(state.cameraMotionSpeed, "camera");
+    cameraSpeedInfo.textContent = storyboardSpeedGuidance(state.cameraMotionSpeed, "camera");
     refreshSetupPanelSummaries();
   };
 
@@ -1990,6 +2235,12 @@ function openStoryboardBuilder(payload = {}) {
     refreshSetupPanelSummaries();
   };
 
+  const refreshCharacterSpeedInfo = () => {
+    characterSpeedValue.textContent = storyboardSpeedLabel(state.characterMotionSpeed, "character");
+    characterSpeedInfo.textContent = storyboardSpeedGuidance(state.characterMotionSpeed, "character");
+    refreshSetupPanelSummaries();
+  };
+
   const refreshFacialInfo = () => {
     const preset = storyboardFacialPerformancePreset(state.facialPerformance);
     facialInfo.textContent = state.facialPerformance
@@ -2006,9 +2257,11 @@ function openStoryboardBuilder(payload = {}) {
       enabled: storyLayerEnabledInput.checked,
       user_story_arc: userStoryArcInput.value,
       song_story_brief: songStoryBriefInput.value,
+      lyric_story_strength: lyricStoryStrengthInput.value,
     });
     if (notify && state.onStoryLayerChanged) {
       state.onStoryLayerChanged({
+        ...storyboardDefaultsPayload(),
         story_layer: normalizeStoryLayer(state.storyLayer),
         facial_performance_default: state.facialPerformance || "",
         facial_performance_custom_default: state.facialPerformanceCustom || "",
@@ -2016,6 +2269,16 @@ function openStoryboardBuilder(payload = {}) {
       });
     }
     refreshSetupPanelSummaries();
+  };
+  const notifyStoryboardDefaultsChanged = () => {
+    if (!state.onStoryLayerChanged) return;
+    state.onStoryLayerChanged({
+      ...storyboardDefaultsPayload(),
+      story_layer: normalizeStoryLayer(state.storyLayer),
+      facial_performance_default: state.facialPerformance || "",
+      facial_performance_custom_default: state.facialPerformanceCustom || "",
+      scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+    });
   };
 
   const lyricsForStoryBrief = () => {
@@ -2099,10 +2362,18 @@ function openStoryboardBuilder(payload = {}) {
       const data = await postJson("/vrgdg/storyboard/story_arc", {
         ...(state.gemmaSettings || {}),
         story_layer: normalizeStoryLayer(state.storyLayer),
+        storyboard: slimStoryboardForRequest(state),
         story_idea: userStoryArcInput.value,
         lyrics: lyricsForStoryBrief(),
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         reference_builder: state.referenceBuilder || {},
+        camera_flow: state.cameraFlow || "",
+        camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
+        character_motion: storyboardSpeedValue(state.characterMotionSpeed, 4),
+        character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
+        performance_style: state.performanceStyle || "",
+        facial_performance: state.facialPerformance || "",
+        facial_performance_custom: state.facialPerformanceCustom || "",
         unload_after: true,
         max_new_tokens: 900,
       }, 240000);
@@ -3273,15 +3544,23 @@ function openStoryboardBuilder(payload = {}) {
       state.facialPerformanceCustom = String(saved.facial_performance_custom_default || saved.facial_performance_custom || state.facialPerformanceCustom || "");
       facialSelect.value = state.facialPerformance;
       facialCustomInput.value = state.facialPerformanceCustom;
+      state.cameraMotionSpeed = storyboardSpeedValue(saved.camera_motion_speed ?? saved.motion_defaults?.camera_motion_speed ?? state.cameraMotionSpeed, 4);
+      state.characterMotionSpeed = storyboardSpeedValue(saved.character_motion_speed ?? saved.motion_defaults?.character_motion_speed ?? state.characterMotionSpeed, 4);
+      cameraSpeedInput.value = String(state.cameraMotionSpeed);
+      characterSpeedInput.value = String(state.characterMotionSpeed);
       state.storyLayer = normalizeStoryLayer(saved.story_layer || saved.storyLayer || {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
       userStoryArcInput.value = state.storyLayer.user_story_arc || "";
       songStoryBriefInput.value = state.storyLayer.song_story_brief || "";
+      lyricStoryStrengthInput.value = String(state.storyLayer.lyric_story_strength ?? 7);
+      syncLyricStoryStrengthLabel();
       refreshCameraFlowInfo();
       refreshImageShotInfo();
       refreshImageAestheticInfo();
       refreshConsistencyInfo();
+      refreshCameraSpeedInfo();
       refreshPerformanceInfo();
+      refreshCharacterSpeedInfo();
       refreshFacialInfo();
       setMode(state.mode);
       syncReferenceMappingsToVideoCreator();
@@ -3325,6 +3604,7 @@ function openStoryboardBuilder(payload = {}) {
     exportPrompts.disabled = true;
     try {
       state.scenes.forEach((scene) => {
+        if (String(scene.image_prompt || "").trim()) scene.image_prompt = ensureStoryboardReferenceOpening(scene.image_prompt, scene, state.imageMode);
         if (String(scene.video_prompt || "").trim()) scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
       });
       const data = await postJson("/vrgdg/storyboard/export_prompts", {
@@ -3333,6 +3613,7 @@ function openStoryboardBuilder(payload = {}) {
       });
       if (state.onPromptsExported) {
         state.onPromptsExported({
+          ...storyboardDefaultsPayload(),
           story_layer: normalizeStoryLayer(state.storyLayer),
           scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         });
@@ -3506,7 +3787,7 @@ function openStoryboardBuilder(payload = {}) {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending image scene card to ${runnerName}...\nThis creates the text-to-image prompt for Image Prep.`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter, max_new_tokens: 1200 }), 240000);
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving image prompt into the scene card...`, Math.min(96, progressPercent + 45));
-      const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
+      const prompt = ensureStoryboardReferenceOpening(applyStoryboardTriggerPhrases(data.prompt, scene), scene, state.imageMode);
       if (!prompt) throw new Error(`${genericName} returned an empty Storyboard image prompt.`);
       scene.image_prompt = prompt;
       scene.prompt_summary = "";
@@ -3623,9 +3904,19 @@ function openStoryboardBuilder(payload = {}) {
     const genericName = promptRunnerGenericName();
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to ${runnerName}...\nThis can take a minute depending on runner/model speed.`, progressPercent);
-      const data = await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), 240000);
+      const callbackPayload = storyboardGptPayload(state, [scene]);
+      const data = state.onCreateVideoPrompt
+        ? await state.onCreateVideoPrompt(scene, {
+          unloadAfter,
+          storyboardPayload: callbackPayload,
+          progress,
+          progressPercent,
+          progressLabel,
+        })
+        : await postJson("/vrgdg/storyboard/gemma_video_prompt", storyboardGemmaPayload(scene, { unload_after: unloadAfter }), 240000);
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: ${genericName} response received.\nRunner: ${data.runner || runnerName}\nSaving prompt into the scene card...`, Math.min(96, progressPercent + 45));
-      const prompt = applyStoryboardTriggerPhrases(data.prompt, scene);
+      const rawPrompt = String(data?.prompt || data || "").trim();
+      const prompt = data?.already_finalized ? rawPrompt : applyStoryboardTriggerPhrases(rawPrompt, scene);
       if (!prompt) throw new Error(`${genericName} returned an empty Storyboard video prompt.`);
       scene.video_prompt = prompt;
       scene.status = "video_prompt_ready";
@@ -3696,21 +3987,42 @@ function openStoryboardBuilder(payload = {}) {
     state.cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[cameraFlowSelect.value] ? cameraFlowSelect.value : "balanced";
     cameraFlowSelect.value = state.cameraFlow;
     refreshCameraFlowInfo();
+    notifyStoryboardDefaultsChanged();
   };
   imageShotSelect.onchange = () => {
     state.imageShotFlow = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[imageShotSelect.value] ? imageShotSelect.value : "intimate";
     imageShotSelect.value = state.imageShotFlow;
     refreshImageShotInfo();
+    notifyStoryboardDefaultsChanged();
   };
   imageAestheticSelect.onchange = () => {
     state.imageAesthetic = STORYBOARD_IMAGE_AESTHETIC_PRESETS.some((preset) => preset.value === imageAestheticSelect.value) ? imageAestheticSelect.value : "";
     imageAestheticSelect.value = state.imageAesthetic;
     refreshImageAestheticInfo();
+    notifyStoryboardDefaultsChanged();
   };
   consistencyInput.addEventListener("input", () => {
     state.globalConsistencyPhrase = consistencyInput.value.trim();
     refreshConsistencyInfo();
   });
+  consistencyInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  cameraSpeedInput.addEventListener("input", () => {
+    state.cameraMotionSpeed = storyboardSpeedValue(cameraSpeedInput.value, 4);
+    cameraSpeedInput.value = String(state.cameraMotionSpeed);
+    refreshCameraSpeedInfo();
+  });
+  cameraSpeedInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  cameraSpeedHint.onclick = () => {
+    window.alert([
+      "Camera Motion Speed controls how much movement Gemma/GPT should put into the camera plan for Video Prep.",
+      "",
+      "0: locked-off static camera.",
+      "1-3: slow, gentle camera motion; one simple move at most.",
+      "4-6: controlled cinematic movement like tracking, pan, dolly, crane, reveal, or orbit.",
+      "7-8: energetic movement with stronger tracking, orbit, whip pan, rise, reveal, or compound motion.",
+      "9-10: fast action camera language; multiple coordinated moves can happen in one scene while keeping the subject readable.",
+    ].join("\n"));
+  };
   cameraFlowApply.onclick = () => applyCameraFlow({ overwrite: false });
   cameraFlowReplace.onclick = () => applyCameraFlow({ overwrite: true });
   imageShotApply.onclick = () => applyImageShotFlow({ overwrite: false });
@@ -3720,15 +4032,35 @@ function openStoryboardBuilder(payload = {}) {
   performanceSelect.onchange = () => {
     state.performanceStyle = String(performanceSelect.value || "");
     refreshPerformanceInfo();
+    notifyStoryboardDefaultsChanged();
+  };
+  characterSpeedInput.addEventListener("input", () => {
+    state.characterMotionSpeed = storyboardSpeedValue(characterSpeedInput.value, 4);
+    characterSpeedInput.value = String(state.characterMotionSpeed);
+    refreshCharacterSpeedInfo();
+  });
+  characterSpeedInput.addEventListener("change", notifyStoryboardDefaultsChanged);
+  characterSpeedHint.onclick = () => {
+    window.alert([
+      "Character Motion Speed controls how active the subject's body movement should be.",
+      "",
+      "0: subject stays still or holds a pose.",
+      "1-3: subtle motion like gestures, turns, swaying, reaching, or small steps.",
+      "4-6: active performance like walking, dancing, interacting with objects, or using the set.",
+      "7-8: energetic action like running, hard dancing, climbing, struggling, spinning, or crossing the space.",
+      "9-10: fast action movement like sprinting, explosive dance, chase beats, rapid direction changes, or intense physical performance.",
+    ].join("\n"));
   };
   facialSelect.onchange = () => {
     state.facialPerformance = String(facialSelect.value || "");
     refreshFacialInfo();
+    notifyStoryboardDefaultsChanged();
   };
   facialCustomInput.oninput = () => {
     state.facialPerformanceCustom = String(facialCustomInput.value || "");
     refreshFacialInfo();
   };
+  facialCustomInput.addEventListener("change", notifyStoryboardDefaultsChanged);
   performanceApply.onclick = () => applyPerformanceStyle({ overwrite: false });
   performanceReplace.onclick = () => applyPerformanceStyle({ overwrite: true });
   facialApply.onclick = () => applyFacialPerformance({ overwrite: false });
@@ -3743,9 +4075,27 @@ function openStoryboardBuilder(payload = {}) {
   importImagePromptsButton.onclick = openImportImagePromptsFromGptModal;
   gemmaAllButton.onclick = createAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
-  storyLayerEnabledInput.addEventListener("change", syncStoryLayerFromInputs);
+  storyLayerEnabledInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
+  lyricStoryStrengthInput.addEventListener("input", () => {
+    syncLyricStoryStrengthLabel();
+    syncStoryLayerFromInputs();
+  });
+  lyricStoryStrengthInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
+  lyricStoryStrengthHintButton.onclick = () => {
+    window.alert([
+      "Lyric Story Strength controls how literally Gemma should follow the lyrics when creating the story arc, story brief, scene beats, and prompt context.",
+      "",
+      "0: do not use lyrics as story source.",
+      "1-3: use lyrics as mood and emotional timing only.",
+      "4-6: balance lyrics with the story arc, subjects, and locations.",
+      "7-8: lyrics strongly shape the scene story; include recognizable lyric anchors when possible.",
+      "9-10: use lyrics as literally as possible; non-instrumental scenes should include a concrete object, action, emotion, or situation from the exact lyric line whenever possible.",
+    ].join("\n"));
+  };
   userStoryArcInput.addEventListener("input", syncStoryLayerFromInputs);
+  userStoryArcInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   songStoryBriefInput.addEventListener("input", syncStoryLayerFromInputs);
+  songStoryBriefInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   createStoryArcButton.onclick = createStoryArcWithGemma;
   createStoryBriefButton.onclick = createStoryBriefWithGemma;
   createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: false });
@@ -3767,7 +4117,9 @@ function openStoryboardBuilder(payload = {}) {
   refreshImageShotInfo();
   refreshImageAestheticInfo();
   refreshConsistencyInfo();
+  refreshCameraSpeedInfo();
   refreshPerformanceInfo();
+  refreshCharacterSpeedInfo();
   refreshFacialInfo();
   setMode(state.mode || "storyboard_prompts");
   loadExisting();
