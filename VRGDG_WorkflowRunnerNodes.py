@@ -229,6 +229,21 @@ def _folder_choices(category):
     return unique
 
 
+def _ltx_video_model_choices():
+    choices = _folder_choices(("unet", "diffusion_models"))
+    gguf = []
+    diffusion = []
+    for choice in choices:
+        text = str(choice or "").strip()
+        if not text:
+            continue
+        if text.lower().endswith(".gguf"):
+            gguf.append(text)
+        else:
+            diffusion.append(text)
+    return gguf, diffusion
+
+
 def _model_choice_exists(category, value):
     requested = str(value or "").strip()
     if not requested:
@@ -295,6 +310,21 @@ def _manual_model_folder_choices(category):
 def _clean_i2v_unet_name(value):
     text = str(value or "").strip()
     return _I2V_UNET_ALIASES.get(text, text)
+
+
+def _patch_ltx_video_model_loader(prompt, payload):
+    use_gguf = _bool_payload(payload, "use_gguf_model", True)
+    gguf_name = _clean_i2v_unet_name(payload.get("unet_name", ""))
+    diffusion_name = str(payload.get("diffusion_model_name") or payload.get("model_name") or "").strip()
+    if not diffusion_name:
+        diffusion_name = gguf_name
+    switch_id = _optional_api_node_id_by_class(prompt, "ComfySwitchNode", "Switch-use GGUF", fallback_ids=("955", "939", "959"))
+    diffusion_loader_id = _optional_api_node_id_by_class(prompt, "DiffusionModelLoaderKJ", fallback_ids=("956", "938", "958"))
+    if switch_id:
+        _set_optional_api_input(prompt, switch_id, "switch", use_gguf)
+    _set_optional_api_input(prompt, "271:215", "unet_name", gguf_name)
+    if diffusion_loader_id:
+        _set_optional_api_input(prompt, diffusion_loader_id, "model_name", diffusion_name)
 
 
 def _load_workflow_template(path=None):
@@ -1145,6 +1175,29 @@ def _set_optional_api_input(prompt, node_id, input_name, value):
     return True
 
 
+def _api_node_title(node):
+    meta = node.get("_meta") if isinstance(node, dict) else {}
+    return str(meta.get("title", "") if isinstance(meta, dict) else "").strip()
+
+
+def _optional_api_node_id_by_class(prompt, class_type, title="", fallback_ids=()):
+    wanted_class = str(class_type or "").strip()
+    wanted_title = str(title or "").strip()
+    for node_id, node in prompt.items():
+        if not isinstance(node, dict):
+            continue
+        if str(node.get("class_type", "") or "").strip() != wanted_class:
+            continue
+        if wanted_title and _api_node_title(node) != wanted_title:
+            continue
+        return str(node_id)
+    for node_id in fallback_ids:
+        node = prompt.get(str(node_id))
+        if isinstance(node, dict) and str(node.get("class_type", "") or "").strip() == wanted_class:
+            return str(node_id)
+    return ""
+
+
 def _patch_i2v_api_prompt(prompt, payload):
     prompt = copy.deepcopy(prompt)
     i2v_prompt = str(payload.get("i2v_prompt", "") or "").strip()
@@ -1173,7 +1226,7 @@ def _patch_i2v_api_prompt(prompt, payload):
     height = _int_payload(payload, "height", 1080, 64, 4096)
     seed = _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF)
 
-    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
@@ -1243,7 +1296,7 @@ def _patch_t2v_api_prompt(prompt, payload):
     tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
     pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
 
-    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
@@ -1402,7 +1455,7 @@ def _patch_rtv_api_prompt(prompt, payload):
     tail_loss_frames = _int_payload(payload, "tail_loss_frames", 25, 0, 10000)
     pre_frames = _int_payload(payload, "pre_frames", 50, 0, 10000)
 
-    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
@@ -1505,7 +1558,7 @@ def _patch_ingredients_api_prompt(prompt, payload):
         tail_loss_frames,
     )
 
-    _set_api_input(prompt, "271:215", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _patch_ltx_video_model_loader(prompt, payload)
     _set_api_input(prompt, "271:256", "vae_name", str(payload.get("vae_name", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name1", str(payload.get("clip_name1", "") or ""))
     _set_api_input(prompt, "271:216", "clip_name2", str(payload.get("clip_name2", "") or ""))
@@ -2732,9 +2785,12 @@ def _ensure_workflow_runner_routes():
 
     @server_instance.routes.get("/vrgdg/workflow_runner/i2v_choices")
     async def vrgdg_workflow_runner_i2v_choices(request):
+        video_gguf_unets, video_diffusion_models = _ltx_video_model_choices()
         return web.json_response({
             "ok": True,
             "unets": _folder_choices(("unet", "diffusion_models")),
+            "video_gguf_unets": video_gguf_unets,
+            "video_diffusion_models": video_diffusion_models,
             "vae": _folder_choices("vae"),
             "clip": _folder_choices(("clip", "text_encoders")),
             "upscale_models": _folder_choices("upscale_models"),

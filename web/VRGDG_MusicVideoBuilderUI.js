@@ -18,6 +18,7 @@ const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
+const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
 const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
 const REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors";
@@ -2535,7 +2536,11 @@ function openBuilder(node) {
   const referenceToVideoCard = makeImageModelCard("Reference to Video", "rtv");
   const ingredientsToVideoCard = makeImageModelCard("Ingredients to Video", "ingredients");
   videoModeChooser.append(imageToVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard);
+  const i2vUseGgufModel = makeCheckbox("Use GGUF model?", true);
   const i2vUnetPicker = makeSearchableLoraPicker("");
+  const i2vDiffusionModelPicker = makeSearchableLoraPicker(DEFAULT_I2V_DIFFUSION_MODEL);
+  const i2vUnetModelField = makeField("Unet model", i2vUnetPicker.wrapper);
+  const i2vDiffusionModelField = makeField("Diffusion model", i2vDiffusionModelPicker.wrapper);
   const i2vVaePicker = makeSearchableLoraPicker("");
   const i2vClip1Picker = makeSearchableLoraPicker("");
   const i2vClip2Picker = makeSearchableLoraPicker("");
@@ -3083,7 +3088,9 @@ function openBuilder(node) {
         useSceneI2VVideoSettings.wrapper,
         useSceneI2VVideoSettingsNote,
         makeSettingsSection("Video Models", [
-          makeField("Unet model", i2vUnetPicker.wrapper),
+          i2vUseGgufModel.wrapper,
+          i2vUnetModelField,
+          i2vDiffusionModelField,
           makeField("Video VAE", i2vVaePicker.wrapper),
           makeField("Clip model 1", i2vClip1Picker.wrapper),
           makeField("Clip model 2", i2vClip2Picker.wrapper),
@@ -3452,7 +3459,9 @@ function openBuilder(node) {
 
   function defaultI2VVideoSettings() {
     return {
+      use_gguf_model: true,
       unet_name: DEFAULT_I2V_UNET,
+      diffusion_model_name: DEFAULT_I2V_DIFFUSION_MODEL,
       vae_name: "LTX23_video_vae_bf16.safetensors",
       clip_name1: "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors",
       clip_name2: "ltx-2.3_text_projection_bf16.safetensors",
@@ -3562,6 +3571,7 @@ function openBuilder(node) {
     storyIdeaPath: "",
     subjectScenePath: "",
     textGemmaRunner: "builtin",
+    gemmaGpuLayers: 99,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
     lmStudioApiKey: "",
@@ -5372,6 +5382,7 @@ function openBuilder(node) {
   function textGemmaRunnerPayload() {
     return {
       text_runner: state.textGemmaRunner || "builtin",
+      n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
@@ -6350,6 +6361,9 @@ function openBuilder(node) {
     return repairI2VVideoSettingDimensions({
       ...defaultI2VVideoSettings(),
       ...source,
+      use_gguf_model: source.use_gguf_model ?? source.useGgufModel ?? true,
+      unet_name: BAD_I2V_UNET_ALIASES.has(source.unet_name) ? DEFAULT_I2V_UNET : source.unet_name || DEFAULT_I2V_UNET,
+      diffusion_model_name: source.diffusion_model_name || source.model_name || DEFAULT_I2V_DIFFUSION_MODEL,
       fps: Number(source.fps || 24),
       width: Number(source.width || 1920),
       height: Number(source.height || 1080),
@@ -6376,6 +6390,9 @@ function openBuilder(node) {
     if (!defaults || typeof defaults !== "object" || Array.isArray(defaults)) return false;
     if (defaults.text_gemma_runner || defaults.textGemmaRunner) {
       state.textGemmaRunner = defaults.text_gemma_runner || defaults.textGemmaRunner || state.textGemmaRunner || "builtin";
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_gpu_layers") || Object.prototype.hasOwnProperty.call(defaults, "gemmaGpuLayers") || Object.prototype.hasOwnProperty.call(defaults, "n_gpu_layers")) {
+      state.gemmaGpuLayers = normalizeGemmaGpuLayers(defaults.gemma_gpu_layers ?? defaults.gemmaGpuLayers ?? defaults.n_gpu_layers ?? state.gemmaGpuLayers);
     }
     if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
       state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
@@ -6552,6 +6569,7 @@ function openBuilder(node) {
       storyIdeaPath: state.storyIdeaPath,
       subjectScenePath: state.subjectScenePath,
       textGemmaRunner: state.textGemmaRunner,
+      gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmStudioBaseUrl: state.lmStudioBaseUrl,
       lmStudioModel: state.lmStudioModel,
       lmStudioApiKey: state.lmStudioApiKey,
@@ -6622,6 +6640,7 @@ function openBuilder(node) {
     state.storyIdeaPath = data.storyIdeaPath || "";
     state.subjectScenePath = data.subjectScenePath || "";
     state.textGemmaRunner = data.textGemmaRunner || data.text_gemma_runner || state.textGemmaRunner || "builtin";
+    state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
     state.lmStudioApiKey = data.lmStudioApiKey || data.lm_studio_api_key || state.lmStudioApiKey || "";
@@ -6665,7 +6684,7 @@ function openBuilder(node) {
     state.lyricMapper = normalizeLyricMapper(data.lyricMapper || data.lyric_mapper || state.lyricMapper);
     state.zEnhanceSettings = data.zEnhanceSettings || state.zEnhanceSettings;
     state.videoModelMode = data.videoModelMode || data.video_model_mode || state.videoModelMode || "i2v";
-    state.i2vVideoSettings = data.i2vVideoSettings || state.i2vVideoSettings;
+    state.i2vVideoSettings = cloneI2VVideoSettings(data.i2vVideoSettings || state.i2vVideoSettings);
     state.promptToolsHintPrefs = data.promptToolsHintPrefs || data.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
@@ -7241,6 +7260,12 @@ function openBuilder(node) {
         ? `who ${pluralPerformers ? "say" : "says"} "${cleanLyric}" naturally`
         : `who ${pluralPerformers ? "are" : "is"} singing "${cleanLyric}" in sync with the audio`,
     };
+  }
+
+  function normalizeGemmaGpuLayers(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 99;
+    return Math.max(0, Math.min(999, Math.round(parsed)));
   }
 
   function removeQuietFromSingingPrompt(text) {
@@ -8430,7 +8455,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, i2vUseGgufModel.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -9644,7 +9669,9 @@ function openBuilder(node) {
       : "This scene is using global video models, settings, and LoRAs. Enable custom scene video settings in the Models tab.";
     const settings = repairI2VVideoSettingDimensions(activeI2VVideoSettings() || {});
     videoTriggerInput.value = settings.video_trigger_phrase || "";
+    i2vUseGgufModel.input.checked = settings.use_gguf_model !== false;
     i2vUnetPicker.input.value = BAD_I2V_UNET_ALIASES.has(settings.unet_name) ? DEFAULT_I2V_UNET : settings.unet_name || "";
+    i2vDiffusionModelPicker.input.value = settings.diffusion_model_name || DEFAULT_I2V_DIFFUSION_MODEL;
     i2vVaePicker.input.value = settings.vae_name || "";
     i2vClip1Picker.input.value = settings.clip_name1 || "";
     i2vClip2Picker.input.value = settings.clip_name2 || "";
@@ -9683,6 +9710,13 @@ function openBuilder(node) {
       slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength;
     });
     updateI2VLoraVisibility();
+    syncI2VVideoModelPickerVisibility();
+  }
+
+  function syncI2VVideoModelPickerVisibility() {
+    const useGguf = Boolean(i2vUseGgufModel.input.checked);
+    i2vUnetModelField.style.display = useGguf ? "flex" : "none";
+    i2vDiffusionModelField.style.display = useGguf ? "none" : "flex";
   }
 
   function saveI2VVideoSettingsFromPanel() {
@@ -9703,7 +9737,9 @@ function openBuilder(node) {
     const ingredientsWidth = isIngredientsMode ? Number(i2vWidthInput.value || DEFAULT_LTX_INGREDIENTS_WIDTH) : repairedPreviousIngredientsWidth;
     const ingredientsHeight = isIngredientsMode ? Number(i2vHeightInput.value || DEFAULT_LTX_INGREDIENTS_HEIGHT) : repairedPreviousIngredientsHeight;
     const settings = {
+      use_gguf_model: Boolean(i2vUseGgufModel.input.checked),
       unet_name: BAD_I2V_UNET_ALIASES.has(i2vUnetPicker.input.value) ? DEFAULT_I2V_UNET : i2vUnetPicker.input.value || "",
+      diffusion_model_name: i2vDiffusionModelPicker.input.value || DEFAULT_I2V_DIFFUSION_MODEL,
       vae_name: i2vVaePicker.input.value || "",
       clip_name1: i2vClip1Picker.input.value || "",
       clip_name2: i2vClip2Picker.input.value || "",
@@ -21559,6 +21595,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       story_idea_path: state.storyIdeaPath,
       subject_scene_path: state.subjectScenePath,
       text_gemma_runner: state.textGemmaRunner || "builtin",
+      gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lm_studio_model: state.lmStudioModel || "",
       lm_studio_api_key: state.lmStudioApiKey || "",
@@ -21798,6 +21835,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryReferenceNotes = data.session.builder_story_reference_notes || state.builderStoryReferenceNotes || "";
         state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || {});
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
+        state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.session.gemma_gpu_layers ?? data.session.n_gpu_layers ?? state.gemmaGpuLayers);
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
@@ -21843,7 +21881,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.lyricMapper = normalizeLyricMapper(data.session.lyric_mapper);
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
         state.videoModelMode = data.session.video_model_mode || state.videoModelMode || "i2v";
-        state.i2vVideoSettings = data.session.i2v_video_settings || state.i2vVideoSettings;
+        state.i2vVideoSettings = cloneI2VVideoSettings(data.session.i2v_video_settings || state.i2vVideoSettings);
         state.promptToolsHintPrefs = data.session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
         syncZImageSettingsPanel();
         syncFluxKleinPanel();
@@ -21981,6 +22019,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryReferenceNotes = session.builder_story_reference_notes || "";
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
+      state.gemmaGpuLayers = normalizeGemmaGpuLayers(session.gemma_gpu_layers ?? session.n_gpu_layers ?? state.gemmaGpuLayers);
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
@@ -22026,7 +22065,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.lyricMapper = normalizeLyricMapper(session.lyric_mapper);
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
       state.videoModelMode = session.video_model_mode || state.videoModelMode || "i2v";
-      state.i2vVideoSettings = session.i2v_video_settings || state.i2vVideoSettings;
+      state.i2vVideoSettings = cloneI2VVideoSettings(session.i2v_video_settings || state.i2vVideoSettings);
       state.promptToolsHintPrefs = session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
       if (session.audio_path) {
         audioInput.value = session.audio_path;
@@ -24219,7 +24258,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const singlePassLoras = videoMode === "rtv";
     const payload = {
+      use_gguf_model: settings.use_gguf_model !== false,
       unet_name: settings.unet_name || "",
+      diffusion_model_name: settings.diffusion_model_name || DEFAULT_I2V_DIFFUSION_MODEL,
       vae_name: settings.vae_name || "",
       clip_name1: settings.clip_name1 || "",
       clip_name2: settings.clip_name2 || "",
@@ -24577,7 +24618,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
         mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
         n_ctx: 8000,
-        n_gpu_layers: 99,
+        n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         n_threads: 8,
         unload_after: true,
       },
@@ -27570,6 +27611,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         append_subject_to_prompts: true,
         repair_lyric_segments: false,
         text_gemma_runner: state.textGemmaRunner || "builtin",
+        gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
         lm_studio_model: state.lmStudioModel || "",
         lm_studio_api_key: state.lmStudioApiKey || "",
@@ -29678,6 +29720,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     runner.options[0].textContent = "Gemma Local";
     runner.options[1].textContent = "LM Studio";
     runner.options[2].textContent = "LLM API";
+    const gemmaGpuLayers = makeInput(String(normalizeGemmaGpuLayers(state.gemmaGpuLayers)), "number");
+    gemmaGpuLayers.min = "0";
+    gemmaGpuLayers.max = "999";
+    gemmaGpuLayers.step = "1";
+    const builtinPanel = document.createElement("div");
+    builtinPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
+    const builtinNote = document.createElement("div");
+    builtinNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+    builtinNote.textContent = "Advanced local GGUF setting. Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
+    builtinPanel.append(
+      builtinNote,
+      makeField("GPU layers / n_gpu_layers", gemmaGpuLayers),
+    );
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
     const model = makeInput(state.lmStudioModel || "");
     const modelSelect = makeSelect([""], "");
@@ -29810,6 +29865,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     );
     const syncVisibility = () => {
       state.textGemmaRunner = runner.value || "builtin";
+      state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
+      builtinPanel.style.display = runner.value === "builtin" ? "flex" : "none";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
       apiPanel.style.display = runner.value === "llm_api" ? "flex" : "none";
     };
@@ -29844,7 +29901,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Runner", "primary");
     actions.append(cancel, save);
-    box.append(header, makeField("Text LLM runner", runner), lmPanel, apiPanel, actions);
+    box.append(header, makeField("Text LLM runner", runner), builtinPanel, lmPanel, apiPanel, actions);
     backdrop.append(box);
     document.body.append(backdrop);
     syncVisibility();
@@ -29852,6 +29909,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     close.onclick = cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
+      state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
       state.lmStudioApiKey = lmStudioApiKey.value || "";
@@ -30386,7 +30444,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           }
         }
       }
+      if (settings.use_gguf_model != null) i2vUseGgufModel.input.checked = settings.use_gguf_model !== false;
       i2vUnetPicker.input.value = String(settings.unet_name || i2vUnetPicker.input.value || "");
+      i2vDiffusionModelPicker.input.value = String(settings.diffusion_model_name || i2vDiffusionModelPicker.input.value || DEFAULT_I2V_DIFFUSION_MODEL);
       i2vVaePicker.input.value = String(settings.vae_name || i2vVaePicker.input.value || "");
       i2vClip1Picker.input.value = String(settings.clip_name1 || i2vClip1Picker.input.value || "");
       i2vClip2Picker.input.value = String(settings.clip_name2 || i2vClip2Picker.input.value || "");
@@ -30419,6 +30479,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         mmprojSelect.value = settings.mmproj_file;
         i2vMmprojSelect.value = settings.mmproj_file;
       }
+      syncI2VVideoModelPickerVisibility();
       saveI2VVideoSettingsFromPanel();
       syncFluxKleinPanel();
       syncZImageSettingsPanel();
@@ -30906,7 +30967,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
           mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
           n_ctx: 8000,
-          n_gpu_layers: 99,
+          n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
           n_threads: 8,
           unload_after: true,
         },
@@ -30990,7 +31051,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           width: Number(videoSettings.width || 1920),
           height: Number(videoSettings.height || 1080),
           seed: Number(videoSettings.seed || 69),
+          use_gguf_model: videoSettings.use_gguf_model !== false,
           unet_name: String(videoSettings.unet_name || ""),
+          diffusion_model_name: String(videoSettings.diffusion_model_name || ""),
           vae_name: String(videoSettings.vae_name || ""),
           clip_name1: String(videoSettings.clip_name1 || ""),
           clip_name2: String(videoSettings.clip_name2 || ""),
@@ -31042,6 +31105,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         },
         modelOptions: {
           unets: wizardOptionsFromPicker(i2vUnetPicker),
+          diffusion_models: wizardOptionsFromPicker(i2vDiffusionModelPicker),
           vae: wizardOptionsFromPicker(i2vVaePicker),
           clip: Array.from(new Set([...wizardOptionsFromPicker(i2vClip1Picker), ...wizardOptionsFromPicker(i2vClip2Picker)])),
           upscale_models: wizardOptionsFromPicker(i2vUpscalePicker),
@@ -32065,7 +32129,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const current = BAD_I2V_UNET_ALIASES.has(picker.input.value) ? "" : picker.input.value;
       picker.input.value = chooseModelValue(values, current, preferredList);
     };
-    setOptions(i2vUnetPicker, data.unets, DEFAULT_I2V_UNET);
+    setOptions(i2vUnetPicker, data.video_gguf_unets || data.unets, DEFAULT_I2V_UNET);
+    setOptions(i2vDiffusionModelPicker, data.video_diffusion_models || data.unets, DEFAULT_I2V_DIFFUSION_MODEL);
     setOptions(i2vVaePicker, data.vae, "LTX23_video_vae_bf16.safetensors");
     setOptions(i2vClip1Picker, data.clip, "gemma-3-12b-it-abliterated-sikaworld-high-fidelity-edition.safetensors");
     setOptions(i2vClip2Picker, data.clip, "ltx-2.3_text_projection_bf16.safetensors");
@@ -32182,7 +32247,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     slot.strength.addEventListener("change", saveErnieImageSettingsFromPanel);
   }
 
-  for (const picker of [i2vUnetPicker, i2vVaePicker, i2vClip1Picker, i2vClip2Picker, i2vUpscalePicker, i2vAudioVaePicker]) {
+  i2vUseGgufModel.input.addEventListener("change", () => {
+    syncI2VVideoModelPickerVisibility();
+    saveI2VVideoSettingsFromPanel();
+  });
+  for (const picker of [i2vUnetPicker, i2vDiffusionModelPicker, i2vVaePicker, i2vClip1Picker, i2vClip2Picker, i2vUpscalePicker, i2vAudioVaePicker]) {
     wireSearchablePicker(picker, saveI2VVideoSettingsFromPanel);
     picker.input.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }

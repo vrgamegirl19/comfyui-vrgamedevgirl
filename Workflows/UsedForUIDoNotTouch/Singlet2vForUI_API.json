@@ -196,7 +196,6 @@
   },
   "755": {
     "inputs": {
-      "text_0": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\custom_nodes\\comfyui-vrgamedevgirl\\srt_files\\builder_segments_20260524_232450.srt",
       "text": [
         "686",
         0
@@ -253,7 +252,7 @@
   },
   "932": {
     "inputs": {
-      "audioUI": "/api/view?filename=ComfyUI_temp_iycyr_00001_.flac&type=temp&subfolder=&rand=0.107760396394732",
+      "audioUI": "",
       "audio": [
         "218:287",
         13
@@ -364,13 +363,44 @@
       "first_pass_strength_20": 1,
       "second_pass_strength_20": 1,
       "model": [
-        "271:215",
+        "939",
         0
       ]
     },
     "class_type": "VRGDG_OptionalMultiLoraTwoPassStrengths",
     "_meta": {
       "title": "VRGDG Optional Multi LoRA Two Pass Strengths"
+    }
+  },
+  "938": {
+    "inputs": {
+      "model_name": "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": false,
+      "sage_attention": "disabled",
+      "enable_fp16_accumulation": false
+    },
+    "class_type": "DiffusionModelLoaderKJ",
+    "_meta": {
+      "title": "Diffusion Model Loader KJ"
+    }
+  },
+  "939": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "938",
+        0
+      ],
+      "on_true": [
+        "271:215",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Switch-use GGUF"
     }
   },
   "271:211": {
@@ -413,15 +443,6 @@
     "class_type": "DualCLIPLoaderGGUF",
     "_meta": {
       "title": "DualCLIPLoader (GGUF)"
-    }
-  },
-  "271:215": {
-    "inputs": {
-      "unet_name": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf"
-    },
-    "class_type": "UnetLoaderGGUF",
-    "_meta": {
-      "title": "Unet Loader (GGUF)"
     }
   },
   "269:265": {
@@ -531,6 +552,15 @@
     "class_type": "KSamplerSelect",
     "_meta": {
       "title": "KSamplerSelect"
+    }
+  },
+  "271:215": {
+    "inputs": {
+      "unet_name": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
     }
   },
   "236:237:905": {

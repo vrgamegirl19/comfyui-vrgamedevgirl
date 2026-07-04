@@ -347,7 +347,7 @@
       "first_pass_strength_20": 1,
       "second_pass_strength_20": 1,
       "model": [
-        "271:215",
+        "955",
         0
       ]
     },
@@ -444,6 +444,37 @@
       "title": "VAE Decode"
     }
   },
+  "955": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "956",
+        0
+      ],
+      "on_true": [
+        "271:215",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "Switch-use GGUF"
+    }
+  },
+  "956": {
+    "inputs": {
+      "model_name": "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": false,
+      "sage_attention": "disabled",
+      "enable_fp16_accumulation": false
+    },
+    "class_type": "DiffusionModelLoaderKJ",
+    "_meta": {
+      "title": "Diffusion Model Loader KJ"
+    }
+  },
   "271:254": {
     "inputs": {
       "vae_name": "LTX23_audio_vae_bf16.safetensors",
@@ -464,15 +495,6 @@
     "class_type": "DualCLIPLoaderGGUF",
     "_meta": {
       "title": "DualCLIPLoader (GGUF)"
-    }
-  },
-  "271:215": {
-    "inputs": {
-      "unet_name": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf"
-    },
-    "class_type": "UnetLoaderGGUF",
-    "_meta": {
-      "title": "Unet Loader (GGUF)"
     }
   },
   "269:265": {
@@ -566,6 +588,15 @@
     "class_type": "PrimitiveInt",
     "_meta": {
       "title": "Height"
+    }
+  },
+  "271:215": {
+    "inputs": {
+      "unet_name": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
     }
   },
   "269:264": {
