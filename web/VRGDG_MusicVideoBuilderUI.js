@@ -2432,12 +2432,38 @@ function openBuilder(node) {
   const t2iTextGemmaModelSelect = makeSelect([""], "");
   const gemmaModelSelect = makeSelect([""], "");
   const mmprojSelect = makeSelect([""], "");
+  const krea2TwoPassTextGemmaModelSelect = makeSelect([""], "");
+  const krea2TwoPassGemmaModelSelect = makeSelect([""], "");
+  const krea2TwoPassMmprojSelect = makeSelect([""], "");
   const ernieTextGemmaModelSelect = makeSelect([""], "");
   const ernieGemmaModelSelect = makeSelect([""], "");
   const ernieMmprojSelect = makeSelect([""], "");
   const i2vTextGemmaModelSelect = makeSelect([""], "");
   const i2vGemmaModelSelect = makeSelect([""], "");
   const i2vMmprojSelect = makeSelect([""], "");
+  function copySelectOptions(sourceSelect, targetSelect) {
+    targetSelect.textContent = "";
+    for (const option of sourceSelect.options) {
+      targetSelect.append(option.cloneNode(true));
+    }
+    targetSelect.value = sourceSelect.value || "";
+  }
+  function syncKrea2TwoPassLlmSelectsFromShared() {
+    copySelectOptions(t2iTextGemmaModelSelect, krea2TwoPassTextGemmaModelSelect);
+    copySelectOptions(gemmaModelSelect, krea2TwoPassGemmaModelSelect);
+    copySelectOptions(mmprojSelect, krea2TwoPassMmprojSelect);
+  }
+  function syncKrea2TwoPassLlmSelectsToShared() {
+    t2iTextGemmaModelSelect.value = krea2TwoPassTextGemmaModelSelect.value || "";
+    gemmaModelSelect.value = krea2TwoPassGemmaModelSelect.value || "";
+    mmprojSelect.value = krea2TwoPassMmprojSelect.value || "";
+  }
+  for (const select of [krea2TwoPassTextGemmaModelSelect, krea2TwoPassGemmaModelSelect, krea2TwoPassMmprojSelect]) {
+    select.addEventListener("change", syncKrea2TwoPassLlmSelectsToShared);
+  }
+  for (const select of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect]) {
+    select.addEventListener("change", syncKrea2TwoPassLlmSelectsFromShared);
+  }
   const useVisionReference = makeCheckbox("Use vision reference image?", false);
   const useI2VVisionReference = makeCheckbox("Use image reference for I2V prompt?", true);
   const useI2VPromptEnhancementPass = makeCheckbox("I2V prompt enhancement pass", false);
@@ -2881,9 +2907,9 @@ function openBuilder(node) {
           krea2TwoPassLoraPanel,
         ]),
         makeSettingsSection("LLM Models", [
-          makeField("Non-Vision text Gemma model", t2iTextGemmaModelSelect),
-          makeField("Vision Gemma model", gemmaModelSelect),
-          makeField("Vision mmproj", mmprojSelect),
+          makeField("Non-Vision text Gemma model", krea2TwoPassTextGemmaModelSelect),
+          makeField("Vision Gemma model", krea2TwoPassGemmaModelSelect),
+          makeField("Vision mmproj", krea2TwoPassMmprojSelect),
         ]),
         makeKrea2TwoPassCreateButton(),
       ]),
@@ -30479,6 +30505,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         mmprojSelect.value = settings.mmproj_file;
         i2vMmprojSelect.value = settings.mmproj_file;
       }
+      syncKrea2TwoPassLlmSelectsFromShared();
       syncI2VVideoModelPickerVisibility();
       saveI2VVideoSettingsFromPanel();
       syncFluxKleinPanel();
@@ -31996,6 +32023,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         select.value = singleMmproj;
       }
     }
+    syncKrea2TwoPassLlmSelectsFromShared();
   }
 
   function renderSearchableSuggestions(picker, onSelect = null) {
