@@ -29,6 +29,7 @@ _VRGDG_SUBMODULES = (
     ".vrgdg_ltx_msr_reference_builder",
     ".VRGDG_LTXICIngredientsGrid",
     ".VRGDG_FlowBrowserNodes",
+    ".VRGDG_BrowserImageRoutes",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (

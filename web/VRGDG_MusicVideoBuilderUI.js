@@ -13,6 +13,13 @@ import {
 import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260701-i2v-mode";
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
+import {
+  BROWSER_IMAGE_PROVIDERS,
+  buildBrowserImagePrompt,
+  getBrowserImageStatus,
+  openBrowserImageLogin,
+  setupBrowserImageAutomation,
+} from "./VRGDG_BrowserImageBridge.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -2314,6 +2321,50 @@ function openBuilder(node) {
   const createNBPromptButton = makeButton("Gemma NB Prompt", "primary");
   const editNBPromptButton = makeEditImagePromptButton();
   const previewNBButton = makeButton("Create with NanoBanana", "primary");
+  const flowGptModePanel = document.createElement("div");
+  flowGptModePanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
+  const flowGptProviderRow = document.createElement("div");
+  flowGptProviderRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  const flowNanoProviderButton = makeButton("Flow Nano Banana", "primary");
+  const gptImageProviderButton = makeButton("GPT Image", "primary");
+  flowGptProviderRow.append(flowNanoProviderButton, gptImageProviderButton);
+  const flowGptSetupNote = document.createElement("div");
+  flowGptSetupNote.style.cssText = "font-size:11px;color:#d4d4d8;line-height:1.45;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;";
+  flowGptSetupNote.textContent = "Flow/GPT uses real Chrome browser profiles. Install the browser automation first, then open the provider login before overnight runs. For Flow Nano Banana, sign into Google and manually set Flow to create 1 image with the project aspect ratio and preferred settings. Flow prompts are sent as-is. GPT Image gets the selected aspect ratio appended to the prompt. If you choose the fallback-to-other-provider failure mode, log into both Flow and GPT first.";
+  const flowGptStatusText = document.createElement("div");
+  flowGptStatusText.style.cssText = "font-size:11px;color:#a1a1aa;white-space:pre-wrap;line-height:1.35;";
+  flowGptStatusText.textContent = "Browser automation status has not been checked yet.";
+  const flowGptSetupButton = makeButton("Install Browser Automation", "primary");
+  const flowGptStatusButton = makeButton("Check Browser Setup");
+  const flowLoginButton = makeButton("Open Flow Login");
+  const gptLoginButton = makeButton("Open GPT Login");
+  const flowGptSetupActions = document.createElement("div");
+  flowGptSetupActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  flowGptSetupActions.append(flowGptSetupButton, flowGptStatusButton, flowLoginButton, gptLoginButton);
+  const flowGptAspectRatio = makeSelect(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], "16:9");
+  const flowGptTimeout = makeInput("600", "number");
+  flowGptTimeout.min = "60";
+  flowGptTimeout.max = "2400";
+  flowGptTimeout.step = "10";
+  const flowGptRetries = makeInput("10", "number");
+  flowGptRetries.min = "1";
+  flowGptRetries.max = "20";
+  flowGptRetries.step = "1";
+  const flowGptFailureMode = makeSelect(["last_successful_image", "try_other_provider", "stop"], "last_successful_image");
+  for (const option of flowGptFailureMode.options) {
+    if (option.value === "last_successful_image") option.textContent = "Use last successful image";
+    else if (option.value === "try_other_provider") option.textContent = "Try other provider first";
+    else if (option.value === "stop") option.textContent = "Stop";
+  }
+  const flowGptPrompt = document.createElement("textarea");
+  flowGptPrompt.placeholder = "Flow/GPT browser image prompt...";
+  flowGptPrompt.style.cssText = "width:100%;box-sizing:border-box;min-height:92px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
+  const flowGptAspectRatioField = makeField("GPT aspect ratio", flowGptAspectRatio);
+  const flowGptCreatePromptButton = makeButton("Gemma Flow/GPT Prompt", "primary");
+  const flowGptCreateImageButton = makeButton("Create with Flow/GPT", "primary");
+  flowGptCreatePromptButton.disabled = true;
+  flowGptCreatePromptButton.title = "A later step will wire Gemma prompt generation for Flow/GPT.";
+  flowGptCreatePromptButton.style.opacity = "0.65";
   const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
   fluxImageRefsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
@@ -2401,10 +2452,11 @@ function openBuilder(node) {
   const nbImageCard = makeImageModelCard("Nano B", "nano_banana");
   const ernieImageCard = makeImageModelCard("Ernie", "ernie_image");
   const krea2TwoPassCard = makeImageModelCard("Krea 2", "krea2_2pass");
+  const flowGptCard = makeImageModelCard("Flow/GPT", "flow_gpt");
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
   const loadCustomImageButton = makeImageModelCard("+ Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
-  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, zEnhanceCard, loadCustomImageButton);
+  imageModelChooser.append(zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard, loadCustomImageButton);
   imageModelChooserWrap.append(imageModelChooserLabel, imageModelChooser);
   const zImageModePanel = document.createElement("div");
   zImageModePanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
@@ -3036,6 +3088,32 @@ function openBuilder(node) {
   ]);
   nbImagePanel.append(nbImageSubTabs.wrapper);
   fluxKleinModePanel.append(nbImagePanel);
+  const flowGptSubTabs = makeSubTabs([
+    {
+      label: "Setup",
+      value: "setup",
+      content: makeSettingsPanel([
+        flowGptProviderRow,
+        flowGptSetupNote,
+        flowGptSetupActions,
+        flowGptStatusText,
+      ]),
+    },
+    {
+      label: "Settings",
+      value: "settings",
+      content: makeSettingsPanel([
+        flowGptAspectRatioField,
+        makeField("Timeout seconds", flowGptTimeout),
+        makeField("Retries", flowGptRetries),
+        makeField("After final failure", flowGptFailureMode),
+        makeField("Browser prompt", flowGptPrompt),
+        flowGptCreatePromptButton,
+        flowGptCreateImageButton,
+      ]),
+    },
+  ]);
+  flowGptModePanel.append(flowGptSubTabs.wrapper);
   const zEnhanceSubTabs = makeSubTabs([
     {
       label: "Models",
@@ -3103,6 +3181,7 @@ function openBuilder(node) {
     fluxKleinModePanel,
     ernieImageModePanel,
     krea2TwoPassModePanel,
+    flowGptModePanel,
     zEnhancePanel,
     inspectorActions,
   );
@@ -3421,6 +3500,19 @@ function openBuilder(node) {
     };
   }
 
+  function defaultFlowGptBrowserSettings() {
+    return {
+      provider: BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA,
+      aspect_ratio: "16:9",
+      timeout_seconds: 600,
+      flow_timeout_seconds: 420,
+      gpt_timeout_seconds: 600,
+      max_retries: 10,
+      failure_mode: "last_successful_image",
+      setup_note_collapsed: false,
+    };
+  }
+
   function defaultErnieImageSettings() {
     return {
       unet_name: "ernie\\ernie-image-turbo.safetensors",
@@ -3612,6 +3704,7 @@ function openBuilder(node) {
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
     fluxKleinSettings: defaultFluxKleinSettings(),
+    flowGptBrowserSettings: defaultFlowGptBrowserSettings(),
     ernieImageSettings: defaultErnieImageSettings(),
     krea2TwoPassSettings: defaultKrea2TwoPassSettings(),
     nbImageSettings: defaultNBImageSettings(),
@@ -6362,6 +6455,23 @@ function openBuilder(node) {
     };
   }
 
+  function cloneFlowGptBrowserSettings(settings) {
+    const source = settings || {};
+    const provider = String(source.provider || "").trim() || BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA;
+    return {
+      ...defaultFlowGptBrowserSettings(),
+      ...source,
+      provider: provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? BROWSER_IMAGE_PROVIDERS.GPT_IMAGE : BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA,
+      aspect_ratio: String(source.aspect_ratio || source.aspectRatio || "16:9").trim() || "16:9",
+      timeout_seconds: Math.max(60, Math.min(2400, Number(source.timeout_seconds || 600))),
+      flow_timeout_seconds: Math.max(60, Math.min(1800, Number(source.flow_timeout_seconds || 420))),
+      gpt_timeout_seconds: Math.max(60, Math.min(2400, Number(source.gpt_timeout_seconds || 600))),
+      max_retries: Math.max(1, Math.min(20, Number(source.max_retries || 10))),
+      failure_mode: ["last_successful_image", "try_other_provider", "stop"].includes(source.failure_mode) ? source.failure_mode : "last_successful_image",
+      setup_note_collapsed: Boolean(source.setup_note_collapsed),
+    };
+  }
+
   function cloneFluxKleinSettings(settings) {
     const source = settings || {};
     return {
@@ -6445,6 +6555,9 @@ function openBuilder(node) {
     }
     if (defaults.flux_klein_settings || defaults.fluxKleinSettings) {
       state.fluxKleinSettings = cloneFluxKleinSettings(defaults.flux_klein_settings || defaults.fluxKleinSettings);
+    }
+    if (defaults.flow_gpt_browser_settings || defaults.flowGptBrowserSettings) {
+      state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(defaults.flow_gpt_browser_settings || defaults.flowGptBrowserSettings);
     }
     if (defaults.ernie_image_settings || defaults.ernieImageSettings) {
       state.ernieImageSettings = cloneErnieImageSettings(defaults.ernie_image_settings || defaults.ernieImageSettings);
@@ -6701,6 +6814,7 @@ function openBuilder(node) {
     state.zimageSettings = data.zimageSettings || state.zimageSettings;
     state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.referenceKrea2Settings || data.reference_krea2_settings || state.referenceKrea2Settings);
     state.fluxKleinSettings = data.fluxKleinSettings || state.fluxKleinSettings;
+    state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(data.flowGptBrowserSettings || data.flow_gpt_browser_settings || state.flowGptBrowserSettings);
     state.nbImageSettings = data.nbImageSettings || data.nb_image_settings || state.nbImageSettings;
     state.ernieImageSettings = data.ernieImageSettings || state.ernieImageSettings;
     state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(data.krea2TwoPassSettings || data.krea2_2pass_settings || state.krea2TwoPassSettings);
@@ -7033,6 +7147,22 @@ function openBuilder(node) {
     return cleanPrompt;
   }
 
+  function syncSegmentFlowGptPrompt(segment, prompt) {
+    if (!segment) return "";
+    const cleanPrompt = String(prompt || "").trim();
+    segment.flow_gpt_prompt = cleanPrompt;
+    segment.t2i_prompt = cleanPrompt;
+    segment.flux_prompt = cleanPrompt;
+    segment.enhance_prompt = cleanPrompt;
+    if (segment.id === activeSegment()?.id) {
+      flowGptPrompt.value = cleanPrompt;
+      t2iPrompt.value = cleanPrompt;
+      fluxPrompt.value = cleanPrompt;
+      zEnhancePromptPreview.value = cleanPrompt;
+    }
+    return cleanPrompt;
+  }
+
   function syncConceptPromptToStoryBeat(segment, prompt) {
     if (!segment) return "";
     const text = String(prompt || "").trim();
@@ -7241,6 +7371,7 @@ function openBuilder(node) {
       krea2_2pass: "Krea 2",
       flux_klein: "Flux/Klein",
       nano_banana: "NanoBanana",
+      flow_gpt: "Flow/GPT",
     }[String(imageMode || "").trim()] || "current image model";
   }
 
@@ -9443,6 +9574,7 @@ function openBuilder(node) {
     fluxKleinModePanel.style.display = mode === "flux_klein" || mode === "nano_banana" ? "flex" : "none";
     ernieImageModePanel.style.display = mode === "ernie_image" ? "flex" : "none";
     krea2TwoPassModePanel.style.display = mode === "krea2_2pass" ? "flex" : "none";
+    flowGptModePanel.style.display = mode === "flow_gpt" ? "flex" : "none";
     zEnhancePanel.style.display = mode === "z_enhance" ? "flex" : "none";
     previewButton.style.display = mode === "zimage" ? "" : "none";
     ernieCreateButton.style.display = mode === "ernie_image" ? "" : "none";
@@ -9452,7 +9584,7 @@ function openBuilder(node) {
     nbImagePanel.style.display = mode === "nano_banana" ? "flex" : "none";
     ernieImagePanel.style.display = mode === "ernie_image" ? "flex" : "none";
     krea2TwoPassPanel.style.display = mode === "krea2_2pass" ? "flex" : "none";
-    for (const card of [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, zEnhanceCard]) {
+    for (const card of [zImageCard, fluxKleinCard, nbImageCard, ernieImageCard, krea2TwoPassCard, flowGptCard, zEnhanceCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#0891b2" : "#3f3f46";
       card.style.background = active ? "#06b6d4" : "#27272a";
@@ -9496,6 +9628,7 @@ function openBuilder(node) {
     updateFluxLoraVisibility();
     syncErnieImagePanel();
     syncNBImagePanel();
+    syncFlowGptBrowserPanel();
   }
 
   function updateFluxLoraVisibility() {
@@ -9607,6 +9740,75 @@ function openBuilder(node) {
       prompt: segment?.nb_prompt || "",
       reference_context: nbReferenceContextForSegment(segment),
     };
+  }
+
+  function syncFlowGptBrowserPanel() {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    state.flowGptBrowserSettings = settings;
+    const isGpt = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
+    flowGptAspectRatio.value = settings.aspect_ratio || "16:9";
+    flowGptTimeout.value = isGpt ? settings.gpt_timeout_seconds : settings.flow_timeout_seconds;
+    flowGptRetries.value = settings.max_retries || 10;
+    flowGptFailureMode.value = settings.failure_mode || "last_successful_image";
+    const segment = activeSegment();
+    flowGptPrompt.value = segment?.flow_gpt_prompt || segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || "";
+    flowGptAspectRatioField.style.display = isGpt ? "flex" : "none";
+    flowGptAspectRatio.disabled = !isGpt;
+    flowGptAspectRatio.title = isGpt ? "GPT Image gets this aspect ratio appended to the prompt." : "Flow uses the aspect ratio selected manually inside Flow.";
+    for (const [button, active] of [[flowNanoProviderButton, !isGpt], [gptImageProviderButton, isGpt]]) {
+      button.style.background = active ? "#06b6d4" : "#27272a";
+      button.style.borderColor = active ? "#0891b2" : "#3f3f46";
+      button.style.color = active ? "#082f49" : "#f4f4f5";
+    }
+  }
+
+  function saveFlowGptBrowserSettingsFromPanel() {
+    pushHistory();
+    const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const isGpt = current.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
+    const timeout = Math.max(60, Math.min(2400, Number(flowGptTimeout.value || current.timeout_seconds || 600)));
+    state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
+      ...current,
+      aspect_ratio: flowGptAspectRatio.value || "16:9",
+      timeout_seconds: timeout,
+      flow_timeout_seconds: isGpt ? current.flow_timeout_seconds : timeout,
+      gpt_timeout_seconds: isGpt ? timeout : current.gpt_timeout_seconds,
+      max_retries: Math.max(1, Math.min(20, Number(flowGptRetries.value || 10))),
+      failure_mode: flowGptFailureMode.value || "last_successful_image",
+    });
+    syncFlowGptBrowserPanel();
+    return state.flowGptBrowserSettings;
+  }
+
+  function setFlowGptProvider(provider) {
+    pushHistory();
+    state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
+      ...state.flowGptBrowserSettings,
+      provider,
+    });
+    syncFlowGptBrowserPanel();
+    autoSaveSessionQuiet(`Flow/GPT provider changed to ${provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana"}`).catch(() => null);
+  }
+
+  function formatBrowserImageStatus(data) {
+    return [
+      `Chrome: ${data.chrome_ready ? "ready" : "missing"}`,
+      `Node: ${data.node_ready ? "ready" : "missing"}`,
+      `Playwright: ${data.playwright_ready ? "installed" : "missing"}`,
+      data.chrome_error ? `Chrome error: ${data.chrome_error}` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  async function refreshFlowGptBrowserStatus() {
+    flowGptStatusText.textContent = "Checking browser automation setup...";
+    try {
+      const data = await getBrowserImageStatus();
+      flowGptStatusText.textContent = formatBrowserImageStatus(data);
+      return data;
+    } catch (error) {
+      flowGptStatusText.textContent = `Status check failed:\n${String(error?.message || error)}`;
+      throw error;
+    }
   }
 
   function imagePromptNotesWithDirector(segment, notes, useDirectorNotes = false) {
@@ -21650,6 +21852,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
       flux_klein_settings: state.fluxKleinSettings,
+      flow_gpt_browser_settings: cloneFlowGptBrowserSettings(state.flowGptBrowserSettings),
       nb_image_settings: state.nbImageSettings,
       ernie_image_settings: state.ernieImageSettings,
       krea2_2pass_settings: cloneKrea2TwoPassSettings(state.krea2TwoPassSettings),
@@ -21898,6 +22101,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
         state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.session.reference_krea2_settings || state.referenceKrea2Settings);
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
+        state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(data.session.flow_gpt_browser_settings || state.flowGptBrowserSettings);
         state.nbImageSettings = data.session.nb_image_settings || state.nbImageSettings;
         state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
         state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(data.session.krea2_2pass_settings || state.krea2TwoPassSettings);
@@ -22082,6 +22286,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.zimageSettings = session.zimage_settings || state.zimageSettings;
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
+      state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(session.flow_gpt_browser_settings || state.flowGptBrowserSettings);
       state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
       state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
       state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(session.krea2_2pass_settings || state.krea2TwoPassSettings);
@@ -22931,6 +23136,88 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       prompt: segment?.nb_prompt || segment?.t2i_prompt || "",
       reference_context: nbReferenceContextForSegment(segment),
     };
+  }
+
+  function flowGptBrowserSettingsForSegment(segment = activeSegment()) {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const timeout = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
+      ? settings.gpt_timeout_seconds
+      : settings.flow_timeout_seconds;
+    return {
+      ...settings,
+      timeout_seconds: timeout || settings.timeout_seconds || 600,
+      image_ingredients: mergedFluxImageIngredients(segment),
+      prompt: segment?.flow_gpt_prompt || segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || "",
+      reference_context: fluxReferenceContextForSegment(segment),
+    };
+  }
+
+  async function createFlowGptImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Flow/GPT") {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    const settings = flowGptBrowserSettingsForSegment(segment);
+    const prompt = syncSegmentFlowGptPrompt(segment, settings.prompt || "");
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flow/GPT prompt is missing.`);
+    progress?.set(`${label}: building hidden browser image workflow...`, percentBase + percentSpan * 0.25);
+    const built = await buildBrowserImagePrompt({
+      provider: settings.provider,
+      prompt,
+      aspect_ratio: settings.aspect_ratio || "16:9",
+      image_ingredients: settings.image_ingredients || [],
+      timeout_seconds: settings.timeout_seconds || 600,
+    });
+    progress?.set(`${label}: queueing ${built.provider_label || "browser image"} workflow...`, percentBase + percentSpan * 0.45);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the Flow/GPT image but did not return a prompt_id.");
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.72);
+    });
+    pushHistory();
+    segment.image = images[images.length - 1] || null;
+    await archiveGeneratedSceneImage(segment, segment.image);
+    syncSegmentFlowGptPrompt(segment, prompt);
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    if (segment.id === activeSegment()?.id) {
+      syncPreview(segment);
+    }
+    render();
+    return images;
+  }
+
+  async function previewFlowGptImage() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const settings = saveFlowGptBrowserSettingsFromPanel();
+    const prompt = syncSegmentFlowGptPrompt(segment, flowGptPrompt.value || segment.flow_gpt_prompt || segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || "");
+    if (!prompt) {
+      toast("Hey, you need a Flow/GPT browser prompt first. Type one into the Browser prompt box or create a normal image prompt first.", true);
+      return;
+    }
+    let progress = null;
+    try {
+      flowGptCreateImageButton.disabled = true;
+      flowGptCreateImageButton.textContent = "Creating...";
+      progress = createProgressWindow(`Creating ${settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana"} image`);
+      progress.set("Autosaving session/SRT before Flow/GPT image...", 8);
+      await autoSaveSessionQuiet("Flow/GPT image");
+      await createFlowGptImageForSegment(segment, progress, 15, 75, "Flow/GPT image");
+      await autoSaveSessionQuiet("Flow/GPT image complete");
+      progress.set("Flow/GPT image ready.", 100);
+      progress.close(900);
+      toast("Flow/GPT image preview ready.");
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      flowGptCreateImageButton.disabled = false;
+      flowGptCreateImageButton.textContent = "Create with Flow/GPT";
+    }
   }
 
   async function createNBPromptWithGemma() {
@@ -24207,6 +24494,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "nano_banana") return compact ? "Nano B" : "NanoBanana";
     if (mode === "ernie_image") return compact ? "Ernie" : "Ernie Image";
     if (mode === "krea2_2pass") return compact ? "Krea 2" : "Krea 2";
+    if (mode === "flow_gpt") return compact ? "Flow/GPT" : "Flow/GPT";
     if (mode === "z_enhance") return compact ? "Enhance" : "Enhance";
     return compact ? "ZImage" : "ZImage";
   }
@@ -28015,16 +28303,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (mode === "nano_banana") return "Nano B";
       if (mode === "ernie_image") return "Ernie";
       if (mode === "krea2_2pass") return "Krea 2";
+      if (mode === "flow_gpt") return "Flow/GPT";
       if (mode === "z_enhance") return "Z Enhance";
       return "ZImage";
     };
     const normalizeImageMode = (mode) => {
       const value = String(mode || "").trim().toLowerCase();
-      if (["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass"].includes(value)) return value;
+      if (["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(value)) return value;
       if (value === "flux" || value === "klein") return "flux_klein";
       if (value === "nano" || value === "nanobanana" || value === "nano_b") return "nano_banana";
       if (value === "ernie") return "ernie_image";
       if (value === "krea" || value === "krea2" || value === "krea_2" || value === "krea2_2_pass" || value === "krea2 two pass") return "krea2_2pass";
+      if (value === "flow" || value === "gpt" || value === "flowgpt" || value === "flow_gpt" || value === "browser") return "flow_gpt";
       return "";
     };
     const setAgentImageMode = (mode, push = true) => {
@@ -30082,7 +30372,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useNBMode = imageMode === "nano_banana";
     const useErnieMode = imageMode === "ernie_image";
     const useKrea2TwoPassMode = imageMode === "krea2_2pass";
-    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : "ZImage";
+    const useFlowGptMode = imageMode === "flow_gpt";
+    const modelLabel = useFluxKleinMode ? "Flux/Klein" : useNBMode ? "NanoBanana" : useErnieMode ? "Ernie" : useKrea2TwoPassMode ? "Krea 2" : useFlowGptMode ? "Flow/GPT" : "ZImage";
     const imageModeChoices = [
       {
         value: "zimage",
@@ -30108,6 +30399,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         value: "krea2_2pass",
         label: "Krea 2",
         description: "Use the Krea 2 workflow with optional image-to-image.",
+      },
+      {
+        value: "flow_gpt",
+        label: "Flow/GPT",
+        description: "Browser image providers. Step 3 will wire generation; setup/login can be configured now.",
       },
     ];
     const currentChoice = imageModeChoices.find((choice) => choice.value === imageMode) || imageModeChoices[0];
@@ -30154,7 +30450,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ],
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
     if (!action?.mode) return;
-    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass"].includes(action.imageMode) ? action.imageMode : imageMode;
+    const selectedImageMode = ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(action.imageMode) ? action.imageMode : imageMode;
     const sceneScope = normalizeBatchScope(action.sceneScope);
     state.imageModelMode = selectedImageMode;
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
@@ -30164,6 +30460,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     else if (selectedImageMode === "nano_banana") await nbImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "ernie_image") await ernieImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "krea2_2pass") await krea2TwoPassImageAllScenes({ imageRunMode: action.mode, sceneScope });
+    else if (selectedImageMode === "flow_gpt") toast("Flow/GPT image generation is coming in step 3. Setup/login controls are ready now.", true);
     else await zImageAllScenes({ imageRunMode: action.mode, sceneScope });
   }
 
@@ -30403,7 +30700,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     const normalizeWizardImageMode = (mode) => {
       const normalized = String(mode || "").trim().toLowerCase();
-      return ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass"].includes(normalized)
+      return ["zimage", "flux_klein", "nano_banana", "ernie_image", "krea2_2pass", "flow_gpt"].includes(normalized)
         ? normalized
         : "zimage";
     };
@@ -31066,6 +31363,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           { value: "flux_klein", label: imageModeDisplayLabel("flux_klein") },
           { value: "ernie_image", label: imageModeDisplayLabel("ernie_image") },
           { value: "krea2_2pass", label: imageModeDisplayLabel("krea2_2pass") },
+          { value: "flow_gpt", label: imageModeDisplayLabel("flow_gpt") },
           { value: "nano_banana", label: imageModeDisplayLabel("nano_banana") },
         ],
         subjectCount: Array.isArray(refs.subjects) ? refs.subjects.length : 0,
@@ -31259,6 +31557,53 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   nbUseDirectorNotes.input.addEventListener("change", saveNBImageSettingsFromPanel);
   nbNotes.addEventListener("input", saveNBImageSettingsFromPanel);
   nbPrompt.addEventListener("input", saveNBImageSettingsFromPanel);
+  flowGptAspectRatio.addEventListener("change", saveFlowGptBrowserSettingsFromPanel);
+  flowGptTimeout.addEventListener("input", saveFlowGptBrowserSettingsFromPanel);
+  flowGptRetries.addEventListener("input", saveFlowGptBrowserSettingsFromPanel);
+  flowGptFailureMode.addEventListener("change", saveFlowGptBrowserSettingsFromPanel);
+  flowGptPrompt.addEventListener("input", () => {
+    pushHistory();
+    const segment = activeSegment();
+    if (segment) syncSegmentFlowGptPrompt(segment, flowGptPrompt.value || "");
+  });
+  flowNanoProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA);
+  gptImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE);
+  flowGptStatusButton.onclick = () => refreshFlowGptBrowserStatus().catch((error) => toast(String(error?.message || error), true));
+  flowGptSetupButton.onclick = async () => {
+    flowGptSetupButton.disabled = true;
+    flowGptStatusText.textContent = "Installing browser automation dependencies...";
+    try {
+      const data = await setupBrowserImageAutomation({ install_portable_node: true, install_if_missing: true, strict_ssl: false });
+      flowGptStatusText.textContent = data.status || formatBrowserImageStatus(data);
+      toast("Browser automation setup finished.");
+    } catch (error) {
+      flowGptStatusText.textContent = `Setup failed:\n${String(error?.message || error)}`;
+      toast(String(error?.message || error), true);
+    } finally {
+      flowGptSetupButton.disabled = false;
+    }
+  };
+  flowLoginButton.onclick = async () => {
+    try {
+      const settings = saveFlowGptBrowserSettingsFromPanel();
+      await openBrowserImageLogin(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA, { debug_port: 9222, timeoutMs: 60000 });
+      flowGptStatusText.textContent = `Flow login browser opened.\nSet Flow to 1 image and choose your aspect ratio before batch runs.\nRetries: ${settings.max_retries}`;
+      toast("Flow login browser opened.");
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  };
+  gptLoginButton.onclick = async () => {
+    try {
+      const settings = saveFlowGptBrowserSettingsFromPanel();
+      await openBrowserImageLogin(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE, { debug_port: 9223, timeoutMs: 60000 });
+      flowGptStatusText.textContent = `GPT Image login browser opened.\nGPT prompts will append aspect ratio: ${settings.aspect_ratio || "16:9"}.`;
+      toast("GPT Image login browser opened.");
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  };
+  flowGptCreateImageButton.onclick = previewFlowGptImage;
   videoTriggerInput.addEventListener("input", saveI2VVideoSettingsFromPanel);
   useVrgdgTextContext.input.addEventListener("change", () => {
     pushHistory();
@@ -31588,6 +31933,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxKleinSettings.enabled = false;
     syncFluxKleinPanel();
     autoSaveSessionQuiet("image mode changed to Krea 2").catch(() => null);
+  };
+  flowGptCard.onclick = () => {
+    pushHistory();
+    state.imageModelMode = "flow_gpt";
+    state.fluxKleinSettings.image_model_mode = "flow_gpt";
+    state.fluxKleinSettings.enabled = false;
+    syncFluxKleinPanel();
+    autoSaveSessionQuiet("image mode changed to Flow/GPT").catch(() => null);
   };
   zEnhanceCard.onclick = () => {
     pushHistory();

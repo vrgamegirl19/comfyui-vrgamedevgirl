@@ -262,8 +262,8 @@ async function clickFirstVisible(locators) {
       const disabled = await candidate.getAttribute("disabled").catch(() => null);
       const ariaDisabled = await candidate.getAttribute("aria-disabled").catch(() => null);
       if (disabled !== null || ariaDisabled === "true") continue;
-      await candidate.click();
-      return true;
+      const clicked = await candidate.click().then(() => true).catch(() => false);
+      if (clicked) return true;
     }
   }
   return false;
@@ -282,7 +282,7 @@ async function getCandidateImageKeys(page) {
 
 async function waitForNewImage(page, beforeKeys, maxMs) {
   const started = Date.now();
-  let lastHandle = null;
+  let lastInfo = null;
   while (Date.now() - started < maxMs) {
     const handles = await page.locator("img").elementHandles();
     for (let i = handles.length - 1; i >= 0; i -= 1) {
@@ -290,24 +290,26 @@ async function waitForNewImage(page, beforeKeys, maxMs) {
       const info = await handle.evaluate((img) => {
         const rect = img.getBoundingClientRect();
         const style = getComputedStyle(img);
+        const src = img.currentSrc || img.src || img.getAttribute("src") || "";
         return {
-          key: `${img.currentSrc || img.src || img.getAttribute("src") || ""}|${Math.round(rect.width)}x${Math.round(rect.height)}`,
+          src,
+          key: `${src}|${Math.round(rect.width)}x${Math.round(rect.height)}`,
           visible: rect.width > 200 && rect.height > 200 && style.display !== "none" && style.visibility !== "hidden",
           complete: img.complete && img.naturalWidth > 0 && img.naturalHeight > 0,
         };
       }).catch(() => null);
       if (!info?.visible || !info.complete) continue;
-      lastHandle = handle;
+      lastInfo = info;
       if (!beforeKeys.has(info.key)) {
         console.log("Found new visible image.");
-        return handle;
+        return info;
       }
     }
     await page.waitForTimeout(3000);
   }
-  if (lastHandle) {
+  if (lastInfo) {
     console.log("No brand-new image key was detected; using newest visible image fallback.");
-    return lastHandle;
+    return lastInfo;
   }
   throw new Error("Timed out waiting for a generated ChatGPT image.");
 }
@@ -330,12 +332,8 @@ async function waitForThoughtComplete(page, maxMs) {
 }
 
 async function downloadFromViewer(page, outputDir, promptText) {
-  const downloadPromise = page.waitForEvent("download", { timeout: 60000 }).catch(() => null);
-  const clicked = await clickFirstVisible([
-    page.getByRole("button", { name: /download/i }),
-    page.locator("button[aria-label*='Download' i]"),
-    page.locator("a[aria-label*='Download' i]"),
-  ]);
+  const downloadPromise = page.waitForEvent("download", { timeout: 15000 }).catch(() => null);
+  const clicked = await clickDownloadButton(page);
   if (!clicked) return null;
 
   const download = await downloadPromise;
@@ -348,6 +346,79 @@ async function downloadFromViewer(page, outputDir, promptText) {
   } catch {
     return await findExistingDownloadedFile(outputDir, suggested);
   }
+}
+
+async function clickDownloadButton(page) {
+  const labeled = await clickFirstVisible([
+    page.getByRole("button", { name: /download/i }),
+    page.getByRole("link", { name: /download/i }),
+    page.locator("button[aria-label*='Download' i]"),
+    page.locator("a[aria-label*='Download' i]"),
+    page.locator("button[title*='Download' i]"),
+    page.locator("a[title*='Download' i]"),
+    page.locator("a[download]"),
+  ]);
+  if (labeled) return true;
+
+  return await page.evaluate(() => {
+    const isVisible = (el) => {
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+    const nameOf = (el) => [
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+      el.getAttribute("data-testid"),
+      el.textContent,
+    ].filter(Boolean).join(" ").trim();
+    const controls = Array.from(document.querySelectorAll("button,a,[role='button']"))
+      .filter((el) => isVisible(el))
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          el,
+          rect,
+          name: nameOf(el),
+          svg: el.querySelector("svg")?.outerHTML || "",
+        };
+      });
+
+    const named = controls.find((item) => /download/i.test(item.name) || item.el.hasAttribute("download"));
+    if (named) {
+      named.el.click();
+      return true;
+    }
+
+    const iconMatch = controls.find((item) => {
+      const svg = item.svg.toLowerCase();
+      return svg.includes("download") || svg.includes("m21 15v4") || svg.includes("m7 10l5 5") || svg.includes("arrow-down");
+    });
+    if (iconMatch) {
+      iconMatch.el.click();
+      return true;
+    }
+
+    const share = controls
+      .filter((item) => /^share$/i.test(item.name.trim()) || /\bshare\b/i.test(item.name))
+      .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height)[0];
+    if (!share) return false;
+
+    const topBarRightOfShare = controls
+      .filter((item) => {
+        const centerX = item.rect.left + item.rect.width / 2;
+        const centerY = item.rect.top + item.rect.height / 2;
+        const name = item.name.trim();
+        return centerX > share.rect.right
+          && centerY < 140
+          && !/more|menu|overflow|ellipsis|^\.\.\.$/i.test(name);
+      })
+      .sort((a, b) => a.rect.left - b.rect.left);
+    const candidate = topBarRightOfShare[0];
+    if (!candidate) return false;
+    candidate.el.click();
+    return true;
+  }).catch(() => false);
 }
 
 async function retryDownloadFromViewer(page, outputDir, promptText, attempts, delayMs) {
@@ -363,18 +434,31 @@ async function retryDownloadFromViewer(page, outputDir, promptText, attempts, de
   return null;
 }
 
-async function retryOpenViewerAndDownload(page, imageHandle, outputDir, promptText, attempts, delayMs) {
+async function retryOpenViewerAndDownload(page, imageInfo, outputDir, promptText, attempts, delayMs) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     console.log(`Opening generated image viewer, attempt ${attempt}/${attempts}...`);
     await page.keyboard.press("Escape").catch(() => {});
     await page.waitForTimeout(500);
-    await imageHandle.scrollIntoViewIfNeeded().catch(() => {});
-    await imageHandle.click();
+    const opened = await clickGeneratedImage(page, imageInfo);
+    if (!opened) {
+      console.log("Could not click generated image; retrying with newest visible image.");
+      imageInfo = await newestVisibleImageInfo(page);
+      if (!(await clickGeneratedImage(page, imageInfo))) {
+        console.log("Generated image could not be opened on this attempt.");
+        if (attempt < attempts) await page.waitForTimeout(delayMs);
+        continue;
+      }
+    }
     await page.waitForTimeout(3000);
 
-    console.log("Waiting 45 seconds before trying download...");
-    await page.waitForTimeout(45000);
+    console.log("Saving visible viewer image directly...");
+    const directSaved = await saveNewestVisibleImage(page, outputDir, promptText).catch((error) => {
+      console.log(`Direct viewer image save did not work: ${error.message}`);
+      return null;
+    });
+    if (directSaved) return directSaved;
 
+    console.log("Trying toolbar download button...");
     const downloaded = await downloadFromViewer(page, outputDir, promptText);
     if (downloaded) return downloaded;
 
@@ -386,6 +470,39 @@ async function retryOpenViewerAndDownload(page, imageHandle, outputDir, promptTe
     }
   }
   return null;
+}
+
+async function clickGeneratedImage(page, imageInfo) {
+  for (let retry = 0; retry < 3; retry += 1) {
+    const index = await page.evaluate((wanted) => {
+      const images = Array.from(document.querySelectorAll("img"))
+        .map((img, index) => {
+          const rect = img.getBoundingClientRect();
+          const style = getComputedStyle(img);
+          const src = img.currentSrc || img.src || img.getAttribute("src") || "";
+          return {
+            index,
+            src,
+            key: `${src}|${Math.round(rect.width)}x${Math.round(rect.height)}`,
+            area: rect.width * rect.height,
+            visible: rect.width > 200 && rect.height > 200 && style.display !== "none" && style.visibility !== "hidden",
+            complete: img.complete && img.naturalWidth > 0 && img.naturalHeight > 0,
+          };
+        })
+        .filter((item) => item.visible && item.complete && item.src);
+      const exact = images.findLast((item) => item.key === wanted.key);
+      const sameSrc = images.findLast((item) => item.src === wanted.src);
+      const largest = images.sort((a, b) => b.area - a.area)[0];
+      return (exact || sameSrc || largest)?.index ?? -1;
+    }, imageInfo).catch(() => -1);
+    if (index < 0) return false;
+    const image = page.locator("img").nth(index);
+    await image.scrollIntoViewIfNeeded().catch(() => {});
+    const clicked = await image.click({ timeout: 10000 }).then(() => true).catch(() => false);
+    if (clicked) return true;
+    await page.waitForTimeout(1000);
+  }
+  return false;
 }
 
 async function closeImageViewer(page) {
@@ -400,23 +517,37 @@ async function closeImageViewer(page) {
 }
 
 async function newestVisibleImageUrl(page) {
-  const url = await page.evaluate(() => {
+  const info = await newestVisibleImageInfo(page);
+  if (!info.src) throw new Error("Could not find a visible image URL to save.");
+  return info.src;
+}
+
+async function saveNewestVisibleImage(page, outputDir, promptText) {
+  const imageUrl = await newestVisibleImageUrl(page);
+  return await saveImageUrl(page, imageUrl, outputDir, promptText);
+}
+
+async function newestVisibleImageInfo(page) {
+  const info = await page.evaluate(() => {
     const images = Array.from(document.querySelectorAll("img"))
       .map((img) => {
         const rect = img.getBoundingClientRect();
         const style = getComputedStyle(img);
+        const src = img.currentSrc || img.src || img.getAttribute("src") || "";
         return {
-          src: img.currentSrc || img.src || img.getAttribute("src") || "",
+          src,
+          key: `${src}|${Math.round(rect.width)}x${Math.round(rect.height)}`,
           area: rect.width * rect.height,
           visible: rect.width > 200 && rect.height > 200 && style.display !== "none" && style.visibility !== "hidden",
+          complete: img.complete && img.naturalWidth > 0 && img.naturalHeight > 0,
         };
       })
-      .filter((item) => item.visible && item.src)
+      .filter((item) => item.visible && item.complete && item.src)
       .sort((a, b) => b.area - a.area);
-    return images[0]?.src || "";
+    return images[0] || null;
   });
-  if (!url) throw new Error("Could not find a visible image URL to save.");
-  return url;
+  if (!info) throw new Error("Could not find a visible image URL to save.");
+  return info;
 }
 
 async function saveImageUrl(page, imageUrl, outputDir, promptText) {
