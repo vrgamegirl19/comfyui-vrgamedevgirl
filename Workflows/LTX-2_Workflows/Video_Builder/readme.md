@@ -74,7 +74,6 @@ The biggest V9 upgrades are:
 | `LLM Runner` | Text-only prompt writing can use the built-in runner, LM Studio, or an OpenAI-compatible LLM API endpoint |
 | `Post Process` | A left-panel tab for LUT browsing, film grain, FX/overlay packs, and before/after compare previews |
 | Flow tools | Flow Browser and Flow image-edit helpers are available as separate VRGDG nodes for browser-driven image generation/edit workflows |
-| V9 Wan/Humo workflow | The current Wan/Humo workflow is `Workflows/WanHumo_Workflows/WanHumoMVC_V9.json` |
 
 ## Installing Or Switching To V9
 
