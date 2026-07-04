@@ -710,6 +710,7 @@ export function openMusicVideoWizard(api = {}) {
     performanceStyle: "",
     facialPerformance: "",
     facialPerformanceCustom: "",
+    storyCharacterMotion: 7,
     storyLayer: {
       enabled: true,
       user_story_arc: "",
@@ -850,6 +851,7 @@ export function openMusicVideoWizard(api = {}) {
       performanceStyle: String(sourceState.performanceStyle || ""),
       facialPerformance: String(sourceState.facialPerformance || ""),
       facialPerformanceCustom: String(sourceState.facialPerformanceCustom || ""),
+      storyCharacterMotion: Math.max(0, Math.min(10, Number(sourceState.storyCharacterMotion ?? sourceState.story_character_motion ?? wizardState.storyCharacterMotion ?? 7))),
       storyLayer: sourceState.storyLayer && typeof sourceState.storyLayer === "object"
         ? {
             enabled: sourceState.storyLayer.enabled !== false,
@@ -1622,6 +1624,39 @@ export function openMusicVideoWizard(api = {}) {
       wizardState.storyLayer.user_story_arc = arcText.value;
       queueWizardDraftSave();
     });
+    const motionSlider = input(String(Math.max(0, Math.min(10, Number(wizardState.storyCharacterMotion ?? 7)))), "range");
+    motionSlider.min = "0";
+    motionSlider.max = "10";
+    motionSlider.step = "1";
+    motionSlider.style.accentColor = "#22d3ee";
+    const motionNumber = input(String(Math.max(0, Math.min(10, Number(wizardState.storyCharacterMotion ?? 7)))), "number");
+    motionNumber.min = "0";
+    motionNumber.max = "10";
+    motionNumber.step = "1";
+    const motionHint = el("div", "vrgdg-wizard-copy");
+    const syncMotionLabel = () => {
+      const value = Math.max(0, Math.min(10, Number(motionNumber.value || motionSlider.value || 7)));
+      motionSlider.value = String(value);
+      motionNumber.value = String(value);
+      wizardState.storyCharacterMotion = value;
+      motionHint.textContent = value <= 2
+        ? "Mostly still: subtle gestures and restrained performance."
+        : value <= 5
+          ? "Moderate motion: turns, hand movement, controlled blocking."
+          : value <= 8
+            ? "Active: walking, moving through the space, touching objects, using the environment."
+            : "Highly active: strong physical beats, dancing/running/climbing/forceful interaction.";
+    };
+    motionSlider.addEventListener("input", () => {
+      motionNumber.value = motionSlider.value;
+      syncMotionLabel();
+      queueWizardDraftSave();
+    });
+    motionNumber.addEventListener("input", () => {
+      syncMotionLabel();
+      queueWizardDraftSave();
+    });
+    syncMotionLabel();
     enabled.addEventListener("change", () => {
       wizardState.storyLayer.enabled = Boolean(enabled.checked);
       queueWizardDraftSave();
@@ -1636,6 +1671,7 @@ export function openMusicVideoWizard(api = {}) {
           storyLayer: wizardState.storyLayer,
           userStoryArc: arcText.value,
           storyIdea: arcText.value,
+          characterMotion: wizardState.storyCharacterMotion,
         });
         if (updated) {
           wizardState.storyLayer = { ...wizardState.storyLayer, ...updated };
@@ -1647,7 +1683,9 @@ export function openMusicVideoWizard(api = {}) {
         arcButton.disabled = false;
       }
     };
-    arc.append(enabledLabel, arcText, arcButton);
+    const motionRow = el("div", "vrgdg-wizard-settings-fields two");
+    motionRow.append(field("Character motion", motionSlider, "0 = still/posed, 10 = very active and interactive"), field("Motion value", motionNumber));
+    arc.append(enabledLabel, arcText, motionRow, motionHint, arcButton);
     const brief = card("2. Song Story Brief", "A compact Gemma summary of the song's premise, emotional arc, motifs, and scene guidance.");
     const briefText = textarea(wizardState.storyLayer.song_story_brief || "", "Create or edit the song story brief...");
     briefText.style.minHeight = "190px";

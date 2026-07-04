@@ -1120,6 +1120,27 @@ function normalizeStoryboardPerformanceMode(value = "") {
   return "singing";
 }
 
+function storyboardStillFacialDirection(value = "") {
+  return String(value || "")
+    .replace(/\bsubtle natural eye movement\b/gi, "clear eye direction")
+    .replace(/\bsubtle eye movement\b/gi, "clear eye direction")
+    .replace(/\boccasional natural blinking\b/gi, "natural eyelid detail")
+    .replace(/\bnatural blinking\b/gi, "natural eyelid detail")
+    .replace(/\bfast-moving mouth during delivery\b/gi, "mouth captured in a still expressive shape")
+    .replace(/\bmouth open mid-verse\b/gi, "mouth captured in a still expressive shape")
+    .replace(/\blips slightly parted while singing\b/gi, "lips slightly parted in a still performance expression")
+    .replace(/\bsnarling mouth shapes during vocals\b/gi, "snarling still mouth expression")
+    .replace(/\bbared teeth on powerful notes\b/gi, "bared teeth in a powerful still expression")
+    .replace(/\braw emotional scream expression\b/gi, "raw emotional still expression")
+    .replace(/\bforceful singing expression\b/gi, "forceful performance expression")
+    .replace(/\bmovement\b/gi, "pose")
+    .replace(/\bmoving\b/gi, "posed")
+    .replace(/\bduring vocals?\b/gi, "in the expression")
+    .replace(/\bwhile singing\b/gi, "in the expression")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function normalizeScene(scene = {}, index = 0) {
   const rawVideoType = String(scene.video_prompt_type || scene.video_type || scene.mode || "").trim();
   const videoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(rawVideoType) ? rawVideoType : "i2v";
@@ -1428,7 +1449,7 @@ function storyboardScenesForGpt(state) {
         singers,
         non_singing_visible_subjects: nonSingingSubjects,
         instruction: imageMode
-          ? "This is a text-to-image still prompt, not a video or lip-sync prompt. Use lyric_line only for mood, symbolism, emotion, and visual direction. Do not mention singing, lip-syncing, performing vocals, singing the line, or mouth movement. The subject can pose, look emotional, move naturally, or appear in a fashion/editorial scene, but should not be described as singing unless the scene notes explicitly ask for a live singing image."
+          ? "This is a text-to-image still prompt, not a video or lip-sync prompt. Use lyric_line only for mood, symbolism, emotion, and visual direction. Do not mention singing, lip-syncing, performing vocals, singing the line, mouth movement, blinking, eye movement, or animation. The subject can hold a natural still pose, show a clear expression, or appear in a fashion/editorial scene, but should not be described as singing unless the scene notes explicitly ask for a live singing still."
           : performanceMode === "speaking" && shouldLipSync
             ? "Treat lyric_line as dialogue being said. The listed singer(s) field means the visible speaker(s). Use only wording like 'as she says \"...\"', 'as he says \"...\"', or 'as [subject name] says \"...\"'. Do not use alternate verbs for the dialogue line; use says only. Never use singing, rapping, music, lyric, vocal, or performance wording for speaking mode. Every non_singing_visible_subjects entry must still appear in the scene as visible non-speaking subjects who react, watch, move, or share the moment silently. Do not describe mouth shapes or mouth position."
             : performanceMode === "no_lip_sync"
@@ -1459,8 +1480,8 @@ function storyboardScenesForGpt(state) {
       performance_style: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).label,
       performance_direction: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).direction,
       facial_performance: facialPreset.label,
-      facial_performance_direction: facialDirection,
-      facial_performance_custom: facialCustom,
+      facial_performance_direction: imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection,
+      facial_performance_custom: imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom,
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone

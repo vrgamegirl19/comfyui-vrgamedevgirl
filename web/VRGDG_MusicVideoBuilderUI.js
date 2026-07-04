@@ -7091,6 +7091,22 @@ function openBuilder(node) {
     return changed ? updated.join("\n") : String(text || "");
   }
 
+  function lyricTextHasCueLabels(text) {
+    return /:\s*["'“”]/.test(String(text || ""));
+  }
+
+  function flattenLyricForPrompt(text) {
+    return String(text || "")
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(" ")
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
   function videoGemmaNotesForSegment(segment) {
     const notes = String(segment?.i2v_notes || "").trim();
     const facialNote = facialPerformanceNoteForSegment(segment);
@@ -7140,13 +7156,13 @@ function openBuilder(node) {
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
     const performer = singers.length ? singers.join(" and ") : "the visible subject";
     const pluralPerformers = singers.length > 1 || /\b(group|duet|all visible)\b/i.test(performer);
-    if (lyricText.includes("\n") || /:\s*["'“”]/.test(lyricText)) {
+    if (lyricTextHasCueLabels(lyricText)) {
       if (performanceMode === "speaking") {
         return `${performer} ${pluralPerformers ? "say" : "says"} the exact dialogue cues naturally: ${lyricText.replace(/\s*\n\s*/g, " ")}`;
       }
       return `${performer} ${pluralPerformers ? "perform" : "performs"} the exact vocal cues in sync with the audio: ${lyricText.replace(/\s*\n\s*/g, " ")}`;
     }
-    const cleanLyric = lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
+    const cleanLyric = flattenLyricForPrompt(lyricText);
     if (performanceMode === "speaking") {
       return `${performer} ${pluralPerformers ? "say" : "says"} "${cleanLyric}" naturally.`;
     }
@@ -7205,7 +7221,7 @@ function openBuilder(node) {
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
     const performer = singers.length ? singers.join(" and ") : "the visible subject";
     const pluralPerformers = singers.length > 1 || /\b(group|duet|all visible)\b/i.test(performer);
-    if (lyricText.includes("\n") || /:\s*["'“”]/.test(lyricText)) {
+    if (lyricTextHasCueLabels(lyricText)) {
       const cueText = lyricText.replace(/\s*\n\s*/g, " ");
       return {
         performer,
@@ -7216,7 +7232,7 @@ function openBuilder(node) {
           : `who ${pluralPerformers ? "perform" : "performs"} the exact vocal cues in sync with the audio: ${cueText}`,
       };
     }
-    const cleanLyric = lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, "");
+    const cleanLyric = flattenLyricForPrompt(lyricText);
     return {
       performer,
       lyricText: cleanLyric,
@@ -23824,10 +23840,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const scenes = allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
     const missing = [];
+    const continuityCanCreateImageLater = (segment, requestedUseImageReference) => {
+      if (forceVision || forceTextOnly || !requestedUseImageReference || videoMode !== "i2v") return false;
+      if (!i2vAutoChainEnabled() && !img2imgContinuityEnabled()) return false;
+      if (!previousAutoChainSourceSegment(segment)) return false;
+      const imageReference = getI2VImageReference(segment);
+      return !imageReference.path && !imageReference.data;
+    };
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+      const requestedUseImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+      const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
+      const useImageReference = requestedUseImageReference && !forceTextForContinuity;
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
@@ -23869,10 +23894,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * (deferEnhancement ? 68 : 100));
-        const useImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+        const requestedUseImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+        const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
+        const useImageReference = requestedUseImageReference && !forceTextForContinuity;
         const displayIndex = segmentIndexInfo(segment).index;
-        progress.set(`${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly, forceVision, deferEnhancement });
+        progress.set(`${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly || forceTextForContinuity ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : forceTextForContinuity ? "Using T2I prompt text only; continuity will create this scene image during Render All." : "Using T2I prompt text only."}`, base);
+        await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly: forceTextOnly || forceTextForContinuity, forceVision, deferEnhancement });
         await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
       if (deferEnhancement) {
@@ -30760,6 +30787,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
           story_layer: layer,
           story_idea: draft?.storyIdea ?? draft?.story_idea ?? layer.user_story_arc,
+          character_motion: draft?.characterMotion ?? draft?.character_motion ?? draft?.storyCharacterMotion ?? 7,
           lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
           scenes,
           reference_builder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
@@ -30903,7 +30931,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             temperature: 0.35,
             top_p: 0.90,
           }, 240000);
-          const prompt = applyWizardStoryboardTriggerPhrases(data.prompt, scene);
+          const finalizedPrompt = segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
+          const prompt = applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
           if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
             setSegmentPromptForEdit(segment, "i2v", prompt);

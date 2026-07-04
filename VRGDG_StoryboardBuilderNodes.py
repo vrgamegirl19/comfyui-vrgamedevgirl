@@ -116,13 +116,13 @@ Rules:
 * Pull the setting from `location_ref`.
 * Include the mapped subject descriptions and location description when available.
 * Use the scene lyrics, lyric section, story beat, song story brief, and user story arc only as visual guidance. Do not quote long lyrics.
-* If the scene is a singing scene, show performance energy and emotion. For still images, describe a believable expressive singing expression only when facial_performance_direction calls for it, without mentioning lip sync or audio behavior.
+* If the scene is a singing scene, show performance energy and emotion as a still expression only. Do not mention lip sync, audio behavior, mouth movement, eye movement, blinking, or animation.
 * If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
 * Use `shot_type` as the still-frame composition when available.
 * If `global_consistency_phrase` is present, include it in the final image prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
 * Use `performance_style` and `performance_direction` for body language, wardrobe energy, and genre feel.
-* Use `facial_performance` and `facial_performance_direction` for facial emotion, eyes, brows, cheeks, jaw, mouth behavior, gaze, and blinking.
-* Do not describe future camera movement, animation, transitions, frame changes, or what happens next.
+* Use `facial_performance` and `facial_performance_direction` only for still-image facial emotion: eye direction, brows, cheeks, jaw tension, mouth expression, gaze, and pose.
+* Do not describe future camera movement, animation, transitions, frame changes, blinking, eye movement, mouth movement, or what happens next.
 * Do not mention JSON, IDs, file paths, image names, or metadata.
 * Do not include explanations.
 * Output only the final image prompt.
@@ -940,6 +940,31 @@ def _build_story_layer_arc(payload):
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
     story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("user_story_arc") or "", 4000)
     style_theme = _clean_scene_text(payload.get("style_theme") or payload.get("styleTheme") or payload.get("theme") or "", 1600)
+    try:
+        character_motion = int(float(payload.get("character_motion", payload.get("characterMotion", 7))))
+    except Exception:
+        character_motion = 7
+    character_motion = max(0, min(10, character_motion))
+    if character_motion <= 2:
+        motion_guidance = (
+            "Character motion level: mostly still. The singer may hold poses, but each section still needs a visible micro-action "
+            "such as reaching, turning, touching fabric, shifting weight, raising a hand, or interacting with one object."
+        )
+    elif character_motion <= 5:
+        motion_guidance = (
+            "Character motion level: moderate. Give the singer controlled performance movement: steps, turns, gestures, changes in blocking, "
+            "and occasional interaction with the set."
+        )
+    elif character_motion <= 8:
+        motion_guidance = (
+            "Character motion level: active. The singer should usually move through the location, walk, approach, retreat, touch objects, "
+            "use architecture, cross rooms, lean into weather, or physically interact with the environment."
+        )
+    else:
+        motion_guidance = (
+            "Character motion level: highly active. Build big physical beats: dancing, running, climbing, struggling, sweeping gestures, "
+            "forceful environmental interaction, or kinetic performance movement."
+        )
     scenes = payload.get("scenes")
     if not isinstance(scenes, list):
         scenes = []
@@ -1036,11 +1061,16 @@ def _build_story_layer_arc(payload):
         "* Turn the lyrics into a simple visual story arc.\n"
         "* Each section should be a clear concept, not a long scene.\n"
         "* Use cinematic, visual language.\n"
+        "* The main character or singer should not default to standing still, standing alone, staring, looking, being framed, or holding a pose.\n"
+        "* Unless the character motion level is very low, every section must include a distinct physical action by the singer or main character.\n"
+        "* Vary the action between sections. Avoid repeating stand, stare, gaze, look, walk, or turn as the only beat.\n"
+        "* Make the location support the action; do not let the location be the whole story beat.\n"
         "* If the song does not clearly have every section, infer a natural structure.\n"
         "* If only lyrics are provided, build the arc from the lyrics.\n"
         "* If no lyrics are provided, build the arc from the theme or story idea.\n"
         "* Do not ask follow-up questions unless absolutely necessary.\n"
         "* Output only the story arc sections. No intro note, no markdown table, no JSON.\n\n"
+        f"{motion_guidance}\n\n"
         f"Story idea:\n{story_idea or '[not provided]'}\n\n"
         f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
         f"Character descriptions:\n{json.dumps(subjects[:24], ensure_ascii=False, indent=2) if subjects else '[not provided]'}\n\n"

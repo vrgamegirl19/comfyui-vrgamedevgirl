@@ -28,6 +28,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_ImageCompareNode",
     ".vrgdg_ltx_msr_reference_builder",
     ".VRGDG_LTXICIngredientsGrid",
+    ".VRGDG_FlowBrowserNodes",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (

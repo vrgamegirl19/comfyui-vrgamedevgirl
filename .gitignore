@@ -3,3 +3,15 @@ __pycache__/
 *.pyo 
 *.log 
 .DS_Store 
+flow_automation/node_modules/
+flow_automation/chrome-flow-profile/
+flow_automation/chrome-chatgpt-profile/
+flow_automation/browser-profile/
+flow_automation/chatgpt-browser-profile/
+flow_automation/debug/
+flow_automation/runtime/
+flow_automation/inputs/*
+flow_automation/outputs/*
+flow_automation/chatgpt_outputs/*
+!flow_automation/inputs/.gitkeep
+!flow_automation/outputs/.gitkeep

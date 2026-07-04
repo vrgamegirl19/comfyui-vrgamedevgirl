@@ -10,9 +10,9 @@ Includes HUMO-based multi-scene workflows, audio splitting, video combining, and
 
 ---
 
-## V7 Video Builder Guide
+## V9 Video Builder Guide
 
-New to the V7 builder? Start here: [V7 Video Builder Guide](docs/V7_VIDEO_BUILDER_GUIDE.md)
+New to the V9 builder? Start here: [V9 Video Builder Guide](docs/V9_VIDEO_BUILDER_GUIDE.md)
 
 ---
 
