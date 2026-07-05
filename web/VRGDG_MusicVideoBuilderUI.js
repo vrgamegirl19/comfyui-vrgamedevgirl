@@ -22564,6 +22564,51 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function recoverSceneVideosFromProject(options = {}) {
+    const projectFolder = String(options.projectFolder || state.projectFolder || projectInput.value || "").trim();
+    if (!projectFolder) return 0;
+    const scan = await postJson("/vrgdg/music_builder/scan_scene_videos", {
+      project_folder: projectFolder,
+    });
+    const videos = scan.videos || {};
+    const videoThumbnails = scan.video_thumbnails || {};
+    const videoBackups = scan.video_backups || {};
+    const videoBackupThumbnails = scan.video_backup_thumbnails || {};
+    let restored = 0;
+    const applyFoundVideo = (segment, sceneKey) => {
+      if (!segment) return;
+      const videoPath = videos[sceneKey] || "";
+      segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
+      segment.video_backup_thumbnail_paths = Array.isArray(videoBackupThumbnails[sceneKey]) ? videoBackupThumbnails[sceneKey] : [];
+      segment.video_thumbnail_path = videoThumbnails[sceneKey] || segment.video_thumbnail_path || "";
+      if (!videoPath) return;
+      const currentPath = String(segment.video_path || "").trim();
+      const changed = mediaPathKey(currentPath) !== mediaPathKey(videoPath);
+      segment.video_path = videoPath;
+      segment.video_folder = scan.video_folder || segment.video_folder || "";
+      segment.video_status = "done";
+      segment.preview_mode = "video";
+      normalizeSegmentVideoHistory(segment);
+      if (changed) restored += 1;
+    };
+    state.segments.forEach((segment, index) => applyFoundVideo(segment, String(index + 1)));
+    state.overlaySegments.forEach((segment) => applyFoundVideo(segment, String(sceneSlotNumber(segment))));
+    if (restored) {
+      console.log(`[VRGDG Music Builder] Recovered ${restored} scene video path(s) from project folder.`);
+      if (options.renderAfter !== false) {
+        syncInspector();
+        render();
+      }
+      if (options.autoSave) {
+        await autoSaveSessionQuiet(options.autoSaveReason || "recovered scene videos from project folder");
+      }
+      if (options.toast) {
+        toast(`Recovered ${restored} scene video${restored === 1 ? "" : "s"} from the project folder.`);
+      }
+    }
+    return restored;
+  }
+
   async function loadSessionFromProject(projectFolder) {
     try {
       const folder = String(projectFolder || "").trim();
@@ -22688,41 +22733,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
       }
       try {
-        const scan = await postJson("/vrgdg/music_builder/scan_scene_videos", {
-          project_folder: state.projectFolder,
-        });
-        const videos = scan.videos || {};
-        const videoThumbnails = scan.video_thumbnails || {};
-        const videoBackups = scan.video_backups || {};
-        const videoBackupThumbnails = scan.video_backup_thumbnails || {};
-        let restored = 0;
-        for (const [index, segment] of state.segments.entries()) {
-          const sceneKey = String(index + 1);
-          const videoPath = videos[sceneKey] || "";
-          segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
-          segment.video_backup_thumbnail_paths = Array.isArray(videoBackupThumbnails[sceneKey]) ? videoBackupThumbnails[sceneKey] : [];
-          segment.video_thumbnail_path = videoThumbnails[sceneKey] || segment.video_thumbnail_path || "";
-          if (!videoPath) continue;
-          segment.video_path = videoPath;
-          segment.video_folder = scan.video_folder || segment.video_folder || "";
-          segment.video_status = "done";
-          normalizeSegmentVideoHistory(segment);
-          restored += 1;
-        }
-        for (const [index, segment] of state.overlaySegments.entries()) {
-          const sceneKey = String(sceneSlotNumber(segment));
-          const videoPath = videos[sceneKey] || "";
-          segment.video_backup_paths = Array.isArray(videoBackups[sceneKey]) ? videoBackups[sceneKey] : [];
-          segment.video_backup_thumbnail_paths = Array.isArray(videoBackupThumbnails[sceneKey]) ? videoBackupThumbnails[sceneKey] : [];
-          segment.video_thumbnail_path = videoThumbnails[sceneKey] || segment.video_thumbnail_path || "";
-          if (!videoPath) continue;
-          segment.video_path = videoPath;
-          segment.video_folder = scan.video_folder || segment.video_folder || "";
-          segment.video_status = "done";
-          normalizeSegmentVideoHistory(segment);
-          restored += 1;
-        }
-        if (restored) console.log(`[VRGDG Music Builder] Restored ${restored} scene video path(s) from project folder.`);
+        await recoverSceneVideosFromProject({ projectFolder: state.projectFolder, renderAfter: false });
       } catch (error) {
         console.warn("[VRGDG Music Builder] Scene video scan failed:", error);
       }
@@ -26717,6 +26728,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const skipFinalStitch = Boolean(options.skipFinalStitch || sceneScope === "selected");
+    if (!forceVideos) {
+      try {
+        await recoverSceneVideosFromProject({
+          autoSave: true,
+          autoSaveReason: "recovered existing scene videos before Render Missing",
+          toast: true,
+        });
+      } catch (error) {
+        console.warn("[VRGDG Music Builder] Scene video recovery before Render All failed:", error);
+      }
+    }
     const missing = validateRenderAllReady({ forceVideos, sceneScope });
     const progress = createProgressWindow(sceneScope === "selected" ? "Render Selected Scenes" : sceneScope === "from_selected" ? "Render From Selected Scene" : "Render All Scenes");
     if (missing.length) {
