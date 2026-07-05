@@ -3859,7 +3859,7 @@ function openBuilder(node) {
     const performanceMode = normalizeVideoType(state.videoType);
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
-    const noVocal = performanceMode === "no_lip_sync" || segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText);
+    const noVocal = performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment) || isInstrumentalLyricText(lyricText);
     if (noVocal) {
       return `Facial performance direction: ${facialText} For this non-vocal or no-lip-sync shot, keep the mouth relaxed or closed unless naturally reacting; do not mouth words, sing, or move lips like singing.`;
     }
@@ -7355,6 +7355,22 @@ function openBuilder(node) {
     return clean === "b-roll / no lip-sync" || clean === "broll / no lip-sync" || clean === "b-roll" || clean === "broll";
   }
 
+  function segmentUsesNoLipSyncPerformance(segment) {
+    const style = String(segment?.performance_style || segment?.performanceStyle || segment?.song_style || segment?.songStyle || "").trim();
+    if (!style) return Boolean(segment?.lyric_no_lip_sync);
+    const preset = storyboardPerformancePreset(style) || {};
+    const text = [style, preset.label, preset.value].map((value) => String(value || "").trim()).filter(Boolean).join(" ").toLowerCase();
+    return Boolean(segment?.lyric_no_lip_sync)
+      || /\bno[_\s-]*vocals?\b/.test(text)
+      || /\bno[_\s-]*lip[_\s-]*sync\b/.test(text)
+      || /\bb[_\s-]*roll\b/.test(text)
+      || /\bvisual[_\s-]*only\b/.test(text);
+  }
+
+  function effectiveVideoPerformanceModeForSegment(segment) {
+    return segmentUsesNoLipSyncPerformance(segment) ? "no_lip_sync" : normalizeVideoType(state.videoType);
+  }
+
   function quoteOrderedLyricCues(text) {
     const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
     let changed = false;
@@ -7410,12 +7426,12 @@ function openBuilder(node) {
     const withNoCharacterNote = (text) => [noCharacterNote, text, facialNote, writingRules, notes].filter(Boolean).join("\n\n");
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText);
-    if (performanceMode === "no_lip_sync") {
+    if (performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment)) {
       const visualOnlyNote = "Video Type: no lip sync / visual-only. Do not make any visible subject sing, speak, say dialogue, lip-sync, or move their mouth to the lyric. Use the lyric only as hidden mood/story context, and focus on visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere.";
       return withNoCharacterNote(visualOnlyNote);
     }
     if (lyricText && !isInstrumentalLyricText(lyricText)) {
-      if (segment?.lyric_no_lip_sync) {
+      if (segmentUsesNoLipSyncPerformance(segment)) {
         const brollNote = "Vocal/performance direction: b-roll / no lip-sync. Do not make any visible subject sing or lip-sync in this shot. Use visual acting, camera motion, environmental motion, dancing, posing, walking, or atmosphere instead.";
         return withNoCharacterNote(brollNote);
       }
@@ -7532,11 +7548,11 @@ function openBuilder(node) {
   function vocalDirectiveForSegment(segment) {
     if (segment?.no_character_present) return "";
     const performanceMode = normalizeVideoType(state.videoType);
-    if (performanceMode === "no_lip_sync") return "";
+    if (performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment)) return "";
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
     if (!lyricText) return "";
-    if (isInstrumentalLyricText(lyricText) || segment?.lyric_no_lip_sync) {
+    if (isInstrumentalLyricText(lyricText) || segmentUsesNoLipSyncPerformance(segment)) {
       return "";
     }
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => cleanNaturalSubjectLabel(value)).filter(Boolean) : [];
@@ -7601,10 +7617,10 @@ function openBuilder(node) {
   function vocalClauseForSegment(segment) {
     if (segment?.no_character_present) return null;
     const performanceMode = normalizeVideoType(state.videoType);
-    if (performanceMode === "no_lip_sync") return null;
+    if (performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment)) return null;
     const rawLyricText = String(segment?.lyric_text || "").trim();
     const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
-    if (!lyricText || isInstrumentalLyricText(lyricText) || segment?.lyric_no_lip_sync) return null;
+    if (!lyricText || isInstrumentalLyricText(lyricText) || segmentUsesNoLipSyncPerformance(segment)) return null;
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => cleanNaturalSubjectLabel(value)).filter(Boolean) : [];
     const performer = singers.length ? singers.join(" and ") : performerLabelForSegment(segment);
     const pluralPerformers = singers.length > 1 || /\b(group|duet|all visible)\b/i.test(performer);
@@ -7652,7 +7668,7 @@ function openBuilder(node) {
 
   function applyVocalDirectiveToVideoPrompt(prompt, segment, options = {}) {
     const performanceMode = normalizeVideoType(state.videoType);
-    const isVisualOnly = performanceMode === "no_lip_sync";
+    const isVisualOnly = performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment);
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
@@ -7669,7 +7685,7 @@ function openBuilder(node) {
     if (!directive) {
       const rawLyricText = String(segment?.lyric_text || "").trim();
       const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
-      if (isVisualOnly || segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText)) {
+      if (isVisualOnly || isInstrumentalLyricText(lyricText)) {
         return appendFacial(base
           .replace(/^\s*(?:the visible subject|the subject|[^.]{1,90}?)\s+(?:visibly\s+)?(?:sings?|singing|lip-syncs?|lip syncs?|lip-syncing)\s+(?:"[^"]*"|'[^']*'|“[^”]*”)?\s*(?:in sync with the audio)?\.\s*/i, "")
           .replace(/\b(?:visibly\s+)?(?:sings?|singing|lip-syncs?|lip syncs?|lip-syncing)\s+(?:"[^"]*"|'[^']*'|“[^”]*”)?\s*(?:in sync with the audio)?/gi, "moves naturally")
@@ -22975,7 +22991,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     add("Prompt summary", segment?.prompt_summary || segment?.summary);
     add("Scene notes", segment?.notes || segment?.director_note);
     add("Scene story beat", segment?.story_beat);
-    add("Lyrics / scene text", segment?.lyric_text || segment?.lyric_note || segment?.lyrics);
+    if (!segmentUsesNoLipSyncPerformance(segment)) {
+      add("Lyrics / scene text", segment?.lyric_text || segment?.lyric_note || segment?.lyrics);
+    }
     add("Mapped subject / character", segment?.no_character_present ? "" : segmentMappedSubjectText(segment));
     add("Mapped location", segmentMappedLocationText(segment));
     add("Shot type", segment?.shot_type);
@@ -24045,7 +24063,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const lyricText = quoteOrderedLyricCues(String(segment?.lyric_text || "").trim()).trim();
-    const noVocal = Boolean(segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText));
+    const noVocal = Boolean(segmentUsesNoLipSyncPerformance(segment) || isInstrumentalLyricText(lyricText));
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
     progress?.set(`${label}: improving ${modeLabel} prompt shape...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson("/vrgdg/music_builder/enhance_video_prompt", {
@@ -24054,7 +24072,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       repair_model_file: i2vTextGemmaModelSelect.value,
       draft_prompt: base,
       mode_label: modeLabel,
-      performance_mode: normalizeVideoType(state.videoType),
+      performance_mode: effectiveVideoPerformanceModeForSegment(segment),
       t2i_prompt: sceneVideoConceptPromptText(segment),
       user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim()].filter(Boolean).join("\n\n"),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
@@ -24113,7 +24131,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isT2V || isRTV || isIngredients ? t2iText : useImageReference ? "" : t2iText,
-        performance_mode: normalizeVideoType(state.videoType),
+        performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
@@ -24445,7 +24463,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         current_prompt: currentPrompt,
         edit_request: editRequest,
         mode_label: modeLabel,
-        performance_mode: normalizeVideoType(state.videoType),
+        performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         use_vision_reference: useStartingImage,
         image_reference_path: useStartingImage ? imageReference.path : "",
         image_reference_data: useStartingImage ? imageReference.data : "",
@@ -24458,7 +24476,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           motion_notes: String(segment.i2v_notes || "").trim(),
           lyric_text: String(segment.lyric_text || "").trim(),
           lyric_section: String(segment.lyric_section || "").trim(),
-          performance_mode: normalizeVideoType(state.videoType),
+          performance_mode: effectiveVideoPerformanceModeForSegment(segment),
           singers: segment.no_character_present ? [] : singers,
           subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
           location_context: segmentMappedLocationText(segment),
@@ -24537,7 +24555,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isT2V || isRTV || isIngredients ? conceptPrompt : useImageReference ? "" : conceptPrompt,
-        performance_mode: normalizeVideoType(state.videoType),
+        performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
@@ -24578,7 +24596,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       model_file: i2vTextGemmaModelSelect.value,
       mmproj_file: "",
       t2i_prompt: t2iText,
-      performance_mode: normalizeVideoType(state.videoType),
+      performance_mode: effectiveVideoPerformanceModeForSegment(segment),
       image_reference_path: "",
       image_reference_data: "",
       repair_model_file: i2vTextGemmaModelSelect.value,
@@ -25144,7 +25162,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       String(segment?.timeline_note || "").trim(),
       String(segment?.i2v_notes || segment?.video_notes || "").trim(),
       String(referenceData?.location_ref?.description || "").trim(),
-      String(segment?.lyric_text || segment?.lyric_note || segment?.lyrics || "").trim(),
+      segmentUsesNoLipSyncPerformance(segment) ? "" : String(segment?.lyric_text || segment?.lyric_note || segment?.lyrics || "").trim(),
     ].filter(Boolean);
     return parts[0] || "";
   }
@@ -25178,11 +25196,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           lyrics: lyric,
           lyric_section: String(segment.lyric_section || "").trim(),
           story_beat: String(segment.story_beat || "").trim(),
-          performance_mode: normalizeVideoType(state.videoType),
+          performance_mode: effectiveVideoPerformanceModeForSegment(segment),
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
           lyric_singers: Array.isArray(segment.lyric_singers) && !segment.no_character_present ? segment.lyric_singers : [],
-          lyric_no_lip_sync: Boolean(segment.lyric_no_lip_sync),
+          lyric_no_lip_sync: Boolean(segmentUsesNoLipSyncPerformance(segment)),
           lyric_instrumental: isInstrumentalLyricText(lyric),
           no_character_present: Boolean(segment.no_character_present),
           facial_performance: String(segment.facial_performance || "").trim(),
@@ -25420,7 +25438,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         lyric_text: String(scene.lyrics || scene.lyric_text || segment.lyric_text || "").trim(),
         lyric_section: String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim(),
         lyric_singers: Array.isArray(scene.lyric_singers) ? scene.lyric_singers : segment.lyric_singers,
-        lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || segment.lyric_no_lip_sync),
+        lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || segmentUsesNoLipSyncPerformance(segment)),
         no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || segment.no_character_present),
         story_beat: String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim(),
         shot_type: String(scene.shot_type || segment.shot_type || "").trim(),
@@ -25692,7 +25710,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       chain_direction: state.autoChainDirection || "",
       transition_lora_prompt: Boolean(state.autoChainTransitionLoraPrompt),
       transition_lora_trigger: state.autoChainTransitionTrigger || "zhuanchang",
-      performance_mode: normalizeVideoType(state.videoType),
+      performance_mode: effectiveVideoPerformanceModeForSegment(nextSegment),
       repair_model_file: i2vTextGemmaModelSelect.value,
       unload_after: true,
       n_ctx: 8000,
