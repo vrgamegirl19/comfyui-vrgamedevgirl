@@ -4,6 +4,8 @@
   const STORAGE_KEY = "vrgdg.uiTheme";
   const STYLE_ID = "vrgdg-ui-theme-style";
   const CONTROL_ID = "vrgdg-ui-theme-control";
+  const CONTROL_CLASS = "vrgdg-ui-theme-control";
+  const ROOT_ATTR = "data-vrgdg-theme-root";
 
   const THEMES = {
     current: {
@@ -203,6 +205,8 @@
   let currentThemeId = safeLoadThemeId();
   let applyingTheme = false;
   const originalStyles = new WeakMap();
+  const themeRoots = new Set();
+  let observer = null;
 
   function safeLoadThemeId() {
     try {
@@ -226,24 +230,40 @@
     return role && colors[role] ? colors[role] : hex;
   }
 
+  function normalizeRgbColor(value) {
+    const match = String(value || "").match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9.]+)\s*)?\)$/i);
+    if (!match) return null;
+    const parts = match.slice(1, 4).map((part) => Math.max(0, Math.min(255, Number(part) || 0)));
+    return `#${parts.map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function replacementForCssColor(match, colors) {
+    const normalized = match.startsWith("#") ? match.toLowerCase() : normalizeRgbColor(match);
+    if (!normalized) return match;
+    const replacement = replacementFor(normalized, colors);
+    return replacement === normalized ? match : replacement;
+  }
+
   function translateStyleText(styleText, colors) {
     if (!styleText || !colors) return styleText || "";
-    return String(styleText).replace(/#[0-9a-fA-F]{3,8}\b/g, (match) => {
-      const hex = match.toLowerCase();
-      if (hex.length !== 7) return match;
-      return replacementFor(hex, colors);
-    });
+    return String(styleText)
+      .replace(/#[0-9a-fA-F]{3,8}\b/g, (match) => {
+        const hex = match.toLowerCase();
+        if (hex.length !== 7) return match;
+        return replacementForCssColor(hex, colors);
+      })
+      .replace(/rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+\s*)?\)/gi, (match) => replacementForCssColor(match, colors));
   }
 
   function rememberOriginal(element) {
-    if (!element || element.id === CONTROL_ID || originalStyles.has(element)) return;
+    if (!element || isThemeControl(element) || originalStyles.has(element)) return;
     const styleText = element.getAttribute("style") || "";
     if (styleText) originalStyles.set(element, styleText);
   }
 
   function themeElement(element, colors) {
     if (!(element instanceof HTMLElement)) return;
-    if (element.id === CONTROL_ID || element.closest?.(`#${CONTROL_ID}`)) return;
+    if (isThemeControl(element)) return;
     const styleText = element.getAttribute("style") || "";
     if (!styleText) return;
     rememberOriginal(element);
@@ -269,28 +289,45 @@
   function applyTheme(themeId = currentThemeId) {
     currentThemeId = THEMES[themeId] ? themeId : "current";
     saveThemeId(currentThemeId);
-    updateDocumentThemeClass();
-    updateControlValue();
+    updateRootThemeAttributes();
+    updateControlValues();
     applyingTheme = true;
     try {
       const colors = THEMES[currentThemeId].colors;
-      if (!colors) {
-        walkElements(document.body, restoreElement);
-      } else {
-        walkElements(document.body, (element) => themeElement(element, colors));
+      for (const root of Array.from(themeRoots)) {
+        if (!root?.isConnected) {
+          themeRoots.delete(root);
+          continue;
+        }
+        if (!colors) {
+          walkElements(root, restoreElement);
+        } else {
+          walkElements(root, (element) => themeElement(element, colors));
+        }
       }
     } finally {
       applyingTheme = false;
     }
   }
 
-  function updateDocumentThemeClass() {
-    document.documentElement.dataset.vrgdgUiTheme = currentThemeId;
+  function isThemeControl(element) {
+    return Boolean(element?.id === CONTROL_ID || element?.classList?.contains(CONTROL_CLASS) || element?.closest?.(`.${CONTROL_CLASS}`));
   }
 
-  function updateControlValue() {
-    const select = document.querySelector(`#${CONTROL_ID} select`);
-    if (select && select.value !== currentThemeId) select.value = currentThemeId;
+  function updateRootThemeAttributes() {
+    for (const root of Array.from(themeRoots)) {
+      if (!root?.isConnected) {
+        themeRoots.delete(root);
+        continue;
+      }
+      root.dataset.vrgdgUiTheme = currentThemeId;
+    }
+  }
+
+  function updateControlValues() {
+    for (const select of document.querySelectorAll(`.${CONTROL_CLASS} select`)) {
+      if (select.value !== currentThemeId) select.value = currentThemeId;
+    }
   }
 
   function ensureThemeStyle() {
@@ -298,22 +335,18 @@
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-      html[data-vrgdg-ui-theme="light"],
-      html[data-vrgdg-ui-theme="candy"],
-      html[data-vrgdg-ui-theme="minimal"] {
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="light"],
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="candy"],
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="minimal"] {
         color-scheme: light;
       }
-      html[data-vrgdg-ui-theme="dark"],
-      html[data-vrgdg-ui-theme="studio"],
-      html[data-vrgdg-ui-theme="neon"],
-      html[data-vrgdg-ui-theme="forest"] {
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="dark"],
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="studio"],
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="neon"],
+      [${ROOT_ATTR}][data-vrgdg-ui-theme="forest"] {
         color-scheme: dark;
       }
-      #${CONTROL_ID} {
-        position: fixed;
-        right: 14px;
-        bottom: 14px;
-        z-index: 100000;
+      .${CONTROL_CLASS} {
         display: flex;
         align-items: center;
         gap: 7px;
@@ -326,14 +359,14 @@
         font-family: Arial, sans-serif;
         font-size: 12px;
       }
-      #${CONTROL_ID} label {
+      .${CONTROL_CLASS} label {
         display: flex;
         align-items: center;
         gap: 6px;
         font-weight: 800;
         white-space: nowrap;
       }
-      #${CONTROL_ID} select {
+      .${CONTROL_CLASS} select {
         border: 1px solid rgba(148, 163, 184, 0.75);
         border-radius: 6px;
         background: #020617;
@@ -345,10 +378,9 @@
     document.head.append(style);
   }
 
-  function ensureControl() {
-    if (document.getElementById(CONTROL_ID)) return;
+  function createControl() {
     const control = document.createElement("div");
-    control.id = CONTROL_ID;
+    control.className = CONTROL_CLASS;
     const label = document.createElement("label");
     label.textContent = "Theme";
     const select = document.createElement("select");
@@ -362,11 +394,35 @@
     select.addEventListener("change", () => applyTheme(select.value));
     label.append(select);
     control.append(label);
-    document.body.append(control);
+    return control;
+  }
+
+  function mountControl(container) {
+    if (!(container instanceof HTMLElement)) return null;
+    ensureThemeStyle();
+    const existing = container.querySelector(`.${CONTROL_CLASS}`);
+    if (existing) return existing;
+    const control = createControl();
+    container.append(control);
+    return control;
+  }
+
+  function registerRoot(root, options = {}) {
+    if (!(root instanceof HTMLElement)) return null;
+    ensureThemeStyle();
+    root.setAttribute(ROOT_ATTR, "true");
+    themeRoots.add(root);
+    if (options.controlContainer instanceof HTMLElement) {
+      mountControl(options.controlContainer);
+    }
+    observeThemeTargets();
+    applyTheme(currentThemeId);
+    return root;
   }
 
   function observeThemeTargets() {
-    const observer = new MutationObserver((mutations) => {
+    if (observer) return;
+    observer = new MutationObserver((mutations) => {
       if (applyingTheme || currentThemeId === "current") return;
       const colors = THEMES[currentThemeId]?.colors;
       if (!colors) return;
@@ -375,20 +431,26 @@
         for (const mutation of mutations) {
           if (mutation.type === "attributes" && mutation.attributeName === "style") {
             const element = mutation.target;
-            if (element instanceof HTMLElement && !element.closest?.(`#${CONTROL_ID}`)) {
+            if (element instanceof HTMLElement && element.closest?.(`[${ROOT_ATTR}]`) && !isThemeControl(element)) {
               originalStyles.set(element, element.getAttribute("style") || "");
               themeElement(element, colors);
             }
           }
           for (const node of mutation.addedNodes || []) {
-            walkElements(node, (element) => themeElement(element, colors));
+            if (!(node instanceof HTMLElement)) continue;
+            const roots = node.matches?.(`[${ROOT_ATTR}]`)
+              ? [node]
+              : Array.from(node.querySelectorAll?.(`[${ROOT_ATTR}]`) || []);
+            for (const root of roots) themeRoots.add(root);
+            const scopedRoot = node.matches?.(`[${ROOT_ATTR}]`) ? node : node.closest?.(`[${ROOT_ATTR}]`);
+            if (scopedRoot) walkElements(node, (element) => themeElement(element, colors));
           }
         }
       } finally {
         applyingTheme = false;
       }
     });
-    observer.observe(document.documentElement, {
+    observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
@@ -401,13 +463,18 @@
       window.addEventListener("DOMContentLoaded", init, { once: true });
       return;
     }
+    document.getElementById(CONTROL_ID)?.remove();
     ensureThemeStyle();
-    ensureControl();
     observeThemeTargets();
+    for (const root of document.querySelectorAll(`[${ROOT_ATTR}]`)) {
+      themeRoots.add(root);
+    }
     applyTheme(currentThemeId);
     window.VRGDG_UIThemes = {
       themes: THEMES,
       apply: applyTheme,
+      registerRoot,
+      mountControl,
       get current() {
         return currentThemeId;
       },

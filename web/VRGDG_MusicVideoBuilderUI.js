@@ -1633,6 +1633,7 @@ function normalizeNotificationSettings(settings = {}) {
 function openBuilder(node) {
   console.log(`[VRGDG Music Builder] UI version ${BUILDER_UI_VERSION}`);
   const overlay = document.createElement("div");
+  overlay.dataset.vrgdgThemeRoot = "true";
   overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;";
   const shell = document.createElement("div");
   const normalShellStyle = `
@@ -2359,6 +2360,11 @@ function openBuilder(node) {
   const flowGptPrompt = document.createElement("textarea");
   flowGptPrompt.placeholder = "Flow/GPT browser image prompt...";
   flowGptPrompt.style.cssText = "width:100%;box-sizing:border-box;min-height:92px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
+  ["keydown", "keypress", "keyup"].forEach((eventName) => {
+    flowGptPrompt.addEventListener(eventName, (event) => {
+      event.stopPropagation();
+    });
+  });
   const flowGptAspectRatioField = makeField("GPT aspect ratio", flowGptAspectRatio);
   const flowGptCreatePromptButton = makeButton("Gemma Flow/GPT Prompt", "primary");
   const flowGptCreateImageButton = makeButton("Create with Flow/GPT", "primary");
@@ -2699,6 +2705,15 @@ function openBuilder(node) {
   ltxMsrReferenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   ltxMsrReferenceGrid.append(makeField("Reference strength", ltxMsrReferenceStrength), makeField("Background", ltxMsrBackgroundMode));
   ltxMsrRequiredPanel.append(ltxMsrRequiredNote, ltxMsrStrengthGrid, ltxMsrReferenceGrid);
+  const rtvSceneImageAnchor = makeCheckbox("Use scene image as 2nd ref image", false);
+  rtvSceneImageAnchor.input.title = "Adds this scene's generated image as a second MSR reference alongside the character sheet. The video prompt is unchanged.";
+  const rtvSceneImageAnchorNote = document.createElement("div");
+  rtvSceneImageAnchorNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
+  const rtvSceneImageAnchorSection = makeSettingsSection("Character Anchor", [
+    rtvSceneImageAnchor.wrapper,
+    rtvSceneImageAnchorNote,
+  ]);
+  rtvSceneImageAnchorSection.style.display = "none";
   const ltxIngredientsRequiredPanel = document.createElement("div");
   ltxIngredientsRequiredPanel.style.cssText = ltxMsrRequiredPanel.style.cssText;
   const ltxIngredientsRequiredNote = document.createElement("div");
@@ -3254,6 +3269,7 @@ function openBuilder(node) {
           i2vSrtSplitAdvancedNote,
           i2vSrtSplitGrid,
         ]),
+        rtvSceneImageAnchorSection,
         makeCreateSceneVideoButton(),
       ]),
     },
@@ -3469,6 +3485,7 @@ function openBuilder(node) {
   shell.append(topbar, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
+  window.VRGDG_UIThemes?.registerRoot?.(overlay);
 
   function applyBuilderFullscreen(enabled) {
     builderFullscreen = Boolean(enabled);
@@ -6375,6 +6392,7 @@ function openBuilder(node) {
     if (segment.nb_image_settings && typeof segment.nb_image_settings !== "object") segment.nb_image_settings = null;
     if (segment.use_scene_i2v_video_settings == null) segment.use_scene_i2v_video_settings = false;
     if (segment.i2v_video_settings && typeof segment.i2v_video_settings !== "object") segment.i2v_video_settings = null;
+    if (segment.use_scene_image_as_rtv_ref == null) segment.use_scene_image_as_rtv_ref = false;
     if (!["image", "video"].includes(segment.preview_mode)) segment.preview_mode = segment.video_path ? "video" : "image";
     if (segment.video_path == null) segment.video_path = "";
     if (segment.video_thumbnail_path == null) segment.video_thumbnail_path = "";
@@ -8805,7 +8823,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, i2vUseGgufModel.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, flowGptCreatePromptButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvSceneImageAnchor.input, i2vUseGgufModel.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, flowGptCreatePromptButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -8820,6 +8838,7 @@ function openBuilder(node) {
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
     useSceneNBImageSettings.input.checked = Boolean(segment?.use_scene_nb_image_settings);
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
+    rtvSceneImageAnchor.input.checked = rtvSceneImageAnchorGlobalEnabled();
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
     storyIdeaInput.value = state.storyIdeaPath || "";
@@ -8830,6 +8849,7 @@ function openBuilder(node) {
       <div style="margin-top:6px;color:#a1a1aa;">Global audio drives the whole timeline. Use this for music videos, songs, visualizers, and beat/lyric timing.</div>
     `;
     syncInspectorPanels();
+    syncRTVSceneImageAnchorPanel();
     renderSceneToolsPanel();
     renderSceneAdjustPanel();
     if (state.leftPanelTab === "luts" && state.postProcessTab === "film_grain") {
@@ -9615,6 +9635,18 @@ function openBuilder(node) {
     };
   }
 
+  function rtvSceneImageAnchorPayload(segment = activeSegment()) {
+    if (!segment?.use_scene_image_as_rtv_ref) return null;
+    const image = segmentImageSource(segment);
+    if (!image?.path && !image?.data) return null;
+    return {
+      ...rtvReferenceImagePayload(image),
+      label: "Scene image: secondary character anchor",
+      reference_type: "character",
+      scene_image_anchor: true,
+    };
+  }
+
   function referenceBuilderSubjectHasImage(item = {}) {
     const image = item?.image || item || {};
     return Boolean(String(image.path || "").trim() || String(image.data || "").trim());
@@ -9676,7 +9708,9 @@ function openBuilder(node) {
       });
     };
     referenceBuilderSubjectItemsForSegment(refs, segment).forEach(addSubject);
-    references.subjects = references.subjects.slice(0, 4);
+    const sceneImageAnchor = rtvSceneImageAnchorPayload(segment);
+    references.subjects = references.subjects.slice(0, sceneImageAnchor ? 3 : 4);
+    if (sceneImageAnchor) references.subjects.push(sceneImageAnchor);
     if (segment?.no_character_present && !references.subjects.length) {
       references.use_subject_placeholder = true;
       references.subjects.push({
@@ -10217,6 +10251,30 @@ function openBuilder(node) {
     return "i2v";
   }
 
+  function rtvSceneImageAnchorGlobalEnabled() {
+    return state.segments.some((item) => Boolean(item?.use_scene_image_as_rtv_ref));
+  }
+
+  function applyRTVSceneImageAnchorToAll(enabled) {
+    const value = Boolean(enabled);
+    state.segments.forEach((item) => {
+      item.use_scene_image_as_rtv_ref = value;
+    });
+  }
+
+  function syncRTVSceneImageAnchorPanel() {
+    const segment = activeSegment();
+    const isRTV = currentVideoMode() === "rtv";
+    const image = segment ? segmentImageSource(segment) : null;
+    const hasImage = Boolean(image?.path || image?.data);
+    rtvSceneImageAnchorSection.style.display = isRTV ? "" : "none";
+    rtvSceneImageAnchor.input.checked = rtvSceneImageAnchorGlobalEnabled();
+    rtvSceneImageAnchor.input.disabled = !isRTV;
+    rtvSceneImageAnchorNote.textContent = hasImage
+      ? "Global: every scene will use its own scene image as a second MSR character reference when available. The video prompt is unchanged."
+      : "Global: this can be enabled before Image All. Scenes without images will use their scene image as soon as one exists.";
+  }
+
   function syncVideoModePanel() {
     const mode = currentVideoMode();
     state.videoModelMode = mode;
@@ -10249,6 +10307,7 @@ function openBuilder(node) {
         ? "Extra reference-to-video motion notes, camera movement, subject actions..."
       : "Extra video motion notes, camera movement, character movement...";
     i2vPrompt.placeholder = isIngredients ? "Ingredients-to-video prompt..." : isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+    syncRTVSceneImageAnchorPanel();
     updateI2VLoraVisibility();
   }
 
@@ -10304,11 +10363,13 @@ function openBuilder(node) {
     }
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
     segment.use_t2v_vision_reference = Boolean(useT2VVisionReference.input.checked);
+    applyRTVSceneImageAnchorToAll(Boolean(rtvSceneImageAnchor.input.checked));
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     ernieRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     krea2TwoPassRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     t2vRefImagePanel.style.display = currentVideoMode() === "t2v" && segment.use_t2v_vision_reference ? "flex" : "none";
+    syncRTVSceneImageAnchorPanel();
     if (!state.timingFrozen && !hasLockedVideo(segment) && !isOverlay) normalizeSegments(segment);
     if (isOverlay) sortSegments(state.overlaySegments);
     render();
@@ -21487,6 +21548,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const note = document.createElement("div");
     note.textContent = "These are workflow setup paths and one-time loading actions. Keeping them here leaves more room for scene editing.";
     note.style.cssText = "font-size:12px;color:#a1a1aa;line-height:1.45;";
+    const themeControlMount = document.createElement("div");
+    themeControlMount.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
+    window.VRGDG_UIThemes?.mountControl?.(themeControlMount);
+    if (!themeControlMount.children.length) {
+      const themeUnavailable = document.createElement("div");
+      themeUnavailable.textContent = "Theme controls are unavailable until the UI theme helper is loaded.";
+      themeUnavailable.style.cssText = "font-size:12px;color:#a1a1aa;line-height:1.45;";
+      themeControlMount.append(themeUnavailable);
+    }
+    const themePanel = makeSettingsSection("Builder UI Theme", [
+      themeControlMount,
+    ], false);
     const notificationSettings = normalizeNotificationSettings(state.notificationSettings);
     const notificationMode = makeSelect(["off", "errors", "batch", "complete", "all"], notificationSettings.mode);
     const successSound = makeSelect(["chime", "bell", "double_beep", "soft"], notificationSettings.success_sound);
@@ -21724,7 +21797,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, autoChainPanel, notificationPanel);
+    box.append(header, pathGrid, actions, note, themePanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -32348,6 +32421,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   useSceneI2VVideoSettings.input.addEventListener("change", () => {
     setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettings.input.checked));
+  });
+  rtvSceneImageAnchor.input.addEventListener("change", () => {
+    pushHistory();
+    applyRTVSceneImageAnchorToAll(Boolean(rtvSceneImageAnchor.input.checked));
+    syncRTVSceneImageAnchorPanel();
+    render();
+    autoSaveSessionQuiet("RTV scene image character anchor changed globally").catch(() => null);
   });
   refImageInput.addEventListener("input", updateActiveFromInputs);
   refImageInput.addEventListener("change", updateActiveFromInputs);

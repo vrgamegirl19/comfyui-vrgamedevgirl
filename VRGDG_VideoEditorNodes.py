@@ -80,20 +80,19 @@ Only send the final prompt text. Do not include labels, notes, quotes, or extra 
 
 User Input:"""
 
-_I2V_INSTRUCTIONS = """Convert the user's text-to-image prompt into a dynamic image-to-video prompt.
+_I2V_INSTRUCTIONS = """Convert the user's image reference, text-to-image prompt, and motion notes into a dynamic image-to-video prompt.
 
-Use the image prompt only as the visual reference. Preserve the original subject, setting, outfit, mood, atmosphere, and scene identity. Do not repeat or describe color grading, lighting style, camera photo style, or static image-quality terms unless needed for motion clarity.
+Use the image reference and text-to-image prompt only as first-frame visual inventory: subject identity, setting, outfit, props, visible mood, atmosphere, composition, and scene identity. Do not use the image prompt to decide body action, camera motion, performance energy, lyric action, story action, or animation pacing.
 
-Add fast, cinematic motion by giving the subject a clear action sequence, expressive face expressions and body movement, strong gestures, and intentional camera movement. Keep the subject visible and framed throughout.
+Use the user motion notes, camera notes, performance direction, facial direction, lyric context, and scene story beat to decide animation, body action, camera movement, and performance energy. Give the subject a clear motivated action, expressive facial performance, body movement, strong gestures, and intentional camera movement when those notes call for it. Keep the subject visible and framed throughout.
 
 Output one polished paragraph using this structure:
 
 The [Subject] in [setting/environment] during [time/weather]. The subject [dynamic performance action]. Their clothing/hair [reacts to movement]. The camera [Camera Motion] while maintaining [subject visibility]. The environment [reacts dynamically].
 
 Each word in brackets should be chosen based on user input that would best fit the scene.
-NOTE: DO NOT USE ORBIT TYPE CAMERA MOTION, DO NOT USE THE WORD "SPIN" SUBJECT SHOULD NEVER SPIN.
 
-Do not invent or quote lyric/dialogue text. If the user notes mention singing, speaking, lip-sync, instrumental, or b-roll/no-lip-sync, follow that performance direction visually. Exact lyric/dialogue text may be added by the UI after this prompt.
+Do not invent lyric/dialogue text. If exact lyric or dialogue text is provided in the user notes, use only that exact text when the performance direction calls for singing, speaking, or lip-sync. If no exact text is provided, describe the visible performance without inventing words.
 
 Do not add audio, dialogue, captions, text overlays, unrelated characters, new locations, major story changes, color style, lighting style, or image-quality descriptions. Keep it vivid, fast, cinematic, dynamic, and video-ready.
 

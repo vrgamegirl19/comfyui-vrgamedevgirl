@@ -635,6 +635,11 @@ function input(value = "", type = "text") {
   return node;
 }
 
+function lyricStoryStrengthValue(value, fallback = 7) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(10, number)) : fallback;
+}
+
 function comboInput(value = "", options = [], listId = "") {
   const node = input(value);
   if (listId) node.setAttribute("list", listId);
@@ -715,6 +720,7 @@ export function openMusicVideoWizard(api = {}) {
       enabled: true,
       user_story_arc: "",
       song_story_brief: "",
+      lyric_story_strength: 7,
     },
   };
 
@@ -857,6 +863,7 @@ export function openMusicVideoWizard(api = {}) {
             enabled: sourceState.storyLayer.enabled !== false,
             user_story_arc: String(sourceState.storyLayer.user_story_arc || ""),
             song_story_brief: String(sourceState.storyLayer.song_story_brief || ""),
+            lyric_story_strength: lyricStoryStrengthValue(sourceState.storyLayer.lyric_story_strength ?? sourceState.storyLayer.lyricStoryStrength),
           }
         : wizardState.storyLayer,
       });
@@ -1609,6 +1616,7 @@ export function openMusicVideoWizard(api = {}) {
       enabled: incomingLayer.enabled !== false,
       user_story_arc: wizardState.storyLayer?.user_story_arc || incomingLayer.user_story_arc || "",
       song_story_brief: wizardState.storyLayer?.song_story_brief || incomingLayer.song_story_brief || "",
+      lyric_story_strength: lyricStoryStrengthValue(wizardState.storyLayer?.lyric_story_strength ?? incomingLayer.lyric_story_strength ?? incomingLayer.lyricStoryStrength),
     };
     const note = el("div", "vrgdg-wizard-note", "Use this optional story layer to give Gemma a compact narrative arc. The final video prompts will use this without sending the full lyrics every time.");
     const grid = el("div", "vrgdg-wizard-grid");
@@ -1618,6 +1626,47 @@ export function openMusicVideoWizard(api = {}) {
     enabled.type = "checkbox";
     enabled.checked = wizardState.storyLayer.enabled !== false;
     enabledLabel.append(enabled, document.createTextNode("Use story layer in prompt generation"));
+    const lyricStrength = input(String(lyricStoryStrengthValue(wizardState.storyLayer.lyric_story_strength)), "range");
+    lyricStrength.min = "0";
+    lyricStrength.max = "10";
+    lyricStrength.step = "1";
+    lyricStrength.style.accentColor = "#22d3ee";
+    const lyricStrengthValue = el("div", "vrgdg-wizard-copy");
+    lyricStrengthValue.style.fontWeight = "900";
+    lyricStrengthValue.style.color = "#cffafe";
+    const lyricStrengthText = (value) => {
+      const strength = Math.max(0, Math.min(10, Number(value || 7)));
+      if (strength <= 0) return "0 / ignore lyrics";
+      if (strength <= 3) return `${strength} / mood only`;
+      if (strength <= 6) return `${strength} / balanced`;
+      if (strength <= 8) return `${strength} / strong lyric story`;
+      return `${strength} / literal lyric anchors`;
+    };
+    const syncLyricStrength = () => {
+      wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
+      lyricStrengthValue.textContent = lyricStrengthText(lyricStrength.value);
+    };
+    syncLyricStrength();
+    const lyricHint = button("Hint");
+    lyricHint.onclick = () => {
+      window.alert([
+        "Lyric Story Strength controls how literally Gemma should follow the lyrics when creating the story arc, story brief, scene beats, and prompt context.",
+        "",
+        "0: do not use lyrics as story source.",
+        "1-3: use lyrics as mood and emotional timing only.",
+        "4-6: balance lyrics with the story arc, subjects, and locations.",
+        "7-8: lyrics strongly shape the scene story; include recognizable lyric anchors when possible.",
+        "9-10: use lyrics as literally as possible; non-instrumental scenes should include a concrete object, action, emotion, or situation from the exact lyric line whenever possible.",
+      ].join("\n"));
+    };
+    const lyricStrengthRow = el("div", "vrgdg-wizard-settings-fields two");
+    lyricStrengthRow.style.gridTemplateColumns = "minmax(0,1fr) auto auto";
+    lyricStrengthRow.style.alignItems = "end";
+    lyricStrengthRow.append(field("Lyric Story Strength", lyricStrength), lyricStrengthValue, lyricHint);
+    lyricStrength.addEventListener("input", () => {
+      syncLyricStrength();
+      queueWizardDraftSave();
+    });
     const arcText = textarea(wizardState.storyLayer.user_story_arc || "", "Verse 1: ...\nChorus 1: ...\nVerse 2: ...");
     arcText.style.minHeight = "190px";
     arcText.addEventListener("input", () => {
@@ -1667,6 +1716,7 @@ export function openMusicVideoWizard(api = {}) {
       try {
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.enabled = Boolean(enabled.checked);
+        wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
         const updated = await api.createStoryArc?.({
           storyLayer: wizardState.storyLayer,
           userStoryArc: arcText.value,
@@ -1685,7 +1735,7 @@ export function openMusicVideoWizard(api = {}) {
     };
     const motionRow = el("div", "vrgdg-wizard-settings-fields two");
     motionRow.append(field("Character motion", motionSlider, "0 = still/posed, 10 = very active and interactive"), field("Motion value", motionNumber));
-    arc.append(enabledLabel, arcText, motionRow, motionHint, arcButton);
+    arc.append(enabledLabel, lyricStrengthRow, arcText, motionRow, motionHint, arcButton);
     const brief = card("2. Song Story Brief", "A compact Gemma summary of the song's premise, emotional arc, motifs, and scene guidance.");
     const briefText = textarea(wizardState.storyLayer.song_story_brief || "", "Create or edit the song story brief...");
     briefText.style.minHeight = "190px";
@@ -1699,6 +1749,7 @@ export function openMusicVideoWizard(api = {}) {
       try {
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.enabled = Boolean(enabled.checked);
+        wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
         const updated = await api.createStoryBrief?.({
           storyLayer: wizardState.storyLayer,
           userStoryArc: arcText.value,
@@ -1734,6 +1785,7 @@ export function openMusicVideoWizard(api = {}) {
       try {
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.song_story_brief = briefText.value;
+        wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
         await api.updateStoryLayer?.(wizardState.storyLayer);
         await api.createSceneBeats?.({ overwrite: false });
         done.add("story");
@@ -1747,6 +1799,7 @@ export function openMusicVideoWizard(api = {}) {
       try {
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.song_story_brief = briefText.value;
+        wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
         await api.updateStoryLayer?.(wizardState.storyLayer);
         await api.createSceneBeats?.({ overwrite: true });
         done.add("story");

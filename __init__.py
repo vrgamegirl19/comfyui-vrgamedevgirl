@@ -5,6 +5,9 @@ import sys
 
 import folder_paths
 
+__version__ = "v9-dev-2026-07-04"
+__updated__ = "2026-07-04"
+
 _VRGDG_SUBMODULES = (
     ".nodes",
     ".HumoAutomation",
@@ -30,6 +33,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_LTXICIngredientsGrid",
     ".VRGDG_FlowBrowserNodes",
     ".VRGDG_BrowserImageRoutes",
+    ".VRGDG_SilentAudioRoutes",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (
@@ -89,6 +93,12 @@ for _modname in _VRGDG_SUBMODULES:
         continue
     NODE_CLASS_MAPPINGS.update(getattr(_mod, "NODE_CLASS_MAPPINGS", {}))
     NODE_DISPLAY_NAME_MAPPINGS.update(getattr(_mod, "NODE_DISPLAY_NAME_MAPPINGS", {}))
+
+print(
+    f"[VRGDG] comfyui-vrgamedevgirl {__version__} loaded "
+    f"(updated {__updated__}; "
+    f"{len(NODE_CLASS_MAPPINGS)} nodes, {len(_VRGDG_FAILED)} failed submodule(s))."
+)
 
 if _VRGDG_FAILED:
     print("[VRGDG] Some submodules failed to import; their nodes will be unavailable:")
