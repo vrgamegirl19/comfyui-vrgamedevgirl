@@ -7249,15 +7249,15 @@ function openBuilder(node) {
     return cleanPrompt;
   }
 
-  function syncSegmentFlowGptPrompt(segment, prompt) {
+  function syncSegmentFlowGptPrompt(segment, prompt, options = {}) {
     if (!segment) return "";
-    const cleanPrompt = String(prompt || "").trim();
+    const cleanPrompt = options.preserveTypingWhitespace ? String(prompt || "") : String(prompt || "").trim();
     segment.flow_gpt_prompt = cleanPrompt;
     segment.t2i_prompt = cleanPrompt;
     segment.flux_prompt = cleanPrompt;
     segment.nb_prompt = cleanPrompt;
     segment.enhance_prompt = cleanPrompt;
-    if (segment.id === activeSegment()?.id) {
+    if (segment.id === activeSegment()?.id && !options.skipInputSync) {
       flowGptPrompt.value = cleanPrompt;
       t2iPrompt.value = cleanPrompt;
       fluxPrompt.value = cleanPrompt;
@@ -32250,7 +32250,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   flowGptPrompt.addEventListener("input", () => {
     pushHistory();
     const segment = activeSegment();
-    if (segment) syncSegmentFlowGptPrompt(segment, flowGptPrompt.value || "");
+    if (segment) syncSegmentFlowGptPrompt(segment, flowGptPrompt.value || "", { preserveTypingWhitespace: true, skipInputSync: true });
   });
   flowNanoProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA);
   gptImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE);
