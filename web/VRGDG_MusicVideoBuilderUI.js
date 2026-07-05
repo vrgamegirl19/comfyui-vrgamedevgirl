@@ -12325,6 +12325,8 @@ function openBuilder(node) {
       "===== SCENE INPUTS =====",
       `T2I/concept prompt:\n${sceneConceptPromptText(segment) || ""}`,
       "",
+      `Video concept fallback:\n${sceneVideoConceptPromptText(segment) || ""}`,
+      "",
       `I2V/T2V notes:\n${String(segment?.i2v_notes || "").trim()}`,
       "",
       `Lyrics/vocal line:\n${String(segment?.lyric_text || "").trim()}`,
@@ -22960,6 +22962,28 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return String(segment?.t2i_prompt || segment?.flux_prompt || segment?.notes || segment?.flux_notes || "").trim();
   }
 
+  function sceneVideoConceptPromptText(segment) {
+    const direct = sceneConceptPromptText(segment);
+    if (direct) return direct;
+    const parts = [];
+    const add = (title, value) => {
+      const text = String(value || "").trim();
+      if (text) parts.push(`${title}:\n${text}`);
+    };
+    add("Prompt summary", segment?.prompt_summary || segment?.summary);
+    add("Scene notes", segment?.notes || segment?.director_note);
+    add("Scene story beat", segment?.story_beat);
+    add("Lyrics / scene text", segment?.lyric_text || segment?.lyric_note || segment?.lyrics);
+    add("Mapped subject / character", segment?.no_character_present ? "" : segmentMappedSubjectText(segment));
+    add("Mapped location", segmentMappedLocationText(segment));
+    add("Shot type", segment?.shot_type);
+    const context = fluxReferenceContextForSegment(segment);
+    add("Reference subject description", segment?.no_character_present ? "" : context?.subject_description);
+    add("Reference location name", context?.location_name);
+    add("Reference location description", context?.location_description);
+    return parts.join("\n\n").trim();
+  }
+
   function textOnlyFallbackNotesForSegment(segment, imageMode = state.imageModelMode || "zimage") {
     const parts = [];
     const add = (title, value) => {
@@ -24029,7 +24053,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       draft_prompt: base,
       mode_label: modeLabel,
       performance_mode: normalizeVideoType(state.videoType),
-      t2i_prompt: sceneConceptPromptText(segment),
+      t2i_prompt: sceneVideoConceptPromptText(segment),
       user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim()].filter(Boolean).join("\n\n"),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
       singers: segment?.no_character_present ? [] : singers,
@@ -24065,7 +24089,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const forceVision = Boolean(options.forceVision);
     const useImageReference = forceVision ? true : forceTextOnly || isRTV || isIngredients ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
-    const t2iText = sceneConceptPromptText(segment);
+    const t2iText = sceneVideoConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
@@ -24073,7 +24097,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM API vision needs a vision-capable API model selected. Open LLM Runner and choose an API model that supports images.`);
     }
     if ((isT2V || isRTV || isIngredients || !useImageReference) && !t2iText) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I/concept prompt is missing.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: scene text/concept is missing.`);
     }
     const baseNotes = videoGemmaNotesForSegment(segment);
     const storyboardNotes = String(options.skipStoryboardExtraNotes ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
@@ -24478,7 +24502,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const useImageReference = isRTV || isIngredients ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
-    const conceptPrompt = sceneConceptPromptText(segment);
+    const conceptPrompt = sceneVideoConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
       toast(isT2V
         ? "Hey, T2V Gemma image reference is on, but no reference image is loaded. Drop/load a reference image or turn it off."
@@ -24491,8 +24515,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     if ((isT2V || isRTV || isIngredients || !useImageReference) && !conceptPrompt) {
       toast(isT2V || isRTV || isIngredients
-        ? "Hey, you need a T2I/concept prompt first so Gemma has scene content to turn into a text-to-video prompt."
-        : "Hey, you need a T2I prompt first. Create/type one, or turn image reference back on and use a saved/custom image.", true);
+        ? "Hey, this scene needs some scene text, notes, lyrics, or mapped references before Gemma can make a text-to-video prompt."
+        : "Hey, you need scene text or a T2I prompt first, or turn image reference back on and use a saved/custom image.", true);
       return;
     }
     let progress = null;
@@ -24544,8 +24568,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function generateTextOnlyI2VPromptForSegment(segment, progress = null, percent = 50, label = "Gemma I2V", options = {}) {
     if (!segment) throw new Error("Scene is missing.");
-    const t2iText = String(segment.t2i_prompt || "").trim();
-    if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: T2I prompt is missing.`);
+    const t2iText = sceneVideoConceptPromptText(segment);
+    if (!t2iText) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: scene text/concept is missing.`);
     progress?.set(`${label}: converting T2I prompt to I2V prompt without vision...\n${gemmaRunnerLine()}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_i2v", {
       ...textGemmaRunnerPayload(),
@@ -24633,10 +24657,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
         missing.push(`${sceneDisplayName(segment, index)}: LLM API vision needs a vision-capable API model selected in LLM Runner.`);
       }
-      if ((isRTV || isIngredients) && !sceneConceptPromptText(segment)) {
+      if ((isRTV || isIngredients) && !sceneVideoConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running ${runnerName}.`);
-      } else if ((isT2V || !useImageReference) && !sceneConceptPromptText(segment)) {
-        missing.push(`${sceneDisplayName(segment, index)}: T2I/concept prompt is missing.`);
+      } else if ((isT2V || !useImageReference) && !sceneVideoConceptPromptText(segment)) {
+        missing.push(`${sceneDisplayName(segment, index)}: scene text/concept is missing.`);
       }
     });
     if (missing.length) {
@@ -25405,6 +25429,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : String(segment.mapped_subjects || segment.subject || ""),
         facial_performance: String(scene.facial_performance ?? scene.facialPerformance ?? segment.facial_performance ?? "").trim(),
         facial_performance_custom: String(scene.facial_performance_custom ?? scene.facialPerformanceCustom ?? segment.facial_performance_custom ?? "").trim(),
+        prompt_summary: String(scene.prompt_summary || scene.summary || segment.prompt_summary || segment.summary || "").trim(),
+        summary: String(scene.prompt_summary || scene.summary || segment.prompt_summary || segment.summary || "").trim(),
       };
       const imageData = String(scene.image_data || scene.image_reference_data || "").trim();
       const imagePath = String(scene.image_path || scene.approved_image_path || "").trim();
@@ -25426,6 +25452,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         clone.t2i_prompt = imagePrompt;
         clone.flux_prompt = imagePrompt;
         clone.notes = imagePrompt;
+      } else if (clone.prompt_summary && !String(clone.notes || "").trim()) {
+        clone.notes = clone.prompt_summary;
       }
       return clone;
     };

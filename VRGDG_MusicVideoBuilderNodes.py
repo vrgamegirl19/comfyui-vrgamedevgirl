@@ -4364,9 +4364,6 @@ def _generate_builder_t2v_prompt(payload):
         raise ValueError("Choose a T2V Gemma model first.")
     if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
         raise ValueError("The T2V model field is not a GGUF model.")
-    if not scene_prompt:
-        raise ValueError("Create or paste a T2I/concept prompt first.")
-
     image = None
     has_image_reference = False
     if image_reference_data:
@@ -4403,6 +4400,11 @@ def _generate_builder_t2v_prompt(payload):
         context_parts.append(f"Story idea:\n{story_idea}")
     if context_parts:
         user_notes = "\n\n".join(context_parts + ([f"Segment motion notes:\n{user_notes}"] if user_notes else []))
+    if not scene_prompt:
+        if user_notes or subject_context or location_context or theme_style or story_idea or subject_scene or no_character_present:
+            scene_prompt = "Use the available scene notes, mapped references, lyrics/performance context, location details, and motion notes as the scene concept."
+        else:
+            raise ValueError("Create or paste scene notes, mapped references, motion notes, or a T2I/concept prompt first.")
 
     image_guidance = (
         "Use the provided reference image only to guide pose, framing, composition, mood, visible styling, or other user-requested visual details. "
