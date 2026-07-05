@@ -924,8 +924,14 @@ def _build_storyboard_image_prompt(payload):
     scenes = scene_bundle.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         raise ValueError("Storyboard scene-card payload has no scenes.")
+    instruction_text = _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
+    instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "").strip()
+    if instruction_key:
+        from .VRGDG_MusicVideoBuilderNodes import _STANDARD_IMAGE_T2I_INSTRUCTIONS, _effective_builder_instruction
+
+        instruction_text = _effective_builder_instruction(payload, instruction_key, _STANDARD_IMAGE_T2I_INSTRUCTIONS)
     instruction = (
-        _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
+        instruction_text
         + "\n\nScene-card JSON:\n"
         + json.dumps(scene_bundle, indent=2, ensure_ascii=False)
     )

@@ -278,6 +278,20 @@
     element.setAttribute("style", originalStyles.get(element));
   }
 
+  function resetThemeMemory() {
+    for (const root of Array.from(themeRoots)) {
+      if (!root?.isConnected) {
+        themeRoots.delete(root);
+        continue;
+      }
+      walkElements(root, restoreElement);
+    }
+    currentThemeId = "current";
+    saveThemeId(currentThemeId);
+    updateRootThemeAttributes();
+    updateControlValues();
+  }
+
   function walkElements(root, callback) {
     if (!root) return;
     if (root instanceof HTMLElement) callback(root);
@@ -432,7 +446,7 @@
           if (mutation.type === "attributes" && mutation.attributeName === "style") {
             const element = mutation.target;
             if (element instanceof HTMLElement && element.closest?.(`[${ROOT_ATTR}]`) && !isThemeControl(element)) {
-              originalStyles.set(element, element.getAttribute("style") || "");
+              rememberOriginal(element);
               themeElement(element, colors);
             }
           }
@@ -473,6 +487,7 @@
     window.VRGDG_UIThemes = {
       themes: THEMES,
       apply: applyTheme,
+      reset: resetThemeMemory,
       registerRoot,
       mountControl,
       get current() {

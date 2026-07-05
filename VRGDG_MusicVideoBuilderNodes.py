@@ -31,6 +31,7 @@ from .VRGDG_VideoEditorNodes import (
 from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
 from .VRGDG_LUTVideoTools import register_lut_routes
 from .VRGDG_GemmaPromptSanitizer import extract_prompt_text_from_gemma_output
+from .VRGDG_StoryboardBuilderNodes import _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
 
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
@@ -61,6 +62,101 @@ Rules:
 - User notes take priority. If user notes ask for no singing, silent b-roll, instrumental motion, no lip movement, or non-performance action, follow the user notes instead.
 - Do not mention source prompts, notes, lyrics, segments, JSON, or instructions.
 - Do not include markdown, labels, quotes, or explanations."""
+
+
+_FLUX_KLEIN_T2I_INSTRUCTIONS = """Create one concise Flux/Klein image prompt from the user input and any available reference context or image ingredients.
+
+Output one normal paragraph, not sections, not markdown, not labels, not explanations.
+
+Prompt style:
+- If character and location references are available, start with: Using the provided character reference and location reference, create...
+- If only a character reference is available, start with: Using the provided character reference, create...
+- If only a location reference is available, start with: Using the provided location reference, create...
+- If no visual reference is available, start directly with the shot and subject; do not claim a provided reference exists.
+- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.
+- Use the user's scene/concept notes as the main creative direction.
+- Preserve character identity from character references when provided: face, hair, outfit, makeup, and overall identity.
+- Preserve location identity from location references when provided: environment, architecture, layout, atmosphere, and major visible setting details.
+- Create a new camera angle, new pose, and new composition.
+- Do not paste the character into the location image.
+- Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.
+- Do not copy the exact location reference camera angle, framing, perspective, or composition.
+- Avoid full-body walking or standing shots unless the user specifically asks for them.
+- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.
+- Keep it cinematic, detailed, visually specific, and practical for image generation.
+- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.
+- Keep the prompt under 120 words.
+
+Good output examples:
+Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.
+Using the provided character reference and location reference, create an intimate upper body shot of the woman framed by gnarled forest branches. Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. New pose, new camera angle, soft bokeh, high cinematic quality."""
+
+
+_NANO_B_T2I_INSTRUCTIONS = """Create one concise NanoBanana image prompt from the user input and any available reference context.
+
+Output one normal paragraph, not sections, not markdown, not labels, not explanations.
+
+Prompt style:
+- Use advanced Krea 2-style image prompting: concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.
+- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.
+- Use the user's scene/concept notes as the main creative direction.
+- Create a new camera angle, new pose, and new composition.
+- Avoid full-body walking or standing shots unless the user specifically asks for them.
+- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.
+- Keep the prompt visually specific and practical for image generation.
+- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers."""
+
+
+_FLOW_GPT_T2I_INSTRUCTIONS = """Create one concise browser image prompt for Flow/GPT from the user input and any available reference context.
+
+Output one normal paragraph, not sections, not markdown, not labels, not explanations.
+
+Prompt style:
+- Write a direct image-generation prompt that can be pasted into Flow or GPT Image.
+- Use the user's scene/concept notes as the main creative direction.
+- If character or location references are available, preserve their important identity and setting details without overexplaining the reference system.
+- Use concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.
+- Create a clear still-image composition, not a video prompt.
+- Create a new camera angle, new pose, and new composition.
+- Avoid full-body walking or standing shots unless the user specifically asks for them.
+- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.
+- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.
+- Do not include aspect ratio text; GPT Image aspect ratio is appended separately by the browser runner."""
+
+
+_STANDARD_IMAGE_T2I_INSTRUCTIONS = """You are a text-to-image prompt builder for a music-video storyboard.
+
+The user will provide a JSON scene-card bundle. Your job is to read the JSON and create one polished text-to-image prompt for the selected scene.
+
+Use `selected_scene_number` to choose the scene.
+
+Rules:
+
+* Create one cinematic still-frame prompt, not a video prompt.
+* Use advanced Krea 2-style image prompting: concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.
+* Pull the visible subject list only from the selected scene's `subject_refs`.
+* Never use subjects from the project catalog, another scene, the song story brief, or the user story arc unless that subject is also present in the selected scene's `subject_refs`.
+* If `subject_refs` has more than one subject, every listed subject must be visibly present in the image prompt. Do not drop, merge, hide, imply, or omit any listed subject.
+* If `subject_refs` has one subject, describe only that one visible subject. Do not create duplicates, backup singers, crowds, or extra people unless the scene notes explicitly ask for them.
+* If `vocal_status.no_character_present` is true, do not include, mention, imply, or describe any mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and composition instead.
+* Pull the setting from `location_ref`.
+* Include the mapped subject descriptions and location description when available.
+* Use the scene lyrics, lyric section, story beat, song story brief, and user story arc only as visual guidance. Do not quote long lyrics.
+* If the scene is a singing scene, show performance energy and emotion as a still expression only. Do not mention lip sync, audio behavior, mouth movement, eye movement, blinking, or animation.
+* If the scene is instrumental or no-lip-sync, do not mention singing, lip-syncing, vocals, mouth movement, or no-vocal status.
+* Use `shot_type` as the still-frame composition when available.
+* If `global_consistency_phrase` is present, include it in the final image prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
+* Use `performance_style` and `performance_direction` for body language, wardrobe energy, and genre feel.
+* Follow `character_motion_guidance` when present, but express it as still-image pose/action/body language only. Do not describe animation or future movement.
+* Use `facial_performance` and `facial_performance_direction` only for still-image facial emotion: eye direction, brows, cheeks, jaw tension, mouth expression, gaze, and pose.
+* Do not describe future camera movement, animation, transitions, frame changes, blinking, eye movement, mouth movement, or what happens next.
+* Do not mention JSON, IDs, file paths, image names, or metadata.
+* Do not include explanations.
+* Output only the final image prompt.
+* Use natural language, not bracket labels.
+* Keep it as one clean paragraph.
+
+When information is missing, infer a fitting cinematic still image from the available subject, setting, tone, and notes."""
 
 
 def _vrgdg_textfile_path(folder_name, file_name):
@@ -600,6 +696,228 @@ def _prompts_folder(project_folder):
 
 def _context_folder(project_folder):
     return os.path.join(project_folder, "project_context")
+
+
+_BUILDER_INSTRUCTION_DEFAULTS = {
+    "flux_klein_t2i": _FLUX_KLEIN_T2I_INSTRUCTIONS,
+    "flow_gpt_t2i": _FLOW_GPT_T2I_INSTRUCTIONS,
+    "ernie_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
+    "ingredients": _T2V_INSTRUCTIONS,
+    "i2v": _I2V_INSTRUCTIONS,
+    "krea2_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
+    "nano_b_t2i": _NANO_B_T2I_INSTRUCTIONS,
+    "rtv": _T2V_INSTRUCTIONS,
+    "t2v": _T2V_INSTRUCTIONS,
+    "zimage_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
+}
+
+_BUILDER_INSTRUCTION_LABELS = {
+    "flux_klein_t2i": "Flux/Klein Text to Image",
+    "flow_gpt_t2i": "Flow/GPT Text to Image",
+    "ernie_t2i": "Ernie Text to Image",
+    "ingredients": "Ingredients to Video",
+    "i2v": "Image to Video",
+    "krea2_t2i": "Krea 2 Text to Image",
+    "nano_b_t2i": "Nano B Text to Image",
+    "rtv": "Reference to Video",
+    "t2v": "Text to Video",
+    "zimage_t2i": "ZImage Text to Image",
+}
+
+
+def _safe_builder_instruction_key(value):
+    key = re.sub(r"[^a-z0-9_]+", "_", str(value or "").strip().lower()).strip("_")
+    if key not in _BUILDER_INSTRUCTION_DEFAULTS:
+        raise ValueError(f"Unknown Builder instruction key: {value}")
+    return key
+
+
+def _safe_builder_scene_id(value):
+    scene_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value or "").strip()).strip("._-")
+    return scene_id[:120]
+
+
+def _safe_preset_name(value):
+    text = str(value or "").strip()
+    text = re.sub(r"[^A-Za-z0-9_. -]+", "_", text).strip(" ._")
+    if not text:
+        raise ValueError("Preset name is empty.")
+    return text[:80]
+
+
+def _builder_instruction_folder(project_folder):
+    return os.path.join(_context_folder(project_folder), "custom_builder_instructions")
+
+
+def _builder_instruction_all_scenes_path(project_folder, key):
+    return os.path.join(_builder_instruction_folder(project_folder), f"{_safe_builder_instruction_key(key)}.txt")
+
+
+def _builder_instruction_scene_path(project_folder, key, scene_id):
+    safe_scene = _safe_builder_scene_id(scene_id)
+    if not safe_scene:
+        raise ValueError("Scene id is missing.")
+    return os.path.join(_builder_instruction_folder(project_folder), "scenes", safe_scene, f"{_safe_builder_instruction_key(key)}.txt")
+
+
+def _builder_instruction_preset_root():
+    return os.path.join(folder_paths.get_output_directory(), "VRGDG_LLM_Instruction_Presets", "builder")
+
+
+def _builder_instruction_preset_path(key, name):
+    return os.path.join(_builder_instruction_preset_root(), _safe_builder_instruction_key(key), f"{_safe_preset_name(name)}.txt")
+
+
+def _read_optional_text_file(path):
+    if not path or not os.path.isfile(path):
+        return ""
+    with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
+        return handle.read().strip()
+
+
+def _project_folder_from_builder_payload(payload):
+    raw = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not raw:
+        raise ValueError("Create or load a Builder project before editing instructions.")
+    return os.path.abspath(raw)
+
+
+def _builder_instruction_state(project_folder, key, scene_id=""):
+    key = _safe_builder_instruction_key(key)
+    default_text = _BUILDER_INSTRUCTION_DEFAULTS[key]
+    scene_path = ""
+    scene_text = ""
+    if scene_id:
+        scene_path = _builder_instruction_scene_path(project_folder, key, scene_id)
+        scene_text = _read_optional_text_file(scene_path)
+    all_path = _builder_instruction_all_scenes_path(project_folder, key)
+    all_text = _read_optional_text_file(all_path)
+    if scene_text:
+        source = "scene"
+        text = scene_text
+        path = scene_path
+    elif all_text:
+        source = "all_scenes"
+        text = all_text
+        path = all_path
+    else:
+        source = "default"
+        text = default_text
+        path = ""
+    return {
+        "key": key,
+        "label": _BUILDER_INSTRUCTION_LABELS.get(key, key),
+        "scene_id": str(scene_id or ""),
+        "default_text": default_text,
+        "scene_text": scene_text,
+        "all_scenes_text": all_text,
+        "text": text,
+        "source": source,
+        "path": path,
+        "scene_path": scene_path,
+        "all_scenes_path": all_path,
+        "has_scene_custom": bool(scene_text),
+        "has_all_scenes_custom": bool(all_text),
+    }
+
+
+def _effective_builder_instruction(payload, key, default_text):
+    project_folder = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_folder:
+        return str(default_text or "")
+    try:
+        state = _builder_instruction_state(os.path.abspath(project_folder), key, payload.get("scene_id", ""))
+        return str(state.get("text") or default_text or "")
+    except Exception:
+        return str(default_text or "")
+
+
+def _get_builder_instruction(payload):
+    project_folder = _project_folder_from_builder_payload(payload)
+    key = _safe_builder_instruction_key(payload.get("key"))
+    return {
+        "project_folder": project_folder,
+        **_builder_instruction_state(project_folder, key, payload.get("scene_id", "")),
+    }
+
+
+def _save_builder_instruction(payload):
+    project_folder = _project_folder_from_builder_payload(payload)
+    key = _safe_builder_instruction_key(payload.get("key"))
+    scope = str(payload.get("scope", "scene") or "scene").strip().lower()
+    text = str(payload.get("text", "") or "").strip()
+    if not text:
+        raise ValueError("Instruction text is empty.")
+    if scope in {"all", "all_scenes", "global"}:
+        path = _builder_instruction_all_scenes_path(project_folder, key)
+    else:
+        path = _builder_instruction_scene_path(project_folder, key, payload.get("scene_id", ""))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.write("\n")
+    return _get_builder_instruction({"project_folder": project_folder, "key": key, "scene_id": payload.get("scene_id", "")})
+
+
+def _reset_builder_instruction(payload):
+    project_folder = _project_folder_from_builder_payload(payload)
+    key = _safe_builder_instruction_key(payload.get("key"))
+    scope = str(payload.get("scope", "scene") or "scene").strip().lower()
+    if scope in {"all", "all_scenes", "global"}:
+        path = _builder_instruction_all_scenes_path(project_folder, key)
+    else:
+        path = _builder_instruction_scene_path(project_folder, key, payload.get("scene_id", ""))
+    if os.path.isfile(path):
+        os.remove(path)
+    return _get_builder_instruction({"project_folder": project_folder, "key": key, "scene_id": payload.get("scene_id", "")})
+
+
+def _list_builder_instruction_presets(payload):
+    key = _safe_builder_instruction_key(payload.get("key"))
+    folder = os.path.join(_builder_instruction_preset_root(), key)
+    presets = []
+    if os.path.isdir(folder):
+        for filename in os.listdir(folder):
+            if not filename.lower().endswith(".txt"):
+                continue
+            path = os.path.join(folder, filename)
+            if os.path.isfile(path):
+                presets.append({
+                    "name": os.path.splitext(filename)[0],
+                    "path": os.path.abspath(path),
+                    "updated": os.path.getmtime(path),
+                })
+    presets.sort(key=lambda item: item.get("updated", 0), reverse=True)
+    return {
+        "key": key,
+        "label": _BUILDER_INSTRUCTION_LABELS.get(key, key),
+        "presets": presets,
+        "preset_folder": folder,
+    }
+
+
+def _save_builder_instruction_preset(payload):
+    key = _safe_builder_instruction_key(payload.get("key"))
+    name = _safe_preset_name(payload.get("name"))
+    text = str(payload.get("text", "") or "").strip()
+    if not text:
+        raise ValueError("Preset instruction text is empty.")
+    path = _builder_instruction_preset_path(key, name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.write("\n")
+    return {"key": key, "name": name, "path": path}
+
+
+def _load_builder_instruction_preset(payload):
+    key = _safe_builder_instruction_key(payload.get("key"))
+    name = _safe_preset_name(payload.get("name"))
+    path = _builder_instruction_preset_path(key, name)
+    text = _read_optional_text_file(path)
+    if not text:
+        raise FileNotFoundError(f"Instruction preset was not found or is empty: {path}")
+    return {"key": key, "name": name, "path": path, "text": text}
 
 
 def _wizard_folder(project_folder):
@@ -3604,6 +3922,7 @@ def _generate_builder_t2i_prompt(payload):
     ref_image_data = str(payload.get("ref_image_data", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
     prompt_mode = str(payload.get("prompt_mode", "") or "").strip().lower()
+    builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "").strip()
     reference_context = payload.get("reference_context") or {}
     if not isinstance(reference_context, dict):
         reference_context = {}
@@ -3661,17 +3980,13 @@ def _generate_builder_t2i_prompt(payload):
                 + "\n".join(f"- {rule}" for rule in reference_rules)
                 + "\n- Use the user's notes/concept for action, pose, mood, lighting, story beat, and details after respecting the reference priorities.\n"
             )
+        base_instructions = _FLUX_KLEIN_T2I_INSTRUCTIONS
+        if builder_instruction_key:
+            base_instructions = _effective_builder_instruction(payload, builder_instruction_key, _FLUX_KLEIN_T2I_INSTRUCTIONS)
         prompt = (
-            "Create one polished text-to-image prompt for an image generation model.\n\n"
-            "Use the text notes and available reference descriptions to create one coherent new scene. Use the user's notes for pose, camera framing, mood, or other requested details, and give user notes priority.\n"
+            f"{base_instructions}\n"
             f"{reference_text}\n"
-            "Rules:\n"
-            "- Output one normal text-to-image prompt, not an edit prompt.\n"
-            "- Describe only concrete visual details supported by the notes/reference descriptions.\n"
-            "- Do not mention reference image, composite, source images, ingredient images, or image grid.\n"
-            "- Do not include labels, notes, quotes, markdown, or explanations.\n"
-            "- Keep it cinematic, detailed, and visually specific.\n"
-            "- For detailed image models such as Krea 2, write a rich prompt with enough concrete visual detail to control styling, pose, wardrobe, lighting, camera framing, environment, materials, and atmosphere. Aim for 120-220 words when the scene has enough context.\n\n"
+            "\n"
             f"User notes:\n{user_notes or 'Create a cinematic image using the available scene notes.'}"
         )
     elif prompt_mode == "nano_banana":
@@ -3694,25 +4009,24 @@ def _generate_builder_t2i_prompt(payload):
         ]
         if not has_subject_reference and not has_location_reference:
             start_rules = ["- Start directly with the shot and subject; do not claim a provided reference exists."]
+        base_instructions = _NANO_B_T2I_INSTRUCTIONS
+        if builder_instruction_key:
+            base_instructions = _effective_builder_instruction(payload, builder_instruction_key, _NANO_B_T2I_INSTRUCTIONS)
         prompt = (
-            "Create one concise NanoBanana image prompt from the user input and available reference descriptions.\n"
-            "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
-            "Prompt style:\n"
+            f"{base_instructions}\n\n"
+            "Reference wording rules:\n"
             + "\n".join(start_rules)
             + "\n"
-            "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
-            "- Use the user's scene/concept notes as the main creative direction.\n"
             "- Preserve the character identity from the character reference description: face, hair, outfit, makeup, and overall identity.\n"
             "- Preserve the location identity from the location reference description: environment, architecture, layout, atmosphere, and major visible setting details.\n"
-            "- Create a new camera angle, new pose, and new composition.\n"
-            "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
-            "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
-            "- Keep the prompt visually specific and practical for image generation.\n"
-            "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n\n"
+            "\n"
             f"{chr(10).join(context_parts) if context_parts else 'User input: Create a cinematic image using the available scene notes.'}"
         )
     else:
-        prompt = f"{_TEXT_ONLY_T2I_INSTRUCTIONS}\n\nUser notes:\n{user_notes}"
+        base_instructions = _TEXT_ONLY_T2I_INSTRUCTIONS
+        if builder_instruction_key:
+            base_instructions = _effective_builder_instruction(payload, builder_instruction_key, _TEXT_ONLY_T2I_INSTRUCTIONS)
+        prompt = f"{base_instructions}\n\nUser notes:\n{user_notes}"
 
     n_ctx = int(payload.get("n_ctx") or 8000)
     n_gpu_layers = int(payload.get("n_gpu_layers") or 99)
@@ -3769,7 +4083,7 @@ def _generate_builder_t2i_prompt(payload):
             )
         text = _clean_visual_gemma_text(text)
         text = extract_prompt_text_from_gemma_output(text, payload.get("scene_number"))
-        label = "Flux/Klein" if prompt_mode == "flux_klein" else "NanoBanana" if prompt_mode == "nano_banana" else "T2I"
+        label = "Flux/Klein" if prompt_mode == "flux_klein" else "NanoBanana" if prompt_mode == "nano_banana" else "Flow/GPT" if prompt_mode == "flow_gpt" else "T2I"
         text = _repair_and_validate_builder_gemma_prompt(payload, text, label)
         return {
             "prompt": text,
@@ -3878,9 +4192,10 @@ def _generate_builder_i2v_prompt(payload):
     llm = VRGDG_SuperGemmaGGUFChat() if text_runner not in {"lm_studio", "llm_api"} else None
     model_path = llm._resolve_dropdown_path(model_file, llm.MISSING_MODEL_OPTION) if llm else ""
     mmproj_path = _resolve_mmproj_dropdown_path(llm, mmproj_file) if has_image_reference and llm else ""
+    i2v_instructions = _effective_builder_instruction(payload, "i2v", _I2V_INSTRUCTIONS)
     if has_image_reference:
         prompt = (
-            f"{_I2V_INSTRUCTIONS}\n\n"
+            f"{i2v_instructions}\n\n"
             "Use the provided image as the primary visual reference. Preserve the visible subject, setting, clothing, mood, and scene identity from the image. "
             "Use the text-to-image prompt only as extra scene context. "
             "Use only the provided image, the text-to-image prompt, and the user motion/camera notes. Do not use concept prompts, global story text, theme files, or subject files. "
@@ -3888,7 +4203,7 @@ def _generate_builder_i2v_prompt(payload):
             f"Text-to-image prompt:\n{t2i_prompt or 'Use the image as the main visual reference.'}\n\n"
         )
     else:
-        prompt = f"{_I2V_INSTRUCTIONS}\n\nText-to-image prompt:\n{t2i_prompt}\n\n"
+        prompt = f"{i2v_instructions}\n\nText-to-image prompt:\n{t2i_prompt}\n\n"
     prompt += f"User motion/camera notes:\n{user_notes or 'Create fast cinematic performance motion that fits the scene.'}"
 
     n_ctx = int(payload.get("n_ctx") or 8000)
@@ -4220,8 +4535,9 @@ def _generate_builder_chained_i2v_prompt(payload):
             "- End the prompt with the transition trigger phrase exactly once.\n"
             f"- Trigger phrase: {transition_lora_trigger}\n"
         )
+    i2v_instructions = _effective_builder_instruction(payload, "i2v", _I2V_INSTRUCTIONS)
     instruction = (
-        f"{_I2V_INSTRUCTIONS}\n\n"
+        f"{i2v_instructions}\n\n"
         "Write one normal image-to-video prompt for LTX. The video model will receive a visual source separately, "
         "but your output must read like an ordinary video prompt only.\n\n"
         "Rules for the output:\n"
@@ -4411,8 +4727,10 @@ def _generate_builder_t2v_prompt(payload):
         "Do not describe it as a reference image in the final prompt.\n\n"
         if has_image_reference else ""
     )
+    instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
+    t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
     prompt = (
-        f"{_T2V_INSTRUCTIONS}\n\n"
+        f"{t2v_instructions}\n\n"
         f"{image_guidance}"
         f"Scene concept:\n{scene_prompt}\n\n"
         f"User motion/camera notes:\n{user_notes or 'Create cinematic camera movement and natural subject/environment motion that fits the scene.'}"
@@ -5440,6 +5758,7 @@ def _generate_flux_klein_prompt(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "flux_klein_t2i").strip()
     text_runner = _llm_runner_from_payload(payload)
     if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
@@ -5487,32 +5806,12 @@ def _generate_flux_klein_prompt(payload):
             + "\n".join(f"- {rule}" for rule in reference_rules)
             + "\n- Use the user's notes/concept for action, pose, mood, lighting, story beat, and details after respecting the reference priorities.\n"
         )
+    base_instructions = _effective_builder_instruction(payload, builder_instruction_key, _FLUX_KLEIN_T2I_INSTRUCTIONS)
     instruction = (
-        "Create one concise Flux/Klein image prompt from the user input and available reference context.\n"
-        "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
+        f"{base_instructions}\n\n"
         "The image input contains the available reference images/visual ingredients. These may include a character, background, props, style references, or other visual ingredients.\n"
         f"{reference_text}"
-        "Prompt style:\n"
-        "- Start with: Using the provided character reference and location reference, create...\n"
-        "- If only a character reference is available, start with: Using the provided character reference, create...\n"
-        "- If only a location reference is available, start with: Using the provided location reference, create...\n"
-        "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
-        "- Use the user's scene/concept notes as the main creative direction.\n"
-        "- Preserve the character identity from the character reference: face, hair, outfit, makeup, and overall identity.\n"
-        "- Preserve the location identity from the location reference: environment, architecture, layout, atmosphere, and major visible setting details.\n"
-        "- Create a new camera angle, new pose, and new composition.\n"
-        "- Do not paste the character into the location image.\n"
-        "- Do not copy the character reference pose, full-body standing pose, studio background, panel layout, crop, camera angle, or lens distance.\n"
-        "- Do not copy the exact location reference camera angle, framing, perspective, or composition.\n"
-        "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
-        "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
-        "- Keep it cinematic, detailed, and visually specific.\n"
-        "- Keep the prompt visually specific and practical for image generation.\n"
-        "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n"
-        "- Keep the prompt under 120 words.\n\n"
-        "Good output examples:\n"
-        "Using the provided character reference and location reference, create a close-up profile shot of the woman in the misty forest. Focus on her expression and the intricate details of her crown while the pale trees and fog appear softly blurred in the background. Use a cool moody palette, atmospheric haze, shallow depth of field, dramatic rim lighting, and high cinematic detail.\n"
-        "Using the provided character reference and location reference, create an intimate upper body shot of the woman framed by gnarled forest branches. Preserve her identity, hair, outfit, and crown from the character reference while using the forest reference for the white fibrous trees, mist, and eerie atmosphere. New pose, new camera angle, soft bokeh, high cinematic quality.\n\n"
+        "\n"
         f"User input:\n{user_notes or 'Create a new image using the available reference images.'}"
     )
 
@@ -5588,6 +5887,7 @@ def _analyze_builder_story_references(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or "nano_b_t2i").strip()
     text_runner = _llm_runner_from_payload(payload)
     if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
@@ -5693,9 +5993,15 @@ def _generate_nb_image_prompt(payload):
     model_file = str(payload.get("model_file", "") or "").strip()
     mmproj_file = str(payload.get("mmproj_file", "") or "").strip()
     user_notes = str(payload.get("user_notes", "") or "").strip()
+    prompt_mode = str(payload.get("prompt_mode", "nano_banana") or "nano_banana").strip().lower()
+    is_flow_gpt = prompt_mode == "flow_gpt"
+    default_instruction_key = "flow_gpt_t2i" if is_flow_gpt else "nano_b_t2i"
+    default_instruction_text = _FLOW_GPT_T2I_INSTRUCTIONS if is_flow_gpt else _NANO_B_T2I_INSTRUCTIONS
+    prompt_label = "Flow/GPT" if is_flow_gpt else "NanoBanana"
+    builder_instruction_key = str(payload.get("builder_instruction_key") or payload.get("instruction_key") or default_instruction_key).strip()
     text_runner = _llm_runner_from_payload(payload)
     if text_runner not in {"lm_studio", "llm_api"} and not model_file:
-        raise ValueError("Choose a NanoBanana Gemma vision model first.")
+        raise ValueError(f"Choose a {prompt_label} Gemma vision model first.")
 
     ingredients = payload.get("image_ingredients") or []
     if isinstance(ingredients, str):
@@ -5704,14 +6010,14 @@ def _generate_nb_image_prompt(payload):
         except Exception:
             ingredients = [{"path": line.strip()} for line in ingredients.splitlines() if line.strip()]
     if not isinstance(ingredients, list):
-        raise ValueError("NanoBanana reference images must be a list.")
+        raise ValueError(f"{prompt_label} reference images must be a list.")
     images = []
     for index, item in enumerate(ingredients, start=1):
         if isinstance(item, str):
             item = {"path": item}
         if not isinstance(item, dict):
             continue
-        images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"NanoBanana reference image {index}"))
+        images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"{prompt_label} reference image {index}"))
     reference_context = payload.get("reference_context") or {}
     if not isinstance(reference_context, dict):
         reference_context = {}
@@ -5878,19 +6184,12 @@ def _generate_nb_image_prompt(payload):
             "Create a cinematic medium close-up in a vast cosmic void filled with drifting pearlescent particles and soft ethereal light. "
             "Use a new composition, shallow depth of field, gentle atmospheric haze, luminous highlights, and a quiet dreamlike mood."
         )
+    base_instructions = _effective_builder_instruction(payload, builder_instruction_key, default_instruction_text)
     instruction = (
-        "Create one concise NanoBanana image prompt from the user input and available reference context.\n"
-        "Output one normal paragraph, not sections, not markdown, not labels, not explanations.\n\n"
-        "Prompt style:\n"
+        f"{base_instructions}\n\n"
+        "Reference wording rules:\n"
         f"{reference_prompt_rules}"
-        "- Use advanced Krea 2-style image prompting: concrete subject identity, wardrobe, hair, makeup, pose, camera framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.\n"
-        "- Use a clear cinematic shot type such as close-up, profile close-up, medium close-up, upper body shot, waist-up shot, three-quarter shot, seated shot, over-the-shoulder shot, or low-angle portrait.\n"
-        "- Use the user's scene/concept notes as the main creative direction.\n"
-        "- Create a new camera angle, new pose, and new composition.\n"
-        "- Avoid full-body walking or standing shots unless the user specifically asks for them.\n"
-        "- Prefer intimate cinematic compositions when no shot type is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, soft bokeh, rim light, atmospheric lighting.\n"
-        "- Keep the prompt visually specific and practical for image generation.\n"
-        "- Do not include captions, text overlays, dialogue, markdown, labels, bullet points, or section headers.\n\n"
+        "\n"
         f"Good output example:\n{example_text}\n\n"
         f"{chr(10).join(context_parts) if context_parts else 'User input: Create a new image from the notes.'}"
     )
@@ -5912,15 +6211,15 @@ def _generate_nb_image_prompt(payload):
             temperature=temperature,
             top_p=top_p,
             max_new_tokens=max_new_tokens,
-            label="NanoBanana text Gemma",
+            label=f"{prompt_label} text Gemma",
             preserve_paragraphs=False,
         )
         text = _clean_lm_studio_plain_text(text)
         if not text:
-            raise ValueError("NanoBanana Gemma returned an empty prompt.")
+            raise ValueError(f"{prompt_label} Gemma returned an empty prompt.")
         text = _cleanup_nb_reference_claims(text)
         text = _ensure_nb_reference_opening(text)
-        text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, prompt_label)
         return {"prompt": text, **info}
 
     combined_image = _combine_flux_ingredient_images(images)
@@ -5993,8 +6292,8 @@ def _generate_nb_image_prompt(payload):
     text = _cleanup_nb_reference_claims(text)
     text = _ensure_nb_reference_opening(text)
     if not text:
-        raise ValueError("NanoBanana Gemma returned an empty prompt.")
-    text = _repair_and_validate_builder_gemma_prompt(payload, text, "NanoBanana")
+        raise ValueError(f"{prompt_label} Gemma returned an empty prompt.")
+    text = _repair_and_validate_builder_gemma_prompt(payload, text, prompt_label)
     return {"prompt": text, **info}
 
 
@@ -7598,19 +7897,18 @@ def _scan_builder_scene_videos(project_folder):
         raise ValueError("Project folder is empty.")
     video_folder = os.path.join(folder, "rendered_scene_videos")
     backup_root = os.path.join(folder, "rendered_scene_videos_backup")
+    scratch_prefixes = (
+        "image_to_video_clips",
+        "text_to_video_clips",
+        "reference_to_video_clips",
+        "ingredients_to_video_clips",
+    )
     videos = {}
     video_thumbnails = {}
     video_backups = {}
     video_backup_thumbnails = {}
-    if not os.path.isdir(video_folder):
-        return {
-            "project_folder": folder,
-            "video_folder": video_folder,
-            "videos": videos,
-            "video_thumbnails": video_thumbnails,
-            "video_backups": video_backups,
-            "video_backup_thumbnails": video_backup_thumbnails,
-        }
+    recovered_from_scratch = {}
+    os.makedirs(video_folder, exist_ok=True)
     pattern = re.compile(r"^video_(\d+)-audio\.mp4$", re.IGNORECASE)
     for name in os.listdir(video_folder):
         match = pattern.match(name)
@@ -7621,6 +7919,61 @@ def _scan_builder_scene_videos(project_folder):
             key = str(int(match.group(1)))
             videos[key] = path
             thumb = _ensure_builder_scene_video_thumbnail(path)
+            if thumb:
+                video_thumbnails[key] = thumb
+    scratch_candidates = {}
+    scratch_pattern = re.compile(r"^video_(\d+)(?:[-_].*)?\.mp4$", re.IGNORECASE)
+    for name in os.listdir(folder):
+        scratch_folder = os.path.abspath(os.path.join(folder, name))
+        if not os.path.isdir(scratch_folder):
+            continue
+        if not any(name == prefix or name.startswith(f"{prefix}_") for prefix in scratch_prefixes):
+            continue
+        for root, _, names in os.walk(scratch_folder):
+            try:
+                if os.path.commonpath([folder, os.path.abspath(root)]) != folder:
+                    continue
+            except ValueError:
+                continue
+            for file_name in names:
+                if not file_name.lower().endswith(".mp4"):
+                    continue
+                match = scratch_pattern.match(file_name)
+                if not match:
+                    continue
+                path = os.path.abspath(os.path.join(root, file_name))
+                if not os.path.isfile(path):
+                    continue
+                try:
+                    size = os.path.getsize(path)
+                    modified = os.path.getmtime(path)
+                except OSError:
+                    continue
+                if size <= 0:
+                    continue
+                key = str(int(match.group(1)))
+                score = 100 if file_name.lower().endswith("-audio.mp4") else 0
+                score += 10 if "-audio" in file_name.lower() else 0
+                current = scratch_candidates.get(key)
+                if not current or (score, modified) > (current[0], current[1]):
+                    scratch_candidates[key] = (score, modified, path)
+    for key, (_score, _modified, source_path) in scratch_candidates.items():
+        if key in videos:
+            continue
+        try:
+            scene_number = int(key)
+        except ValueError:
+            continue
+        target_path = os.path.join(video_folder, f"video_{scene_number:04d}-audio.mp4")
+        try:
+            copied = _copy_file_if_exists(source_path, target_path)
+        except Exception as exc:
+            print(f"[VRGDG Music Builder] Could not recover scene video '{source_path}': {exc}")
+            copied = ""
+        if copied:
+            videos[key] = copied
+            recovered_from_scratch[key] = source_path
+            thumb = _ensure_builder_scene_video_thumbnail(copied)
             if thumb:
                 video_thumbnails[key] = thumb
     if os.path.isdir(backup_root):
@@ -7653,6 +8006,7 @@ def _scan_builder_scene_videos(project_folder):
         "video_thumbnails": video_thumbnails,
         "video_backups": video_backups,
         "video_backup_thumbnails": video_backup_thumbnails,
+        "recovered_from_scratch": recovered_from_scratch,
     }
 
 
@@ -8017,6 +8371,60 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _list_lm_studio_models(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/get_instruction")
+    async def vrgdg_music_builder_get_instruction(request):
+        try:
+            payload = await request.json()
+            result = _get_builder_instruction(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_instruction")
+    async def vrgdg_music_builder_save_instruction(request):
+        try:
+            payload = await request.json()
+            result = _save_builder_instruction(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/reset_instruction")
+    async def vrgdg_music_builder_reset_instruction(request):
+        try:
+            payload = await request.json()
+            result = _reset_builder_instruction(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/list_instruction_presets")
+    async def vrgdg_music_builder_list_instruction_presets(request):
+        try:
+            payload = await request.json()
+            result = _list_builder_instruction_presets(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_instruction_preset")
+    async def vrgdg_music_builder_save_instruction_preset(request):
+        try:
+            payload = await request.json()
+            result = _save_builder_instruction_preset(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/load_instruction_preset")
+    async def vrgdg_music_builder_load_instruction_preset(request):
+        try:
+            payload = await request.json()
+            result = _load_builder_instruction_preset(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

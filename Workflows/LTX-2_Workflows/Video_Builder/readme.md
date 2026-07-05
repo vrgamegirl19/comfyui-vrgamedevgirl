@@ -2,6 +2,8 @@
 
 This guide is for someone opening the Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
+If this guide or the V9 Video Builder helps you, you can support VR Game Dev Girl here: [buymeacoffee.com/vrgamedevgirl](https://buymeacoffee.com/vrgamedevgirl).
+
 ![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20V9%20Video%20Builder%20window.png)
 
 ## Table of Contents

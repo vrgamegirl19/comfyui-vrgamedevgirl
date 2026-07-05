@@ -1343,7 +1343,34 @@ function extractVideosFromHistory(historyPayload, promptId) {
   return videos;
 }
 
-async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null) {
+function sceneVideoTimeoutMessage({
+  promptId = "",
+  sceneLabel = "Scene",
+  modeLabel = "video",
+  outputFolder = "",
+  projectFolder = "",
+  finalFolder = "",
+} = {}) {
+  const lines = [
+    `${sceneLabel}: ${modeLabel} did not finish before the 40-minute wait limit.`,
+    "",
+    "What this means:",
+    "- ComfyUI may still be rendering, or the workflow may have stopped without returning a video to the builder.",
+    "",
+    "What to check next:",
+    "- Look at the ComfyUI console for a red error near this prompt ID, especially out-of-memory, missing model, missing file, or ffmpeg errors.",
+    "- Check whether the ComfyUI queue is still running. If it is, wait for it to finish, then use Recover Scene Videos.",
+    "- Check the temporary output folder for a finished .mp4. If it exists, the render finished but the builder could not collect it.",
+    "- Try a shorter scene, lower resolution, fewer frames, or a lighter video model if the console shows VRAM/RAM pressure.",
+  ];
+  if (promptId) lines.push("", `Prompt ID: ${promptId}`);
+  if (outputFolder) lines.push(`Temporary output folder: ${outputFolder}`);
+  if (finalFolder) lines.push(`Builder scene-video folder: ${finalFolder}`);
+  if (projectFolder) lines.push(`Project folder: ${projectFolder}`);
+  return lines.join("\n");
+}
+
+async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallback = null, options = {}) {
   const started = Date.now();
   let lastFallbackCheck = 0;
   while (Date.now() - started < 40 * 60 * 1000) {
@@ -1370,7 +1397,10 @@ async function waitForVideos(promptId, onStatus, shouldCancel, findOutputFallbac
     onStatus?.("Waiting for scene video...");
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error("Timed out waiting for the scene video.");
+  if (typeof options.timeoutMessage === "function") {
+    throw new Error(options.timeoutMessage({ promptId }));
+  }
+  throw new Error(options.timeoutMessage || "Timed out waiting for the scene video.");
 }
 
 async function waitForImages(promptId, onStatus, shouldCancel) {
@@ -2290,6 +2320,7 @@ function openBuilder(node) {
   fluxGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   fluxGrid.append(makeField("Width", fluxWidth), makeField("Height", fluxHeight), makeField("Seed", fluxSeed));
   const createFluxPromptButton = makeButton("Gemma Flux Prompt", "primary");
+  const editFluxKleinT2IInstructionsButton = makeButton("Edit Flux/Klein T2I Instructions");
   const editFluxPromptButton = makeEditImagePromptButton();
   const previewFluxButton = makeButton("Create with Flux/Klein", "primary");
   const sendFluxPromptToEnhanceButton = makeMiniButton("Send to Enhance");
@@ -2320,6 +2351,7 @@ function openBuilder(node) {
   const nbIngredientClearButton = makeButton("Clear References");
   nbIngredientActions.append(nbIngredientButton, nbIngredientClearButton);
   const createNBPromptButton = makeButton("Gemma NB Prompt", "primary");
+  const editNanoBT2IInstructionsButton = makeButton("Edit Nano B T2I Instructions");
   const editNBPromptButton = makeEditImagePromptButton();
   const previewNBButton = makeButton("Create with NanoBanana", "primary");
   const flowGptModePanel = document.createElement("div");
@@ -2367,6 +2399,7 @@ function openBuilder(node) {
   });
   const flowGptAspectRatioField = makeField("GPT aspect ratio", flowGptAspectRatio);
   const flowGptCreatePromptButton = makeButton("Gemma Flow/GPT Prompt", "primary");
+  const editFlowGptT2IInstructionsButton = makeButton("Edit Flow/GPT T2I Instructions");
   const flowGptCreateImageButton = makeButton("Create with Flow/GPT", "primary");
   const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
@@ -2548,6 +2581,7 @@ function openBuilder(node) {
   const refImageLoadButton = makeButton("Load Reference Image", "primary");
   refImagePanel.append(refImageNote, refImageDrop, refImageLoadButton, refImageInput);
   const createT2IButton = makeButton("Gemma T2I", "primary");
+  const editZImageT2IInstructionsButton = makeButton("Edit ZImage T2I Instructions");
   const editT2IPromptButton = makeEditImagePromptButton();
   const createI2VButton = makeButton("Gemma I2V", "primary");
   const sendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
@@ -2599,14 +2633,24 @@ function openBuilder(node) {
   const t2vRefImageLoadButton = makeButton("Load Reference Image", "primary");
   t2vRefImagePanel.append(t2vRefImageNote, t2vRefImageDrop, t2vRefImageLoadButton);
   const ernieCreateT2IButton = makeButton("Gemma T2I", "primary");
+  const editErnieT2IInstructionsButton = makeButton("Edit Ernie T2I Instructions");
   const editErnieT2IPromptButton = makeEditImagePromptButton();
   const ernieSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const krea2TwoPassCreateT2IButton = makeButton("Gemma T2I", "primary");
   const editKrea2TwoPassT2IPromptButton = makeEditImagePromptButton();
   const krea2TwoPassSendT2IPromptToEnhanceButton = makeMiniButton("Send to Enhance");
+  const editKrea2T2IInstructionsButton = makeButton("Edit Krea 2 T2I Instructions");
   const editI2VPromptButton = makeButton("Edit Prompt");
   editI2VPromptButton.title = "Ask Gemma to make a focused text-only edit to the current video prompt.";
   editI2VPromptButton.style.display = "none";
+  const editI2VInstructionsButton = makeButton("Edit I2V Instructions");
+  editI2VInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Image-to-Video prompts.";
+  const editRTVInstructionsButton = makeButton("Edit Reference Video Instructions");
+  editRTVInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Reference-to-Video prompts.";
+  const editIngredientsInstructionsButton = makeButton("Edit Ingredients Video Instructions");
+  editIngredientsInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Ingredients-to-Video prompts.";
+  const editT2VInstructionsButton = makeButton("Edit T2V Instructions");
+  editT2VInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Text-to-Video prompts.";
   const i2vPrompt = document.createElement("textarea");
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
@@ -2918,6 +2962,7 @@ function openBuilder(node) {
     editT2IPromptButton,
     makeField("T2I prompt", t2iPrompt),
     sendT2IPromptToEnhanceButton,
+    makeSettingsSection("Advanced", [editZImageT2IInstructionsButton], false),
     makeZCreateButton(),
   ]);
   const zImageSubTabs = makeSubTabs([
@@ -2974,6 +3019,7 @@ function openBuilder(node) {
         editErnieT2IPromptButton,
         makeField("T2I prompt", ernieT2IPrompt),
         ernieSendT2IPromptToEnhanceButton,
+        makeSettingsSection("Advanced", [editErnieT2IInstructionsButton], false),
         makeErnieCreateButton(),
       ]),
     },
@@ -3022,6 +3068,7 @@ function openBuilder(node) {
         editKrea2TwoPassT2IPromptButton,
         makeField("T2I prompt", krea2TwoPassT2IPrompt),
         krea2TwoPassSendT2IPromptToEnhanceButton,
+        makeSettingsSection("Advanced", [editKrea2T2IInstructionsButton], false),
         makeKrea2TwoPassCreateButton(),
       ]),
     },
@@ -3068,6 +3115,7 @@ function openBuilder(node) {
         editFluxPromptButton,
         makeField("Flux/Klein prompt", fluxPrompt),
         sendFluxPromptToEnhanceButton,
+        makeSettingsSection("Advanced", [editFluxKleinT2IInstructionsButton], false),
         makeFluxCreateButton(),
       ]),
     },
@@ -3115,6 +3163,7 @@ function openBuilder(node) {
         editNBPromptButton,
         makeField("NanoBanana prompt", nbPrompt),
         sendNBPromptToEnhanceButton,
+        makeSettingsSection("Advanced", [editNanoBT2IInstructionsButton], false),
         previewNBButton,
       ]),
     },
@@ -3148,6 +3197,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         makeField("Browser prompt", flowGptPrompt),
         flowGptCreatePromptButton,
+        makeSettingsSection("Advanced", [editFlowGptT2IInstructionsButton], false),
         flowGptCreateImageButton,
       ]),
     },
@@ -3291,6 +3341,12 @@ function openBuilder(node) {
         createI2VButton,
         editI2VPromptButton,
         makeField("Video prompt", i2vPrompt),
+        makeSettingsSection("Advanced", [
+          editI2VInstructionsButton,
+          editRTVInstructionsButton,
+          editIngredientsInstructionsButton,
+          editT2VInstructionsButton,
+        ], false),
         makeCreateSceneVideoButton(),
       ]),
     },
@@ -8841,7 +8897,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvSceneImageAnchor.input, i2vUseGgufModel.input, refImageInput, createT2IButton, ernieCreateT2IButton, krea2TwoPassCreateT2IButton, createNBPromptButton, flowGptCreatePromptButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvSceneImageAnchor.input, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -10269,6 +10325,14 @@ function openBuilder(node) {
     return "i2v";
   }
 
+  function syncVideoInstructionEditorButtons() {
+    const mode = currentVideoMode();
+    editI2VInstructionsButton.style.display = mode === "i2v" ? "" : "none";
+    editRTVInstructionsButton.style.display = mode === "rtv" ? "" : "none";
+    editIngredientsInstructionsButton.style.display = mode === "ingredients" ? "" : "none";
+    editT2VInstructionsButton.style.display = mode === "t2v" ? "" : "none";
+  }
+
   function rtvSceneImageAnchorGlobalEnabled() {
     return state.segments.some((item) => Boolean(item?.use_scene_image_as_rtv_ref));
   }
@@ -10317,6 +10381,7 @@ function openBuilder(node) {
     ltxMsrRequiredPanel.style.display = isRTV ? "flex" : "none";
     ltxIngredientsRequiredPanel.style.display = isIngredients ? "flex" : "none";
     createI2VButton.textContent = isIngredients ? "Gemma Ingredients Video" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
+    syncVideoInstructionEditorButtons();
     i2vNotesInput.placeholder = isT2V
       ? "Extra text-to-video motion notes, camera movement, character movement..."
       : isIngredients
@@ -22594,6 +22659,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoThumbnails = scan.video_thumbnails || {};
     const videoBackups = scan.video_backups || {};
     const videoBackupThumbnails = scan.video_backup_thumbnails || {};
+    const recoveredFromScratch = scan.recovered_from_scratch || {};
     let restored = 0;
     const applyFoundVideo = (segment, sceneKey) => {
       if (!segment) return;
@@ -22623,7 +22689,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await autoSaveSessionQuiet(options.autoSaveReason || "recovered scene videos from project folder");
       }
       if (options.toast) {
-        toast(`Recovered ${restored} scene video${restored === 1 ? "" : "s"} from the project folder.`);
+        const scratchCount = Object.keys(recoveredFromScratch).length;
+        const scratchLine = scratchCount ? `\nCopied ${scratchCount} completed render${scratchCount === 1 ? "" : "s"} out of temporary video output folders.` : "";
+        toast(`Recovered ${restored} scene video${restored === 1 ? "" : "s"} from the project folder.${scratchLine}`);
       }
     }
     return restored;
@@ -23066,6 +23134,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ref_image_path: "",
       scene_number: sceneSlotNumber(segment),
       prompt_mode: imageMode,
+      project_folder: activeProjectFolderForSave(),
+      scene_id: segment.id || "",
+      builder_instruction_key: ["flux_klein", "nano_banana", "flow_gpt"].includes(imageMode) ? builderImageInstructionKey(imageMode) : "",
       reference_context: referenceContext || {},
       repair_model_file: textModelSelect.value,
       user_notes: userNotes,
@@ -23078,9 +23149,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       top_p: options.topP,
     }, 120000);
     pushHistory();
-    syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    if (imageMode === "flow_gpt") {
+      syncSegmentFlowGptPrompt(segment, data.prompt || "");
+    } else {
+      syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
+    }
     render();
     return { ...data, used_text_only_fallback: true };
+  }
+
+  function builderImageInstructionKey(imageMode) {
+    if (imageMode === "zimage") return "zimage_t2i";
+    if (imageMode === "ernie_image") return "ernie_t2i";
+    if (imageMode === "krea2_2pass") return "krea2_t2i";
+    if (imageMode === "flux_klein") return "flux_klein_t2i";
+    if (imageMode === "nano_banana") return "nano_b_t2i";
+    if (imageMode === "flow_gpt") return "flow_gpt_t2i";
+    return "";
   }
 
   async function generateStoryboardT2IPromptForSegment(segment, progress = null, percent = 30, label = "Storyboard Gemma T2I", options = {}) {
@@ -23103,11 +23188,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
     };
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
     progress?.set(`${label}: sending storyboard scene card to ${promptRunnerActionName()}...\nConcept prompt is included as the scene story beat.`, percent);
     const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", {
       ...textGemmaRunnerPayload(),
       model_file: t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "",
       storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+      project_folder: activeProjectFolderForSave(),
+      scene_id: segment.id || "",
+      builder_instruction_key: builderImageInstructionKey(imageMode),
       unload_after: options.unloadAfter !== false,
       seed: options.seed,
       temperature: options.temperature ?? 0.35,
@@ -23115,7 +23204,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       max_new_tokens: options.maxNewTokens ?? 1200,
     }, 240000);
     pushHistory();
-    const imageMode = options.imageMode || state.imageModelMode || "zimage";
     syncSegmentT2IPrompt(segment, applyMappedTriggerPhrases(applyImageTriggerToPrompt(data.prompt, segment, imageMode, { validateJunk: true }), segment));
     render();
     return { ...data, used_storyboard_prompt_writer: true };
@@ -23490,6 +23578,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...textGemmaRunnerPayload(),
       model_file: fluxGemmaModelSelect.value,
       mmproj_file: fluxMmprojSelect.value,
+      project_folder: activeProjectFolderForSave(),
+      scene_id: segment.id || "",
+      builder_instruction_key: "flux_klein_t2i",
       image_ingredients: settings.image_ingredients || [],
       reference_context: settings.reference_context || {},
       repair_model_file: t2iTextGemmaModelSelect.value,
@@ -23702,12 +23793,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     syncInspector();
     render();
+    const imageMode = options.imageMode || state.imageModelMode || "nano_banana";
+    const isFlowGpt = imageMode === "flow_gpt";
     const settings = nbImageSettingsForSegment(segment);
     const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
     if (settings.use_text_only_gemma_prompt || !Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
-      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "nano_banana", userNotes });
+      return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode, userNotes });
     }
-    progress?.set(`${label}: creating structured NanoBanana prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, percent);
+    progress?.set(`${label}: creating structured ${isFlowGpt ? "Flow/GPT" : "NanoBanana"} prompt from reference images...\n${gemmaRunnerLine({ vision: true })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_nb_image_prompt", {
       ...textGemmaRunnerPayload(),
       model_file: nbGemmaModelSelect.value || fluxGemmaModelSelect.value,
@@ -23715,6 +23808,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lmstudio_base_url: state.lmStudioBaseUrl || "",
       lmstudio_model: state.lmStudioModel || "",
       lmstudio_api_key: state.lmStudioApiKey || "",
+      project_folder: activeProjectFolderForSave(),
+      scene_id: segment.id || "",
+      prompt_mode: imageMode,
+      builder_instruction_key: builderImageInstructionKey(imageMode),
       image_ingredients: settings.image_ingredients || [],
       reference_context: settings.reference_context || {},
       repair_model_file: t2iTextGemmaModelSelect.value,
@@ -23728,7 +23825,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       top_p: options.topP,
     }, 180000);
     pushHistory();
-    syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "nano_banana", { validateJunk: true }));
+    if (isFlowGpt) {
+      syncSegmentFlowGptPrompt(segment, data.prompt || "");
+    } else {
+      syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(data.prompt, segment, "nano_banana", { validateJunk: true }));
+    }
     render();
     return data;
   }
@@ -24054,6 +24155,216 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return { path: "", data: "" };
   }
 
+  function builderInstructionSourceLabel(source) {
+    if (source === "scene") return "Scene custom instructions";
+    if (source === "all_scenes") return "All-scenes custom instructions";
+    return "Built-in default";
+  }
+
+  async function chooseBuilderInstructionPreset(key) {
+    const data = await postJson("/vrgdg/music_builder/list_instruction_presets", { key });
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100008;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(620px,calc(100vw - 36px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:10px;box-sizing:border-box;";
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Load ${escapeHtml(data.label || key)} Preset</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Loading a preset only fills the editor. Save it after reviewing.</div>`;
+      const close = makeButton("Close");
+      header.append(title, close);
+      const list = document.createElement("div");
+      list.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      if (!data.presets?.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No presets saved for this instruction yet.";
+        empty.style.cssText = "border:1px solid #334155;border-radius:7px;background:#020617;color:#cbd5e1;padding:10px;font-size:12px;";
+        list.append(empty);
+      } else {
+        for (const preset of data.presets) {
+          const row = document.createElement("button");
+          row.type = "button";
+          row.textContent = preset.name;
+          row.title = preset.path || "";
+          row.style.cssText = "text-align:left;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-weight:800;cursor:pointer;";
+          row.onclick = () => finish(preset);
+          list.append(row);
+        }
+      }
+      close.onclick = () => finish(null);
+      backdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === backdrop) finish(null);
+      });
+      box.append(header, list);
+      backdrop.append(box);
+      document.body.append(backdrop);
+    });
+  }
+
+  async function openBuilderInstructionEditor(key = "i2v") {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Create or load a Builder project before editing Gemma instructions.", true);
+      return;
+    }
+    let data;
+    try {
+      data = await postJson("/vrgdg/music_builder/get_instruction", {
+        project_folder: projectFolder,
+        key,
+        scene_id: segment.id || "",
+      });
+    } catch (error) {
+      toast(`Could not load Builder instructions:\n${String(error?.message || error)}`, true);
+      return;
+    }
+
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(920px,calc(100vw - 36px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Edit ${escapeHtml(data.label || "I2V")} Gemma Instructions</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${escapeHtml(sceneDisplayName(segment, segmentIndexInfo(segment).index))}</div>`;
+    const close = makeButton("Close");
+    header.append(title, close);
+    const status = document.createElement("div");
+    status.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+    const setStatus = (nextData, message = "") => {
+      data = nextData || data;
+      const lines = [
+        `Currently using: ${builderInstructionSourceLabel(data.source)}`,
+        data.path ? `Path: ${data.path}` : "",
+        message,
+      ].filter(Boolean);
+      status.textContent = lines.join("\n");
+    };
+    const editor = document.createElement("textarea");
+    editor.value = data.text || data.default_text || "";
+    editor.spellcheck = false;
+    editor.style.cssText = "width:100%;box-sizing:border-box;min-height:420px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
+    let appliedInstructionText = String(editor.value || "").trim();
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
+    const instructionLabel = data.label || key;
+    const saveScene = makeButton("Save for This Scene", "primary");
+    const saveAll = makeButton("Save for All Scenes", "primary");
+    const resetScene = makeButton("Reset Scene");
+    const resetAll = makeButton("Reset All Scenes");
+    const savePreset = makeButton("Save Preset");
+    const loadPreset = makeButton("Load Preset");
+    actions.append(saveScene, saveAll, resetScene, resetAll, savePreset, loadPreset);
+    const hasUnsavedInstructionChanges = () => String(editor.value || "").trim() !== appliedInstructionText;
+    const closeEditor = () => {
+      if (hasUnsavedInstructionChanges() && !window.confirm("The custom instructions in this editor have not been saved, so they will not be used yet.\n\nUse Save for This Scene or Save for All Scenes if you want these instructions to apply.\n\nClose without saving?")) {
+        return;
+      }
+      backdrop.remove();
+    };
+    close.onclick = closeEditor;
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeEditor();
+    });
+    const saveScope = async (scope) => {
+      const text = String(editor.value || "").trim();
+      if (!text) {
+        toast("Instruction text is empty.", true);
+        return;
+      }
+      try {
+        const saved = await postJson("/vrgdg/music_builder/save_instruction", {
+          project_folder: projectFolder,
+          key,
+          scene_id: segment.id || "",
+          scope,
+          text,
+        });
+        appliedInstructionText = String(saved.text || text || "").trim();
+        setStatus(saved, scope === "all_scenes" ? "Saved for all scenes in this project." : "Saved for this scene.");
+        toast(scope === "all_scenes" ? `Saved ${instructionLabel} instructions for all scenes.` : `Saved ${instructionLabel} instructions for this scene.`);
+      } catch (error) {
+        toast(`Could not save instructions:\n${String(error?.message || error)}`, true);
+      }
+    };
+    saveScene.onclick = () => saveScope("scene");
+    saveAll.onclick = () => saveScope("all_scenes");
+    resetScene.onclick = async () => {
+      if (!window.confirm(`Reset this scene's ${instructionLabel} instructions?`)) return;
+      try {
+        const reset = await postJson("/vrgdg/music_builder/reset_instruction", {
+          project_folder: projectFolder,
+          key,
+          scene_id: segment.id || "",
+          scope: "scene",
+        });
+        editor.value = reset.text || reset.default_text || "";
+        appliedInstructionText = String(editor.value || "").trim();
+        setStatus(reset, "Scene override reset.");
+      } catch (error) {
+        toast(`Could not reset scene instructions:\n${String(error?.message || error)}`, true);
+      }
+    };
+    resetAll.onclick = async () => {
+      if (!window.confirm(`Reset all-scenes ${instructionLabel} instructions for this project?`)) return;
+      try {
+        const reset = await postJson("/vrgdg/music_builder/reset_instruction", {
+          project_folder: projectFolder,
+          key,
+          scene_id: segment.id || "",
+          scope: "all_scenes",
+        });
+        editor.value = reset.text || reset.default_text || "";
+        appliedInstructionText = String(editor.value || "").trim();
+        setStatus(reset, "All-scenes override reset.");
+      } catch (error) {
+        toast(`Could not reset all-scenes instructions:\n${String(error?.message || error)}`, true);
+      }
+    };
+    savePreset.onclick = async () => {
+      const name = window.prompt("Preset name:");
+      if (!name) return;
+      try {
+        const preset = await postJson("/vrgdg/music_builder/save_instruction_preset", {
+          key,
+          name,
+          text: editor.value,
+        });
+        setStatus(data, `Saved preset: ${preset.name}`);
+        toast(`Saved ${instructionLabel} instruction preset: ${preset.name}`);
+      } catch (error) {
+        toast(`Could not save preset:\n${String(error?.message || error)}`, true);
+      }
+    };
+    loadPreset.onclick = async () => {
+      try {
+        const preset = await chooseBuilderInstructionPreset(key);
+        if (!preset) return;
+        const loaded = await postJson("/vrgdg/music_builder/load_instruction_preset", {
+          key,
+          name: preset.name,
+        });
+        editor.value = loaded.text || "";
+        setStatus(data, `Loaded preset: ${loaded.name}. Review it, then save for this scene or all scenes.`);
+      } catch (error) {
+        toast(`Could not load preset:\n${String(error?.message || error)}`, true);
+      }
+    };
+    setStatus(data);
+    box.append(header, status, makeField("Instructions", editor), actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    editor.focus();
+  }
+
   async function enhanceVideoPromptForSegment(segment, draftPrompt, progress = null, percent = 80, label = "I2V prompt enhancement", options = {}) {
     const base = String(draftPrompt || "").trim();
     if ((!state.useI2VPromptEnhancementPass && !options.force) || !base) return base;
@@ -24128,6 +24439,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       useImageReference,
       payload: {
         ...textGemmaRunnerPayload(),
+        project_folder: activeProjectFolderForSave(),
+        scene_id: segment.id || "",
+        builder_instruction_key: isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isT2V || isRTV || isIngredients ? t2iText : useImageReference ? "" : t2iText,
@@ -24552,6 +24866,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         : `Running Gemma text-only ${modeLabel} prompt generation...\n${gemmaRunnerLine()}`, 50);
       const data = await postJson(isT2V || isRTV || isIngredients ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
         ...textGemmaRunnerPayload(),
+        project_folder: activeProjectFolderForSave(),
+        scene_id: segment.id || "",
+        builder_instruction_key: isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isT2V || isRTV || isIngredients ? conceptPrompt : useImageReference ? "" : conceptPrompt,
@@ -25691,6 +26008,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     progress?.set(`${label}: creating chained I2V prompt for ${sceneDisplayName(nextSegment, nextIndex)}...\n${gemmaRunnerLine({ vision: true })}`, Math.min(98, percent + 8));
     const data = await postJson("/vrgdg/music_builder/generate_chained_i2v", {
       ...textGemmaRunnerPayload(),
+      project_folder: activeProjectFolderForSave(),
+      scene_id: nextSegment.id || "",
       model_file: i2vGemmaModelSelect.value,
       mmproj_file: i2vMmprojSelect.value,
       image_reference_path: framePath,
@@ -26467,7 +26786,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       promptId,
       (message) => progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}${message}\nPrompt ID: ${promptId}`, workflowDetails), pct(80)),
       () => state.batchCancelled,
-      findSceneVideoOutput
+      findSceneVideoOutput,
+      {
+        timeoutMessage: () => sceneVideoTimeoutMessage({
+          promptId,
+          sceneLabel: sceneDisplayName(segment, sceneIndex),
+          modeLabel,
+          outputFolder: built.output_folder || defaultOutputFolder,
+          projectFolder: projectInput.value,
+          finalFolder: collectedSceneVideoFolder(),
+        }),
+      }
     );
     const video = videos[videos.length - 1] || null;
     const videoPath = resolveComfyVideoPath(video);
@@ -32617,19 +32946,29 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   addOverlaySegmentButton.onclick = addOverlaySegment;
   createT2IButton.onclick = createT2IPromptWithGemma;
   ernieCreateT2IButton.onclick = createT2IPromptWithGemma;
+  editErnieT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("ernie_t2i");
   krea2TwoPassCreateT2IButton.onclick = createT2IPromptWithGemma;
+  editKrea2T2IInstructionsButton.onclick = () => openBuilderInstructionEditor("krea2_t2i");
   editImagePromptButtons.forEach((button) => {
     button.onclick = editCurrentImagePromptWithGemma;
   });
   createI2VButton.onclick = createI2VPromptWithGemma;
+  editZImageT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("zimage_t2i");
+  editI2VInstructionsButton.onclick = () => openBuilderInstructionEditor("i2v");
+  editRTVInstructionsButton.onclick = () => openBuilderInstructionEditor("rtv");
+  editIngredientsInstructionsButton.onclick = () => openBuilderInstructionEditor("ingredients");
+  editT2VInstructionsButton.onclick = () => openBuilderInstructionEditor("t2v");
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
   krea2TwoPassSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", krea2TwoPassT2IPrompt.value);
   sendFluxPromptToEnhanceButton.onclick = () => sendPromptToEnhance("Flux/Klein", fluxPrompt.value);
   zEnhanceGemmaButton.onclick = generateEnhancePromptWithGemma;
   createFluxPromptButton.onclick = createFluxKleinPromptWithGemma;
+  editFluxKleinT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flux_klein_t2i");
   createNBPromptButton.onclick = createNBPromptWithGemma;
+  editNanoBT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("nano_b_t2i");
   flowGptCreatePromptButton.onclick = createFlowGptPromptWithGemma;
+  editFlowGptT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flow_gpt_t2i");
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
   for (const button of zCreateButtons) button.onclick = previewZImage;
@@ -33126,10 +33465,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncKrea2TwoPassLlmSelectsFromShared();
   }
 
-  function renderSearchableSuggestions(picker, onSelect = null) {
-    const query = String(picker.input.value || "").trim().toLowerCase();
-    const options = picker.options || [];
-    const matches = options
+  function renderSearchableSuggestions(picker, onSelect = null, renderOptions = {}) {
+    const useFilter = renderOptions.useFilter ?? picker.suggestionUseFilter ?? false;
+    picker.suggestionUseFilter = Boolean(useFilter);
+    const query = useFilter ? String(picker.input.value || "").trim().toLowerCase() : "";
+    const choices = picker.options || [];
+    const matches = choices
       .filter((name) => !query || String(name).toLowerCase().includes(query))
       .slice(0, 50);
     picker.matches = matches;
@@ -33166,17 +33507,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function wireSearchablePicker(picker, onChange = null) {
-    picker.input.addEventListener("focus", () => renderSearchableSuggestions(picker, onChange));
+    const isPrintableSearchKey = (event) => (
+      event.key?.length === 1
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey
+    );
+    const shouldClearStaleValueForSearch = () => {
+      const value = String(picker.input.value || "").trim();
+      if (!value || value === "[none]") return true;
+      return !(picker.options || []).includes(value);
+    };
+    picker.input.addEventListener("focus", () => renderSearchableSuggestions(picker, onChange, { useFilter: false }));
     picker.input.addEventListener("input", () => {
       picker.activeIndex = 0;
-      renderSearchableSuggestions(picker, onChange);
+      renderSearchableSuggestions(picker, onChange, { useFilter: true });
       onChange?.();
     });
     picker.input.addEventListener("keydown", (event) => {
+      if (isPrintableSearchKey(event) && !picker.suggestionUseFilter && shouldClearStaleValueForSearch()) {
+        picker.input.value = "";
+      }
       if (picker.list.style.display !== "block") {
         if (event.key === "ArrowDown") {
           event.preventDefault();
-          renderSearchableSuggestions(picker, onChange);
+          renderSearchableSuggestions(picker, onChange, { useFilter: false });
         }
         return;
       }
