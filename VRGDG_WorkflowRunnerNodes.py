@@ -27,6 +27,8 @@ _NONE_LORA = "[none]"
 _REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors"
 _REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors"
 _MIN_LTX_INGREDIENTS_FRAMES = 121
+_DEFAULT_I2V_PASS1_SIGMAS = "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+_DEFAULT_I2V_PASS2_SIGMAS = "0.909375, 0.725, 0.421875, 0.0"
 _I2V_UNET_ALIASES = {
     "LTX-2.3-22B-distilled-11-Q6_K.gguf": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
 }
@@ -1212,6 +1214,32 @@ def _set_optional_api_input(prompt, node_id, input_name, value):
     return True
 
 
+def _normalize_sigma_list_text(value, default):
+    text = str(value or "").strip()
+    if not text:
+        return default
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    if not parts:
+        return default
+    try:
+        for part in parts:
+            float(part)
+    except Exception:
+        return default
+    return ", ".join(parts)
+
+
+def _patch_i2v_node_overrides(prompt, payload):
+    _set_api_input(prompt, "218:186", "sampler_name", str(payload.get("pass1_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
+    _set_api_input(prompt, "218:209", "sigmas", _normalize_sigma_list_text(payload.get("pass1_sigmas"), _DEFAULT_I2V_PASS1_SIGMAS))
+    _set_api_input(prompt, "218:222", "strength", _float_payload(payload, "pass1_inplace_strength", 1.0, 0.0, 1.0))
+    _set_api_input(prompt, "218:222", "bypass", _bool_payload(payload, "pass1_inplace_bypass", False))
+    _set_api_input(prompt, "219:187", "sampler_name", str(payload.get("pass2_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
+    _set_api_input(prompt, "219:208", "sigmas", _normalize_sigma_list_text(payload.get("pass2_sigmas"), _DEFAULT_I2V_PASS2_SIGMAS))
+    _set_api_input(prompt, "219:221", "strength", _float_payload(payload, "pass2_inplace_strength", 1.0, 0.0, 1.0))
+    _set_api_input(prompt, "219:221", "bypass", _bool_payload(payload, "pass2_inplace_bypass", False))
+
+
 def _api_node_title(node):
     meta = node.get("_meta") if isinstance(node, dict) else {}
     return str(meta.get("title", "") if isinstance(meta, dict) else "").strip()
@@ -1303,6 +1331,7 @@ def _patch_i2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
     _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
     _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    _patch_i2v_node_overrides(prompt, payload)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -2195,6 +2224,68 @@ def _find_ffmpeg_path():
             raise RuntimeError(f"FFmpeg was not found: {exc}") from exc
 
 
+def _ffprobe_path_for(ffmpeg_path):
+    if not ffmpeg_path or ffmpeg_path == "ffmpeg":
+        return "ffprobe"
+    folder = os.path.dirname(os.path.abspath(ffmpeg_path))
+    exe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+    candidate = os.path.join(folder, exe_name)
+    return candidate if os.path.isfile(candidate) else "ffprobe"
+
+
+def _probe_video_size(video_path, ffmpeg_path=None):
+    ffprobe_path = _ffprobe_path_for(ffmpeg_path)
+    cmd = [
+        ffprobe_path,
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=s=x:p=0",
+        video_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
+    text = (result.stdout or "").strip().splitlines()[0]
+    width_text, height_text = text.lower().split("x", 1)
+    return int(width_text), int(height_text)
+
+
+def _normalize_video_canvas(ffmpeg_path, source_path, target_path, width, height):
+    width = int(width or 0)
+    height = int(height or 0)
+    if width <= 0 or height <= 0:
+        return False
+    try:
+        source_width, source_height = _probe_video_size(source_path, ffmpeg_path)
+        if source_width == width and source_height == height:
+            return False
+    except Exception as exc:
+        print(f"[VRGDG WorkflowRunner] Could not probe video size before final canvas normalization: {exc}")
+
+    vf = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1"
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-i",
+        source_path,
+        "-an",
+        "-vf",
+        vf,
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-preset",
+        "veryfast",
+        target_path,
+    ]
+    subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=True)
+    return True
+
+
 def _scene_video_thumbnail_path(video_path):
     root, _ext = os.path.splitext(os.path.abspath(str(video_path or "")))
     return f"{root}.jpg"
@@ -2540,6 +2631,8 @@ def _stitch_scene_videos(payload):
     audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
     preview_audio_start = max(0.0, float(payload.get("audio_start", 0) or 0))
     preview_audio_duration = max(0.0, float(payload.get("audio_duration", 0) or 0))
+    target_width = _int_payload(payload, "width", 0, 0, 8192)
+    target_height = _int_payload(payload, "height", 0, 0, 8192)
 
     scene_paths = []
     for index, raw_path in enumerate(raw_paths, start=1):
@@ -2584,11 +2677,13 @@ def _stitch_scene_videos(payload):
             handle.write(f"file '{_concat_file_path(path)}'\n")
 
     temp_video = os.path.join(target_dir, "_temp_video_no_audio.mp4")
+    normalized_video = os.path.join(target_dir, "_temp_video_normalized_canvas.mp4")
     temp_audio = os.path.join(target_dir, "_temp_scene_audio.m4a")
     temp_global_audio = os.path.join(target_dir, "_temp_global_audio.m4a")
     temp_audio_parts = []
     audio_concat_file = os.path.join(target_dir, "audio_concat_list.txt")
     final_output = _unique_final_video_path(project_folder, payload.get("output_prefix", "FINAL_VIDEO"))
+    normalized_canvas = False
 
     concat_cmd = [
         ffmpeg_path,
@@ -2691,6 +2786,15 @@ def _stitch_scene_videos(payload):
                 pass
         temp_video = flattened_video
 
+    if target_width > 0 and target_height > 0:
+        normalized_canvas = _normalize_video_canvas(ffmpeg_path, temp_video, normalized_video, target_width, target_height)
+        if normalized_canvas:
+            try:
+                os.remove(temp_video)
+            except Exception:
+                pass
+            temp_video = normalized_video
+
     mux_audio_path = audio_path
     if scene_audio_paths:
         with open(audio_concat_file, "w", encoding="utf-8") as handle:
@@ -2764,6 +2868,11 @@ def _stitch_scene_videos(payload):
         except Exception:
             pass
         try:
+            if os.path.exists(normalized_video):
+                os.remove(normalized_video)
+        except Exception:
+            pass
+        try:
             if os.path.exists(concat_file):
                 os.remove(concat_file)
         except Exception:
@@ -2798,6 +2907,9 @@ def _stitch_scene_videos(payload):
         "scene_count": len(scene_paths),
         "insert_count": len(insert_items),
         "used_scene_audio": bool(scene_audio_paths),
+        "normalized_canvas": normalized_canvas,
+        "output_width": target_width,
+        "output_height": target_height,
         "removed_scratch_folders": removed_scratch_folders,
     }
 

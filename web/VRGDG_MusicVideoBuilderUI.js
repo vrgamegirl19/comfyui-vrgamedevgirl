@@ -31,10 +31,23 @@ const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
 const REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors";
 const DEFAULT_LTX_INGREDIENTS_WIDTH = 768;
 const DEFAULT_LTX_INGREDIENTS_HEIGHT = 448;
+const I2V_SAMPLER_OPTIONS = [
+  "euler_ancestral",
+  "euler",
+  "euler_cfg_pp",
+  "euler_ancestral_cfg_pp",
+  "dpmpp_2m",
+  "dpmpp_2m_sde",
+  "dpmpp_3m_sde",
+  "uni_pc",
+];
+const DEFAULT_I2V_PASS1_SIGMAS = "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0";
+const DEFAULT_I2V_PASS2_SIGMAS = "0.909375, 0.725, 0.421875, 0.0";
 const LOCATION_TRIGGER_GPT_URL = "https://chatgpt.com/g/g-6a36e98d149c8191832005c2050a8c89-ltx-2-3-full-location-mapping-with-lora-trigger";
 const LOCATION_MAPPER_GPT_URL = "https://chatgpt.com/g/g-6a2df090651c819190b00d7974677ad2-ltx-2-3-video-builder-location-creator-mapper";
 const LOCATION_SCOUT_GPT_URL = "https://chatgpt.com/g/g-6a3ff63879048191b30df4168cbea80a-music-video-location-scout";
 const SCENE_MAPPING_GPT_URL = "https://chatgpt.com/g/g-6a3a00f5cd508191a0a94ab5356e0b63-ltx-2-3-scene-mapping-assistant";
+const BUY_ME_A_COFFEE_URL = "https://buymeacoffee.com/vrgamedevgirl";
 const TIMELINE_HEIGHT = 210;
 const TIMELINE_OVERLAY_TOP = 24;
 const TIMELINE_OVERLAY_HEIGHT = 50;
@@ -290,6 +303,73 @@ function makeGptLinkButton(label, url) {
   return button;
 }
 
+function makeBuyMeACoffeeButton() {
+  const wrapper = document.createElement("span");
+  wrapper.style.cssText = `
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-height:52px;
+    line-height:1;
+    margin-bottom:4px;
+  `;
+
+  const fallback = document.createElement("a");
+  fallback.href = BUY_ME_A_COFFEE_URL;
+  fallback.target = "_blank";
+  fallback.rel = "noopener noreferrer";
+  fallback.title = "Support VRGameDevGirl on Buy Me a Coffee";
+  fallback.setAttribute("aria-label", "Support VRGameDevGirl on Buy Me a Coffee");
+  fallback.textContent = "\u2615 Buy me a coffee";
+  fallback.style.cssText = `
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:100%;
+    min-height:52px;
+    box-sizing:border-box;
+    border:1px solid #000000;
+    border-radius:8px;
+    background:#ffdd00;
+    color:#000000;
+    font-family:Lato, Arial, sans-serif;
+    font-size:22px;
+    font-weight:900;
+    padding:10px 18px;
+    text-decoration:none;
+    white-space:nowrap;
+  `;
+  wrapper.append(fallback);
+
+  const script = document.createElement("script");
+  script.type = "text/javascript";
+  script.src = "https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js";
+  script.dataset.name = "bmc-button";
+  script.dataset.slug = "vrgamedevgirl";
+  script.dataset.color = "#FFDD00";
+  script.dataset.emoji = "\u2615";
+  script.dataset.font = "Lato";
+  script.dataset.text = "Buy me a coffee";
+  script.dataset.outlineColor = "#000000";
+  script.dataset.fontColor = "#000000";
+  script.dataset.coffeeColor = "#ffffff";
+  script.onload = () => {
+    const officialButton = Array.from(wrapper.querySelectorAll(".bmc-button, a[href*='buymeacoffee.com']"))
+      .find((element) => element !== fallback);
+    if (officialButton) {
+      officialButton.style.width = "100%";
+      officialButton.style.minHeight = "52px";
+      officialButton.style.boxSizing = "border-box";
+      officialButton.style.borderRadius = "8px";
+      officialButton.style.justifyContent = "center";
+      fallback.remove();
+    }
+  };
+  wrapper.append(script);
+  return wrapper;
+}
+
 async function copyTextToClipboard(text) {
   const value = String(text || "");
   if (navigator.clipboard?.writeText) {
@@ -429,6 +509,55 @@ function makeSettingsPanel(children = []) {
   const panel = document.createElement("div");
   panel.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #303038;border-radius:7px;background:#18181b;padding:9px;";
   panel.append(...children);
+  return panel;
+}
+
+function makeI2VNodeOverridePassPanel(passLabel, controls) {
+  const panel = document.createElement("div");
+  panel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #272b35;border-radius:7px;background:#151821;padding:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.025);";
+  const title = document.createElement("div");
+  title.style.cssText = "display:flex;align-items:center;gap:7px;color:#f4f4f5;font-size:16px;font-weight:900;";
+  const dot = document.createElement("span");
+  dot.style.cssText = "width:8px;height:8px;border-radius:999px;background:#a855f7;box-shadow:0 0 10px rgba(168,85,247,.5);flex:0 0 auto;";
+  title.append(dot, document.createTextNode(passLabel));
+
+  const topGrid = document.createElement("div");
+  topGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+  const samplerCard = document.createElement("div");
+  samplerCard.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #2f3440;border-radius:6px;background:#171b25;padding:12px;";
+  const samplerTitle = document.createElement("div");
+  samplerTitle.textContent = "Sampler";
+  samplerTitle.style.cssText = "font-size:13px;font-weight:900;color:#f4f4f5;";
+  samplerCard.append(samplerTitle, makeField("Sampler Name", controls.sampler));
+
+  const sigmasCard = document.createElement("div");
+  sigmasCard.style.cssText = samplerCard.style.cssText;
+  const sigmasTitle = document.createElement("div");
+  sigmasTitle.textContent = "Sigmas";
+  sigmasTitle.style.cssText = samplerTitle.style.cssText;
+  sigmasCard.append(sigmasTitle, controls.sigmas);
+  topGrid.append(samplerCard, sigmasCard);
+
+  const inplaceCard = document.createElement("div");
+  inplaceCard.style.cssText = "display:flex;flex-direction:column;gap:12px;border:1px solid #2f3440;border-radius:6px;background:#171b25;padding:12px;";
+  const inplaceTitle = document.createElement("div");
+  inplaceTitle.textContent = "LTXVImgToVideoInplace";
+  inplaceTitle.style.cssText = samplerTitle.style.cssText;
+  const strengthRow = document.createElement("div");
+  strengthRow.style.cssText = "display:grid;grid-template-columns:54px minmax(0,1fr) 84px;gap:10px;align-items:center;";
+  const strengthLabel = document.createElement("div");
+  strengthLabel.textContent = "Strength";
+  strengthLabel.style.cssText = "font-size:12px;color:#d4d4d8;";
+  strengthRow.append(strengthLabel, controls.strength, controls.strengthNumber);
+  const bypassRow = document.createElement("div");
+  bypassRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
+  const bypassLabel = document.createElement("div");
+  bypassLabel.textContent = "Bypass";
+  bypassLabel.style.cssText = strengthLabel.style.cssText;
+  bypassRow.append(bypassLabel, controls.bypass.wrapper);
+  inplaceCard.append(inplaceTitle, strengthRow, bypassRow);
+
+  panel.append(title, topGrid, inplaceCard);
   return panel;
 }
 
@@ -1744,6 +1873,7 @@ function openBuilder(node) {
   const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Download Models");
+  const buyMeACoffeeButton = makeBuyMeACoffeeButton();
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
@@ -1754,6 +1884,7 @@ function openBuilder(node) {
     button.style.textAlign = "left";
     button.style.justifyContent = "flex-start";
   };
+  menuDropdown.append(buyMeACoffeeButton);
   for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
@@ -2783,6 +2914,51 @@ function openBuilder(node) {
   const i2vSrtSplitGrid = document.createElement("div");
   i2vSrtSplitGrid.style.cssText = i2vSettingsGrid.style.cssText;
   i2vSrtSplitGrid.append(makeField("Cool Down Frames", i2vTailLossFramesInput), makeField("Warm Up Frames", i2vPreFramesInput));
+  const i2vPass1SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
+  const i2vPass1SigmasInput = makeInput(DEFAULT_I2V_PASS1_SIGMAS);
+  const i2vPass1StrengthSlider = makeInput("1", "range");
+  i2vPass1StrengthSlider.min = "0";
+  i2vPass1StrengthSlider.max = "1";
+  i2vPass1StrengthSlider.step = "0.01";
+  i2vPass1StrengthSlider.style.accentColor = "#a855f7";
+  const i2vPass1StrengthInput = makeInput("1", "number");
+  i2vPass1StrengthInput.min = "0";
+  i2vPass1StrengthInput.max = "1";
+  i2vPass1StrengthInput.step = "0.01";
+  const i2vPass1Bypass = makeCheckbox("", false);
+  const i2vPass2SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
+  const i2vPass2SigmasInput = makeInput(DEFAULT_I2V_PASS2_SIGMAS);
+  const i2vPass2StrengthSlider = makeInput("1", "range");
+  i2vPass2StrengthSlider.min = "0";
+  i2vPass2StrengthSlider.max = "1";
+  i2vPass2StrengthSlider.step = "0.01";
+  i2vPass2StrengthSlider.style.accentColor = "#a855f7";
+  const i2vPass2StrengthInput = makeInput("1", "number");
+  i2vPass2StrengthInput.min = "0";
+  i2vPass2StrengthInput.max = "1";
+  i2vPass2StrengthInput.step = "0.01";
+  const i2vPass2Bypass = makeCheckbox("", false);
+  const i2vAdvancedNodeSettingsPanel = document.createElement("div");
+  i2vAdvancedNodeSettingsPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+  i2vAdvancedNodeSettingsPanel.append(
+    makeI2VNodeOverridePassPanel("Pass 1", {
+      sampler: i2vPass1SamplerSelect,
+      sigmas: i2vPass1SigmasInput,
+      strength: i2vPass1StrengthSlider,
+      strengthNumber: i2vPass1StrengthInput,
+      bypass: i2vPass1Bypass,
+    }),
+    makeI2VNodeOverridePassPanel("Pass 2", {
+      sampler: i2vPass2SamplerSelect,
+      sigmas: i2vPass2SigmasInput,
+      strength: i2vPass2StrengthSlider,
+      strengthNumber: i2vPass2StrengthInput,
+      bypass: i2vPass2Bypass,
+    }),
+  );
+  const i2vAdvancedNodeSettingsSection = makeSettingsSection("Advanced Node Settings", [
+    i2vAdvancedNodeSettingsPanel,
+  ], false);
   const createSceneVideoButton = makeButton("Create Scene Video", "primary");
   const createSceneVideoButtons = [createSceneVideoButton];
   function makeCreateSceneVideoButton() {
@@ -3318,6 +3494,7 @@ function openBuilder(node) {
         makeSettingsSection("Advanced Settings", [
           i2vSrtSplitAdvancedNote,
           i2vSrtSplitGrid,
+          i2vAdvancedNodeSettingsSection,
         ]),
         rtvSceneImageAnchorSection,
         makeCreateSceneVideoButton(),
@@ -3720,6 +3897,14 @@ function openBuilder(node) {
       use_loras: false,
       lora_count: 0,
       loras: [],
+      pass1_sampler_name: "euler_ancestral",
+      pass1_sigmas: DEFAULT_I2V_PASS1_SIGMAS,
+      pass1_inplace_strength: 1,
+      pass1_inplace_bypass: false,
+      pass2_sampler_name: "euler_ancestral",
+      pass2_sigmas: DEFAULT_I2V_PASS2_SIGMAS,
+      pass2_inplace_strength: 1,
+      pass2_inplace_bypass: false,
     };
   }
 
@@ -6665,6 +6850,14 @@ function openBuilder(node) {
       ingredients_second_pass_strength: 0,
       ingredients_width: Number(source.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
       ingredients_height: Number(source.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
+      pass1_sampler_name: source.pass1_sampler_name || "euler_ancestral",
+      pass1_sigmas: source.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
+      pass1_inplace_strength: Number(source.pass1_inplace_strength ?? 1),
+      pass1_inplace_bypass: Boolean(source.pass1_inplace_bypass),
+      pass2_sampler_name: source.pass2_sampler_name || "euler_ancestral",
+      pass2_sigmas: source.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS,
+      pass2_inplace_strength: Number(source.pass2_inplace_strength ?? 1),
+      pass2_inplace_bypass: Boolean(source.pass2_inplace_bypass),
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
@@ -10084,6 +10277,33 @@ function openBuilder(node) {
     return state.flowGptBrowserSettings;
   }
 
+  function normalizeI2VSigmasText(value, fallback) {
+    const text = String(value || "").trim();
+    if (!text) return fallback;
+    const parts = text.split(",").map((item) => item.trim()).filter(Boolean);
+    if (!parts.length || parts.some((item) => !Number.isFinite(Number(item)))) return fallback;
+    return parts.join(", ");
+  }
+
+  function setI2VStrengthPair(slider, input, value) {
+    const next = Math.max(0, Math.min(1, Number(value ?? 1)));
+    slider.value = String(next);
+    input.value = String(next);
+  }
+
+  function syncI2VAdvancedNodeControls(settings = {}) {
+    i2vPass1SamplerSelect.value = settings.pass1_sampler_name || "euler_ancestral";
+    i2vPass1SigmasInput.value = settings.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+    setI2VStrengthPair(i2vPass1StrengthSlider, i2vPass1StrengthInput, settings.pass1_inplace_strength ?? 1);
+    i2vPass1Bypass.input.checked = Boolean(settings.pass1_inplace_bypass);
+    i2vPass2SamplerSelect.value = settings.pass2_sampler_name || "euler_ancestral";
+    i2vPass2SigmasInput.value = settings.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    setI2VStrengthPair(i2vPass2StrengthSlider, i2vPass2StrengthInput, settings.pass2_inplace_strength ?? 1);
+    i2vPass2Bypass.input.checked = Boolean(settings.pass2_inplace_bypass);
+    i2vAdvancedNodeSettingsPanel.style.display = currentVideoMode() === "i2v" ? "flex" : "none";
+    i2vAdvancedNodeSettingsSection.style.display = currentVideoMode() === "i2v" ? "" : "none";
+  }
+
   function setFlowGptProvider(provider) {
     pushHistory();
     state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
@@ -10241,6 +10461,7 @@ function openBuilder(node) {
       slot.firstPassStrength.value = config.first_pass_strength ?? legacyStrength;
       slot.secondPassStrength.value = config.second_pass_strength ?? legacyStrength;
     });
+    syncI2VAdvancedNodeControls(settings);
     updateI2VLoraVisibility();
     syncI2VVideoModelPickerVisibility();
   }
@@ -10294,6 +10515,14 @@ function openBuilder(node) {
       ingredients_second_pass_strength: 0,
       ingredients_width: ingredientsWidth,
       ingredients_height: ingredientsHeight,
+      pass1_sampler_name: i2vPass1SamplerSelect.value || "euler_ancestral",
+      pass1_sigmas: normalizeI2VSigmasText(i2vPass1SigmasInput.value, DEFAULT_I2V_PASS1_SIGMAS),
+      pass1_inplace_strength: Math.max(0, Math.min(1, Number(i2vPass1StrengthInput.value || 1))),
+      pass1_inplace_bypass: Boolean(i2vPass1Bypass.input.checked),
+      pass2_sampler_name: i2vPass2SamplerSelect.value || "euler_ancestral",
+      pass2_sigmas: normalizeI2VSigmasText(i2vPass2SigmasInput.value, DEFAULT_I2V_PASS2_SIGMAS),
+      pass2_inplace_strength: Math.max(0, Math.min(1, Number(i2vPass2StrengthInput.value || 1))),
+      pass2_inplace_bypass: Boolean(i2vPass2Bypass.input.checked),
       use_loras: Boolean(i2vUseLora.input.checked),
       lora_count: count,
       loras: i2vLoraSlots.map((slot) => ({
@@ -25380,6 +25609,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ingredients_second_pass_strength: 0,
       ingredients_width: Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
       ingredients_height: Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
+      pass1_sampler_name: settings.pass1_sampler_name || "euler_ancestral",
+      pass1_sigmas: normalizeI2VSigmasText(settings.pass1_sigmas, DEFAULT_I2V_PASS1_SIGMAS),
+      pass1_inplace_strength: Math.max(0, Math.min(1, Number(settings.pass1_inplace_strength ?? 1))),
+      pass1_inplace_bypass: Boolean(settings.pass1_inplace_bypass),
+      pass2_sampler_name: settings.pass2_sampler_name || "euler_ancestral",
+      pass2_sigmas: normalizeI2VSigmasText(settings.pass2_sigmas, DEFAULT_I2V_PASS2_SIGMAS),
+      pass2_inplace_strength: Math.max(0, Math.min(1, Number(settings.pass2_inplace_strength ?? 1))),
+      pass2_inplace_bypass: Boolean(settings.pass2_inplace_bypass),
       use_custom_loras: useLoras,
       lora_count: useLoras ? count : 0,
     };
@@ -26899,6 +27136,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!isLikelyVideoPath(item.path)) missing.push(`${item.label || "Insert"}: selected insert media is not a video:\n${item.path}`);
     });
     if (missing.length) throw new Error(missing.join("\n"));
+    const stitchSettings = state.i2vVideoSettings || {};
+    const stitchVideoMode = currentVideoMode();
+    const stitchWidth = stitchVideoMode === "ingredients"
+      ? Number(stitchSettings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH)
+      : Number(stitchSettings.width || 1920);
+    const stitchHeight = stitchVideoMode === "ingredients"
+      ? Number(stitchSettings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT)
+      : Number(stitchSettings.height || 1080);
     progress?.set(sceneAudioMode ? "Stitching rendered scene videos with scene audio clips..." : "Stitching rendered scene videos with original audio...", 94);
     const data = await postJson("/vrgdg/workflow_runner/stitch_scene_videos", {
       scene_paths: paths,
@@ -26907,6 +27152,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       scene_audio_items: audioItems,
       overlay_items: overlayItems,
       project_folder: projectInput.value,
+      width: stitchWidth,
+      height: stitchHeight,
       audio_start: Number(options.audioStart || 0),
       audio_duration: Number(options.audioDuration || 0),
       output_prefix: options.outputPrefix || "FINAL_VIDEO",
@@ -33818,6 +34065,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
   ltxIngredientsFirstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
   ltxIngredientsFirstPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  function wireI2VStrengthPair(slider, input) {
+    slider.addEventListener("input", () => {
+      setI2VStrengthPair(slider, input, slider.value);
+      saveI2VVideoSettingsFromPanel();
+    });
+    input.addEventListener("input", () => {
+      setI2VStrengthPair(slider, input, input.value);
+      saveI2VVideoSettingsFromPanel();
+    });
+    input.addEventListener("change", () => {
+      setI2VStrengthPair(slider, input, input.value);
+      saveI2VVideoSettingsFromPanel();
+    });
+  }
+  wireI2VStrengthPair(i2vPass1StrengthSlider, i2vPass1StrengthInput);
+  wireI2VStrengthPair(i2vPass2StrengthSlider, i2vPass2StrengthInput);
+  for (const control of [i2vPass1SamplerSelect, i2vPass1SigmasInput, i2vPass1Bypass.input, i2vPass2SamplerSelect, i2vPass2SigmasInput, i2vPass2Bypass.input]) {
+    control.addEventListener("input", saveI2VVideoSettingsFromPanel);
+    control.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  }
   for (const slot of i2vLoraSlots) {
     wireSearchablePicker(slot.picker, saveI2VVideoSettingsFromPanel);
     slot.firstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
