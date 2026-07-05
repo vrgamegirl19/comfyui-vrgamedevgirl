@@ -7343,11 +7343,11 @@ function openBuilder(node) {
     if (!value) return false;
     if (value === "instrumental" || value === "[instrumental]" || value === "instrumental section" || value === "instrumental section.") return true;
     const stripped = value
-      .replace(/\[(?:intro|outro|bridge|verse|chorus|pre-chorus|prechorus|hook|refrain|interlude|break|section|instrumental|music|no vocals?|no singing|silence)\]/gi, " ")
-      .replace(/\b(?:intro|outro|bridge|verse|chorus|pre-chorus|prechorus|hook|refrain|interlude|break|section|instrumental|music|no vocals?|no singing|silence)\b/gi, " ")
+      .replace(/\[(?:intro|outro|bridge|verse|chorus|pre-chorus|prechorus|hook|refrain|interlude|break|section|instrumental|music|no vocals?|no singing|no lip\s*-?\s*sync|no lipsync|b-?roll|visual only|silence)\]/gi, " ")
+      .replace(/\b(?:intro|outro|bridge|verse|chorus|pre-chorus|prechorus|hook|refrain|interlude|break|section|instrumental|music|no vocals?|no singing|no lip\s*-?\s*sync|no lipsync|b-?roll|visual only|silence)\b/gi, " ")
       .replace(/[^\p{L}\p{N}]+/gu, " ")
       .trim();
-    return /\binstrumental|no vocals?|no singing|silence\b/i.test(value) && !stripped;
+    return /\binstrumental|no vocals?|no singing|no lip\s*-?\s*sync|no lipsync|b-?roll|visual only|silence\b/i.test(value) && !stripped;
   }
 
   function isNoLipSyncSingerChoice(value) {
@@ -7652,6 +7652,7 @@ function openBuilder(node) {
 
   function applyVocalDirectiveToVideoPrompt(prompt, segment, options = {}) {
     const performanceMode = normalizeVideoType(state.videoType);
+    const isVisualOnly = performanceMode === "no_lip_sync";
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
@@ -7668,9 +7669,10 @@ function openBuilder(node) {
     if (!directive) {
       const rawLyricText = String(segment?.lyric_text || "").trim();
       const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
-      if (segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText)) {
+      if (isVisualOnly || segment?.lyric_no_lip_sync || isInstrumentalLyricText(lyricText)) {
         return appendFacial(base
           .replace(/^\s*(?:the visible subject|the subject|[^.]{1,90}?)\s+(?:visibly\s+)?(?:sings?|singing|lip-syncs?|lip syncs?|lip-syncing)\s+(?:"[^"]*"|'[^']*'|“[^”]*”)?\s*(?:in sync with the audio)?\.\s*/i, "")
+          .replace(/\b(?:visibly\s+)?(?:sings?|singing|lip-syncs?|lip syncs?|lip-syncing)\s+(?:"[^"]*"|'[^']*'|“[^”]*”)?\s*(?:in sync with the audio)?/gi, "moves naturally")
           .trim());
       }
       return appendFacial(base);
