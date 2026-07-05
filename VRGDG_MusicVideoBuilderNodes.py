@@ -7908,6 +7908,22 @@ def _scan_builder_scene_videos(project_folder):
     video_backups = {}
     video_backup_thumbnails = {}
     recovered_from_scratch = {}
+    scene_srt_mtimes = []
+    scene_srt_folder = os.path.join(folder, "scene_srt")
+    if os.path.isdir(scene_srt_folder):
+        srt_pattern = re.compile(r"^scene_(\d+)\.srt$", re.IGNORECASE)
+        for srt_name in os.listdir(scene_srt_folder):
+            match = srt_pattern.match(srt_name)
+            if not match:
+                continue
+            srt_path = os.path.join(scene_srt_folder, srt_name)
+            if not os.path.isfile(srt_path):
+                continue
+            try:
+                scene_srt_mtimes.append((str(int(match.group(1))), os.path.getmtime(srt_path)))
+            except OSError:
+                continue
+    scene_srt_mtimes.sort(key=lambda item: item[1])
     os.makedirs(video_folder, exist_ok=True)
     pattern = re.compile(r"^video_(\d+)-audio\.mp4$", re.IGNORECASE)
     for name in os.listdir(video_folder):
@@ -7923,6 +7939,20 @@ def _scan_builder_scene_videos(project_folder):
                 video_thumbnails[key] = thumb
     scratch_candidates = {}
     scratch_pattern = re.compile(r"^video_(\d+)(?:[-_].*)?\.mp4$", re.IGNORECASE)
+    scene_folder_pattern = re.compile(r"scene[_-](\d+)", re.IGNORECASE)
+    def infer_scratch_scene_key(path, raw_key, modified):
+        parts = os.path.abspath(path).split(os.sep)
+        for part in reversed(parts):
+            match = scene_folder_pattern.search(part)
+            if match:
+                return str(int(match.group(1)))
+        if raw_key != "1" and raw_key not in videos:
+            return raw_key
+        previous_srts = [(key, mtime) for key, mtime in scene_srt_mtimes if mtime <= modified + 2.0 and key not in videos]
+        if previous_srts:
+            return max(previous_srts, key=lambda item: item[1])[0]
+        return raw_key
+
     for name in os.listdir(folder):
         scratch_folder = os.path.abspath(os.path.join(folder, name))
         if not os.path.isdir(scratch_folder):
@@ -7951,7 +7981,8 @@ def _scan_builder_scene_videos(project_folder):
                     continue
                 if size <= 0:
                     continue
-                key = str(int(match.group(1)))
+                raw_key = str(int(match.group(1)))
+                key = infer_scratch_scene_key(path, raw_key, modified)
                 score = 100 if file_name.lower().endswith("-audio.mp4") else 0
                 score += 10 if "-audio" in file_name.lower() else 0
                 current = scratch_candidates.get(key)

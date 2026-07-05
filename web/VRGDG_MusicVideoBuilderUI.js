@@ -43,6 +43,7 @@ const I2V_SAMPLER_OPTIONS = [
 ];
 const DEFAULT_I2V_PASS1_SIGMAS = "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0";
 const DEFAULT_I2V_PASS2_SIGMAS = "0.909375, 0.725, 0.421875, 0.0";
+const DEFAULT_INGREDIENTS_SAMPLER = "euler_ancestral_cfg_pp";
 const LOCATION_TRIGGER_GPT_URL = "https://chatgpt.com/g/g-6a36e98d149c8191832005c2050a8c89-ltx-2-3-full-location-mapping-with-lora-trigger";
 const LOCATION_MAPPER_GPT_URL = "https://chatgpt.com/g/g-6a2df090651c819190b00d7974677ad2-ltx-2-3-video-builder-location-creator-mapper";
 const LOCATION_SCOUT_GPT_URL = "https://chatgpt.com/g/g-6a3ff63879048191b30df4168cbea80a-music-video-location-scout";
@@ -558,6 +559,7 @@ function makeI2VNodeOverridePassPanel(passLabel, controls) {
   inplaceCard.append(inplaceTitle, strengthRow, bypassRow);
 
   panel.append(title, topGrid, inplaceCard);
+  panel.inplaceCard = inplaceCard;
   return panel;
 }
 
@@ -2940,22 +2942,21 @@ function openBuilder(node) {
   const i2vPass2Bypass = makeCheckbox("", false);
   const i2vAdvancedNodeSettingsPanel = document.createElement("div");
   i2vAdvancedNodeSettingsPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
-  i2vAdvancedNodeSettingsPanel.append(
-    makeI2VNodeOverridePassPanel("Pass 1", {
-      sampler: i2vPass1SamplerSelect,
-      sigmas: i2vPass1SigmasInput,
-      strength: i2vPass1StrengthSlider,
-      strengthNumber: i2vPass1StrengthInput,
-      bypass: i2vPass1Bypass,
-    }),
-    makeI2VNodeOverridePassPanel("Pass 2", {
-      sampler: i2vPass2SamplerSelect,
-      sigmas: i2vPass2SigmasInput,
-      strength: i2vPass2StrengthSlider,
-      strengthNumber: i2vPass2StrengthInput,
-      bypass: i2vPass2Bypass,
-    }),
-  );
+  const i2vPass1NodePanel = makeI2VNodeOverridePassPanel("Pass 1", {
+    sampler: i2vPass1SamplerSelect,
+    sigmas: i2vPass1SigmasInput,
+    strength: i2vPass1StrengthSlider,
+    strengthNumber: i2vPass1StrengthInput,
+    bypass: i2vPass1Bypass,
+  });
+  const i2vPass2NodePanel = makeI2VNodeOverridePassPanel("Pass 2", {
+    sampler: i2vPass2SamplerSelect,
+    sigmas: i2vPass2SigmasInput,
+    strength: i2vPass2StrengthSlider,
+    strengthNumber: i2vPass2StrengthInput,
+    bypass: i2vPass2Bypass,
+  });
+  i2vAdvancedNodeSettingsPanel.append(i2vPass1NodePanel, i2vPass2NodePanel);
   const i2vAdvancedNodeSettingsSection = makeSettingsSection("Advanced Node Settings", [
     i2vAdvancedNodeSettingsPanel,
   ], false);
@@ -3905,6 +3906,16 @@ function openBuilder(node) {
       pass2_sigmas: DEFAULT_I2V_PASS2_SIGMAS,
       pass2_inplace_strength: 1,
       pass2_inplace_bypass: false,
+      t2v_pass1_sampler_name: "euler_ancestral",
+      t2v_pass1_sigmas: DEFAULT_I2V_PASS1_SIGMAS,
+      t2v_pass2_sampler_name: "euler_ancestral",
+      t2v_pass2_sigmas: DEFAULT_I2V_PASS2_SIGMAS,
+      rtv_pass1_sampler_name: "euler_ancestral",
+      rtv_pass1_sigmas: DEFAULT_I2V_PASS1_SIGMAS,
+      ingredients_pass1_sampler_name: DEFAULT_INGREDIENTS_SAMPLER,
+      ingredients_pass1_sigmas: DEFAULT_I2V_PASS1_SIGMAS,
+      ingredients_pass2_sampler_name: DEFAULT_INGREDIENTS_SAMPLER,
+      ingredients_pass2_sigmas: DEFAULT_I2V_PASS2_SIGMAS,
     };
   }
 
@@ -6858,6 +6869,16 @@ function openBuilder(node) {
       pass2_sigmas: source.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS,
       pass2_inplace_strength: Number(source.pass2_inplace_strength ?? 1),
       pass2_inplace_bypass: Boolean(source.pass2_inplace_bypass),
+      t2v_pass1_sampler_name: source.t2v_pass1_sampler_name || "euler_ancestral",
+      t2v_pass1_sigmas: source.t2v_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
+      t2v_pass2_sampler_name: source.t2v_pass2_sampler_name || "euler_ancestral",
+      t2v_pass2_sigmas: source.t2v_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS,
+      rtv_pass1_sampler_name: source.rtv_pass1_sampler_name || "euler_ancestral",
+      rtv_pass1_sigmas: source.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
+      ingredients_pass1_sampler_name: source.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER,
+      ingredients_pass1_sigmas: source.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
+      ingredients_pass2_sampler_name: source.ingredients_pass2_sampler_name || DEFAULT_INGREDIENTS_SAMPLER,
+      ingredients_pass2_sigmas: source.ingredients_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS,
       lora_count: Math.max(0, Math.min(4, Number(source.lora_count || 0))),
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({
         name: item?.name || "[none]",
@@ -10292,16 +10313,41 @@ function openBuilder(node) {
   }
 
   function syncI2VAdvancedNodeControls(settings = {}) {
-    i2vPass1SamplerSelect.value = settings.pass1_sampler_name || "euler_ancestral";
-    i2vPass1SigmasInput.value = settings.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+    const mode = currentVideoMode();
+    let pass1SamplerName = settings.pass1_sampler_name || "euler_ancestral";
+    let pass1Sigmas = settings.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+    let pass2SamplerName = settings.pass2_sampler_name || "euler_ancestral";
+    let pass2Sigmas = settings.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    if (mode === "t2v") {
+      pass1SamplerName = settings.t2v_pass1_sampler_name || "euler_ancestral";
+      pass1Sigmas = settings.t2v_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+      pass2SamplerName = settings.t2v_pass2_sampler_name || "euler_ancestral";
+      pass2Sigmas = settings.t2v_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    } else if (mode === "rtv") {
+      pass1SamplerName = settings.rtv_pass1_sampler_name || "euler_ancestral";
+      pass1Sigmas = settings.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+    } else if (mode === "ingredients") {
+      pass1SamplerName = settings.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER;
+      pass1Sigmas = settings.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+      pass2SamplerName = settings.ingredients_pass2_sampler_name || DEFAULT_INGREDIENTS_SAMPLER;
+      pass2Sigmas = settings.ingredients_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    }
+    i2vPass1SamplerSelect.value = pass1SamplerName;
+    i2vPass1SigmasInput.value = pass1Sigmas;
     setI2VStrengthPair(i2vPass1StrengthSlider, i2vPass1StrengthInput, settings.pass1_inplace_strength ?? 1);
     i2vPass1Bypass.input.checked = Boolean(settings.pass1_inplace_bypass);
-    i2vPass2SamplerSelect.value = settings.pass2_sampler_name || "euler_ancestral";
-    i2vPass2SigmasInput.value = settings.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    i2vPass2SamplerSelect.value = pass2SamplerName;
+    i2vPass2SigmasInput.value = pass2Sigmas;
     setI2VStrengthPair(i2vPass2StrengthSlider, i2vPass2StrengthInput, settings.pass2_inplace_strength ?? 1);
     i2vPass2Bypass.input.checked = Boolean(settings.pass2_inplace_bypass);
-    i2vAdvancedNodeSettingsPanel.style.display = currentVideoMode() === "i2v" ? "flex" : "none";
-    i2vAdvancedNodeSettingsSection.style.display = currentVideoMode() === "i2v" ? "" : "none";
+    const showNodeSettings = mode === "i2v" || mode === "t2v" || mode === "rtv" || mode === "ingredients";
+    const showInplaceSettings = mode === "i2v";
+    const showSecondPass = mode !== "rtv";
+    i2vAdvancedNodeSettingsPanel.style.display = showNodeSettings ? "flex" : "none";
+    i2vAdvancedNodeSettingsSection.style.display = showNodeSettings ? "" : "none";
+    i2vPass1NodePanel.inplaceCard.style.display = showInplaceSettings ? "flex" : "none";
+    i2vPass2NodePanel.style.display = showSecondPass ? "flex" : "none";
+    i2vPass2NodePanel.inplaceCard.style.display = showInplaceSettings ? "flex" : "none";
   }
 
   function setFlowGptProvider(provider) {
@@ -10476,7 +10522,11 @@ function openBuilder(node) {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
     const segment = activeSegment();
     const previous = activeI2VVideoSettings() || {};
-    const isIngredientsMode = currentVideoMode() === "ingredients";
+    const mode = currentVideoMode();
+    const isI2VMode = mode === "i2v";
+    const isT2VMode = mode === "t2v";
+    const isRTVMode = mode === "rtv";
+    const isIngredientsMode = mode === "ingredients";
     const previousRegularWidth = Number(previous.width || 1920);
     const previousRegularHeight = Number(previous.height || 1080);
     const repairedPreviousWidth = previousRegularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && previousRegularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT ? 1920 : previousRegularWidth;
@@ -10489,6 +10539,11 @@ function openBuilder(node) {
     const repairedPreviousIngredientsHeight = previousIngredientsWidth === 1920 && previousIngredientsHeight === 1080 ? DEFAULT_LTX_INGREDIENTS_HEIGHT : previousIngredientsHeight;
     const ingredientsWidth = isIngredientsMode ? Number(i2vWidthInput.value || DEFAULT_LTX_INGREDIENTS_WIDTH) : repairedPreviousIngredientsWidth;
     const ingredientsHeight = isIngredientsMode ? Number(i2vHeightInput.value || DEFAULT_LTX_INGREDIENTS_HEIGHT) : repairedPreviousIngredientsHeight;
+    const defaultSamplerForMode = isIngredientsMode ? DEFAULT_INGREDIENTS_SAMPLER : "euler_ancestral";
+    const pass1SamplerName = i2vPass1SamplerSelect.value || defaultSamplerForMode;
+    const pass1Sigmas = normalizeI2VSigmasText(i2vPass1SigmasInput.value, DEFAULT_I2V_PASS1_SIGMAS);
+    const pass2SamplerName = i2vPass2SamplerSelect.value || defaultSamplerForMode;
+    const pass2Sigmas = normalizeI2VSigmasText(i2vPass2SigmasInput.value, DEFAULT_I2V_PASS2_SIGMAS);
     const settings = {
       use_gguf_model: Boolean(i2vUseGgufModel.input.checked),
       unet_name: BAD_I2V_UNET_ALIASES.has(i2vUnetPicker.input.value) ? DEFAULT_I2V_UNET : i2vUnetPicker.input.value || "",
@@ -10515,14 +10570,24 @@ function openBuilder(node) {
       ingredients_second_pass_strength: 0,
       ingredients_width: ingredientsWidth,
       ingredients_height: ingredientsHeight,
-      pass1_sampler_name: i2vPass1SamplerSelect.value || "euler_ancestral",
-      pass1_sigmas: normalizeI2VSigmasText(i2vPass1SigmasInput.value, DEFAULT_I2V_PASS1_SIGMAS),
-      pass1_inplace_strength: Math.max(0, Math.min(1, Number(i2vPass1StrengthInput.value || 1))),
-      pass1_inplace_bypass: Boolean(i2vPass1Bypass.input.checked),
-      pass2_sampler_name: i2vPass2SamplerSelect.value || "euler_ancestral",
-      pass2_sigmas: normalizeI2VSigmasText(i2vPass2SigmasInput.value, DEFAULT_I2V_PASS2_SIGMAS),
-      pass2_inplace_strength: Math.max(0, Math.min(1, Number(i2vPass2StrengthInput.value || 1))),
-      pass2_inplace_bypass: Boolean(i2vPass2Bypass.input.checked),
+      pass1_sampler_name: isI2VMode ? pass1SamplerName : (previous.pass1_sampler_name || "euler_ancestral"),
+      pass1_sigmas: isI2VMode ? pass1Sigmas : (previous.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
+      pass1_inplace_strength: isI2VMode ? Math.max(0, Math.min(1, Number(i2vPass1StrengthInput.value || 1))) : Number(previous.pass1_inplace_strength ?? 1),
+      pass1_inplace_bypass: isI2VMode ? Boolean(i2vPass1Bypass.input.checked) : Boolean(previous.pass1_inplace_bypass),
+      pass2_sampler_name: isI2VMode ? pass2SamplerName : (previous.pass2_sampler_name || "euler_ancestral"),
+      pass2_sigmas: isI2VMode ? pass2Sigmas : (previous.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
+      pass2_inplace_strength: isI2VMode ? Math.max(0, Math.min(1, Number(i2vPass2StrengthInput.value || 1))) : Number(previous.pass2_inplace_strength ?? 1),
+      pass2_inplace_bypass: isI2VMode ? Boolean(i2vPass2Bypass.input.checked) : Boolean(previous.pass2_inplace_bypass),
+      t2v_pass1_sampler_name: isT2VMode ? pass1SamplerName : (previous.t2v_pass1_sampler_name || "euler_ancestral"),
+      t2v_pass1_sigmas: isT2VMode ? pass1Sigmas : (previous.t2v_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
+      t2v_pass2_sampler_name: isT2VMode ? pass2SamplerName : (previous.t2v_pass2_sampler_name || "euler_ancestral"),
+      t2v_pass2_sigmas: isT2VMode ? pass2Sigmas : (previous.t2v_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
+      rtv_pass1_sampler_name: isRTVMode ? pass1SamplerName : (previous.rtv_pass1_sampler_name || "euler_ancestral"),
+      rtv_pass1_sigmas: isRTVMode ? pass1Sigmas : (previous.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
+      ingredients_pass1_sampler_name: isIngredientsMode ? (pass1SamplerName || DEFAULT_INGREDIENTS_SAMPLER) : (previous.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER),
+      ingredients_pass1_sigmas: isIngredientsMode ? pass1Sigmas : (previous.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
+      ingredients_pass2_sampler_name: isIngredientsMode ? (pass2SamplerName || DEFAULT_INGREDIENTS_SAMPLER) : (previous.ingredients_pass2_sampler_name || DEFAULT_INGREDIENTS_SAMPLER),
+      ingredients_pass2_sigmas: isIngredientsMode ? pass2Sigmas : (previous.ingredients_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
       use_loras: Boolean(i2vUseLora.input.checked),
       lora_count: count,
       loras: i2vLoraSlots.map((slot) => ({
@@ -25584,6 +25649,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const videoMode = currentVideoMode();
     const singlePassLoras = videoMode === "rtv";
+    let pass1SamplerName = settings.pass1_sampler_name || "euler_ancestral";
+    let pass1Sigmas = settings.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+    let pass2SamplerName = settings.pass2_sampler_name || "euler_ancestral";
+    let pass2Sigmas = settings.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    if (videoMode === "t2v") {
+      pass1SamplerName = settings.t2v_pass1_sampler_name || "euler_ancestral";
+      pass1Sigmas = settings.t2v_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+      pass2SamplerName = settings.t2v_pass2_sampler_name || "euler_ancestral";
+      pass2Sigmas = settings.t2v_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    } else if (videoMode === "rtv") {
+      pass1SamplerName = settings.rtv_pass1_sampler_name || "euler_ancestral";
+      pass1Sigmas = settings.rtv_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+    } else if (videoMode === "ingredients") {
+      pass1SamplerName = settings.ingredients_pass1_sampler_name || DEFAULT_INGREDIENTS_SAMPLER;
+      pass1Sigmas = settings.ingredients_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
+      pass2SamplerName = settings.ingredients_pass2_sampler_name || DEFAULT_INGREDIENTS_SAMPLER;
+      pass2Sigmas = settings.ingredients_pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS;
+    }
     const payload = {
       use_gguf_model: settings.use_gguf_model !== false,
       unet_name: settings.unet_name || "",
@@ -25609,12 +25692,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ingredients_second_pass_strength: 0,
       ingredients_width: Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
       ingredients_height: Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
-      pass1_sampler_name: settings.pass1_sampler_name || "euler_ancestral",
-      pass1_sigmas: normalizeI2VSigmasText(settings.pass1_sigmas, DEFAULT_I2V_PASS1_SIGMAS),
+      pass1_sampler_name: pass1SamplerName,
+      pass1_sigmas: normalizeI2VSigmasText(pass1Sigmas, DEFAULT_I2V_PASS1_SIGMAS),
       pass1_inplace_strength: Math.max(0, Math.min(1, Number(settings.pass1_inplace_strength ?? 1))),
       pass1_inplace_bypass: Boolean(settings.pass1_inplace_bypass),
-      pass2_sampler_name: settings.pass2_sampler_name || "euler_ancestral",
-      pass2_sigmas: normalizeI2VSigmasText(settings.pass2_sigmas, DEFAULT_I2V_PASS2_SIGMAS),
+      pass2_sampler_name: pass2SamplerName,
+      pass2_sigmas: normalizeI2VSigmasText(pass2Sigmas, DEFAULT_I2V_PASS2_SIGMAS),
       pass2_inplace_strength: Math.max(0, Math.min(1, Number(settings.pass2_inplace_strength ?? 1))),
       pass2_inplace_bypass: Boolean(settings.pass2_inplace_bypass),
       use_custom_loras: useLoras,

@@ -29,6 +29,7 @@ _REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensor
 _MIN_LTX_INGREDIENTS_FRAMES = 121
 _DEFAULT_I2V_PASS1_SIGMAS = "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 _DEFAULT_I2V_PASS2_SIGMAS = "0.909375, 0.725, 0.421875, 0.0"
+_DEFAULT_INGREDIENTS_SAMPLER = "euler_ancestral_cfg_pp"
 _I2V_UNET_ALIASES = {
     "LTX-2.3-22B-distilled-11-Q6_K.gguf": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
 }
@@ -1147,8 +1148,7 @@ def _patch_i2v_workflow(workflow, payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
         raise ValueError("Project folder is empty.")
-    output_folder = os.path.join(project_folder, "image_to_video_clips")
-    os.makedirs(output_folder, exist_ok=True)
+    output_folder = _scene_render_output_folder(project_folder, "image_to_video_clips", payload)
 
     image_index = _int_payload(payload, "image_index_zero_based", 0, 0, 999999)
     prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
@@ -1205,6 +1205,15 @@ def _set_api_input(prompt, node_id, input_name, value):
     inputs[input_name] = value
 
 
+def _scene_render_output_folder(project_folder, folder_name, payload):
+    scene_number = _int_payload(payload, "scene_number", 0, 0, 999999)
+    root = os.path.join(project_folder, folder_name)
+    if scene_number > 0:
+        root = os.path.join(root, f"scene_{scene_number:04d}")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
 def _set_optional_api_input(prompt, node_id, input_name, value):
     node = prompt.get(str(node_id))
     if not isinstance(node, dict):
@@ -1229,13 +1238,29 @@ def _normalize_sigma_list_text(value, default):
     return ", ".join(parts)
 
 
-def _patch_i2v_node_overrides(prompt, payload):
+def _patch_ltx_two_pass_sampler_overrides(prompt, payload):
     _set_api_input(prompt, "218:186", "sampler_name", str(payload.get("pass1_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
     _set_api_input(prompt, "218:209", "sigmas", _normalize_sigma_list_text(payload.get("pass1_sigmas"), _DEFAULT_I2V_PASS1_SIGMAS))
-    _set_api_input(prompt, "218:222", "strength", _float_payload(payload, "pass1_inplace_strength", 1.0, 0.0, 1.0))
-    _set_api_input(prompt, "218:222", "bypass", _bool_payload(payload, "pass1_inplace_bypass", False))
     _set_api_input(prompt, "219:187", "sampler_name", str(payload.get("pass2_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
     _set_api_input(prompt, "219:208", "sigmas", _normalize_sigma_list_text(payload.get("pass2_sigmas"), _DEFAULT_I2V_PASS2_SIGMAS))
+
+
+def _patch_ltx_ingredients_sampler_overrides(prompt, payload):
+    _set_api_input(prompt, "218:186", "sampler_name", str(payload.get("pass1_sampler_name") or _DEFAULT_INGREDIENTS_SAMPLER).strip() or _DEFAULT_INGREDIENTS_SAMPLER)
+    _set_api_input(prompt, "218:209", "sigmas", _normalize_sigma_list_text(payload.get("pass1_sigmas"), _DEFAULT_I2V_PASS1_SIGMAS))
+    _set_api_input(prompt, "219:187", "sampler_name", str(payload.get("pass2_sampler_name") or _DEFAULT_INGREDIENTS_SAMPLER).strip() or _DEFAULT_INGREDIENTS_SAMPLER)
+    _set_api_input(prompt, "219:208", "sigmas", _normalize_sigma_list_text(payload.get("pass2_sigmas"), _DEFAULT_I2V_PASS2_SIGMAS))
+
+
+def _patch_ltx_single_pass_sampler_overrides(prompt, payload):
+    _set_api_input(prompt, "218:186", "sampler_name", str(payload.get("pass1_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
+    _set_api_input(prompt, "218:209", "sigmas", _normalize_sigma_list_text(payload.get("pass1_sigmas"), _DEFAULT_I2V_PASS1_SIGMAS))
+
+
+def _patch_i2v_node_overrides(prompt, payload):
+    _patch_ltx_two_pass_sampler_overrides(prompt, payload)
+    _set_api_input(prompt, "218:222", "strength", _float_payload(payload, "pass1_inplace_strength", 1.0, 0.0, 1.0))
+    _set_api_input(prompt, "218:222", "bypass", _bool_payload(payload, "pass1_inplace_bypass", False))
     _set_api_input(prompt, "219:221", "strength", _float_payload(payload, "pass2_inplace_strength", 1.0, 0.0, 1.0))
     _set_api_input(prompt, "219:221", "bypass", _bool_payload(payload, "pass2_inplace_bypass", False))
 
@@ -1281,8 +1306,7 @@ def _patch_i2v_api_prompt(prompt, payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
         raise ValueError("Project folder is empty.")
-    output_folder = os.path.join(project_folder, "image_to_video_clips")
-    os.makedirs(output_folder, exist_ok=True)
+    output_folder = _scene_render_output_folder(project_folder, "image_to_video_clips", payload)
 
     image_index = _int_payload(payload, "image_index_zero_based", 0, 0, 999999)
     prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
@@ -1351,8 +1375,7 @@ def _patch_t2v_api_prompt(prompt, payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
         raise ValueError("Project folder is empty.")
-    output_folder = os.path.join(project_folder, "text_to_video_clips")
-    os.makedirs(output_folder, exist_ok=True)
+    output_folder = _scene_render_output_folder(project_folder, "text_to_video_clips", payload)
 
     prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
     fps = _int_payload(payload, "fps", 24, 1, 120)
@@ -1397,6 +1420,7 @@ def _patch_t2v_api_prompt(prompt, payload):
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
     _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
     _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    _patch_ltx_two_pass_sampler_overrides(prompt, payload)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -1510,8 +1534,7 @@ def _patch_rtv_api_prompt(prompt, payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
         raise ValueError("Project folder is empty.")
-    output_folder = os.path.join(project_folder, "reference_to_video_clips")
-    os.makedirs(output_folder, exist_ok=True)
+    output_folder = _scene_render_output_folder(project_folder, "reference_to_video_clips", payload)
 
     prompt_number = _int_payload(payload, "prompt_number_one_based", 1, 1, 999999)
     fps = _int_payload(payload, "fps", 24, 1, 120)
@@ -1581,6 +1604,7 @@ def _patch_rtv_api_prompt(prompt, payload):
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
     _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
     _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    _patch_ltx_single_pass_sampler_overrides(prompt, payload)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
@@ -1600,8 +1624,7 @@ def _patch_ingredients_api_prompt(prompt, payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
         raise ValueError("Project folder is empty.")
-    output_folder = os.path.join(project_folder, "ingredients_to_video_clips")
-    os.makedirs(output_folder, exist_ok=True)
+    output_folder = _scene_render_output_folder(project_folder, "ingredients_to_video_clips", payload)
 
     image_path = os.path.abspath(str(payload.get("ingredients_image_path", "") or "").strip().strip('"'))
     image_name = str(payload.get("ingredients_image_name", "") or "ingredients_reference.png")
@@ -1676,6 +1699,7 @@ def _patch_ingredients_api_prompt(prompt, payload):
     _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
     _set_api_input(prompt, "218:287", "tail_loss_frames", tail_loss_frames)
     _set_api_input(prompt, "218:287", "pre_frames", pre_frames)
+    _patch_ltx_ingredients_sampler_overrides(prompt, payload)
     _set_api_input(prompt, "437", "value", output_folder)
     return prompt, output_folder
 
