@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
 
 const STORAGE_KEY = "vrgdg_node_canvas_prototype_v1";
+const COMFY_NODE_NAME = "VRGDG_VideoBuilderNodeCanvas";
 
 const NODE_DEFS = {
   prompt: {
@@ -111,7 +112,6 @@ class VRGDGNodeCanvasPrototype {
 
   init() {
     this.injectStyles();
-    this.createLaunchButton();
     window.vrgdgNodeCanvasPrototype = this;
   }
 
@@ -133,15 +133,6 @@ class VRGDGNodeCanvasPrototype {
     this.graph = cloneGraph(DEFAULT_GRAPH);
     this.saveGraph();
     this.render();
-  }
-
-  createLaunchButton() {
-    if (document.getElementById("vrgdg-node-canvas-launch")) return;
-    const button = el("button", "vrgdg-node-launch", "VRGDG Nodes");
-    button.id = "vrgdg-node-canvas-launch";
-    button.title = "Open VRGDG node canvas prototype";
-    button.addEventListener("click", () => this.open());
-    document.body.appendChild(button);
   }
 
   open() {
@@ -591,21 +582,6 @@ class VRGDGNodeCanvasPrototype {
     const style = el("style");
     style.id = "vrgdg-node-canvas-styles";
     style.textContent = `
-      .vrgdg-node-launch {
-        position: fixed;
-        right: 18px;
-        bottom: 18px;
-        z-index: 9000;
-        border: 1px solid rgba(255,255,255,0.2);
-        border-radius: 8px;
-        background: #1f2328;
-        color: #f2f4f8;
-        padding: 10px 14px;
-        font: 700 13px Arial, sans-serif;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-        cursor: pointer;
-      }
-
       .vrgdg-node-root {
         position: fixed;
         inset: 0;
@@ -666,8 +642,7 @@ class VRGDGNodeCanvasPrototype {
       }
 
       .vrgdg-node-actions button:hover,
-      .vrgdg-node-menu button:hover,
-      .vrgdg-node-launch:hover {
+      .vrgdg-node-menu button:hover {
         background: #303740;
       }
 
@@ -908,6 +883,40 @@ class VRGDGNodeCanvasPrototype {
 
 app.registerExtension({
   name: "VRGDG.VideoBuilderNodeCanvasPrototype",
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name !== COMFY_NODE_NAME) return;
+
+    const onNodeCreated = nodeType.prototype.onNodeCreated;
+    const onConfigure = nodeType.prototype.onConfigure;
+
+    function ensureOpenButton(node) {
+      const buttonName = "Open Node Canvas";
+      node.widgets = (node.widgets || []).filter(
+        (widget) => !(widget?.type === "button" && widget?.name === buttonName)
+      );
+      const widget = node.addWidget("button", buttonName, null, () => {
+        window.vrgdgNodeCanvasPrototype?.open();
+      });
+      if (widget) widget.serialize = false;
+      node.size = [
+        Math.max(node.size?.[0] || 320, 320),
+        Math.max(node.size?.[1] || 120, 120),
+      ];
+    }
+
+    nodeType.prototype.onNodeCreated = function () {
+      const result = onNodeCreated?.apply(this, arguments);
+      ensureOpenButton(this);
+      return result;
+    };
+
+    nodeType.prototype.onConfigure = function () {
+      const result = onConfigure?.apply(this, arguments);
+      ensureOpenButton(this);
+      return result;
+    };
+  },
+
   async setup() {
     const prototype = new VRGDGNodeCanvasPrototype();
     prototype.init();

@@ -6,8 +6,37 @@ except Exception:
     PromptServer = None
 
 
-NODE_CLASS_MAPPINGS = {}
-NODE_DISPLAY_NAME_MAPPINGS = {}
+class VRGDG_VideoBuilderNodeCanvas:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "notes": (
+                    "STRING",
+                    {
+                        "default": "Standalone node canvas prototype. Use the button on this node to open it.",
+                        "multiline": True,
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("notes",)
+    FUNCTION = "passthrough"
+    CATEGORY = "VRGDG/Video Builder"
+
+    def passthrough(self, notes):
+        return (notes,)
+
+
+NODE_CLASS_MAPPINGS = {
+    "VRGDG_VideoBuilderNodeCanvas": VRGDG_VideoBuilderNodeCanvas,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "VRGDG_VideoBuilderNodeCanvas": "VRGDG Video Builder Node Canvas",
+}
 
 
 def _json_response(payload):
@@ -28,4 +57,3 @@ if PromptServer is not None and web is not None:
                 "builder_connected": False,
             }
         )
-
