@@ -502,7 +502,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     include_microphone = bool(scene.get("include_microphone") or scene.get("use_microphone") or scene.get("microphone"))
     trigger_position = str(scene.get("trigger_position") or scene.get("triggerPosition") or scene.get("trigger_placement") or "start").strip().lower()
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
-    if video_prompt_type not in {"i2v", "t2v", "rtv", "ingredients"}:
+    if video_prompt_type not in {"i2v", "id_lora", "t2v", "rtv", "ingredients"}:
         video_prompt_type = "i2v"
     if video_prompt:
         video_prompt = _enforce_storyboard_video_facial_requirements(video_prompt, {
@@ -544,6 +544,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "video_prompt": video_prompt,
         "image_path": image_path,
         "notes": _clean_scene_text(scene.get("notes") or "", 4000),
+        "id_lora_character_id": _clean_scene_text(scene.get("id_lora_character_id") or scene.get("character_id") or scene.get("subject_id") or "", 180),
+        "id_lora_location_id": _clean_scene_text(scene.get("id_lora_location_id") or scene.get("location_id") or "", 180),
     }
 
 
@@ -900,7 +902,17 @@ def _ensure_storyboard_reference_opening(prompt, scene):
     if not opening or not text:
         return text
     text = re.sub(
-        r"^Using the provided\s+(?:(?:character|location|scene|reference)\s+)+(?:images?|references?)\s*,?\s*(?:create\s+)?",
+        r"^Using the provided\s+"
+        r"(?:(?:character|location|scene|reference)\s+)*(?:images?|references?)"
+        r"(?:\s+and\s+(?:(?:character|location|scene|reference)\s+)*(?:images?|references?))*"
+        r"\s*,?\s*(?:create\s+)?",
+        "",
+        text,
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip()
+    text = re.sub(
+        r"^and\s+(?:(?:character|location|scene|reference)\s+)*(?:images?|references?)\s*,?\s*(?:create\s+)?",
         "",
         text,
         count=1,
@@ -1383,6 +1395,285 @@ def _build_story_layer_scene_beat(payload):
     }
 
 
+def _storyboard_dialogue_reference_catalog(payload):
+    reference_builder = payload.get("reference_builder") or payload.get("referenceBuilder") or {}
+    if not isinstance(reference_builder, dict):
+        reference_builder = {}
+    catalog = _normalize_reference_catalog(reference_builder)
+    subjects = []
+    locations = []
+    for subject in catalog.get("subjects") or []:
+        if not isinstance(subject, dict):
+            continue
+        subject_id = _clean_scene_text(subject.get("id") or "", 160)
+        name = _clean_scene_text(subject.get("name") or "", 160)
+        description = _clean_scene_text(subject.get("description") or "", 1200)
+        if subject_id or name or description:
+            image = subject.get("image") if isinstance(subject.get("image"), dict) else {}
+            subjects.append({
+                "id": subject_id,
+                "name": name or subject_id or "Character",
+                "description": description,
+                "reference_type": _clean_scene_text(subject.get("reference_type") or "character", 80),
+                "image": {
+                    "path": _clean_scene_text(image.get("path") or "", 2000),
+                    "data": "",
+                    "name": _clean_scene_text(image.get("name") or "", 240),
+                },
+            })
+    for location in catalog.get("locations") or []:
+        if not isinstance(location, dict):
+            continue
+        location_id = _clean_scene_text(location.get("id") or "", 160)
+        name = _clean_scene_text(location.get("name") or "", 160)
+        description = _clean_scene_text(location.get("description") or "", 1200)
+        if location_id or name or description:
+            image = location.get("image") if isinstance(location.get("image"), dict) else {}
+            locations.append({
+                "id": location_id,
+                "name": name or location_id or "Location",
+                "description": description,
+                "image": {
+                    "path": _clean_scene_text(image.get("path") or "", 2000),
+                    "data": "",
+                    "name": _clean_scene_text(image.get("name") or "", 240),
+                },
+            })
+    return subjects, locations
+
+
+def _id_lora_structured_image_prompt(item, subject_ref=None, location_ref=None):
+    raw_prompt = _clean_scene_text(item.get("image_prompt") or item.get("visual_prompt") or "", 3000)
+    words = re.findall(r"[A-Za-z0-9']+", raw_prompt)
+    has_rich_prompt = (
+        len(words) >= 45
+        and re.search(r"\b(close-up|medium close-up|upper body|waist-up|portrait|profile|over-the-shoulder|low-angle|lens|lighting|depth of field|bokeh|palette|texture|cinematic)\b", raw_prompt, re.IGNORECASE)
+    )
+    if has_rich_prompt:
+        return raw_prompt
+
+    subject_ref = subject_ref if isinstance(subject_ref, dict) else {}
+    location_ref = location_ref if isinstance(location_ref, dict) else {}
+    subject_name = _clean_scene_text(item.get("character_name") or item.get("speaker") or subject_ref.get("name") or "the speaking character", 160)
+    subject_description = _clean_scene_text(subject_ref.get("description") or item.get("character_description") or "", 900)
+    location_name = _clean_scene_text(item.get("setting") or item.get("location_name") or location_ref.get("name") or "the scene location", 160)
+    location_description = _clean_scene_text(location_ref.get("description") or item.get("location_description") or "", 900)
+    shot_type = _clean_scene_text(item.get("shot_type") or "cinematic medium close-up", 120)
+    visual_direction = _clean_scene_text(item.get("visual_direction") or item.get("summary") or item.get("story_beat") or item.get("beat") or "", 1000)
+    facial = _clean_scene_text(item.get("facial_performance_custom") or item.get("facial_performance") or item.get("emotion") or item.get("delivery") or "", 500)
+
+    has_subject_image = bool((subject_ref.get("image") or {}).get("path") or (subject_ref.get("image") or {}).get("name"))
+    has_location_image = bool((location_ref.get("image") or {}).get("path") or (location_ref.get("image") or {}).get("name"))
+    if has_subject_image and has_location_image:
+        opening = "Using the provided character reference and location reference, create"
+    elif has_subject_image:
+        opening = "Using the provided character reference, create"
+    elif has_location_image:
+        opening = "Using the provided location reference, create"
+    else:
+        opening = "Create"
+
+    subject_clause = f"{subject_name}"
+    if subject_description:
+        subject_clause = f"{subject_clause}, preserving {subject_description}"
+    location_clause = f"in {location_name}"
+    if location_description:
+        location_clause = f"{location_clause}, with {location_description}"
+    action_clause = visual_direction or "a tense dialogue-first short-film moment"
+    face_clause = f" Give the face/body language {facial}." if facial else ""
+    prompt = (
+        f"{opening} a {shot_type} of {subject_clause} {location_clause}. "
+        f"Stage the still frame around {action_clause}.{face_clause} "
+        "Use a new pose and camera angle, shallow depth of field, practical cinematic lighting, textured materials, atmospheric haze or background separation, a deliberate color palette, crisp facial detail, and high cinematic image quality. "
+        "No captions, no text overlays, no dialogue printed in the image."
+    )
+    return _clean_scene_text(re.sub(r"\s+", " ", prompt), 3000)
+
+
+def _normalize_generated_dialogue_scenes(raw_scenes, subjects, locations):
+    if not isinstance(raw_scenes, list):
+        raise ValueError("Gemma dialogue plan did not include a scenes array.")
+    subject_ids = {str(item.get("id") or "") for item in subjects if str(item.get("id") or "")}
+    location_ids = {str(item.get("id") or "") for item in locations if str(item.get("id") or "")}
+    scenes = []
+    for index, item in enumerate(raw_scenes[:80], start=1):
+        if not isinstance(item, dict):
+            continue
+        subject_id = _clean_scene_text(item.get("character_id") or item.get("subject_id") or item.get("speaker_id") or "", 180)
+        location_id = _clean_scene_text(item.get("location_id") or "", 180)
+        if subject_id and subject_ids and subject_id not in subject_ids:
+            subject_id = ""
+        if location_id and location_ids and location_id not in location_ids:
+            location_id = ""
+        subject_refs = []
+        if subject_id:
+            subject = next((entry for entry in subjects if entry.get("id") == subject_id), None)
+            if subject:
+                subject_refs = [{
+                    "id": subject.get("id", ""),
+                    "name": subject.get("name", ""),
+                    "description": subject.get("description", ""),
+                    "reference_type": subject.get("reference_type", "character"),
+                    "image": {**(subject.get("image") or {})},
+                }]
+        location_ref = None
+        if location_id:
+            location = next((entry for entry in locations if entry.get("id") == location_id), None)
+            if location:
+                location_ref = {
+                    "id": location.get("id", ""),
+                    "name": location.get("name", ""),
+                    "description": location.get("description", ""),
+                    "image": {**(location.get("image") or {})},
+                }
+        subject_for_prompt = subject_refs[0] if subject_refs else None
+        dialogue = _clean_scene_text(item.get("dialogue") or item.get("line") or item.get("lyrics") or "", 1200)
+        label = _clean_scene_text(item.get("label") or item.get("title") or f"Scene {index}", 160)
+        scene = _normalize_storyboard_scene({
+            "id": _clean_scene_text(item.get("id") or f"id_lora_story_scene_{index}", 160),
+            "scene_number": index,
+            "label": label or f"Scene {index}",
+            "lyrics": dialogue,
+            "lyric_singers": [_clean_scene_text(item.get("character_name") or item.get("speaker") or "", 160)] if not subject_refs else [subject_refs[0].get("name", "")],
+            "story_beat": _clean_scene_text(item.get("story_beat") or item.get("beat") or "", 1800),
+            "prompt_summary": _clean_scene_text(item.get("visual_direction") or item.get("summary") or "", 1800),
+            "motion_summary": _clean_scene_text(item.get("motion_summary") or item.get("video_notes") or item.get("camera_motion") or "", 1400),
+            "subjects": [subject_refs[0].get("name", "")] if subject_refs else [],
+            "subject_refs": subject_refs,
+            "setting": _clean_scene_text(item.get("setting") or item.get("location_name") or (location_ref or {}).get("name", ""), 1000),
+            "location_ref": location_ref,
+            "video_prompt_type": "id_lora",
+            "performance_mode": "speaking",
+            "shot_type": _clean_scene_text(item.get("shot_type") or "", 160),
+            "camera_motion": _clean_scene_text(item.get("camera_motion") or "", 500),
+            "facial_performance": _clean_scene_text(item.get("facial_performance") or item.get("emotion") or "", 240),
+            "facial_performance_custom": _clean_scene_text(item.get("facial_performance_custom") or item.get("delivery") or "", 800),
+            "image_prompt": _id_lora_structured_image_prompt(item, subject_for_prompt, location_ref),
+        }, index)
+        scene["id_lora_character_id"] = subject_id
+        scene["id_lora_location_id"] = location_id
+        scenes.append(scene)
+    if not scenes:
+        raise ValueError("Gemma returned no usable dialogue scenes.")
+    return scenes
+
+
+def _build_id_lora_dialogue_scenes(payload):
+    story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    story_source = _clean_scene_text(
+        payload.get("story_source") or payload.get("storySource") or story_layer.get("user_story_arc") or story_layer.get("song_story_brief") or "",
+        12000,
+    )
+    try:
+        scene_count = int(float(payload.get("scene_count") or payload.get("sceneCount") or 6))
+    except Exception:
+        scene_count = 6
+    scene_count = max(1, min(24, scene_count))
+    subjects, locations = _storyboard_dialogue_reference_catalog(payload)
+    existing_scenes = payload.get("scenes") if isinstance(payload.get("scenes"), list) else []
+    compact_existing = []
+    for index, scene in enumerate(existing_scenes[:24], start=1):
+        if not isinstance(scene, dict):
+            continue
+        normalized = _normalize_storyboard_scene(scene, index)
+        compact_existing.append({
+            "scene_number": normalized.get("scene_number", index),
+            "label": normalized.get("label", ""),
+            "dialogue": normalized.get("lyrics", ""),
+            "story_beat": normalized.get("story_beat", ""),
+        })
+    instruction = (
+        "You are a short-film dialogue scene planner for an ID-LoRA image-to-video workflow.\n\n"
+        "Create a preview storyboard plan. The user will review it before anything is applied to the Video Builder timeline.\n\n"
+        "Important behavior:\n"
+        "- If USER STORY / SCRIPT has text, use it as the source. It may be a premise, outline, or pasted script.\n"
+        "- If USER STORY / SCRIPT is empty, invent an original short-film premise from the available characters and locations.\n"
+        "- Create exact spoken dialogue lines. Keep each line short enough for a single generated clip.\n"
+        "- Prefer one speaking character per scene. Use only character ids from AVAILABLE CHARACTERS when possible.\n"
+        "- Use only location ids from AVAILABLE LOCATIONS when possible.\n"
+        "- Each scene needs a story beat, visual direction for image prep, a full text-to-image prompt, and optional camera/facial direction.\n"
+        "- The image_prompt must follow the existing NanoBanana/Krea-style still-image prompt structure, not a short keyword list.\n"
+        "- For image_prompt, write one polished paragraph, about 65-115 words, practical for text-to-image generation.\n"
+        "- For image_prompt, include concrete subject identity, wardrobe, hair, makeup or facial detail when known, pose/body language, shot/framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.\n"
+        "- For image_prompt, create a still frame only. Do not describe animation, camera movement, future action, lip sync, audio, captions, text overlays, or printed dialogue.\n"
+        "- For image_prompt, prefer intimate cinematic compositions when no shot is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, bokeh, rim light, atmospheric lighting.\n"
+        "- For image_prompt, if character or location reference images are available, start naturally with 'Using the provided character reference...' or 'Using the provided character reference and location reference...' and preserve the important identity/setting details without copying the exact pose, crop, or camera angle.\n"
+        "- Do not mention ID-LoRA, LoRA, nodes, workflow files, voice cloning, prompts, or metadata in dialogue.\n"
+        "- Do not write markdown, explanations, or code fences.\n\n"
+        "Return only valid JSON with this exact shape:\n"
+        "{\n"
+        '  "title": "short title",\n'
+        '  "premise": "one paragraph premise",\n'
+        '  "scenes": [\n'
+        "    {\n"
+        '      "label": "Scene 1 title",\n'
+        '      "character_id": "exact id from available characters or empty",\n'
+        '      "location_id": "exact id from available locations or empty",\n'
+        '      "dialogue": "exact spoken line",\n'
+        '      "story_beat": "one concise story beat",\n'
+        '      "visual_direction": "short first-frame visual direction for image prep",\n'
+        '      "image_prompt": "full NanoBanana/Krea-style still image prompt paragraph for creating the scene image",\n'
+        '      "shot_type": "optional shot/framing",\n'
+        '      "camera_motion": "optional camera movement",\n'
+        '      "facial_performance": "optional facial/emotional direction",\n'
+        '      "delivery": "optional voice/performance delivery note"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        f"Requested scene count: {scene_count}\n\n"
+        f"USER STORY / SCRIPT:\n{story_source or '[blank - invent an original short-film premise]'}\n\n"
+        f"Story layer:\n{json.dumps(story_layer, ensure_ascii=False, indent=2)}\n\n"
+        f"Available characters:\n{json.dumps(subjects, ensure_ascii=False, indent=2) if subjects else '[none provided]'}\n\n"
+        f"Available locations:\n{json.dumps(locations, ensure_ascii=False, indent=2) if locations else '[none provided]'}\n\n"
+        f"Existing starter scenes:\n{json.dumps(compact_existing, ensure_ascii=False, indent=2) if compact_existing else '[none]'}"
+    )
+    from .VRGDG_MusicVideoBuilderNodes import _extract_json_object_from_text, _run_builder_text_llm
+
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.55),
+        top_p=float(payload.get("top_p") or 0.92),
+        max_new_tokens=int(payload.get("max_new_tokens") or max(1400, scene_count * 280)),
+        label="ID-LoRA Dialogue Scenes Gemma",
+        preserve_paragraphs=True,
+    )
+    try:
+        data = _extract_json_object_from_text(text)
+    except Exception as parse_error:
+        repair_instruction = (
+            "Repair this malformed JSON for an ID-LoRA dialogue scene plan.\n"
+            "Return only valid JSON. Do not add prose, markdown, code fences, comments, or trailing commas.\n"
+            "Every property name must be enclosed in double quotes. Every string value must be enclosed in double quotes.\n"
+            "Keep the same title, premise, and scenes when possible.\n\n"
+            f"MALFORMED JSON:\n{text}"
+        )
+        repaired_text, repair_info = _run_builder_text_llm(
+            payload,
+            repair_instruction,
+            temperature=0.1,
+            top_p=0.8,
+            max_new_tokens=int(payload.get("max_new_tokens") or max(2200, scene_count * 520)),
+            label="ID-LoRA Dialogue Scenes JSON Repair",
+            preserve_paragraphs=True,
+        )
+        try:
+            data = _extract_json_object_from_text(repaired_text)
+            run_info = {**run_info, "json_repaired": True, "repair_runner": repair_info.get("runner", "")}
+        except Exception:
+            raise ValueError(f"Gemma returned malformed dialogue-plan JSON and repair failed. Original parse error: {parse_error}")
+    scenes = _normalize_generated_dialogue_scenes(data.get("scenes"), subjects, locations)
+    return {
+        "title": _clean_scene_text(data.get("title") or "", 200),
+        "premise": _clean_scene_text(data.get("premise") or story_source or "", 4000),
+        "scenes": scenes,
+        "scene_count": len(scenes),
+        "runner": run_info.get("runner", "builtin"),
+        "used_model": run_info.get("used_model", ""),
+        "unloaded": run_info.get("unloaded", True),
+    }
+
+
 def _ensure_storyboard_routes():
     global _VRGDG_STORYBOARD_ROUTES_REGISTERED
     if _VRGDG_STORYBOARD_ROUTES_REGISTERED:
@@ -1468,6 +1759,15 @@ def _ensure_storyboard_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_build_story_layer_scene_beat, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/id_lora_dialogue_scenes")
+    async def vrgdg_storyboard_id_lora_dialogue_scenes(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_id_lora_dialogue_scenes, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

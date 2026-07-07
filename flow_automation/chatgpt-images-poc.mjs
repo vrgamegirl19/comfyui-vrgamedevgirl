@@ -9,6 +9,7 @@ const prompt = normalizePrompt(args.prompt || "create an image");
 const outputDir = path.resolve(projectDir, args.out || "chatgpt_outputs");
 const timeout = Number(args.timeout || 360000);
 const cdpUrl = args.cdp || args["connect-cdp"] || "";
+const noNavigate = Boolean(args["no-navigate"]);
 const imagePaths = normalizeList(args.image).map((imagePath) => path.resolve(imagePath));
 const profileDir = path.resolve(projectDir, "chatgpt-browser-profile");
 
@@ -38,9 +39,13 @@ if (cdpUrl) {
 const page = await getOrCreatePage(context);
 page.setDefaultTimeout(30000);
 
-console.log(`Opening ${url}`);
-await page.goto(url, { waitUntil: "domcontentloaded" });
-await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
+if (noNavigate) {
+  console.log(`Using current tab: ${page.url()}`);
+} else {
+  console.log(`Opening ${url}`);
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
+}
 await allowDownloadsForAttachedChrome(context, page, outputDir);
 await ensureComposerReady(page);
 

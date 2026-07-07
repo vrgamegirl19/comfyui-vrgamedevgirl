@@ -17,8 +17,12 @@ import {
   BROWSER_IMAGE_PROVIDERS,
   buildBrowserImagePrompt,
   getBrowserImageStatus,
+  importLatestManualBrowserImageDownload,
   openBrowserImageLogin,
+  openManualBrowserImageProvider,
   setupBrowserImageAutomation,
+  uploadManualBrowserImageRefs,
+  waitForManualBrowserImageDownload,
 } from "./VRGDG_BrowserImageBridge.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
@@ -29,6 +33,8 @@ const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
 const REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors";
 const REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors";
+const REQUIRED_LTX_ID_LORA = "lora_weights.safetensors";
+const REQUIRED_LTX_ID_LORA_URL = "https://huggingface.co/AviadDahan/LTX-2.3-ID-LoRA-CelebVHQ-3K";
 const DEFAULT_LTX_INGREDIENTS_WIDTH = 768;
 const DEFAULT_LTX_INGREDIENTS_HEIGHT = 448;
 const I2V_SAMPLER_OPTIONS = [
@@ -1911,7 +1917,7 @@ function openBuilder(node) {
   topbar.append(projectActions, centerActions, utilityActions, menuDropdown);
 
   const main = document.createElement("div");
-  main.style.cssText = "display:grid;grid-template-columns:260px 7px minmax(0,1fr) 7px 360px;min-height:0;height:100%;overflow:hidden;";
+  main.style.cssText = "display:grid;grid-template-columns:260px 7px minmax(0,1fr) 7px 360px;min-height:0;overflow:hidden;";
   const segmentList = document.createElement("div");
   segmentList.style.cssText = "display:flex;flex-direction:column;min-height:0;border-right:1px solid #27272a;background:#202024;";
   segmentList.style.gridColumn = "1";
@@ -2007,22 +2013,19 @@ function openBuilder(node) {
   previewVideo.playsInline = true;
   previewVideo.muted = false;
   previewVideo.style.cssText = "display:none;max-width:100%;max-height:100%;object-fit:contain;background:#050505;";
+  let previewVideoLoadTimer = null;
+  const previewDecodeHint = document.createElement("div");
+  previewDecodeHint.style.cssText = "display:none;position:absolute;left:14px;right:14px;bottom:14px;z-index:2;padding:10px 12px;border:1px solid #ef4444;border-radius:6px;background:rgba(15,23,42,.92);color:#fee2e2;font-size:12px;line-height:1.35;box-shadow:0 12px 36px rgba(0,0,0,.45);";
   previewVideo.addEventListener("error", () => {
-    const segment = activeSegment();
-    const thumbnailPath = selectedSegmentVideoThumbnailPath(segment);
-    if (!thumbnailPath) return;
-    previewVideo.pause();
-    previewVideo.removeAttribute("src");
-    previewVideo.dataset.path = "";
-    previewVideo.dataset.cacheKey = "";
-    previewVideo.style.display = "none";
-    previewImage.src = makeEditorImageUrl(thumbnailPath);
-    previewImage.title = "Video preview could not decode. Showing thumbnail.";
-    previewImage.style.display = "block";
-    previewEmpty.style.display = "none";
-    toast("The video file was created, but the browser preview could not decode it. Showing the thumbnail instead.", true);
+    handlePreviewVideoLoadIssue("error");
   });
-  previewStage.append(previewEmpty, previewImage, previewVideo, postProcessComparePreview.element);
+  previewVideo.addEventListener("loadedmetadata", () => {
+    if (previewVideoLoadTimer) clearTimeout(previewVideoLoadTimer);
+    previewVideoLoadTimer = null;
+    previewDecodeHint.style.display = "none";
+    previewVideo.dataset.failureKey = "";
+  });
+  previewStage.append(previewEmpty, previewImage, previewVideo, postProcessComparePreview.element, previewDecodeHint);
   const customImageFileInput = document.createElement("input");
   customImageFileInput.type = "file";
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -2049,7 +2052,7 @@ function openBuilder(node) {
   projectSrtFileInput.style.display = "none";
   shell.append(projectSrtFileInput);
   const inspector = document.createElement("div");
-  inspector.style.cssText = "display:flex;flex-direction:column;gap:10px;padding:10px;border-left:1px solid #27272a;background:#202024;overflow-y:auto;overflow-x:hidden;min-height:0;height:100%;box-sizing:border-box;scrollbar-width:thin;";
+  inspector.style.cssText = "display:flex;flex-direction:column;gap:10px;padding:10px;border-left:1px solid #27272a;background:#202024;overflow-y:auto;overflow-x:hidden;min-height:0;box-sizing:border-box;scrollbar-width:thin;";
   inspector.style.gridColumn = "5";
   const rightResizeHandle = document.createElement("div");
   rightResizeHandle.title = "Drag to resize settings panel";
@@ -2534,6 +2537,18 @@ function openBuilder(node) {
   const flowGptCreatePromptButton = makeButton("Gemma Flow/GPT Prompt", "primary");
   const editFlowGptT2IInstructionsButton = makeButton("Edit Flow/GPT T2I Instructions");
   const flowGptCreateImageButton = makeButton("Create with Flow/GPT", "primary");
+  const flowGptManualMode = makeCheckbox("Manual Mode", false);
+  const flowGptManualAutoAdvance = makeCheckbox("Auto-advance after import", false);
+  const flowGptManualOpenButton = makeButton("Open Manual Browser", "primary");
+  const flowGptManualExportRefsButton = makeButton("Export Scene Refs");
+  const flowGptManualArmDownloadButton = makeButton("Arm Download Import", "primary");
+  const flowGptManualImportLatestButton = makeButton("Import Latest Download");
+  const flowGptManualStatus = document.createElement("div");
+  flowGptManualStatus.style.cssText = "font-size:11px;color:#a1a1aa;white-space:pre-wrap;line-height:1.35;";
+  flowGptManualStatus.textContent = "Manual Mode is off.";
+  const flowGptManualActions = document.createElement("div");
+  flowGptManualActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  flowGptManualActions.append(flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualArmDownloadButton, flowGptManualImportLatestButton);
   const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
   fluxImageRefsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
@@ -2778,6 +2793,8 @@ function openBuilder(node) {
   editI2VPromptButton.style.display = "none";
   const editI2VInstructionsButton = makeButton("Edit I2V Instructions");
   editI2VInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Image-to-Video prompts.";
+  const editIdLoraInstructionsButton = makeButton("Edit ID-LoRA Instructions");
+  editIdLoraInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing ID-LoRA I2V scripts.";
   const editRTVInstructionsButton = makeButton("Edit Reference Video Instructions");
   editRTVInstructionsButton.title = "Advanced: customize the Gemma instructions used when writing Reference-to-Video prompts.";
   const editIngredientsInstructionsButton = makeButton("Edit Ingredients Video Instructions");
@@ -2788,12 +2805,35 @@ function openBuilder(node) {
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
   const videoModeChooser = document.createElement("div");
-  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;";
+  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,auto);gap:6px;";
+  const styleVideoModeCard = (card, column, row) => {
+    card.style.gridColumn = String(column);
+    card.style.gridRow = String(row);
+    card.style.width = "100%";
+    card.style.minWidth = "0";
+    card.style.flex = "1 1 auto";
+    card.style.padding = "0 8px";
+    card.style.justifySelf = "stretch";
+  };
   const imageToVideoCard = makeImageModelCard("Image to Video", "i2v");
+  styleVideoModeCard(imageToVideoCard, 1, 1);
+  const idLoraVideoCard = makeImageModelCard("ID-LoRA I2V", "id_lora");
+  styleVideoModeCard(idLoraVideoCard, 2, 1);
   const textToVideoCard = makeImageModelCard("Text to Video", "t2v");
+  styleVideoModeCard(textToVideoCard, 1, 2);
   const referenceToVideoCard = makeImageModelCard("Reference to Video", "rtv");
+  styleVideoModeCard(referenceToVideoCard, 2, 2);
   const ingredientsToVideoCard = makeImageModelCard("Ingredients to Video", "ingredients");
-  videoModeChooser.append(imageToVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard);
+  styleVideoModeCard(ingredientsToVideoCard, 1, 3);
+  const importCustomVideoCard = makeImageModelCard("Import Custom Video", "import");
+  styleVideoModeCard(importCustomVideoCard, 2, 3);
+  videoModeChooser.append(imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, importCustomVideoCard);
+  const importCustomVideoComingSoon = document.createElement("div");
+  importCustomVideoComingSoon.textContent = "Import Custom Video is coming soon. Use Restore Video from a scene's right-click menu for manual scene repair.";
+  importCustomVideoComingSoon.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
+  const importCustomVideoPanel = makeSettingsPanel([
+    importCustomVideoComingSoon,
+  ]);
   const i2vUseGgufModel = makeCheckbox("Use GGUF model?", true);
   const i2vUnetPicker = makeSearchableLoraPicker("");
   const i2vDiffusionModelPicker = makeSearchableLoraPicker(DEFAULT_I2V_DIFFUSION_MODEL);
@@ -2906,6 +2946,42 @@ function openBuilder(node) {
     makeField("Pass 1", ltxIngredientsFirstPassStrength)
   );
   ltxIngredientsRequiredPanel.append(ltxIngredientsRequiredNote, ltxIngredientsStrengthGrid);
+  const ltxIdLoraRequiredPanel = document.createElement("div");
+  ltxIdLoraRequiredPanel.style.cssText = ltxMsrRequiredPanel.style.cssText;
+  const ltxIdLoraRequiredNote = document.createElement("div");
+  ltxIdLoraRequiredNote.textContent = "Required for ID-LoRA I2V. This LoRA is always applied in slot 1; optional video LoRAs start after it.";
+  ltxIdLoraRequiredNote.style.cssText = ltxMsrRequiredNote.style.cssText;
+  const ltxIdLoraHelpRow = document.createElement("div");
+  ltxIdLoraHelpRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+  const ltxIdLoraLinkButton = makeGptLinkButton("Open LoRA Page", REQUIRED_LTX_ID_LORA_URL);
+  ltxIdLoraLinkButton.style.cssText += "padding:6px 9px;font-size:11px;";
+  ltxIdLoraHelpRow.append(ltxIdLoraRequiredNote, ltxIdLoraLinkButton);
+  const ltxIdLoraPicker = makeSearchableLoraPicker(REQUIRED_LTX_ID_LORA);
+  const ltxIdLoraFirstPassStrength = makeInput("1", "number");
+  ltxIdLoraFirstPassStrength.step = "0.01";
+  const ltxIdLoraSecondPassStrength = makeInput("1", "number");
+  ltxIdLoraSecondPassStrength.step = "0.01";
+  const ltxIdLoraStrengthGrid = document.createElement("div");
+  ltxIdLoraStrengthGrid.style.cssText = "display:grid;grid-template-columns:1fr 84px 84px;gap:8px;";
+  ltxIdLoraStrengthGrid.append(
+    makeField("Required ID-LoRA", ltxIdLoraPicker.wrapper),
+    makeField("Pass 1", ltxIdLoraFirstPassStrength),
+    makeField("Pass 2", ltxIdLoraSecondPassStrength)
+  );
+  ltxIdLoraRequiredPanel.append(ltxIdLoraHelpRow, ltxIdLoraStrengthGrid);
+  const idLoraReferenceAudioInput = makeInput("");
+  const pickIdLoraReferenceAudioButton = makeButton("Pick");
+  const idLoraReferenceAudioField = makeEditField("Fallback voice sample", idLoraReferenceAudioInput, pickIdLoraReferenceAudioButton);
+  const idLoraReferenceAudioNote = document.createElement("div");
+  idLoraReferenceAudioNote.textContent = "Use ID-LoRA Ref Builder for normal per-character voices. This fallback is only used when a scene's selected character has no voice sample.";
+  idLoraReferenceAudioNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
+  const idLoraIdentityScaleInput = makeInput("3", "number");
+  idLoraIdentityScaleInput.step = "0.1";
+  const idLoraIdentityGrid = document.createElement("div");
+  idLoraIdentityGrid.style.cssText = "display:grid;grid-template-columns:1fr;gap:8px;";
+  idLoraIdentityGrid.append(
+    makeField("Identity scale", idLoraIdentityScaleInput)
+  );
   i2vLoraPanel.append(i2vLoraHintRow, makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
@@ -2916,6 +2992,10 @@ function openBuilder(node) {
   const i2vSrtSplitGrid = document.createElement("div");
   i2vSrtSplitGrid.style.cssText = i2vSettingsGrid.style.cssText;
   i2vSrtSplitGrid.append(makeField("Cool Down Frames", i2vTailLossFramesInput), makeField("Warm Up Frames", i2vPreFramesInput));
+  const i2vWarmCooldownSection = makeSettingsSection("Warm/Cool Frames", [
+    i2vSrtSplitAdvancedNote,
+    i2vSrtSplitGrid,
+  ]);
   const i2vPass1SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
   const i2vPass1SigmasInput = makeInput(DEFAULT_I2V_PASS1_SIGMAS);
   const i2vPass1StrengthSlider = makeInput("1", "range");
@@ -2957,9 +3037,7 @@ function openBuilder(node) {
     bypass: i2vPass2Bypass,
   });
   i2vAdvancedNodeSettingsPanel.append(i2vPass1NodePanel, i2vPass2NodePanel);
-  const i2vAdvancedNodeSettingsSection = makeSettingsSection("Advanced Node Settings", [
-    i2vAdvancedNodeSettingsPanel,
-  ], false);
+  const i2vAdvancedNodeSettingsSection = i2vAdvancedNodeSettingsPanel;
   const createSceneVideoButton = makeButton("Create Scene Video", "primary");
   const createSceneVideoButtons = [createSceneVideoButton];
   function makeCreateSceneVideoButton() {
@@ -3378,6 +3456,16 @@ function openBuilder(node) {
         flowGptCreateImageButton,
       ]),
     },
+    {
+      label: "Manual",
+      value: "manual",
+      content: makeSettingsPanel([
+        flowGptManualMode.wrapper,
+        flowGptManualAutoAdvance.wrapper,
+        flowGptManualActions,
+        flowGptManualStatus,
+      ]),
+    },
   ]);
   flowGptModePanel.append(flowGptSubTabs.wrapper);
   const zEnhanceSubTabs = makeSubTabs([
@@ -3451,6 +3539,12 @@ function openBuilder(node) {
     zEnhancePanel,
     inspectorActions,
   );
+  const idLoraVoiceSettingsSection = makeSettingsSection("ID-LoRA Voice + Identity", [
+    idLoraReferenceAudioField,
+    idLoraReferenceAudioNote,
+    idLoraIdentityGrid,
+  ]);
+  idLoraVoiceSettingsSection.style.display = "none";
   const videoSubTabs = makeSubTabs([
     {
       label: "Models",
@@ -3477,6 +3571,7 @@ function openBuilder(node) {
         ]),
         ltxMsrRequiredPanel,
         ltxIngredientsRequiredPanel,
+        ltxIdLoraRequiredPanel,
         i2vUseLora.wrapper,
         i2vLoraPanel,
         createSceneVideoButton,
@@ -3492,9 +3587,9 @@ function openBuilder(node) {
           i2vSettingsGrid,
           ltxIngredientsResolutionWarning,
         ]),
+        idLoraVoiceSettingsSection,
         makeSettingsSection("Advanced Settings", [
-          i2vSrtSplitAdvancedNote,
-          i2vSrtSplitGrid,
+          i2vWarmCooldownSection,
           i2vAdvancedNodeSettingsSection,
         ]),
         rtvSceneImageAnchorSection,
@@ -3521,6 +3616,7 @@ function openBuilder(node) {
         makeField("Video prompt", i2vPrompt),
         makeSettingsSection("Advanced", [
           editI2VInstructionsButton,
+          editIdLoraInstructionsButton,
           editRTVInstructionsButton,
           editIngredientsInstructionsButton,
           editT2VInstructionsButton,
@@ -3529,7 +3625,7 @@ function openBuilder(node) {
       ]),
     },
   ]);
-  videoPanel.append(videoModeChooser, videoSubTabs.wrapper);
+  videoPanel.append(videoModeChooser, importCustomVideoPanel, videoSubTabs.wrapper);
   audioPanel.append(
     makeSettingsSection("Scene Audio", [
       audioSummary,
@@ -3560,6 +3656,8 @@ function openBuilder(node) {
   const setInButton = makeButton("Set In");
   const setOutButton = makeButton("Set Out");
   const clearRangeButton = makeButton("Clear Range");
+  const closeTimelineGapsButton = makeButton("Close Gaps");
+  const idLoraTrimModeButton = makeButton("Trim Mode");
   const addTimelineMarkerButton = makeButton("+ Timeline Note");
   const addSegmentButton = makeButton("Add Segment", "primary");
   const addOverlaySegmentButton = makeButton("Add Insert", "primary");
@@ -3580,6 +3678,8 @@ function openBuilder(node) {
   setInButton.title = "Set the selected timeline range start at the playhead.";
   setOutButton.title = "Set the selected timeline range end at the playhead.";
   clearRangeButton.title = "Clear the selected timeline range.";
+  closeTimelineGapsButton.title = "Shift later base scenes left to remove empty gaps in the timeline.";
+  idLoraTrimModeButton.title = "ID-LoRA only: quiet scrub mode for finding trim points without autoplay.";
   addTimelineMarkerButton.title = "Add a free timeline note/song marker at the playhead or selected In/Out range.";
   addSegmentButton.title = "Add segment";
   addOverlaySegmentButton.title = "Add an insert/overlay segment at the playhead without changing the base timeline.";
@@ -3607,7 +3707,7 @@ function openBuilder(node) {
   deleteSegmentButton.style.color = "#fecaca";
   deleteAllSegmentsButton.style.borderColor = "#7f1d1d";
   deleteAllSegmentsButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
@@ -3619,6 +3719,8 @@ function openBuilder(node) {
   setInButton.style.width = "max-content";
   setOutButton.style.width = "max-content";
   clearRangeButton.style.width = "max-content";
+  closeTimelineGapsButton.style.width = "max-content";
+  idLoraTrimModeButton.style.width = "max-content";
   addTimelineMarkerButton.style.width = "max-content";
   addSegmentButton.style.width = "max-content";
   addOverlaySegmentButton.style.width = "max-content";
@@ -3695,7 +3797,7 @@ function openBuilder(node) {
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Insert";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -3719,6 +3821,7 @@ function openBuilder(node) {
   shell.append(topbar, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
+  installFileDropNavigationGuard(shell);
   window.VRGDG_UIThemes?.registerRoot?.(overlay);
 
   function applyBuilderFullscreen(enabled) {
@@ -3895,6 +3998,14 @@ function openBuilder(node) {
       ingredients_second_pass_strength: 0,
       ingredients_width: DEFAULT_LTX_INGREDIENTS_WIDTH,
       ingredients_height: DEFAULT_LTX_INGREDIENTS_HEIGHT,
+      id_lora_name: REQUIRED_LTX_ID_LORA,
+      id_lora_first_pass_strength: 1,
+      id_lora_second_pass_strength: 1,
+      id_lora_reference_audio_path: "",
+      identity_guidance_scale: 3,
+      identity_start_percent: 0,
+      identity_end_percent: 1,
+      id_lora_duration: 5,
       use_loras: false,
       lora_count: 0,
       loras: [],
@@ -4059,9 +4170,12 @@ function openBuilder(node) {
     useFluxGlobalImageIngredients: false,
     fluxGlobalImageIngredients: [],
     fluxReferenceBuilder: defaultFluxReferenceBuilder(),
+    idLoraReferenceBuilder: defaultIdLoraReferenceBuilder(),
     lyricMapper: defaultLyricMapper(),
     zEnhanceSettings: defaultZEnhanceSettings(),
     videoModelMode: "i2v",
+    timelineTrimEditMode: false,
+    timelineEditMenuOpen: false,
     i2vVideoSettings: defaultI2VVideoSettings(),
     continuityMode: "off",
     autoImg2ImgStartStep: 5,
@@ -6180,6 +6294,48 @@ function openBuilder(node) {
     return state.segments.some((segment) => String(segment.custom_audio_path || "").trim());
   }
 
+  function usingRenderedSceneAudioMode() {
+    return currentVideoMode() === "id_lora" && !currentProjectAudioPath() && state.segments.some((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
+  }
+
+  function timelineAudioPathForSegment(segment) {
+    if (!segment) return "";
+    const customAudioPath = String(segment.custom_audio_path || "").trim();
+    if (customAudioPath) return customAudioPath;
+    if (usingRenderedSceneAudioMode()) return String(selectedSegmentVideoPath(segment) || "").trim();
+    return "";
+  }
+
+  function timelineAudioStartForSegment(segment) {
+    if (!segment) return 0;
+    return String(segment.custom_audio_path || "").trim() ? audioTimelineStart(segment) : Math.max(0, Number(segment.start || 0));
+  }
+
+  function timelineAudioSourceStartForSegment(segment) {
+    if (!segment) return 0;
+    return String(segment.custom_audio_path || "").trim() ? audioSourceStart(segment) : 0;
+  }
+
+  function timelineAudioDurationForSegment(segment) {
+    if (!segment) return 0;
+    return String(segment.custom_audio_path || "").trim() ? audioChunkDuration(segment) : timelineSegmentDuration(segment);
+  }
+
+  function timelineAudioEndForSegment(segment) {
+    return timelineAudioStartForSegment(segment) + timelineAudioDurationForSegment(segment);
+  }
+
+  function timelineAudioSegmentAtTime(time) {
+    const current = Number(time || 0);
+    return state.segments.find((segment, index) => {
+      if (!timelineAudioPathForSegment(segment)) return false;
+      const start = timelineAudioStartForSegment(segment);
+      const end = timelineAudioEndForSegment(segment);
+      const isLast = index === state.segments.length - 1;
+      return current >= start && (current < end || (isLast && current <= end));
+    }) || null;
+  }
+
   function audioTimelineStart(segment) {
     if (!segment) return 0;
     const value = Number(segment.custom_audio_timeline_start);
@@ -6445,7 +6601,7 @@ function openBuilder(node) {
   }
 
   function currentGlobalTime() {
-    if (usingSceneAudioMode()) return Number(state.sceneAudioGlobalTime || 0);
+    if (usingSceneAudioMode() || usingRenderedSceneAudioMode() || (sceneAudio.src && !sceneAudio.paused)) return Number(state.sceneAudioGlobalTime || 0);
     return Number(audio.currentTime || 0);
   }
 
@@ -6513,6 +6669,23 @@ function openBuilder(node) {
     audio.pause();
     sceneAudio.pause();
     updatePlayPauseButton();
+  }
+
+  function pauseTimelineForEditing() {
+    pauseAllAudio();
+    if (!previewVideo.paused) previewVideo.pause();
+    previewVideo.muted = false;
+    updateAudioScrubbers();
+  }
+
+  function syncTimelineTrimModeButton() {
+    const canUseTrimMode = currentVideoMode() === "id_lora";
+    if (!canUseTrimMode && state.timelineTrimEditMode) state.timelineTrimEditMode = false;
+    idLoraTrimModeButton.style.display = canUseTrimMode ? "" : "none";
+    idLoraTrimModeButton.textContent = state.timelineTrimEditMode ? "Trim Mode On" : "Trim Mode";
+    idLoraTrimModeButton.style.borderColor = state.timelineTrimEditMode ? "#22d3ee" : "#3f3f46";
+    idLoraTrimModeButton.style.background = state.timelineTrimEditMode ? "#0e7490" : "#27272a";
+    idLoraTrimModeButton.style.color = state.timelineTrimEditMode ? "#ecfeff" : "#f4f4f5";
   }
 
   function applyLayoutSizes() {
@@ -6861,6 +7034,14 @@ function openBuilder(node) {
       ingredients_second_pass_strength: 0,
       ingredients_width: Number(source.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
       ingredients_height: Number(source.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
+      id_lora_name: source.id_lora_name || REQUIRED_LTX_ID_LORA,
+      id_lora_first_pass_strength: Number(source.id_lora_first_pass_strength ?? 1),
+      id_lora_second_pass_strength: Number(source.id_lora_second_pass_strength ?? 1),
+      id_lora_reference_audio_path: String(source.id_lora_reference_audio_path || source.reference_audio_path || ""),
+      identity_guidance_scale: Number(source.identity_guidance_scale ?? 3),
+      identity_start_percent: Number(source.identity_start_percent ?? 0),
+      identity_end_percent: Number(source.identity_end_percent ?? 1),
+      id_lora_duration: Number(source.id_lora_duration || 5),
       pass1_sampler_name: source.pass1_sampler_name || "euler_ancestral",
       pass1_sigmas: source.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS,
       pass1_inplace_strength: Number(source.pass1_inplace_strength ?? 1),
@@ -7043,6 +7224,7 @@ function openBuilder(node) {
 
   function videoVisionReferenceEnabled(segment) {
     const mode = currentVideoMode();
+    if (mode === "id_lora") return Boolean(segmentImageSource(segment));
     if (mode === "rtv" || mode === "ingredients") return false;
     return mode === "t2v" ? Boolean(segment?.use_t2v_vision_reference) : segment?.use_i2v_vision_reference !== false;
   }
@@ -7395,9 +7577,10 @@ function openBuilder(node) {
       "returned an empty i2v prompt",
       "returned an empty t2v prompt",
       "returned an empty flux/klein prompt",
+      "returned the scene lyrics instead of a usable",
     ];
     if (recoverable.some((item) => message.includes(item))) return true;
-    if (/gemma[\s\S]{0,100}(thought|junk|empty|timed out|timeout|repeated|template|placeholder)/i.test(message)) return true;
+    if (/gemma[\s\S]{0,120}(thought|junk|empty|timed out|timeout|repeated|template|placeholder|scene lyrics)/i.test(message)) return true;
     return false;
   }
 
@@ -7722,6 +7905,24 @@ function openBuilder(node) {
     return withNoCharacterNote(instrumentalNote);
   }
 
+  function idLoraSpeechTextForSegment(segment) {
+    const idContext = idLoraSceneContext(segment);
+    const lyricText = flattenLyricForPrompt(quoteOrderedLyricCues(String(idContext.dialogue || segment?.lyric_text || "").trim()));
+    if (lyricText && !isInstrumentalLyricText(lyricText)) return lyricText;
+    return "";
+  }
+
+  function idLoraGemmaNotesForSegment(segment, baseNotes = videoGemmaNotesForSegment(segment)) {
+    const idContext = idLoraSceneContext(segment);
+    const speech = idLoraSpeechTextForSegment(segment);
+    return [
+      idContext.contextText ? `ID-LoRA Ref Builder scene casting:\n${idContext.contextText}` : "",
+      speech ? `Exact required [SPEECH] line:\n${speech}` : "No exact speech line was provided. Write one short natural spoken line that fits the scene.",
+      "ID-LoRA output must include non-empty [VISUAL], [SPEECH], and [SOUNDS] sections.",
+      baseNotes,
+    ].filter(Boolean).join("\n\n");
+  }
+
   function storyboardVideoExtraNotesForSegment(segment, sceneOverride = null) {
     if (!segment) return "";
     const scene = sceneOverride || storyboardScenePayload().find((item) => item.id === segment.id) || {};
@@ -8029,6 +8230,221 @@ function openBuilder(node) {
         lyric_text: true,
       },
     };
+  }
+
+  function defaultIdLoraReferenceBuilder() {
+    return {
+      characters: [],
+      locations: [],
+      scene_map: {},
+    };
+  }
+
+  function estimateIdLoraDialogueDuration(text) {
+    const clean = String(text || "").trim();
+    const words = clean.match(/[\p{L}\p{N}'’-]+/gu) || [];
+    const spokenSeconds = (words.length / 145) * 60;
+    const estimated = spokenSeconds + 1.0;
+    const clamped = Math.max(2, Math.min(12, estimated || 2));
+    return Math.round(clamped * 4) / 4;
+  }
+
+  function normalizeIdLoraReferenceBuilder(value = {}) {
+    const source = value && typeof value === "object" ? value : {};
+    const normalized = defaultIdLoraReferenceBuilder();
+    const imageObject = (item = {}) => {
+      const image = item?.image && typeof item.image === "object" ? item.image : item;
+      return {
+        path: String(image.path || item.image_path || item.imagePath || item.path || ""),
+        data: String(image.data || item.image_data || item.imageData || item.data || ""),
+        name: String(image.name || item.image_name || item.imageName || ""),
+      };
+    };
+    normalized.characters = Array.isArray(source.characters) ? source.characters
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: String(item.id || `id_lora_char_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+        name: String(item.name || `Character ${index + 1}`),
+        description: String(item.description || ""),
+        image: imageObject(item.image || {}),
+        voice_audio_path: String(item.voice_audio_path || item.voiceAudioPath || item.reference_audio_path || ""),
+        voice_trim_start: Math.max(0, Number(item.voice_trim_start || item.voiceTrimStart || 0)),
+        voice_trim_duration: Math.max(0, Number(item.voice_trim_duration || item.voiceTrimDuration || 0)),
+        identity_guidance_scale: Number(item.identity_guidance_scale ?? item.identityGuidanceScale ?? 3),
+        speech_style: String(item.speech_style || item.speechStyle || ""),
+      }))
+      : [];
+    normalized.locations = Array.isArray(source.locations) ? source.locations
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: String(item.id || `id_lora_loc_${Date.now()}_${index}_${Math.floor(Math.random() * 10000)}`),
+        name: String(item.name || `Location ${index + 1}`),
+        description: String(item.description || ""),
+        image: imageObject(item.image || {}),
+      }))
+      : [];
+    const rawMap = source.scene_map && typeof source.scene_map === "object" ? source.scene_map : {};
+    normalized.scene_map = {};
+    for (const [sceneId, rawEntry] of Object.entries(rawMap)) {
+      const entry = rawEntry && typeof rawEntry === "object" ? rawEntry : {};
+      const dialogue = String(entry.dialogue || entry.speech || entry.line || "");
+      const autoDuration = entry.auto_duration !== false && entry.autoDuration !== false;
+      const estimated = estimateIdLoraDialogueDuration(dialogue);
+      normalized.scene_map[String(sceneId)] = {
+        character_id: String(entry.character_id || entry.characterId || ""),
+        location_id: String(entry.location_id || entry.locationId || ""),
+        dialogue,
+        auto_duration: autoDuration,
+        manual_duration: Math.max(0.25, Number(entry.manual_duration || entry.manualDuration || estimated || 2)),
+        estimated_duration: estimated,
+      };
+    }
+    return normalized;
+  }
+
+  function idLoraSceneEntry(refs, segment) {
+    const normalizedRefs = normalizeIdLoraReferenceBuilder(refs);
+    const sceneId = String(segment?.id || "");
+    const existing = normalizedRefs.scene_map[sceneId] || {};
+    const dialogue = String(existing.dialogue || segment?.lyric_text || "").trim();
+    const estimated = estimateIdLoraDialogueDuration(dialogue);
+    return {
+      character_id: String(existing.character_id || ""),
+      location_id: String(existing.location_id || ""),
+      dialogue,
+      auto_duration: existing.auto_duration !== false,
+      manual_duration: Math.max(0.25, Number(existing.manual_duration || estimated || timelineSegmentDuration(segment) || 2)),
+      estimated_duration: estimated,
+    };
+  }
+
+  function idLoraSceneContext(segment) {
+    const refs = normalizeIdLoraReferenceBuilder(state.idLoraReferenceBuilder);
+    const entry = idLoraSceneEntry(refs, segment);
+    const character = refs.characters.find((item) => item.id === entry.character_id) || null;
+    const location = refs.locations.find((item) => item.id === entry.location_id) || null;
+    const settings = i2vVideoSettingsForSegment(segment);
+    const fallbackVoicePath = String(settings.id_lora_reference_audio_path || settings.reference_audio_path || "").trim();
+    const dialogue = String(entry.dialogue || segment?.lyric_text || "").trim();
+    const characterName = String(character?.name || "").trim();
+    const locationName = String(location?.name || "").trim();
+    const characterDescription = String(character?.description || "").trim();
+    const locationDescription = String(location?.description || "").trim();
+    const speechStyle = String(character?.speech_style || "").trim();
+    const voicePath = String(character?.voice_audio_path || fallbackVoicePath || "").trim();
+    const identityScale = Number(character?.identity_guidance_scale ?? settings.identity_guidance_scale ?? 3);
+    const contextLines = [];
+    if (characterName) contextLines.push(`Speaking character: ${characterName}`);
+    if (characterDescription) contextLines.push(`Character identity: ${characterDescription}`);
+    if (locationName) contextLines.push(`Location: ${locationName}`);
+    if (locationDescription) contextLines.push(`Location details: ${locationDescription}`);
+    if (speechStyle) contextLines.push(`Voice style: ${speechStyle}`);
+    if (dialogue) contextLines.push(`Exact dialogue to generate: "${dialogue}"`);
+    return {
+      refs,
+      entry,
+      character,
+      location,
+      dialogue,
+      characterName,
+      locationName,
+      voicePath,
+      voiceTrimStart: 0,
+      voiceTrimDuration: 0,
+      identityScale: Number.isFinite(identityScale) ? identityScale : 3,
+      contextText: contextLines.join("\n"),
+      usesFallbackVoice: !String(character?.voice_audio_path || "").trim() && !!fallbackVoicePath,
+    };
+  }
+
+  function buildIdLoraPromptForScene(basePrompt, segment) {
+    const context = idLoraSceneContext(segment);
+    const prompt = String(basePrompt || "").trim();
+    if (!context.contextText) return prompt;
+    return `${prompt}\n\n[ID-LORA SCENE CASTING]\n${context.contextText}`.trim();
+  }
+
+  function storyboardReferenceBuilderWithIdLoraRefs(baseRefs = state.fluxReferenceBuilder) {
+    const refs = normalizeFluxReferenceBuilder(baseRefs);
+    if (currentVideoMode() !== "id_lora") return refs;
+    const idRefs = normalizeIdLoraReferenceBuilder(state.idLoraReferenceBuilder);
+    if (!idRefs.characters.length && !idRefs.locations.length) return refs;
+
+    refs.subjects = Array.isArray(refs.subjects) ? refs.subjects.map((item) => ({ ...item, image: { ...(item.image || {}) } })) : [];
+    refs.locations = Array.isArray(refs.locations) ? refs.locations.map((item) => ({ ...item, image: { ...(item.image || {}) } })) : [];
+    refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? { ...refs.subject_scene_map } : {};
+    refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? { ...refs.scene_map } : {};
+
+    const existingSubjectIds = new Set(refs.subjects.map((item) => String(item.id || "")));
+    const existingLocationIds = new Set(refs.locations.map((item) => String(item.id || "")));
+    const subjectIdFor = (id) => `id_lora_character_${String(id || "").replace(/[^a-z0-9_-]+/gi, "_")}`;
+    const locationIdFor = (id) => `id_lora_location_${String(id || "").replace(/[^a-z0-9_-]+/gi, "_")}`;
+
+    for (const character of idRefs.characters) {
+      const id = subjectIdFor(character.id);
+      if (existingSubjectIds.has(id)) continue;
+      refs.subjects.push({
+        id,
+        name: String(character.name || "").trim() || "ID-LoRA Character",
+        description: String(character.description || "").trim(),
+        reference_type: "character",
+        trigger_phrase: "",
+        trigger_position: refs.subject_trigger_position || "start",
+        image: { ...(character.image || {}) },
+        source: "id_lora",
+      });
+      existingSubjectIds.add(id);
+    }
+
+    for (const location of idRefs.locations) {
+      const id = locationIdFor(location.id);
+      if (existingLocationIds.has(id)) continue;
+      refs.locations.push({
+        id,
+        name: String(location.name || "").trim() || "ID-LoRA Location",
+        description: String(location.description || "").trim(),
+        trigger_phrase: "",
+        trigger_position: refs.location_trigger_position || "start",
+        image: { ...(location.image || {}) },
+        source: "id_lora",
+      });
+      existingLocationIds.add(id);
+    }
+
+    for (const segment of allEditableSegments()) {
+      const entry = idLoraSceneEntry(idRefs, segment);
+      const sceneId = String(segment?.id || "");
+      if (!sceneId) continue;
+      if (entry.character_id) {
+        const mappedId = subjectIdFor(entry.character_id);
+        const existing = sceneReferenceMapArray(refs.subject_scene_map, segment);
+        refs.subject_scene_map[sceneId] = Array.from(new Set([...existing, mappedId].filter(Boolean)));
+      }
+      if (entry.location_id) refs.scene_map[sceneId] = locationIdFor(entry.location_id);
+    }
+
+    refs.use_subject_reference = refs.use_subject_reference || refs.subjects.some((item) => String(item.description || item.image?.path || item.image?.data || "").trim());
+    refs.use_location_references = refs.use_location_references || refs.locations.some((item) => String(item.description || item.image?.path || item.image?.data || "").trim());
+    refs.subject_count = refs.subjects.length || refs.subject_count || 1;
+    return normalizeFluxReferenceBuilder(refs);
+  }
+
+  function setBaseSegmentDurationRipple(segment, duration) {
+    if (!segment || hasLockedVideo(segment)) return;
+    const nextDuration = Math.max(0.25, Number(duration || 0));
+    const sorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const index = sorted.findIndex((item) => item.id === segment.id);
+    if (index < 0) return;
+    const oldEnd = Number(segment.end || segment.start || 0);
+    const nextEnd = Number(segment.start || 0) + nextDuration;
+    const delta = nextEnd - oldEnd;
+    segment.end = nextEnd;
+    if (Math.abs(delta) > 0.0001) {
+      for (let i = index + 1; i < sorted.length; i += 1) {
+        if (!hasLockedVideo(sorted[i])) shiftSegmentTiming(sorted[i], delta);
+      }
+    }
+    state.duration = timelineDuration();
   }
 
   function defaultLyricMapper() {
@@ -8835,12 +9251,68 @@ function openBuilder(node) {
     const cacheKey = selectedSegmentVideoCacheKey(segment, videoPath);
     if (!videoPath || !cacheKey) return;
     if (previewVideo.dataset.cacheKey !== cacheKey) {
+      if (previewVideoLoadTimer) clearTimeout(previewVideoLoadTimer);
+      previewVideoLoadTimer = null;
+      previewDecodeHint.style.display = "none";
       previewVideo.pause();
       previewVideo.src = makeEditorVideoUrl(videoPath);
       previewVideo.dataset.path = videoPath;
       previewVideo.dataset.cacheKey = cacheKey;
+      previewVideo.dataset.segmentId = String(segment?.id || "");
+      previewVideo.dataset.failureKey = "";
       previewVideo.load();
+      previewVideoLoadTimer = setTimeout(() => {
+        if (previewVideo.dataset.cacheKey === cacheKey && previewVideo.readyState < 1) {
+          handlePreviewVideoLoadIssue("timeout");
+        }
+      }, 8000);
     }
+  }
+
+  function clearPreviewVideoLoadState() {
+    if (previewVideoLoadTimer) clearTimeout(previewVideoLoadTimer);
+    previewVideoLoadTimer = null;
+    previewDecodeHint.style.display = "none";
+    previewVideo.dataset.failureKey = "";
+    previewVideo.dataset.segmentId = "";
+  }
+
+  function previewVideoLoadIssueText(reason, segment, videoPath) {
+    const info = segmentIndexInfo(segment);
+    const label = info.track === "overlay" ? `Insert ${info.index + 1}` : `Scene ${info.index + 1}`;
+    const reasonText = reason === "timeout"
+      ? "The player found a video file, but it could not read the video metadata."
+      : "The player found a video file, but the browser rejected it.";
+    const mediaError = previewVideo.error;
+    const codeText = mediaError?.code ? ` Browser media error code: ${mediaError.code}.` : "";
+    return `${label} has a video file, but it cannot be previewed in the browser. ${reasonText}${codeText}\n\nMost likely: the MP4 is incomplete, still being written, missing duration metadata, or encoded with a codec/pixel format the browser cannot play. The file may still exist on disk. Try opening the scene video directly; if it plays outside the browser, re-encode/remux it to H.264 MP4 with yuv420p and faststart, then use Restore Video.`;
+  }
+
+  function handlePreviewVideoLoadIssue(reason = "error") {
+    if (previewVideoLoadTimer) clearTimeout(previewVideoLoadTimer);
+    previewVideoLoadTimer = null;
+    const segmentId = String(previewVideo.dataset.segmentId || "");
+    const segment = allEditableSegments().find((item) => String(item?.id || "") === segmentId) || activeSegment();
+    const videoPath = String(previewVideo.dataset.path || selectedSegmentVideoPath(segment) || "");
+    const failureKey = `${reason}|${selectedSegmentVideoCacheKey(segment, videoPath)}`;
+    if (previewVideo.dataset.failureKey === failureKey) return;
+    previewVideo.dataset.failureKey = failureKey;
+    const message = previewVideoLoadIssueText(reason, segment, videoPath);
+    const thumbnailPath = selectedSegmentVideoThumbnailPath(segment);
+    previewVideo.pause();
+    previewVideo.removeAttribute("src");
+    previewVideo.dataset.path = "";
+    previewVideo.dataset.cacheKey = "";
+    previewVideo.style.display = "none";
+    if (thumbnailPath) {
+      previewImage.src = makeEditorImageUrl(thumbnailPath);
+      previewImage.title = "Video preview could not decode. Showing thumbnail.";
+      previewImage.style.display = "block";
+    }
+    previewEmpty.style.display = "none";
+    previewDecodeHint.textContent = message;
+    previewDecodeHint.style.display = "block";
+    toast("Video exists, but the browser preview cannot play it. Check the preview message for what to do.", true);
   }
 
   function isLikelyVideoPath(path) {
@@ -8989,6 +9461,7 @@ function openBuilder(node) {
       previewEmpty.style.display = "none";
       return;
     }
+    clearPreviewVideoLoadState();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.dataset.path = "";
@@ -9035,6 +9508,7 @@ function openBuilder(node) {
     const path = String(segment?.lut_preview_image_path || "").trim();
     if (!path) return false;
     const sourcePath = String(segment?.lut_preview_source_preview_path || "").trim();
+    clearPreviewVideoLoadState();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.load();
@@ -9059,6 +9533,7 @@ function openBuilder(node) {
     const path = String(segment?.film_grain_preview_image_path || "").trim();
     if (!path) return false;
     const sourcePath = String(segment?.film_grain_preview_source_preview_path || "").trim();
+    clearPreviewVideoLoadState();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.load();
@@ -9083,6 +9558,7 @@ function openBuilder(node) {
     const path = String(segment?.adjust_preview_image_path || "").trim();
     if (!path) return false;
     const sourcePath = String(segment?.adjust_preview_source_preview_path || "").trim();
+    clearPreviewVideoLoadState();
     previewVideo.pause();
     previewVideo.removeAttribute("src");
     previewVideo.load();
@@ -9111,7 +9587,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneKrea2TwoPassSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvSceneImageAnchor.input, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvSceneImageAnchor.input, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -9268,7 +9744,7 @@ function openBuilder(node) {
         // Some browsers reject seeking until metadata is ready. The next timeupdate will retry.
       }
     }
-    if (isTimelinePlaying()) {
+    if (isTimelinePlaying() && !state.timelineEditMenuOpen && !state.timelineTrimEditMode) {
       // The timeline uses the project/global audio as the audible source.
       // Keep the synced preview video silent so rendered MP4 audio cannot double or drift against it.
       previewVideo.muted = true;
@@ -9313,13 +9789,14 @@ function openBuilder(node) {
     const maxTime = timelineDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
-    if (usingSceneAudioMode()) {
-      const segment = audioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments[state.segments.length - 1] || null;
+    if (usingSceneAudioMode() || usingRenderedSceneAudioMode()) {
+      const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments[state.segments.length - 1] || null;
       if (segment) state.activeId = segment.id;
-      if (segment?.custom_audio_path) {
-        const local = Math.max(0, Math.min(audioChunkDuration(segment), time - audioTimelineStart(segment))) + audioSourceStart(segment);
+      const sourcePath = timelineAudioPathForSegment(segment);
+      if (segment && sourcePath) {
+        const local = Math.max(0, Math.min(timelineAudioDurationForSegment(segment), time - timelineAudioStartForSegment(segment))) + timelineAudioSourceStartForSegment(segment);
         if (state.sceneAudioSegmentId !== segment.id) {
-          sceneAudio.src = audioUrl(segment.custom_audio_path);
+          sceneAudio.src = audioUrl(sourcePath);
           sceneAudio.load();
           state.sceneAudioSegmentId = segment.id;
         }
@@ -9340,26 +9817,27 @@ function openBuilder(node) {
 
   function playSceneAudioFrom(time = currentGlobalTime()) {
     const maxTime = timelineDuration();
-    const segment = audioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments.find((item) => audioTimelineEnd(item) > time && item.custom_audio_path) || state.segments[0] || null;
+    const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments.find((item) => timelineAudioEndForSegment(item) > time && timelineAudioPathForSegment(item)) || state.segments[0] || null;
     if (!segment) return;
     state.activeId = segment.id;
-    state.sceneAudioGlobalTime = Math.max(audioTimelineStart(segment), Math.min(maxTime, Number(time || 0)));
+    state.sceneAudioGlobalTime = Math.max(timelineAudioStartForSegment(segment), Math.min(maxTime, Number(time || 0)));
     syncInspector();
     render();
-    if (!segment.custom_audio_path) {
+    const sourcePath = timelineAudioPathForSegment(segment);
+    if (!sourcePath) {
       sceneAudio.pause();
       sceneAudio.removeAttribute("src");
       state.sceneAudioSegmentId = "";
-      const next = state.segments.find((item) => audioTimelineStart(item) > audioTimelineStart(segment) && item.custom_audio_path);
+      const next = state.segments.find((item) => timelineAudioStartForSegment(item) > timelineAudioStartForSegment(segment) && timelineAudioPathForSegment(item));
       if (next) {
-        playSceneAudioFrom(audioTimelineStart(next));
+        playSceneAudioFrom(timelineAudioStartForSegment(next));
         return;
       }
       updateAudioScrubbers();
       return;
     }
-    const local = Math.max(0, state.sceneAudioGlobalTime - audioTimelineStart(segment)) + audioSourceStart(segment);
-    sceneAudio.src = audioUrl(segment.custom_audio_path);
+    const local = Math.max(0, state.sceneAudioGlobalTime - timelineAudioStartForSegment(segment)) + timelineAudioSourceStartForSegment(segment);
+    sceneAudio.src = audioUrl(sourcePath);
     sceneAudio.load();
     state.sceneAudioSegmentId = segment.id;
     const start = () => {
@@ -9379,6 +9857,7 @@ function openBuilder(node) {
     if (event.target !== timelineCanvas && event.target !== playhead) return;
     event.preventDefault();
     event.stopPropagation();
+    if (state.timelineTrimEditMode) pauseTimelineForEditing();
     state.isScrubbing = true;
     seekGlobalTimelineFromEvent(event);
     const move = (moveEvent) => seekGlobalTimelineFromEvent(moveEvent);
@@ -10278,6 +10757,7 @@ function openBuilder(node) {
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
+    syncFlowGptManualPanel();
   }
 
   function saveFlowGptBrowserSettingsFromPanel() {
@@ -10340,8 +10820,8 @@ function openBuilder(node) {
     i2vPass2SigmasInput.value = pass2Sigmas;
     setI2VStrengthPair(i2vPass2StrengthSlider, i2vPass2StrengthInput, settings.pass2_inplace_strength ?? 1);
     i2vPass2Bypass.input.checked = Boolean(settings.pass2_inplace_bypass);
-    const showNodeSettings = mode === "i2v" || mode === "t2v" || mode === "rtv" || mode === "ingredients";
-    const showInplaceSettings = mode === "i2v";
+    const showNodeSettings = mode === "i2v" || mode === "id_lora" || mode === "t2v" || mode === "rtv" || mode === "ingredients";
+    const showInplaceSettings = mode === "i2v" || mode === "id_lora";
     const showSecondPass = mode !== "rtv";
     i2vAdvancedNodeSettingsPanel.style.display = showNodeSettings ? "flex" : "none";
     i2vAdvancedNodeSettingsSection.style.display = showNodeSettings ? "" : "none";
@@ -10358,6 +10838,163 @@ function openBuilder(node) {
     });
     syncFlowGptBrowserPanel();
     autoSaveSessionQuiet(`Flow/GPT provider changed to ${provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana"}`).catch(() => null);
+  }
+
+  function syncFlowGptManualPanel() {
+    const enabled = Boolean(flowGptManualMode.input.checked);
+    for (const control of [flowGptManualAutoAdvance.input, flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualArmDownloadButton, flowGptManualImportLatestButton]) {
+      control.disabled = !enabled;
+      control.style.opacity = enabled ? "1" : "0.62";
+    }
+    if (!enabled) {
+      flowGptManualStatus.textContent = "Manual Mode is off.";
+      return;
+    }
+    const segment = activeSegment();
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    flowGptManualStatus.textContent = segment
+      ? `Manual Mode: ${providerLabel} ready for ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}.`
+      : `Manual Mode: ${providerLabel} ready. Select a scene before importing downloads.`;
+  }
+
+  function manualFlowGptPayload(segment = activeSegment()) {
+    const settings = flowGptBrowserSettingsForSegment(segment);
+    const isGpt = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
+    return {
+      provider: settings.provider,
+      debug_port: isGpt ? 9223 : 9222,
+      timeout_seconds: settings.timeout_seconds || (isGpt ? 600 : 420),
+    };
+  }
+
+  function manualSceneReferenceImages(segment = activeSegment()) {
+    const settings = flowGptBrowserSettingsForSegment(segment);
+    const seen = new Set();
+    return (settings.image_ingredients || [])
+      .map((item) => ({
+        path: String(item?.path || "").trim(),
+        data: String(item?.data || "").trim(),
+        name: String(item?.name || "").trim(),
+      }))
+      .filter((item) => item.path || item.data)
+      .filter((item) => {
+        const key = item.path || item.data || item.name;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  async function openManualFlowGptBrowser() {
+    const settings = saveFlowGptBrowserSettingsFromPanel();
+    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    flowGptManualStatus.textContent = `Opening ${providerLabel} manual browser...`;
+    const data = await openManualBrowserImageProvider(settings.provider, {
+      ...manualFlowGptPayload(),
+      timeoutMs: 60000,
+    });
+    flowGptManualStatus.textContent = `${data.provider_label || providerLabel} manual browser opened.\nDownload import target: selected scene when you arm it.`;
+    toast(`${data.provider_label || providerLabel} manual browser opened.`);
+  }
+
+  async function exportManualFlowGptRefs() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const refs = manualSceneReferenceImages(segment);
+    if (!refs.length) {
+      toast("No Flow/GPT reference images found for the selected scene.", true);
+      flowGptManualStatus.textContent = "No reference images found for this scene.";
+      return;
+    }
+    const settings = saveFlowGptBrowserSettingsFromPanel();
+    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    flowGptManualExportRefsButton.disabled = true;
+    flowGptManualStatus.textContent = `Exporting ${refs.length} reference image${refs.length === 1 ? "" : "s"} to ${providerLabel}...`;
+    try {
+      await uploadManualBrowserImageRefs(settings.provider, {
+        ...manualFlowGptPayload(segment),
+        image_ingredients: refs,
+        timeoutMs: 300000,
+      });
+      flowGptManualStatus.textContent = `Exported ${refs.length} reference image${refs.length === 1 ? "" : "s"} to ${providerLabel}.`;
+      toast(`Exported ${refs.length} reference image${refs.length === 1 ? "" : "s"} to ${providerLabel}.`);
+    } finally {
+      flowGptManualExportRefsButton.disabled = !flowGptManualMode.input.checked;
+    }
+  }
+
+  async function armManualFlowGptDownloadImport() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const projectFolder = projectInput.value || state.projectFolder;
+    if (!projectFolder) {
+      toast("Create or load a project before importing a manual browser download.", true);
+      return;
+    }
+    const settings = saveFlowGptBrowserSettingsFromPanel();
+    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    const sceneNumber = sceneSlotNumber(segment);
+    const sceneLabel = sceneDisplayName(segment, segmentIndexInfo(segment).index);
+    flowGptManualArmDownloadButton.disabled = true;
+    flowGptManualStatus.textContent = `Armed: waiting for the next ${providerLabel} download -> ${sceneLabel}.`;
+    try {
+      const data = await waitForManualBrowserImageDownload(settings.provider, {
+        ...manualFlowGptPayload(segment),
+        project_folder: projectFolder,
+        scene_number: sceneNumber,
+        timeoutMs: Math.max(900000, Number(settings.timeout_seconds || 600) * 1000 + 60000),
+      });
+      await applyManualFlowGptImportResult(segment, data, providerLabel, sceneLabel);
+    } finally {
+      flowGptManualArmDownloadButton.disabled = !flowGptManualMode.input.checked;
+    }
+  }
+
+  async function importLatestManualFlowGptDownload() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const projectFolder = projectInput.value || state.projectFolder;
+    if (!projectFolder) {
+      toast("Create or load a project before importing a manual browser download.", true);
+      return;
+    }
+    const settings = saveFlowGptBrowserSettingsFromPanel();
+    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    const sceneLabel = sceneDisplayName(segment, segmentIndexInfo(segment).index);
+    flowGptManualImportLatestButton.disabled = true;
+    flowGptManualStatus.textContent = `Importing latest ${providerLabel} download -> ${sceneLabel}...`;
+    try {
+      const data = await importLatestManualBrowserImageDownload(settings.provider, {
+        ...manualFlowGptPayload(segment),
+        project_folder: projectFolder,
+        scene_number: sceneSlotNumber(segment),
+        timeoutMs: 120000,
+      });
+      await applyManualFlowGptImportResult(segment, data, providerLabel, sceneLabel);
+    } finally {
+      flowGptManualImportLatestButton.disabled = !flowGptManualMode.input.checked;
+    }
+  }
+
+  async function applyManualFlowGptImportResult(segment, data, providerLabel, sceneLabel) {
+    const savedPath = data?.scene_image?.saved_path || data?.saved_path || "";
+    if (!savedPath) throw new Error("Manual browser import did not return a saved image path.");
+    pushHistory();
+    addSceneImageHistoryPath(segment, savedPath);
+    segment.approved_image_path = savedPath;
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.image = null;
+    segment.preview_mode = "image";
+    setActiveSegment(segment);
+    syncPreview(segment);
+    render();
+    await autoSaveSessionQuiet("manual Flow/GPT image import");
+    flowGptManualStatus.textContent = `Imported ${providerLabel} download into ${sceneLabel}.\n${savedPath}`;
+    toast(`Imported ${providerLabel} download into ${sceneLabel}.`);
+    if (flowGptManualAutoAdvance.input.checked) moveActiveSceneSelection(1);
   }
 
   function formatBrowserImageStatus(data) {
@@ -10497,6 +11134,11 @@ function openBuilder(node) {
     ltxMsrBackgroundMode.value = settings.msr_background_mode || "neutral placeholder (WIP/testing)";
     ltxIngredientsLoraPicker.input.value = settings.ingredients_lora_name || REQUIRED_LTX_INGREDIENTS_LORA;
     ltxIngredientsFirstPassStrength.value = Number(settings.ingredients_first_pass_strength ?? 1);
+    ltxIdLoraPicker.input.value = settings.id_lora_name || REQUIRED_LTX_ID_LORA;
+    ltxIdLoraFirstPassStrength.value = Number(settings.id_lora_first_pass_strength ?? 1);
+    ltxIdLoraSecondPassStrength.value = Number(settings.id_lora_second_pass_strength ?? 1);
+    idLoraReferenceAudioInput.value = settings.id_lora_reference_audio_path || "";
+    idLoraIdentityScaleInput.value = Number(settings.identity_guidance_scale ?? 3);
     ltxIngredientsResolutionWarning.style.display = isIngredientsMode ? "block" : "none";
     i2vUseLora.input.checked = Boolean(settings.use_loras);
     i2vLoraCount.value = Number(settings.lora_count || 0);
@@ -10527,6 +11169,7 @@ function openBuilder(node) {
     const isT2VMode = mode === "t2v";
     const isRTVMode = mode === "rtv";
     const isIngredientsMode = mode === "ingredients";
+    const isIdLoraMode = mode === "id_lora";
     const previousRegularWidth = Number(previous.width || 1920);
     const previousRegularHeight = Number(previous.height || 1080);
     const repairedPreviousWidth = previousRegularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && previousRegularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT ? 1920 : previousRegularWidth;
@@ -10557,8 +11200,8 @@ function openBuilder(node) {
       width: regularWidth,
       height: regularHeight,
       seed: Number(i2vSeedInput.value || 69),
-      tail_loss_frames: Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
-      pre_frames: Math.max(0, Number(i2vPreFramesInput.value || 0)),
+      tail_loss_frames: isIdLoraMode ? 0 : Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
+      pre_frames: isIdLoraMode ? 0 : Math.max(0, Number(i2vPreFramesInput.value || 0)),
       video_trigger_phrase: videoTriggerInput.value || "",
       msr_lora_name: ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: Number(ltxMsrFirstPassStrength.value || 1),
@@ -10570,14 +11213,22 @@ function openBuilder(node) {
       ingredients_second_pass_strength: 0,
       ingredients_width: ingredientsWidth,
       ingredients_height: ingredientsHeight,
-      pass1_sampler_name: isI2VMode ? pass1SamplerName : (previous.pass1_sampler_name || "euler_ancestral"),
-      pass1_sigmas: isI2VMode ? pass1Sigmas : (previous.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
-      pass1_inplace_strength: isI2VMode ? Math.max(0, Math.min(1, Number(i2vPass1StrengthInput.value || 1))) : Number(previous.pass1_inplace_strength ?? 1),
-      pass1_inplace_bypass: isI2VMode ? Boolean(i2vPass1Bypass.input.checked) : Boolean(previous.pass1_inplace_bypass),
-      pass2_sampler_name: isI2VMode ? pass2SamplerName : (previous.pass2_sampler_name || "euler_ancestral"),
-      pass2_sigmas: isI2VMode ? pass2Sigmas : (previous.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
-      pass2_inplace_strength: isI2VMode ? Math.max(0, Math.min(1, Number(i2vPass2StrengthInput.value || 1))) : Number(previous.pass2_inplace_strength ?? 1),
-      pass2_inplace_bypass: isI2VMode ? Boolean(i2vPass2Bypass.input.checked) : Boolean(previous.pass2_inplace_bypass),
+      id_lora_name: ltxIdLoraPicker.input.value || REQUIRED_LTX_ID_LORA,
+      id_lora_first_pass_strength: Number(ltxIdLoraFirstPassStrength.value || 1),
+      id_lora_second_pass_strength: Number(ltxIdLoraSecondPassStrength.value || 1),
+      id_lora_reference_audio_path: idLoraReferenceAudioInput.value || "",
+      identity_guidance_scale: Number(idLoraIdentityScaleInput.value || 3),
+      identity_start_percent: 0,
+      identity_end_percent: 1,
+      id_lora_duration: Number(previous.id_lora_duration || 5),
+      pass1_sampler_name: (isI2VMode || isIdLoraMode) ? pass1SamplerName : (previous.pass1_sampler_name || "euler_ancestral"),
+      pass1_sigmas: (isI2VMode || isIdLoraMode) ? pass1Sigmas : (previous.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
+      pass1_inplace_strength: (isI2VMode || isIdLoraMode) ? Math.max(0, Math.min(1, Number(i2vPass1StrengthInput.value || 1))) : Number(previous.pass1_inplace_strength ?? 1),
+      pass1_inplace_bypass: (isI2VMode || isIdLoraMode) ? Boolean(i2vPass1Bypass.input.checked) : Boolean(previous.pass1_inplace_bypass),
+      pass2_sampler_name: (isI2VMode || isIdLoraMode) ? pass2SamplerName : (previous.pass2_sampler_name || "euler_ancestral"),
+      pass2_sigmas: (isI2VMode || isIdLoraMode) ? pass2Sigmas : (previous.pass2_sigmas || DEFAULT_I2V_PASS2_SIGMAS),
+      pass2_inplace_strength: (isI2VMode || isIdLoraMode) ? Math.max(0, Math.min(1, Number(i2vPass2StrengthInput.value || 1))) : Number(previous.pass2_inplace_strength ?? 1),
+      pass2_inplace_bypass: (isI2VMode || isIdLoraMode) ? Boolean(i2vPass2Bypass.input.checked) : Boolean(previous.pass2_inplace_bypass),
       t2v_pass1_sampler_name: isT2VMode ? pass1SamplerName : (previous.t2v_pass1_sampler_name || "euler_ancestral"),
       t2v_pass1_sigmas: isT2VMode ? pass1Sigmas : (previous.t2v_pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS),
       t2v_pass2_sampler_name: isT2VMode ? pass2SamplerName : (previous.t2v_pass2_sampler_name || "euler_ancestral"),
@@ -10613,6 +11264,8 @@ function openBuilder(node) {
   }
 
   function currentVideoMode() {
+    if (state.videoModelMode === "import") return "import";
+    if (state.videoModelMode === "id_lora") return "id_lora";
     if (state.videoModelMode === "t2v") return "t2v";
     if (state.videoModelMode === "rtv") return "rtv";
     if (state.videoModelMode === "ingredients") return "ingredients";
@@ -10622,6 +11275,7 @@ function openBuilder(node) {
   function syncVideoInstructionEditorButtons() {
     const mode = currentVideoMode();
     editI2VInstructionsButton.style.display = mode === "i2v" ? "" : "none";
+    editIdLoraInstructionsButton.style.display = mode === "id_lora" ? "" : "none";
     editRTVInstructionsButton.style.display = mode === "rtv" ? "" : "none";
     editIngredientsInstructionsButton.style.display = mode === "ingredients" ? "" : "none";
     editT2VInstructionsButton.style.display = mode === "t2v" ? "" : "none";
@@ -10654,17 +11308,21 @@ function openBuilder(node) {
   function syncVideoModePanel() {
     const mode = currentVideoMode();
     state.videoModelMode = mode;
-    for (const card of [imageToVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard]) {
+    for (const card of [imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, importCustomVideoCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#71717a" : "#3f3f46";
       card.style.background = active ? "#52525b" : "#27272a";
       card.style.color = "#f4f4f5";
       card.style.boxShadow = active ? "inset 0 0 0 1px rgba(244,244,245,.12)" : "none";
     }
+    const isImport = mode === "import";
+    const isIdLora = mode === "id_lora";
     const isT2V = mode === "t2v";
     const isRTV = mode === "rtv";
     const isIngredients = mode === "ingredients";
-    const isT2VLike = isT2V || isRTV || isIngredients;
+    const isT2VLike = isT2V || isRTV || isIngredients || isIdLora;
+    importCustomVideoPanel.style.display = isImport ? "flex" : "none";
+    videoSubTabs.wrapper.style.display = isImport ? "none" : "";
     useI2VPromptEnhancementPass.input.checked = Boolean(state.useI2VPromptEnhancementPass);
     useI2VVisionReference.wrapper.style.display = isT2VLike ? "none" : "flex";
     i2vReferenceNote.style.display = isT2VLike ? "none" : "";
@@ -10674,16 +11332,22 @@ function openBuilder(node) {
     t2vRefImagePanel.style.display = isT2V && useT2VVisionReference.input.checked ? "flex" : "none";
     ltxMsrRequiredPanel.style.display = isRTV ? "flex" : "none";
     ltxIngredientsRequiredPanel.style.display = isIngredients ? "flex" : "none";
-    createI2VButton.textContent = isIngredients ? "Gemma Ingredients Video" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
+    ltxIdLoraRequiredPanel.style.display = isIdLora ? "flex" : "none";
+    idLoraVoiceSettingsSection.style.display = isIdLora ? "" : "none";
+    syncTimelineTrimModeButton();
+    i2vWarmCooldownSection.style.display = isIdLora ? "none" : "";
+    createI2VButton.textContent = isIdLora ? "Gemma ID Script" : isIngredients ? "Gemma Ingredients Video" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
     syncVideoInstructionEditorButtons();
     i2vNotesInput.placeholder = isT2V
       ? "Extra text-to-video motion notes, camera movement, character movement..."
       : isIngredients
         ? "Extra ingredients-to-video motion notes, camera movement, subject actions..."
+      : isIdLora
+        ? "Short-film direction, dialogue intent, voice tone, camera movement, and sound cues..."
       : isRTV
         ? "Extra reference-to-video motion notes, camera movement, subject actions..."
       : "Extra video motion notes, camera movement, character movement...";
-    i2vPrompt.placeholder = isIngredients ? "Ingredients-to-video prompt..." : isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+    i2vPrompt.placeholder = isIdLora ? "[VISUAL]: ...\n[SPEECH]: ...\n[SOUNDS]: ..." : isIngredients ? "Ingredients-to-video prompt..." : isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
     syncRTVSceneImageAnchorPanel();
     updateI2VLoraVisibility();
   }
@@ -10788,10 +11452,8 @@ function openBuilder(node) {
       }
       active.end = Math.max(active.start + minDuration, active.end);
       if (!hasLockedVideo(next)) next.start = active.end;
-    } else if (state.duration > 0) {
-      active.end = Math.min(active.end, state.duration);
-      active.end = Math.max(active.start + minDuration, active.end);
     }
+    state.duration = Math.max(Number(state.duration || 0), Number(active.end || 0));
 
     if (prev && !hasLockedVideo(prev)) prev.end = active.start;
     if (next) {
@@ -11695,6 +12357,10 @@ function openBuilder(node) {
       button.disabled = disabled;
       button.style.justifyContent = "flex-start";
       button.style.textAlign = "left";
+      if (disabled) {
+        button.style.opacity = ".45";
+        button.style.cursor = "not-allowed";
+      }
       button.onclick = () => {
         menu.remove();
         action();
@@ -11754,9 +12420,147 @@ function openBuilder(node) {
     setTimeout(() => window.addEventListener("pointerdown", close), 0);
   }
 
+  function shiftTimelineAfterTrim(segment, oldEnd, removedDuration) {
+    const delta = -Math.max(0, Number(removedDuration || 0));
+    if (!segment || !delta) return;
+    const threshold = Number(oldEnd || 0) - 0.001;
+    for (const item of state.segments) {
+      if (item.id !== segment.id && Number(item.start || 0) >= threshold) shiftSegmentTiming(item, delta);
+    }
+    for (const item of state.overlaySegments) {
+      if (Number(item.start || 0) >= threshold) shiftSegmentTiming(item, delta);
+    }
+    sortSegments(state.segments);
+    sortSegments(state.overlaySegments);
+  }
+
+  function closeBaseTimelineGap(startTime, endTime) {
+    const start = Number(startTime || 0);
+    const end = Number(endTime || 0);
+    const duration = Math.max(0, end - start);
+    if (duration <= 0.0001) return 0;
+    const delta = -duration;
+    const threshold = end - 0.001;
+    for (const item of state.segments) {
+      if (Number(item.start || 0) >= threshold) shiftSegmentTiming(item, delta);
+    }
+    for (const item of state.overlaySegments) {
+      if (Number(item.start || 0) >= threshold) shiftSegmentTiming(item, delta);
+    }
+    sortSegments(state.segments);
+    sortSegments(state.overlaySegments);
+    return duration;
+  }
+
+  function closeAllBaseTimelineGaps() {
+    const sorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    let removed = 0;
+    let cursor = 0;
+    for (const segment of sorted) {
+      const start = Number(segment.start || 0);
+      const end = Math.max(start + 0.05, Number(segment.end || start + 0.05));
+      if (start > cursor + 0.001) {
+        const gap = start - cursor;
+        shiftSegmentTiming(segment, -gap);
+        removed += gap;
+        for (const overlay of state.overlaySegments) {
+          if (Number(overlay.start || 0) >= start - 0.001) shiftSegmentTiming(overlay, -gap);
+        }
+      } else if (Math.abs(start - cursor) <= 0.001 && start !== cursor) {
+        shiftSegmentTiming(segment, cursor - start);
+      }
+      cursor = Math.max(cursor, Number(segment.end || 0));
+    }
+    sortSegments(state.segments);
+    sortSegments(state.overlaySegments);
+    return removed;
+  }
+
+  async function closeTimelineGapsFromMenu() {
+    const undoLength = state.undoStack.length;
+    pushHistory();
+    const removed = closeAllBaseTimelineGaps();
+    if (removed <= 0.001) {
+      if (state.undoStack.length > undoLength) {
+        state.undoStack.pop();
+        updateHistoryButtons();
+      }
+      toast("No base timeline gaps found.", true);
+      return;
+    }
+    syncInspector();
+    render();
+    await autoSaveSessionQuiet("timeline gaps closed");
+    toast(`Closed ${removed.toFixed(2)}s of timeline gap.`);
+  }
+
+  async function trimIdLoraSceneVideoAtPlayhead(segment, side, trimTimeOverride = null) {
+    const videoPath = String(selectedSegmentVideoPath(segment) || "").trim();
+    if (currentVideoMode() !== "id_lora") {
+      toast("Timeline video trim is only available in ID-LoRA I2V mode.", true);
+      return;
+    }
+    if (!segment || segmentTrack(segment) === "overlay" || !videoPath) {
+      toast("Select a rendered ID-LoRA scene video first.", true);
+      return;
+    }
+    const sceneStart = Number(segment.start || 0);
+    const sceneEnd = Number(segment.end || 0);
+    const sceneDuration = Math.max(0, sceneEnd - sceneStart);
+    const playheadTime = Number.isFinite(Number(trimTimeOverride)) ? Number(trimTimeOverride) : currentGlobalTime();
+    const local = Math.max(0, Math.min(sceneDuration, playheadTime - sceneStart));
+    const minDuration = 0.15;
+    const trimLeft = side === "left";
+    if (playheadTime <= sceneStart + minDuration || playheadTime >= sceneEnd - minDuration) {
+      toast("Move the playhead or right-click point inside the scene before trimming.", true);
+      return;
+    }
+    const sourceStart = trimLeft ? local : 0;
+    const nextDuration = trimLeft ? sceneDuration - local : local;
+    const removedDuration = trimLeft ? local : sceneDuration - local;
+    if (nextDuration < minDuration || removedDuration <= 0) {
+      toast("Trim point is too close to the edge of the scene.", true);
+      return;
+    }
+    const label = trimLeft ? "trim_left" : "trim_right";
+    const progress = createProgressWindow(trimLeft ? "Trimming left side of scene video" : "Trimming right side of scene video");
+    try {
+      pauseTimelineForEditing();
+      progress.set(`Creating trimmed ID-LoRA scene video...\n${videoPath}`, 20);
+      const data = await postJson("/vrgdg/workflow_runner/trim_scene_video", {
+        project_folder: projectInput.value || state.projectFolder || "",
+        source_path: videoPath,
+        scene_number: sceneSlotNumber(segment),
+        start: sourceStart,
+        duration: nextDuration,
+        label,
+      }, 180000);
+      pushHistory();
+      const oldEnd = sceneEnd;
+      activateSegmentVideoPath(segment, data.video_path || videoPath, data.thumbnail_path || "");
+      segment.video_cache_bust = Date.now();
+      segment.video_status = "done";
+      segment.end = sceneStart + nextDuration;
+      shiftTimelineAfterTrim(segment, oldEnd, removedDuration);
+      state.activeId = segment.id;
+      state.sceneAudioGlobalTime = trimLeft ? Number(segment.start || 0) : Number(segment.end || 0);
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet(trimLeft ? "ID-LoRA scene video trimmed left" : "ID-LoRA scene video trimmed right");
+      progress.set(`Trim complete.\n${data.video_path || ""}`, 100);
+      progress.close(900);
+      toast(trimLeft ? "Trimmed left side of ID-LoRA scene video." : "Trimmed right side of ID-LoRA scene video.");
+    } catch (error) {
+      progress.set(`Trim failed:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    }
+  }
+
   function openSegmentContextMenu(event, segment) {
     event.preventDefault();
     event.stopPropagation();
+    state.timelineEditMenuOpen = true;
+    pauseTimelineForEditing();
     setActiveSegment(segment);
     document.querySelector(".vrgdg-builder-context-menu")?.remove();
     const menu = document.createElement("div");
@@ -11770,45 +12574,38 @@ function openBuilder(node) {
       button.style.justifyContent = "flex-start";
       button.style.textAlign = "left";
       button.onclick = () => {
+        state.timelineEditMenuOpen = false;
         menu.remove();
         action();
       };
       menu.append(button);
     };
+    const isOverlay = segmentTrack(segment) === "overlay";
+    const idLoraTrimMode = currentVideoMode() === "id_lora"
+      && !isOverlay
+      && String(selectedSegmentVideoPath(segment) || "").trim();
+    const playheadTime = currentGlobalTime();
+    const sceneStart = Number(segment.start || 0);
+    const sceneEnd = Number(segment.end || 0);
     const rect = event.currentTarget?.getBoundingClientRect?.();
     const ratio = rect ? Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width))) : 0.5;
-    const cutTime = Number(segment.start || 0) + ratio * Math.max(0.1, Number(segment.end || 0) - Number(segment.start || 0));
-    const isOverlay = segmentTrack(segment) === "overlay";
-    const locked = hasLockedVideo(segment) || (state.timingFrozen && !isOverlay);
-    addItem("Cut here", () => {
-      if (locked) {
-        toast("Timing is frozen or this scene has video, so it cannot be cut.", true);
-        return;
-      }
-      const durationA = cutTime - Number(segment.start || 0);
-      const durationB = Number(segment.end || 0) - cutTime;
-      if (durationA < 0.25 || durationB < 0.25) {
-        toast("Cut point is too close to the edge of the scene.", true);
-        return;
-      }
-      pushHistory();
-      const next = newSegment(cutTime, Number(segment.end || cutTime + 4));
-      next.label = `${segment.label || "Scene"} copy`;
-      next.notes = segment.notes || "";
-      next.track = isOverlay ? "overlay" : "base";
-      next.source = isOverlay ? "overlay" : state.srtMode ? "inserted" : "manual";
-      segment.end = cutTime;
-      const collection = isOverlay ? state.overlaySegments : state.segments;
-      const index = collection.findIndex((item) => item.id === segment.id);
-      collection.splice(index + 1, 0, next);
-      state.activeId = next.id;
-      render();
-    }, locked);
+    const clickedTime = sceneStart + ratio * Math.max(0.1, sceneEnd - sceneStart);
+    const playheadInsideScene = playheadTime > sceneStart + 0.15 && playheadTime < sceneEnd - 0.15;
+    const clickInsideScene = clickedTime > sceneStart + 0.15 && clickedTime < sceneEnd - 0.15;
+    const trimTime = playheadInsideScene ? playheadTime : clickedTime;
+    const trimLabel = playheadInsideScene ? "Playhead" : "Click";
+    addItem("Restore Video...", () => restoreVideoForSegment(segment), !String(state.projectFolder || projectInput.value || "").trim());
+    if (idLoraTrimMode) {
+      addItem(`Trim Left at ${trimLabel}`, () => trimIdLoraSceneVideoAtPlayhead(segment, "left", trimTime), !(playheadInsideScene || clickInsideScene));
+      addItem(`Trim Right at ${trimLabel}`, () => trimIdLoraSceneVideoAtPlayhead(segment, "right", trimTime), !(playheadInsideScene || clickInsideScene));
+    }
+    addItem("Close timeline gaps", closeTimelineGapsFromMenu);
     addItem("Scene options", () => openSceneOptions(segment));
     addItem("Delete scene", deleteSegment);
     document.body.append(menu);
     const close = (closeEvent) => {
       if (!menu.contains(closeEvent.target)) {
+        state.timelineEditMenuOpen = false;
         menu.remove();
         window.removeEventListener("pointerdown", close);
       }
@@ -11934,7 +12731,8 @@ function openBuilder(node) {
         if (mode === "start") {
           segment.start = Math.max(0, Math.min(end - 0.1, snapTimeToBeat(start + delta)));
         } else if (mode === "end") {
-          segment.end = Math.min(state.duration || end + 100, Math.max(start + 0.1, snapTimeToBeat(end + delta)));
+          segment.end = Math.max(start + 0.1, snapTimeToBeat(end + delta));
+          state.duration = Math.max(Number(state.duration || 0), Number(segment.end || 0));
         } else {
           const duration = end - start;
           segment.start = Math.max(0, Math.min((state.duration || 9999) - duration, snapTimeToBeat(start + delta)));
@@ -12051,7 +12849,27 @@ function openBuilder(node) {
 
   function imageFileFromDrop(event) {
     const files = Array.from(event.dataTransfer?.files || []);
-    return files.find((file) => /^image\//i.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name || ""));
+    return files.find((file) => /^image\//i.test(file.type) || /\.(png|jpe?g|webp|gif|bmp|tiff?|avif)$/i.test(file.name || ""));
+  }
+
+  function dropHasFiles(event) {
+    return Array.from(event.dataTransfer?.types || []).some((type) => String(type || "").toLowerCase() === "files")
+      || Boolean(event.dataTransfer?.files?.length);
+  }
+
+  function installFileDropNavigationGuard(element) {
+    const isDropZoneEvent = (event) => Boolean(event.target?.closest?.("[data-vrgdg-file-drop-zone='true']"));
+    element.addEventListener("dragover", (event) => {
+      if (!dropHasFiles(event)) return;
+      event.preventDefault();
+      if (!isDropZoneEvent(event)) event.dataTransfer.dropEffect = "none";
+    }, true);
+    element.addEventListener("drop", (event) => {
+      if (!dropHasFiles(event) || isDropZoneEvent(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      toast("Drop images onto a scene block or scene row to attach them.", true);
+    }, true);
   }
 
   function audioFileFromDrop(event) {
@@ -12305,24 +13123,37 @@ function openBuilder(node) {
   }
 
   function enableImageDrop(element, segment) {
-    element.addEventListener("dragover", (event) => {
-      if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+    element.dataset.vrgdgFileDropZone = "true";
+    element.addEventListener("dragenter", (event) => {
+      if (!dropHasFiles(event)) return;
       event.preventDefault();
       event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
       element.style.outline = "2px solid #a3e635";
-    });
+    }, true);
+    element.addEventListener("dragover", (event) => {
+      if (!dropHasFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = "copy";
+      element.style.outline = "2px solid #a3e635";
+    }, true);
     element.addEventListener("dragleave", (event) => {
       event.stopPropagation();
       element.style.outline = "";
     });
     element.addEventListener("drop", (event) => {
-      const file = imageFileFromDrop(event);
-      if (!file) return;
+      if (!dropHasFiles(event)) return;
       event.preventDefault();
       event.stopPropagation();
       element.style.outline = "";
+      const file = imageFileFromDrop(event);
+      if (!file) {
+        toast("Drop a PNG, JPG, WEBP, GIF, BMP, TIFF, or AVIF image file.", true);
+        return;
+      }
       loadCustomImageFile(file, segment);
-    });
+    }, true);
   }
 
   function projectContextPath(filename) {
@@ -16292,7 +17123,7 @@ function openBuilder(node) {
     const subjectActions = document.createElement("div");
     subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
     describeMissingSubjects.title = "Use vision Gemma to describe character reference images that do not already have descriptions.";
-    createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage or Krea2 + ZImage enhancer before generation starts.";
+    createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT before generation starts.";
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
     subjectActions.append(extractSubjects, describeMissingSubjects, createAllMissingSubjectImages, importSubjects, removeAllSubjects);
     subjectHeader.append(subjectTitle, subjectActions);
@@ -16341,7 +17172,7 @@ function openBuilder(node) {
     const describeSubjectImage = makeButton("Gemma Describe", "primary");
     const uploadSubject = makeButton("Upload Subject Image", "primary");
     const clearSubject = makeButton("Clear Subject");
-    createSubjectZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this subject reference.";
+    createSubjectZImage.title = "Choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT for this subject reference.";
     describeSubjectImage.title = "Use vision Gemma to write the reference description from this image.";
     subjectButtons.append(createSubjectZImage, describeSubjectImage, uploadSubject, clearSubject);
     const subjectsList = document.createElement("div");
@@ -16378,7 +17209,7 @@ function openBuilder(node) {
     describeMissingLocations.title = "Use vision Gemma to describe location reference images that do not already have descriptions.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
     exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
-    createAllMissingLocationZImages.title = "Batch-create missing location images. You will choose ZImage or Krea2 + ZImage enhancer before generation starts.";
+    createAllMissingLocationZImages.title = "Batch-create missing location images. You will choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT before generation starts.";
     addLocation.title = "Add one location card manually.";
     removeAllLocations.title = "Remove every location card and clear location mappings.";
     const locationActions = document.createElement("div");
@@ -16472,6 +17303,57 @@ function openBuilder(node) {
         ? `<img src="${src}" draggable="false" style="width:96px;height:72px;max-width:100%;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#020617;"><div style="font-size:11px;color:#a5f3fc;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeHtml(imageLabel(image))}</div>`
         : `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
     };
+    const syncPrimarySubjectImage = () => {
+      ensureSubjectCount();
+      const primary = refs.subjects[0];
+      if (!primary) return;
+      const globalImage = refs.subject?.image || {};
+      const primaryImage = primary.image || {};
+      if (hasReferenceImage(globalImage) && !hasReferenceImage(primaryImage)) {
+        primary.image = { ...globalImage };
+      } else if (!hasReferenceImage(globalImage) && hasReferenceImage(primaryImage)) {
+        refs.subject.image = { ...primaryImage };
+      }
+    };
+    const subjectPreviewImages = (subject) => {
+      const images = [];
+      if (hasReferenceImage(subject?.image || {})) images.push({ image: subject.image, label: subject.name || "Reference" });
+      if (!isExtraSubjectReference(subject)) {
+        for (const extra of refs.subjects.filter((item) => subjectExtraTargetId(item) === subject.id)) {
+          if (hasReferenceImage(extra?.image || {})) images.push({ image: extra.image, label: extra.name || "Extra ref" });
+        }
+      }
+      return images;
+    };
+    const renderSubjectThumbnailStrip = (subject, dropTarget = null) => {
+      const images = subjectPreviewImages(subject);
+      if (!images.length) return null;
+      const strip = document.createElement("div");
+      strip.style.cssText = "display:flex;gap:6px;align-items:flex-start;overflow-x:auto;padding:6px;border:1px solid #155e75;border-radius:6px;background:#061923;scrollbar-width:thin;";
+      images.slice(0, 6).forEach(({ image, label }, index) => {
+        const item = document.createElement("div");
+        item.style.cssText = "flex:0 0 58px;display:flex;flex-direction:column;gap:3px;min-width:0;";
+        const img = document.createElement("img");
+        img.src = imageSrc(image);
+        img.alt = label || `Reference ${index + 1}`;
+        img.title = imageLabel(image) || label || `Reference ${index + 1}`;
+        img.draggable = false;
+        img.style.cssText = "width:58px;height:46px;object-fit:cover;border:1px solid #0891b2;border-radius:5px;background:#020617;display:block;";
+        const caption = document.createElement("div");
+        caption.textContent = index === 0 ? "Primary" : `Extra ${index}`;
+        caption.style.cssText = "font-size:9px;color:#a5f3fc;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        item.append(img, caption);
+        strip.append(item);
+      });
+      if (images.length > 6) {
+        const more = document.createElement("div");
+        more.textContent = `+${images.length - 6}`;
+        more.style.cssText = "flex:0 0 38px;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #334155;border-radius:5px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;";
+        strip.append(more);
+      }
+      if (dropTarget) wireDrop(strip, dropTarget);
+      return strip;
+    };
     const updateSubjectDrop = () => renderDrop(subjectDrop, refs.subject.image, "Drop subject reference image here");
     const imageTargetFor = (owner, key = "image") => ({ owner, key });
     const resolveImageTarget = (target) => {
@@ -16564,10 +17446,10 @@ function openBuilder(node) {
       drop.addEventListener("dragleave", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        event.stopImmediatePropagation?.();
-        drop.style.borderColor = "#0891b2";
+          event.stopImmediatePropagation?.();
+          drop.style.borderColor = "#0891b2";
       });
-      drop.addEventListener("drop", (event) => {
+      const handleDrop = (event) => {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation?.();
@@ -16590,7 +17472,9 @@ function openBuilder(node) {
           return;
         }
         toast("That drop did not contain a readable image. Use Upload Image or drop a PNG/JPG/WebP file.", true);
-      });
+      };
+      drop.addEventListener("drop", handleDrop, true);
+      drop.addEventListener("drop", handleDrop);
     };
     fileInput.onchange = () => {
       setImageTarget(pendingImageTarget, fileInput.files?.[0]);
@@ -17410,9 +18294,88 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function runFluxReferenceWithFlowGpt(referenceType, target, sourceText, name = "") {
+      const text = String(sourceText || "").trim();
+      if (!text) {
+        toast(referenceType === "subject" ? "Enter a subject description first." : "Enter a location description first.", true);
+        return;
+      }
+      const modelFile = String(t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "").trim();
+      if (!modelFile && !["lm_studio", "llm_api"].includes(state.textGemmaRunner)) {
+        toast("Choose a non-vision Gemma model first.", true);
+        return;
+      }
+      let progress = null;
+      try {
+        const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+        const providerLabel = browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana";
+        setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
+        progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
+        progress.set(`Creating ${providerLabel} reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
+        const styleTheme = state.useVrgdgTextContext ? await loadContextTextQuiet(themeStyleInput.value) : "";
+        const promptData = await postJson("/vrgdg/music_builder/flux_reference_zimage_prompt", {
+          ...textGemmaRunnerPayload(),
+          model_file: modelFile,
+          reference_type: referenceType,
+          source_text: text,
+          style_theme: styleTheme,
+          unload_after: true,
+        }, 3 * 60 * 1000);
+        const timeout = browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
+          ? browserSettings.gpt_timeout_seconds
+          : browserSettings.flow_timeout_seconds;
+        setInlineProgress(`Building ${providerLabel} browser workflow...`, 28);
+        progress.set(`Building ${providerLabel} browser workflow...`, 28);
+        const built = await buildBrowserImagePrompt({
+          provider: browserSettings.provider,
+          prompt: promptData.prompt,
+          aspect_ratio: browserSettings.aspect_ratio || "16:9",
+          image_ingredients: [],
+          timeout_seconds: timeout || browserSettings.timeout_seconds || 600,
+        });
+        setInlineProgress(`Queueing ${built.provider_label || providerLabel} reference workflow...`, 42);
+        progress.set(`Queueing ${built.provider_label || providerLabel} reference workflow...`, 42);
+        const queued = await queueWorkflowPrompt(built.prompt);
+        const promptId = queued?.prompt_id;
+        if (!promptId) throw new Error(`ComfyUI queued the ${providerLabel} reference but did not return a prompt_id.`);
+        const images = await waitForImages(promptId, (message) => {
+          setInlineProgress(`${message}\nPrompt ID: ${promptId}`, 66);
+          progress?.set(`${message}\nPrompt ID: ${promptId}`, 66);
+        });
+        const image = images[images.length - 1];
+        if (!image) throw new Error(`${providerLabel} did not return a reference image.`);
+        setInlineProgress("Saving reference image into the project...", 88);
+        progress.set("Saving reference image into the project...", 88);
+        const saved = await postJson("/vrgdg/music_builder/save_flux_reference_image", {
+          project_folder: projectInput.value || state.projectFolder,
+          reference_type: referenceType,
+          name: name || text.slice(0, 48) || referenceType,
+          image,
+        });
+        if (!target.image) target.image = { path: "", data: "", name: "" };
+        target.image.path = saved.saved_path || "";
+        target.image.data = "";
+        target.image.name = `${name || referenceType}.png`;
+        renderAll();
+        setInlineProgress("Reference image ready.", 100);
+        progress.set("Reference image ready.", 100);
+        progress.close(1300);
+        hideInlineProgress();
+        toast(referenceType === "subject" ? `Subject reference created with ${providerLabel}.` : `Location reference created with ${providerLabel}.`);
+      } catch (error) {
+        setInlineProgress(`Error:\n${String(error?.message || error)}`, 100);
+        progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+        toast(String(error?.message || error), true);
+      }
+    }
+
     async function createMissingLocationReferencesWithZImage(workflow = "zimage", generatorSettings = {}) {
       const useKrea2 = workflow === "krea2";
-      const workflowLabel = useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+      const useFlowGpt = workflow === "flow_gpt";
+      const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+      const workflowLabel = useFlowGpt
+        ? (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana")
+        : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
       const missingLocations = refs.locations
         .map((location, index) => ({ location, index }))
         .filter(({ location }) => {
@@ -17466,10 +18429,18 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
           setInlineProgress(`Building ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
           progress.set(`Building ${workflowLabel} location workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
-          const built = useKrea2
-            ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
-            : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-          if (!useKrea2 && Number.isFinite(Number(built.used_seed))) {
+          const built = useFlowGpt
+            ? await buildBrowserImagePrompt({
+              provider: browserSettings.provider,
+              prompt,
+              aspect_ratio: browserSettings.aspect_ratio || "16:9",
+              image_ingredients: [],
+              timeout_seconds: (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? browserSettings.gpt_timeout_seconds : browserSettings.flow_timeout_seconds) || browserSettings.timeout_seconds || 600,
+            })
+            : useKrea2
+              ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
+              : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (!useFlowGpt && !useKrea2 && Number.isFinite(Number(built.used_seed))) {
             zSettings.seed = Number(built.used_seed);
             state.zimageSettings = zSettings;
             zSeed.value = String(zSettings.seed);
@@ -17496,7 +18467,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           location.image.path = saved.saved_path || "";
           location.image.data = "";
           location.image.name = `${location.name || `location_${index + 1}`}.png`;
-          if (!useKrea2) {
+          if (!useFlowGpt && !useKrea2) {
             advanceZImageSeedAfterRun(zSettings);
             zSettings = cloneZImageSettings(state.zimageSettings);
             syncZImageSettingsPanel();
@@ -17505,15 +18476,17 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         }
         refs.use_location_references = true;
         useLocations.input.checked = true;
-        setInlineProgress("Cleaning memory after location references...", 94);
-        await runImageMemoryCleanupQuiet(progress, "location references", 94);
+        if (!useFlowGpt) {
+          setInlineProgress("Cleaning memory after location references...", 94);
+          await runImageMemoryCleanupQuiet(progress, "location references", 94);
+        }
         setInlineProgress("Location reference images ready.", 100);
         progress.set(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"}.`, 100);
         progress.close(1800);
         hideInlineProgress();
         toast(`Created ${promptJobs.length} location reference image${promptJobs.length === 1 ? "" : "s"} with ${workflowLabel}.`);
       } catch (error) {
-        if (ranWorkflow) {
+        if (ranWorkflow && !useFlowGpt) {
           setInlineProgress("Cleaning memory after failed location reference batch...", 100);
           await runImageMemoryCleanupQuiet(progress, "failed location references", 100);
         }
@@ -17537,7 +18510,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         refs.subject = { ...refs.subject, ...refs.subjects[0], image: refs.subjects[0].image || refs.subject.image || { path: "", data: "", name: "" } };
       }
       const useKrea2 = workflow === "krea2";
-      const workflowLabel = useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
+      const useFlowGpt = workflow === "flow_gpt";
+      const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+      const workflowLabel = useFlowGpt
+        ? (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana")
+        : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
       const missingSubjects = refs.subjects
         .map((subject, index) => ({ subject, index }))
         .filter(({ subject }) => {
@@ -17588,10 +18565,18 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           const basePercent = 42 + Math.round((index / Math.max(1, promptJobs.length)) * 50);
           setInlineProgress(`Building ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
           progress.set(`Building ${workflowLabel} subject workflow...\n${index + 1}/${promptJobs.length}: ${label}`, basePercent);
-          const built = useKrea2
-            ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
-            : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
-          if (!useKrea2 && Number.isFinite(Number(built.used_seed))) {
+          const built = useFlowGpt
+            ? await buildBrowserImagePrompt({
+              provider: browserSettings.provider,
+              prompt,
+              aspect_ratio: browserSettings.aspect_ratio || "16:9",
+              image_ingredients: [],
+              timeout_seconds: (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? browserSettings.gpt_timeout_seconds : browserSettings.flow_timeout_seconds) || browserSettings.timeout_seconds || 600,
+            })
+            : useKrea2
+              ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
+              : await postJson("/vrgdg/workflow_runner/build_zimage_prompt", zimageReferencePayload(prompt, zSettings));
+          if (!useFlowGpt && !useKrea2 && Number.isFinite(Number(built.used_seed))) {
             zSettings.seed = Number(built.used_seed);
             state.zimageSettings = zSettings;
             zSeed.value = String(zSettings.seed);
@@ -17621,7 +18606,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
             refs.subject.image = subject.image;
           }
-          if (!useKrea2) {
+          if (!useFlowGpt && !useKrea2) {
             advanceZImageSeedAfterRun(zSettings);
             zSettings = cloneZImageSettings(state.zimageSettings);
             syncZImageSettingsPanel();
@@ -17630,15 +18615,17 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         }
         refs.use_subject_reference = true;
         useSubject.input.checked = true;
-        setInlineProgress("Cleaning memory after subject references...", 94);
-        await runImageMemoryCleanupQuiet(progress, "subject references", 94);
+        if (!useFlowGpt) {
+          setInlineProgress("Cleaning memory after subject references...", 94);
+          await runImageMemoryCleanupQuiet(progress, "subject references", 94);
+        }
         setInlineProgress("Subject reference images ready.", 100);
         progress.set(`Created ${promptJobs.length} subject reference image${promptJobs.length === 1 ? "" : "s"}.`, 100);
         progress.close(1800);
         hideInlineProgress();
         toast(`Created ${promptJobs.length} subject reference image${promptJobs.length === 1 ? "" : "s"} with ${workflowLabel}.`);
       } catch (error) {
-        if (ranWorkflow) {
+        if (ranWorkflow && !useFlowGpt) {
           setInlineProgress("Cleaning memory after failed subject reference batch...", 100);
           await runImageMemoryCleanupQuiet(progress, "failed subject references", 100);
         }
@@ -17792,13 +18779,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       header.append(title, close);
       const note = document.createElement("div");
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-      note.textContent = "ZImage uses the existing reference-image workflow. Krea2 uses the new hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass in that workflow. A subject or location description is required before generation can run.";
+      note.textContent = "ZImage uses the existing reference-image workflow. Krea2 uses the hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel. A subject or location description is required before generation can run.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
 
       const grid = document.createElement("div");
-      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
       const modalHelp = (text) => {
         const help = document.createElement("div");
         help.textContent = text;
@@ -17853,6 +18840,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ], "Use Krea2 + Enhancer", () => runFluxReferenceWithKrea2(referenceType, target, text, name, {
           krea2: readKrea2(),
         })),
+        optionCard("Flow/GPT", [
+          modalHelp("Use the selected Flow/GPT provider. Flow requires the Flow browser profile; GPT Image appends the selected aspect ratio from the Flow/GPT panel."),
+        ], "Use Flow/GPT", () => runFluxReferenceWithFlowGpt(referenceType, target, text, name)),
       );
       const footer = document.createElement("div");
       footer.style.cssText = "display:flex;justify-content:flex-end;";
@@ -17901,13 +18891,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       header.append(title, close);
       const note = document.createElement("div");
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-      note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here.";
+      note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
 
       const grid = document.createElement("div");
-      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
       const modalHelp = (text) => {
         const help = document.createElement("div");
         help.textContent = text;
@@ -17962,6 +18952,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ], "Use Krea2 + Enhancer For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("krea2", {
           krea2: readKrea2(),
         })),
+        optionCard("Flow/GPT", [
+          modalHelp("Use the selected Flow/GPT provider for every missing subject/reference image. Log into the chosen browser profile first."),
+        ], "Use Flow/GPT For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("flow_gpt")),
       );
       const footer = document.createElement("div");
       footer.style.cssText = "display:flex;justify-content:flex-end;";
@@ -18003,13 +18996,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       header.append(title, close);
       const note = document.createElement("div");
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-      note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here.";
+      note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
 
       const grid = document.createElement("div");
-      grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;";
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
       const modalHelp = (text) => {
         const help = document.createElement("div");
         help.textContent = text;
@@ -18064,6 +19057,9 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ], "Use Krea2 + Enhancer For All Missing", () => createMissingLocationReferencesWithZImage("krea2", {
           krea2: readKrea2(),
         })),
+        optionCard("Flow/GPT", [
+          modalHelp("Use the selected Flow/GPT provider for every missing location image. Log into the chosen browser profile first."),
+        ], "Use Flow/GPT For All Missing", () => createMissingLocationReferencesWithZImage("flow_gpt")),
       );
       const footer = document.createElement("div");
       footer.style.cssText = "display:flex;justify-content:flex-end;";
@@ -18767,6 +19763,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     function renderSubjects() {
       ensureSubjectCount();
+      syncPrimarySubjectImage();
       const multi = refs.subject_count > 1;
       extractSubjects.style.display = multi ? "" : "none";
       subjectNameInput.parentElement.style.display = multi ? "none" : "";
@@ -18904,6 +19901,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           subject.description = description.value;
         });
         buttons.append(createZImage, describeImage, upload, clear, remove);
+        const thumbnailStrip = renderSubjectThumbnailStrip(subject, target);
+        if (thumbnailStrip) row.append(thumbnailStrip);
         row.append(makeField("Reference name", name), makeField("Reference type", typeSelect), sameSubjectWrap, makeField("Description / prompt", description), used, drop, buttons);
         subjectsList.append(row);
       });
@@ -21102,6 +22101,389 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     renderAll();
   }
 
+  function openIdLoraReferenceBuilderModal() {
+    let refs = normalizeIdLoraReferenceBuilder(state.idLoraReferenceBuilder);
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1180px,calc(100vw - 34px));max-height:calc(100vh - 38px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
+    const title = document.createElement("div");
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">ID-LoRA Ref Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Characters, voices, locations, and scene casting for ID-LoRA I2V.</div>`;
+    const close = makeButton("Close");
+    header.append(title, close);
+
+    const charactersPanel = document.createElement("div");
+    const locationsPanel = document.createElement("div");
+    const castingPanel = document.createElement("div");
+    for (const panel of [charactersPanel, locationsPanel, castingPanel]) {
+      panel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+    }
+    const tabs = makeSubTabs([
+      { value: "characters", label: "Characters", content: charactersPanel },
+      { value: "locations", label: "Locations", content: locationsPanel },
+      { value: "casting", label: "Scene Casting", content: castingPanel },
+    ]);
+
+    const rowCardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:8px;";
+    const fieldGridStyle = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+    const makeTinyButton = (label) => {
+      const button = makeButton(label, "neutral");
+      button.style.cssText += "padding:6px 9px;font-size:11px;";
+      return button;
+    };
+    const selectOptionsFromItems = (items, fallbackLabel) => {
+      const options = [{ value: "", label: fallbackLabel }];
+      for (const item of items || []) {
+        const name = String(item.name || "").trim();
+        if (name) options.push({ value: item.id, label: name });
+      }
+      return options;
+    };
+    const syncSelectOptions = (select, options, value = "") => {
+      select.innerHTML = "";
+      for (const option of options) {
+        const el = document.createElement("option");
+        el.value = option.value;
+        el.textContent = option.label;
+        select.append(el);
+      }
+      select.value = value;
+    };
+    const saveRefsQuiet = async (reason = "ID-LoRA ref builder") => {
+      state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(refs);
+      await autoSaveSessionQuiet(reason);
+    };
+    const renderCharacters = () => {
+      charactersPanel.innerHTML = "";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;justify-content:flex-end;";
+      const add = makeButton("Add Character", "primary");
+      actions.append(add);
+      charactersPanel.append(actions);
+      add.onclick = () => {
+        refs.characters.push({
+          id: `id_lora_char_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+          name: `Character ${refs.characters.length + 1}`,
+          description: "",
+          image: { path: "", data: "", name: "" },
+          voice_audio_path: "",
+          voice_trim_start: 0,
+          voice_trim_duration: 0,
+          identity_guidance_scale: 3,
+          speech_style: "",
+        });
+        renderAll();
+      };
+      if (!refs.characters.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "Add characters here. Each character can have their own reference voice sample.";
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;color:#94a3b8;padding:14px;text-align:center;font-size:12px;";
+        charactersPanel.append(empty);
+      }
+      refs.characters.forEach((character, index) => {
+        const card = document.createElement("div");
+        card.style.cssText = rowCardStyle;
+        const top = document.createElement("div");
+        top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+        const label = document.createElement("div");
+        label.textContent = `Character ${index + 1}`;
+        label.style.cssText = "font-weight:900;color:#cffafe;font-size:12px;";
+        const remove = makeTinyButton("Remove");
+        top.append(label, remove);
+        const name = makeInput(character.name || "");
+        const description = document.createElement("textarea");
+        description.value = character.description || "";
+        description.placeholder = "Character description...";
+        description.style.cssText = "width:100%;box-sizing:border-box;min-height:58px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#020617;color:#f8fafc;padding:8px;font-size:12px;";
+        const voice = makeInput(character.voice_audio_path || "");
+        const voicePick = makeTinyButton("Pick");
+        const voiceField = makeEditField("Reference voice sample", voice, voicePick);
+        const imagePath = makeInput(character.image?.path || "");
+        const imagePick = makeTinyButton("Pick");
+        const imageField = makeEditField("Character ref sheet", imagePath, imagePick);
+        const imageNote = document.createElement("div");
+        imageNote.textContent = "Used as a character reference for Flux/Klein, Nano B, and Flow/GPT scene image creation.";
+        imageNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;margin-top:-4px;";
+        const identity = makeInput(String(character.identity_guidance_scale ?? 3), "number");
+        identity.step = "0.1";
+        const speechStyle = makeInput(character.speech_style || "");
+        speechStyle.placeholder = "Optional speech style notes";
+        const grid = document.createElement("div");
+        grid.style.cssText = fieldGridStyle;
+        grid.append(makeField("Name", name), makeField("Identity scale", identity), voiceField, imageField, makeField("Speech style", speechStyle));
+        card.append(top, grid, imageNote, makeField("Description", description));
+        charactersPanel.append(card);
+        remove.onclick = () => {
+          refs.characters.splice(index, 1);
+          for (const entry of Object.values(refs.scene_map || {})) {
+            if (entry.character_id === character.id) entry.character_id = "";
+          }
+          renderAll();
+        };
+        voicePick.onclick = async () => {
+          const path = await pickPath("audio", voice);
+          if (path) {
+            character.voice_audio_path = path;
+            await saveRefsQuiet("ID-LoRA character voice picked");
+          }
+        };
+        imagePick.onclick = async () => {
+          const path = await pickPath("image", imagePath);
+          if (path) {
+            character.image = { ...(character.image || {}), path, data: "", name: "" };
+            await saveRefsQuiet("ID-LoRA character image picked");
+          }
+        };
+        const update = () => {
+          character.name = name.value || "";
+          character.description = description.value || "";
+          character.voice_audio_path = voice.value || "";
+          character.image = { ...(character.image || {}), path: imagePath.value || "", data: "", name: character.image?.name || "" };
+          character.voice_trim_start = 0;
+          character.voice_trim_duration = 0;
+          character.identity_guidance_scale = Number(identity.value || 3);
+          character.speech_style = speechStyle.value || "";
+        };
+        for (const control of [name, description, voice, imagePath, identity, speechStyle]) {
+          control.addEventListener("input", update);
+          control.addEventListener("change", () => {
+            update();
+            saveRefsQuiet("ID-LoRA character edited");
+          });
+        }
+      });
+    };
+    const renderLocations = () => {
+      locationsPanel.innerHTML = "";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;justify-content:flex-end;";
+      const add = makeButton("Add Location", "primary");
+      actions.append(add);
+      locationsPanel.append(actions);
+      add.onclick = () => {
+        refs.locations.push({
+          id: `id_lora_loc_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+          name: `Location ${refs.locations.length + 1}`,
+          description: "",
+          image: { path: "", data: "", name: "" },
+        });
+        renderAll();
+      };
+      if (!refs.locations.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "Add locations for image creation and Gemma visual context.";
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;color:#94a3b8;padding:14px;text-align:center;font-size:12px;";
+        locationsPanel.append(empty);
+      }
+      refs.locations.forEach((location, index) => {
+        const card = document.createElement("div");
+        card.style.cssText = rowCardStyle;
+        const top = document.createElement("div");
+        top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+        const label = document.createElement("div");
+        label.textContent = `Location ${index + 1}`;
+        label.style.cssText = "font-weight:900;color:#cffafe;font-size:12px;";
+        const remove = makeTinyButton("Remove");
+        top.append(label, remove);
+        const name = makeInput(location.name || "");
+        const imagePath = makeInput(location.image?.path || "");
+        const imagePick = makeTinyButton("Pick");
+        const imageField = makeEditField("Location image", imagePath, imagePick);
+        const description = document.createElement("textarea");
+        description.value = location.description || "";
+        description.placeholder = "Location description...";
+        description.style.cssText = "width:100%;box-sizing:border-box;min-height:70px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#020617;color:#f8fafc;padding:8px;font-size:12px;";
+        const grid = document.createElement("div");
+        grid.style.cssText = fieldGridStyle;
+        grid.append(makeField("Name", name), imageField);
+        card.append(top, grid, makeField("Description", description));
+        locationsPanel.append(card);
+        remove.onclick = () => {
+          refs.locations.splice(index, 1);
+          for (const entry of Object.values(refs.scene_map || {})) {
+            if (entry.location_id === location.id) entry.location_id = "";
+          }
+          renderAll();
+        };
+        imagePick.onclick = async () => {
+          const path = await pickPath("image", imagePath);
+          if (path) {
+            location.image = { ...(location.image || {}), path, data: "", name: "" };
+            await saveRefsQuiet("ID-LoRA location image picked");
+          }
+        };
+        const update = () => {
+          location.name = name.value || "";
+          location.description = description.value || "";
+          location.image = { ...(location.image || {}), path: imagePath.value || "", data: "", name: location.image?.name || "" };
+        };
+        for (const control of [name, imagePath, description]) {
+          control.addEventListener("input", update);
+          control.addEventListener("change", () => {
+            update();
+            saveRefsQuiet("ID-LoRA location edited");
+          });
+        }
+      });
+    };
+    const renderCasting = () => {
+      castingPanel.innerHTML = "";
+      if (!state.segments.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "Create timeline scenes first.";
+        empty.style.cssText = "border:1px dashed #334155;border-radius:7px;color:#94a3b8;padding:14px;text-align:center;font-size:12px;";
+        castingPanel.append(empty);
+        return;
+      }
+      const characterOptions = selectOptionsFromItems(refs.characters, "No character selected");
+      const locationOptions = selectOptionsFromItems(refs.locations, "No location selected");
+      const toolbar = document.createElement("div");
+      toolbar.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;";
+      const summary = document.createElement("div");
+      const autoCount = state.segments.reduce((count, segment) => count + (idLoraSceneEntry(refs, segment).auto_duration !== false ? 1 : 0), 0);
+      summary.textContent = `${autoCount}/${state.segments.length} scenes use auto duration. Calculated durations update from each dialogue line.`;
+      summary.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.35;";
+      const recalcAll = makeTinyButton("Recalculate Auto Durations");
+      toolbar.append(summary, recalcAll);
+      castingPanel.append(toolbar);
+      recalcAll.onclick = async () => {
+        pushHistory();
+        let updated = 0;
+        for (const segment of state.segments) {
+          const sceneId = String(segment.id || "");
+          const entry = idLoraSceneEntry(refs, segment);
+          if (entry.auto_duration === false) {
+            refs.scene_map[sceneId] = entry;
+            continue;
+          }
+          entry.dialogue = String(entry.dialogue || segment.lyric_text || "").trim();
+          entry.estimated_duration = estimateIdLoraDialogueDuration(entry.dialogue);
+          entry.manual_duration = entry.estimated_duration;
+          refs.scene_map[sceneId] = entry;
+          segment.lyric_text = entry.dialogue;
+          setBaseSegmentDurationRipple(segment, entry.estimated_duration);
+          updated += 1;
+        }
+        state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(refs);
+        syncInspector();
+        render();
+        await autoSaveSessionQuiet("ID-LoRA auto durations recalculated");
+        toast(`Recalculated ${updated} ID-LoRA auto duration${updated === 1 ? "" : "s"}.`);
+        renderAll();
+      };
+      state.segments.forEach((segment, index) => {
+        const sceneId = String(segment.id || "");
+        const entry = idLoraSceneEntry(refs, segment);
+        refs.scene_map[sceneId] = entry;
+        const card = document.createElement("div");
+        card.style.cssText = rowCardStyle;
+        const heading = document.createElement("div");
+        heading.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+        const titleText = document.createElement("div");
+        titleText.innerHTML = `<div style="font-weight:900;color:#cffafe;font-size:12px;">${escapeHtml(sceneDisplayName(segment, index))}</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>`;
+        const estimate = document.createElement("div");
+        estimate.style.cssText = "font-size:12px;color:#a5f3fc;font-weight:900;white-space:nowrap;";
+        heading.append(titleText, estimate);
+        const character = makeSelect([], "");
+        const location = makeSelect([], "");
+        syncSelectOptions(character, characterOptions, entry.character_id);
+        syncSelectOptions(location, locationOptions, entry.location_id);
+        const dialogue = document.createElement("textarea");
+        dialogue.value = entry.dialogue || "";
+        dialogue.placeholder = "Dialogue line...";
+        dialogue.style.cssText = "width:100%;box-sizing:border-box;min-height:62px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#020617;color:#f8fafc;padding:8px;font-size:12px;";
+        const autoDuration = makeCheckbox("Auto duration", entry.auto_duration !== false);
+        const manualDuration = makeInput(String(Number(entry.manual_duration || entry.estimated_duration || 2).toFixed(2)), "number");
+        manualDuration.min = "0.25";
+        manualDuration.step = "0.25";
+        const manualDurationField = makeField("Duration", manualDuration);
+        const grid = document.createElement("div");
+        grid.style.cssText = fieldGridStyle;
+        grid.append(makeField("Character", character), makeField("Location", location), autoDuration.wrapper, manualDurationField);
+        card.append(heading, grid, makeField("Dialogue line", dialogue));
+        castingPanel.append(card);
+        const refreshDuration = (applyTiming = false) => {
+          entry.dialogue = dialogue.value || "";
+          entry.estimated_duration = estimateIdLoraDialogueDuration(entry.dialogue);
+          entry.auto_duration = Boolean(autoDuration.input.checked);
+          entry.manual_duration = Math.max(0.25, Number(manualDuration.value || entry.estimated_duration || 2));
+          estimate.textContent = entry.auto_duration ? `Estimated duration: ${entry.estimated_duration.toFixed(2)}s` : `Manual duration: ${entry.manual_duration.toFixed(2)}s`;
+          manualDurationField.style.display = entry.auto_duration ? "none" : "flex";
+          if (entry.auto_duration) manualDuration.value = entry.estimated_duration.toFixed(2);
+          if (applyTiming && entry.auto_duration) {
+            segment.lyric_text = entry.dialogue;
+            setBaseSegmentDurationRipple(segment, entry.estimated_duration);
+            renderSegments();
+            drawWaveform();
+          }
+        };
+        const updateEntry = (applyTiming = false) => {
+          entry.character_id = character.value || "";
+          entry.location_id = location.value || "";
+          refreshDuration(applyTiming);
+          refs.scene_map[sceneId] = entry;
+        };
+        character.onchange = () => updateEntry(false);
+        location.onchange = () => updateEntry(false);
+        dialogue.addEventListener("input", () => updateEntry(true));
+        dialogue.addEventListener("change", () => {
+          updateEntry(true);
+          saveRefsQuiet("ID-LoRA scene dialogue edited");
+        });
+        autoDuration.input.onchange = () => {
+          updateEntry(true);
+          saveRefsQuiet("ID-LoRA auto duration changed");
+        };
+        manualDuration.oninput = () => updateEntry(false);
+        manualDuration.onchange = () => {
+          updateEntry(false);
+          saveRefsQuiet("ID-LoRA manual duration changed");
+        };
+        refreshDuration(false);
+      });
+    };
+    const renderAll = () => {
+      refs = normalizeIdLoraReferenceBuilder(refs);
+      renderCharacters();
+      renderLocations();
+      renderCasting();
+    };
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const save = makeButton("Save", "primary");
+    const cancel = makeButton("Cancel");
+    actions.append(save, cancel);
+    box.append(header, tabs.wrapper, actions);
+    backdrop.append(box);
+    const closeModal = () => backdrop.remove();
+    close.onclick = closeModal;
+    cancel.onclick = closeModal;
+    save.onclick = async () => {
+      state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(refs);
+      await autoSaveSessionQuiet("ID-LoRA ref builder saved");
+      syncInspector();
+      render();
+      toast("ID-LoRA Ref Builder saved.");
+      closeModal();
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) closeModal();
+    });
+    document.body.append(backdrop);
+    renderAll();
+  }
+
+  function openIdLoraReferenceBuilderModalSafely() {
+    try {
+      openIdLoraReferenceBuilderModal();
+    } catch (error) {
+      console.error(error);
+      toast(`ID-LoRA Ref Builder failed to open: ${error?.message || error}`, true);
+    }
+  }
+
   function openReferenceBuilderTargetChooser() {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
@@ -21124,12 +22506,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const imageRefsButton = makeButton("Flux / Nano Image References", "primary");
     const ltxRefsButton = makeButton("LTX Reference to Video", "primary");
     const ingredientsRefsButton = makeButton("Ingredients to Video", "primary");
+    const idLoraRefsButton = makeButton("ID-LoRA Ref Builder", "primary");
     const close = makeButton("Cancel", "neutral");
     choices.append(
       choiceCard(textMappingButton, "Text-only character/location mapping for Gemma image planning, I2V prompt writing, and T2V prompt writing. No reference images are sent."),
       choiceCard(imageRefsButton, "Image reference setup for Flux/Klein and Nano B image generation. Use when those image modes should receive character/location images."),
       choiceCard(ltxRefsButton, "LTX Reference-to-Video setup for the MSR LoRA workflow. Uses reference images for the video render."),
       choiceCard(ingredientsRefsButton, "Ingredients-to-Video setup for the Ingredients LoRA workflow. Maps ingredients sheets/images to scenes."),
+      choiceCard(idLoraRefsButton, "Characters, voice samples, locations, dialogue, and auto duration for ID-LoRA I2V short film scenes."),
     );
     box.append(title, choices, close);
     backdrop.append(box);
@@ -21152,6 +22536,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.videoModelMode = "ingredients";
       syncVideoModePanel();
       openIngredientsReferenceBuilderModal();
+    };
+    idLoraRefsButton.onclick = () => {
+      backdrop.remove();
+      state.videoModelMode = "id_lora";
+      syncVideoModePanel();
+      openIdLoraReferenceBuilderModalSafely();
     };
     close.onclick = () => backdrop.remove();
     backdrop.addEventListener("pointerdown", (event) => {
@@ -21814,23 +23204,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function createSilentTimelineAudio() {
-    const projectFolder = projectInput.value || state.projectFolder;
+    const duration = Math.max(0.1, Number(silentAudioDurationInput.value || 60));
+    return createSilentTimelineAudioForDuration(duration);
+  }
+
+  async function createSilentTimelineAudioForDuration(duration, options = {}) {
+    const projectFolder = activeProjectFolderForSave() || String(projectInput.value || "").trim();
     if (!projectFolder) {
       toast("Set the project folder first so the silent timeline audio can be created there.", true);
       return null;
     }
-    const duration = Math.max(0.1, Number(silentAudioDurationInput.value || 60));
+    state.projectFolder = projectFolder;
+    projectInput.value = projectFolder;
+    setWidgetValue(node, "project_folder", projectFolder);
+    const targetDuration = Math.max(0.1, Number(duration || 60));
     try {
       createSilentTimelineAudioButton.disabled = true;
       createSilentTimelineAudioButton.textContent = "Creating...";
       const data = await postJson("/vrgdg/music_builder/create_silent_audio", {
         project_folder: projectFolder,
         scope: "project",
-        duration,
+        duration: targetDuration,
       }, 180000);
       audioInput.value = data.audio_path || data.saved_path || "";
       state.audioPath = audioInput.value;
-      state.duration = Number(data.duration || duration);
+      state.duration = Number(data.duration || targetDuration);
       state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
       state.beats = Array.isArray(data.beats) ? data.beats : [];
       state.sceneAudioGlobalTime = 0;
@@ -21845,7 +23243,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       syncInspector();
       render();
-      toast(`Silent timeline audio created:\n${audioInput.value}`);
+      try {
+        await saveSession({ quiet: true, throwOnError: true });
+      } catch (saveError) {
+        console.warn("[VRGDG Music Builder] Silent timeline audio was created, but autosave failed:", saveError);
+        toast(`Silent audio was created, but autosave failed:\n${String(saveError?.message || saveError)}`, true);
+      }
+      if (!options.quiet) toast(`Silent timeline audio created:\n${audioInput.value}`);
       return data;
     } catch (error) {
       toast(String(error?.message || error), true);
@@ -22602,6 +24006,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       use_flux_global_image_ingredients: Boolean(state.useFluxGlobalImageIngredients),
       flux_global_image_ingredients: Array.isArray(state.fluxGlobalImageIngredients) ? state.fluxGlobalImageIngredients : [],
       flux_reference_builder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+      id_lora_reference_builder: normalizeIdLoraReferenceBuilder(state.idLoraReferenceBuilder),
       lyric_mapper: normalizeLyricMapper(state.lyricMapper),
       z_enhance_settings: state.zEnhanceSettings,
       video_model_mode: state.videoModelMode || "i2v",
@@ -22853,6 +24258,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(data.session.flux_reference_builder);
+        state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(data.session.id_lora_reference_builder || data.session.idLoraReferenceBuilder);
         state.lyricMapper = normalizeLyricMapper(data.session.lyric_mapper);
         state.zEnhanceSettings = data.session.z_enhance_settings || state.zEnhanceSettings;
         state.videoModelMode = data.session.video_model_mode || state.videoModelMode || "i2v";
@@ -22991,6 +24397,75 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return restored;
   }
 
+  async function restoreVideoForSegment(segment, options = {}) {
+    if (!segment) return;
+    const projectFolder = String(state.projectFolder || projectInput.value || "").trim();
+    if (!projectFolder) {
+      toast("Create or load a Builder project before restoring a scene video.", true);
+      return;
+    }
+    const sourcePath = await pickPath("video", { value: "" });
+    if (!sourcePath) return;
+    const sceneNumber = sceneSlotNumber(segment);
+    const expectedDuration = Math.max(0.1, timelineSegmentDuration(segment) || 0);
+    const sceneLabel = sceneDisplayName(segment, segmentIndexInfo(segment).index);
+    const restorePayload = (confirmDurationMismatch = false) => ({
+      project_folder: projectFolder,
+      scene_number: sceneNumber,
+      source_path: sourcePath,
+      expected_duration: expectedDuration,
+      duration_tolerance: 0.5,
+      confirm_duration_mismatch: confirmDurationMismatch || options.askDurationMismatch === false,
+    });
+    let data;
+    try {
+      data = await postJson("/vrgdg/music_builder/restore_scene_video", restorePayload(false), 120000);
+      if (data.needs_confirmation) {
+        const selectedDuration = Number(data.duration || 0);
+        const sceneDuration = Number(data.expected_duration || expectedDuration || 0);
+        const proceed = options.askDurationMismatch === false ? true : window.confirm(
+          `${sceneLabel}: the selected video duration does not match this timeline scene.\n\n`
+          + `Scene length: ${sceneDuration.toFixed(2)}s\n`
+          + `Selected video: ${selectedDuration ? selectedDuration.toFixed(2) : "unknown"}s\n\n`
+          + "Restore it anyway?"
+        );
+        if (!proceed) return;
+        data = await postJson("/vrgdg/music_builder/restore_scene_video", restorePayload(true), 120000);
+      }
+    } catch (error) {
+      toast(`Could not restore scene video:\n${String(error?.message || error)}`, true);
+      return;
+    }
+    if (!data.video_path) {
+      toast("No video was restored.", true);
+      return;
+    }
+    pushHistory();
+    if (data.backup_path) {
+      if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+      if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(data.backup_path))) {
+        segment.video_backup_paths.push(data.backup_path);
+      }
+    }
+    if (data.backup_thumbnail_path) {
+      if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
+      if (!segment.video_backup_thumbnail_paths.some((item) => mediaPathKey(item) === mediaPathKey(data.backup_thumbnail_path))) {
+        segment.video_backup_thumbnail_paths.push(data.backup_thumbnail_path);
+      }
+    }
+    activateSegmentVideoPath(segment, data.video_path, data.thumbnail_path || "");
+    segment.video_folder = data.video_folder || collectedSceneVideoFolder();
+    segment.video_status = "done";
+    segment.preview_mode = "video";
+    segment.video_cache_bust = Date.now();
+    syncPreview(segment);
+    syncInspector();
+    render();
+    await autoSaveSessionQuiet("scene video restored manually");
+    const durationLine = data.duration ? `\nDuration: ${Number(data.duration).toFixed(2)}s` : "";
+    toast(`Restored video for ${sceneLabel}.\n${data.video_path}${durationLine}`);
+  }
+
   async function loadSessionFromProject(projectFolder) {
     try {
       const folder = String(projectFolder || "").trim();
@@ -23087,6 +24562,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(session.flux_reference_builder);
+      state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(session.id_lora_reference_builder || session.idLoraReferenceBuilder);
       state.lyricMapper = normalizeLyricMapper(session.lyric_mapper);
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
       state.videoModelMode = session.video_model_mode || state.videoModelMode || "i2v";
@@ -23395,16 +24871,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       parts.push(`Scene:\n${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`);
       parts.push("Direction:\nCreate a cinematic image prompt that fits this scene.");
     }
-    parts.push("Image Prep rule:\nCreate a still text-to-image prompt. Use lyrics only for mood, symbolism, emotion, styling, and visual direction. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless scene notes explicitly request a live singing image.");
+    parts.push("Image Prep rule:\nCreate a still text-to-image prompt. The final answer must be a visual image prompt, not the lyric line. Use lyrics only for mood, symbolism, emotion, styling, and visual direction. Do not quote or return the lyrics as the prompt. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless scene notes explicitly request a live singing image.");
     return parts.join("\n\n");
   }
 
+  function sceneLyricTextForPromptValidation(segment) {
+    return String(segment?.lyric_text || segment?.lyric_note || segment?.lyrics || "").trim();
+  }
+
   function buildEmergencyImagePromptForSegment(segment, imageMode = state.imageModelMode || "zimage") {
-    const source = textOnlyFallbackNotesForSegment(segment, imageMode)
-      .replace(/^[^:\n]{1,48}:\s*/gm, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const base = source || `cinematic image for ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`;
+    const context = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
+    const source = [
+      segment?.notes,
+      segment?.flux_notes,
+      segment?.nb_notes,
+      segmentMappedSubjectText(segment),
+      segmentMappedLocationText(segment),
+      segment?.story_beat,
+      segment?.shot_type,
+      context?.subject_description,
+      context?.location_name,
+      context?.location_description,
+    ].map((value) => String(value || "").trim()).filter(Boolean).join(", ").replace(/\s+/g, " ").trim();
+    const lyricHint = sceneLyricTextForPromptValidation(segment) ? "symbolic mood inspired by the scene lyric, " : "";
+    const base = source || `${lyricHint}cinematic image for ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`;
     const clipped = base.length > 850 ? `${base.slice(0, 847).trim()}...` : base;
     const prompt = `cinematic image, ${clipped}, visually specific composition, clear subject, atmospheric lighting, high detail`;
     syncSegmentT2IPrompt(segment, applyImageTriggerToPrompt(prompt, segment, imageMode, { validateJunk: false }));
@@ -23427,6 +24917,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       use_vision: false,
       ref_image_path: "",
       scene_number: sceneSlotNumber(segment),
+      lyric_text: sceneLyricTextForPromptValidation(segment),
       prompt_mode: imageMode,
       project_folder: activeProjectFolderForSave(),
       scene_id: segment.id || "",
@@ -23473,16 +24964,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const scenes = storyboardScenePayload();
     const scene = scenes.find((item) => item.id === segment.id);
     if (!scene) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: storyboard scene card could not be built.`);
-    const storyboardState = {
-      projectFolder: activeProjectFolderForSave(),
-      mode: "storyboard_prompts",
-      performanceMode: normalizeVideoType(state.videoType),
-      videoType: normalizeVideoType(state.videoType),
-      scenes,
-      storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-      referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
-    };
     const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const storyboardState = wizardStoryboardState(scenes, { promptMode: "image", imageMode });
     progress?.set(`${label}: sending storyboard scene card to ${promptRunnerActionName()}...\nConcept prompt is included as the scene story beat.`, percent);
     const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", {
       ...textGemmaRunnerPayload(),
@@ -23874,6 +25357,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mmproj_file: fluxMmprojSelect.value,
       project_folder: activeProjectFolderForSave(),
       scene_id: segment.id || "",
+      lyric_text: sceneLyricTextForPromptValidation(segment),
       builder_instruction_key: "flux_klein_t2i",
       image_ingredients: settings.image_ingredients || [],
       reference_context: settings.reference_context || {},
@@ -24104,6 +25588,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lmstudio_api_key: state.lmStudioApiKey || "",
       project_folder: activeProjectFolderForSave(),
       scene_id: segment.id || "",
+      lyric_text: sceneLyricTextForPromptValidation(segment),
       prompt_mode: imageMode,
       builder_instruction_key: builderImageInstructionKey(imageMode),
       image_ingredients: settings.image_ingredients || [],
@@ -24691,7 +26176,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return String(data.prompt || "").trim() || base;
   }
 
+  function normalizeIdLoraScriptPrompt(segment, rawPrompt) {
+    const text = String(rawPrompt || "").replace(/\r\n/g, "\n").trim();
+    const sectionValue = (name) => {
+      const pattern = new RegExp(`\\[${name}\\]\\s*:?\\s*([\\s\\S]*?)(?=\\n\\s*\\[(?:VISUAL|SPEECH|SOUNDS)\\]\\s*:?|$)`, "i");
+      return String(text.match(pattern)?.[1] || "").trim();
+    };
+    const visual = sectionValue("VISUAL") || text.replace(/\[(?:VISUAL|SPEECH|SOUNDS)\]\s*:?\s*/gi, "").trim();
+    const speech = sectionValue("SPEECH") || idLoraSpeechTextForSegment(segment) || "I can feel this moment changing.";
+    const sounds = sectionValue("SOUNDS") || "Soft room tone, subtle breath, and quiet ambient space.";
+    return [
+      `[VISUAL]: ${visual || "A cinematic close-up of the subject holding a focused expression while the camera moves gently."}`,
+      `[SPEECH]: ${speech}`,
+      `[SOUNDS]: ${sounds}`,
+    ].join("\n");
+  }
+
   async function finalizeVideoPromptForSegment(segment, rawPrompt, progress = null, percent = 82, label = "I2V prompt enhancement", options = {}) {
+    if (currentVideoMode() === "id_lora") {
+      return normalizeIdLoraScriptPrompt(segment, rawPrompt);
+    }
     const directiveOptions = { suppressPrefix: Boolean(options.suppressVocalPrefix) };
     const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment, directiveOptions);
     const enhanced = await enhanceVideoPromptForSegment(segment, draft, progress, percent, label, options);
@@ -24699,6 +26203,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function finalizeVideoPromptDraftOnly(segment, rawPrompt) {
+    if (currentVideoMode() === "id_lora") {
+      return normalizeIdLoraScriptPrompt(segment, rawPrompt);
+    }
     const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment);
     return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(draft, videoTriggerPhraseForSegment(segment)), segment), segment);
   }
@@ -24709,10 +26216,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
     const isIngredients = videoMode === "ingredients";
+    const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
-    const useImageReference = forceVision ? true : forceTextOnly || isRTV || isIngredients ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+    const textScriptMode = isRTV || isIngredients || isIdLora;
+    const useImageReference = isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = sceneVideoConceptPromptText(segment);
     if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -24721,35 +26230,37 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM API vision needs a vision-capable API model selected. Open LLM Runner and choose an API model that supports images.`);
     }
-    if ((isT2V || isRTV || isIngredients || !useImageReference) && !t2iText) {
+    const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
+    if ((isT2V || textScriptMode || !useImageReference) && !t2iText && !(isIdLora && idLoraContext?.contextText)) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: scene text/concept is missing.`);
     }
     const baseNotes = videoGemmaNotesForSegment(segment);
+    const modeNotes = isIdLora ? idLoraGemmaNotesForSegment(segment, baseNotes) : baseNotes;
     const storyboardNotes = String(options.skipStoryboardExtraNotes ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
     const extraNotes = [storyboardNotes, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
     return {
-      endpoint: isT2V || isRTV || isIngredients ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v",
+      endpoint: isT2V || textScriptMode ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v",
       modeLabel,
       useImageReference,
       payload: {
         ...textGemmaRunnerPayload(),
         project_folder: activeProjectFolderForSave(),
         scene_id: segment.id || "",
-        builder_instruction_key: isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
+        builder_instruction_key: isIdLora ? "id_lora" : isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-        t2i_prompt: isT2V || isRTV || isIngredients ? t2iText : useImageReference ? "" : t2iText,
+        t2i_prompt: isIdLora ? [t2iText, idLoraContext?.contextText || ""].filter(Boolean).join("\n\n") : isT2V || textScriptMode ? t2iText : useImageReference ? "" : t2iText,
         performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: [baseNotes, extraNotes].filter(Boolean).join("\n\n"),
-        subject_context: segment.no_character_present ? "" : (isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : ""),
-        location_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedLocationText(segment) : "",
+        user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
+        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
+        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
-        theme_style_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-        story_idea_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-        subject_scene_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        theme_style_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+        story_idea_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+        subject_scene_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
         unload_after: options.deferEnhancement ? options.unloadAfter !== false : state.useI2VPromptEnhancementPass ? useImageReference : options.unloadAfter !== false,
       },
     };
@@ -25127,10 +26638,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
     const isIngredients = videoMode === "ingredients";
+    const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
-    const useImageReference = isRTV || isIngredients ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+    const textScriptMode = isRTV || isIngredients || isIdLora;
+    const useImageReference = isIdLora ? true : textScriptMode ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const conceptPrompt = sceneVideoConceptPromptText(segment);
+    const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
     if (useImageReference && !imageReference.path && !imageReference.data) {
       toast(isT2V
         ? "Hey, T2V Gemma image reference is on, but no reference image is loaded. Drop/load a reference image or turn it off."
@@ -25141,8 +26655,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
       return;
     }
-    if ((isT2V || isRTV || isIngredients || !useImageReference) && !conceptPrompt) {
-      toast(isT2V || isRTV || isIngredients
+    if ((isT2V || textScriptMode || !useImageReference) && !conceptPrompt && !(isIdLora && idLoraContext?.contextText)) {
+      toast(isT2V || textScriptMode
         ? "Hey, this scene needs some scene text, notes, lyrics, or mapped references before Gemma can make a text-to-video prompt."
         : "Hey, you need scene text or a T2I prompt first, or turn image reference back on and use a saved/custom image.", true);
       return;
@@ -25158,25 +26672,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress.set(useImageReference
         ? `Running Gemma vision ${modeLabel} prompt generation...\n${gemmaRunnerLine({ vision: true })}`
         : `Running Gemma text-only ${modeLabel} prompt generation...\n${gemmaRunnerLine()}`, 50);
-      const data = await postJson(isT2V || isRTV || isIngredients ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
+      const data = await postJson(isT2V || textScriptMode ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v", {
         ...textGemmaRunnerPayload(),
         project_folder: activeProjectFolderForSave(),
         scene_id: segment.id || "",
-        builder_instruction_key: isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
+        builder_instruction_key: isIdLora ? "id_lora" : isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
-        t2i_prompt: isT2V || isRTV || isIngredients ? conceptPrompt : useImageReference ? "" : conceptPrompt,
+        t2i_prompt: isIdLora ? [conceptPrompt, idLoraContext?.contextText || ""].filter(Boolean).join("\n\n") : isT2V || textScriptMode ? conceptPrompt : useImageReference ? "" : conceptPrompt,
         performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: videoGemmaNotesForSegment(segment),
-        subject_context: segment.no_character_present ? "" : (isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedSubjectText(segment) : ""),
-        location_context: isT2V || isRTV || isIngredients || !useImageReference ? segmentMappedLocationText(segment) : "",
+        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : videoGemmaNotesForSegment(segment),
+        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
+        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
-        theme_style_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
-        story_idea_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
-        subject_scene_path: useImageReference && !isT2V && !isRTV && !isIngredients ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        theme_style_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+        story_idea_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+        subject_scene_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
         unload_after: !state.useI2VPromptEnhancementPass || useImageReference,
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
@@ -25278,7 +26792,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const requestedUseImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+      const requestedUseImageReference = isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
       const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
       const useImageReference = requestedUseImageReference && !forceTextForContinuity;
       const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
@@ -25288,7 +26802,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
         missing.push(`${sceneDisplayName(segment, index)}: LLM API vision needs a vision-capable API model selected in LLM Runner.`);
       }
-      if ((isRTV || isIngredients) && !sceneVideoConceptPromptText(segment)) {
+      if ((isRTV || isIngredients || isIdLora) && !sceneVideoConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} prompt is missing. Export prompts from Storyboard Builder, or add scene notes/concept text before running ${runnerName}.`);
       } else if ((isT2V || !useImageReference) && !sceneVideoConceptPromptText(segment)) {
         missing.push(`${sceneDisplayName(segment, index)}: scene text/concept is missing.`);
@@ -25322,7 +26836,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * (deferEnhancement ? 68 : 100));
-        const requestedUseImageReference = forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+        const requestedUseImageReference = isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
         const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
         const useImageReference = requestedUseImageReference && !forceTextForContinuity;
         const displayIndex = segmentIndexInfo(segment).index;
@@ -25433,23 +26947,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const promptLabel = `${runnerName} T2I All ${index + 1}/${promptScenes.length}: ${sceneLabel}`;
-        if (imageMode === "flux_klein") {
-          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateFluxKleinPromptForSegment, {
-            clearBeforeLoad: index === 0,
-            unloadAfter: false,
-            generatorOptions: {},
-          });
-        } else if (imageMode === "nano_banana" || imageMode === "flow_gpt") {
-          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateNBPromptForSegment, {
-            clearBeforeLoad: index === 0,
-            unloadAfter: false,
-            generatorOptions: {},
-          });
-        } else {
-          await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
-            unloadAfter: false,
-          });
-        }
+        await runGemmaImagePromptPassWithRetry(segment, progress, base, promptLabel, generateT2IPromptForSegment, {
+          unloadAfter: false,
+          imageMode,
+          generatorOptions: { imageMode },
+        });
         assertBatchNotStopped();
         await autoSaveSessionQuiet(`${runnerName} T2I All ${sceneLabel}`);
       }
@@ -25560,7 +27062,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\ingredients_to_video_clips`;
   }
 
+  function idLoraVideoOutputFolder() {
+    return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\id_lora_i2v_clips`;
+  }
+
   function videoModeDisplayLabel(mode = currentVideoMode(), compact = false) {
+    if (mode === "import") return compact ? "Import" : "Import Custom Video";
+    if (mode === "id_lora") return compact ? "ID-LoRA" : "ID-LoRA I2V";
     if (mode === "ingredients") return compact ? "Ingredients" : "Ingredients to Video";
     if (mode === "rtv") return compact ? "RTV" : "Reference to Video";
     if (mode === "t2v") return compact ? "T2V" : "Text to Video";
@@ -25578,6 +27086,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function activeVideoOutputFolder(mode = currentVideoMode()) {
+    if (mode === "id_lora") return idLoraVideoOutputFolder();
     if (mode === "ingredients") return ingredientsVideoOutputFolder();
     if (mode === "rtv") return rtvVideoOutputFolder();
     return mode === "t2v" ? t2vVideoOutputFolder() : i2vVideoOutputFolder();
@@ -25588,7 +27097,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden video workflow...", details = {}) {
-    const videoMode = details.videoMode === "ingredients" ? "ingredients" : details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
+    const videoMode = details.videoMode === "id_lora" ? "id_lora" : details.videoMode === "ingredients" ? "ingredients" : details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
     const promptNumber = Number(details.promptNumber || sceneIndex + 1);
     const imageIndex = sceneSlotNumber(segment) - 1;
     const imageSource = segmentImageSource(segment);
@@ -25608,7 +27117,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return `
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-weight:900;color:#cffafe;">${escapeHtml(statusText)}</div>
-        ${(videoMode === "i2v" || videoMode === "ingredients") && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
+        ${(videoMode === "i2v" || videoMode === "ingredients" || videoMode === "id_lora") && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
         <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:5px 10px;font-size:11px;">
           <div style="color:#67e8f9;font-weight:900;">Scene</div><div>${escapeHtml(segment.label || `Scene ${promptNumber}`)}</div>
           <div style="color:#67e8f9;font-weight:900;">Video mode</div><div>${videoModeDisplayLabel(videoMode)}</div>
@@ -25616,8 +27125,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           <div style="color:#67e8f9;font-weight:900;">SRT prompt #</div><div>${promptNumber} (1 based)</div>
           <div style="color:#67e8f9;font-weight:900;">Audio mode</div><div>${escapeHtml(audioMode)}</div>
           ${videoMode === "i2v" ? `<div style="color:#67e8f9;font-weight:900;">Image folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(i2vImagesFolder())}</div>` : ""}
-          ${(videoMode === "i2v" || videoMode === "ingredients") ? `<div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>` : ""}
-          <div style="color:#67e8f9;font-weight:900;">Audio sent to LTX</div><div style="overflow-wrap:anywhere;">${escapeHtml(audioPath)}</div>
+          ${(videoMode === "i2v" || videoMode === "ingredients" || videoMode === "id_lora") ? `<div style="color:#67e8f9;font-weight:900;">Image path</div><div style="overflow-wrap:anywhere;">${escapeHtml(imagePath || imageSource?.name || "")}</div>` : ""}
+          <div style="color:#67e8f9;font-weight:900;">${videoMode === "id_lora" ? "Reference voice" : "Audio sent to LTX"}</div><div style="overflow-wrap:anywhere;">${escapeHtml(audioPath)}</div>
           <div style="color:#67e8f9;font-weight:900;">SRT path</div><div style="overflow-wrap:anywhere;">${escapeHtml(srtPath || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Save folder</div><div style="overflow-wrap:anywhere;">${escapeHtml(outputFolder || "")}</div>
           <div style="color:#67e8f9;font-weight:900;">Collected clips</div><div style="overflow-wrap:anywhere;">${escapeHtml(collectedSceneVideoFolder())}</div>
@@ -25680,8 +27189,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       width: videoMode === "ingredients" ? Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH) : Number(settings.width || 1920),
       height: videoMode === "ingredients" ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT) : Number(settings.height || 1080),
       seed: Number(settings.seed || 1),
-      tail_loss_frames: Math.max(0, Number(settings.tail_loss_frames ?? 25)),
-      pre_frames: Math.max(0, Number(settings.pre_frames ?? 50)),
+      tail_loss_frames: videoMode === "id_lora" ? 0 : Math.max(0, Number(settings.tail_loss_frames ?? 25)),
+      pre_frames: videoMode === "id_lora" ? 0 : Math.max(0, Number(settings.pre_frames ?? 50)),
       msr_lora_name: settings.msr_lora_name || REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: Number(settings.msr_first_pass_strength ?? 1),
       msr_second_pass_strength: 0,
@@ -25692,6 +27201,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ingredients_second_pass_strength: 0,
       ingredients_width: Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
       ingredients_height: Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
+      id_lora_name: settings.id_lora_name || REQUIRED_LTX_ID_LORA,
+      id_lora_first_pass_strength: Number(settings.id_lora_first_pass_strength ?? 1),
+      id_lora_second_pass_strength: Number(settings.id_lora_second_pass_strength ?? 1),
+      reference_audio_path: settings.id_lora_reference_audio_path || "",
+      id_reference_audio_path: settings.id_lora_reference_audio_path || "",
+      identity_guidance_scale: Number(settings.identity_guidance_scale ?? 3),
+      identity_start_percent: 0,
+      identity_end_percent: 1,
+      duration: Math.max(0.25, Number(timelineSegmentDuration(segment) || settings.id_lora_duration || 5)),
       pass1_sampler_name: pass1SamplerName,
       pass1_sigmas: normalizeI2VSigmasText(pass1Sigmas, DEFAULT_I2V_PASS1_SIGMAS),
       pass1_inplace_strength: Math.max(0, Math.min(1, Number(settings.pass1_inplace_strength ?? 1))),
@@ -25748,7 +27266,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function storyboardReferenceDataForSegment(segment) {
-    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const refs = storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder);
     const info = segmentIndexInfo(segment);
     const sceneKey = segment?.id || "";
     const numberKey = String((info.index >= 0 ? info.index : allEditableSegments().indexOf(segment)) + 1);
@@ -25805,6 +27323,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function storyboardScenePayload() {
+    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
     return allEditableSegments()
       .slice()
       .sort((a, b) => Number(a.start || 0) - Number(b.start || 0))
@@ -25842,7 +27361,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           no_character_present: Boolean(segment.no_character_present),
           facial_performance: String(segment.facial_performance || "").trim(),
           facial_performance_custom: String(segment.facial_performance_custom || "").trim(),
-          video_prompt_type: ["i2v", "t2v", "rtv", "ingredients"].includes(String(segment.video_prompt_type || "").trim())
+          performance_style: String(segment.performance_style || defaults.performance_style || "").trim(),
+          video_prompt_type: ["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
           subjects: segment.no_character_present ? [] : subjects,
@@ -25851,6 +27371,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           location_ref: referenceData.location_ref,
           shot_type: String(segment.shot_type || "").trim(),
           camera_motion: String(segment.camera_motion || segment.motion_preset || "").trim(),
+          camera_motion_speed: Number(defaults.camera_motion_speed ?? 4),
+          character_motion_speed: Number(defaults.character_motion_speed ?? 4),
           image_prompt: imagePrompt,
           video_prompt: videoPrompt,
           image_path: imageReference.path || selectedSegmentImagePath(segment),
@@ -25858,6 +27380,40 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           notes: sceneNotes,
         };
       });
+  }
+
+  function wizardStoryboardState(scenes, options = {}) {
+    const defaults = normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults);
+    const videoMode = options.videoMode || currentVideoMode();
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const promptMode = options.promptMode || "image";
+    return {
+      projectFolder: activeProjectFolderForSave(),
+      mode: promptMode === "video" ? "image_to_video_prep" : "storyboard_prompts",
+      performanceMode: normalizeVideoType(state.videoType),
+      videoType: normalizeVideoType(state.videoType),
+      videoPromptType: videoMode,
+      imageMode,
+      imageModeLabel: imageModeDisplayLabel(imageMode),
+      cameraFlow: defaults.camera_flow || "balanced",
+      imageShotFlow: defaults.image_shot_flow || "intimate",
+      imageAesthetic: defaults.image_aesthetic || "",
+      globalConsistencyPhrase: defaults.global_consistency_phrase || "",
+      performanceStyle: defaults.performance_style || "",
+      facialPerformance: state.defaultFacialPerformance || "",
+      facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
+      cameraMotionSpeed: Number(defaults.camera_motion_speed ?? 4),
+      characterMotionSpeed: Number(defaults.character_motion_speed ?? 4),
+      motion_defaults: {
+        camera_motion_speed: Number(defaults.camera_motion_speed ?? 4),
+        character_motion_speed: Number(defaults.character_motion_speed ?? 4),
+        camera_guidance: defaults.camera_guidance || "",
+        character_guidance: defaults.character_guidance || "",
+      },
+      scenes,
+      storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+      referenceBuilder: storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
+    };
   }
 
   function openStoryboardBuilderFromProject() {
@@ -26026,7 +27582,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           setSegmentPromptForEdit(segment, "i2v", videoPrompt);
           applied += 1;
         }
-        if (["i2v", "t2v", "rtv", "ingredients"].includes(videoType)) segment.video_prompt_type = videoType;
+        if (["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(videoType)) segment.video_prompt_type = videoType;
         if (String(scene.shot_type || "").trim()) segment.shot_type = String(scene.shot_type || "").trim();
         if (String(scene.camera_motion || "").trim()) segment.camera_motion = String(scene.camera_motion || "").trim();
       }
@@ -26145,6 +27701,143 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         used_video_builder_i2v_payload: true,
       };
     };
+    const applyIdLoraDialoguePlanFromStoryboard = async (updates = {}) => {
+      const scenes = Array.isArray(updates.scenes)
+        ? updates.scenes.filter((scene) => String(scene?.lyrics || scene?.story_beat || scene?.image_prompt || "").trim())
+        : [];
+      if (!scenes.length) throw new Error("No reviewed ID-LoRA dialogue scenes were found to apply.");
+
+      const hasSceneWork = (segment) => {
+        return [
+          segment?.lyric_text,
+          segment?.lyric_note,
+          segment?.lyrics,
+          segment?.story_beat,
+          segment?.notes,
+          segment?.timeline_note,
+          segment?.t2i_prompt,
+          segment?.flux_prompt,
+          segment?.flux_klein_prompt,
+          segment?.nb_prompt,
+          segment?.flow_gpt_prompt,
+          segment?.ernie_t2i_prompt,
+          segment?.i2v_prompt,
+          segment?.t2v_prompt,
+          segment?.video_path,
+          selectedSegmentImagePath(segment),
+        ].some((value) => String(value || "").trim());
+      };
+      const currentBase = Array.isArray(state.segments) ? state.segments : [];
+      const currentOverlays = Array.isArray(state.overlaySegments) ? state.overlaySegments : [];
+      const starterIsBlank = currentBase.length <= 1 && currentOverlays.length === 0 && currentBase.every((segment) => !hasSceneWork(segment));
+      if (!starterIsBlank) {
+        const ok = window.confirm(
+          `Apply ${scenes.length} ID-LoRA dialogue scene${scenes.length === 1 ? "" : "s"} to Video Builder?\n\nThis will replace the current base timeline scenes and clear insert scenes.`,
+        );
+        if (!ok) return { message: "ID-LoRA dialogue plan apply cancelled." };
+      }
+
+      const idForStoryboardRef = (rawId, items = [], prefix = "") => {
+        const raw = String(rawId || "").trim();
+        if (!raw) return "";
+        const clean = (value) => String(value || "").replace(/[^a-z0-9_-]+/gi, "_");
+        const direct = items.find((item) => String(item?.id || "") === raw);
+        if (direct) return String(direct.id || "");
+        const prefixed = items.find((item) => `${prefix}_${clean(item?.id)}` === raw);
+        if (prefixed) return String(prefixed.id || "");
+        const byName = items.find((item) => clean(item?.name).toLowerCase() === clean(raw).toLowerCase());
+        return byName ? String(byName.id || "") : "";
+      };
+      const sceneImagePrompt = (scene = {}) => String(
+        scene.image_prompt || scene.t2i_prompt || scene.prompt_summary || scene.story_beat || "",
+      ).trim();
+      const sceneVideoNotes = (scene = {}) => [
+        String(scene.motion_summary || "").trim(),
+        String(scene.video_notes || "").trim(),
+        String(scene.camera_motion || "").trim() ? `Camera: ${String(scene.camera_motion || "").trim()}` : "",
+        String(scene.facial_performance_custom || scene.facial_performance || "").trim()
+          ? `Performance: ${String(scene.facial_performance_custom || scene.facial_performance || "").trim()}`
+          : "",
+      ].filter(Boolean).join("\n");
+
+      pushHistory();
+      const refs = normalizeIdLoraReferenceBuilder(state.idLoraReferenceBuilder);
+      refs.scene_map = {};
+      const nextSegments = [];
+      let cursor = 0;
+      scenes.forEach((scene, index) => {
+        const dialogue = String(scene.lyrics || scene.dialogue || scene.lyric_text || "").trim();
+        const duration = estimateIdLoraDialogueDuration(dialogue || scene.story_beat || scene.image_prompt);
+        const segment = ensureSegmentRuntimeFields(newSegment(cursor, cursor + duration));
+        segment.label = String(scene.label || `Scene ${index + 1}`).trim() || `Scene ${index + 1}`;
+        segment.lyric_text = dialogue;
+        segment.lyric_section = String(scene.lyric_section || scene.section || scene.song_section || "").trim();
+        segment.story_beat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "").trim();
+        segment.notes = sceneImagePrompt(scene);
+        segment.i2v_notes = sceneVideoNotes(scene);
+        segment.video_prompt_type = "id_lora";
+        segment.facial_performance = String(scene.facial_performance ?? scene.facialPerformance ?? "").trim();
+        segment.facial_performance_custom = String(scene.facial_performance_custom ?? scene.facialPerformanceCustom ?? "").trim();
+        segment.shot_type = String(scene.shot_type || "").trim();
+        segment.camera_motion = String(scene.camera_motion || "").trim();
+        const imagePrompt = sceneImagePrompt(scene);
+        if (imagePrompt) {
+          setSegmentPromptForEdit(segment, "t2i", imagePrompt);
+          segment.flux_prompt = imagePrompt;
+          segment.flux_klein_prompt = imagePrompt;
+          segment.nb_prompt = imagePrompt;
+          segment.flow_gpt_prompt = imagePrompt;
+          segment.ernie_t2i_prompt = imagePrompt;
+        }
+        const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
+        if (videoPrompt) setSegmentPromptForEdit(segment, "i2v", videoPrompt);
+        const imagePath = String(scene.image_path || scene.approved_image_path || "").trim();
+        const imageData = String(scene.image_data || scene.image_reference_data || "").trim();
+        if (imageData) {
+          segment.custom_image_data = imageData;
+          segment.custom_image_path = "";
+          segment.image_history = [];
+          segment.image_history_index = 0;
+        } else if (imagePath) {
+          segment.image_history = [imagePath];
+          segment.image_history_index = 0;
+          segment.custom_image_path = "";
+          segment.custom_image_data = "";
+        }
+
+        const subjectRefs = Array.isArray(scene.subject_refs) ? scene.subject_refs : [];
+        const rawCharacterId = scene.id_lora_character_id || scene.character_id || scene.subject_id || subjectRefs[0]?.id || subjectRefs[0]?.name || "";
+        const rawLocationId = scene.id_lora_location_id || scene.location_id || scene.location_ref?.id || scene.location_ref?.name || "";
+        refs.scene_map[segment.id] = {
+          character_id: idForStoryboardRef(rawCharacterId, refs.characters, "id_lora_character"),
+          location_id: idForStoryboardRef(rawLocationId, refs.locations, "id_lora_location"),
+          dialogue,
+          auto_duration: true,
+          manual_duration: duration,
+          estimated_duration: duration,
+        };
+        nextSegments.push(segment);
+        cursor += duration;
+      });
+
+      state.videoModelMode = "id_lora";
+      state.segments = nextSegments;
+      state.overlaySegments = [];
+      state.activeId = nextSegments[0]?.id || "";
+      state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(refs);
+      if (updates.story_layer || updates.storyLayer) state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
+      sortSegments(state.segments);
+      state.duration = timelineDuration();
+      ensureAllSegmentRuntimeFields();
+      syncVideoModePanel();
+      syncI2VVideoSettingsPanel();
+      syncInspector();
+      render();
+      await autoSaveSessionQuiet("ID-LoRA dialogue plan applied from storyboard");
+      return {
+        message: `Applied ${nextSegments.length} ID-LoRA dialogue scene${nextSegments.length === 1 ? "" : "s"} to Video Builder.`,
+      };
+    };
     window.VRGDGStoryboardBuilder.open({
       projectFolder: projectInput.value || state.projectFolder || "",
       imageMode: state.imageModelMode || "zimage",
@@ -26165,7 +27858,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         character_guidance: state.builderStoryboardDefaults?.character_guidance || "",
       },
       scenes: storyboardScenePayload(),
-      referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+      referenceBuilder: storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
       storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       gemmaSettings: {
         ...textGemmaRunnerPayload(),
@@ -26181,6 +27874,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       onStoryLayerChanged: applyStoryboardPrompts,
       onPromptsExported: applyStoryboardPrompts,
       onCreateVideoPrompt: createStoryboardVideoPromptViaBuilder,
+      onApplyIdLoraDialoguePlan: applyIdLoraDialoguePlanFromStoryboard,
     }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
   }
 
@@ -26188,9 +27882,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const name = sceneDisplayName(segment, sceneIndex);
     const missing = [];
     const mode = currentVideoMode();
-    const promptLabel = mode === "ingredients" ? "Ingredients to Video" : mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
+    const promptLabel = mode === "id_lora" ? "ID-LoRA I2V" : mode === "ingredients" ? "Ingredients to Video" : mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
     if (mode === "ingredients") applyIngredientsSheetForSceneIfMapped(segment);
-    if ((mode === "i2v" || mode === "ingredients") && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
+    if ((mode === "i2v" || mode === "ingredients" || mode === "id_lora") && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
+    if (mode === "id_lora") {
+      const idContext = idLoraSceneContext(segment);
+      if (!idContext.dialogue) missing.push(`${name}: ID-LoRA dialogue line is missing in the ID-LoRA Ref Builder.`);
+      if (!idContext.voicePath) missing.push(`${name}: ID-LoRA character reference voice sample is missing.`);
+    }
     if (mode === "rtv") {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const rtvReferences = rtvReferencesForSegment(segment);
@@ -26856,9 +28555,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const scenesToRender = allScenes
       .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
       .filter(({ segment }) => options.forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
-    const sceneAudioMode = usingSceneAudioMode();
-    if (!sceneAudioMode && !String(audioInput.value || "").trim()) missing.push("Audio file path is missing.");
-    if (sceneAudioMode) {
+    const idLoraMode = currentVideoMode() === "id_lora";
+    const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
+    const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
+    if (!idLoraMode && !sceneAudioMode && !String(audioInput.value || "").trim()) missing.push("Audio file path is missing.");
+    if (!idLoraMode && sceneAudioMode) {
       const audioCheckScenes = sceneScope === "all" ? state.segments.map((segment, index) => ({ segment, index })) : batchTargetItems(sceneScope, { baseOnly: true });
       audioCheckScenes.forEach(({ segment, index }) => {
         if (!String(segment.custom_audio_path || "").trim()) {
@@ -26886,6 +28587,43 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       missing.push(...validateSceneReadyForVideo(segment, segmentIndexInfo(segment).index));
     });
     return missing;
+  }
+
+  function audioFallbackTargetScenes(options = {}) {
+    if (options.segment) return [options.segment].filter(Boolean);
+    return batchTargetItems(normalizeBatchScope(options.sceneScope), { baseOnly: true })
+      .map(({ segment }) => segment)
+      .filter(Boolean);
+  }
+
+  function silentAudioDurationForRender(options = {}) {
+    const scenes = audioFallbackTargetScenes(options);
+    const sceneEnd = scenes.reduce((max, segment) => Math.max(max, Number(segment.end || 0)), 0);
+    const sceneDuration = scenes.reduce((max, segment) => Math.max(max, timelineSegmentDuration(segment)), 0);
+    return Math.max(0.1, sceneEnd, sceneDuration, timelineDuration(), Number(state.duration || 0));
+  }
+
+  async function ensureAudioOrOfferSilentTimeline(options = {}) {
+    if (currentVideoMode() === "id_lora") return true;
+    if (currentProjectAudioPath()) return true;
+    const scenes = audioFallbackTargetScenes(options);
+    if (!scenes.length) return true;
+    if (scenes.some((segment) => String(segment.custom_audio_path || "").trim())) return true;
+    if (!(activeProjectFolderForSave() || String(projectInput.value || "").trim())) return true;
+    const duration = silentAudioDurationForRender(options);
+    const targetLabel = options.segment
+      ? `${options.segment.label || "this scene"}`
+      : normalizeBatchScope(options.sceneScope) === "selected"
+        ? "the selected scenes"
+        : normalizeBatchScope(options.sceneScope) === "from_selected"
+          ? "the scenes being rendered"
+          : "the timeline";
+    const ok = window.confirm(`No global audio file found, and no custom scene audio is set for ${targetLabel}.\n\nUse silence instead?\n\nOK will create a silent audio clip ${formatTime(duration)} long and continue. Cancel returns to the UI.`);
+    if (!ok) return false;
+    const data = await createSilentTimelineAudioForDuration(duration, { quiet: true });
+    if (!data?.audio_path && !data?.saved_path) return false;
+    toast(`Silent timeline audio created for this render:\n${audioInput.value}`);
+    return true;
   }
 
   function renderMissingListHtml(missing) {
@@ -26978,22 +28716,33 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     progress?.set(`${batchLabel}Saving current UI session/SRT timing...`, pct(8));
     let srtPath = await saveSessionForSceneVideo();
     if (!srtPath) throw new Error("The builder SRT path was not created.");
-    if (videoMode === "i2v" || videoMode === "ingredients") {
+    const isIdLoraMode = videoMode === "id_lora";
+    if (videoMode === "i2v" || videoMode === "ingredients" || isIdLoraMode) {
       progress?.set(`${batchLabel}Preparing selected scene image for ${modeLabel}...`, pct(12));
       await ensureSelectedImageForSceneVideo(segment, sceneIndex);
     } else {
       progress?.set(`${batchLabel}Preparing text-to-video render...`, pct(12));
     }
-    let audioPathForScene = options.audioPathOverride || audioInput.value;
+    const videoSettingsForScene = i2vVideoSettingsForSegment(segment);
+    const idLoraContext = isIdLoraMode ? idLoraSceneContext(segment) : null;
+    if (isIdLoraMode && idLoraContext?.dialogue) {
+      segment.lyric_text = idLoraContext.dialogue;
+    }
+    let audioPathForScene = isIdLoraMode
+      ? String(idLoraContext?.voicePath || "").trim()
+      : options.audioPathOverride || audioInput.value;
     let promptNumberForScene = sceneIndex + 1;
-    let audioModeForScene = options.audioPathOverride ? "Combined scene-audio track" : "Global/project audio trimmed for this scene";
+    let audioModeForScene = isIdLoraMode
+      ? "ID-LoRA reference voice sample"
+      : options.audioPathOverride ? "Combined scene-audio track" : "Global/project audio trimmed for this scene";
     if (options.srtPathOverride) {
       srtPath = options.srtPathOverride;
     }
-    if (!options.audioPathOverride) {
-      const videoSettings = i2vVideoSettingsForSegment(segment);
-      const fpsForPreroll = Math.max(1, Number(videoSettings.fps || 24));
-      const requestedPreFrames = autoChainPreFrames > 0 ? autoChainPreFrames : Math.max(0, Number(videoSettings.pre_frames ?? 0));
+    if (isIdLoraMode) {
+      promptNumberForScene = 1;
+    } else if (!options.audioPathOverride) {
+      const fpsForPreroll = Math.max(1, Number(videoSettingsForScene.fps || 24));
+      const requestedPreFrames = autoChainPreFrames > 0 ? autoChainPreFrames : Math.max(0, Number(videoSettingsForScene.pre_frames ?? 0));
       const requestedPreSeconds = requestedPreFrames / fpsForPreroll;
       const sourceAudioPath = segment.custom_audio_path || audioInput.value;
       const sceneDuration = Math.max(0.1, timelineSegmentDuration(segment) || 4);
@@ -27023,19 +28772,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audioModeForScene = segment.custom_audio_path ? "Custom scene audio trimmed for this scene" : "Global/project audio trimmed for this scene";
     }
     if (!String(audioPathForScene || "").trim()) {
-      throw new Error(`${sceneDisplayName(segment, sceneIndex)}: no audio path is being sent to LTX. Add custom scene audio or load project/global audio before creating the video.`);
+      throw new Error(isIdLoraMode
+        ? `${sceneDisplayName(segment, sceneIndex)}: ID-LoRA reference voice sample is missing.`
+        : `${sceneDisplayName(segment, sceneIndex)}: no audio path is being sent to LTX. Add custom scene audio or load project/global audio before creating the video.`);
     }
-    progress?.set(`${batchLabel}Checking SRT timing before hidden ${modeLabel}...`, pct(14));
-    const expectedDurationForScene = !options.audioPathOverride
-      ? Math.max(0.1, timelineSegmentDuration(segment) || 4)
-      : timelineSegmentDuration(segment);
-    const timingCheck = await validateSrtTimingForSceneVideo({
-      segment,
-      sceneIndex,
-      srtPath,
-      promptNumber: promptNumberForScene,
-      expectedDuration: expectedDurationForScene,
-    });
+    let timingCheck = null;
+    if (!isIdLoraMode) {
+      progress?.set(`${batchLabel}Checking SRT timing before hidden ${modeLabel}...`, pct(14));
+      const expectedDurationForScene = !options.audioPathOverride
+        ? Math.max(0.1, timelineSegmentDuration(segment) || 4)
+        : timelineSegmentDuration(segment);
+      timingCheck = await validateSrtTimingForSceneVideo({
+        segment,
+        sceneIndex,
+        srtPath,
+        promptNumber: promptNumberForScene,
+        expectedDuration: expectedDurationForScene,
+      });
+    } else {
+      progress?.set(`${batchLabel}Preparing hidden ${modeLabel} inputs...`, pct(14));
+    }
     const videoPromptForRender = applyMappedTriggerPhrases(
       applyVocalDirectiveToVideoPrompt(
         applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
@@ -27044,14 +28800,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ),
       segment
     );
+    const renderPromptForPayload = isIdLoraMode
+      ? buildIdLoraPromptForScene(videoPromptForRender, segment)
+      : videoPromptForRender;
     if (videoPromptForRender && videoPromptForRender !== segment.i2v_prompt) {
       segment.i2v_prompt = videoPromptForRender;
       if (segment.id === state.activeId) i2vPrompt.value = videoPromptForRender;
     }
     const payload = {
       ...i2vVideoSettingsPayload(segment),
-      i2v_prompt: videoPromptForRender,
-      t2v_prompt: videoPromptForRender,
+      i2v_prompt: renderPromptForPayload,
+      id_lora_prompt: renderPromptForPayload,
+      t2v_prompt: renderPromptForPayload,
       audio_path: audioPathForScene,
       prompt_number_one_based: promptNumberForScene,
       srt_path: srtPath,
@@ -27066,6 +28826,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       payload.ingredients_image_path = segment.approved_image_path || selectedSegmentImagePath(segment);
       payload.ingredients_image_name = segment.image?.name || "ingredients_reference.png";
     }
+    if (isIdLoraMode) {
+      payload.source_image_path = segment.approved_image_path || selectedSegmentImagePath(segment);
+      payload.image_path = payload.source_image_path;
+      payload.reference_audio_path = audioPathForScene;
+      payload.id_reference_audio_path = audioPathForScene;
+      payload.reference_audio_seek_seconds = Math.max(0, Number(idLoraContext?.voiceTrimStart || 0));
+      payload.reference_audio_duration = Math.max(0, Number(idLoraContext?.voiceTrimDuration || 0));
+      payload.identity_guidance_scale = Number(idLoraContext?.identityScale ?? payload.identity_guidance_scale ?? 3);
+    }
     const rtvReferences = videoMode === "rtv" ? rtvReferencesForSegment(segment) : null;
     if (videoMode === "rtv") payload.rtv_references = rtvReferences;
     const workflowDetails = {
@@ -27073,17 +28842,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       promptNumber: promptNumberForScene,
       audioMode: audioModeForScene,
       videoMode,
+      idLoraContext,
       rtvReferences,
     };
     const defaultOutputFolder = activeVideoOutputFolder(videoMode);
-    const buildEndpoint = videoMode === "ingredients"
+    const buildEndpoint = isIdLoraMode
+      ? "/vrgdg/workflow_runner/build_id_lora_prompt"
+      : videoMode === "ingredients"
       ? "/vrgdg/workflow_runner/build_ingredients_prompt"
       : videoMode === "rtv"
       ? "/vrgdg/workflow_runner/build_rtv_prompt"
       : videoMode === "t2v"
         ? "/vrgdg/workflow_runner/build_t2v_prompt"
         : "/vrgdg/workflow_runner/build_i2v_prompt";
-    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, defaultOutputFolder, `${batchLabel}Preparing hidden ${modeLabel} workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`, workflowDetails), pct(15));
+    const readyMessage = timingCheck
+      ? `${batchLabel}Preparing hidden ${modeLabel} workflow...\nSRT timing verified: ${timingCheck.srt_duration.toFixed(3)}s`
+      : `${batchLabel}Preparing hidden ${modeLabel} workflow...\nReference voice ready.`;
+    progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, defaultOutputFolder, readyMessage, workflowDetails), pct(15));
     const renderStartedAt = Date.now() / 1000 - 2;
     const built = await postJson(buildEndpoint, payload);
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queueing hidden ${modeLabel} workflow...`, workflowDetails), pct(40));
@@ -27202,7 +28977,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         source_start: Math.max(0, Number(segment.overlay_source_start || 0)),
         label: segment.label || `Insert ${index + 1}`,
       }));
-    const sceneAudioMode = usingSceneAudioMode();
+    const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
+    const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
       path: String(segment.custom_audio_path || "").trim(),
@@ -27227,12 +29003,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const stitchHeight = stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT)
       : Number(stitchSettings.height || 1080);
-    progress?.set(sceneAudioMode ? "Stitching rendered scene videos with scene audio clips..." : "Stitching rendered scene videos with original audio...", 94);
+    const stitchAudioMessage = embeddedSceneAudioMode
+      ? "Stitching rendered scene videos with their embedded scene audio..."
+      : sceneAudioMode
+        ? "Stitching rendered scene videos with scene audio clips..."
+        : "Stitching rendered scene videos with original audio...";
+    progress?.set(stitchAudioMessage, 94);
     const data = await postJson("/vrgdg/workflow_runner/stitch_scene_videos", {
       scene_paths: paths,
-      audio_path: audioInput.value,
+      audio_path: embeddedSceneAudioMode ? "" : audioInput.value,
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
+      use_embedded_scene_audio: embeddedSceneAudioMode,
       overlay_items: overlayItems,
       project_folder: projectInput.value,
       width: stitchWidth,
@@ -27252,9 +29034,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const info = segmentIndexInfo(segment);
     const sceneIndex = info.index;
     if (sceneIndex < 0) return;
+    const idLoraMode = currentVideoMode() === "id_lora";
+    if (!idLoraMode && !(await ensureAudioOrOfferSilentTimeline({ segment }))) return;
     const missing = [
       ...validateSceneReadyForVideo(segment, sceneIndex),
-      ...(!String(segment.custom_audio_path || audioInput.value || "").trim() || !String(projectInput.value || "").trim() ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
+      ...(!idLoraMode && (!String(segment.custom_audio_path || audioInput.value || "").trim() || !String(projectInput.value || "").trim()) ? ["Load global audio or add custom audio for this scene, and set the project folder first."] : []),
+      ...(idLoraMode && !String(projectInput.value || "").trim() ? ["Project folder is missing."] : []),
     ];
     if (missing.length) {
       toast(missing.join("\n"), true);
@@ -27446,6 +29231,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         console.warn("[VRGDG Music Builder] Scene video recovery before Render All failed:", error);
       }
     }
+    if (!(await ensureAudioOrOfferSilentTimeline({ sceneScope }))) return;
     const missing = validateRenderAllReady({ forceVideos, sceneScope });
     const progress = createProgressWindow(sceneScope === "selected" ? "Render Selected Scenes" : sceneScope === "from_selected" ? "Render From Selected Scene" : "Render All Scenes");
     if (missing.length) {
@@ -28344,6 +30130,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = true;
       zImageAllButton.disabled = true;
       state.batchCancelled = false;
+      if (!(await ensureAudioOrOfferSilentTimeline({ sceneScope }))) return;
       while (true) {
         attempt += 1;
         progress = createProgressWindow(attempt > 1 ? `Build Full Video retry ${attempt}/${maxAutoRetries + 1}` : "Build Full Video");
@@ -28954,8 +30741,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.overlaySegments = state.overlaySegments.filter((item) => item.id !== segment.id);
       state.activeId = state.overlaySegments[0]?.id || state.segments[0]?.id || "";
     } else {
+      const removedStart = Number(segment.start || 0);
+      const removedEnd = Math.max(removedStart, Number(segment.end || removedStart));
       state.segments = state.segments.filter((item) => item.id !== segment.id);
-      state.activeId = state.segments[0]?.id || state.overlaySegments[0]?.id || "";
+      const removedDuration = closeBaseTimelineGap(removedStart, removedEnd);
+      const next = state.segments.find((item) => Number(item.start || 0) >= removedStart - 0.001) || state.segments[state.segments.length - 1] || null;
+      state.activeId = next?.id || state.overlaySegments[0]?.id || "";
+      if (removedDuration > 0.001) state.sceneAudioGlobalTime = Math.max(0, Math.min(currentGlobalTime(), removedStart));
     }
     state.activeTrack = segmentTrack(activeSegment());
     syncInspector();
@@ -28975,13 +30767,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const confirmed = window.confirm(`Delete ALL ${total} segment${total === 1 ? "" : "s"}?\n\nThis removes ${baseCount} base segment${baseCount === 1 ? "" : "s"} and ${overlayCount} insert/overlay segment${overlayCount === 1 ? "" : "s"} from the timeline.`);
     if (!confirmed) return;
+    pauseTimelineForEditing();
     pushHistory();
     state.segments = [];
     state.overlaySegments = [];
     state.selectedSegmentIds = [];
     state.activeId = "";
     state.activeTrack = "base";
+    state.srtMode = false;
+    state.timingFrozen = false;
+    state.timelineTrimEditMode = false;
+    state.selectedTimelineRange = { in: null, out: null };
     state.sceneAudioSegmentId = "";
+    state.sceneAudioGlobalTime = 0;
+    sceneAudio.removeAttribute("src");
+    sceneAudio.load();
+    freezeTimingControl.input.checked = false;
+    syncTimelineTrimModeButton();
     syncInspector();
     render();
     await syncPromptJsonFromSegments("all segments deleted");
@@ -29130,6 +30932,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.useFluxGlobalImageIngredients = false;
     state.fluxGlobalImageIngredients = [];
     state.fluxReferenceBuilder = defaultFluxReferenceBuilder();
+    state.idLoraReferenceBuilder = defaultIdLoraReferenceBuilder();
     state.zEnhanceSettings = defaultZEnhanceSettings();
     state.videoType = "singing";
     state.videoModelMode = "i2v";
@@ -29724,6 +31527,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const value = String(mode || "").trim().toLowerCase();
       if (value === "t2v" || value === "text_to_video" || value === "text-to-video") return "t2v";
       if (value === "i2v" || value === "image_to_video" || value === "image-to-video") return "i2v";
+      if (value === "id_lora" || value === "id-lora" || value === "identity_i2v" || value === "identity-driven") return "id_lora";
+      if (value === "rtv" || value === "reference_to_video" || value === "reference-to-video") return "rtv";
+      if (value === "ingredients" || value === "ingredients_to_video" || value === "ingredients-to-video") return "ingredients";
+      if (value === "import" || value === "import_custom_video" || value === "custom_video") return "import";
       return "";
     };
     const setAgentVideoMode = (mode, push = true) => {
@@ -30396,7 +32203,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       if (type === "set_video_model_mode") {
         const nextMode = setAgentVideoMode(action?.video_mode || text);
-        if (nextMode) applied.push(`video mode: ${nextMode === "t2v" ? "T2V" : "I2V"}`);
+        if (nextMode) applied.push(`video mode: ${videoModeDisplayLabel(nextMode, true)}`);
         else skipped.push("unknown video mode");
         continue;
       }
@@ -32083,7 +33890,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function openWizardFromBuilder() {
     const setWizardVideoMode = (mode) => {
       const normalized = String(mode || "").trim().toLowerCase();
-      const allowed = ["i2v", "rtv", "t2v", "ingredients"];
+      const allowed = ["i2v", "id_lora", "rtv", "t2v", "ingredients"];
       if (!allowed.includes(normalized)) return;
       pushHistory();
       state.videoModelMode = normalized;
@@ -32152,6 +33959,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
               ...state.krea2TwoPassSettings,
               ...imageSettings,
             });
+          } else if (imageMode === "nano_banana") {
+            state.nbImageSettings = cloneNBImageSettings({
+              ...state.nbImageSettings,
+              ...imageSettings,
+            });
+          } else if (imageMode === "flow_gpt") {
+            state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
+              ...state.flowGptBrowserSettings,
+              ...imageSettings,
+            });
+            flowGptManualMode.input.checked = Boolean(imageSettings.manual_mode);
+            flowGptManualAutoAdvance.input.checked = Boolean(imageSettings.manual_auto_advance);
           } else if (imageMode === "zimage") {
             state.zimageSettings = cloneZImageSettings({
               ...state.zimageSettings,
@@ -32202,6 +34021,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncZImageSettingsPanel();
       syncErnieImagePanel();
       syncKrea2TwoPassPanel();
+      syncFlowGptBrowserPanel();
       syncVideoModePanel();
       syncI2VVideoSettingsPanel();
       render();
@@ -32380,6 +34200,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       let facialChanged = 0;
       const scenes = allEditableSegments();
       pushHistory();
+      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
+        ...state.builderStoryboardDefaults,
+        camera_flow: cameraFlow,
+        performance_style: performanceStyle || state.builderStoryboardDefaults?.performance_style || "",
+      });
       if (facialPerformance || facialPerformanceCustom) {
         state.defaultFacialPerformance = facialPerformance;
         state.defaultFacialPerformanceCustom = facialPerformanceCustom;
@@ -32559,7 +34384,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const scenes = storyboardScenePayload();
       const progress = createProgressWindow("Wizard Story Arc", { zIndex: 100012 });
       try {
-        progress.set("Creating a short song-structure story arc from lyrics, subjects, and locations...", 18);
+        const storyArcModeLabel = videoModeDisplayLabel(currentVideoMode(), true);
+        progress.set(`Creating a short song-structure story arc from lyrics, subjects, and locations...\nVideo mode: ${storyArcModeLabel}`, 18);
         const data = await postJson("/vrgdg/storyboard/story_arc", {
           ...textGemmaRunnerPayload(),
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
@@ -32568,7 +34394,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           character_motion: draft?.characterMotion ?? draft?.character_motion ?? draft?.storyCharacterMotion ?? 7,
           lyrics: scenes.map((scene) => `${scene.lyric_section ? `[${scene.lyric_section}]\n` : ""}${scene.lyrics || ""}`).filter(Boolean).join("\n\n"),
           scenes,
-          reference_builder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+          reference_builder: storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder),
           unload_after: true,
           max_new_tokens: 900,
         }, 240000);
@@ -32610,15 +34436,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         toast(overwrite ? "No scenes found." : "No scene story beats are missing.");
         return { created: 0 };
       }
-      const storyboardState = {
-        projectFolder: activeProjectFolderForSave(),
-        mode: "storyboard_prompts",
-        performanceMode: normalizeVideoType(state.videoType),
-        videoType: normalizeVideoType(state.videoType),
-        scenes,
-        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-        referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
-      };
+      const storyboardState = wizardStoryboardState(scenes, { promptMode: "image" });
       const progress = createProgressWindow(overwrite ? "Replace Scene Story Beats" : "Create Missing Scene Story Beats", { zIndex: 100012 });
       let created = 0;
       try {
@@ -32658,9 +34476,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
     };
     const runWizardStoryboardGemmaAll = async () => {
-      setWizardVideoMode("rtv");
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      const videoMode = currentVideoMode();
       const segments = allEditableSegments()
         .slice()
         .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
@@ -32671,13 +34489,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       const segmentById = new Map(segments.map((segment) => [String(segment.id || ""), segment]));
       const storyboardState = {
-        projectFolder: activeProjectFolderForSave(),
-        mode: "storyboard_prompts",
-        performanceMode: normalizeVideoType(state.videoType),
-        videoType: normalizeVideoType(state.videoType),
-        scenes,
-        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
-        referenceBuilder: normalizeFluxReferenceBuilder(state.fluxReferenceBuilder),
+        ...wizardStoryboardState(scenes, { promptMode: "video", videoMode }),
         gemmaSettings: {
           ...textGemmaRunnerPayload(),
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
@@ -32691,7 +34503,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       };
       const runnerName = promptRunnerActionName();
       const runnerGenericName = runnerName === "Gemma" ? "Gemma" : "LLM";
-      const progress = createProgressWindow(`Storyboard ${runnerName} All`, { zIndex: 100012 });
+      const progress = createProgressWindow(`Storyboard ${runnerName} All (${videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
       let created = 0;
       try {
         progress.set(`Starting Storyboard ${runnerName} All...\nScenes: ${scenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
@@ -32714,7 +34526,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
             setSegmentPromptForEdit(segment, "i2v", prompt);
-            segment.video_prompt_type = "rtv";
+            segment.video_prompt_type = videoMode;
           }
           scene.video_prompt = prompt;
           created += 1;
@@ -32734,7 +34546,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
     };
     const wizardSnapshot = () => {
-      const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+      const refs = storyboardReferenceBuilderWithIdLoraRefs(state.fluxReferenceBuilder);
       const videoSettings = repairI2VVideoSettingDimensions(activeI2VVideoSettings() || state.i2vVideoSettings || {});
       const llmOptions = Array.from(new Set([
         ...wizardOptionsFromSelect(t2iTextGemmaModelSelect),
@@ -32797,6 +34609,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           flux_klein: { ...(state.fluxKleinSettings || defaultFluxKleinSettings()) },
           ernie_image: cloneErnieImageSettings(state.ernieImageSettings || defaultErnieImageSettings()),
           krea2_2pass: cloneKrea2TwoPassSettings(state.krea2TwoPassSettings || defaultKrea2TwoPassSettings()),
+          flow_gpt: {
+            ...cloneFlowGptBrowserSettings(state.flowGptBrowserSettings || defaultFlowGptBrowserSettings()),
+            manual_mode: Boolean(flowGptManualMode.input.checked),
+            manual_auto_advance: Boolean(flowGptManualAutoAdvance.input.checked),
+          },
           nano_banana: { ...(state.nbImageSettings || {}) },
         },
         imageModelOptions: {
@@ -32820,6 +34637,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             clip: wizardOptionsFromPicker(krea2TwoPassClipPicker),
             vae: wizardOptionsFromPicker(krea2TwoPassVaePicker),
           },
+          nano_banana: {
+            models: NB_IMAGE_MODELS,
+          },
         },
         modelOptions: {
           unets: wizardOptionsFromPicker(i2vUnetPicker),
@@ -32832,10 +34652,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           mmproj: Array.from(new Set([...wizardOptionsFromSelect(i2vMmprojSelect), ...wizardOptionsFromSelect(mmprojSelect)])),
         },
         sceneDefaults: {
-          cameraFlow: "balanced",
-          performanceStyle: "",
+          cameraFlow: state.builderStoryboardDefaults?.camera_flow || "balanced",
+          imageShotFlow: state.builderStoryboardDefaults?.image_shot_flow || "intimate",
+          imageAesthetic: state.builderStoryboardDefaults?.image_aesthetic || "",
+          globalConsistencyPhrase: state.builderStoryboardDefaults?.global_consistency_phrase || "",
+          performanceStyle: state.builderStoryboardDefaults?.performance_style || "",
           facialPerformance: state.defaultFacialPerformance || "",
           facialPerformanceCustom: state.defaultFacialPerformanceCustom || "",
+          cameraMotionSpeed: state.builderStoryboardDefaults?.camera_motion_speed ?? 4,
+          characterMotionSpeed: state.builderStoryboardDefaults?.character_motion_speed ?? 4,
           cameraFlowOptions: Object.entries(STORYBOARD_CAMERA_FLOW_PRESETS).map(([value, preset]) => ({
             value,
             label: preset.label || value,
@@ -32862,7 +34687,71 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       chooseAudioFile: chooseProjectAudioFile,
       createScenesFromLyrics: createScenesFromTimestampedLyrics,
       applySettings: applyWizardSettings,
+      updateFlowGptSettings: async (settings = {}) => {
+        state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
+          ...state.flowGptBrowserSettings,
+          ...settings,
+        });
+        if (settings.manual_mode != null) flowGptManualMode.input.checked = Boolean(settings.manual_mode);
+        if (settings.manual_auto_advance != null) flowGptManualAutoAdvance.input.checked = Boolean(settings.manual_auto_advance);
+        syncFlowGptBrowserPanel();
+        await autoSaveSessionQuiet("wizard Flow/GPT settings updated");
+        return cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+      },
       openGemmaRunner: openGemmaRunnerModal,
+      setupFlowGptBrowser: async () => {
+        const data = await setupBrowserImageAutomation({ install_portable_node: true, install_if_missing: true, strict_ssl: false });
+        const status = data.status || formatBrowserImageStatus(data);
+        flowGptStatusText.textContent = status;
+        toast("Browser automation setup finished.");
+        return status;
+      },
+      checkFlowGptBrowser: async () => {
+        const data = await getBrowserImageStatus();
+        const status = formatBrowserImageStatus(data);
+        flowGptStatusText.textContent = status;
+        return status;
+      },
+      openFlowGptLogin: async (provider = BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA) => {
+        const normalized = provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
+          ? BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
+          : BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA;
+        const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+        await openBrowserImageLogin(normalized, {
+          debug_port: normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? 9223 : 9222,
+          timeoutMs: 60000,
+        });
+        const status = normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
+          ? `GPT Image login browser opened.\nGPT prompts will append aspect ratio: ${settings.aspect_ratio || "16:9"}.`
+          : `Flow login browser opened.\nSet Flow to 1 image and choose your aspect ratio before batch runs.\nRetries: ${settings.max_retries || 10}`;
+        flowGptStatusText.textContent = status;
+        toast(normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image login browser opened." : "Flow login browser opened.");
+        return status;
+      },
+      openFlowGptManualBrowser: async () => {
+        flowGptManualMode.input.checked = true;
+        syncFlowGptManualPanel();
+        await openManualFlowGptBrowser();
+        return flowGptManualStatus.textContent || "Manual browser opened.";
+      },
+      exportFlowGptManualRefs: async () => {
+        flowGptManualMode.input.checked = true;
+        syncFlowGptManualPanel();
+        await exportManualFlowGptRefs();
+        return flowGptManualStatus.textContent || "Scene refs exported.";
+      },
+      armFlowGptManualDownloadImport: async () => {
+        flowGptManualMode.input.checked = true;
+        syncFlowGptManualPanel();
+        await armManualFlowGptDownloadImport();
+        return flowGptManualStatus.textContent || "Manual download import armed.";
+      },
+      importLatestFlowGptManualDownload: async () => {
+        flowGptManualMode.input.checked = true;
+        syncFlowGptManualPanel();
+        await importLatestManualFlowGptDownload();
+        return flowGptManualStatus.textContent || "Latest manual download imported.";
+      },
       openReferenceBuilder: (mode = currentVideoMode()) => {
         const normalized = String(mode || currentVideoMode() || "i2v").trim().toLowerCase();
         setWizardVideoMode(normalized);
@@ -32870,6 +34759,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           openIngredientsReferenceBuilderModal();
         } else if (normalized === "rtv") {
           openFluxReferenceBuilderModal({ wizardMode: true });
+        } else if (normalized === "id_lora") {
+          openIdLoraReferenceBuilderModalSafely();
         } else {
           openSceneTextMappingModal();
         }
@@ -32908,8 +34799,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       runGemmaImageAll: async () => {
         await confirmAndRunGemmaT2IAll();
       },
+      runFlowGptImageAll: async () => {
+        state.imageModelMode = "flow_gpt";
+        state.fluxKleinSettings.image_model_mode = "flow_gpt";
+        state.fluxKleinSettings.enabled = false;
+        syncFluxKleinPanel();
+        syncFlowGptBrowserPanel();
+        syncInspector();
+        render();
+        await flowGptImageAllScenes({ imageRunMode: "resume_missing" });
+      },
       runGemmaVideoAll: async () => {
-        if (currentVideoMode() === "rtv") await runWizardStoryboardGemmaAll();
+        if (["i2v", "rtv"].includes(currentVideoMode())) await runWizardStoryboardGemmaAll();
         else await confirmAndRunGemmaVideoAll();
       },
       buildFullVideo: async () => {
@@ -32959,6 +34860,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = activeSegment();
     if (segment) syncSegmentFlowGptPrompt(segment, flowGptPrompt.value || "", { preserveTypingWhitespace: true, skipInputSync: true });
   });
+  flowGptManualMode.input.addEventListener("change", () => {
+    syncFlowGptManualPanel();
+    toast(flowGptManualMode.input.checked ? "Flow/GPT Manual Mode is on." : "Flow/GPT Manual Mode is off.");
+  });
+  flowGptManualAutoAdvance.input.addEventListener("change", syncFlowGptManualPanel);
   flowNanoProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA);
   gptImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE);
   flowGptStatusButton.onclick = () => refreshFlowGptBrowserStatus().catch((error) => toast(String(error?.message || error), true));
@@ -32997,6 +34903,22 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   };
   flowGptCreateImageButton.onclick = previewFlowGptImage;
+  flowGptManualOpenButton.onclick = () => openManualFlowGptBrowser().catch((error) => {
+    flowGptManualStatus.textContent = `Manual browser open failed:\n${String(error?.message || error)}`;
+    toast(String(error?.message || error), true);
+  });
+  flowGptManualExportRefsButton.onclick = () => exportManualFlowGptRefs().catch((error) => {
+    flowGptManualStatus.textContent = `Manual ref export failed:\n${String(error?.message || error)}`;
+    toast(String(error?.message || error), true);
+  });
+  flowGptManualArmDownloadButton.onclick = () => armManualFlowGptDownloadImport().catch((error) => {
+    flowGptManualStatus.textContent = `Manual download import failed:\n${String(error?.message || error)}`;
+    toast(String(error?.message || error), true);
+  });
+  flowGptManualImportLatestButton.onclick = () => importLatestManualFlowGptDownload().catch((error) => {
+    flowGptManualStatus.textContent = `Latest manual download import failed:\n${String(error?.message || error)}`;
+    toast(String(error?.message || error), true);
+  });
   videoTriggerInput.addEventListener("input", saveI2VVideoSettingsFromPanel);
   useVrgdgTextContext.input.addEventListener("change", () => {
     pushHistory();
@@ -33255,6 +35177,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     else toast("Drop a WAV, MP3, FLAC, M4A, or OGG audio file for global timeline audio.", true);
   });
   pickAudioButton.onclick = () => projectAudioFileInput.click();
+  pickIdLoraReferenceAudioButton.onclick = async () => {
+    const path = await pickPath("audio", idLoraReferenceAudioInput);
+    if (path) {
+      saveI2VVideoSettingsFromPanel();
+      toast("ID-LoRA reference voice sample selected.");
+    }
+  };
   pickSrtButton.onclick = () => projectSrtFileInput.click();
   projectAudioFileInput.onchange = () => {
     chooseProjectAudioFile(projectAudioFileInput.files?.[0]);
@@ -33271,6 +35200,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   setInButton.onclick = () => setTimelineRangePoint("in");
   setOutButton.onclick = () => setTimelineRangePoint("out");
   clearRangeButton.onclick = clearSelectedTimelineRange;
+  closeTimelineGapsButton.onclick = closeTimelineGapsFromMenu;
+  idLoraTrimModeButton.onclick = () => {
+    if (currentVideoMode() !== "id_lora") return;
+    state.timelineTrimEditMode = !state.timelineTrimEditMode;
+    if (state.timelineTrimEditMode) pauseTimelineForEditing();
+    syncTimelineTrimModeButton();
+    updateAudioScrubbers();
+    toast(state.timelineTrimEditMode ? "Trim Mode is on. Scrub to find the cut frame, then right-click the scene to trim." : "Trim Mode is off.");
+  };
   addTimelineMarkerButton.onclick = addTimelineMarkerFromSelection;
   addSegmentButton.onclick = addSegment;
   addOverlaySegmentButton.onclick = addOverlaySegment;
@@ -33285,6 +35223,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   createI2VButton.onclick = createI2VPromptWithGemma;
   editZImageT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("zimage_t2i");
   editI2VInstructionsButton.onclick = () => openBuilderInstructionEditor("i2v");
+  editIdLoraInstructionsButton.onclick = () => openBuilderInstructionEditor("id_lora");
   editRTVInstructionsButton.onclick = () => openBuilderInstructionEditor("rtv");
   editIngredientsInstructionsButton.onclick = () => openBuilderInstructionEditor("ingredients");
   editT2VInstructionsButton.onclick = () => openBuilderInstructionEditor("t2v");
@@ -33380,6 +35319,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
   };
+  idLoraVideoCard.onclick = () => {
+    pushHistory();
+    state.videoModelMode = "id_lora";
+    syncVideoModePanel();
+    syncI2VVideoSettingsPanel();
+  };
   textToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "t2v";
@@ -33397,6 +35342,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.videoModelMode = "ingredients";
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+  };
+  importCustomVideoCard.onclick = () => {
+    toast("Import Custom Video is coming soon.", true);
   };
   fluxIngredientFileInput.addEventListener("change", () => {
     const files = Array.from(fluxIngredientFileInput.files || []);
@@ -33599,12 +35547,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     setGlobalTimelineAudioMuted(!(audio.muted && sceneAudio.muted));
   };
   playButton.onclick = () => {
+    if (state.timelineTrimEditMode) {
+      state.timelineTrimEditMode = false;
+      syncTimelineTrimModeButton();
+    }
     if (isTimelinePlaying()) {
       pauseAllAudio();
       updateAudioScrubbers();
       return;
     }
-    if (usingSceneAudioMode()) {
+    if (usingSceneAudioMode() || usingRenderedSceneAudioMode()) {
       audio.pause();
       playSceneAudioFrom(currentGlobalTime());
       updatePlayPauseButton();
@@ -33713,9 +35665,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   sceneAudio.addEventListener("timeupdate", () => {
     const segment = state.segments.find((item) => item.id === state.sceneAudioSegmentId) || activeSegment();
     if (segment) {
-      const sourceLocal = Math.max(0, Number(sceneAudio.currentTime || 0) - audioSourceStart(segment));
-      state.sceneAudioGlobalTime = audioTimelineStart(segment) + sourceLocal;
-      if (sourceLocal >= audioChunkDuration(segment) - 0.03) {
+      const sourceLocal = Math.max(0, Number(sceneAudio.currentTime || 0) - timelineAudioSourceStartForSegment(segment));
+      state.sceneAudioGlobalTime = timelineAudioStartForSegment(segment) + sourceLocal;
+      if (sourceLocal >= timelineAudioDurationForSegment(segment) - 0.03) {
         sceneAudio.pause();
         sceneAudio.dispatchEvent(new Event("ended"));
         return;
@@ -33725,10 +35677,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   sceneAudio.addEventListener("ended", () => {
     const current = currentGlobalTime();
-    const next = state.segments.find((segment) => audioTimelineStart(segment) >= current - 0.02 && segment.id !== state.sceneAudioSegmentId && segment.custom_audio_path) ||
-      state.segments.find((segment) => audioTimelineStart(segment) > current && segment.custom_audio_path);
+    const next = state.segments.find((segment) => timelineAudioStartForSegment(segment) >= current - 0.02 && segment.id !== state.sceneAudioSegmentId && timelineAudioPathForSegment(segment)) ||
+      state.segments.find((segment) => timelineAudioStartForSegment(segment) > current && timelineAudioPathForSegment(segment));
     if (next) {
-      playSceneAudioFrom(audioTimelineStart(next));
+      playSceneAudioFrom(timelineAudioStartForSegment(next));
     } else {
       if (!previewVideo.paused) previewVideo.pause();
       updateAudioScrubbers();
@@ -33931,6 +35883,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!ltxMsrLoraPicker.input.value) ltxMsrLoraPicker.input.value = REQUIRED_LTX_MSR_LORA;
     ltxIngredientsLoraPicker.options = loras;
     if (!ltxIngredientsLoraPicker.input.value) ltxIngredientsLoraPicker.input.value = REQUIRED_LTX_INGREDIENTS_LORA;
+    ltxIdLoraPicker.options = loras;
+    if (!ltxIdLoraPicker.input.value) ltxIdLoraPicker.input.value = REQUIRED_LTX_ID_LORA;
   }
 
   async function refreshModelChoices() {
@@ -34142,12 +36096,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   i2vLoraCount.addEventListener("change", saveI2VVideoSettingsFromPanel);
   wireSearchablePicker(ltxMsrLoraPicker, saveI2VVideoSettingsFromPanel);
   wireSearchablePicker(ltxIngredientsLoraPicker, saveI2VVideoSettingsFromPanel);
+  wireSearchablePicker(ltxIdLoraPicker, saveI2VVideoSettingsFromPanel);
   for (const control of [ltxMsrFirstPassStrength, ltxMsrSecondPassStrength, ltxMsrReferenceStrength, ltxMsrBackgroundMode]) {
     control.addEventListener("input", saveI2VVideoSettingsFromPanel);
     control.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
   ltxIngredientsFirstPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
   ltxIngredientsFirstPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  for (const control of [ltxIdLoraFirstPassStrength, ltxIdLoraSecondPassStrength, idLoraReferenceAudioInput, idLoraIdentityScaleInput]) {
+    control.addEventListener("input", saveI2VVideoSettingsFromPanel);
+    control.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  }
   function wireI2VStrengthPair(slider, input) {
     slider.addEventListener("input", () => {
       setI2VStrengthPair(slider, input, slider.value);

@@ -804,6 +804,18 @@ export function openMusicVideoWizard(api = {}) {
     }
   }
 
+  function closeAndRun(openTool, label = "wizard run action") {
+    persistWizardDraft();
+    persistWizardDraftFile().catch(() => null);
+    backdrop.remove();
+    try {
+      openTool?.();
+      saveWizardProgress(label);
+    } catch {
+      // The launched builder action owns its own error surface.
+    }
+  }
+
   function draftKey(data = snapshot()) {
     const project = String(data.projectFolder || "").trim();
     return `${WIZARD_DRAFT_PREFIX}${project || "unsaved-project"}`;
@@ -919,10 +931,10 @@ export function openMusicVideoWizard(api = {}) {
     }
   }
 
-  function setWizardMode(mode = "i2v") {
-    api.setVideoMode?.(mode);
+  async function setWizardMode(mode = "i2v") {
+    await api.setVideoMode?.(mode);
     done.add("mode");
-    saveWizardProgress("wizard mode");
+    await saveWizardProgress("wizard mode");
     render();
   }
 
@@ -979,8 +991,9 @@ export function openMusicVideoWizard(api = {}) {
       el("div", "vrgdg-wizard-settings-subtitle", "Set the wizard mode or change how text Gemma runs."),
     );
     const actions = el("div", "vrgdg-wizard-settings-actions");
-    const setI2v = button("Set Mode: Image to Video", "primary");
-    const setRtv = button("Set Mode: Reference to Video");
+    const activeVideoMode = String(data.videoMode || "i2v");
+    const setI2v = button("Set Mode: Image to Video", activeVideoMode === "i2v" ? "primary" : "");
+    const setRtv = button("Set Mode: Reference to Video", activeVideoMode === "rtv" ? "primary" : "");
     const openRunner = button("Open Gemma Runner");
     setI2v.onclick = () => setWizardMode("i2v");
     setRtv.onclick = () => setWizardMode("rtv");
@@ -1019,10 +1032,14 @@ export function openMusicVideoWizard(api = {}) {
     const imageSettings = data.imageSettings?.[imageMode] || {};
     const imageModelOptions = data.imageModelOptions?.[imageMode] || {};
     const imageModelCard = el("div", "vrgdg-wizard-settings-card span-8");
+    const isFlowGpt = imageMode === "flow_gpt";
+    const isNanoBanana = imageMode === "nano_banana";
     imageModelCard.append(
-      el("div", "vrgdg-wizard-settings-title", `${data.imageModeLabel || "Image"} Model Stack`),
-      el("div", "vrgdg-wizard-settings-subtitle", imageMode === "nano_banana"
-        ? "NanoBanana uses its own API settings in the main builder."
+      el("div", "vrgdg-wizard-settings-title", isFlowGpt ? "Flow/GPT Browser Settings" : isNanoBanana ? "NanoBanana Settings" : `${data.imageModeLabel || "Image"} Model Stack`),
+      el("div", "vrgdg-wizard-settings-subtitle", isFlowGpt
+        ? "Flow/GPT uses the Browser Image provider and login/settings from the main side panel."
+        : isNanoBanana
+        ? "NanoBanana uses API settings and reference images from the NanoBanana side panel."
         : "Primary models used by the selected text-to-image path."),
     );
     imageModelCard.style.display = isReferenceToVideo ? "none" : "";
@@ -1030,8 +1047,176 @@ export function openMusicVideoWizard(api = {}) {
     const imageUnet = comboInput(imageSettings.unet_name || "", imageModelOptions.unets || modelOptions.unets || [], "vrgdg-wizard-image-unet");
     const imageClip = comboInput(imageSettings.clip_name || "", imageModelOptions.clip || modelOptions.clip || [], "vrgdg-wizard-image-clip");
     const imageVae = comboInput(imageSettings.vae_name || "", imageModelOptions.vae || modelOptions.vae || [], "vrgdg-wizard-image-vae");
-    if (imageMode === "nano_banana") {
-      imageGrid.append(el("div", "vrgdg-wizard-copy", "Use the main builder's NanoBanana panel for API/model settings."));
+    const nanoApiKey = input(imageSettings.api_key || "", "password");
+    nanoApiKey.placeholder = "NanoBanana API key...";
+    const nanoModelValue = imageSettings.model || "gemini-3-pro-image-preview";
+    const nanoModelOptions = Array.from(new Set([
+      nanoModelValue,
+      ...(imageModelOptions.models || ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"]),
+    ].filter(Boolean)));
+    const nanoModel = select(nanoModelOptions, nanoModelValue);
+    const nanoUseTextOnly = document.createElement("label");
+    nanoUseTextOnly.style.cssText = "display:flex;align-items:center;gap:8px;color:#dbeafe;font-size:12px;font-weight:900;";
+    const nanoUseTextOnlyInput = document.createElement("input");
+    nanoUseTextOnlyInput.type = "checkbox";
+    nanoUseTextOnlyInput.checked = Boolean(imageSettings.use_text_only_gemma_prompt);
+    nanoUseTextOnly.append(nanoUseTextOnlyInput, document.createTextNode("Use text-only Gemma prompts"));
+    const nanoUseDirector = document.createElement("label");
+    nanoUseDirector.style.cssText = nanoUseTextOnly.style.cssText;
+    const nanoUseDirectorInput = document.createElement("input");
+    nanoUseDirectorInput.type = "checkbox";
+    nanoUseDirectorInput.checked = Boolean(imageSettings.use_director_notes);
+    nanoUseDirector.append(nanoUseDirectorInput, document.createTextNode("Include Director Notes"));
+    const flowGptProvider = select([
+      { value: "flow_nano_banana", label: "Flow Nano Banana" },
+      { value: "gpt_image", label: "GPT Image" },
+    ], String(imageSettings.provider || "").toLowerCase() === "gpt_image" ? "gpt_image" : "flow_nano_banana");
+    const flowGptAspectRatio = select(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], imageSettings.aspect_ratio || "16:9");
+    const flowGptFailureMode = select([
+      { value: "last_successful_image", label: "Use last successful image" },
+      { value: "try_other_provider", label: "Try other provider first" },
+      { value: "stop", label: "Stop on failure" },
+    ], imageSettings.failure_mode || "last_successful_image");
+    const flowGptFlowTimeout = input(imageSettings.flow_timeout_seconds || 420, "number");
+    flowGptFlowTimeout.min = "60";
+    flowGptFlowTimeout.max = "1800";
+    flowGptFlowTimeout.step = "10";
+    const flowGptGptTimeout = input(imageSettings.gpt_timeout_seconds || imageSettings.timeout_seconds || 600, "number");
+    flowGptGptTimeout.min = "60";
+    flowGptGptTimeout.max = "2400";
+    flowGptGptTimeout.step = "10";
+    const flowGptMaxRetries = input(imageSettings.max_retries || 10, "number");
+    flowGptMaxRetries.min = "1";
+    flowGptMaxRetries.max = "20";
+    flowGptMaxRetries.step = "1";
+    const flowGptManualMode = document.createElement("label");
+    flowGptManualMode.style.cssText = nanoUseTextOnly.style.cssText;
+    const flowGptManualModeInput = document.createElement("input");
+    flowGptManualModeInput.type = "checkbox";
+    flowGptManualModeInput.checked = Boolean(imageSettings.manual_mode);
+    flowGptManualMode.append(flowGptManualModeInput, document.createTextNode("Manual browser import"));
+    const flowGptManualAutoAdvance = document.createElement("label");
+    flowGptManualAutoAdvance.style.cssText = nanoUseTextOnly.style.cssText;
+    const flowGptManualAutoAdvanceInput = document.createElement("input");
+    flowGptManualAutoAdvanceInput.type = "checkbox";
+    flowGptManualAutoAdvanceInput.checked = Boolean(imageSettings.manual_auto_advance);
+    flowGptManualAutoAdvance.append(flowGptManualAutoAdvanceInput, document.createTextNode("Auto-advance after manual import"));
+    const flowGptSettingsFromControls = () => ({
+      provider: flowGptProvider.value,
+      aspect_ratio: flowGptAspectRatio.value,
+      manual_mode: Boolean(flowGptManualModeInput.checked),
+      manual_auto_advance: Boolean(flowGptManualAutoAdvanceInput.checked),
+      failure_mode: flowGptFailureMode.value,
+      flow_timeout_seconds: Number(flowGptFlowTimeout.value || 420),
+      gpt_timeout_seconds: Number(flowGptGptTimeout.value || 600),
+      max_retries: Number(flowGptMaxRetries.value || 10),
+    });
+    const applyFlowGptSettingsQuietly = () => api.updateFlowGptSettings?.(flowGptSettingsFromControls());
+    const flowGptStatus = el("div", "vrgdg-wizard-copy", "");
+    flowGptStatus.style.cssText = "grid-column:1 / -1;white-space:pre-wrap;";
+    const flowGptSetupButton = button("Install Browser Automation", "primary");
+    const flowGptCheckButton = button("Test Browser Setup");
+    const flowGptFlowLoginButton = button("Open Flow Login");
+    const flowGptGptLoginButton = button("Open GPT Login");
+    const flowGptActionRow = el("div", "vrgdg-wizard-settings-actions");
+    flowGptActionRow.style.gridColumn = "1 / -1";
+    flowGptActionRow.append(flowGptSetupButton, flowGptCheckButton, flowGptFlowLoginButton, flowGptGptLoginButton);
+    const flowGptSection = (title, copy = "") => {
+      const section = el("div", "");
+      section.style.cssText = "grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;border-top:1px solid #1e3a5f;padding-top:12px;";
+      section.append(el("div", "vrgdg-wizard-settings-title", title));
+      section.firstChild.style.gridColumn = "1 / -1";
+      if (copy) {
+        const note = el("div", "vrgdg-wizard-settings-help", copy);
+        note.style.gridColumn = "1 / -1";
+        section.append(note);
+      }
+      return section;
+    };
+    const flowGptBrowserSection = flowGptSection("Browser Actions", "Use these before a batch run to install/check browser automation or sign into the selected providers.");
+    flowGptBrowserSection.append(flowGptActionRow, flowGptStatus);
+    const flowGptAutoSection = flowGptSection("Automated Run Settings", "Used when Manual browser import is off.");
+    flowGptAutoSection.append(
+      settingField("Failure mode", flowGptFailureMode, "What Flow/GPT should do if a browser image pass fails."),
+      settingField("Flow timeout", flowGptFlowTimeout, "Seconds to wait for Flow Nano Banana browser images."),
+      settingField("GPT timeout", flowGptGptTimeout, "Seconds to wait for GPT Image browser images."),
+      settingField("Max retries", flowGptMaxRetries, "Retry attempts before the selected failure mode is used."),
+    );
+    const flowGptManualSection = flowGptSection("Manual Import Settings", "Shown only when Manual browser import is checked.");
+    const flowGptManualOpenButton = button("Open Manual Browser", "primary");
+    const flowGptManualExportButton = button("Export Scene Refs");
+    const flowGptManualArmButton = button("Arm Download Import", "primary");
+    const flowGptManualLatestButton = button("Import Latest Download");
+    const flowGptManualActionRow = el("div", "vrgdg-wizard-settings-actions");
+    flowGptManualActionRow.style.gridColumn = "1 / -1";
+    flowGptManualActionRow.append(flowGptManualOpenButton, flowGptManualExportButton, flowGptManualArmButton, flowGptManualLatestButton);
+    const flowGptManualStatus = el("div", "vrgdg-wizard-copy", "");
+    flowGptManualStatus.style.cssText = "grid-column:1 / -1;white-space:pre-wrap;";
+    flowGptManualSection.append(flowGptManualAutoAdvance, flowGptManualActionRow, flowGptManualStatus);
+    const syncFlowGptModeSections = () => {
+      const manual = Boolean(flowGptManualModeInput.checked);
+      flowGptManualSection.style.display = manual ? "grid" : "none";
+      flowGptAutoSection.style.display = manual ? "none" : "grid";
+    };
+    flowGptManualModeInput.onchange = syncFlowGptModeSections;
+    const runFlowGptAction = async (control, label, action) => {
+      const previous = control.textContent;
+      control.disabled = true;
+      control.textContent = `${label}...`;
+      flowGptStatus.textContent = `${label}...`;
+      try {
+        await applyFlowGptSettingsQuietly();
+        const result = await action();
+        flowGptStatus.textContent = typeof result === "string" ? result : String(result?.status || result?.message || `${label} finished.`);
+      } catch (error) {
+        flowGptStatus.textContent = `${label} failed:\n${String(error?.message || error)}`;
+      } finally {
+        control.disabled = false;
+        control.textContent = previous;
+      }
+    };
+    flowGptSetupButton.onclick = () => runFlowGptAction(flowGptSetupButton, "Installing browser automation", () => api.setupFlowGptBrowser?.());
+    flowGptCheckButton.onclick = () => runFlowGptAction(flowGptCheckButton, "Testing browser setup", () => api.checkFlowGptBrowser?.());
+    flowGptFlowLoginButton.onclick = () => runFlowGptAction(flowGptFlowLoginButton, "Opening Flow login", () => api.openFlowGptLogin?.("flow_nano_banana"));
+    flowGptGptLoginButton.onclick = () => runFlowGptAction(flowGptGptLoginButton, "Opening GPT login", () => api.openFlowGptLogin?.("gpt_image"));
+    const runManualFlowGptAction = async (control, label, action) => {
+      const previous = control.textContent;
+      control.disabled = true;
+      control.textContent = `${label}...`;
+      flowGptManualStatus.textContent = `${label}...`;
+      try {
+        await applyFlowGptSettingsQuietly();
+        const result = await action();
+        flowGptManualStatus.textContent = typeof result === "string" ? result : String(result?.status || result?.message || `${label} finished.`);
+      } catch (error) {
+        flowGptManualStatus.textContent = `${label} failed:\n${String(error?.message || error)}`;
+      } finally {
+        control.disabled = false;
+        control.textContent = previous;
+      }
+    };
+    flowGptManualOpenButton.onclick = () => runManualFlowGptAction(flowGptManualOpenButton, "Opening manual browser", () => api.openFlowGptManualBrowser?.());
+    flowGptManualExportButton.onclick = () => runManualFlowGptAction(flowGptManualExportButton, "Exporting scene refs", () => api.exportFlowGptManualRefs?.());
+    flowGptManualArmButton.onclick = () => runManualFlowGptAction(flowGptManualArmButton, "Arming download import", () => api.armFlowGptManualDownloadImport?.());
+    flowGptManualLatestButton.onclick = () => runManualFlowGptAction(flowGptManualLatestButton, "Importing latest download", () => api.importLatestFlowGptManualDownload?.());
+    if (isFlowGpt) {
+      imageGrid.append(
+        settingField("Provider", flowGptProvider, "Browser image provider used for Flow/GPT scenes."),
+        settingField("Aspect ratio", flowGptAspectRatio, "GPT Image appends this ratio to prompts. Flow uses the ratio you set in Flow."),
+        flowGptManualMode,
+        flowGptBrowserSection,
+        flowGptAutoSection,
+        flowGptManualSection,
+      );
+      syncFlowGptModeSections();
+    } else if (isNanoBanana) {
+      imageGrid.append(
+        settingField("API key", nanoApiKey, "Stored in the same NanoBanana side-panel setting. The key is hidden while typing."),
+        settingField("Nano model", nanoModel, "NanoBanana image model name."),
+        nanoUseTextOnly,
+        nanoUseDirector,
+        settingField("Reference images", el("div", "vrgdg-wizard-copy", data.subjectCount || data.locationCount ? `${Number(data.subjectCount || 0)} subject / ${Number(data.locationCount || 0)} location mapped` : "None mapped yet"), "Use Reference Builder to map subject/location references for NanoBanana."),
+      );
     } else {
       imageGrid.append(
         settingField("Image UNet model", imageUnet.input, "Main model for this text-to-image mode."),
@@ -1039,7 +1224,11 @@ export function openMusicVideoWizard(api = {}) {
         settingField("Image VAE", imageVae.input, "Image decoder/encoder for this image mode."),
       );
     }
-    imageModelCard.append(imageUnet.list, imageClip.list, imageVae.list, imageGrid);
+    if (isFlowGpt || isNanoBanana) {
+      imageModelCard.append(imageGrid);
+    } else {
+      imageModelCard.append(imageUnet.list, imageClip.list, imageVae.list, imageGrid);
+    }
 
     const modelCard = el("div", "vrgdg-wizard-settings-card span-12");
     modelCard.append(
@@ -1047,21 +1236,39 @@ export function openMusicVideoWizard(api = {}) {
       el("div", "vrgdg-wizard-settings-subtitle", "Models used for Image to Video or Reference to Video generation and decoding."),
     );
     const modelGrid = el("div", "vrgdg-wizard-settings-fields");
+    const useGgufModel = document.createElement("label");
+    useGgufModel.style.cssText = "display:flex;align-items:center;gap:8px;color:#dbeafe;font-size:12px;font-weight:900;";
+    const useGgufModelInput = document.createElement("input");
+    useGgufModelInput.type = "checkbox";
+    useGgufModelInput.checked = settings.use_gguf_model !== false;
+    useGgufModel.append(useGgufModelInput, document.createTextNode("Use GGUF model?"));
     const unet = comboInput(settings.unet_name || "", modelOptions.unets || [], "vrgdg-wizard-unets");
+    const diffusionModel = comboInput(settings.diffusion_model_name || "", modelOptions.diffusion_models || modelOptions.unets || [], "vrgdg-wizard-diffusion-models");
     const vae = comboInput(settings.vae_name || "", modelOptions.vae || [], "vrgdg-wizard-vae");
     const clip1 = comboInput(settings.clip_name1 || "", modelOptions.clip || [], "vrgdg-wizard-clip1");
     const clip2 = comboInput(settings.clip_name2 || "", modelOptions.clip || [], "vrgdg-wizard-clip2");
     const upscale = comboInput(settings.upscale_model_name || "", modelOptions.upscale_models || [], "vrgdg-wizard-upscale");
     const audioVae = comboInput(settings.audio_vae_name || "", modelOptions.vae || [], "vrgdg-wizard-audio-vae");
+    const unetField = settingField("GGUF UNet model", unet.input, "Main GGUF video generation model.");
+    const diffusionModelField = settingField("Diffusion model", diffusionModel.input, "Main safetensors video generation model.");
+    const syncVideoModelPickerVisibility = () => {
+      const useGguf = Boolean(useGgufModelInput.checked);
+      unetField.style.display = useGguf ? "flex" : "none";
+      diffusionModelField.style.display = useGguf ? "none" : "flex";
+    };
+    useGgufModelInput.onchange = syncVideoModelPickerVisibility;
     modelGrid.append(
-      settingField("UNet model", unet.input, "Main video generation model used for Image to Video or Reference to Video."),
+      useGgufModel,
+      unetField,
+      diffusionModelField,
       settingField("Video VAE", vae.input, "Decodes generated video latents into final frames."),
       settingField("Gemma CLIP", clip1.input, "Model used for prompt understanding and scene guidance."),
       settingField("Text projection", clip2.input, "Projection model that aligns text features with video generation."),
       settingField("Latent upscaler", upscale.input, "Improves latent resolution before final video decoding."),
       settingField("Audio VAE", audioVae.input, "Audio model used when syncing or conditioning video from audio."),
     );
-    modelCard.append(unet.list, vae.list, clip1.list, clip2.list, upscale.list, audioVae.list, modelGrid);
+    modelCard.append(unet.list, diffusionModel.list, vae.list, clip1.list, clip2.list, upscale.list, audioVae.list, modelGrid);
+    syncVideoModelPickerVisibility();
 
     const gemmaCard = el("div", "vrgdg-wizard-settings-card span-4");
     gemmaCard.append(
@@ -1160,7 +1367,9 @@ export function openMusicVideoWizard(api = {}) {
       apply.textContent = "Applying...";
       try {
         await api.applySettings?.({
+          use_gguf_model: Boolean(useGgufModelInput.checked),
           unet_name: unet.input.value,
+          diffusion_model_name: diffusionModel.input.value,
           vae_name: vae.input.value,
           clip_name1: clip1.input.value,
           clip_name2: clip2.input.value,
@@ -1178,11 +1387,20 @@ export function openMusicVideoWizard(api = {}) {
             msr_first_pass_strength: Number(msrStrength.value || 1),
           } : {}),
           image_model_mode: imageModeSelect.value,
-          image_settings: imageModeSelect.value === "nano_banana" ? {} : {
-            unet_name: imageUnet.input.value,
-            clip_name: imageClip.input.value,
-            vae_name: imageVae.input.value,
-          },
+          image_settings: imageModeSelect.value === "nano_banana"
+            ? {
+              api_key: nanoApiKey.value,
+              model: nanoModel.value,
+              use_text_only_gemma_prompt: Boolean(nanoUseTextOnlyInput.checked),
+              use_director_notes: Boolean(nanoUseDirectorInput.checked),
+            }
+            : imageModeSelect.value === "flow_gpt"
+            ? flowGptSettingsFromControls()
+            : {
+              unet_name: imageUnet.input.value,
+              clip_name: imageClip.input.value,
+              vae_name: imageVae.input.value,
+            },
           use_loras: Boolean(useExtraLorasInput.checked),
           lora_count: Math.max(0, Math.min(4, Number(loraCount.value || 0))),
           loras: extraLoraControls.map((control) => ({
@@ -1818,28 +2036,41 @@ export function openMusicVideoWizard(api = {}) {
   function renderFinish(data) {
     const videoMode = data.videoMode || "i2v";
     const isRtv = videoMode === "rtv";
+    const isFlowGpt = String(data.imageMode || "") === "flow_gpt";
+    const imageModeLabel = data.imageModeLabel || data.imageMode || "current image mode";
     const note = el("div", "vrgdg-wizard-note", isRtv
-      ? "When mapping and scene cards look right, create the Reference-to-Video prompts first. Build Full Video can then render the clips and stitch the final video using the current Ref to Video settings."
-      : "For Image to Video, run Gemma Image All first, create/review images with Image All, then run Gemma Video All before rendering or building.");
+      ? "When mapping and scene cards look right, Build Full Video can create Reference-to-Video prompts, render the clips, and stitch the final video using the current Ref to Video settings. Use the prompt button only when you want to preview or regenerate prompts first."
+      : `Build Full Video can run the whole Image-to-Video pipeline: Gemma image prompts, ${imageModeLabel} images, Gemma video prompts, scene videos, and final stitching. Use the Gemma buttons only when you want to preview or regenerate prompts before the full build.`);
     const grid = el("div", "vrgdg-wizard-grid");
     if (!isRtv) {
-      const imagePrompts = card("1. Gemma Image All", "Creates text-to-image prompts for every target scene using the current image model mode.");
+      const imagePrompts = card("Optional: Gemma Image All", "Creates image prompts only. Build Full Video also runs this when prompts/images are missing or when you choose a rebuild mode.");
       const gemmaImage = button("Run Gemma Image All", "primary");
       gemmaImage.onclick = () => {
         openNestedTool(() => api.runGemmaImageAll?.(), "wizard gemma image all");
       };
       imagePrompts.append(gemmaImage);
       grid.append(imagePrompts);
+      if (isFlowGpt) {
+        const flowGptImages = card("Run Flow/GPT Image All", "Creates missing Flow/GPT prompts if needed, then runs the browser image pass only. The Wizard closes so you can watch scenes update.");
+        const flowGptImageAll = button("Run Flow/GPT Image All", "primary");
+        flowGptImageAll.onclick = () => {
+          closeAndRun(() => api.runFlowGptImageAll?.(), "wizard Flow/GPT image all");
+        };
+        flowGptImages.append(flowGptImageAll);
+        grid.append(flowGptImages);
+      }
     }
-    const prompts = card(isRtv ? "Create Video Prompts" : "2. Gemma Video All", isRtv
-      ? "Runs the same Storyboard Gemma All prompt writer used by Storyboard Builder."
-      : "Creates I2V prompts after your image prompts/images are ready.");
+    const prompts = card(isRtv ? "Optional: Create Video Prompts" : "Optional: Gemma Video All", isRtv
+      ? "Creates video prompts only. Build Full Video can also create missing Reference-to-Video prompts."
+      : "Creates I2V prompts only. Build Full Video can also create missing video prompts after the image stage.");
     const gemma = button(isRtv ? "Run Storyboard Gemma All" : "Run Gemma Video All", "primary");
     gemma.onclick = () => {
       openNestedTool(() => api.runGemmaVideoAll?.(), "wizard gemma video all");
     };
     prompts.append(gemma);
-    const build = card(isRtv ? "Build Full Video" : "3. Build Full Video", "Uses the existing full build flow. It will ask whether to resume missing outputs or rebuild.");
+    const build = card("Build Full Video", isRtv
+      ? "Runs the full Reference-to-Video render/stitch flow."
+      : `Runs the full pipeline. If Flow/GPT is selected, this is where the browser image pass runs using the Wizard Flow/GPT settings.`);
     const full = button("Build Full Video", "primary");
     full.onclick = () => {
       openNestedTool(() => api.buildFullVideo?.(), "wizard full build");

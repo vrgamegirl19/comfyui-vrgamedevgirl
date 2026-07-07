@@ -279,6 +279,16 @@ class VRGDG_FlowBrowserImageEdit:
             )
             for i in range(1, MAX_FLOW_IMAGES + 1)
         }
+        optional["reuse_open_project"] = (
+            "BOOLEAN",
+            {
+                "default": True,
+                "tooltip": (
+                    "When enabled, non-manual automation reuses the currently open Flow project/tab instead of navigating "
+                    "back to the Flow home page and clicking New project for every image."
+                ),
+            },
+        )
         return {
             "required": {
                 "prompt": (
@@ -374,6 +384,7 @@ class VRGDG_FlowBrowserImageEdit:
             )
 
         count = _coerce_int(image_count, 1, 0, MAX_FLOW_IMAGES)
+        reuse_open_project = _coerce_bool(kwargs.get("reuse_open_project"), True)
         input_images = []
         for index in range(1, count + 1):
             image = kwargs.get(f"image{index}")
@@ -397,6 +408,8 @@ class VRGDG_FlowBrowserImageEdit:
             "--connect-cdp",
             f"http://127.0.0.1:{debug_port}",
         ]
+        if reuse_open_project:
+            command.append("--no-navigate")
         for image_path in image_paths:
             command.extend(["--image", image_path])
 
@@ -608,6 +621,16 @@ class VRGDG_ChatGPTImagesBrowser:
             )
             for i in range(1, MAX_FLOW_IMAGES + 1)
         }
+        optional["reuse_open_project"] = (
+            "BOOLEAN",
+            {
+                "default": True,
+                "tooltip": (
+                    "When enabled, non-manual automation reuses the current ChatGPT Images tab/conversation instead of "
+                    "navigating back to the images start page for every image."
+                ),
+            },
+        )
         return {
             "required": {
                 "prompt": (
@@ -698,6 +721,7 @@ class VRGDG_ChatGPTImagesBrowser:
             )
 
         count = _coerce_int(image_count, 0, 0, MAX_FLOW_IMAGES)
+        reuse_open_project = _coerce_bool(kwargs.get("reuse_open_project"), True)
         input_images = []
         for index in range(1, count + 1):
             image = kwargs.get(f"image{index}")
@@ -721,6 +745,8 @@ class VRGDG_ChatGPTImagesBrowser:
             "--connect-cdp",
             f"http://127.0.0.1:{debug_port}",
         ]
+        if reuse_open_project:
+            command.append("--no-navigate")
         for image_path in image_paths:
             command.extend(["--image", image_path])
 

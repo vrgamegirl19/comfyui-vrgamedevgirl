@@ -4,6 +4,10 @@ const FLOW_GPT_BUILD_ENDPOINT = "/vrgdg/workflow_runner/build_flow_gpt_image_pro
 const BROWSER_IMAGE_STATUS_ENDPOINT = "/vrgdg/browser_image/status";
 const BROWSER_IMAGE_SETUP_ENDPOINT = "/vrgdg/browser_image/setup";
 const BROWSER_IMAGE_LOGIN_ENDPOINT = "/vrgdg/browser_image/open_login";
+const BROWSER_IMAGE_MANUAL_OPEN_ENDPOINT = "/vrgdg/browser_image/manual_open";
+const BROWSER_IMAGE_MANUAL_UPLOAD_ENDPOINT = "/vrgdg/browser_image/manual_upload";
+const BROWSER_IMAGE_MANUAL_WAIT_DOWNLOAD_ENDPOINT = "/vrgdg/browser_image/manual_wait_download";
+const BROWSER_IMAGE_MANUAL_IMPORT_LATEST_ENDPOINT = "/vrgdg/browser_image/manual_import_latest";
 
 const PROVIDERS = Object.freeze({
   FLOW_NANO_BANANA: "flow_nano_banana",
@@ -86,6 +90,34 @@ async function openBrowserImageLogin(provider, options = {}) {
   }, Number(options.timeoutMs || 60000));
 }
 
+async function openManualBrowserImageProvider(provider, options = {}) {
+  return await postJson(BROWSER_IMAGE_MANUAL_OPEN_ENDPOINT, {
+    ...options,
+    provider: normalizeBrowserImageProvider(provider),
+  }, Number(options.timeoutMs || 60000));
+}
+
+async function uploadManualBrowserImageRefs(provider, options = {}) {
+  return await postJson(BROWSER_IMAGE_MANUAL_UPLOAD_ENDPOINT, {
+    ...options,
+    provider: normalizeBrowserImageProvider(provider),
+  }, Number(options.timeoutMs || 300000));
+}
+
+async function waitForManualBrowserImageDownload(provider, options = {}) {
+  return await postJson(BROWSER_IMAGE_MANUAL_WAIT_DOWNLOAD_ENDPOINT, {
+    ...options,
+    provider: normalizeBrowserImageProvider(provider),
+  }, Number(options.timeoutMs || 900000));
+}
+
+async function importLatestManualBrowserImageDownload(provider, options = {}) {
+  return await postJson(BROWSER_IMAGE_MANUAL_IMPORT_LATEST_ENDPOINT, {
+    ...options,
+    provider: normalizeBrowserImageProvider(provider),
+  }, Number(options.timeoutMs || 120000));
+}
+
 async function buildBrowserImagePrompt(payload = {}) {
   return await postJson(FLOW_GPT_BUILD_ENDPOINT, {
     ...payload,
@@ -97,18 +129,26 @@ export {
   PROVIDERS as BROWSER_IMAGE_PROVIDERS,
   buildBrowserImagePrompt,
   getBrowserImageStatus,
+  importLatestManualBrowserImageDownload,
   normalizeBrowserImageProvider,
   openBrowserImageLogin,
+  openManualBrowserImageProvider,
   promptForBrowserImageProvider,
   setupBrowserImageAutomation,
+  uploadManualBrowserImageRefs,
+  waitForManualBrowserImageDownload,
 };
 
 window.VRGDGBrowserImageBridge = {
   PROVIDERS,
   buildBrowserImagePrompt,
   getBrowserImageStatus,
+  importLatestManualBrowserImageDownload,
   normalizeBrowserImageProvider,
   openBrowserImageLogin,
+  openManualBrowserImageProvider,
   promptForBrowserImageProvider,
   setupBrowserImageAutomation,
+  uploadManualBrowserImageRefs,
+  waitForManualBrowserImageDownload,
 };

@@ -861,6 +861,94 @@ export function storyboardFacialPerformancePreset(value = "") {
   return FACIAL_PERFORMANCE_PRESETS.find((item) => item.value === value) || FACIAL_PERFORMANCE_PRESETS[0];
 }
 
+export const ID_LORA_PERFORMANCE_STYLE_PRESETS = [
+  {
+    value: "dialogue_naturalism",
+    label: "Dialogue naturalism",
+    direction: "Use grounded short-film acting: conversational timing, motivated gestures, lived-in posture, subtle emotional shifts, and behavior that feels observed rather than performed.",
+  },
+  {
+    value: "tense_confrontation",
+    label: "Tense confrontation",
+    direction: "Use restrained confrontation energy: clipped gestures, guarded posture, controlled anger, charged pauses, and body language that suggests pressure under the surface.",
+  },
+  {
+    value: "indie_drama",
+    label: "Indie drama",
+    direction: "Use intimate indie-film acting: small revealing gestures, vulnerable stillness, natural imperfections, quiet tension, and emotionally specific reactions.",
+  },
+  {
+    value: "noir_restraint",
+    label: "Noir restraint",
+    direction: "Use noir-style restraint: low-key confidence, suspicious glances, minimal gestures, guarded delivery, and tension carried through posture and eyes.",
+  },
+  {
+    value: "comedic_awkwarness",
+    label: "Comedic awkward",
+    direction: "Use dry comedic acting: awkward pauses, slightly mismatched reactions, contained embarrassment, small nervous gestures, and believable conversational timing.",
+  },
+  {
+    value: "emotional_confession",
+    label: "Emotional confession",
+    direction: "Use confession-scene acting: exposed emotion, hesitant gestures, wavering confidence, visible vulnerability, and a line delivery that feels personally risky.",
+  },
+  {
+    value: "suspense_dread",
+    label: "Suspense dread",
+    direction: "Use suspense-film tension: alert posture, careful stillness, anxious scanning, controlled breathing, and reactions that imply something important is about to break.",
+  },
+  {
+    value: "punk_bar_attitude",
+    label: "Punk bar attitude",
+    direction: "Use gritty punk-bar acting: defiant posture, sharp side-eye, casual toughness, impatient gestures, and messy lived-in confidence without turning it into a stage performance.",
+  },
+];
+
+export const ID_LORA_FACIAL_PERFORMANCE_PRESETS = [
+  {
+    value: "",
+    label: "Default screen acting",
+    description: "Natural film face",
+    direction: "Use grounded screen-acting facial detail: attentive eyes, small brow changes, readable thought, subtle jaw tension, natural mouth shapes for speech, and emotion that fits the dialogue.",
+  },
+  {
+    value: "curious_inquisitive",
+    label: "Curious / inquisitive",
+    description: "Curious screen expression",
+    direction: "Use curious facial performance: bright attentive eyes, slight head angle, lifted brow, searching gaze, relaxed mouth between words, and a sense of active listening.",
+  },
+  {
+    value: "guarded_suspicious",
+    label: "Guarded / suspicious",
+    description: "Guarded tension",
+    direction: "Use guarded facial performance: narrowed eyes, tight jaw, controlled mouth, skeptical brow, held gaze, and restrained suspicion under the dialogue.",
+  },
+  {
+    value: "defiant_controlled",
+    label: "Defiant / controlled",
+    description: "Controlled defiance",
+    direction: "Use controlled defiance: steady eye contact, tense mouth corners, lifted chin, compressed jaw, and a look that refuses to back down.",
+  },
+  {
+    value: "vulnerable_confession",
+    label: "Vulnerable confession",
+    description: "Exposed emotion",
+    direction: "Use vulnerable confession facial performance: softened eyes, raised inner brows, small uncertain mouth movements, visible hesitation, and emotion barely held together.",
+  },
+  {
+    value: "dry_comedic",
+    label: "Dry comedic",
+    description: "Subtle comedy face",
+    direction: "Use dry comedic facial performance: tiny reaction beats, restrained disbelief, awkward half-smile, quick eye shifts, and understated embarrassment.",
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    description: "Use custom facial text",
+    direction: "",
+  },
+];
+
 function storyboardMotionFamily(motion = "") {
   const text = String(motion || "").toLowerCase();
   if (/push|dolly in|zoom in|track forward|crash zoom|snap zoom/.test(text)) return "in";
@@ -948,6 +1036,98 @@ export const STORYBOARD_IMAGE_SHOT_FLOW_PRESETS = {
       "wide shot",
     ],
   },
+  film_dialogue_coverage: {
+    label: "Film dialogue coverage",
+    description: "Short-film coverage for story-heavy music videos: readable faces, eyelines, reactions, and location context.",
+    sequence: [
+      "medium close-up dialogue shot",
+      "over-the-shoulder shot",
+      "reaction close-up",
+      "two-shot dialogue frame",
+      "profile close-up",
+      "medium shot with foreground framing",
+      "insert detail shot",
+      "wide establishing film still",
+    ],
+  },
+  intimate_drama: {
+    label: "Intimate drama frames",
+    description: "Close emotional film stills for confessions, quiet tension, and character-led music-video scenes.",
+    sequence: [
+      "tight close-up",
+      "intimate medium close-up",
+      "profile close-up",
+      "hands and face detail shot",
+      "reflection close-up",
+      "seated conversation frame",
+      "shallow-focus reaction shot",
+      "low-key portrait frame",
+    ],
+  },
+  noir_story_frames: {
+    label: "Noir story frames",
+    description: "Moody dramatic coverage with shadows, silhouettes, foregrounds, and tense blocking.",
+    sequence: [
+      "low-key medium shot",
+      "silhouette dialogue frame",
+      "over-the-shoulder noir shot",
+      "frame-within-a-frame shot",
+      "side-lit profile shot",
+      "wide empty-space composition",
+      "reflection shot",
+      "detail insert shot",
+    ],
+  },
+};
+
+export const ID_LORA_IMAGE_SHOT_FLOW_PRESETS = {
+  off: {
+    label: "Off",
+    description: "Do not auto-fill film-still composition fields.",
+    sequence: [],
+  },
+  film_dialogue_coverage: {
+    label: "Film dialogue coverage",
+    description: "Short-film coverage for dialogue scenes: readable faces, eyelines, reactions, and location context.",
+    sequence: [
+      "medium close-up dialogue shot",
+      "over-the-shoulder shot",
+      "reaction close-up",
+      "two-shot dialogue frame",
+      "profile close-up",
+      "medium shot with foreground framing",
+      "insert detail shot",
+      "wide establishing film still",
+    ],
+  },
+  intimate_drama: {
+    label: "Intimate drama frames",
+    description: "Close emotional film stills for confessions, quiet tension, and character-led scenes.",
+    sequence: [
+      "tight close-up",
+      "intimate medium close-up",
+      "profile close-up",
+      "hands and face detail shot",
+      "reflection close-up",
+      "seated conversation frame",
+      "shallow-focus reaction shot",
+      "low-key portrait frame",
+    ],
+  },
+  noir_story_frames: {
+    label: "Noir story frames",
+    description: "Moody dramatic coverage with shadows, silhouettes, foregrounds, and tense blocking.",
+    sequence: [
+      "low-key medium shot",
+      "silhouette dialogue frame",
+      "over-the-shoulder noir shot",
+      "frame-within-a-frame shot",
+      "side-lit profile shot",
+      "wide empty-space composition",
+      "reflection shot",
+      "detail insert shot",
+    ],
+  },
 };
 
 export const STORYBOARD_IMAGE_AESTHETIC_PRESETS = [
@@ -966,6 +1146,23 @@ export const STORYBOARD_IMAGE_AESTHETIC_PRESETS = [
   { value: "high_contrast_drama", label: "High-contrast drama", description: "Bold shadows, sculpted highlights, intense facial emotion, dramatic production-still lighting.", prompt_guidance: "Build a high-contrast dramatic still with sculpted highlights, deep shadows, strong key light direction, visible tension in posture, intense facial emotion, dramatic wardrobe silhouette, textured environment, cinematic contrast ratio, and a composition that creates visual pressure." },
   { value: "surreal_symbolic", label: "Surreal symbolic", description: "Surreal symbolic music-video still, heightened atmosphere, poetic objects, dreamlike composition.", prompt_guidance: "Build a surreal symbolic music-video still. Use poetic visual motifs, dreamlike composition, unusual scale or placement of objects, symbolic set dressing, atmospheric light, controlled color palette, and a subject pose that feels ritualistic or uncanny. Keep the imagery visual and concrete rather than explanatory." },
   { value: "clean_studio", label: "Clean studio", description: "Clean studio photography, crisp subject detail, controlled lighting, uncluttered composition.", prompt_guidance: "Build a clean studio photograph with crisp subject detail, controlled lighting setup, precise wardrobe styling, polished hair/makeup, uncluttered backdrop, intentional pose, clear silhouette, lens/framing detail, and professional commercial or editorial clarity." },
+  { value: "film_default", label: "Default film still", description: "Balanced short-film still lighting, believable production design, natural texture, and cinematic composition.", prompt_guidance: "Build a polished film-style music-video still. Use believable character blocking, grounded wardrobe, practical lighting, lens/framing detail, textured production design, natural color contrast, emotionally readable composition, and a cinematic story-frame finish." },
+  { value: "indie_film_naturalism", label: "Indie film naturalism", description: "Naturalistic indie-drama still with lived-in details, imperfect realism, and intimate character focus.", prompt_guidance: "Build an indie-film music-video still with naturalistic lighting, lived-in wardrobe, imperfect textures, believable posture, intimate framing, subtle emotional detail, muted color response, and environment details that feel observed rather than staged." },
+  { value: "neo_noir_dialogue", label: "Neo-noir dialogue", description: "Low-key shadows, practical neon, suspicious glances, dramatic contrast, and noir-style tension.", prompt_guidance: "Build a neo-noir dialogue still with low-key lighting, practical neon or sodium light, deep shadows, hard rim light, reflective surfaces, guarded facial expression, tense blocking, and a controlled color palette. Keep it cinematic and grounded." },
+  { value: "gritty_punk_bar", label: "Gritty punk bar", description: "Worn bar textures, punk attitude, practical stage/neon light, smoky atmosphere, and analog grit.", prompt_guidance: "Build a gritty punk-bar film still with worn leather or denim styling, messy lived-in hair/makeup, scratched tables, stickers, posters, dim practical lights, colored neon spill, smoky air, visible texture, defiant posture, and a raw 35mm cinematic finish." },
+  { value: "psychological_thriller", label: "Psychological thriller", description: "Uneasy framing, controlled color, negative space, tense facial detail, and subtle dread.", prompt_guidance: "Build a psychological-thriller still with uneasy composition, negative space, controlled color palette, tense facial detail, practical low light, slightly off-balance framing, foreground obstruction, and environmental details that imply pressure without explaining it." },
+  { value: "warm_dialogue_drama", label: "Warm dialogue drama", description: "Warm practical interiors, soft skin tones, intimate framing, and emotionally readable acting.", prompt_guidance: "Build a warm dialogue-drama still with practical lamp, street, stage, or bar light, gentle skin tones, shallow depth of field, intimate framing, small emotional facial detail, believable wardrobe, textured surroundings, and a quiet cinematic finish." },
+  { value: "35mm_analog_film", label: "35mm analog film", description: "Film grain, practical lighting, imperfect texture, grounded color, and documentary-like realism.", prompt_guidance: "Build a 35mm analog film still with visible grain, practical lighting, imperfect surfaces, grounded color response, natural posture, textured wardrobe, shallow lens character, and a lived-in environment. Avoid glossy music-video polish unless the scene asks for it." },
+];
+
+export const ID_LORA_IMAGE_AESTHETIC_PRESETS = [
+  { value: "film_default", label: "Default film still", description: "Balanced short-film still lighting, believable production design, natural texture, and cinematic composition.", prompt_guidance: "Build a polished short-film still, not a music-video still. Use believable character blocking, grounded wardrobe, practical lighting, lens/framing detail, textured production design, natural color contrast, and emotionally readable composition." },
+  { value: "indie_film_naturalism", label: "Indie film naturalism", description: "Naturalistic indie-drama still with lived-in details, imperfect realism, and intimate character focus.", prompt_guidance: "Build an indie-film still with naturalistic lighting, lived-in wardrobe, imperfect textures, believable posture, intimate framing, subtle emotional detail, muted color response, and environment details that feel observed rather than staged." },
+  { value: "neo_noir_dialogue", label: "Neo-noir dialogue", description: "Low-key shadows, practical neon, suspicious glances, dramatic contrast, and noir-style tension.", prompt_guidance: "Build a neo-noir dialogue still with low-key lighting, practical neon or sodium light, deep shadows, hard rim light, reflective surfaces, guarded facial expression, tense blocking, and a controlled color palette. Keep it cinematic and grounded." },
+  { value: "gritty_punk_bar", label: "Gritty punk bar", description: "Worn bar textures, punk attitude, practical stage/neon light, smoky atmosphere, and analog grit.", prompt_guidance: "Build a gritty punk-bar film still with worn leather or denim styling, messy lived-in hair/makeup, scratched tables, stickers, posters, dim practical lights, colored neon spill, smoky air, visible texture, defiant posture, and a raw 35mm cinematic finish." },
+  { value: "psychological_thriller", label: "Psychological thriller", description: "Uneasy framing, controlled color, negative space, tense facial detail, and subtle dread.", prompt_guidance: "Build a psychological-thriller still with uneasy composition, negative space, controlled color palette, tense facial detail, practical low light, slightly off-balance framing, foreground obstruction, and environmental details that imply pressure without explaining it." },
+  { value: "warm_dialogue_drama", label: "Warm dialogue drama", description: "Warm practical interiors, soft skin tones, intimate framing, and emotionally readable acting.", prompt_guidance: "Build a warm dialogue-drama still with practical lamp or bar light, gentle skin tones, shallow depth of field, intimate framing, small emotional facial detail, believable wardrobe, textured surroundings, and a quiet cinematic finish." },
+  { value: "35mm_analog_film", label: "35mm analog film", description: "Film grain, practical lighting, imperfect texture, grounded color, and documentary-like realism.", prompt_guidance: "Build a 35mm analog film still with visible grain, practical lighting, imperfect surfaces, grounded color response, natural posture, textured wardrobe, shallow lens character, and a lived-in environment. Avoid glossy music-video polish." },
 ];
 
 export function storyboardImageShotFlowEntry(profileKey, sceneIndex) {
@@ -979,8 +1176,9 @@ export function storyboardImageAestheticPreset(value = "") {
   return STORYBOARD_IMAGE_AESTHETIC_PRESETS.find((item) => item.value === value) || STORYBOARD_IMAGE_AESTHETIC_PRESETS[0];
 }
 
-function storyboardImageAestheticGuidance(value = "") {
-  const preset = storyboardImageAestheticPreset(value);
+function storyboardImageAestheticGuidance(value = "", options = {}) {
+  const presets = options.idLoraMode ? ID_LORA_IMAGE_AESTHETIC_PRESETS : STORYBOARD_IMAGE_AESTHETIC_PRESETS;
+  const preset = presets.find((item) => item.value === value) || presets[0] || storyboardImageAestheticPreset(value);
   return preset.prompt_guidance || preset.description || "";
 }
 
@@ -1143,7 +1341,7 @@ function storyboardStillFacialDirection(value = "") {
 
 function normalizeScene(scene = {}, index = 0) {
   const rawVideoType = String(scene.video_prompt_type || scene.video_type || scene.mode || "").trim();
-  const videoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(rawVideoType) ? rawVideoType : "i2v";
+  const videoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(rawVideoType) ? rawVideoType : "i2v";
   const lyrics = scene.lyrics || scene.lyric_text || "";
   const lyricSingers = Array.isArray(scene.lyric_singers)
     ? scene.lyric_singers.map((item) => String(item || "").trim()).filter(Boolean)
@@ -1185,6 +1383,8 @@ function normalizeScene(scene = {}, index = 0) {
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
+    id_lora_character_id: scene.id_lora_character_id || scene.character_id || scene.subject_id || "",
+    id_lora_location_id: scene.id_lora_location_id || scene.location_id || "",
   };
 }
 
@@ -1215,7 +1415,11 @@ function ensureStoryboardReferenceOpening(prompt, scene = {}, imageMode = "") {
   let text = String(prompt || "").trim();
   if (!opening || !text) return text;
   text = text.replace(
-    /^Using the provided\s+(?:(?:character|location|scene|reference)\s+)+(?:images?|references?)\s*,?\s*(?:create\s+)?/i,
+    /^Using the provided\s+(?:(?:character|location|scene|reference)\s+)*(?:images?|references?)(?:\s+and\s+(?:(?:character|location|scene|reference)\s+)*(?:images?|references?))*\s*,?\s*(?:create\s+)?/i,
+    "",
+  ).trim();
+  text = text.replace(
+    /^and\s+(?:(?:character|location|scene|reference)\s+)*(?:images?|references?)\s*,?\s*(?:create\s+)?/i,
     "",
   ).trim();
   text = text.replace(/^(?:create|make|generate)\b\s*/i, "").trim();
@@ -1480,6 +1684,7 @@ function storyboardReferenceForGpt(ref, options = {}) {
 
 function storyboardVideoPromptTypeLabel(type) {
   const key = String(type || "").toLowerCase();
+  if (key === "id_lora") return "ID-LoRA image to video";
   if (key === "ingredients") return "ingredients to video";
   if (key === "t2v") return "text to video";
   if (key === "rtv") return "reference to video";
@@ -1489,6 +1694,12 @@ function storyboardVideoPromptTypeLabel(type) {
 
 function storyboardScenesForGpt(state) {
   const imageMode = state.mode !== "image_to_video_prep";
+  const idLoraMode = String(state.videoPromptType || state.video_prompt_type || "").trim() === "id_lora"
+    || state.scenes.some((scene) => String(scene?.video_prompt_type || "").trim() === "id_lora");
+  const performancePresets = idLoraMode ? ID_LORA_PERFORMANCE_STYLE_PRESETS : PERFORMANCE_STYLE_PRESETS;
+  const facialPresets = idLoraMode ? ID_LORA_FACIAL_PERFORMANCE_PRESETS : FACIAL_PERFORMANCE_PRESETS;
+  const performancePreset = (value = "") => performancePresets.find((item) => item.value === value) || performancePresets[0] || PERFORMANCE_STYLE_PRESETS[0];
+  const facialPresetForPayload = (value = "") => facialPresets.find((item) => item.value === value) || facialPresets[0] || FACIAL_PERFORMANCE_PRESETS[0];
   let previousCameraMotion = "";
   return state.scenes.map((scene, index) => {
     const normalized = normalizeScene(scene, index);
@@ -1499,7 +1710,7 @@ function storyboardScenesForGpt(state) {
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
     const performanceMode = normalizeStoryboardPerformanceMode(normalized.performance_mode || state.performanceMode || state.videoType || state.performance_mode);
-    const facialPreset = storyboardFacialPerformancePreset(normalized.facial_performance || state.facialPerformance);
+    const facialPreset = facialPresetForPayload(normalized.facial_performance || state.facialPerformance);
     const facialCustom = String(normalized.facial_performance_custom || state.facialPerformanceCustom || "").trim();
     const facialDirection = (normalized.facial_performance || state.facialPerformance) === "custom" && facialCustom
       ? facialCustom
@@ -1583,7 +1794,7 @@ function storyboardScenesForGpt(state) {
       },
       motion_summary: imageMode ? "" : normalized.motion_summary,
       still_image_notes: imageMode ? normalized.motion_summary : "",
-      image_aesthetic: imageMode ? storyboardImageAestheticGuidance(state.imageAesthetic) : "",
+      image_aesthetic: imageMode ? storyboardImageAestheticGuidance(state.imageAesthetic, { idLoraMode }) : "",
       image_aesthetic_instruction: imageMode
         ? "Translate the selected image aesthetic into concrete prompt details: pose, wardrobe styling, hair, makeup, accessories, lighting setup, lens/framing, composition, environment treatment, texture, weather/time if useful, and art direction. Do not merely name the preset or append it as a short tag."
         : "",
@@ -1591,8 +1802,8 @@ function storyboardScenesForGpt(state) {
       global_consistency_instruction: String(state.globalConsistencyPhrase || "").trim()
         ? "Incorporate the global_consistency_phrase naturally into the prompt where it fits. Preserve its key wording, but do not force it to the beginning unless that is the most natural phrasing."
         : "",
-      performance_style: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).label,
-      performance_direction: storyboardPerformancePreset(normalized.performance_style || state.performanceStyle).direction,
+      performance_style: performancePreset(normalized.performance_style || state.performanceStyle).label,
+      performance_direction: performancePreset(normalized.performance_style || state.performanceStyle).direction,
       facial_performance: facialPreset.label,
       facial_performance_direction: imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection,
       facial_performance_custom: imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom,
@@ -1717,9 +1928,10 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
-  const payloadVideoPromptType = ["i2v", "t2v", "rtv", "ingredients"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
+  const payloadVideoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
     ? String(payload.videoPromptType || payload.video_prompt_type || "").trim()
     : "";
+  const isIdLoraMode = payloadVideoPromptType === "id_lora";
   const payloadPerformanceMode = normalizeStoryboardPerformanceMode(payload.performanceMode || payload.performance_mode || payload.videoType || payload.video_type);
   const state = {
     projectFolder,
@@ -1734,21 +1946,23 @@ function openStoryboardBuilder(payload = {}) {
     onReferenceMappingsChanged: typeof payload.onReferenceMappingsChanged === "function" ? payload.onReferenceMappingsChanged : null,
     onStoryLayerChanged: typeof payload.onStoryLayerChanged === "function" ? payload.onStoryLayerChanged : null,
     onPromptsExported: typeof payload.onPromptsExported === "function" ? payload.onPromptsExported : null,
+    onApplyIdLoraDialoguePlan: typeof payload.onApplyIdLoraDialoguePlan === "function" ? payload.onApplyIdLoraDialoguePlan : null,
     onCreateVideoPrompt: typeof payload.onCreateVideoPrompt === "function" ? payload.onCreateVideoPrompt : null,
     query: "",
     selected: new Set(),
     saving: false,
     gemmaSettings: payload.gemmaSettings || payload.gemma_settings || {},
     cameraFlow: String(payload.cameraFlow || payload.camera_flow || "balanced"),
-    imageShotFlow: String(payload.imageShotFlow || payload.image_shot_flow || "intimate"),
-    imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || ""),
+    imageShotFlow: String(payload.imageShotFlow || payload.image_shot_flow || (isIdLoraMode ? "film_dialogue_coverage" : "intimate")),
+    imageAesthetic: String(payload.imageAesthetic || payload.image_aesthetic || (isIdLoraMode ? "film_default" : "")),
     globalConsistencyPhrase: String(payload.globalConsistencyPhrase || payload.global_consistency_phrase || ""),
-    performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || ""),
+    performanceStyle: String(payload.performanceStyle || payload.performance_style || payload.performance_style_default || (isIdLoraMode ? "dialogue_naturalism" : "")),
     facialPerformance: String(payload.facialPerformance || payload.facial_performance || payload.facial_performance_default || ""),
     facialPerformanceCustom: String(payload.facialPerformanceCustom || payload.facial_performance_custom || payload.facial_performance_custom_default || ""),
     cameraMotionSpeed: storyboardSpeedValue(payload.cameraMotionSpeed ?? payload.camera_motion_speed ?? payload.motion_defaults?.camera_motion_speed, 4),
     characterMotionSpeed: storyboardSpeedValue(payload.characterMotionSpeed ?? payload.character_motion_speed ?? payload.motion_defaults?.character_motion_speed, 4),
     performanceMode: payloadPerformanceMode,
+    videoPromptType: payloadVideoPromptType,
     imageMode: String(payload.imageMode || payload.image_mode || "zimage").trim() || "zimage",
     imageModeLabel: String(payload.imageModeLabel || payload.image_mode_label || "").trim(),
   };
@@ -1759,6 +1973,18 @@ function openStoryboardBuilder(payload = {}) {
     if (runner === "llm_api" || runner === "llmapi" || runner === "llm-api" || runner === "api") return "API LLM";
     return "Gemma";
   };
+  const imageShotFlowPresets = isIdLoraMode ? ID_LORA_IMAGE_SHOT_FLOW_PRESETS : STORYBOARD_IMAGE_SHOT_FLOW_PRESETS;
+  const imageAestheticPresets = isIdLoraMode ? ID_LORA_IMAGE_AESTHETIC_PRESETS : STORYBOARD_IMAGE_AESTHETIC_PRESETS;
+  const performanceStylePresets = isIdLoraMode ? ID_LORA_PERFORMANCE_STYLE_PRESETS : PERFORMANCE_STYLE_PRESETS;
+  const facialPerformancePresets = isIdLoraMode ? ID_LORA_FACIAL_PERFORMANCE_PRESETS : FACIAL_PERFORMANCE_PRESETS;
+  const imageShotFlowPresetForMode = (value = "") => imageShotFlowPresets[value] || imageShotFlowPresets[Object.keys(imageShotFlowPresets)[0]] || STORYBOARD_IMAGE_SHOT_FLOW_PRESETS.intimate;
+  const imageAestheticPresetForMode = (value = "") => imageAestheticPresets.find((item) => item.value === value) || imageAestheticPresets[0] || STORYBOARD_IMAGE_AESTHETIC_PRESETS[0];
+  const performancePresetForMode = (value = "") => performanceStylePresets.find((item) => item.value === value) || performanceStylePresets[0] || PERFORMANCE_STYLE_PRESETS[0];
+  const facialPresetForMode = (value = "") => facialPerformancePresets.find((item) => item.value === value) || facialPerformancePresets[0] || FACIAL_PERFORMANCE_PRESETS[0];
+  if (!imageShotFlowPresets[state.imageShotFlow]) state.imageShotFlow = Object.keys(imageShotFlowPresets)[0] || "off";
+  if (!imageAestheticPresets.some((item) => item.value === state.imageAesthetic)) state.imageAesthetic = imageAestheticPresets[0]?.value || "";
+  if (!performanceStylePresets.some((item) => item.value === state.performanceStyle)) state.performanceStyle = performanceStylePresets[0]?.value || "";
+  if (!facialPerformancePresets.some((item) => item.value === state.facialPerformance)) state.facialPerformance = facialPerformancePresets[0]?.value || "";
   const storyboardDefaultsPayload = () => ({
     builder_storyboard_defaults: {
       global_consistency_phrase: String(state.globalConsistencyPhrase || "").trim(),
@@ -1909,7 +2135,7 @@ function openStoryboardBuilder(payload = {}) {
   imageShotLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   imageShotLabel.textContent = "Still shot flow";
   const imageShotSelect = makeSelect(
-    Object.entries(STORYBOARD_IMAGE_SHOT_FLOW_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
+    Object.entries(imageShotFlowPresets).map(([value, preset]) => ({ value, label: preset.label })),
     state.imageShotFlow,
   );
   imageShotSelect.style.width = "max-content";
@@ -1926,7 +2152,7 @@ function openStoryboardBuilder(payload = {}) {
   const imageAestheticLabel = document.createElement("div");
   imageAestheticLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
   imageAestheticLabel.textContent = "Image aesthetic";
-  const imageAestheticSelect = makeSelect(STORYBOARD_IMAGE_AESTHETIC_PRESETS, state.imageAesthetic);
+  const imageAestheticSelect = makeSelect(imageAestheticPresets, state.imageAesthetic);
   imageAestheticSelect.style.width = "max-content";
   imageAestheticSelect.style.minWidth = "180px";
   const imageAestheticApply = makeButton("Fill Missing", "primary");
@@ -1987,14 +2213,14 @@ function openStoryboardBuilder(payload = {}) {
   performanceControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const performanceLabel = document.createElement("div");
   performanceLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
-  performanceLabel.textContent = "Global performance style";
-  const performanceSelect = makeSelect(PERFORMANCE_STYLE_PRESETS, state.performanceStyle);
+  performanceLabel.textContent = isIdLoraMode ? "Global acting style" : "Global performance style";
+  const performanceSelect = makeSelect(performanceStylePresets, state.performanceStyle);
   performanceSelect.style.width = "max-content";
   performanceSelect.style.minWidth = "180px";
   const performanceApply = makeButton("Fill Missing", "primary");
-  performanceApply.title = "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
+  performanceApply.title = isIdLoraMode ? "Fill only blank per-scene acting style fields. Existing scene choices are kept." : "Fill only blank per-scene performance/song style fields. Existing scene choices are kept.";
   const performanceReplace = makeButton("Replace All");
-  performanceReplace.title = "Replace every scene's performance/song style with the selected global style.";
+  performanceReplace.title = isIdLoraMode ? "Replace every scene's acting style with the selected global style." : "Replace every scene's performance/song style with the selected global style.";
   performanceControls.append(performanceLabel, performanceSelect, performanceApply, performanceReplace);
   const performanceInfo = document.createElement("div");
   performanceInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
@@ -2021,8 +2247,8 @@ function openStoryboardBuilder(payload = {}) {
   facialControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const facialLabel = document.createElement("div");
   facialLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
-  facialLabel.textContent = "Global facial performance";
-  const facialSelect = makeSelect(FACIAL_PERFORMANCE_PRESETS, state.facialPerformance);
+  facialLabel.textContent = isIdLoraMode ? "Global screen face" : "Global facial performance";
+  const facialSelect = makeSelect(facialPerformancePresets, state.facialPerformance);
   facialSelect.style.width = "max-content";
   facialSelect.style.minWidth = "180px";
   const facialApply = makeButton("Fill Missing", "primary");
@@ -2049,7 +2275,9 @@ function openStoryboardBuilder(payload = {}) {
   const storyLayerHeader = document.createElement("div");
   storyLayerHeader.style.cssText = "grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;";
   const storyLayerTitle = document.createElement("div");
-  storyLayerTitle.innerHTML = `<div style="font-weight:900;color:#cffafe;font-size:15px;">Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Optional narrative context for connecting lyrics, sections, subjects, and locations across scenes.</div>`;
+  storyLayerTitle.innerHTML = isIdLoraMode
+    ? `<div style="font-weight:900;color:#cffafe;font-size:15px;">Short Film Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Dialogue-first planning for ID-LoRA scenes, characters, and locations.</div>`
+    : `<div style="font-weight:900;color:#cffafe;font-size:15px;">Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Optional narrative context for connecting lyrics, sections, subjects, and locations across scenes.</div>`;
   const storyLayerEnabledLabel = document.createElement("label");
   storyLayerEnabledLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;white-space:nowrap;";
   const storyLayerEnabledInput = document.createElement("input");
@@ -2057,8 +2285,16 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
   storyLayerEnabledLabel.append(storyLayerEnabledInput, document.createTextNode("Use in Gemma prompts"));
   storyLayerHeader.append(storyLayerTitle, storyLayerEnabledLabel);
-  const userStoryArcInput = makeTextarea(state.storyLayer.user_story_arc || "", "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...", 5);
-  const songStoryBriefInput = makeTextarea(state.storyLayer.song_story_brief || "", "Gemma-created song story brief...", 5);
+  const userStoryArcInput = makeTextarea(
+    state.storyLayer.user_story_arc || "",
+    isIdLoraMode ? "Short film premise, conflict, tone, character goal..." : "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...",
+    5,
+  );
+  const songStoryBriefInput = makeTextarea(
+    state.storyLayer.song_story_brief || "",
+    isIdLoraMode ? "Gemma-created short film story brief..." : "Gemma-created song story brief...",
+    5,
+  );
   const lyricStoryStrengthInput = makeInput(String(normalizeStoryLayer(state.storyLayer).lyric_story_strength));
   lyricStoryStrengthInput.type = "range";
   lyricStoryStrengthInput.min = "0";
@@ -2091,6 +2327,26 @@ function openStoryboardBuilder(payload = {}) {
   const lyricStoryStrengthRow = document.createElement("div");
   lyricStoryStrengthRow.style.cssText = "grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;";
   lyricStoryStrengthRow.append(storyField("Lyric Story Strength", lyricStoryStrengthInput), lyricStoryStrengthValue, lyricStoryStrengthHintButton);
+  lyricStoryStrengthRow.style.display = isIdLoraMode ? "none" : "grid";
+  const idLoraDialoguePlanner = document.createElement("div");
+  idLoraDialoguePlanner.style.cssText = "grid-column:1/-1;display:none;border:1px solid #155e75;border-radius:8px;background:#082f49;padding:12px;gap:10px;align-items:center;grid-template-columns:minmax(0,1fr) auto;";
+  const idLoraDialoguePlannerText = document.createElement("div");
+  idLoraDialoguePlannerText.innerHTML = `<div style="font-weight:900;color:#cffafe;">Plan Dialogue Scenes</div><div style="color:#bae6fd;line-height:1.35;margin-top:3px;">Enter a story idea, outline, or pasted script above. If left blank, Gemma invents a short-film dialogue scene plan from your ID-LoRA characters and locations.</div>`;
+  const idLoraDialogueControls = document.createElement("div");
+  idLoraDialogueControls.style.cssText = "display:flex;gap:8px;align-items:end;flex-wrap:wrap;justify-content:flex-end;";
+  const idLoraDialogueSceneCount = makeInput("6");
+  idLoraDialogueSceneCount.type = "number";
+  idLoraDialogueSceneCount.min = "1";
+  idLoraDialogueSceneCount.max = "24";
+  idLoraDialogueSceneCount.step = "1";
+  idLoraDialogueSceneCount.style.width = "76px";
+  const planDialogueScenesButton = makeButton("Plan Dialogue Scenes", "primary");
+  planDialogueScenesButton.title = "ID-LoRA only. Create a preview scene plan from the premise/script and ID-LoRA Ref Builder characters.";
+  const applyDialoguePlanButton = makeButton("Apply Dialogue Plan", "primary");
+  applyDialoguePlanButton.title = "Apply the reviewed ID-LoRA dialogue scenes to Video Builder.";
+  applyDialoguePlanButton.style.display = "none";
+  idLoraDialogueControls.append(storyField("Scenes", idLoraDialogueSceneCount), planDialogueScenesButton, applyDialoguePlanButton);
+  idLoraDialoguePlanner.append(idLoraDialoguePlannerText, idLoraDialogueControls);
   const storyActions = document.createElement("div");
   storyActions.style.cssText = "grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;";
   const createStoryArcButton = makeButton("Create User Story Arc", "primary");
@@ -2104,6 +2360,7 @@ function openStoryboardBuilder(payload = {}) {
     lyricStoryStrengthRow,
     storyField("User Story Arc", userStoryArcInput),
     storyField("Song Story Brief", songStoryBriefInput),
+    idLoraDialoguePlanner,
     storyActions,
   );
 
@@ -2173,12 +2430,38 @@ function openStoryboardBuilder(payload = {}) {
     return storyboardCameraFlowEntry(profileKey, sceneIndex, previousMotion);
   };
 
+  const sceneLooksLikeStarterPlaceholder = (scene = {}) => {
+    const text = [
+      scene.lyrics,
+      scene.story_beat,
+      scene.prompt_summary,
+      scene.motion_summary,
+      scene.image_prompt,
+      scene.video_prompt,
+      scene.image_path,
+      scene.setting,
+    ].map((item) => String(item || "").trim()).join("");
+    return !text;
+  };
+
+  const shouldShowIdLoraDialoguePlanner = () => {
+    return isIdLoraMode
+      && state.scenes.length > 0
+      && state.scenes.length <= 2
+      && state.scenes.every(sceneLooksLikeStarterPlaceholder);
+  };
+  const hasIdLoraDialoguePlan = () => {
+    return isIdLoraMode
+      && state.scenes.some((scene) => String(scene.lyrics || scene.story_beat || scene.image_prompt || "").trim())
+      && state.scenes.some((scene) => String(scene.video_prompt_type || "") === "id_lora");
+  };
+
   const refreshSetupPanelSummaries = () => {
     const cameraPreset = STORYBOARD_CAMERA_FLOW_PRESETS[state.cameraFlow] || STORYBOARD_CAMERA_FLOW_PRESETS.balanced;
-    const imageShotPreset = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[state.imageShotFlow] || STORYBOARD_IMAGE_SHOT_FLOW_PRESETS.intimate;
-    const imageAestheticPreset = storyboardImageAestheticPreset(state.imageAesthetic);
-    const performancePreset = storyboardPerformancePreset(state.performanceStyle);
-    const facialPreset = storyboardFacialPerformancePreset(state.facialPerformance);
+    const imageShotPreset = imageShotFlowPresetForMode(state.imageShotFlow);
+    const imageAestheticPreset = imageAestheticPresetForMode(state.imageAesthetic);
+    const performancePreset = performancePresetForMode(state.performanceStyle);
+    const facialPreset = facialPresetForMode(state.facialPerformance);
     sceneDefaultsPanel.setSummary(state.mode === "image_to_video_prep"
       ? `${cameraPreset.label || "Camera flow"} · camera ${storyboardSpeedValue(state.cameraMotionSpeed, 4)}/10 · character ${storyboardSpeedValue(state.characterMotionSpeed, 4)}/10 · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`
       : `${imageShotPreset.label || "Still shot flow"} · ${imageAestheticPreset.label || "Image aesthetic"} · ${performancePreset.label || "Performance style"} · ${facialPreset.label || "Facial performance"}${state.globalConsistencyPhrase ? " · consistency phrase" : ""}`);
@@ -2187,7 +2470,17 @@ function openStoryboardBuilder(payload = {}) {
     const hasBrief = Boolean(String(state.storyLayer.song_story_brief || "").trim());
     const hasArc = Boolean(String(state.storyLayer.user_story_arc || "").trim());
     const lyricStrength = normalizeStoryLayer(state.storyLayer).lyric_story_strength;
-    storyLayerPanel.setSummary(`${state.storyLayer.enabled === false ? "Off" : "On"} · lyric ${lyricStrength}/10 · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
+    const idLoraPlannerVisible = shouldShowIdLoraDialoguePlanner();
+    idLoraDialoguePlanner.style.display = (idLoraPlannerVisible || hasIdLoraDialoguePlan()) ? "grid" : "none";
+    applyDialoguePlanButton.style.display = hasIdLoraDialoguePlan() && state.onApplyIdLoraDialoguePlan ? "" : "none";
+    createStoryArcButton.textContent = isIdLoraMode ? "Create Story Premise" : "Create User Story Arc";
+    createStoryBriefButton.textContent = isIdLoraMode ? "Create Short Film Brief" : "Create Story Brief";
+    createMissingBeatsButton.textContent = isIdLoraMode ? "Create Missing Scene Beats" : "Create Missing Scene Beats";
+    replaceBeatsButton.textContent = isIdLoraMode ? "Replace All Scene Beats" : "Replace All Scene Beats";
+    detectSectionsButton.style.display = isIdLoraMode ? "none" : "";
+    storyLayerPanel.setSummary(isIdLoraMode
+      ? `${state.storyLayer.enabled === false ? "Off" : "On"} · ID-LoRA dialogue story · ${beatCount}/${state.scenes.length} beats${hasBrief ? " · brief" : ""}${hasArc ? " · premise" : ""}${idLoraPlannerVisible ? " · starter scenes" : ""}`
+      : `${state.storyLayer.enabled === false ? "Off" : "On"} · lyric ${lyricStrength}/10 · ${beatCount}/${state.scenes.length} beats · ${sectionCount}/${state.scenes.length} sections${hasBrief ? " · brief" : ""}${hasArc ? " · user arc" : ""}`);
   };
 
   const refreshCameraFlowInfo = () => {
@@ -2206,7 +2499,7 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const refreshImageShotInfo = () => {
-    const preset = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[state.imageShotFlow] || STORYBOARD_IMAGE_SHOT_FLOW_PRESETS.intimate;
+    const preset = imageShotFlowPresetForMode(state.imageShotFlow);
     const count = preset.sequence?.length || 0;
     imageShotInfo.textContent = state.imageShotFlow === "off"
       ? preset.description
@@ -2215,7 +2508,7 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const refreshImageAestheticInfo = () => {
-    const preset = storyboardImageAestheticPreset(state.imageAesthetic);
+    const preset = imageAestheticPresetForMode(state.imageAesthetic);
     imageAestheticInfo.textContent = `${preset.description} Used as still-image aesthetic guidance for Image Prep.`;
     refreshSetupPanelSummaries();
   };
@@ -2228,9 +2521,9 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const refreshPerformanceInfo = () => {
-    const preset = storyboardPerformancePreset(state.performanceStyle);
+    const preset = performancePresetForMode(state.performanceStyle);
     performanceInfo.textContent = state.performanceStyle
-      ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene performance style.`
+      ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene ${isIdLoraMode ? "acting" : "performance"} style.`
       : `${preset.description} Pick a style here to use it as the default for blank scenes.`;
     refreshSetupPanelSummaries();
   };
@@ -2242,7 +2535,7 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const refreshFacialInfo = () => {
-    const preset = storyboardFacialPerformancePreset(state.facialPerformance);
+    const preset = facialPresetForMode(state.facialPerformance);
     facialInfo.textContent = state.facialPerformance
       ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene facial performance preset.`
       : `${preset.description} Pick a preset here to use it as the default for blank scenes.`;
@@ -2460,6 +2753,81 @@ function openStoryboardBuilder(payload = {}) {
     }
   };
 
+  const planIdLoraDialogueScenesWithGemma = async () => {
+    if (!isIdLoraMode) return;
+    syncStoryLayerFromInputs();
+    const sceneCount = Math.max(1, Math.min(24, Number(idLoraDialogueSceneCount.value || 6)));
+    idLoraDialogueSceneCount.value = String(sceneCount);
+    const progress = createStoryboardProgressWindow("ID-LoRA Dialogue Scenes");
+    try {
+      progress.set(`Planning ${sceneCount} ID-LoRA dialogue scene${sceneCount === 1 ? "" : "s"} with ${promptRunnerName()}...`, 8);
+      const data = await postJson("/vrgdg/storyboard/id_lora_dialogue_scenes", {
+        ...(state.gemmaSettings || {}),
+        story_source: [userStoryArcInput.value, songStoryBriefInput.value].map((item) => String(item || "").trim()).filter(Boolean).join("\n\n"),
+        story_layer: normalizeStoryLayer(state.storyLayer),
+        reference_builder: state.referenceBuilder || {},
+        scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
+        storyboard: slimStoryboardForRequest(state),
+        scene_count: sceneCount,
+        video_prompt_type: "id_lora",
+        performance_mode: "speaking",
+        unload_after: true,
+        max_new_tokens: Math.max(2200, sceneCount * 520),
+        temperature: 0.55,
+        top_p: 0.92,
+      }, 240000);
+      const generated = Array.isArray(data.scenes) ? data.scenes : [];
+      if (!generated.length) throw new Error("Gemma returned no dialogue scenes.");
+      state.scenes = generated.map((scene, index) => {
+        const normalized = normalizeScene({ ...scene, video_prompt_type: "id_lora", performance_mode: "speaking" }, index);
+        normalized.id_lora_character_id = scene.id_lora_character_id || scene.character_id || scene.subject_id || "";
+        normalized.id_lora_location_id = scene.id_lora_location_id || scene.location_id || "";
+        return normalized;
+      });
+      state.selected.clear();
+      if (String(data.premise || "").trim() && !String(songStoryBriefInput.value || "").trim()) {
+        state.storyLayer.song_story_brief = String(data.premise || "").trim();
+        songStoryBriefInput.value = state.storyLayer.song_story_brief;
+      }
+      setMode("storyboard_prompts");
+      renderTable();
+      refreshSetupPanelSummaries();
+      progress.set(`Dialogue scene plan ready.\nCreated ${state.scenes.length} preview scene${state.scenes.length === 1 ? "" : "s"}.`, 96);
+      await saveStoryboard();
+      progress.set(`Dialogue scene plan saved for review.\nNext step will apply this plan to Video Builder.`, 100);
+      progress.close(1800);
+      createToast(`ID-LoRA dialogue plan created with ${state.scenes.length} preview scene${state.scenes.length === 1 ? "" : "s"}.`);
+    } catch (error) {
+      progress.set(`ID-LoRA dialogue planning failed:\n${String(error?.message || error)}`, 100);
+      createToast(`ID-LoRA dialogue planning failed:\n${String(error?.message || error)}`, true);
+    }
+  };
+
+  const applyIdLoraDialoguePlanToVideoBuilder = async () => {
+    if (!isIdLoraMode || !state.onApplyIdLoraDialoguePlan) return;
+    const scenes = state.scenes
+      .map((scene, index) => slimSceneForRequest(scene, index))
+      .filter((scene) => String(scene.lyrics || scene.story_beat || scene.image_prompt || "").trim());
+    if (!scenes.length) {
+      createToast("No ID-LoRA dialogue plan scenes found.", true);
+      return;
+    }
+    const confirmed = window.confirm(`Apply ${scenes.length} ID-LoRA dialogue scene${scenes.length === 1 ? "" : "s"} to Video Builder?\n\nThis will replace the blank starter timeline scene when the project is still empty. If real scenes already exist, Video Builder will ask/guard before replacing.`);
+    if (!confirmed) return;
+    try {
+      applyDialoguePlanButton.disabled = true;
+      const result = await state.onApplyIdLoraDialoguePlan({
+        story_layer: normalizeStoryLayer(state.storyLayer),
+        scenes,
+      });
+      createToast(result?.message || `Applied ${scenes.length} ID-LoRA dialogue scene${scenes.length === 1 ? "" : "s"} to Video Builder.`);
+    } catch (error) {
+      createToast(`Apply Dialogue Plan failed:\n${String(error?.message || error)}`, true);
+    } finally {
+      applyDialoguePlanButton.disabled = false;
+    }
+  };
+
   const applyCameraFlow = ({ overwrite = false } = {}) => {
     if (state.mode !== "image_to_video_prep") {
       createToast("Auto camera flow is only available in Video Prep.");
@@ -2507,7 +2875,8 @@ function openStoryboardBuilder(payload = {}) {
     }
     let changed = 0;
     state.scenes.forEach((scene, index) => {
-      const shot = storyboardImageShotFlowEntry(profileKey, index);
+      const sequence = imageShotFlowPresetForMode(profileKey).sequence || [];
+      const shot = sequence[index % sequence.length] || "";
       if (!shot) return;
       if (!overwrite && String(scene.shot_type || "").trim()) return;
       scene.shot_type = shot;
@@ -2526,7 +2895,7 @@ function openStoryboardBuilder(payload = {}) {
       createToast("Image aesthetic is only available in Image Prep.");
       return;
     }
-    const preset = storyboardImageAestheticPreset(state.imageAesthetic);
+    const preset = imageAestheticPresetForMode(state.imageAesthetic);
     const value = String(preset.description || "").trim();
     if (!value) {
       createToast("Choose an image aesthetic first.");
@@ -2551,7 +2920,7 @@ function openStoryboardBuilder(payload = {}) {
   const applyPerformanceStyle = ({ overwrite = false } = {}) => {
     const value = String(state.performanceStyle || "").trim();
     if (!value) {
-      createToast("Choose a global performance style first.");
+      createToast(isIdLoraMode ? "Choose a global acting style first." : "Choose a global performance style first.");
       return;
     }
     let changed = 0;
@@ -2562,9 +2931,9 @@ function openStoryboardBuilder(payload = {}) {
     });
     renderTable();
     if (overwrite) {
-      createToast(changed ? `Performance style replaced ${changed} scene${changed === 1 ? "" : "s"}.` : "No performance style fields were changed.");
+      createToast(changed ? `${isIdLoraMode ? "Acting" : "Performance"} style replaced ${changed} scene${changed === 1 ? "" : "s"}.` : `No ${isIdLoraMode ? "acting" : "performance"} style fields were changed.`);
     } else {
-      createToast(changed ? `Performance style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : "No blank performance style fields needed filling.");
+      createToast(changed ? `${isIdLoraMode ? "Acting" : "Performance"} style filled ${changed} blank scene${changed === 1 ? "" : "s"}.` : `No blank ${isIdLoraMode ? "acting" : "performance"} style fields needed filling.`);
     }
   };
 
@@ -2701,12 +3070,16 @@ function openStoryboardBuilder(payload = {}) {
   }
 
   const videoPromptTypeLabel = (type) => {
+    if (type === "id_lora") return "ID-LoRA I2V";
     if (type === "t2v") return "T2V";
     if (type === "rtv") return "RTV";
     return "I2V";
   };
 
   const videoPromptTypeHint = (type) => {
+    if (type === "id_lora") {
+      return "ID-LoRA uses a scene image plus per-scene dialogue and a character voice sample from the ID-LoRA Ref Builder.";
+    }
     if (type === "t2v") {
       return "T2V has no first frame, so choose an opening shot and describe the motion clearly.";
     }
@@ -2889,8 +3262,8 @@ function openStoryboardBuilder(payload = {}) {
     const characterMotionValue = scene.character_motion || characterMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
     const characterMotionPreset = makeGroupedSelect(CHARACTER_MOTION_GROUPS, characterMotionValue);
     const customCharacterMotion = makeInput(scene.character_motion || "", "Custom character motion");
-    const performanceStyle = makeSelect(PERFORMANCE_STYLE_PRESETS, scene.performance_style || "");
-    const facialPerformance = makeSelect(FACIAL_PERFORMANCE_PRESETS, scene.facial_performance || "");
+    const performanceStyle = makeSelect(performanceStylePresets, scene.performance_style || "");
+    const facialPerformance = makeSelect(facialPerformancePresets, scene.facial_performance || "");
     const facialPerformanceCustom = makeTextarea(scene.facial_performance_custom || "", "Optional custom facial expression/movement text for this scene...", 3);
     const includeMicLabel = document.createElement("label");
     includeMicLabel.style.cssText = "display:flex;align-items:center;gap:8px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:9px 10px;font-size:12px;font-weight:900;";
@@ -2906,6 +3279,7 @@ function openStoryboardBuilder(payload = {}) {
     noCharacterLabel.append(noCharacterInput, document.createTextNode("No character present"));
     const videoPromptType = makeSelect([
       { value: "i2v", label: "Image to Video" },
+      { value: "id_lora", label: "ID-LoRA I2V" },
       { value: "t2v", label: "Text to Video" },
       { value: "rtv", label: "Reference to Video" },
       { value: "ingredients", label: "Ingredients to Video" },
@@ -3530,17 +3904,20 @@ function openStoryboardBuilder(payload = {}) {
         state.cameraFlow = saved.camera_flow;
         cameraFlowSelect.value = state.cameraFlow;
       }
-      if (saved.image_shot_flow && STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[saved.image_shot_flow]) {
+      if (saved.image_shot_flow && imageShotFlowPresets[saved.image_shot_flow]) {
         state.imageShotFlow = saved.image_shot_flow;
         imageShotSelect.value = state.imageShotFlow;
       }
       state.imageAesthetic = String(saved.image_aesthetic || saved.imageAesthetic || state.imageAesthetic || "");
+      if (!imageAestheticPresets.some((preset) => preset.value === state.imageAesthetic)) state.imageAesthetic = imageAestheticPresets[0]?.value || "";
       imageAestheticSelect.value = state.imageAesthetic;
       state.globalConsistencyPhrase = String(saved.global_consistency_phrase || saved.globalConsistencyPhrase || state.globalConsistencyPhrase || "");
       consistencyInput.value = state.globalConsistencyPhrase;
       state.performanceStyle = String(saved.performance_style_default || saved.performance_style || state.performanceStyle || "");
+      if (!performanceStylePresets.some((preset) => preset.value === state.performanceStyle)) state.performanceStyle = performanceStylePresets[0]?.value || "";
       performanceSelect.value = state.performanceStyle;
       state.facialPerformance = String(saved.facial_performance_default || saved.facial_performance || state.facialPerformance || "");
+      if (!facialPerformancePresets.some((preset) => preset.value === state.facialPerformance)) state.facialPerformance = facialPerformancePresets[0]?.value || "";
       state.facialPerformanceCustom = String(saved.facial_performance_custom_default || saved.facial_performance_custom || state.facialPerformanceCustom || "");
       facialSelect.value = state.facialPerformance;
       facialCustomInput.value = state.facialPerformanceCustom;
@@ -3990,13 +4367,13 @@ function openStoryboardBuilder(payload = {}) {
     notifyStoryboardDefaultsChanged();
   };
   imageShotSelect.onchange = () => {
-    state.imageShotFlow = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[imageShotSelect.value] ? imageShotSelect.value : "intimate";
+    state.imageShotFlow = imageShotFlowPresets[imageShotSelect.value] ? imageShotSelect.value : Object.keys(imageShotFlowPresets)[0] || "off";
     imageShotSelect.value = state.imageShotFlow;
     refreshImageShotInfo();
     notifyStoryboardDefaultsChanged();
   };
   imageAestheticSelect.onchange = () => {
-    state.imageAesthetic = STORYBOARD_IMAGE_AESTHETIC_PRESETS.some((preset) => preset.value === imageAestheticSelect.value) ? imageAestheticSelect.value : "";
+    state.imageAesthetic = imageAestheticPresets.some((preset) => preset.value === imageAestheticSelect.value) ? imageAestheticSelect.value : imageAestheticPresets[0]?.value || "";
     imageAestheticSelect.value = state.imageAesthetic;
     refreshImageAestheticInfo();
     notifyStoryboardDefaultsChanged();
@@ -4101,6 +4478,8 @@ function openStoryboardBuilder(payload = {}) {
   createMissingBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: false });
   replaceBeatsButton.onclick = () => createAllSceneBeatsWithGemma({ overwrite: true });
   detectSectionsButton.onclick = detectLyricSections;
+  planDialogueScenesButton.onclick = planIdLoraDialogueScenesWithGemma;
+  applyDialoguePlanButton.onclick = applyIdLoraDialoguePlanToVideoBuilder;
   keepGemmaLoadedInput.onchange = () => {
     state.gemmaSettings = {
       ...(state.gemmaSettings || {}),

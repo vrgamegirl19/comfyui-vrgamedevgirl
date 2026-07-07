@@ -4,6 +4,7 @@ import importlib
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,7 @@ _MAX_LORA_SLOTS = 20
 _NONE_LORA = "[none]"
 _REQUIRED_LTX_MSR_LORA = "licon\\LTX-2.3-Licon-MSR-V1.safetensors"
 _REQUIRED_LTX_INGREDIENTS_LORA = "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors"
+_REQUIRED_LTX_ID_LORA = "lora_weights.safetensors"
 _MIN_LTX_INGREDIENTS_FRAMES = 121
 _DEFAULT_I2V_PASS1_SIGMAS = "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 _DEFAULT_I2V_PASS2_SIGMAS = "0.909375, 0.725, 0.421875, 0.0"
@@ -162,6 +164,15 @@ def _ingredients_api_template_path():
         "Workflows",
         "UsedForUIDoNotTouch",
         "SingleIngredients2Video_ForUI_API.json",
+    )
+
+
+def _id_lora_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "LTX2.3_ID_lora_API.json",
     )
 
 
@@ -484,6 +495,28 @@ def _clean_msr_lora_name(value):
         if candidate in choices:
             return candidate
     return _clean_lora_name(text)
+
+
+def _clean_required_id_lora_name(value):
+    text = str(value or _REQUIRED_LTX_ID_LORA).strip()
+    choices = set(_lora_choices())
+    candidates = [
+        text,
+        text.replace("/", "\\"),
+        text.replace("\\", "/"),
+        _REQUIRED_LTX_ID_LORA,
+        _REQUIRED_LTX_ID_LORA.replace("\\", "/"),
+    ]
+    text_base = os.path.basename(text.replace("\\", "/"))
+    if text_base and text_base not in candidates:
+        candidates.append(text_base)
+    for candidate in candidates:
+        if candidate in choices:
+            return candidate
+    raise ValueError(
+        "Required ID-LoRA was not found in ComfyUI/models/loras. "
+        "Download AviadDahan/LTX-2.3-ID-LoRA-CelebVHQ-3K and select the LoRA file."
+    )
 
 
 def _patch_zimage_workflow(workflow, payload):
@@ -1704,6 +1737,138 @@ def _patch_ingredients_api_prompt(prompt, payload):
     return prompt, output_folder
 
 
+def _id_lora_source_image_path(payload):
+    raw_path = str(
+        payload.get("source_image_path")
+        or payload.get("image_path")
+        or payload.get("first_frame_path")
+        or payload.get("approved_image_path")
+        or ""
+    ).strip().strip('"')
+    if raw_path:
+        image_path = os.path.abspath(raw_path)
+        if not os.path.isfile(image_path):
+            raise FileNotFoundError(f"ID-LoRA image input was not found: {image_path}")
+        return image_path
+    image_name = _prepare_load_image_name(
+        "",
+        payload.get("source_image_data", "") or payload.get("image_data", ""),
+        payload.get("source_image_name", "") or payload.get("image_name", "id_lora_image.png"),
+    )
+    if image_name:
+        return os.path.join(folder_paths.get_input_directory(), image_name)
+    raise ValueError("ID-LoRA needs an image input.")
+
+
+def _id_lora_reference_audio_path(payload):
+    raw_path = str(
+        payload.get("id_reference_audio_path")
+        or payload.get("reference_audio_path")
+        or payload.get("voice_reference_audio_path")
+        or payload.get("voice_sample_path")
+        or payload.get("audio_path")
+        or ""
+    ).strip().strip('"')
+    if not raw_path:
+        raise ValueError("ID-LoRA needs a reference voice audio sample.")
+    audio_path = os.path.abspath(raw_path)
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"ID-LoRA reference voice audio was not found: {audio_path}")
+    return audio_path
+
+
+def _patch_id_lora_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    id_prompt = str(payload.get("id_lora_prompt", payload.get("i2v_prompt", payload.get("prompt", ""))) or "").strip()
+    if not id_prompt:
+        raise ValueError("ID-LoRA prompt is empty.")
+
+    image_path = _id_lora_source_image_path(payload)
+    reference_audio_path = _id_lora_reference_audio_path(payload)
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    output_folder = _scene_render_output_folder(project_folder, "id_lora_i2v_clips", payload)
+
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+    width = _int_payload(payload, "width", 1920, 64, 4096)
+    height = _int_payload(payload, "height", 1080, 64, 4096)
+    duration = _float_payload(payload, "duration", 5.0, 0.25, 120.0)
+    seed_mode = str(payload.get("seed_mode", "fixed") or "fixed").strip().lower()
+    pass1_seed = _int_payload(payload, "pass1_seed", _int_payload(payload, "seed", 1, 0, 0xFFFFFFFFFFFFFFFF), 0, 0xFFFFFFFFFFFFFFFF)
+    pass2_seed = _int_payload(payload, "pass2_seed", _int_payload(payload, "seed_2", 42, 0, 0xFFFFFFFFFFFFFFFF), 0, 0xFFFFFFFFFFFFFFFF)
+    if seed_mode in {"random", "randomize"}:
+        pass1_seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+        pass2_seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
+
+    _patch_ltx_video_model_loader(prompt, payload)
+    _set_optional_api_input(prompt, "969", "unet_name", _clean_i2v_unet_name(payload.get("unet_name", "")))
+    _set_optional_api_input(prompt, "971", "model_name", str(payload.get("diffusion_model_name") or payload.get("model_name") or ""))
+    _set_api_input(prompt, "966", "vae_name", str(payload.get("audio_vae_name", "") or ""))
+    _set_api_input(prompt, "967", "vae_name", str(payload.get("vae_name", "") or ""))
+    _set_api_input(prompt, "968", "clip_name1", str(payload.get("clip_name1", "") or ""))
+    _set_api_input(prompt, "968", "clip_name2", str(payload.get("clip_name2", "") or ""))
+    _set_api_input(prompt, "951", "model_name", str(payload.get("upscale_model_name", "") or ""))
+
+    _set_api_input(prompt, "957", "value", id_prompt)
+    _set_api_input(prompt, "963", "image", image_path)
+    _set_api_input(prompt, "963", "custom_width", 0)
+    _set_api_input(prompt, "963", "custom_height", 0)
+    _set_api_input(prompt, "964", "audio_file", reference_audio_path)
+    _set_api_input(prompt, "964", "seek_seconds", _float_payload(payload, "reference_audio_seek_seconds", 0.0, 0.0, 36000.0))
+    _set_api_input(prompt, "964", "duration", _float_payload(payload, "reference_audio_duration", 0.0, 0.0, 36000.0))
+
+    _set_api_input(prompt, "937", "value", width)
+    _set_api_input(prompt, "949", "value", height)
+    _set_api_input(prompt, "945", "value", duration)
+    _set_api_input(prompt, "946", "value", fps)
+    _set_api_input(prompt, "939", "longer_edge", width)
+
+    _set_api_input(prompt, "954", "identity_guidance_scale", _float_payload(payload, "identity_guidance_scale", 3.0, 0.0, 20.0))
+    _set_api_input(prompt, "954", "start_percent", 0.0)
+    _set_api_input(prompt, "954", "end_percent", 1.0)
+
+    _set_api_input(prompt, "924", "sampler_name", str(payload.get("pass1_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
+    _set_api_input(prompt, "929", "sigmas", _normalize_sigma_list_text(payload.get("pass1_sigmas"), _DEFAULT_I2V_PASS1_SIGMAS))
+    _set_api_input(prompt, "915", "noise_seed", pass1_seed)
+    _set_api_input(prompt, "936", "strength", _float_payload(payload, "pass1_inplace_strength", 0.7, 0.0, 1.0))
+    _set_api_input(prompt, "936", "bypass", _bool_payload(payload, "pass1_inplace_bypass", False))
+    _set_api_input(prompt, "917", "sampler_name", str(payload.get("pass2_sampler_name") or "euler_ancestral").strip() or "euler_ancestral")
+    _set_api_input(prompt, "918", "sigmas", _normalize_sigma_list_text(payload.get("pass2_sigmas"), _DEFAULT_I2V_PASS2_SIGMAS))
+    _set_api_input(prompt, "914", "noise_seed", pass2_seed)
+    _set_api_input(prompt, "923", "strength", _float_payload(payload, "pass2_inplace_strength", 1.0, 0.0, 1.0))
+    _set_api_input(prompt, "923", "bypass", _bool_payload(payload, "pass2_inplace_bypass", False))
+
+    required_lora = _clean_required_id_lora_name(payload.get("id_lora_name") or payload.get("required_id_lora_name"))
+    use_user_loras = _bool_payload(payload, "use_custom_loras", False)
+    user_lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS - 1)
+    total_lora_count = 1 + (user_lora_count if use_user_loras else 0)
+    _set_api_input(prompt, "972", "use_custom_loras", True)
+    _set_api_input(prompt, "972", "lora_count", total_lora_count)
+    _set_api_input(prompt, "972", "lora_1", required_lora)
+    _set_api_input(prompt, "972", "first_pass_strength_1", _float_payload(payload, "id_lora_first_pass_strength", 1.0))
+    _set_api_input(prompt, "972", "second_pass_strength_1", _float_payload(payload, "id_lora_second_pass_strength", 1.0))
+    for slot in range(2, _MAX_LORA_SLOTS + 1):
+        user_slot = slot - 1
+        if use_user_loras and user_slot <= user_lora_count:
+            legacy_strength = _float_payload(payload, f"strength_{user_slot}", 1.0)
+            lora_name = _clean_lora_name(payload.get(f"lora_{user_slot}", _NONE_LORA))
+            first_pass_strength = _float_payload(payload, f"first_pass_strength_{user_slot}", legacy_strength)
+            second_pass_strength = _float_payload(payload, f"second_pass_strength_{user_slot}", legacy_strength)
+        else:
+            lora_name = _NONE_LORA
+            first_pass_strength = 1.0
+            second_pass_strength = 1.0
+        _set_api_input(prompt, "972", f"lora_{slot}", lora_name)
+        _set_api_input(prompt, "972", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "972", f"second_pass_strength_{slot}", second_pass_strength)
+
+    _set_api_input(prompt, "958", "filename_prefix", os.path.join(output_folder, "id_lora_i2v"))
+    _set_api_input(prompt, "958", "frame_rate", fps)
+    _set_api_input(prompt, "958", "crf", _int_payload(payload, "crf", 19, 0, 51))
+    return prompt, output_folder
+
+
 def _get_comfy_node_mappings():
     comfy_nodes = sys.modules.get("nodes")
     if comfy_nodes is None or not hasattr(comfy_nodes, "NODE_CLASS_MAPPINGS"):
@@ -2043,6 +2208,16 @@ def _build_rtv_api_prompt(payload):
 def _build_ingredients_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_ingredients_api_template_path())
     patched_prompt, output_folder = _patch_ingredients_api_prompt(prompt, payload)
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": patched_prompt,
+    }
+
+
+def _build_id_lora_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_id_lora_api_template_path())
+    patched_prompt, output_folder = _patch_id_lora_api_prompt(prompt, payload)
     return {
         "workflow_path": workflow_path,
         "output_folder": output_folder,
@@ -2564,6 +2739,64 @@ def _collect_scene_video(payload):
     }
 
 
+def _trim_scene_video(payload):
+    source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"Scene video was not found: {source_path}")
+    if os.path.splitext(source_path)[1].lower() not in {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}:
+        raise ValueError(f"Scene media is not a supported video file: {source_path}")
+    project_folder, target_dir = _safe_project_subfolder(payload.get("project_folder", ""), "rendered_scene_videos")
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+    start = max(0.0, float(payload.get("start", 0) or 0))
+    duration = max(0.05, float(payload.get("duration", 0) or 0))
+    label = re.sub(r"[^A-Za-z0-9_-]+", "_", str(payload.get("label", "trim") or "trim").strip().lower()).strip("_") or "trim"
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}.mp4")
+    index = 2
+    while os.path.exists(target_path):
+        target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}_{index:02d}.mp4")
+        index += 1
+
+    ffmpeg_path = _find_ffmpeg_path()
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-ss",
+        f"{start:.6f}",
+        "-i",
+        source_path,
+        "-t",
+        f"{duration:.6f}",
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-preset",
+        "veryfast",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        target_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0 or not os.path.isfile(target_path):
+        raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to trim scene video.").strip())
+    thumbnail_path = _create_scene_video_thumbnail(target_path)
+    return {
+        "video_path": target_path,
+        "thumbnail_path": thumbnail_path,
+        "video_folder": target_dir,
+        "source_path": source_path,
+        "start": start,
+        "duration": duration,
+    }
+
+
 def _find_scene_video_output(payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder or not os.path.isdir(project_folder):
@@ -2575,6 +2808,8 @@ def _find_scene_video_output(payload):
         prefixes = ("text_to_video_clips", "text_to_video_clips_")
     elif mode == "ingredients":
         prefixes = ("ingredients_to_video_clips", "ingredients_to_video_clips_")
+    elif mode == "id_lora":
+        prefixes = ("id_lora_i2v_clips", "id_lora_i2v_clips_")
     else:
         prefixes = ("image_to_video_clips", "image_to_video_clips_")
 
@@ -2657,6 +2892,7 @@ def _stitch_scene_videos(payload):
     preview_audio_duration = max(0.0, float(payload.get("audio_duration", 0) or 0))
     target_width = _int_payload(payload, "width", 0, 0, 8192)
     target_height = _int_payload(payload, "height", 0, 0, 8192)
+    use_embedded_scene_audio = bool(payload.get("use_embedded_scene_audio"))
 
     scene_paths = []
     for index, raw_path in enumerate(raw_paths, start=1):
@@ -2691,6 +2927,10 @@ def _stitch_scene_videos(payload):
                 raise FileNotFoundError(f"Scene {index} audio was not found: {path}")
             scene_audio_paths.append(path)
             scene_audio_items.append({"path": path, "start": 0.0, "duration": 0.0})
+    elif use_embedded_scene_audio:
+        for path in scene_paths:
+            scene_audio_paths.append(path)
+            scene_audio_items.append({"path": path, "start": 0.0, "duration": 0.0, "embedded": True})
     elif not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio file was not found: {audio_path}")
 
@@ -2825,7 +3065,7 @@ def _stitch_scene_videos(payload):
             for index, item in enumerate(scene_audio_items, start=1):
                 path = item["path"]
                 duration = float(item.get("duration", 0) or 0)
-                if item.get("start", 0) or duration:
+                if item.get("embedded") or item.get("start", 0) or duration:
                     part_path = os.path.join(target_dir, f"_temp_scene_audio_{index:04d}.m4a")
                     trim_cmd = [
                         ffmpeg_path,
@@ -2931,6 +3171,7 @@ def _stitch_scene_videos(payload):
         "scene_count": len(scene_paths),
         "insert_count": len(insert_items),
         "used_scene_audio": bool(scene_audio_paths),
+        "used_embedded_scene_audio": bool(use_embedded_scene_audio and scene_audio_paths),
         "normalized_canvas": normalized_canvas,
         "output_width": target_width,
         "output_height": target_height,
@@ -3083,6 +3324,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
 
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_id_lora_prompt")
+    async def vrgdg_workflow_runner_build_id_lora_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_id_lora_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
     @server_instance.routes.post("/vrgdg/workflow_runner/build_flux_klein_prompt")
     async def vrgdg_workflow_runner_build_flux_klein_prompt(request):
         try:
@@ -3171,6 +3424,21 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _collect_scene_video(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/trim_scene_video")
+    async def vrgdg_workflow_runner_trim_scene_video(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _trim_scene_video(payload)
+        except subprocess.CalledProcessError as exc:
+            error = exc.stderr or exc.stdout or str(exc)
+            return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

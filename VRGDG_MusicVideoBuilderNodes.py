@@ -63,6 +63,25 @@ Rules:
 - Do not mention source prompts, notes, lyrics, segments, JSON, or instructions.
 - Do not include markdown, labels, quotes, or explanations."""
 
+_ID_LORA_INSTRUCTIONS = """Create one short-film ID-LoRA prompt for LTX 2.3 ID-LoRA.
+
+Use the user's scene concept, story context, mapped character/location notes, and motion notes to write a compact in-context video script. The workflow receives a reference image and a reference voice sample separately, so the prompt should describe the visible person, action, camera, and spoken vocal content without mentioning files, inputs, samples, LoRAs, or cloning.
+
+Output exactly three labeled sections:
+
+[VISUAL]: One cinematic paragraph describing the visible subject identity, setting, action, facial expression, camera movement, lighting, and environment motion.
+[SPEECH]: One or two short spoken lines for the character to say, or a concise narration line if the scene calls for narration. This section is required. If user notes include an exact required [SPEECH] line, copy that line into this section. If no words are provided, write natural short dialogue that fits the scene.
+[SOUNDS]: Brief non-speech sound cues such as room tone, footsteps, ambience, music bed, or silence.
+
+Rules:
+- Keep the whole prompt short enough for a single 3-8 second shot.
+- Preserve the subject, location, mood, and story intent from the user input.
+- Do not add unrelated characters, captions, subtitles, text overlays, credits, or UI text.
+- Do not mention reference images, voice samples, cloning, ID-LoRA, LoRA files, workflow nodes, source prompts, segments, JSON, or instructions.
+- Do not output markdown fences, bullets, explanations, or extra labels.
+- Never omit [SPEECH] or [SOUNDS].
+- The final answer must contain only [VISUAL], [SPEECH], and [SOUNDS]."""
+
 
 _FLUX_KLEIN_T2I_INSTRUCTIONS = """Create one concise Flux/Klein image prompt from the user input and any available reference context or image ingredients.
 
@@ -482,6 +501,14 @@ def _open_tk_picker(kind):
                 title="Choose SRT file",
                 filetypes=[("SRT files", "*.srt"), ("All files", "*.*")],
             )
+        elif kind == "video":
+            path = filedialog.askopenfilename(
+                title="Choose video file",
+                filetypes=[
+                    ("Video files", "*.mp4 *.mov *.mkv *.webm *.avi"),
+                    ("All files", "*.*"),
+                ],
+            )
         elif kind == "project_folder":
             path = filedialog.askdirectory(title="Choose project folder")
         else:
@@ -514,6 +541,14 @@ Add-Type -AssemblyName System.Windows.Forms
 $dialog = New-Object System.Windows.Forms.OpenFileDialog
 $dialog.Title = 'Choose image file'
 $dialog.Filter = 'Image files (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp|All files (*.*)|*.*'
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.FileName) }
+"""
+    elif kind == "video":
+        script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = 'Choose video file'
+$dialog.Filter = 'Video files (*.mp4;*.mov;*.mkv;*.webm;*.avi)|*.mp4;*.mov;*.mkv;*.webm;*.avi|All files (*.*)|*.*'
 if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Write($dialog.FileName) }
 """
     elif kind == "project_folder":
@@ -702,6 +737,7 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
     "flux_klein_t2i": _FLUX_KLEIN_T2I_INSTRUCTIONS,
     "flow_gpt_t2i": _FLOW_GPT_T2I_INSTRUCTIONS,
     "ernie_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
+    "id_lora": _ID_LORA_INSTRUCTIONS,
     "ingredients": _T2V_INSTRUCTIONS,
     "i2v": _I2V_INSTRUCTIONS,
     "krea2_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
@@ -715,6 +751,7 @@ _BUILDER_INSTRUCTION_LABELS = {
     "flux_klein_t2i": "Flux/Klein Text to Image",
     "flow_gpt_t2i": "Flow/GPT Text to Image",
     "ernie_t2i": "Ernie Text to Image",
+    "id_lora": "ID-LoRA I2V",
     "ingredients": "Ingredients to Video",
     "i2v": "Image to Video",
     "krea2_t2i": "Krea 2 Text to Image",
@@ -1731,15 +1768,22 @@ def _repair_builder_json_like_text(text):
     repaired = repaired.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
     repaired = re.sub(r"//.*?$", "", repaired, flags=re.MULTILINE)
     repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    json_keys = (
+        "locations|scene_map|name|description|id|label|prompt|runner|used_model|"
+        "title|premise|scenes|character_id|subject_id|speaker_id|location_id|"
+        "dialogue|line|lyrics|story_beat|beat|visual_direction|summary|image_prompt|visual_prompt|"
+        "shot_type|camera_motion|facial_performance|facial_performance_custom|emotion|delivery|"
+        "motion_summary|video_notes|setting|location_name|character_name|speaker"
+    )
     repaired = re.sub(
-        r'([{\[,]\s*)(locations|scene_map|name|description|id|label|prompt|runner|used_model)\s*:',
+        rf'([{{\[,]\s*)({json_keys})\s*:',
         r'\1"\2":',
         repaired,
         flags=re.IGNORECASE,
     )
     repaired = re.sub(r'([{\[,]\s*)(Scene\s*\d+|Scene\d+)\s*:', lambda m: f'{m.group(1)}"{m.group(2).replace(" ", "")}":', repaired, flags=re.IGNORECASE)
     repaired = re.sub(
-        r'(^\s*)(locations|scene_map|name|description|id|label|prompt|runner|used_model)\s*:',
+        rf'(^\s*)({json_keys})\s*:',
         r'\1"\2":',
         repaired,
         flags=re.IGNORECASE | re.MULTILINE,
@@ -2673,6 +2717,43 @@ def _looks_like_bad_reference_description(text):
     return False
 
 
+def _looks_like_id_lora_script_prompt(text):
+    sample = str(text or "").strip().lower()
+    return all(label in sample for label in ("[visual]", "[speech]", "[sounds]"))
+
+
+def _normalized_prompt_similarity_text(text):
+    return " ".join(re.findall(r"[\w']+", str(text or "").lower(), flags=re.UNICODE))
+
+
+def _looks_like_source_lyric_echo(text, payload):
+    source = str((payload or {}).get("lyric_text") or (payload or {}).get("lyrics") or "").strip()
+    candidate = str(text or "").strip()
+    if not source or not candidate:
+        return False
+    source_norm = _normalized_prompt_similarity_text(source)
+    candidate_norm = _normalized_prompt_similarity_text(candidate)
+    if not source_norm or not candidate_norm:
+        return False
+    if candidate_norm == source_norm:
+        return True
+    source_tokens = source_norm.split()
+    candidate_tokens = candidate_norm.split()
+    if len(source_tokens) < 4 or len(candidate_tokens) < 4:
+        return False
+    source_set = set(source_tokens)
+    candidate_set = set(candidate_tokens)
+    overlap = len(source_set & candidate_set) / float(max(1, len(candidate_set)))
+    length_ratio = min(len(source_tokens), len(candidate_tokens)) / float(max(len(source_tokens), len(candidate_tokens)))
+    visual_terms = {
+        "cinematic", "shot", "still", "frame", "portrait", "wide", "closeup", "close", "medium",
+        "camera", "lens", "lighting", "background", "foreground", "composition", "scene",
+        "environment", "location", "color", "palette", "texture", "detail", "reference",
+    }
+    has_visual_terms = bool(candidate_set & visual_terms)
+    return overlap >= 0.90 and length_ratio >= 0.75 and not has_visual_terms
+
+
 def _validate_reference_description(text, label):
     if _looks_like_bad_reference_description(text):
         raise ValueError(
@@ -2681,9 +2762,14 @@ def _validate_reference_description(text, label):
         )
 
 
-def _validate_builder_gemma_prompt(text, label):
+def _validate_builder_gemma_prompt(text, label, payload=None):
     if not str(text or "").strip():
         raise ValueError(f"Gemma returned an empty {label} prompt.")
+    if _looks_like_source_lyric_echo(text, payload):
+        raise ValueError(
+            f"Gemma returned the scene lyrics instead of a usable {label} image prompt. "
+            "Try again, add a short visual scene beat, or reduce Lyric Story Strength."
+        )
     if _looks_like_gemma_repeat_failure(text):
         hint = "Try again or shorten the notes."
         if str(label or "").lower() != "flux/klein":
@@ -2692,7 +2778,8 @@ def _validate_builder_gemma_prompt(text, label):
             f"Gemma returned repeated/thought text for the {label} prompt. "
             f"{hint}"
         )
-    if _looks_like_unfilled_prompt_template(text):
+    label_key = str(label or "").strip().lower().replace(" ", "_")
+    if _looks_like_unfilled_prompt_template(text) and not (label_key in {"id-lora", "id_lora", "id-lora_i2v"} and _looks_like_id_lora_script_prompt(text)):
         raise ValueError(
             f"Gemma returned an unfilled template for the {label} prompt. "
             "Try again or add more specific scene/motion notes."
@@ -3037,7 +3124,11 @@ def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95
 
 def _repair_builder_gemma_prompt(payload, text, label):
     original = str(text or "").strip()
-    needs_repair = _looks_like_gemma_repeat_failure(original) or _looks_like_unfilled_prompt_template(original)
+    label_key = str(label or "").strip().lower().replace(" ", "_")
+    if label_key in {"id-lora", "id_lora", "id-lora_i2v"} and _looks_like_id_lora_script_prompt(original):
+        return original
+    lyric_echo = _looks_like_source_lyric_echo(original, payload)
+    needs_repair = _looks_like_gemma_repeat_failure(original) or _looks_like_unfilled_prompt_template(original) or lyric_echo
     if not original or not needs_repair:
         return original
 
@@ -3071,15 +3162,20 @@ def _repair_builder_gemma_prompt(payload, text, label):
             f"Broken video prompt:\n{broken}"
         )
     else:
+        user_notes = str(repair_payload.get("user_notes") or "").strip()[:3000]
+        lyric_text = str(repair_payload.get("lyric_text") or repair_payload.get("lyrics") or "").strip()[:1200]
         instruction = (
             f"Clean this broken {label_text} image prompt into one usable final prompt.\n\n"
-            "The broken text may contain internal thoughts, analysis, channel tags, repeated tokens, markdown, unfilled square-bracket placeholders, or junk.\n"
+            "The broken text may contain internal thoughts, analysis, channel tags, repeated tokens, markdown, unfilled square-bracket placeholders, junk, or the raw scene lyric copied by mistake.\n"
             "Do not continue the broken text. Do not explain the repair. Do not mention that it was repaired.\n"
             "Return exactly one normal image prompt paragraph.\n"
             "Remove all thought, analysis, channel, role, markdown, labels, square brackets, placeholder words, and repeated junk.\n"
+            "If the broken text is just the scene lyric, do not quote the lyric; create a visual still-image prompt from the user notes and lyric mood.\n"
             "Replace placeholders like [Subject], [setting/environment], [time/weather], and [Camera Motion] with concrete details inferred from the broken text and user notes.\n"
             "Keep only usable visual image-generation content. If usable details are scarce, create a concise cinematic prompt from the usable fragments.\n"
             "Keep it under 120 words.\n\n"
+            f"User notes/context:\n{user_notes or '[none provided]'}\n\n"
+            f"Scene lyric, for mood only:\n{lyric_text or '[none provided]'}\n\n"
             f"Broken text:\n{broken}"
         )
     try:
@@ -3100,7 +3196,7 @@ def _repair_builder_gemma_prompt(payload, text, label):
 
 def _repair_and_validate_builder_gemma_prompt(payload, text, label):
     repaired = _repair_builder_gemma_prompt(payload, text, label)
-    _validate_builder_gemma_prompt(repaired, label)
+    _validate_builder_gemma_prompt(repaired, label, payload)
     return repaired
 
 
@@ -3182,12 +3278,12 @@ def _generate_builder_agent_reply(payload):
         "- {\"type\":\"set_video_notes\",\"scene_number\":2,\"text\":\"...\"}\n"
         "- {\"type\":\"set_scene_plan\",\"scene_number\":2,\"director_note\":\"...\",\"scene_notes\":\"...\",\"flux_notes\":\"...\",\"nb_notes\":\"...\",\"video_notes\":\"...\"}\n"
         "- {\"type\":\"set_image_model_mode\",\"image_mode\":\"zimage|flux_klein|nano_banana|ernie_image\"}\n"
-        "- {\"type\":\"set_video_model_mode\",\"video_mode\":\"i2v|t2v\"}\n"
+        "- {\"type\":\"set_video_model_mode\",\"video_mode\":\"i2v|id_lora|t2v|rtv|ingredients\"}\n"
         "- {\"type\":\"request_reference_images\",\"scene_id\":\"...\",\"image_mode\":\"nano_banana|flux_klein\"}\n"
         "- {\"type\":\"generate_image_prompt_for_current_mode\",\"scene_id\":\"...\",\"image_mode\":\"optional zimage|flux_klein|nano_banana|ernie_image\"}\n"
         "- {\"type\":\"run_image_for_current_mode\",\"scene_id\":\"...\",\"image_mode\":\"optional zimage|flux_klein|nano_banana|ernie_image\"}\n"
-        "- {\"type\":\"generate_video_prompt_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|t2v\"}\n\n"
-        "- {\"type\":\"run_video_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|t2v\"}\n\n"
+        "- {\"type\":\"generate_video_prompt_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|id_lora|t2v|rtv|ingredients\"}\n\n"
+        "- {\"type\":\"run_video_for_current_mode\",\"scene_id\":\"...\",\"video_mode\":\"optional i2v|id_lora|t2v|rtv|ingredients\"}\n\n"
         "Use note actions to capture the creative direction you discuss with the user. Use set_scene_plan when planning character assignments, story beats, scene concepts, and motion notes for one or more scenes. Keep each set_scene_plan field short and direct.\n"
         "Use create_concept_prompts when the user asks to create, generate, build, or update concept prompts from director notes, scene notes, timeline notes, story idea, or theme/style. This writes generated concept prompts into scene notes in batches.\n"
         "Use create_motion_notes when the user asks to create, generate, build, or update I2V/T2V motion notes from concept prompts, director notes, timeline notes, story idea, or theme/style. This writes generated motion notes into the I2V motion notes fields/file in batches.\n"
@@ -3263,7 +3359,7 @@ def _generate_builder_agent_reply(payload):
         "run_video_for_current_mode",
     }
     allowed_image_modes = {"zimage", "flux_klein", "nano_banana", "ernie_image"}
-    allowed_video_modes = {"i2v", "t2v"}
+    allowed_video_modes = {"i2v", "id_lora", "t2v", "rtv", "ingredients"}
     max_actions = 60 if agent_purpose == "story_builder" else 12
     plan_fields = {"director_note", "scene_notes", "flux_notes", "nb_notes", "video_notes"}
     for action in actions[:max_actions]:
@@ -4722,13 +4818,21 @@ def _generate_builder_t2v_prompt(payload):
         else:
             raise ValueError("Create or paste scene notes, mapped references, motion notes, or a T2I/concept prompt first.")
 
-    image_guidance = (
-        "Use the provided reference image only to guide pose, framing, composition, mood, visible styling, or other user-requested visual details. "
-        "Do not describe it as a reference image in the final prompt.\n\n"
-        if has_image_reference else ""
-    )
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
+    prompt_label = "ID-LoRA I2V" if instruction_key == "id_lora" else "T2V"
+    if has_image_reference and instruction_key == "id_lora":
+        image_guidance = (
+            "Use the provided image as the primary visual truth for the [VISUAL] section. "
+            "Describe the visible subject, framing, setting, clothing/style, mood, and camera-ready action from the image, then adapt motion to the scene notes. "
+            "Do not say 'reference image' in the final script.\n\n"
+        )
+    else:
+        image_guidance = (
+            "Use the provided reference image only to guide pose, framing, composition, mood, visible styling, or other user-requested visual details. "
+            "Do not describe it as a reference image in the final prompt.\n\n"
+            if has_image_reference else ""
+        )
     prompt = (
         f"{t2v_instructions}\n\n"
         f"{image_guidance}"
@@ -4794,10 +4898,10 @@ def _generate_builder_t2v_prompt(payload):
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
-                label="T2V Gemma",
+                label=f"{prompt_label} Gemma",
             )
         text = _clean_gemma_prompt_text(text)
-        text = _repair_and_validate_builder_gemma_prompt(payload, text, "T2V")
+        text = _repair_and_validate_builder_gemma_prompt(payload, text, prompt_label)
         return {
             "prompt": text,
             "used_model": run_info.get("used_model", model_path if has_image_reference else ""),
@@ -7891,6 +7995,104 @@ def _ensure_builder_scene_video_thumbnail(video_path):
     return ""
 
 
+def _ffprobe_path_for_builder(ffmpeg_path):
+    if not ffmpeg_path or ffmpeg_path == "ffmpeg":
+        return "ffprobe"
+    folder = os.path.dirname(os.path.abspath(ffmpeg_path))
+    exe_name = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+    candidate = os.path.join(folder, exe_name)
+    return candidate if os.path.isfile(candidate) else "ffprobe"
+
+
+def _probe_video_duration_seconds(video_path):
+    video_path = os.path.abspath(str(video_path or "").strip().strip('"'))
+    if not os.path.isfile(video_path):
+        return 0.0
+    try:
+        ffprobe_path = _ffprobe_path_for_builder(_find_ffmpeg_path())
+        result = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                video_path,
+            ],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if result.returncode == 0:
+            return max(0.0, float(str(result.stdout or "0").strip() or 0))
+    except Exception as exc:
+        print(f"[VRGDG Music Builder] Could not probe video duration for '{video_path}': {exc}")
+    return 0.0
+
+
+def _restore_scene_video(payload):
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not project_folder:
+        raise ValueError("Project folder is empty.")
+    source_path = os.path.abspath(str(payload.get("source_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(source_path):
+        raise FileNotFoundError(f"Video file was not found: {source_path}")
+    if os.path.splitext(source_path)[1].lower() not in {".mp4", ".mov", ".mkv", ".webm", ".avi"}:
+        raise ValueError("Choose a supported video file: .mp4, .mov, .mkv, .webm, or .avi")
+    scene_number = max(1, int(payload.get("scene_number") or 1))
+    duration = _probe_video_duration_seconds(source_path)
+    expected_duration = max(0.0, float(payload.get("expected_duration") or 0))
+    tolerance = max(0.1, float(payload.get("duration_tolerance") or 0.5))
+    duration_delta = abs(duration - expected_duration) if duration and expected_duration else 0.0
+    if duration_delta > tolerance and not bool(payload.get("confirm_duration_mismatch")):
+        return {
+            "needs_confirmation": True,
+            "source_path": source_path,
+            "scene_number": scene_number,
+            "duration": duration,
+            "expected_duration": expected_duration,
+            "duration_delta": duration_delta,
+            "duration_tolerance": tolerance,
+        }
+    target_dir = os.path.join(project_folder, "rendered_scene_videos")
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, f"video_{scene_number:04d}-audio.mp4")
+    thumbnail_path = _builder_scene_video_thumbnail_path(target_path)
+    backup_path = ""
+    backup_thumbnail_path = ""
+    if os.path.isfile(target_path) and os.path.normcase(os.path.abspath(source_path)) != os.path.normcase(os.path.abspath(target_path)):
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        backup_dir = os.path.join(project_folder, "rendered_scene_videos_backup", f"scene_{scene_number:04d}")
+        os.makedirs(backup_dir, exist_ok=True)
+        backup_path = os.path.join(backup_dir, f"video_{scene_number:04d}-audio_manual_restore_{stamp}.mp4")
+        shutil.move(target_path, backup_path)
+        if os.path.isfile(thumbnail_path):
+            backup_thumbnail_path = _builder_scene_video_thumbnail_path(backup_path)
+            shutil.move(thumbnail_path, backup_thumbnail_path)
+    copied = _copy_file_if_exists(source_path, target_path)
+    if not copied:
+        raise RuntimeError("Could not copy the selected video into the project.")
+    if os.path.isfile(thumbnail_path):
+        try:
+            os.remove(thumbnail_path)
+        except OSError:
+            pass
+    created_thumbnail = _ensure_builder_scene_video_thumbnail(copied)
+    return {
+        "video_path": copied,
+        "video_folder": target_dir,
+        "thumbnail_path": created_thumbnail,
+        "scene_number": scene_number,
+        "source_path": source_path,
+        "duration": duration,
+        "backup_path": backup_path,
+        "backup_thumbnail_path": backup_thumbnail_path,
+    }
+
+
 def _scan_builder_scene_videos(project_folder):
     folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
     if not folder:
@@ -8268,6 +8470,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _scan_builder_scene_videos(payload.get("project_folder", ""))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/restore_scene_video")
+    async def vrgdg_music_builder_restore_scene_video(request):
+        try:
+            payload = await request.json()
+            result = _restore_scene_video(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

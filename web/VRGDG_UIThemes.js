@@ -201,10 +201,15 @@
     "#fca5a5": "danger",
     "#fde68a": "warning",
   };
+  const ROLE_SOURCE_COLORS = Object.entries(COLOR_ROLES).reduce((acc, [hex, role]) => {
+    if (!acc[role]) acc[role] = hex;
+    return acc;
+  }, {});
 
   let currentThemeId = safeLoadThemeId();
   let applyingTheme = false;
   const originalStyles = new WeakMap();
+  const themedStyles = new WeakMap();
   const themeRoots = new Set();
   let observer = null;
 
@@ -230,6 +235,15 @@
     return role && colors[role] ? colors[role] : hex;
   }
 
+  function originalForThemeColor(hex, colors) {
+    const normalized = String(hex || "").toLowerCase();
+    if (!colors) return hex;
+    for (const [role, color] of Object.entries(colors)) {
+      if (String(color || "").toLowerCase() === normalized) return ROLE_SOURCE_COLORS[role] || hex;
+    }
+    return hex;
+  }
+
   function normalizeRgbColor(value) {
     const match = String(value || "").match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9.]+)\s*)?\)$/i);
     if (!match) return null;
@@ -244,6 +258,13 @@
     return replacement === normalized ? match : replacement;
   }
 
+  function originalForCssColor(match, colors) {
+    const normalized = match.startsWith("#") ? match.toLowerCase() : normalizeRgbColor(match);
+    if (!normalized) return match;
+    const original = originalForThemeColor(normalized, colors);
+    return original === normalized ? match : original;
+  }
+
   function translateStyleText(styleText, colors) {
     if (!styleText || !colors) return styleText || "";
     return String(styleText)
@@ -255,27 +276,46 @@
       .replace(/rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+\s*)?\)/gi, (match) => replacementForCssColor(match, colors));
   }
 
-  function rememberOriginal(element) {
-    if (!element || isThemeControl(element) || originalStyles.has(element)) return;
-    const styleText = element.getAttribute("style") || "";
-    if (styleText) originalStyles.set(element, styleText);
+  function restoreThemeColorsToSource(styleText, colors) {
+    if (!styleText || !colors) return styleText || "";
+    return String(styleText)
+      .replace(/#[0-9a-fA-F]{3,8}\b/g, (match) => {
+        const hex = match.toLowerCase();
+        if (hex.length !== 7) return match;
+        return originalForCssColor(hex, colors);
+      })
+      .replace(/rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*[0-9.]+\s*)?\)/gi, (match) => originalForCssColor(match, colors));
+  }
+
+  function updateOriginalFromLiveStyle(element, styleText) {
+    if (!element || isThemeControl(element)) return;
+    const liveStyle = String(styleText || "");
+    if (themedStyles.get(element) !== liveStyle) {
+      const colors = THEMES[currentThemeId]?.colors;
+      originalStyles.set(element, restoreThemeColorsToSource(liveStyle, colors));
+      themedStyles.delete(element);
+    }
   }
 
   function themeElement(element, colors) {
     if (!(element instanceof HTMLElement)) return;
     if (isThemeControl(element)) return;
     const styleText = element.getAttribute("style") || "";
-    if (!styleText) return;
-    rememberOriginal(element);
-    const source = originalStyles.get(element) || styleText;
+    updateOriginalFromLiveStyle(element, styleText);
+    const source = originalStyles.has(element) ? originalStyles.get(element) : styleText;
+    if (!source) return;
     const themed = translateStyleText(source, colors);
+    themedStyles.set(element, themed);
     if (themed && themed !== styleText) element.setAttribute("style", themed);
   }
 
   function restoreElement(element) {
     if (!(element instanceof HTMLElement)) return;
     if (!originalStyles.has(element)) return;
-    element.setAttribute("style", originalStyles.get(element));
+    const source = originalStyles.get(element) || "";
+    themedStyles.delete(element);
+    if (source) element.setAttribute("style", source);
+    else element.removeAttribute("style");
   }
 
   function resetThemeMemory() {
@@ -446,7 +486,6 @@
           if (mutation.type === "attributes" && mutation.attributeName === "style") {
             const element = mutation.target;
             if (element instanceof HTMLElement && element.closest?.(`[${ROOT_ATTR}]`) && !isThemeControl(element)) {
-              rememberOriginal(element);
               themeElement(element, colors);
             }
           }
