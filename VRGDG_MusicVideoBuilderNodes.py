@@ -4776,23 +4776,43 @@ def _generate_builder_t2v_prompt(payload):
         raise ValueError("Choose a T2V Gemma model first.")
     if model_file and text_runner not in {"lm_studio", "llm_api"} and not model_file.lower().endswith(".gguf"):
         raise ValueError("The T2V model field is not a GGUF model.")
-    image = None
+    vision_images = []
     has_image_reference = False
-    if image_reference_data:
-        image = _image_from_data_url(image_reference_data).convert("RGB")
-        has_image_reference = True
-    elif image_reference_path:
-        image_path = _resolve_existing_file(image_reference_path, "T2V Gemma image reference")
-        image = Image.open(image_path).convert("RGB")
-        has_image_reference = True
+    image_references = payload.get("image_references") or []
+    if isinstance(image_references, str):
+        try:
+            image_references = json.loads(image_references)
+        except Exception:
+            image_references = [{"path": line.strip()} for line in image_references.splitlines() if line.strip()]
+    if isinstance(image_references, list):
+        for index, item in enumerate(image_references[:4], start=1):
+            if isinstance(item, str):
+                item = {"path": item}
+            if not isinstance(item, dict):
+                continue
+            try:
+                vision_images.append(_image_from_prompt_payload(item.get("path", ""), item.get("data", ""), f"T2V Gemma image reference {index}").convert("RGB"))
+            except Exception as exc:
+                raise ValueError(f"Could not load T2V Gemma image reference {index}: {exc}") from exc
+    if not vision_images:
+        if image_reference_data:
+            vision_images.append(_image_from_data_url(image_reference_data).convert("RGB"))
+        elif image_reference_path:
+            image_path = _resolve_existing_file(image_reference_path, "T2V Gemma image reference")
+            vision_images.append(Image.open(image_path).convert("RGB"))
+    has_image_reference = bool(vision_images)
     if has_image_reference and text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a T2V vision Gemma model first.")
     if has_image_reference:
         max_height = 512
-        if image.height > max_height:
-            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
-            width = max(1, int(image.width * (max_height / max(1, image.height))))
-            image = image.resize((width, max_height), resample)
+        resized_images = []
+        for image in vision_images:
+            if image.height > max_height:
+                resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+                width = max(1, int(image.width * (max_height / max(1, image.height))))
+                image = image.resize((width, max_height), resample)
+            resized_images.append(image)
+        vision_images = resized_images
 
     theme_style = _read_text_file(payload.get("theme_style_path", ""), "Theme/style file")
     story_idea = _read_text_file(payload.get("story_idea_path", ""), "Story idea file")
@@ -4820,8 +4840,18 @@ def _generate_builder_t2v_prompt(payload):
 
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
-    prompt_label = "ID-LoRA I2V" if instruction_key == "id_lora" else "T2V"
-    if has_image_reference and instruction_key == "id_lora":
+    prompt_label = "ID-LoRA I2V" if instruction_key == "id_lora" else "Reference to Video" if instruction_key == "rtv" else "T2V"
+    first_last_frame_mode = bool(payload.get("first_last_frame_mode") or payload.get("firstLastFrameMode"))
+    if has_image_reference and first_last_frame_mode:
+        image_guidance = (
+            "First Last Frame guidance:\n"
+            "- Image 1 is the opening visual state. Image 2 is the ending visual state.\n"
+            "- Use the two images as the visual truth for subject identity, wardrobe, setting, lighting, composition, pose, and camera endpoint.\n"
+            "- The final prompt must describe a believable continuous transition from the opening state to the ending state.\n"
+            "- Let the images decide the camera/character endpoints. Use motion/camera notes and speed/pacing guidance only to decide how quickly, smoothly, forcefully, or emotionally the subject and camera travel between those endpoints.\n"
+            "- Preserve the normal one-paragraph video prompt structure from the instructions. Do not mention images, frames, references, inputs, MSR, or LoRA in the final prompt.\n\n"
+        )
+    elif has_image_reference and instruction_key == "id_lora":
         image_guidance = (
             "Use the provided image as the primary visual truth for the [VISUAL] section. "
             "Describe the visible subject, framing, setting, clothing/style, mood, and camera-ready action from the image, then adapt motion to the scene notes. "
@@ -4857,13 +4887,13 @@ def _generate_builder_t2v_prompt(payload):
             text, run_info = _run_llm_api_vision(
                 payload,
                 prompt,
-                [image],
+                vision_images,
             )
         elif has_image_reference and text_runner == "lm_studio":
             text = _run_lm_studio_vision(
                 payload,
                 prompt,
-                [image],
+                vision_images,
                 temperature=temperature,
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
@@ -4884,7 +4914,7 @@ def _generate_builder_t2v_prompt(payload):
             )
             text = llm._run_gguf_vision_pipeline(
                 model=model,
-                pil_images=[image],
+                pil_images=vision_images,
                 instruction_text=prompt,
                 temperature=temperature,
                 top_p=top_p,
@@ -6951,29 +6981,38 @@ def _generate_flux_reference_zimage_prompt(payload):
     if reference_type == "subject":
         instruction = (
             "Create one text-to-image prompt for a character reference sheet.\n\n"
-            "The image must contain the same character shown three times in one image:\n"
-            "1. Left panel: close-up head and face portrait\n"
-            "2. Center panel: upper-body view from waist/chest up\n"
-            "3. Right panel: full-body standing view\n\n"
+            "The user input may be a simple subject description or a structured character-creation brief with sections such as generation mode, subject label, reference type, existing description, lyrics, song style, gender/role, reference image notes, and extra user direction. "
+            "When lyrics or song style are provided, use them to invent or refine the character's identity, wardrobe, era, mood, expression, and visual design. Do not quote lyrics or make the final prompt a lyric scene. "
+            "When an existing description or reference image notes are provided, preserve those explicit identity details and use lyrics/style only as supporting visual influence.\n\n"
+            "The image must contain the same character shown three times in one image, with clearly different camera distances:\n"
+            "1. Left panel: extreme close-up face portrait only, from top of hair to just below the chin. The face fills 80-90% of the panel. No shoulders, chest, torso, hands, or outfit details visible except maybe a tiny neckline.\n"
+            "2. Center panel: upper-body waist-up portrait, from head to waist. Face, shoulders, chest, arms, and main outfit details visible.\n"
+            "3. Right panel: full-body standing view, from head to shoes. Entire outfit, body proportions, legs, and feet visible.\n\n"
             "All three views must show the same person with consistent face, hair, outfit, colors, body type, and identity. "
             "Use a clean neutral studio background. The character should face forward or mostly forward. Keep lighting clear and even. "
-            "Do not create a cinematic scene, action pose, environment, story moment, props, text labels, captions, logos, watermarks, or multiple different characters.\n\n"
+            "Do not make the left and center panels the same crop. Do not create a cinematic scene, action pose, environment, story moment, props, text labels, captions, logos, watermarks, or multiple different characters.\n\n"
             "Use this exact output structure:\n\n"
             "A clean three-panel character reference sheet on a neutral studio background, showing the same [subject] in all panels with consistent [face/hair/body/outfit/identity details]. "
-            "Left panel: close-up head and face portrait. Center panel: upper-body waist-up view. Right panel: full-body standing view. "
+            "Left panel: extreme close-up face-only portrait, top of hair to just below chin, face fills 80-90% of the panel, no shoulders, no chest, no torso. "
+            "Center panel: upper-body waist-up portrait from head to waist, showing shoulders, chest, arms, and outfit details. "
+            "Right panel: full-body standing view from head to shoes, entire outfit and feet visible. "
+            "Each panel uses a clearly different camera distance: face-only close-up, waist-up portrait, full-body standing. "
             "Clear even lighting, front-facing pose, consistent outfit colors and body proportions, detailed character design, no text, no labels, no props, no environment.\n\n"
             "Rules:\n"
             "- Output only one polished text-to-image prompt.\n"
             "- Do not include markdown, labels, quotes, explanations, or multiple options.\n"
             "- Keep it as one single image containing three views of the same character.\n"
+            "- The left panel must be face-only, not another upper-body portrait.\n"
             "- Preserve the subject identity from the user input.\n\n"
-            f"Subject description:\n{source_text}\n\n"
+            f"Subject creation brief:\n{source_text}\n\n"
             f"Optional global style/theme:\n{style_theme or '(none)'}"
         )
     else:
         instruction = (
             "Create one text-to-image prompt for a reusable location reference image.\n\n"
             "The image must show only the physical environment/location. Do not include the main character, people, animals, readable text, captions, logos, watermarks, or story action.\n\n"
+            "Important: if the input, style/theme, or surrounding context mentions a character reference sheet, white/neutral studio background, plain backdrop, panel layout, close-up portrait, upper-body portrait, or full-body character view, treat those as character-reference-sheet artifacts only. "
+            "Do not turn those artifacts into the location. Do not create a white studio, neutral studio, seamless photo backdrop, blank room, or character-sheet background unless the user explicitly names that as the intended location.\n\n"
             "Use this exact output structure:\n\n"
             "A clear cinematic environment reference image of [location/environment], showing [layout/architecture], [important furniture/props/objects], [lighting details], [colors/materials/textures], and [atmosphere]. "
             "Wide enough framing to understand the space layout, [time of day/weather if relevant], no people, no animals, no readable text, no logos, no captions.\n\n"
@@ -6984,6 +7023,7 @@ def _generate_flux_reference_zimage_prompt(payload):
             "- Do not describe a music video action.\n"
             "- Keep it as a reusable setting/reference image.\n"
             "- Preserve the location identity from the user input.\n"
+            "- Ignore character-sheet backgrounds, panel layouts, and portrait crops when inventing the setting.\n"
             "- Use the optional style/theme only for visual mood, lighting, color, or texture.\n\n"
             f"Location description:\n{source_text}\n\n"
             f"Optional global style/theme:\n{style_theme or '(none)'}"
@@ -7044,6 +7084,21 @@ def _model_defaults_path():
     return os.path.join(defaults_folder, "model_defaults.json")
 
 
+def _scrub_model_defaults_project_sources(defaults):
+    if not isinstance(defaults, dict):
+        return {}
+    cleaned = json.loads(json.dumps(defaults))
+    for key in ("zimage_settings", "ernie_image_settings", "krea2_2pass_settings"):
+        settings = cleaned.get(key)
+        if not isinstance(settings, dict):
+            continue
+        settings["use_image_to_image"] = False
+        settings["image_to_image_path"] = ""
+        settings["image_to_image_data"] = ""
+        settings["image_to_image_name"] = ""
+    return cleaned
+
+
 def _extract_model_defaults(session):
     if not isinstance(session, dict):
         return {}
@@ -7052,7 +7107,7 @@ def _extract_model_defaults(session):
         value = session.get(key)
         if value is not None:
             defaults[key] = value
-    return defaults
+    return _scrub_model_defaults_project_sources(defaults)
 
 
 def _save_model_defaults(session):
@@ -7081,6 +7136,7 @@ def _load_model_defaults():
     defaults = payload.get("defaults")
     if not isinstance(defaults, dict):
         defaults = {}
+    defaults = _scrub_model_defaults_project_sources(defaults)
     return {
         "path": target,
         "defaults": defaults,

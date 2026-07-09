@@ -2922,13 +2922,32 @@ function openBuilder(node) {
   ltxMsrReferenceGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   ltxMsrReferenceGrid.append(makeField("Reference strength", ltxMsrReferenceStrength), makeField("Background", ltxMsrBackgroundMode));
   ltxMsrRequiredPanel.append(ltxMsrRequiredNote, ltxMsrStrengthGrid, ltxMsrReferenceGrid);
-  const rtvSceneImageAnchor = makeCheckbox("Use scene image as 2nd ref image", false);
-  rtvSceneImageAnchor.input.title = "Adds this scene's generated image as a second MSR reference alongside the character sheet. The video prompt is unchanged.";
-  const rtvSceneImageAnchorNote = document.createElement("div");
-  rtvSceneImageAnchorNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
-  const rtvSceneImageAnchorSection = makeSettingsSection("Character Anchor", [
-    rtvSceneImageAnchor.wrapper,
-    rtvSceneImageAnchorNote,
+  const rtvReferenceBehaviorSelect = makeSelect([
+    { value: "none", label: "None" },
+    { value: "character_anchor", label: "Character Anchor: use scene image as 2nd ref" },
+    { value: "first_last_frame", label: "First Last Frame: first image to end image" },
+  ], "none");
+  rtvReferenceBehaviorSelect.title = "Choose how Reference to Video should pack MSR reference images. Only one behavior can be active at a time.";
+  const rtvReferenceBehaviorNote = document.createElement("div");
+  rtvReferenceBehaviorNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
+  const firstLastFramePreviewPanel = document.createElement("div");
+  firstLastFramePreviewPanel.style.cssText = "display:none;border:1px solid #155e75;border-radius:7px;background:#071922;padding:9px;gap:8px;flex-direction:column;";
+  const firstLastFramePreviewGrid = document.createElement("div");
+  firstLastFramePreviewGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr);gap:8px;align-items:stretch;";
+  const firstLastFrameStatus = document.createElement("div");
+  firstLastFrameStatus.style.cssText = "font-size:11px;line-height:1.35;color:#bae6fd;overflow-wrap:anywhere;";
+  const createSceneEndFrameButton = makeMiniButton("Create End Frame");
+  createSceneEndFrameButton.title = "Generate or replace the active scene's First Last Frame end image using the current image model.";
+  const clearSceneEndFrameButton = makeMiniButton("Clear End Frame");
+  clearSceneEndFrameButton.title = "Remove the active scene's stored First Last Frame end image.";
+  const firstLastFrameActions = document.createElement("div");
+  firstLastFrameActions.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
+  firstLastFrameActions.append(createSceneEndFrameButton, clearSceneEndFrameButton);
+  firstLastFramePreviewPanel.append(firstLastFramePreviewGrid, firstLastFrameStatus, firstLastFrameActions);
+  const rtvSceneImageAnchorSection = makeSettingsSection("Reference Behavior", [
+    makeField("Mode", rtvReferenceBehaviorSelect),
+    rtvReferenceBehaviorNote,
+    firstLastFramePreviewPanel,
   ]);
   rtvSceneImageAnchorSection.style.display = "none";
   const ltxIngredientsRequiredPanel = document.createElement("div");
@@ -6818,6 +6837,13 @@ function openBuilder(node) {
     if (segment.use_scene_i2v_video_settings == null) segment.use_scene_i2v_video_settings = false;
     if (segment.i2v_video_settings && typeof segment.i2v_video_settings !== "object") segment.i2v_video_settings = null;
     if (segment.use_scene_image_as_rtv_ref == null) segment.use_scene_image_as_rtv_ref = false;
+    if (!["none", "character_anchor", "first_last_frame"].includes(String(segment.rtv_reference_behavior || ""))) {
+      segment.rtv_reference_behavior = segment.use_scene_image_as_rtv_ref ? "character_anchor" : "none";
+    }
+    segment.use_scene_image_as_rtv_ref = segment.rtv_reference_behavior === "character_anchor";
+    if (segment.first_last_frame_end_image_path == null) segment.first_last_frame_end_image_path = "";
+    if (segment.first_last_frame_end_image_data == null) segment.first_last_frame_end_image_data = "";
+    if (segment.first_last_frame_end_image_name == null) segment.first_last_frame_end_image_name = "";
     if (!["image", "video"].includes(segment.preview_mode)) segment.preview_mode = segment.video_path ? "video" : "image";
     if (segment.video_path == null) segment.video_path = "";
     if (segment.video_thumbnail_path == null) segment.video_thumbnail_path = "";
@@ -6859,6 +6885,15 @@ function openBuilder(node) {
       });
     assignOverlaySlotNumbers();
     sortSegments(state.overlaySegments);
+  }
+
+  function sanitizedSessionSegments(segments = [], track = "base") {
+    return (Array.isArray(segments) ? segments : [])
+      .filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment))
+      .map((segment) => {
+        segment.track = track;
+        return ensureSegmentRuntimeFields(segment);
+      });
   }
 
   function importedSrtTextFromSegment(segment) {
@@ -6934,6 +6969,25 @@ function openBuilder(node) {
       loras: Array.isArray(source.loras) ? source.loras.map((item) => ({ name: item?.name || "[none]", strength: Number(item?.strength ?? 1) })) : [],
       image_trigger_phrase: source.image_trigger_phrase || "",
     };
+  }
+
+  function pathLooksInsideFolder(path = "", folder = "") {
+    const item = String(path || "").trim().replace(/\\/g, "/").toLowerCase();
+    const root = String(folder || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    if (!item || !root) return false;
+    return item === root || item.startsWith(`${root}/`);
+  }
+
+  function scrubGlobalImageToImageSourceForProject(settings, projectFolder = "") {
+    if (!settings || typeof settings !== "object") return settings;
+    const path = String(settings.image_to_image_path || "").trim();
+    if (settings.use_image_to_image && path && projectFolder && !pathLooksInsideFolder(path, projectFolder)) {
+      settings.use_image_to_image = false;
+      settings.image_to_image_path = "";
+      settings.image_to_image_data = "";
+      settings.image_to_image_name = "";
+    }
+    return settings;
   }
 
   function cloneKrea2TwoPassSettings(settings) {
@@ -7097,7 +7151,7 @@ function openBuilder(node) {
     state.imageModelMode = defaults.image_model_mode || defaults.imageModelMode || defaults.flux_klein_settings?.image_model_mode || defaults.fluxKleinSettings?.image_model_mode || state.imageModelMode || "zimage";
     state.videoType = normalizeVideoType(defaults.video_type || defaults.videoType || state.videoType);
     if (defaults.zimage_settings || defaults.zimageSettings) {
-      state.zimageSettings = cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings);
+      state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(defaults.zimage_settings || defaults.zimageSettings), state.projectFolder);
     }
     if (defaults.reference_krea2_settings || defaults.referenceKrea2Settings) {
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(defaults.reference_krea2_settings || defaults.referenceKrea2Settings);
@@ -7109,10 +7163,10 @@ function openBuilder(node) {
       state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(defaults.flow_gpt_browser_settings || defaults.flowGptBrowserSettings);
     }
     if (defaults.ernie_image_settings || defaults.ernieImageSettings) {
-      state.ernieImageSettings = cloneErnieImageSettings(defaults.ernie_image_settings || defaults.ernieImageSettings);
+      state.ernieImageSettings = scrubGlobalImageToImageSourceForProject(cloneErnieImageSettings(defaults.ernie_image_settings || defaults.ernieImageSettings), state.projectFolder);
     }
     if (defaults.krea2_2pass_settings || defaults.krea2TwoPassSettings) {
-      state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(defaults.krea2_2pass_settings || defaults.krea2TwoPassSettings);
+      state.krea2TwoPassSettings = scrubGlobalImageToImageSourceForProject(cloneKrea2TwoPassSettings(defaults.krea2_2pass_settings || defaults.krea2TwoPassSettings), state.projectFolder);
     }
     if (defaults.nb_image_settings || defaults.nbImageSettings) {
       state.nbImageSettings = cloneNBImageSettings(defaults.nb_image_settings || defaults.nbImageSettings);
@@ -8208,7 +8262,7 @@ function openBuilder(node) {
       use_subject_reference: false,
       use_location_references: false,
       include_manual_ingredients: true,
-      subject_count: 1,
+      subject_count: 0,
       subject: { description: "", reference_type: "character", image: { path: "", data: "", name: "" } },
       subjects: [],
       subject_scene_map: {},
@@ -8703,6 +8757,17 @@ function openBuilder(node) {
       }
       return Array.from(byKey.values());
     };
+    const normalizeReferenceGenerationDraft = (value = {}) => {
+      const draft = value && typeof value === "object" ? value : {};
+      return {
+        subject_mode: String(draft.subject_mode || draft.subjectMode || "description_only"),
+        subject_label: String(draft.subject_label || draft.subjectLabel || ""),
+        gender_role: String(draft.gender_role || draft.genderRole || ""),
+        song_style: String(draft.song_style || draft.songStyle || ""),
+        lyrics_context: String(draft.lyrics_context || draft.lyricsContext || ""),
+        extra_direction: String(draft.extra_direction || draft.extraDirection || ""),
+      };
+    };
     normalized.use_subject_reference = Boolean(source.use_subject_reference);
     normalized.use_location_references = Boolean(source.use_location_references);
     normalized.include_manual_ingredients = source.include_manual_ingredients !== false;
@@ -8718,11 +8783,12 @@ function openBuilder(node) {
       ? 0
       : hasExplicitSubjectsArray
         ? Math.min(12, rawSubjects.length)
-        : Math.max(1, Math.min(12, rawSubjects.length || Number(source.subject_count || 0) || 1));
+        : Math.max(0, Math.min(12, rawSubjects.length || Number(source.subject_count || 0) || 0));
     const subject = source.subject && typeof source.subject === "object" ? source.subject : {};
     normalized.subject = {
       description: String(subject.description || ""),
       reference_type: normalizeReferenceType(subject.reference_type || subject.referenceType || subject.type || "character"),
+      reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
       image: normalizeRefImage(subject),
     };
     normalized.subjects = rawSubjects.length ? rawSubjects
@@ -8737,6 +8803,7 @@ function openBuilder(node) {
           trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
           extra_reference_for: String(item.extra_reference_for || item.extraReferenceFor || item.same_subject_as || item.sameSubjectAs || ""),
           extra_reference_note: String(item.extra_reference_note || item.extraReferenceNote || ""),
+          reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
           image: normalizeRefImage(item),
         };
       }) : [];
@@ -8750,6 +8817,7 @@ function openBuilder(node) {
         trigger_position: String(subject.trigger_position || subject.triggerPosition || subject.trigger_placement || "start") === "end" ? "end" : "start",
         extra_reference_for: "",
         extra_reference_note: "",
+        reference_generation_draft: normalizeReferenceGenerationDraft(subject.reference_generation_draft || subject.referenceGenerationDraft),
         image: { ...normalized.subject.image },
       });
     }
@@ -8763,6 +8831,7 @@ function openBuilder(node) {
         trigger_position: "start",
         extra_reference_for: "",
         extra_reference_note: "",
+        reference_generation_draft: normalizeReferenceGenerationDraft(),
         image: { path: "", data: "", name: "" },
       });
     }
@@ -8781,6 +8850,7 @@ function openBuilder(node) {
         name: "",
         description: "",
         reference_type: normalized.subject.reference_type || "character",
+        reference_generation_draft: normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
         image: { path: "", data: "", name: "" },
       };
     }
@@ -8789,6 +8859,7 @@ function openBuilder(node) {
       normalized.subject = {
         description: firstSubject.description || normalized.subject.description || "",
         reference_type: firstSubject.reference_type || normalized.subject.reference_type || "character",
+        reference_generation_draft: firstSubject.reference_generation_draft || normalized.subject.reference_generation_draft || normalizeReferenceGenerationDraft(),
         image: (firstSubject.image?.path || firstSubject.image?.data || firstSubject.image?.name)
           ? { ...(firstSubject.image || { path: "", data: "", name: "" }) }
           : normalized.subject.image,
@@ -8809,6 +8880,7 @@ function openBuilder(node) {
           description: String(item.description || ""),
           trigger_phrase: String(item.trigger_phrase || item.trigger || item.Trigger || item.phrase || ""),
           trigger_position: String(item.trigger_position || item.triggerPosition || item.trigger_placement || "start") === "end" ? "end" : "start",
+          reference_generation_draft: normalizeReferenceGenerationDraft(item.reference_generation_draft || item.referenceGenerationDraft),
           image: normalizeRefImage(item),
         };
       });
@@ -9397,6 +9469,55 @@ function openBuilder(node) {
     return `<div title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;box-sizing:border-box;border:1px solid #155e75;border-radius:4px;margin-top:6px;background:#020617;display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:11px;font-weight:900;letter-spacing:0;">VIDEO</div>`;
   }
 
+  function timelineImageSourceUrl(image = {}) {
+    const source = image && typeof image === "object" ? image : {};
+    if (source.data) return String(source.data);
+    if (source.path) return makeEditorImageUrl(source.path);
+    return "";
+  }
+
+  function appendTimelineFirstLastFrameThumbnail(block, segment) {
+    const firstPath = selectedSegmentImageThumbnailPath(segment);
+    const firstSource = segmentImageSource(segment) || {};
+    const lastSource = firstLastFrameEndImageSource(segment) || {};
+    const firstUrl = timelineImageSourceUrl(firstPath ? { path: firstPath } : firstSource);
+    const lastUrl = timelineImageSourceUrl(lastSource);
+    const wrap = document.createElement("span");
+    wrap.title = lastUrl
+      ? "First Last Frame: first frame on the left, generated end frame on the right."
+      : "First Last Frame: end frame is missing.";
+    wrap.style.cssText = "position:absolute;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 13px minmax(0,1fr);background:#020617;pointer-events:none;z-index:0;";
+    const makeSlot = (url, label, missing = false) => {
+      const slot = document.createElement("span");
+      slot.style.cssText = `position:relative;min-width:0;overflow:hidden;background:${missing ? "rgba(15,23,42,.88)" : "#050505"};display:flex;align-items:center;justify-content:center;`;
+      if (url) {
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = label;
+        img.draggable = false;
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;opacity:.9;";
+        slot.append(img);
+      } else {
+        const text = document.createElement("span");
+        text.textContent = missing ? "END?" : "START?";
+        text.style.cssText = "font-size:9px;font-weight:900;color:#bae6fd;text-shadow:0 1px 2px #020617;";
+        slot.append(text);
+      }
+      const badge = document.createElement("span");
+      badge.textContent = label;
+      badge.style.cssText = "position:absolute;left:4px;top:4px;min-width:13px;height:13px;border:1px solid rgba(255,255,255,.45);border-radius:3px;background:rgba(2,6,23,.72);color:#f8fafc;font-size:8px;font-weight:900;line-height:12px;text-align:center;";
+      slot.append(badge);
+      return slot;
+    };
+    const arrow = document.createElement("span");
+    arrow.textContent = ">";
+    arrow.style.cssText = "display:flex;align-items:center;justify-content:center;background:rgba(8,47,73,.78);color:#a5f3fc;font-size:10px;font-weight:900;";
+    wrap.append(makeSlot(firstUrl, "A"), arrow, makeSlot(lastUrl, "B", !lastUrl));
+    const shade = document.createElement("span");
+    shade.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.16);pointer-events:none;z-index:1;";
+    block.append(wrap, shade);
+  }
+
   function appendTimelineVideoThumbnail(block, segment) {
     const videoPath = selectedSegmentVideoPath(segment);
     if (!videoPath) return;
@@ -9413,6 +9534,32 @@ function openBuilder(node) {
     const shade = document.createElement("span");
     shade.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.18);pointer-events:none;z-index:1;";
     block.append(visual, shade);
+  }
+
+  function createFirstLastFramePreviewSlot(label, image = {}, emptyText = "Missing") {
+    const slot = document.createElement("div");
+    slot.style.cssText = "min-width:0;display:flex;flex-direction:column;gap:5px;";
+    const title = document.createElement("div");
+    title.textContent = label;
+    title.style.cssText = "font-size:10px;font-weight:900;color:#a5f3fc;text-transform:uppercase;letter-spacing:0;";
+    const frame = document.createElement("div");
+    frame.style.cssText = "position:relative;height:78px;border:1px solid #155e75;border-radius:6px;background:#020617;overflow:hidden;display:flex;align-items:center;justify-content:center;";
+    const src = timelineImageSourceUrl(image);
+    if (src) {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = label;
+      img.draggable = false;
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+      frame.append(img);
+    } else {
+      const text = document.createElement("div");
+      text.textContent = emptyText;
+      text.style.cssText = "font-size:11px;font-weight:900;color:#67e8f9;text-align:center;padding:8px;";
+      frame.append(text);
+    }
+    slot.append(title, frame);
+    return slot;
   }
 
   function selectedMediaForDelete() {
@@ -9587,7 +9734,7 @@ function openBuilder(node) {
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvSceneImageAnchor.input, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -9602,7 +9749,7 @@ function openBuilder(node) {
     useSceneFluxKleinSettings.input.checked = Boolean(segment?.use_scene_flux_klein_settings);
     useSceneNBImageSettings.input.checked = Boolean(segment?.use_scene_nb_image_settings);
     useSceneI2VVideoSettings.input.checked = Boolean(segment?.use_scene_i2v_video_settings);
-    rtvSceneImageAnchor.input.checked = rtvSceneImageAnchorGlobalEnabled();
+    rtvReferenceBehaviorSelect.value = rtvReferenceBehaviorGlobalValue();
     useVrgdgTextContext.input.checked = Boolean(state.useVrgdgTextContext);
     themeStyleInput.value = state.themeStylePath || "";
     storyIdeaInput.value = state.storyIdeaPath || "";
@@ -10402,8 +10549,57 @@ function openBuilder(node) {
     };
   }
 
+  function normalizeRTVReferenceBehavior(value, legacyAnchor = false) {
+    const normalized = String(value || "").trim();
+    if (["none", "character_anchor", "first_last_frame"].includes(normalized)) return normalized;
+    return legacyAnchor ? "character_anchor" : "none";
+  }
+
+  function rtvReferenceBehaviorForSegment(segment = activeSegment()) {
+    return normalizeRTVReferenceBehavior(segment?.rtv_reference_behavior, segment?.use_scene_image_as_rtv_ref);
+  }
+
+  function firstLastFrameEndImageSource(segment = activeSegment()) {
+    if (!segment) return null;
+    return {
+      path: String(segment.first_last_frame_end_image_path || ""),
+      data: String(segment.first_last_frame_end_image_data || ""),
+      name: String(segment.first_last_frame_end_image_name || "last_frame.png"),
+    };
+  }
+
+  function hasFirstLastFrameEndImage(segment = activeSegment()) {
+    const image = firstLastFrameEndImageSource(segment);
+    return Boolean(image?.path || image?.data);
+  }
+
+  function firstLastFramePromptReferences(segment = activeSegment()) {
+    const firstFrame = segmentImageSource(segment);
+    const lastFrame = firstLastFrameEndImageSource(segment);
+    const refs = [];
+    if (firstFrame?.path || firstFrame?.data) {
+      refs.push({
+        path: firstFrame.path || "",
+        data: firstFrame.data || "",
+        name: firstFrame.name || "first_frame.png",
+        label: "Opening visual state",
+        role: "first_frame",
+      });
+    }
+    if (lastFrame?.path || lastFrame?.data) {
+      refs.push({
+        path: lastFrame.path || "",
+        data: lastFrame.data || "",
+        name: lastFrame.name || "last_frame.png",
+        label: "Ending visual state",
+        role: "last_frame",
+      });
+    }
+    return refs;
+  }
+
   function rtvSceneImageAnchorPayload(segment = activeSegment()) {
-    if (!segment?.use_scene_image_as_rtv_ref) return null;
+    if (rtvReferenceBehaviorForSegment(segment) !== "character_anchor") return null;
     const image = segmentImageSource(segment);
     if (!image?.path && !image?.data) return null;
     return {
@@ -10465,6 +10661,29 @@ function openBuilder(node) {
   function rtvReferencesForSegment(segment = activeSegment()) {
     const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const references = { subjects: [], background: {}, use_subject_placeholder: false };
+    const referenceBehavior = rtvReferenceBehaviorForSegment(segment);
+    references.reference_behavior = referenceBehavior;
+    if (referenceBehavior === "first_last_frame") {
+      const firstFrame = segmentImageSource(segment);
+      const lastFrame = firstLastFrameEndImageSource(segment);
+      if (firstFrame?.path || firstFrame?.data) {
+        references.subjects.push({
+          ...rtvReferenceImagePayload(firstFrame),
+          label: "First frame",
+          reference_type: "first_frame",
+          first_last_frame_role: "first",
+        });
+      }
+      if (lastFrame?.path || lastFrame?.data) {
+        references.subjects.push({
+          ...rtvReferenceImagePayload(lastFrame),
+          label: "Last frame",
+          reference_type: "last_frame",
+          first_last_frame_role: "last",
+        });
+      }
+      return references;
+    }
     const addSubject = (item) => {
       const image = item?.image || {};
       if (!image.path && !image.data) return;
@@ -11281,14 +11500,17 @@ function openBuilder(node) {
     editT2VInstructionsButton.style.display = mode === "t2v" ? "" : "none";
   }
 
-  function rtvSceneImageAnchorGlobalEnabled() {
-    return state.segments.some((item) => Boolean(item?.use_scene_image_as_rtv_ref));
+  function rtvReferenceBehaviorGlobalValue() {
+    if (state.segments.some((item) => rtvReferenceBehaviorForSegment(item) === "first_last_frame")) return "first_last_frame";
+    if (state.segments.some((item) => rtvReferenceBehaviorForSegment(item) === "character_anchor")) return "character_anchor";
+    return "none";
   }
 
-  function applyRTVSceneImageAnchorToAll(enabled) {
-    const value = Boolean(enabled);
+  function applyRTVReferenceBehaviorToAll(behavior) {
+    const value = normalizeRTVReferenceBehavior(behavior);
     state.segments.forEach((item) => {
-      item.use_scene_image_as_rtv_ref = value;
+      item.rtv_reference_behavior = value;
+      item.use_scene_image_as_rtv_ref = value === "character_anchor";
     });
   }
 
@@ -11297,12 +11519,50 @@ function openBuilder(node) {
     const isRTV = currentVideoMode() === "rtv";
     const image = segment ? segmentImageSource(segment) : null;
     const hasImage = Boolean(image?.path || image?.data);
+    const behavior = rtvReferenceBehaviorGlobalValue();
+    const lastImage = segment ? firstLastFrameEndImageSource(segment) : null;
+    const hasLastImage = Boolean(lastImage?.path || lastImage?.data);
     rtvSceneImageAnchorSection.style.display = isRTV ? "" : "none";
-    rtvSceneImageAnchor.input.checked = rtvSceneImageAnchorGlobalEnabled();
-    rtvSceneImageAnchor.input.disabled = !isRTV;
-    rtvSceneImageAnchorNote.textContent = hasImage
-      ? "Global: every scene will use its own scene image as a second MSR character reference when available. The video prompt is unchanged."
-      : "Global: this can be enabled before Image All. Scenes without images will use their scene image as soon as one exists.";
+    rtvReferenceBehaviorSelect.value = behavior;
+    rtvReferenceBehaviorSelect.disabled = !isRTV;
+    firstLastFramePreviewPanel.style.display = isRTV && behavior === "first_last_frame" ? "flex" : "none";
+    firstLastFramePreviewGrid.textContent = "";
+    if (isRTV && behavior === "first_last_frame") {
+      const firstThumbPath = segment ? selectedSegmentImageThumbnailPath(segment) : "";
+      const firstImage = firstThumbPath ? { path: firstThumbPath } : image;
+      const arrow = document.createElement("div");
+      arrow.textContent = ">";
+      arrow.style.cssText = "display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:16px;font-weight:900;";
+      firstLastFramePreviewGrid.append(
+        createFirstLastFramePreviewSlot("First Frame", firstImage || {}, segment ? "Missing" : "No scene"),
+        arrow,
+        createFirstLastFramePreviewSlot("End Frame", lastImage || {}, "Missing")
+      );
+      firstLastFrameStatus.textContent = !segment
+        ? "Select a scene to inspect its First Last Frame refs."
+        : hasImage && hasLastImage
+          ? "Ready: this scene will send the first frame and end frame as the two MSR references."
+          : hasImage
+            ? "Missing end frame: create one before generating RTV prompts or rendering."
+            : "Missing first frame: run normal Image All first, then create the end frame.";
+      firstLastFrameStatus.style.color = hasImage && hasLastImage ? "#bbf7d0" : "#fde68a";
+    }
+    createSceneEndFrameButton.textContent = hasLastImage ? "Replace End Frame" : "Create End Frame";
+    createSceneEndFrameButton.disabled = !isRTV || behavior !== "first_last_frame" || !segment || !hasImage;
+    clearSceneEndFrameButton.disabled = !isRTV || behavior !== "first_last_frame" || !segment || !hasLastImage;
+    createSceneEndFrameButton.style.opacity = createSceneEndFrameButton.disabled ? ".55" : "1";
+    clearSceneEndFrameButton.style.opacity = clearSceneEndFrameButton.disabled ? ".55" : "1";
+    if (behavior === "first_last_frame") {
+      rtvReferenceBehaviorNote.textContent = hasImage
+        ? "Global: each scene's selected image is the first frame. The next step will generate/store a separate last frame for MSR ref 2."
+        : "Global: run normal Image All first. Those images become first frames, then Create End Frames will make last frames.";
+    } else if (behavior === "character_anchor") {
+      rtvReferenceBehaviorNote.textContent = hasImage
+        ? "Global: every scene will use its own scene image as a second MSR character reference when available. The video prompt is unchanged."
+        : "Global: this can be enabled before Image All. Scenes without images will use their scene image as soon as one exists.";
+    } else {
+      rtvReferenceBehaviorNote.textContent = "Global: Reference to Video uses the normal Reference Builder subject/background refs.";
+    }
   }
 
   function syncVideoModePanel() {
@@ -11404,7 +11664,7 @@ function openBuilder(node) {
     }
     segment.use_i2v_vision_reference = Boolean(useI2VVisionReference.input.checked);
     segment.use_t2v_vision_reference = Boolean(useT2VVisionReference.input.checked);
-    applyRTVSceneImageAnchorToAll(Boolean(rtvSceneImageAnchor.input.checked));
+    applyRTVReferenceBehaviorToAll(rtvReferenceBehaviorSelect.value);
     segment.ref_image_path = refImageInput.value || "";
     refImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
     ernieRefImagePanel.style.display = segment.use_vision_reference ? "flex" : "none";
@@ -11921,8 +12181,9 @@ function openBuilder(node) {
       block.innerHTML = `<span style="position:relative;z-index:2;display:block;font-weight:900;">${escapeHtml(segment.label || (isOverlay ? "Insert" : "Scene"))}</span><span style="position:relative;z-index:2;display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
       const left = segment.start * state.pxPerSecond;
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
+      const showFirstLastFrameThumb = !isOverlay && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
       const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
-      const thumb = previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
+      const thumb = !showFirstLastFrameThumb && previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
       const hasVideoPreview = Boolean(selectedSegmentVideoPath(segment));
       const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
@@ -11934,11 +12195,12 @@ function openBuilder(node) {
       block.style.cssText = `
         position:absolute;left:${left}px;top:${blockTop}px;width:${width}px;height:${blockHeight}px;
         border:${borderWidth} solid ${borderColor};
-        border-radius:5px;background:${thumb ? `linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)), url("${thumb}") center / auto 100% repeat-x` : isOverlay ? "#7c2d12" : inserted ? "#92400e" : segment.image ? "#166534" : "#164e63"};
+        border-radius:5px;background:${showFirstLastFrameThumb ? "#020617" : thumb ? `linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)), url("${thumb}") center / auto 100% repeat-x` : isOverlay ? "#7c2d12" : inserted ? "#92400e" : segment.image ? "#166534" : "#164e63"};
         color:#f4f4f5;font-size:11px;font-weight:800;overflow:hidden;cursor:pointer;pointer-events:auto;
         box-shadow:${shadow};
       `;
-      if (!thumb && hasVideoPreview) appendTimelineVideoThumbnail(block, segment);
+      if (showFirstLastFrameThumb) appendTimelineFirstLastFrameThumbnail(block, segment);
+      else if (!thumb && hasVideoPreview) appendTimelineVideoThumbnail(block, segment);
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -14076,6 +14338,65 @@ function openBuilder(node) {
     return result;
   }
 
+  function parseSrtTimestampToSeconds(value) {
+    const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})$/);
+    if (!match) return null;
+    const hours = Number(match[1] || 0);
+    const minutes = Number(match[2] || 0);
+    const seconds = Number(match[3] || 0);
+    const millis = Number(String(match[4] || "0").padEnd(3, "0").slice(0, 3));
+    return (hours * 3600) + (minutes * 60) + seconds + (millis / 1000);
+  }
+
+  function parseSrtCueSegments(text = "") {
+    const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    if (!normalized) return [];
+    const blocks = normalized.split(/\n{2,}/);
+    const cues = [];
+    for (const block of blocks) {
+      const lines = String(block || "").split("\n").map((line) => line.trim()).filter(Boolean);
+      const timingIndex = lines.findIndex((line) => /-->\s*/.test(line));
+      if (timingIndex < 0) continue;
+      const timing = lines[timingIndex].match(/(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{1,3})/);
+      if (!timing) continue;
+      const start = parseSrtTimestampToSeconds(timing[1]);
+      const end = parseSrtTimestampToSeconds(timing[2]);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+      const body = lines.slice(timingIndex + 1).join("\n").trim();
+      cues.push({ start, end, text: body });
+    }
+    return cues.sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+
+  function extractPromptCreatorWhisperSrtText(textValues = []) {
+    const values = (Array.isArray(textValues) ? textValues : [textValues])
+      .flat(Infinity)
+      .map((value) => String(value ?? ""))
+      .filter((value) => value.trim());
+    return {
+      whisper: values.find((value) => /(?:lyricSegment|segment)\s*\d+\s*[:=]/i.test(value)) || "",
+      srt: values.find((value) => /-->\s*\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}/.test(value)) || "",
+    };
+  }
+
+  function createSegmentsFromBeatSrtAndWhisper(srtText = "", whisperText = "", options = {}) {
+    const cues = parseSrtCueSegments(srtText);
+    const lyrics = parseLyricSegmentOutput(whisperText);
+    const instrumentalText = String(options.instrumentalText || options.beatEmptySegmentText || "[instrumental]").trim() || "[instrumental]";
+    const created = [];
+    cues.forEach((cue, index) => {
+      const segment = newSegment(cue.start, cue.end);
+      segment.label = `SCENE ${index + 1}`;
+      segment.source = "beat_timestamped_lyrics";
+      const lyricText = cleanTimestampedLyricText(lyrics[index] || cue.text || "") || instrumentalText;
+      segment.lyric_text = lyricText;
+      segment.lyric_no_lip_sync = isInstrumentalLyricText(lyricText);
+      segment.timeline_note = "";
+      created.push(segment);
+    });
+    return created;
+  }
+
   function formatLyricSegmentText(lyrics = null) {
     const segments = allEditableSegments();
     return segments.map((segment, index) => {
@@ -14540,7 +14861,8 @@ function openBuilder(node) {
         <div><strong style="color:#cffafe;">Segment mode</strong><br>
           <code>whisper_chunks</code>: uses the natural chunks detected by stable-ts. Good when you do not have lyrics.<br>
           <code>reference_lines</code>: each non-empty pasted lyric line becomes one scene. This gives the user direct control over scene chunks.<br>
-          <code>reference_stanzas</code>: blank-line-separated lyric blocks become scenes. Good for fewer, longer scenes.
+          <code>reference_stanzas</code>: blank-line-separated lyric blocks become scenes. Good for fewer, longer scenes.<br>
+          <code>beat_scenes</code>: creates beat-timed scenes with the same Prompt Creator Whisper/SRT timing workflow, then attaches the transcribed lyrics afterward.
         </div>
         <div><strong style="color:#cffafe;">Include instrumental gaps</strong><br>When enabled, the node inserts no-vocal scenes for detected timing gaps between vocal chunks. This is useful for intros, breaks, and outros.</div>
         <div><strong style="color:#cffafe;">Instrumental text</strong><br>The text used for no-vocal scenes, usually <code>[instrumental]</code>. Gemma/LTX treats this as a no-singing section.</div>
@@ -14609,16 +14931,27 @@ function openBuilder(node) {
       lyrics.placeholder = "Optional reference lyrics/dialogue. Put each desired scene chunk on its own line. Use [instrumental] / [break] / [outro] for no-vocal sections.";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:230px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
-      const segmentMode = makeSelect(["whisper_chunks", "reference_lines", "reference_stanzas"], "reference_lines");
+      const segmentMode = makeSelect(["whisper_chunks", "reference_lines", "reference_stanzas", "beat_scenes"], "reference_lines");
       segmentMode.options[0].textContent = "Whisper chunks";
       segmentMode.options[1].textContent = "One scene per lyric line";
       segmentMode.options[2].textContent = "One scene per stanza";
+      segmentMode.options[3].textContent = "Beat mode";
       const includeGaps = makeCheckbox("Include instrumental gaps", true);
       const instrumentalText = makeInput("[instrumental]");
       const minGap = makeInput("2.0");
       const minScene = makeInput("1.0");
       const maxScene = makeInput("8.0");
       const vocalTail = makeInput("0.6");
+      const beatUseSrtDurations = makeCheckbox("Use beat/SRT durations", true);
+      const beatFixedSceneDuration = makeInput("4");
+      const beatMinDuration = makeInput("4");
+      const beatMaxDuration = makeInput("10");
+      const beatBias = makeInput("0.7");
+      const beatDurationPreset = makeSelect(["varied_no_repeat", "impact_weighted", "clustered_no_repeat"], "varied_no_repeat");
+      beatDurationPreset.options[0].textContent = "Varied, no repeat";
+      beatDurationPreset.options[1].textContent = "Impact weighted";
+      beatDurationPreset.options[2].textContent = "Clustered, no repeat";
+      const beatEmptySegmentText = makeInput("Instrumental section.");
       const hint = makeButton("?");
       hint.title = "Explain timestamped line settings";
       hint.style.width = "44px";
@@ -14627,24 +14960,58 @@ function openBuilder(node) {
       };
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
-      grid.append(
-        makeField("Language", language),
-        makeField("Segment mode", segmentMode),
+      const timestampFields = [
         makeField("Instrumental text", instrumentalText),
         makeField("Min gap seconds", minGap),
         makeField("Min scene seconds", minScene),
         makeField("Max scene seconds", maxScene),
         makeField("Vocal tail padding", vocalTail),
+      ];
+      grid.append(
+        makeField("Language", language),
+        makeField("Segment mode", segmentMode),
+        ...timestampFields,
       );
+      const beatGrid = document.createElement("div");
+      beatGrid.style.cssText = "display:none;grid-template-columns:1fr 1fr;gap:10px;border:1px solid #334155;border-radius:7px;padding:10px;background:#0f172a;";
+      const beatSrtFields = [
+        makeField("Duration preset", beatDurationPreset),
+        makeField("Min duration", beatMinDuration),
+        makeField("Max duration", beatMaxDuration),
+        makeField("Bias", beatBias),
+      ];
+      const beatFixedField = makeField("Fixed scene duration", beatFixedSceneDuration);
+      beatGrid.append(
+        beatUseSrtDurations.wrapper,
+        ...beatSrtFields,
+        beatFixedField,
+        makeField("Empty lyric segment text", beatEmptySegmentText),
+      );
+      const updateModeUi = () => {
+        const isBeatMode = segmentMode.value === "beat_scenes";
+        const usingBeatSrt = Boolean(beatUseSrtDurations.input.checked);
+        beatGrid.style.display = isBeatMode ? "grid" : "none";
+        timestampFields.forEach((field) => {
+          field.style.display = isBeatMode ? "none" : "";
+        });
+        gapRow.style.display = isBeatMode ? "none" : "flex";
+        beatSrtFields.forEach((field) => {
+          field.style.display = usingBeatSrt ? "" : "none";
+        });
+        beatFixedField.style.display = usingBeatSrt ? "none" : "";
+      };
+      segmentMode.addEventListener("change", updateModeUi);
+      beatUseSrtDurations.input.addEventListener("change", updateModeUi);
       const gapRow = document.createElement("div");
       gapRow.style.cssText = "display:flex;align-items:center;gap:10px;";
       gapRow.append(includeGaps.wrapper, hint);
+      updateModeUi();
       const actions = document.createElement("div");
       actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
       const cancel = makeButton("Cancel");
       const run = makeButton("Create Timeline Scenes", "primary");
       actions.append(cancel, run);
-      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), grid, gapRow, actions);
+      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), grid, beatGrid, gapRow, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -14664,6 +15031,13 @@ function openBuilder(node) {
           minSceneSeconds: Number(minScene.value || 1.0),
           maxSceneSeconds: Number(maxScene.value || 8.0),
           vocalTailPaddingSeconds: Number(vocalTail.value || 0.6),
+          beatUseSrtDurations: Boolean(beatUseSrtDurations.input.checked),
+          beatFixedSceneDuration: Number(beatFixedSceneDuration.value || 4),
+          beatMinDuration: Number(beatMinDuration.value || 4),
+          beatMaxDuration: Number(beatMaxDuration.value || 10),
+          beatBias: Number(beatBias.value || 0.7),
+          beatDurationPreset: beatDurationPreset.value || "varied_no_repeat",
+          beatEmptySegmentText: beatEmptySegmentText.value || "Instrumental section.",
         });
       };
       backdrop.addEventListener("pointerdown", (event) => {
@@ -14909,39 +15283,80 @@ function openBuilder(node) {
     let progress = null;
     try {
       progress = createProgressWindow("Creating Scenes From Timestamped Lines");
-      progress.set("Building hidden timestamp transcription workflow...", 8);
-      const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
-        audio_path: audioInput.value || state.audioPath || "",
-        reference_lyrics: options.referenceLyrics || "",
-        language: options.language || "english",
-        segment_mode: options.segmentMode || "reference_lines",
-        include_instrumental_gaps: Boolean(options.includeInstrumentalGaps),
-        instrumental_text: options.instrumentalText || "[instrumental]",
-        min_gap_seconds: Number(options.minGapSeconds || 2.0),
-        min_scene_seconds: Number(options.minSceneSeconds || 1.0),
-        max_scene_seconds: Number(options.maxSceneSeconds || 8.0),
-        vocal_tail_padding_seconds: Number(options.vocalTailPaddingSeconds || 0.6),
-        model_name: "large-v3",
-      }, 60000);
-      progress.set("Queueing timestamp transcription workflow...", 16);
-      const queued = await queueWorkflowPrompt(built.prompt, {
-        onStatus: (message) => progress.set(message, 16),
-        idleTimeoutMs: 10 * 60 * 1000,
-      });
-      const promptId = queued.prompt_id;
-      if (!promptId) throw new Error("ComfyUI queued the timestamp transcription workflow but did not return a prompt_id.");
-      const textValues = await waitForText(
-        promptId,
-        (message) => progress.set(`${message}\nPrompt ID: ${promptId}`, 55),
-        () => false,
-        45 * 60 * 1000,
-      );
-      const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
-      const created = normalizeTimestampedSceneDurations(
-        createSegmentsFromTimestampedLyricsPayload(payload, options),
-        options,
-        payload,
-      );
+      let created = [];
+      let modeLabel = options.segmentMode || "reference_lines";
+      let sourceDuration = 0;
+      if (options.segmentMode === "beat_scenes") {
+        progress.set("Building Prompt Creator beat/SRT workflow...", 8);
+        const built = await postJson("/vrgdg/music_prompt_creator/build_whisper_prompt", {
+          project_folder: activeProjectFolderForSave() || projectInput.value || state.projectFolder || "",
+          audio_path: audioInput.value || state.audioPath || "",
+          min_duration: Number(options.beatMinDuration || 4),
+          max_duration: Number(options.beatMaxDuration || 10),
+          bias: Number(options.beatBias || 0.7),
+          duration_preset: options.beatDurationPreset || "varied_no_repeat",
+          use_srt_durations: options.beatUseSrtDurations !== false,
+          fixed_scene_duration: Number(options.beatFixedSceneDuration || 4),
+          empty_segment_text: options.beatEmptySegmentText || options.instrumentalText || "Instrumental section.",
+          whisper_language: options.language || "english",
+          full_lyrics: options.referenceLyrics || "",
+        }, 60000);
+        progress.set("Queueing Prompt Creator beat/SRT workflow...", 16);
+        const queued = await queueWorkflowPrompt(built.prompt, {
+          onStatus: (message) => progress.set(message, 16),
+          idleTimeoutMs: 10 * 60 * 1000,
+        });
+        const promptId = queued.prompt_id;
+        if (!promptId) throw new Error("ComfyUI queued the Prompt Creator beat/SRT workflow but did not return a prompt_id.");
+        const textValues = await waitForText(
+          promptId,
+          (message) => progress.set(`${message}\nPrompt ID: ${promptId}`, 55),
+          () => false,
+          45 * 60 * 1000,
+        );
+        const text = extractPromptCreatorWhisperSrtText(textValues);
+        if (!text.srt) throw new Error("Beat mode finished, but no SRT timing text was found.");
+        if (!text.whisper) throw new Error("Beat mode finished, but no transcribed lyric segments were found.");
+        created = createSegmentsFromBeatSrtAndWhisper(text.srt, text.whisper, options);
+        sourceDuration = Math.max(0, ...created.map((segment) => Number(segment.end || 0)));
+        modeLabel = "Beat mode";
+      } else {
+        progress.set("Building hidden timestamp transcription workflow...", 8);
+        const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
+          audio_path: audioInput.value || state.audioPath || "",
+          reference_lyrics: options.referenceLyrics || "",
+          language: options.language || "english",
+          segment_mode: options.segmentMode || "reference_lines",
+          include_instrumental_gaps: Boolean(options.includeInstrumentalGaps),
+          instrumental_text: options.instrumentalText || "[instrumental]",
+          min_gap_seconds: Number(options.minGapSeconds || 2.0),
+          min_scene_seconds: Number(options.minSceneSeconds || 1.0),
+          max_scene_seconds: Number(options.maxSceneSeconds || 8.0),
+          vocal_tail_padding_seconds: Number(options.vocalTailPaddingSeconds || 0.6),
+          model_name: "large-v3",
+        }, 60000);
+        progress.set("Queueing timestamp transcription workflow...", 16);
+        const queued = await queueWorkflowPrompt(built.prompt, {
+          onStatus: (message) => progress.set(message, 16),
+          idleTimeoutMs: 10 * 60 * 1000,
+        });
+        const promptId = queued.prompt_id;
+        if (!promptId) throw new Error("ComfyUI queued the timestamp transcription workflow but did not return a prompt_id.");
+        const textValues = await waitForText(
+          promptId,
+          (message) => progress.set(`${message}\nPrompt ID: ${promptId}`, 55),
+          () => false,
+          45 * 60 * 1000,
+        );
+        const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
+        created = normalizeTimestampedSceneDurations(
+          createSegmentsFromTimestampedLyricsPayload(payload, options),
+          options,
+          payload,
+        );
+        sourceDuration = Number(payload.duration || 0);
+        modeLabel = payload.segment_mode || options.segmentMode || "reference_lines";
+      }
       if (!created.length) throw new Error("Timestamped lines did not produce any usable scene segments.");
       applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
       pushHistory();
@@ -14949,7 +15364,7 @@ function openBuilder(node) {
       state.overlaySegments = [];
       state.activeTrack = "base";
       state.activeId = created[0]?.id || "";
-      state.duration = Math.max(Number(payload.duration || 0), ...created.map((segment) => Number(segment.end || 0)));
+      state.duration = Math.max(Number(sourceDuration || 0), ...created.map((segment) => Number(segment.end || 0)));
       state.showTimelineLyricNotes = true;
       syncLyricNoteControls();
       syncInspector();
@@ -14959,7 +15374,7 @@ function openBuilder(node) {
       if (activeProjectFolderForSave()) {
         await saveSession({ quiet: true, throwOnError: true });
       }
-      progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lines.\nMode: ${payload.segment_mode || options.segmentMode}\n${lyricPath ? `Saved line notes: ${lyricPath}` : "Line notes saved in session only."}`, 100);
+      progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lines.\nMode: ${modeLabel}\n${lyricPath ? `Saved line notes: ${lyricPath}` : "Line notes saved in session only."}`, 100);
       progress.close(1800);
       toast(`Created ${created.length} timestamped lyric scene${created.length === 1 ? "" : "s"}.`);
     } catch (error) {
@@ -16206,6 +16621,7 @@ function openBuilder(node) {
     };
 
     const applyReviewRowValues = (row, segment, includeTiming = false, options = {}) => {
+      if (!segment || typeof segment !== "object") return false;
       const instrumental = Boolean(row.querySelector("[data-review-instrumental='1']")?.checked);
       const broll = Boolean(row.querySelector("[data-review-broll='1']")?.checked);
       const noCharacterPresent = Boolean(row.querySelector("[data-review-no-character='1']")?.checked);
@@ -16249,6 +16665,7 @@ function openBuilder(node) {
         else delete refs.scene_map[segment.id];
         state.fluxReferenceBuilder = refs;
       }
+      return true;
     };
 
     const copyLyricReviewFields = (source, start, end) => {
@@ -16659,8 +17076,12 @@ function openBuilder(node) {
         syncSingleSubjectPerformerLabel();
         await normalizeEditedReviewTiming();
         const lyricOverrides = collectBoundaryOverlapLyricOverrides();
+        const liveSegmentsById = new Map((Array.isArray(state.segments) ? state.segments : [])
+          .filter((segment) => segment && typeof segment === "object" && !Array.isArray(segment) && segment.id)
+          .map((segment) => [String(segment.id), segment]));
         for (const row of rowList.querySelectorAll("[data-review-segment-id]")) {
-          const segment = scenes.find((item) => item.id === row.dataset.reviewSegmentId);
+          const segmentId = String(row.dataset.reviewSegmentId || "");
+          const segment = liveSegmentsById.get(segmentId);
           if (!segment) continue;
           applyReviewRowValues(row, segment, true, { lyricTextOverride: lyricOverrides.get(segment.id) });
         }
@@ -17046,7 +17467,9 @@ function openBuilder(node) {
 
   function openFluxReferenceBuilderModal(options = {}) {
     const wizardLocationMode = Boolean(options?.wizardMode || options?.wizard_location_mode);
-    const referenceBuilderTargetLabel = currentVideoMode() === "rtv" ? "LTX Reference to Video" : currentVideoMode() === "ingredients" ? "LTX Ingredients to Video" : "Gemma scene text mapping";
+    const referenceImagesEnabled = options?.textOnlyMode !== true;
+    const allowExtraSubjectReferences = referenceImagesEnabled && currentVideoMode() === "rtv";
+    const referenceBuilderTargetLabel = !referenceImagesEnabled ? "Gemma scene text mapping" : currentVideoMode() === "rtv" ? "LTX Reference to Video" : currentVideoMode() === "ingredients" ? "LTX Ingredients to Video" : "Gemma scene text mapping";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     const backdrop = document.createElement("div");
@@ -17056,19 +17479,13 @@ function openBuilder(node) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.</div>`;
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceImagesEnabled ? "Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active." : "Map character and location descriptions to scenes for Gemma prompt writing. This text-only mode does not send reference images."}</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
-    const usage = document.createElement("div");
-    usage.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;";
-    const useSubject = makeCheckbox("Use subject reference", refs.use_subject_reference);
-    const useLocations = makeCheckbox("Use mapped location references", refs.use_location_references);
-    const includeManual = makeCheckbox("Also include manually loaded reference images", refs.include_manual_ingredients !== false);
-    for (const item of [useSubject.wrapper, useLocations.wrapper, includeManual.wrapper]) {
-      item.style.cssText += "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:9px;";
-    }
-    usage.append(useSubject.wrapper, useLocations.wrapper, includeManual.wrapper);
+    const useSubject = { input: { checked: true } };
+    const useLocations = { input: { checked: true } };
+    const includeManual = { input: { checked: refs.include_manual_ingredients !== false } };
     const inlineProgress = document.createElement("div");
     inlineProgress.style.cssText = "display:none;border:1px solid #155e75;border-radius:7px;background:#07111f;padding:9px 10px;gap:7px;flex-direction:column;";
     const inlineProgressText = document.createElement("div");
@@ -17091,8 +17508,12 @@ function openBuilder(node) {
       }, delay);
     };
 
-    const grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:minmax(330px,1fr) minmax(410px,1.15fr) minmax(340px,1fr);gap:12px;align-items:start;";
+    const tabShell = document.createElement("div");
+    tabShell.style.cssText = "border:1px solid #1e3a5f;border-radius:8px;background:#0b1220;overflow:hidden;display:flex;flex-direction:column;min-height:0;";
+    const tabBar = document.createElement("div");
+    tabBar.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid #1e3a5f;background:#0f172a;";
+    const tabContent = document.createElement("div");
+    tabContent.style.cssText = "padding:12px;min-height:0;";
     const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
 
     const modalDragGuard = (event) => {
@@ -17113,22 +17534,30 @@ function openBuilder(node) {
     const subjectHeader = document.createElement("div");
     subjectHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
     const subjectTitle = document.createElement("div");
-    subjectTitle.textContent = "MSR References";
+    subjectTitle.textContent = referenceImagesEnabled ? "Subject Image References" : "Subject Text References";
     subjectTitle.style.cssText = "font-size:14px;font-weight:900;color:#cffafe;";
     const extractSubjects = makeButton("Extract Subjects", "primary");
     const describeMissingSubjects = makeButton("Gemma - Create subject Description if missing", "primary");
     const createAllMissingSubjectImages = makeButton("Generate Missing Images", "primary");
     const importSubjects = makeButton("Import Subjects", "primary");
+    const addSubjectButton = makeButton("Add Subject", "primary");
+    const arrangeSubjects = makeButton("Arrange");
     const removeAllSubjects = makeButton("Remove All Subjects");
     const subjectActions = document.createElement("div");
     subjectActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    describeMissingSubjects.title = "Use vision Gemma to describe character reference images that do not already have descriptions.";
+    describeMissingSubjects.title = referenceImagesEnabled
+      ? "Use vision Gemma to describe character reference images that do not already have descriptions."
+      : "Use Gemma to create missing subject descriptions from the current prompts, lyrics, and scene notes.";
     createAllMissingSubjectImages.title = "Batch-create missing subject/reference images. You will choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT before generation starts.";
     importSubjects.title = "Import subject images and matching .txt descriptions from this project's subject_location/subject folder.";
-    subjectActions.append(extractSubjects, describeMissingSubjects, createAllMissingSubjectImages, importSubjects, removeAllSubjects);
+    addSubjectButton.title = "Add one blank subject/reference row.";
+    arrangeSubjects.title = "Open a reorder window for subject/reference image cards.";
+    subjectActions.append(extractSubjects, describeMissingSubjects, createAllMissingSubjectImages, importSubjects, addSubjectButton, arrangeSubjects, removeAllSubjects);
+    createAllMissingSubjectImages.style.display = referenceImagesEnabled ? "" : "none";
+    importSubjects.style.display = referenceImagesEnabled ? "" : "none";
     subjectHeader.append(subjectTitle, subjectActions);
-    const subjectCountInput = makeInput(String(refs.subject_count || 1), "number");
-    subjectCountInput.min = "1";
+    const subjectCountInput = makeInput(String(refs.subject_count || 0), "number");
+    subjectCountInput.min = "0";
     subjectCountInput.max = "12";
     subjectCountInput.step = "1";
     const subjectSourceSelect = makeSelect(["prompts_and_director_notes", "director_notes_only", "prompts_only"], "prompts_and_director_notes");
@@ -17184,7 +17613,7 @@ function openBuilder(node) {
     const locationsHeader = document.createElement("div");
     locationsHeader.style.cssText = "display:flex;flex-direction:column;gap:10px;";
     const locationsTitle = document.createElement("div");
-    locationsTitle.textContent = "Location References";
+    locationsTitle.textContent = referenceImagesEnabled ? "Location Image References" : "Location Text References";
     locationsTitle.style.cssText = subjectTitle.style.cssText;
     const extractLocations = makeButton("Gemma Extract", "primary");
     const gptLocationScout = makeButton("GPT Scout", "primary");
@@ -17192,26 +17621,36 @@ function openBuilder(node) {
     const describeMissingLocations = makeButton("Gemma - Create Location Description if missing", "primary");
     const importLocations = makeButton("Import Location List", "primary");
     const exportLocations = makeButton("Export Locations", "primary");
+    const uploadLocationImages = makeButton("Upload Images", "primary");
     const createAllMissingLocationZImages = makeButton("Generate Missing Images", "primary");
     const addLocation = makeButton("Add Location", "primary");
+    const arrangeLocations = makeButton("Arrange");
     const removeAllLocations = makeButton("Remove All Locations");
     extractLocations.textContent = "Gemma Extract";
     gptLocationScout.textContent = "GPT Scout";
     autoMapLocations.textContent = "Auto Map";
     importLocations.textContent = "Import List";
     exportLocations.textContent = "Export";
+    uploadLocationImages.textContent = "Upload Images";
     createAllMissingLocationZImages.textContent = "Generate Missing Images";
     addLocation.textContent = "Add";
+    arrangeLocations.textContent = "Arrange";
     removeAllLocations.textContent = "Remove";
     extractLocations.title = "Ask Gemma to extract a reusable location list from your scenes.";
     gptLocationScout.title = "Copy lyrics/dialogue, style/theme, and character descriptions as JSON, then open the Music Video Location Scout GPT.";
     autoMapLocations.title = "Ask Gemma to assign saved locations to each scene.";
-    describeMissingLocations.title = "Use vision Gemma to describe location reference images that do not already have descriptions.";
+    describeMissingLocations.title = referenceImagesEnabled
+      ? "Use vision Gemma to describe location reference images that do not already have descriptions."
+      : "Use Gemma to create missing location descriptions from the current prompts, lyrics, and scene notes.";
     importLocations.title = "Paste a location list, scene map, or combined location + scene JSON.";
     exportLocations.title = "Save the current location list and scene-location map as JSON in this project folder.";
+    uploadLocationImages.title = "Select one or more location reference images and create location cards from them.";
     createAllMissingLocationZImages.title = "Batch-create missing location images. You will choose ZImage, Krea2 + ZImage enhancer, or Flow/GPT before generation starts.";
     addLocation.title = "Add one location card manually.";
+    arrangeLocations.title = "Open a reorder window for location cards.";
     removeAllLocations.title = "Remove every location card and clear location mappings.";
+    uploadLocationImages.style.display = referenceImagesEnabled ? "" : "none";
+    createAllMissingLocationZImages.style.display = referenceImagesEnabled ? "" : "none";
     const locationActions = document.createElement("div");
     locationActions.style.cssText = "display:grid;grid-template-columns:1fr;gap:10px;";
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
@@ -17241,7 +17680,7 @@ function openBuilder(node) {
     };
     locationActions.append(
       locationActionGroup("Gemma", [extractLocations, gptLocationScout, autoMapLocations, describeMissingLocations], makeField("Optional style/theme for location extraction", locationStyleTheme)),
-      locationActionGroup("Manage", [importLocations, exportLocations, createAllMissingLocationZImages, addLocation, removeAllLocations])
+      locationActionGroup("Manage", [importLocations, exportLocations, uploadLocationImages, createAllMissingLocationZImages, addLocation, arrangeLocations, removeAllLocations])
     );
     locationsHeader.append(locationsTitle, locationActions);
     const keepGemmaLoadedForLocations = makeCheckbox("Keep Gemma loaded while creating location prompts", true);
@@ -17276,32 +17715,118 @@ function openBuilder(node) {
     mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
     mappingCard.append(mappingHeader, mappingNote, mappingList);
 
-    grid.append(subjectCard, locationsCard, mappingCard);
+    const referenceTabs = [
+      { id: "subjects", label: "Subjects", node: subjectCard },
+      { id: "locations", label: "Locations", node: locationsCard },
+      { id: "mapping", label: "Mapping", node: mappingCard },
+    ];
+    const referenceTabButtons = new Map();
+    const setReferenceTab = (id) => {
+      const active = referenceTabs.some((tab) => tab.id === id) ? id : "subjects";
+      tabContent.textContent = "";
+      for (const tab of referenceTabs) {
+        const button = referenceTabButtons.get(tab.id);
+        if (button) {
+          button.style.background = tab.id === active ? "#10243a" : "transparent";
+          button.style.color = tab.id === active ? "#cffafe" : "#94a3b8";
+          button.style.borderBottom = tab.id === active ? "3px solid #06b6d4" : "3px solid transparent";
+        }
+        tab.node.style.display = tab.id === active ? "flex" : "none";
+        if (tab.id === active) tabContent.append(tab.node);
+      }
+    };
+    for (const tab of referenceTabs) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = tab.label;
+      button.style.cssText = "border:0;border-right:1px solid #1e3a5f;background:transparent;color:#94a3b8;padding:15px 14px;font-size:14px;font-weight:900;cursor:pointer;letter-spacing:0;";
+      button.onclick = () => setReferenceTab(tab.id);
+      referenceTabButtons.set(tab.id, button);
+      tabBar.append(button);
+    }
+    tabShell.append(tabBar, tabContent);
+    setReferenceTab(wizardLocationMode ? "locations" : "subjects");
     const footer = document.createElement("div");
     footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Reference Builder", "primary");
     footer.append(cancel, save);
-    box.append(header, usage, inlineProgress, grid, footer);
+    box.append(header, inlineProgress, tabShell, footer);
     backdrop.append(box);
     document.body.append(backdrop);
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
-    fileInput.accept = "image/png,image/jpeg,image/webp";
+    fileInput.accept = "image/*";
+    fileInput.multiple = true;
     fileInput.style.display = "none";
     box.append(fileInput);
     let pendingImageTarget = null;
 
     const imageLabel = (image) => String(image?.name || image?.path || (image?.data ? "Custom image loaded" : ""));
     const imageSrc = (image) => image?.data || (image?.path ? makeEditorImageUrl(image.path) : "");
+    const openReferenceImagePreview = (image = {}, label = "Reference image") => {
+      const src = imageSrc(image);
+      if (!src) return;
+      const previewBackdrop = document.createElement("div");
+      previewBackdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:24px;";
+      const previewBox = document.createElement("div");
+      previewBox.style.cssText = "width:min(1180px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#07111f;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.65);display:flex;flex-direction:column;overflow:hidden;";
+      const previewHeader = document.createElement("div");
+      previewHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #155e75;background:#0f172a;";
+      const previewTitle = document.createElement("div");
+      previewTitle.textContent = imageLabel(image) || label || "Reference image";
+      previewTitle.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      const closePreview = makeButton("Close");
+      previewHeader.append(previewTitle, closePreview);
+      const imageStage = document.createElement("div");
+      imageStage.style.cssText = "min-height:180px;max-height:calc(100vh - 118px);background:#020617;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = label || "Reference image preview";
+      img.draggable = false;
+      img.style.cssText = "display:block;max-width:100%;max-height:calc(100vh - 150px);object-fit:contain;border-radius:4px;background:#020617;";
+      imageStage.append(img);
+      previewBox.append(previewHeader, imageStage);
+      previewBackdrop.append(previewBox);
+      const closeDialog = () => {
+        previewBackdrop.remove();
+        document.removeEventListener("keydown", onPreviewKeydown, true);
+      };
+      const onPreviewKeydown = (event) => {
+        if (event.key === "Escape") closeDialog();
+      };
+      closePreview.onclick = closeDialog;
+      previewBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === previewBackdrop) closeDialog();
+      });
+      document.addEventListener("keydown", onPreviewKeydown, true);
+      document.body.append(previewBackdrop);
+    };
     const renderDrop = (drop, image, emptyText) => {
       const src = imageSrc(image);
       drop.style.flexDirection = "column";
       drop.style.gap = "6px";
-      drop.innerHTML = src
-        ? `<img src="${src}" draggable="false" style="width:96px;height:72px;max-width:100%;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#020617;"><div style="font-size:11px;color:#a5f3fc;overflow-wrap:anywhere;word-break:break-word;max-width:100%;">${escapeHtml(imageLabel(image))}</div>`
-        : `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
+      drop.innerHTML = "";
+      if (src) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.draggable = false;
+        img.alt = imageLabel(image) || "Reference image";
+        img.title = "Click to preview larger";
+        img.style.cssText = "width:96px;height:72px;max-width:100%;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#020617;cursor:zoom-in;";
+        img.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openReferenceImagePreview(image, emptyText);
+        });
+        const label = document.createElement("div");
+        label.textContent = imageLabel(image);
+        label.style.cssText = "font-size:11px;color:#a5f3fc;overflow-wrap:anywhere;word-break:break-word;max-width:100%;";
+        drop.append(img, label);
+      } else {
+        drop.innerHTML = `<div><strong>${emptyText}</strong><br><span style="color:#94a3b8;font-size:12px;">Drop an image here or upload one.</span></div>`;
+      }
     };
     const syncPrimarySubjectImage = () => {
       ensureSubjectCount();
@@ -17329,16 +17854,21 @@ function openBuilder(node) {
       const images = subjectPreviewImages(subject);
       if (!images.length) return null;
       const strip = document.createElement("div");
-      strip.style.cssText = "display:flex;gap:6px;align-items:flex-start;overflow-x:auto;padding:6px;border:1px solid #155e75;border-radius:6px;background:#061923;scrollbar-width:thin;";
+      strip.style.cssText = "display:flex;gap:6px;align-items:stretch;overflow-x:auto;padding:6px;border:1px solid #155e75;border-radius:6px;background:#061923;scrollbar-width:thin;min-height:132px;";
       images.slice(0, 6).forEach(({ image, label }, index) => {
         const item = document.createElement("div");
-        item.style.cssText = "flex:0 0 58px;display:flex;flex-direction:column;gap:3px;min-width:0;";
+        item.style.cssText = "flex:0 0 108px;display:flex;flex-direction:column;gap:4px;min-width:0;";
         const img = document.createElement("img");
         img.src = imageSrc(image);
         img.alt = label || `Reference ${index + 1}`;
-        img.title = imageLabel(image) || label || `Reference ${index + 1}`;
+        img.title = "Click to preview larger";
         img.draggable = false;
-        img.style.cssText = "width:58px;height:46px;object-fit:cover;border:1px solid #0891b2;border-radius:5px;background:#020617;display:block;";
+        img.style.cssText = "width:100%;height:104px;object-fit:cover;border:1px solid #0891b2;border-radius:5px;background:#020617;display:block;cursor:zoom-in;";
+        img.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openReferenceImagePreview(image, label || `Reference ${index + 1}`);
+        });
         const caption = document.createElement("div");
         caption.textContent = index === 0 ? "Primary" : `Extra ${index}`;
         caption.style.cssText = "font-size:9px;color:#a5f3fc;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
@@ -17348,14 +17878,14 @@ function openBuilder(node) {
       if (images.length > 6) {
         const more = document.createElement("div");
         more.textContent = `+${images.length - 6}`;
-        more.style.cssText = "flex:0 0 38px;height:46px;display:flex;align-items:center;justify-content:center;border:1px solid #334155;border-radius:5px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;";
+        more.style.cssText = "flex:0 0 58px;min-height:104px;display:flex;align-items:center;justify-content:center;border:1px solid #334155;border-radius:5px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;";
         strip.append(more);
       }
       if (dropTarget) wireDrop(strip, dropTarget);
       return strip;
     };
     const updateSubjectDrop = () => renderDrop(subjectDrop, refs.subject.image, "Drop subject reference image here");
-    const imageTargetFor = (owner, key = "image") => ({ owner, key });
+    const imageTargetFor = (owner, key = "image", kind = "") => ({ owner, key, kind });
     const resolveImageTarget = (target) => {
       if (!target) return null;
       if (target.owner && target.key) {
@@ -17365,6 +17895,35 @@ function openBuilder(node) {
       if (!target.image) target.image = { path: "", data: "", name: "" };
       return target.image;
     };
+    const imageTargetKind = (target) => {
+      if (target?.kind) return target.kind;
+      if (refs.locations.includes(target?.owner)) return "location";
+      if (refs.subjects.includes(target?.owner) || target?.owner === refs.subject || target === refs.subject) return "subject";
+      return "";
+    };
+    const imageNameBase = (name = "", fallback = "Reference") => {
+      const text = String(name || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      return text || fallback;
+    };
+    const subjectLooksEmpty = (subject) => {
+      if (!subject) return false;
+      if (hasReferenceImage(subject.image || {})) return false;
+      if (String(subject.description || "").trim()) return false;
+      if (subjectExtraTargetId(subject)) return false;
+      const name = String(subject.name || "").trim();
+      return !name || /^character\s+\d+$/i.test(name) || /^subject\s+\d+$/i.test(name) || /^the performer$/i.test(name);
+    };
+    const applySubjectImageSource = (subject, source = {}) => {
+      if (!subject) return;
+      if (subjectLooksEmpty(subject)) subject.name = imageNameBase(source.name, subject.name || `Character ${refs.subjects.indexOf(subject) + 1}`);
+      subject.image = { ...source };
+      if (subject === refs.subjects[0] || refs.subjects.length === 1) {
+        refs.subject.name = subject.name || refs.subject.name || "Character 1";
+        refs.subject.description = subject.description || refs.subject.description || "";
+        refs.subject.reference_type = subject.reference_type || refs.subject.reference_type || "character";
+        refs.subject.image = { ...source };
+      }
+    };
     const setImageTargetFromSource = (target, source = {}) => {
       const image = resolveImageTarget(target);
       if (!image) return;
@@ -17373,30 +17932,99 @@ function openBuilder(node) {
       image.name = source.name || source.path?.split?.(/[\\/]/)?.pop?.() || "reference.png";
       renderAll();
     };
+    const readImageFileSource = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        path: "",
+        data: String(reader.result || ""),
+        name: file.name || "reference.png",
+      });
+      reader.onerror = () => reject(new Error(`Failed to read ${file.name || "reference image"}.`));
+      reader.readAsDataURL(file);
+    });
+    const setImageTargetFromSources = (target, sources = []) => {
+      const cleanSources = sources.filter((source) => source && (source.path || source.data));
+      if (!cleanSources.length) return;
+      const kind = imageTargetKind(target);
+      if (target?.bulk) {
+        if (kind === "subject") {
+          const sourcesToCreate = [...cleanSources];
+          const emptySubject = refs.subjects.find(subjectLooksEmpty);
+          if (emptySubject && sourcesToCreate.length) {
+            applySubjectImageSource(emptySubject, sourcesToCreate.shift());
+          }
+          for (const source of sourcesToCreate) {
+            const subject = createSubject(imageNameBase(source.name, `Character ${refs.subjects.length + 1}`));
+            subject.image = { ...source };
+          }
+          refs.use_subject_reference = true;
+          refs.cleared = false;
+          refs.subject_count = refs.subjects.length;
+          subjectCountInput.value = String(refs.subject_count);
+          useSubject.input.checked = true;
+        } else if (kind === "location") {
+          for (const source of cleanSources) {
+            const location = createLocation(imageNameBase(source.name, `Location ${refs.locations.length + 1}`));
+            location.image = { ...source };
+          }
+          refs.use_location_references = true;
+          refs.locations_cleared = false;
+          useLocations.input.checked = true;
+        }
+        renderAll();
+        toast(`Loaded ${cleanSources.length} ${kind === "location" ? "location" : "subject"} reference image${cleanSources.length === 1 ? "" : "s"}.`);
+        return;
+      }
+      setImageTargetFromSource(target, cleanSources[0]);
+      if (kind === "subject") {
+        const targetSubject = target?.owner && refs.subjects.includes(target.owner)
+          ? target.owner
+          : target?.owner === refs.subject
+            ? refs.subjects[0]
+            : null;
+        if (targetSubject) applySubjectImageSource(targetSubject, cleanSources[0]);
+        for (const source of cleanSources.slice(1)) {
+          const subject = createSubject(imageNameBase(source.name, `Character ${refs.subjects.length + 1}`));
+          subject.image = { ...source };
+        }
+        refs.use_subject_reference = true;
+        refs.cleared = false;
+        refs.subject_count = refs.subjects.length;
+        subjectCountInput.value = String(refs.subject_count);
+        useSubject.input.checked = true;
+      } else if (kind === "location") {
+        for (const source of cleanSources.slice(1)) {
+          const location = createLocation(imageNameBase(source.name, `Location ${refs.locations.length + 1}`));
+          location.image = { ...source };
+        }
+        refs.use_location_references = true;
+        refs.locations_cleared = false;
+        useLocations.input.checked = true;
+      }
+      renderAll();
+      const label = kind === "location" ? "location" : "subject";
+      toast(cleanSources.length === 1
+        ? `Loaded ${label} reference image:\n${cleanSources[0].name || cleanSources[0].path || "reference.png"}`
+        : `Loaded ${cleanSources.length} ${label} reference images.`);
+    };
     const setImageTarget = (target, file) => {
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        setImageTargetFromSource(target, {
-          path: "",
-          data: String(reader.result || ""),
-          name: file.name || "reference.png",
-        });
-      };
-      reader.onerror = () => toast("Failed to read the reference image.", true);
-      reader.readAsDataURL(file);
+      readImageFileSource(file)
+        .then((source) => setImageTargetFromSources(target, [source]))
+        .catch((error) => toast(String(error?.message || error), true));
+    };
+    const imageFilesFromDrop = (event) => {
+      const files = Array.from(event.dataTransfer?.files || []);
+      const fromFiles = files.filter((item) => /^image\//i.test(item.type) || /\.(png|jpe?g|webp|gif|bmp|tiff?|avif)$/i.test(item.name || ""));
+      if (fromFiles.length) return fromFiles;
+      const items = Array.from(event.dataTransfer?.items || []);
+      return items
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile?.())
+        .filter((file) => file && (/^image\//i.test(file.type) || /\.(png|jpe?g|webp|gif|bmp|tiff?|avif)$/i.test(file.name || "")));
     };
     const droppedImageFile = (event) => {
-      const files = Array.from(event.dataTransfer?.files || []);
-      const fromFiles = files.find((item) => /^image\//i.test(item.type) || /\.(png|jpe?g|webp)$/i.test(item.name || ""));
-      if (fromFiles) return fromFiles;
-      const items = Array.from(event.dataTransfer?.items || []);
-      for (const item of items) {
-        if (item.kind !== "file") continue;
-        const file = item.getAsFile?.();
-        if (file && (/^image\//i.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name || ""))) return file;
-      }
-      return null;
+      return imageFilesFromDrop(event)[0] || null;
     };
     const droppedImageText = (event) => {
       return String(
@@ -17425,6 +18053,20 @@ function openBuilder(node) {
         console.warn("[VRGDG Music Builder] Could not read dropped reference image URL:", error);
         return false;
       }
+    };
+    const setImageTargetFromFiles = (target, files = []) => {
+      const allFiles = Array.from(files || []);
+      const imageFiles = allFiles.filter((file) => /^image\//i.test(file.type) || /\.(png|jpe?g|webp|gif|bmp|tiff?|avif)$/i.test(file.name || ""));
+      if (!imageFiles.length) {
+        toast("No readable image files were found in that drop/selection.", true);
+        return;
+      }
+      if (imageFiles.length < allFiles.length) {
+        toast(`Skipped ${allFiles.length - imageFiles.length} non-image file${allFiles.length - imageFiles.length === 1 ? "" : "s"}.`, true);
+      }
+      Promise.all(imageFiles.map(readImageFileSource))
+        .then((sources) => setImageTargetFromSources(target, sources))
+        .catch((error) => toast(String(error?.message || error), true));
     };
     const wireDrop = (drop, target) => {
       drop.dataset.vrgdgFileDropZone = "true";
@@ -17459,9 +18101,9 @@ function openBuilder(node) {
           setImageTargetFromSource(target, sceneSource);
           return;
         }
-        const file = droppedImageFile(event);
-        if (file) {
-          setImageTarget(target, file);
+        const files = imageFilesFromDrop(event);
+        if (files.length) {
+          setImageTargetFromFiles(target, files);
           return;
         }
         const urlText = droppedImageText(event);
@@ -17477,7 +18119,7 @@ function openBuilder(node) {
       drop.addEventListener("drop", handleDrop);
     };
     fileInput.onchange = () => {
-      setImageTarget(pendingImageTarget, fileInput.files?.[0]);
+      setImageTargetFromFiles(pendingImageTarget, Array.from(fileInput.files || []));
       fileInput.value = "";
       pendingImageTarget = null;
     };
@@ -17490,7 +18132,7 @@ function openBuilder(node) {
     const subjectKey = locationKey;
     const subjectByName = (name) => refs.subjects.find((item) => subjectKey(item.name) === subjectKey(name));
     const ensureSubjectCount = (options = {}) => {
-      let desiredCount = Math.max(1, Math.min(12, Number(subjectCountInput.value || refs.subject_count || refs.subjects.length || 1)));
+      let desiredCount = Math.max(0, Math.min(12, Number(subjectCountInput.value || refs.subject_count || refs.subjects.length || 0)));
       if (!options.allowTrim && refs.subjects.length > desiredCount) {
         desiredCount = Math.min(12, refs.subjects.length);
         subjectCountInput.value = String(desiredCount);
@@ -18215,6 +18857,21 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       return { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 };
     }
 
+    function applyGeneratedReferencePromptToDescription(referenceType, target, prompt = "") {
+      const description = String(prompt || "").trim();
+      if (!description || !target || typeof target !== "object") return;
+      target.description = description;
+      if (referenceType === "subject") {
+        const matchingSubject = refs.subjects.find((subject) => subject === target || (subject.id && subject.id === target.id));
+        if (matchingSubject) matchingSubject.description = description;
+        if (refs.subject_count === 1 && (!matchingSubject || refs.subjects[0]?.id === matchingSubject.id || target === refs.subject)) {
+          refs.subject.description = description;
+          if (refs.subjects[0]) refs.subjects[0].description = description;
+          subjectDescription.value = description;
+        }
+      }
+    }
+
     async function runFluxReferenceWithZImage(referenceType, target, sourceText, name = "", generatorSettings = null) {
       const text = String(sourceText || "").trim();
       if (!text) {
@@ -18273,6 +18930,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.path = saved.saved_path || "";
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
+        applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
         advanceZImageSeedAfterRun(zSettings);
         syncZImageSettingsPanel();
         renderAll();
@@ -18356,6 +19014,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.path = saved.saved_path || "";
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
+        applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
         renderAll();
         setInlineProgress("Reference image ready.", 100);
         progress.set("Reference image ready.", 100);
@@ -18467,6 +19126,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           location.image.path = saved.saved_path || "";
           location.image.data = "";
           location.image.name = `${location.name || `location_${index + 1}`}.png`;
+          applyGeneratedReferencePromptToDescription("location", location, prompt);
           if (!useFlowGpt && !useKrea2) {
             advanceZImageSeedAfterRun(zSettings);
             zSettings = cloneZImageSettings(state.zimageSettings);
@@ -18603,6 +19263,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           subject.image.path = saved.saved_path || "";
           subject.image.data = "";
           subject.image.name = `${subject.name || `subject_${index + 1}`}.png`;
+          applyGeneratedReferencePromptToDescription("subject", subject, prompt);
           if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
             refs.subject.image = subject.image;
           }
@@ -18746,6 +19407,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.path = saved.saved_path || "";
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
+        applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
         renderAll();
         setInlineProgress("Cleaning memory after Krea2 reference...", 94);
         await runImageMemoryCleanupQuiet(progress, "Krea2 reference", 94);
@@ -18770,19 +19432,127 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const backdrop = document.createElement("div");
       backdrop.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;";
       const box = document.createElement("div");
-      box.style.cssText = "width:min(820px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      box.style.cssText = "width:min(920px,calc(100vw - 36px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.6);padding:16px;display:flex;flex-direction:column;gap:12px;";
       const header = document.createElement("div");
       header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
       const title = document.createElement("div");
-      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose the image workflow for this Reference Builder image.</div>`;
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Generate ${referenceType === "subject" ? "Subject" : "Location"} Reference</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceType === "subject" ? "Choose how Gemma should create this subject, then choose the image workflow." : "Choose the image workflow for this Reference Builder image."}</div>`;
       const close = makeButton("Close");
       header.append(title, close);
       const note = document.createElement("div");
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-      note.textContent = "ZImage uses the existing reference-image workflow. Krea2 uses the hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel. A subject or location description is required before generation can run.";
+      note.textContent = referenceType === "subject"
+        ? "Gemma will turn your selected source into one character reference-sheet prompt. If you choose lyrics/style, it can invent a character that fits the song. If you do not like the result, run it again."
+        : "ZImage uses the existing reference-image workflow. Krea2 uses the hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel. A location description is required before generation can run.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
+      const subjectOptionsCard = document.createElement("div");
+      subjectOptionsCard.style.cssText = "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
+      const subjectMode = makeSelect([
+        { value: "description_only", label: "Use description only" },
+        { value: "invent_from_lyrics", label: "Invent character from lyrics/style" },
+        { value: "description_lyrics", label: "Use description + lyrics/style" },
+        { value: "image_description", label: "Use image/description identity" },
+        { value: "image_lyrics", label: "Use image identity + lyrics/style" },
+        { value: "all", label: "Use everything" },
+      ], "description_only");
+      const savedDraft = target?.reference_generation_draft && typeof target.reference_generation_draft === "object" ? target.reference_generation_draft : {};
+      if (referenceType === "subject" && savedDraft.subject_mode && Array.from(subjectMode.options).some((option) => option.value === savedDraft.subject_mode)) {
+        subjectMode.value = savedDraft.subject_mode;
+      }
+      const subjectLabel = makeInput(savedDraft.subject_label || target?.name || name || "");
+      subjectLabel.placeholder = "lead performer, the woman, villain, dancer...";
+      const genderRole = makeInput(savedDraft.gender_role || "");
+      genderRole.placeholder = "optional: female lead singer, older male narrator, nonbinary dancer...";
+      const songStyle = document.createElement("textarea");
+      songStyle.value = savedDraft.song_style || "";
+      songStyle.placeholder = "Optional song / visual style: dark synthpop, southern gothic, glossy K-pop, VHS horror...";
+      songStyle.style.cssText = "min-height:58px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;";
+      const lyricsInput = document.createElement("textarea");
+      lyricsInput.value = savedDraft.lyrics_context || locationScoutLyricsPayloadForGpt() || lyricsFromSegmentsForPromptCreator(state.segments || []);
+      lyricsInput.placeholder = "Optional lyrics/dialogue context...";
+      lyricsInput.style.cssText = "min-height:100px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;font-family:monospace;";
+      const extraDirection = document.createElement("textarea");
+      extraDirection.value = savedDraft.extra_direction || "";
+      extraDirection.placeholder = "Optional extra direction: age, wardrobe, hair, era, attitude, what to avoid...";
+      extraDirection.style.cssText = "min-height:70px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;line-height:1.35;";
+      const subjectSourceGrid = document.createElement("div");
+      subjectSourceGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+      subjectSourceGrid.append(
+        makeField("Generate subject from", subjectMode),
+        makeField("Subject label", subjectLabel),
+        makeField("Gender / role", genderRole),
+        makeField("Song / visual style", songStyle),
+      );
+      subjectOptionsCard.append(subjectSourceGrid, makeField("Lyrics / dialogue context", lyricsInput), makeField("Extra user direction", extraDirection));
+      const hasSubjectImage = () => hasReferenceImage(target?.image || {});
+      const subjectImageNote = document.createElement("div");
+      subjectImageNote.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.35;";
+      const syncSubjectModeHint = () => {
+        const needsImage = /^image_|^all$/.test(subjectMode.value || "");
+        subjectImageNote.textContent = needsImage
+          ? hasSubjectImage()
+            ? "This subject already has an image. Gemma will use the row description/image identity notes as identity guidance while creating the new reference sheet prompt."
+            : "No subject image is loaded yet. This mode will still use text, but upload/drop an image first if you want image identity guidance."
+          : "Description and lyrics/style modes do not require an uploaded image.";
+      };
+      subjectMode.addEventListener("change", syncSubjectModeHint);
+      subjectOptionsCard.append(subjectImageNote);
+      syncSubjectModeHint();
+      subjectOptionsCard.style.display = referenceType === "subject" ? "flex" : "none";
+      const persistReferenceGenerationDraft = () => {
+        if (!target || typeof target !== "object") return;
+        target.reference_generation_draft = {
+          subject_mode: subjectMode.value || "description_only",
+          subject_label: String(subjectLabel.value || ""),
+          gender_role: String(genderRole.value || ""),
+          song_style: String(songStyle.value || ""),
+          lyrics_context: String(lyricsInput.value || ""),
+          extra_direction: String(extraDirection.value || ""),
+        };
+        if (referenceType === "subject") {
+          const matchingSubject = refs.subjects.find((subject) => subject === target || (subject.id && subject.id === target.id));
+          if (matchingSubject) matchingSubject.reference_generation_draft = target.reference_generation_draft;
+          if (refs.subject_count === 1 && (!matchingSubject || refs.subjects[0]?.id === matchingSubject.id || target === refs.subject)) {
+            refs.subject.reference_generation_draft = target.reference_generation_draft;
+            if (refs.subjects[0]) refs.subjects[0].reference_generation_draft = target.reference_generation_draft;
+          }
+        }
+      };
+      [subjectMode, subjectLabel, genderRole, songStyle, lyricsInput, extraDirection].forEach((control) => {
+        control.addEventListener("input", persistReferenceGenerationDraft);
+        control.addEventListener("change", persistReferenceGenerationDraft);
+      });
+      const subjectSourceTextForRun = () => {
+        persistReferenceGenerationDraft();
+        if (referenceType !== "subject") return text;
+        const mode = subjectMode.value || "description_only";
+        const label = String(subjectLabel.value || target?.name || name || "Subject").trim();
+        const description = String(target?.description || text || "").trim();
+        const type = String(target?.reference_type || "character").trim() || "character";
+        const includeDescription = ["description_only", "description_lyrics", "image_description", "all"].includes(mode);
+        const includeLyrics = ["invent_from_lyrics", "description_lyrics", "image_lyrics", "all"].includes(mode);
+        const includeImage = ["image_description", "image_lyrics", "all"].includes(mode);
+        const parts = [
+          `Generation mode: ${mode.replace(/_/g, " ")}`,
+          `Subject label: ${label || "Subject"}`,
+          `Reference type: ${type}`,
+        ];
+        if (includeDescription) parts.push(`Existing description:\n${description || "(none provided)"}`);
+        if (includeImage) {
+          const image = target?.image || {};
+          parts.push(`Reference image guidance:\n${hasReferenceImage(image) ? `Use the already loaded subject image identity as guidance. Image name/path: ${image.name || image.path || "loaded image"}.` : "No image is currently loaded; rely on text context only."}`);
+        }
+        if (includeLyrics) parts.push(`Lyrics / dialogue context:\n${String(lyricsInput.value || "").trim() || "(none provided)"}`);
+        if (String(songStyle.value || "").trim()) parts.push(`Song / visual style:\n${String(songStyle.value || "").trim()}`);
+        if (String(genderRole.value || "").trim()) parts.push(`Gender / role:\n${String(genderRole.value || "").trim()}`);
+        if (String(extraDirection.value || "").trim()) parts.push(`Extra user direction:\n${String(extraDirection.value || "").trim()}`);
+        if (!includeDescription && !includeLyrics && !String(extraDirection.value || "").trim()) {
+          parts.push(`Existing description:\n${description || label || "Create a visually distinctive character that fits the project."}`);
+        }
+        return parts.join("\n\n");
+      };
 
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;";
@@ -18815,8 +19585,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         h.textContent = heading;
         const button = makeButton(actionLabel, "primary");
         button.onclick = async () => {
+          const runText = subjectSourceTextForRun();
+          if (!String(runText || "").trim()) {
+            toast(referenceType === "subject" ? "Enter a subject description, lyrics, or extra direction first." : "Enter a location description first.", true);
+            return;
+          }
           closeModal();
-          await action();
+          await action(runText);
         };
         card.append(h, ...body, button);
         return card;
@@ -18824,7 +19599,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       grid.append(
         optionCard("ZImage", [
           modalHelp("Use the shared ZImage model settings above for a direct ZImage reference image."),
-        ], "Use ZImage", () => runFluxReferenceWithZImage(referenceType, target, text, name, {
+        ], "Use ZImage", (runText) => runFluxReferenceWithZImage(referenceType, target, runText, name, {
           zimage: readZImage(),
         })),
         optionCard("Krea2 + ZImage Enhancer", [
@@ -18837,21 +19612,23 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           makeField("Krea first height", firstHeight),
           makeField("Final width", width),
           makeField("Final height", height),
-        ], "Use Krea2 + Enhancer", () => runFluxReferenceWithKrea2(referenceType, target, text, name, {
+        ], "Use Krea2 + Enhancer", (runText) => runFluxReferenceWithKrea2(referenceType, target, runText, name, {
           krea2: readKrea2(),
         })),
         optionCard("Flow/GPT", [
           modalHelp("Use the selected Flow/GPT provider. Flow requires the Flow browser profile; GPT Image appends the selected aspect ratio from the Flow/GPT panel."),
-        ], "Use Flow/GPT", () => runFluxReferenceWithFlowGpt(referenceType, target, text, name)),
+        ], "Use Flow/GPT", (runText) => runFluxReferenceWithFlowGpt(referenceType, target, runText, name)),
       );
       const footer = document.createElement("div");
       footer.style.cssText = "display:flex;justify-content:flex-end;";
       const cancel = makeButton("Cancel");
       footer.append(cancel);
-      box.append(header, note, sharedZImageCard, grid, footer);
+      box.append(header, note, subjectOptionsCard, sharedZImageCard, grid, footer);
       backdrop.append(box);
       document.body.append(backdrop);
       function closeModal() {
+        persistReferenceGenerationDraft();
+        autoSaveSessionQuiet("reference generation draft saved").catch(() => null);
         backdrop.remove();
       }
       close.onclick = closeModal;
@@ -19762,15 +20539,18 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     }
 
     function renderSubjects() {
-      ensureSubjectCount();
+      if (refs.subjects.length || Number(refs.subject_count || 0) > 0) ensureSubjectCount();
+      else refs.subject_count = 0;
       syncPrimarySubjectImage();
-      const multi = refs.subject_count > 1;
-      extractSubjects.style.display = multi ? "" : "none";
-      subjectNameInput.parentElement.style.display = multi ? "none" : "";
-      subjectDescription.parentElement.style.display = multi ? "none" : "";
-      subjectDrop.style.display = multi ? "none" : "flex";
-      subjectButtons.style.display = multi ? "none" : "grid";
-      subjectsList.style.display = multi ? "flex" : "none";
+      const multi = true;
+      extractSubjects.style.display = "";
+      subjectNameInput.parentElement.style.display = "none";
+      subjectTypeSelect.parentElement.style.display = "none";
+      subjectDescription.parentElement.style.display = "none";
+      subjectDrop.style.display = "none";
+      subjectButtons.style.display = "none";
+      subjectsList.style.display = "flex";
+      subjectsList.style.maxHeight = "min(62vh, 720px)";
       if (!multi) {
         refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
         refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
@@ -19782,9 +20562,54 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return;
       }
       subjectsList.innerHTML = "";
+      if (!refs.subjects.length) {
+        const empty = document.createElement("div");
+        empty.innerHTML = referenceImagesEnabled
+          ? `<strong style="color:#cffafe;">No subject references yet.</strong><br><span>Drop one or more subject images here, upload images, import subjects, or add a subject row.</span>`
+          : `<strong style="color:#cffafe;">No subject references yet.</strong><br><span>Add, import, or extract reusable subject descriptions for scene mapping.</span>`;
+        empty.style.cssText = "font-size:12px;color:#94a3b8;border:1px dashed #0891b2;border-radius:7px;padding:16px;text-align:center;background:#061620;";
+        if (referenceImagesEnabled) wireDrop(empty, { kind: "subject", bulk: true });
+        subjectsList.append(empty);
+        return;
+      }
+      let draggedSubjectIndex = -1;
+      const moveSubjectRow = (fromIndex, toIndex) => {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= refs.subjects.length || toIndex >= refs.subjects.length) return;
+        const [moved] = refs.subjects.splice(fromIndex, 1);
+        refs.subjects.splice(toIndex, 0, moved);
+        syncSingleSubjectInputsFromFirstSubject();
+        renderAll();
+      };
       refs.subjects.forEach((subject, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        row.draggable = false;
+        row.dataset.subjectIndex = String(index);
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;border-radius:7px;display:flex;flex-direction:column;gap:8px;";
+        row.addEventListener("dragstart", (event) => {
+          draggedSubjectIndex = index;
+          row.style.opacity = "0.55";
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+        });
+        row.addEventListener("dragend", () => {
+          draggedSubjectIndex = -1;
+          row.style.opacity = "";
+        });
+        row.addEventListener("dragover", (event) => {
+          if (draggedSubjectIndex < 0 || draggedSubjectIndex === index) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          row.style.borderColor = "#22d3ee";
+        });
+        row.addEventListener("dragleave", () => {
+          row.style.borderColor = "#334155";
+        });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          row.style.borderColor = "#334155";
+          const fromIndex = Number(event.dataTransfer.getData("text/plain") || draggedSubjectIndex);
+          moveSubjectRow(fromIndex, index);
+        });
         const name = makeInput(subject.name || `Character ${index + 1}`);
         const typeSelect = makeReferenceTypeSelect(subject.reference_type || "character");
         const description = document.createElement("textarea");
@@ -19816,15 +20641,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const extraCount = refs.subjects.filter((item) => subjectExtraTargetId(item) === subject.id).length;
         used.textContent = targetSubject
           ? `Extra ref for: ${targetSubject.name || "Subject"} | Used by: ${usedBy}`
-          : `Used by: ${usedBy}${extraCount ? ` | Includes ${extraCount} extra ref image${extraCount === 1 ? "" : "s"}` : ""}`;
+          : `Used by: ${usedBy}${referenceImagesEnabled && extraCount ? ` | Includes ${extraCount} extra ref image${extraCount === 1 ? "" : "s"}` : ""}`;
         used.style.cssText = "font-size:11px;color:#a5f3fc;";
         const drop = document.createElement("div");
-        drop.style.cssText = subjectDrop.style.cssText;
-        const target = imageTargetFor(subject);
-        renderDrop(drop, subject.image, "Drop MSR reference image here");
+        drop.style.cssText = `${subjectDrop.style.cssText};min-height:132px;height:132px;`;
+        drop.style.display = "flex";
+        const target = imageTargetFor(subject, "image", "subject");
         wireDrop(drop, target);
         const buttons = document.createElement("div");
-        buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+        buttons.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;align-self:stretch;";
         const createZImage = makeButton("Generate Subject", "primary");
         createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this subject reference.";
         const describeImage = makeButton("Gemma Describe", "primary");
@@ -19840,7 +20665,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         };
         remove.onclick = () => {
           refs.subjects.splice(index, 1);
-          refs.subject_count = Math.max(1, refs.subjects.length);
+          refs.subject_count = refs.subjects.length;
           subjectCountInput.value = String(refs.subject_count);
           refs.subjects.forEach((item) => {
             if (subjectExtraTargetId(item) === subject.id) {
@@ -19856,10 +20681,18 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         };
         name.addEventListener("input", () => {
           subject.name = name.value;
+          if (index === 0) {
+            refs.subject.name = name.value;
+            subjectNameInput.value = name.value;
+          }
           renderMapping();
         });
         typeSelect.addEventListener("change", () => {
           subject.reference_type = typeSelect.value || "character";
+          if (index === 0) {
+            refs.subject.reference_type = subject.reference_type;
+            subjectTypeSelect.value = subject.reference_type;
+          }
           renderMapping();
         });
         sameSubjectCheck.addEventListener("change", () => {
@@ -19899,32 +20732,109 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         });
         description.addEventListener("input", () => {
           subject.description = description.value;
+          if (index === 0) {
+            refs.subject.description = description.value;
+            subjectDescription.value = description.value;
+          }
         });
-        buttons.append(createZImage, describeImage, upload, clear, remove);
+        if (referenceImagesEnabled) buttons.append(createZImage, describeImage, upload, clear);
+        buttons.append(remove);
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.textContent = "::";
+        handle.title = "Drag to reorder";
+        handle.draggable = true;
+        handle.style.cssText = "width:28px;height:42px;border:1px solid #334155;border-radius:6px;background:#0b1220;color:#67e8f9;font-weight:900;cursor:grab;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
+        const nameField = makeField("Reference label", name);
+        const typeField = makeField("Reference type", typeSelect);
+        const descField = makeField("Description", description);
+        const imageWrap = document.createElement("div");
+        imageWrap.style.cssText = "display:grid;grid-template-columns:122px minmax(110px,1fr);gap:8px;align-items:stretch;";
         const thumbnailStrip = renderSubjectThumbnailStrip(subject, target);
-        if (thumbnailStrip) row.append(thumbnailStrip);
-        row.append(makeField("Reference name", name), makeField("Reference type", typeSelect), sameSubjectWrap, makeField("Description / prompt", description), used, drop, buttons);
+        renderDrop(drop, thumbnailStrip ? { path: "", data: "", name: "" } : subject.image, thumbnailStrip ? "Drop image to replace" : "Drop subject reference image here");
+        if (thumbnailStrip) {
+          thumbnailStrip.style.margin = "0";
+          thumbnailStrip.style.maxHeight = "132px";
+          thumbnailStrip.style.overflow = "hidden";
+          imageWrap.append(thumbnailStrip, drop);
+        } else {
+          imageWrap.style.gridTemplateColumns = "1fr";
+          imageWrap.append(drop);
+        }
+        const mainRow = document.createElement("div");
+        mainRow.style.cssText = referenceImagesEnabled
+          ? "display:grid;grid-template-columns:28px 34px minmax(150px,0.9fr) minmax(145px,0.75fr) minmax(240px,1.2fr) minmax(230px,1fr) 148px;gap:10px;align-items:center;min-width:1060px;"
+          : "display:grid;grid-template-columns:28px 34px minmax(170px,.85fr) minmax(150px,.7fr) minmax(320px,1.5fr) 108px;gap:10px;align-items:center;min-width:820px;";
+        mainRow.append(handle, number, nameField, typeField, descField);
+        if (referenceImagesEnabled) mainRow.append(imageWrap);
+        mainRow.append(buttons);
+        const metaRow = document.createElement("div");
+        metaRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;";
+        metaRow.append(used);
+        if (allowExtraSubjectReferences && refs.subjects.length > 1) metaRow.append(sameSubjectWrap);
+        row.append(mainRow, metaRow);
         subjectsList.append(row);
       });
     }
 
     function renderLocations() {
       locationsList.innerHTML = "";
+      locationsList.style.maxHeight = "min(62vh, 720px)";
       if (!refs.locations.length) {
         const empty = document.createElement("div");
-        empty.textContent = "No locations yet. Add locations/scenes";
-        empty.style.cssText = "font-size:12px;color:#94a3b8;border:1px solid #334155;border-radius:6px;padding:10px;";
+        empty.innerHTML = referenceImagesEnabled
+          ? `<strong style="color:#cffafe;">No locations yet.</strong><br><span>Drop one or more location images here, upload images, or add locations/scenes.</span>`
+          : `<strong style="color:#cffafe;">No locations yet.</strong><br><span>Add, import, or extract reusable location descriptions for scene mapping.</span>`;
+        empty.style.cssText = "font-size:12px;color:#94a3b8;border:1px dashed #0891b2;border-radius:6px;padding:14px;text-align:center;background:#061620;";
+        if (referenceImagesEnabled) wireDrop(empty, { kind: "location", bulk: true });
         locationsList.append(empty);
         return;
       }
+      let draggedLocationIndex = -1;
+      const moveLocationRow = (fromIndex, toIndex) => {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= refs.locations.length || toIndex >= refs.locations.length) return;
+        const [moved] = refs.locations.splice(fromIndex, 1);
+        refs.locations.splice(toIndex, 0, moved);
+        renderAll();
+      };
       refs.locations.forEach((location, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:8px;";
+        row.draggable = false;
+        row.dataset.locationIndex = String(index);
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:flex;flex-direction:column;gap:8px;";
+        row.addEventListener("dragstart", (event) => {
+          draggedLocationIndex = index;
+          row.style.opacity = "0.55";
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", String(index));
+        });
+        row.addEventListener("dragend", () => {
+          draggedLocationIndex = -1;
+          row.style.opacity = "";
+        });
+        row.addEventListener("dragover", (event) => {
+          if (draggedLocationIndex < 0 || draggedLocationIndex === index) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          row.style.borderColor = "#22d3ee";
+        });
+        row.addEventListener("dragleave", () => {
+          row.style.borderColor = "#334155";
+        });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          row.style.borderColor = "#334155";
+          const fromIndex = Number(event.dataTransfer.getData("text/plain") || draggedLocationIndex);
+          moveLocationRow(fromIndex, index);
+        });
         const name = makeInput(location.name || `Location ${index + 1}`);
         const description = document.createElement("textarea");
         description.value = location.description || "";
         description.placeholder = "Location description / generation prompt...";
-        description.style.cssText = "min-height:64px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;";
+        description.style.cssText = "min-height:76px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#09090b;color:#f8fafc;padding:8px;font-size:12px;";
         const usedBy = allEditableSegments()
           .map((segment, sceneIndex) => refs.scene_map?.[segment.id] === location.id ? `Scene ${sceneIndex + 1}` : "")
           .filter(Boolean)
@@ -19933,12 +20843,13 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         used.textContent = `Used by: ${usedBy}`;
         used.style.cssText = "font-size:11px;color:#a5f3fc;";
         const drop = document.createElement("div");
-        drop.style.cssText = subjectDrop.style.cssText;
-        const target = imageTargetFor(location);
+        drop.style.cssText = `${subjectDrop.style.cssText};min-height:132px;height:132px;`;
+        drop.style.display = "flex";
+        const target = imageTargetFor(location, "image", "location");
         renderDrop(drop, location.image, "Drop location image here");
         wireDrop(drop, target);
         const buttons = document.createElement("div");
-        buttons.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+        buttons.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;align-self:stretch;";
         const createZImage = makeButton("Generate Location", "primary");
         createZImage.title = "Choose ZImage or Krea2 + ZImage enhancer for this location reference.";
         const describeImage = makeButton("Gemma Describe", "primary");
@@ -19973,8 +20884,33 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         description.addEventListener("input", () => {
           location.description = description.value;
         });
-        buttons.append(createZImage, describeImage, upload, clear, remove);
-        row.append(makeField("Location name", name), makeField("Description / prompt", description), used, drop, buttons);
+        if (referenceImagesEnabled) buttons.append(createZImage, describeImage, upload, clear);
+        buttons.append(remove);
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.textContent = "::";
+        handle.title = "Drag to reorder";
+        handle.draggable = true;
+        handle.style.cssText = "width:28px;height:42px;border:1px solid #334155;border-radius:6px;background:#0b1220;color:#67e8f9;font-weight:900;cursor:grab;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
+        const nameField = makeField("Location label", name);
+        const descField = makeField("Description", description);
+        const imageWrap = document.createElement("div");
+        imageWrap.style.cssText = "min-width:230px;";
+        imageWrap.append(drop);
+        const mainRow = document.createElement("div");
+        mainRow.style.cssText = referenceImagesEnabled
+          ? "display:grid;grid-template-columns:28px 34px minmax(180px,0.9fr) minmax(340px,1.5fr) minmax(230px,1fr) 148px;gap:10px;align-items:center;min-width:970px;"
+          : "display:grid;grid-template-columns:28px 34px minmax(200px,.8fr) minmax(420px,1.5fr) 108px;gap:10px;align-items:center;min-width:790px;";
+        mainRow.append(handle, number, nameField, descField);
+        if (referenceImagesEnabled) mainRow.append(imageWrap);
+        mainRow.append(buttons);
+        const metaRow = document.createElement("div");
+        metaRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;";
+        metaRow.append(used);
+        row.append(mainRow, metaRow);
         locationsList.append(row);
       });
     }
@@ -19984,6 +20920,73 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const logicalSubjects = logicalReferenceSubjects(refs);
       const showSubjects = logicalSubjects.length > 0;
       const singleGlobalSubject = refs.use_subject_reference && logicalSubjects.length === 1;
+      const makeMappingThumb = (image = {}, label = "Reference") => {
+        const thumb = document.createElement("div");
+        thumb.title = imageLabel(image) || label;
+        thumb.style.cssText = "width:96px;height:72px;border:1px solid #155e75;border-radius:6px;background:#061620;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:0 0 auto;";
+        const src = imageSrc(image);
+        if (src) {
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = label;
+          img.draggable = false;
+          img.title = "Click to preview larger";
+          img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in;";
+          img.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openReferenceImagePreview(image, label);
+          });
+          thumb.append(img);
+        } else {
+          const empty = document.createElement("span");
+          empty.textContent = "No img";
+          empty.style.cssText = "font-size:11px;font-weight:900;color:#67e8f9;text-align:center;padding:6px;";
+          thumb.append(empty);
+        }
+        return thumb;
+      };
+      const makeMappingPreview = (items = [], emptyText = "Unassigned") => {
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "display:flex;gap:8px;align-items:center;min-height:92px;overflow-x:auto;padding:7px;border:1px solid #1e3a5f;border-radius:7px;background:#071422;scrollbar-width:thin;";
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.textContent = emptyText;
+          empty.style.cssText = "font-size:11px;color:#94a3b8;padding:0 6px;";
+          wrap.append(empty);
+          return wrap;
+        }
+        items.slice(0, 8).forEach((item) => {
+          const cell = document.createElement("div");
+          cell.style.cssText = "display:flex;flex-direction:column;gap:4px;align-items:center;min-width:100px;max-width:118px;";
+          cell.append(makeMappingThumb(item.image || {}, item.label || "Reference"));
+          const caption = document.createElement("div");
+          caption.textContent = item.label || "Reference";
+          caption.style.cssText = "width:100%;font-size:11px;color:#cbd5e1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+          cell.append(caption);
+          wrap.append(cell);
+        });
+        if (items.length > 8) {
+          const more = document.createElement("div");
+          more.textContent = `+${items.length - 8}`;
+          more.style.cssText = "font-size:12px;font-weight:900;color:#67e8f9;padding:0 6px;";
+          wrap.append(more);
+        }
+        return wrap;
+      };
+      const subjectPreviewItems = (selectedIds) => {
+        const ids = new Set(selectedIds);
+        const items = [];
+        logicalSubjects.filter((subject) => ids.has(subject.id)).forEach((subject) => {
+          const previews = subjectPreviewImages(subject);
+          if (previews.length) {
+            previews.forEach(({ image, label }) => items.push({ image, label: label || subject.name || "Subject" }));
+          } else {
+            items.push({ image: subject.image || {}, label: subject.name || "Subject" });
+          }
+        });
+        return items;
+      };
       mappingNote.textContent = singleGlobalSubject
         ? `Your single character reference is global and will be included in every scene. The dropdowns below assign location references only; Unassigned means no location image for that scene.`
         : showSubjects
@@ -19991,10 +20994,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         : `Choose which location image ${referenceBuilderTargetLabel} should receive for each scene. Use Unassigned for no location reference.`;
       allEditableSegments().forEach((segment, index) => {
         const row = document.createElement("div");
-        row.style.cssText = `display:grid;grid-template-columns:minmax(100px,.8fr) ${showSubjects ? "minmax(140px,1.1fr) " : ""}minmax(120px,1fr);gap:8px;align-items:center;`;
+        row.style.cssText = `border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:grid;grid-template-columns:minmax(160px,.7fr) ${showSubjects ? "minmax(260px,1.15fr) " : ""}minmax(260px,1fr);gap:10px;align-items:stretch;`;
         const label = document.createElement("div");
-        label.textContent = `${index + 1}. ${segment.label || `Scene ${index + 1}`}`;
-        label.style.cssText = "font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        label.innerHTML = `<div style="font-size:11px;color:#67e8f9;font-weight:900;text-transform:uppercase;">Scene ${index + 1}</div><div style="font-size:13px;color:#f8fafc;font-weight:900;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div>`;
+        label.style.cssText = "min-width:0;border:1px solid #1e3a5f;border-radius:7px;background:#071422;padding:10px;display:flex;flex-direction:column;justify-content:center;";
         const subjectSelect = document.createElement("select");
         subjectSelect.multiple = true;
         subjectSelect.dataset.subjectMapSegmentId = segment.id;
@@ -20010,6 +21013,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         subjectSelect.onchange = () => {
           refs.subject_scene_map[segment.id] = Array.from(subjectSelect.selectedOptions).map((option) => option.value);
           renderSubjects();
+          renderMapping();
         };
         const select = document.createElement("select");
         select.dataset.locationMapSegmentId = segment.id;
@@ -20020,16 +21024,172 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         select.onchange = () => {
           refs.scene_map[segment.id] = select.value;
           renderLocations();
+          renderMapping();
         };
+        const subjectPanel = document.createElement("div");
+        subjectPanel.style.cssText = referenceImagesEnabled
+          ? "display:grid;grid-template-columns:minmax(120px,.75fr) minmax(150px,1fr);gap:8px;align-items:stretch;min-width:0;"
+          : "display:grid;grid-template-columns:minmax(160px,1fr);gap:8px;align-items:stretch;min-width:0;";
+        if (showSubjects) {
+          subjectPanel.append(subjectSelect);
+          if (referenceImagesEnabled) subjectPanel.append(makeMappingPreview(subjectPreviewItems(selectedSubjectIds), "No subject"));
+        }
+        const locationPanel = document.createElement("div");
+        locationPanel.style.cssText = referenceImagesEnabled
+          ? "display:grid;grid-template-columns:minmax(120px,.78fr) minmax(150px,1fr);gap:8px;align-items:stretch;min-width:0;"
+          : "display:grid;grid-template-columns:minmax(160px,1fr);gap:8px;align-items:stretch;min-width:0;";
+        const selectedLocation = refs.locations.find((location) => location.id === select.value);
+        locationPanel.append(select);
+        if (referenceImagesEnabled) {
+          locationPanel.append(makeMappingPreview(selectedLocation ? [{ image: selectedLocation.image || {}, label: selectedLocation.name || "Location" }] : [], "No location"));
+        }
         row.append(label);
-        if (showSubjects) row.append(subjectSelect);
-        row.append(select);
+        if (showSubjects) row.append(subjectPanel);
+        row.append(locationPanel);
         mappingList.append(row);
       });
     }
 
+    function openArrangeReferenceDialog(kind = "subject") {
+      const isLocation = kind === "location";
+      const titleText = isLocation ? "Arrange Locations" : "Arrange Subjects";
+      const list = () => isLocation ? refs.locations : refs.subjects;
+      const backdropArrange = document.createElement("div");
+      backdropArrange.style.cssText = "position:fixed;inset:0;z-index:100009;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:22px;box-sizing:border-box;";
+      const panel = document.createElement("div");
+      panel.style.cssText = "width:min(760px,calc(100vw - 42px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.58);display:flex;flex-direction:column;overflow:hidden;";
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;background:#083f4f;border-bottom:1px solid #155e75;padding:12px 14px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">${escapeHtml(titleText)}</div><div style="font-size:12px;color:#cbd5e1;margin-top:3px;">Move references into the order you want. Existing scene mappings stay attached to the same reference.</div>`;
+      const done = makeButton("Done", "primary");
+      head.append(title, done);
+      const rows = document.createElement("div");
+      rows.style.cssText = "display:flex;flex-direction:column;gap:8px;padding:12px;overflow:auto;";
+      let draggedArrangeIndex = -1;
+      const moveArrangeItem = (fromIndex, toIndex) => {
+        const arr = list();
+        if (!arr.length) return;
+        const from = Math.max(0, Math.min(arr.length - 1, Number(fromIndex)));
+        const boundedTo = Math.max(0, Math.min(arr.length, Number(toIndex)));
+        const adjustedTo = boundedTo > from ? boundedTo - 1 : boundedTo;
+        if (from === adjustedTo) return;
+        const [moved] = arr.splice(from, 1);
+        arr.splice(adjustedTo, 0, moved);
+        if (!isLocation) {
+          refs.subject_count = refs.subjects.length;
+          subjectCountInput.value = String(refs.subject_count);
+          if (refs.subjects.length <= 1) syncSingleSubjectInputsFromFirstSubject();
+        }
+        renderArrangeRows();
+        renderAll();
+      };
+      const renderArrangeRows = () => {
+        const items = list();
+        rows.innerHTML = "";
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.textContent = isLocation ? "No locations to arrange yet." : "No subjects to arrange yet.";
+          empty.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#94a3b8;padding:12px;font-size:12px;";
+          rows.append(empty);
+          return;
+        }
+        items.forEach((item, index) => {
+          const row = document.createElement("div");
+          row.draggable = true;
+          row.title = "Drag this row above or below another reference to reorder it.";
+          row.style.cssText = "display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;cursor:grab;";
+          row.addEventListener("dragstart", (event) => {
+            draggedArrangeIndex = index;
+            row.style.opacity = ".55";
+            row.style.cursor = "grabbing";
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", String(index));
+          });
+          row.addEventListener("dragend", () => {
+            draggedArrangeIndex = -1;
+            row.style.opacity = "";
+            row.style.cursor = "grab";
+            row.style.borderColor = "#334155";
+          });
+          row.addEventListener("dragover", (event) => {
+            if (draggedArrangeIndex < 0 || draggedArrangeIndex === index) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            const rect = row.getBoundingClientRect();
+            const before = event.clientY < rect.top + rect.height / 2;
+            row.style.borderColor = before ? "#22d3ee" : "#a3e635";
+          });
+          row.addEventListener("dragleave", () => {
+            row.style.borderColor = "#334155";
+          });
+          row.addEventListener("drop", (event) => {
+            if (draggedArrangeIndex < 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            row.style.borderColor = "#334155";
+            const rect = row.getBoundingClientRect();
+            const before = event.clientY < rect.top + rect.height / 2;
+            moveArrangeItem(draggedArrangeIndex, before ? index : index + 1);
+            draggedArrangeIndex = -1;
+          });
+          const thumb = document.createElement("div");
+          thumb.style.cssText = "width:54px;height:42px;border:1px solid #155e75;border-radius:6px;background:#020617;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#67e8f9;font-size:10px;font-weight:900;";
+          const src = imageSrc(item.image || {});
+          if (src) {
+            const img = document.createElement("img");
+            img.src = src;
+            img.alt = item.name || "Reference";
+            img.draggable = false;
+            img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+            thumb.append(img);
+          } else {
+            thumb.textContent = "NO IMG";
+          }
+          const info = document.createElement("div");
+          const extraLabel = !isLocation && subjectExtraTargetId(item) ? "Extra reference" : isLocation ? "Location" : "Subject";
+          info.innerHTML = `<div style="font-size:12px;font-weight:900;color:#e0f2fe;overflow-wrap:anywhere;">${index + 1}. ${escapeHtml(item.name || extraLabel)}</div><div style="font-size:11px;color:#94a3b8;margin-top:3px;overflow-wrap:anywhere;">${escapeHtml(extraLabel)}${item.description ? ` - ${String(item.description).slice(0, 90)}` : ""}</div>`;
+          const controls = document.createElement("div");
+          controls.style.cssText = "display:grid;grid-template-columns:repeat(4,32px);gap:6px;";
+          const top = makeButton("Top");
+          const up = makeButton("Up");
+          const down = makeButton("Dn");
+          const bottom = makeButton("Bot");
+          for (const button of [top, up, down, bottom]) {
+            button.style.minWidth = "32px";
+            button.style.padding = "6px 4px";
+          }
+          const move = (toIndex) => moveArrangeItem(index, toIndex);
+          top.onclick = () => move(0);
+          up.onclick = () => move(index - 1);
+          down.onclick = () => move(index + 2);
+          bottom.onclick = () => move(items.length);
+          top.disabled = up.disabled = index === 0;
+          down.disabled = bottom.disabled = index === items.length - 1;
+          controls.append(top, up, down, bottom);
+          row.append(thumb, info, controls);
+          rows.append(row);
+        });
+      };
+      panel.append(head, rows);
+      backdropArrange.append(panel);
+      document.body.append(backdropArrange);
+      done.onclick = () => backdropArrange.remove();
+      backdropArrange.addEventListener("pointerdown", (event) => {
+        if (event.target === backdropArrange) backdropArrange.remove();
+      });
+      renderArrangeRows();
+    }
+
     function renderAll() {
-      ensureSubjectCount();
+      if (refs.subjects.some((subject) => hasReferenceImage(subject?.image || {})) && refs.subjects.some(subjectLooksEmpty)) {
+        refs.subjects = refs.subjects.filter((subject) => !subjectLooksEmpty(subject));
+        refs.subject_count = refs.subjects.length;
+        subjectCountInput.value = String(refs.subject_count || 0);
+        if (refs.subjects.length <= 1) syncSingleSubjectInputsFromFirstSubject();
+      }
+      if (refs.subjects.length || Number(refs.subject_count || 0) > 0) ensureSubjectCount();
+      else refs.subject_count = 0;
       if (refs.subject_count === 1) {
         refs.subject.description = subjectDescription.value;
         refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
@@ -20041,7 +21201,14 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       renderMapping();
     }
 
-    uploadSubject.onclick = () => uploadFor(refs.subject);
+    uploadSubject.onclick = () => uploadFor(imageTargetFor(refs.subject, "image", "subject"));
+    addSubjectButton.onclick = () => {
+      createSubject();
+      refs.use_subject_reference = true;
+      useSubject.input.checked = true;
+      renderAll();
+    };
+    arrangeSubjects.onclick = () => openArrangeReferenceDialog("subject");
     createSubjectZImage.onclick = () => createFluxReferenceWithZImage("subject", refs.subject, refs.subject.description || subjectDescription.value || "", "subject_reference");
     describeSubjectImage.onclick = async () => {
       ensureSubjectCount();
@@ -20098,7 +21265,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.subject_scene_map = {};
       refs.use_subject_reference = false;
       useSubject.input.checked = false;
-      subjectCountInput.value = "1";
+      subjectCountInput.value = "0";
       subjectNameInput.value = "";
       subjectTypeSelect.value = "character";
       subjectDescription.value = "";
@@ -20167,8 +21334,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     addLocation.onclick = () => {
       createLocation();
       refs.locations_cleared = false;
+      refs.use_location_references = true;
+      useLocations.input.checked = true;
       renderAll();
     };
+    uploadLocationImages.onclick = () => uploadFor({ kind: "location", bulk: true });
+    arrangeLocations.onclick = () => openArrangeReferenceDialog("location");
     removeAllLocations.onclick = () => {
       if (refs.locations.length && !window.confirm("Remove all location references and clear location scene mappings?")) return;
       refs.locations = [];
@@ -20185,7 +21356,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       renderAll();
     });
     subjectCountInput.addEventListener("input", () => {
-      extractSubjects.style.display = Number(subjectCountInput.value || 1) > 1 ? "" : "none";
+      extractSubjects.style.display = Number(subjectCountInput.value || 0) > 1 ? "" : "none";
     });
     extractSubjects.onclick = extractSubjectsWithGemma;
     extractLocations.onclick = extractLocationsWithGemma;
@@ -20225,9 +21396,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         mapSubjectsFromSceneNotes.textContent = "Map Subjects From Scene Notes";
       }
     };
-    useSubject.input.onchange = () => { refs.use_subject_reference = Boolean(useSubject.input.checked); };
-    useLocations.input.onchange = () => { refs.use_location_references = Boolean(useLocations.input.checked); };
-    includeManual.input.onchange = () => { refs.include_manual_ingredients = Boolean(includeManual.input.checked); };
     subjectNameInput.addEventListener("input", () => {
       if (refs.subject_count === 1 && refs.subjects[0]) {
         refs.subjects[0].name = subjectNameInput.value || "Character 1";
@@ -20242,7 +21410,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     subjectDescription.addEventListener("input", () => {
       if (refs.subject_count === 1) refs.subject.description = subjectDescription.value;
     });
-    wireDrop(subjectDrop, refs.subject);
+    wireDrop(subjectDrop, imageTargetFor(refs.subject, "image", "subject"));
     close.onclick = () => backdrop.remove();
     cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
@@ -20250,7 +21418,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         ? refs.subjects.filter((subject) => subject && typeof subject === "object" && String(subject.id || subject.name || subject.description || subject.image?.path || subject.image?.data).trim())
         : [];
       refs.subject_count = refs.subjects.length;
-      subjectCountInput.value = String(refs.subject_count || 1);
+      subjectCountInput.value = String(refs.subject_count || 0);
       if (refs.subject_count === 1 && refs.subjects[0]) {
         refs.subject.description = subjectDescription.value;
         refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
@@ -20311,8 +21479,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           if (!validLocationIds.has(String(locationId || "").trim())) delete refs.scene_map[sceneId];
         }
       }
-      refs.use_subject_reference = Boolean(useSubject.input.checked && refs.subjects.length);
-      refs.use_location_references = Boolean(useLocations.input.checked && validLocationIds.size);
+      refs.use_subject_reference = Boolean(refs.subjects.length || Object.keys(refs.subject_scene_map || {}).length);
+      refs.use_location_references = Boolean(validLocationIds.size || Object.keys(refs.scene_map || {}).length);
       refs.include_manual_ingredients = Boolean(includeManual.input.checked);
       refs.location_style_theme = String(locationStyleTheme.value || "");
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
@@ -20337,7 +21505,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1280px,calc(100vw - 36px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(1380px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
     const title = document.createElement("div");
@@ -20346,10 +21514,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     header.append(title, close);
 
     const content = document.createElement("div");
-    content.style.cssText = "display:grid;grid-template-columns:minmax(280px,.9fr) minmax(360px,1.1fr);gap:12px;align-items:start;";
+    content.style.cssText = "display:flex;flex-direction:column;gap:0;min-height:0;";
 
     const sheetPanel = document.createElement("div");
-    sheetPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
+    sheetPanel.style.cssText = "border:1px solid #334155;border-radius:0 7px 7px 7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
     const sheetHeader = document.createElement("div");
     sheetHeader.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
     sheetHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Ingredients Sheets</div>`;
@@ -20361,11 +21529,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     sheetHeaderActions.append(describeSheets, addSheet);
     sheetHeader.append(sheetHeaderActions);
     const sheetList = document.createElement("div");
-    sheetList.style.cssText = "display:flex;flex-direction:column;gap:9px;";
+    sheetList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:min(62vh,720px);overflow:auto;padding-right:4px;";
     sheetPanel.append(sheetHeader, sheetList);
 
     const mappingPanel = document.createElement("div");
-    mappingPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
+    mappingPanel.style.cssText = "border:1px solid #334155;border-radius:0 7px 7px 7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:10px;";
     const mapHeader = document.createElement("div");
     mapHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Scene Mapping</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Choose the Ingredients sheet image and optional location text for each scene.</div>`;
     const autoBox = document.createElement("div");
@@ -20393,11 +21561,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const clearMappings = makeButton("Clear Mappings");
     mapActions.append(autoMap, clearMappings);
     const sceneList = document.createElement("div");
-    sceneList.style.cssText = "display:flex;flex-direction:column;gap:7px;max-height:58vh;overflow:auto;padding-right:4px;";
+    sceneList.style.cssText = "display:flex;flex-direction:column;gap:10px;max-height:min(62vh,720px);overflow:auto;padding-right:4px;";
     mappingPanel.append(mapHeader, autoBox, mapActions, sceneList);
 
     const locationPanel = document.createElement("div");
-    locationPanel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:8px;";
+    locationPanel.style.cssText = "border:1px solid #334155;border-radius:0 7px 7px 7px;background:#0b1220;padding:10px;display:flex;flex-direction:column;gap:8px;";
     const locationHeader = document.createElement("div");
     locationHeader.innerHTML = `<div style="font-weight:900;color:#e0f2fe;">Location Text</div><div style="font-size:12px;color:#94a3b8;margin-top:2px;">Optional text-only locations for Gemma/prompt planning. No location images or triggers are used here.</div>`;
     const locationToolActions = document.createElement("div");
@@ -20424,10 +21592,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     locationList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:260px;overflow:auto;padding-right:4px;";
     locationPanel.append(locationHeader, locationToolActions, makeField("Optional style/theme for location extraction", locationStyleTheme), locationHint, locationList);
 
-    const rightStack = document.createElement("div");
-    rightStack.style.cssText = "display:flex;flex-direction:column;gap:12px;";
-    rightStack.append(mappingPanel, locationPanel);
-    content.append(sheetPanel, rightStack);
+    const ingredientsTabs = makeSubTabs([
+      { value: "sheets", label: "Sheets", content: sheetPanel },
+      { value: "mapping", label: "Mapping", content: mappingPanel },
+      { value: "locations", label: "Locations", content: locationPanel },
+    ]);
+    content.append(ingredientsTabs);
 
     const footer = document.createElement("div");
     footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px;";
@@ -20620,7 +21790,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         byName.set(key, subject);
         synced += 1;
       }
-      refs.subject_count = Math.max(1, refs.subjects.length);
+          refs.subject_count = refs.subjects.length;
       refs.use_subject_reference = refs.subjects.length > 0;
       return synced;
     };
@@ -20793,7 +21963,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       refs.locations.forEach((location, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "border:1px solid #1f2937;border-radius:7px;background:#020617;padding:8px;display:flex;flex-direction:column;gap:7px;";
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:grid;grid-template-columns:34px minmax(180px,.85fr) minmax(320px,1.4fr) 110px;gap:10px;align-items:center;min-width:760px;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
         const name = document.createElement("input");
         name.value = location.name || `Location ${index + 1}`;
         name.placeholder = "Location name";
@@ -20819,7 +21992,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           }
           renderAll();
         };
-        row.append(makeField("Name", name), makeField("Description", description), remove);
+        row.append(number, makeField("Location label", name), makeField("Description", description), remove);
         locationList.append(row);
       });
     }
@@ -20836,7 +22009,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       refs.ingredients_sheets.forEach((sheet, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "border:1px solid #1f2937;border-radius:7px;background:#020617;padding:9px;display:flex;flex-direction:column;gap:8px;";
+        row.style.cssText = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:flex;flex-direction:column;gap:8px;";
         row.dataset.sheetId = sheet.id;
         const image = sheet.image || {};
         const persistedSrc = image.data || (image.path ? makeEditorImageUrl(image.path) : "");
@@ -20845,9 +22018,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         const previewSrc = persistedSrc || transientPreviewSrc;
         const imageLoaded = Boolean(previewSrc);
         const top = document.createElement("div");
-        top.style.cssText = "display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:8px;align-items:center;";
+        top.style.cssText = "display:grid;grid-template-columns:34px 76px minmax(180px,.8fr) minmax(300px,1.2fr) minmax(260px,1fr) 150px;gap:10px;align-items:center;min-width:960px;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
         const thumb = document.createElement("div");
-        thumb.style.cssText = `width:62px;height:46px;border:1px solid ${imageLoaded ? "#155e75" : "#334155"};border-radius:6px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#64748b;font-size:10px;`;
+        thumb.style.cssText = `width:76px;height:58px;border:1px solid ${imageLoaded ? "#155e75" : "#334155"};border-radius:6px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#64748b;font-size:10px;`;
         if (imageLoaded) {
           const thumbImg = document.createElement("img");
           thumbImg.src = previewSrc;
@@ -20870,30 +22046,21 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           currentSheet.name = name.value;
           renderScenes();
         };
-        const remove = makeButton("Remove");
-        remove.onclick = () => {
-          refs.ingredients_sheets = refs.ingredients_sheets.filter((item) => item.id !== sheet.id);
-          for (const [sceneId, sheetId] of Object.entries(refs.ingredients_scene_map || {})) {
-            if (sheetId === sheet.id) delete refs.ingredients_scene_map[sceneId];
-          }
-          renderAll();
-        };
-        top.append(thumb, name, remove);
         const notes = document.createElement("textarea");
         notes.value = sheet.description || "";
         notes.placeholder = "Optional character/subject description sent to Storyboard and Gemma...";
-        notes.style.cssText = "width:100%;box-sizing:border-box;min-height:52px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
+        notes.style.cssText = "width:100%;box-sizing:border-box;min-height:78px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#111827;color:#f8fafc;padding:7px 8px;font-size:12px;";
         notes.oninput = () => {
           const currentSheet = ingredientsSheetById(sheet.id) || sheet;
           currentSheet.description = notes.value;
         };
         const preview = document.createElement("div");
-        preview.style.cssText = "min-height:118px;border:1px dashed #334155;border-radius:7px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#94a3b8;font-size:12px;text-align:center;";
+        preview.style.cssText = "height:96px;border:1px dashed #334155;border-radius:7px;background:#111827;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#94a3b8;font-size:12px;text-align:center;";
         if (previewSrc) {
           const img = document.createElement("img");
           img.src = previewSrc;
           img.alt = sheet.name || "Ingredients sheet";
-          img.style.cssText = "max-width:100%;max-height:220px;object-fit:contain;display:block;";
+          img.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;";
           img.onerror = () => {
             preview.innerHTML = "";
             const error = document.createElement("div");
@@ -20927,7 +22094,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           setSheetImageFromText(sheet, text);
         };
         const controls = document.createElement("div");
-        controls.style.cssText = "display:grid;grid-template-columns:auto auto minmax(0,1fr) auto;gap:8px;";
+        controls.style.cssText = "display:grid;grid-template-columns:1fr;gap:6px;align-self:stretch;";
         const upload = makeButton("Upload");
         const describe = makeButton("Gemma Describe", "primary");
         describe.title = "Use vision Gemma to write the character appearance description from this sheet image.";
@@ -20953,8 +22120,22 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           currentSheet.image = { path: "", data: "", name: "" };
           renderSheets();
         };
-        controls.append(upload, describe, pathInput, clear, fileInput);
-        row.append(top, makeField("Character / subject description", notes), preview, status, controls);
+        const remove = makeButton("Remove");
+        remove.onclick = () => {
+          refs.ingredients_sheets = refs.ingredients_sheets.filter((item) => item.id !== sheet.id);
+          for (const [sceneId, sheetId] of Object.entries(refs.ingredients_scene_map || {})) {
+            if (sheetId === sheet.id) delete refs.ingredients_scene_map[sceneId];
+          }
+          renderAll();
+        };
+        controls.append(upload, describe, clear, remove, fileInput);
+        const nameField = makeField("Sheet label", name);
+        const notesField = makeField("Character / subject description", notes);
+        const imageWrap = document.createElement("div");
+        imageWrap.style.cssText = "display:flex;flex-direction:column;gap:5px;min-width:0;";
+        imageWrap.append(preview, status);
+        top.append(number, thumb, nameField, notesField, imageWrap, controls);
+        row.append(top, makeField("Optional existing image path", pathInput));
         sheetList.append(row);
       });
     }
@@ -20973,6 +22154,40 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         }
         return "";
       };
+      const makeSheetPreview = (sheetId) => {
+        const sheet = sheets.find((item) => String(item.id || "") === String(sheetId || ""));
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "display:flex;gap:7px;align-items:center;min-height:58px;overflow:hidden;padding:5px;border:1px solid #1e3a5f;border-radius:7px;background:#071422;";
+        if (!sheet) {
+          const empty = document.createElement("div");
+          empty.textContent = "No sheet";
+          empty.style.cssText = "font-size:11px;color:#94a3b8;padding:0 6px;";
+          wrap.append(empty);
+          return wrap;
+        }
+        const image = sheet.image || {};
+        const src = image.data || (image.path ? makeEditorImageUrl(image.path) : "") || String(image.preview_url || "");
+        const thumb = document.createElement("div");
+        thumb.style.cssText = "width:54px;height:54px;border:1px solid #155e75;border-radius:6px;background:#061620;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:0 0 auto;";
+        if (src) {
+          const img = document.createElement("img");
+          img.src = src;
+          img.alt = sheet.name || "Ingredients sheet";
+          img.draggable = false;
+          img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+          thumb.append(img);
+        } else {
+          const noImg = document.createElement("span");
+          noImg.textContent = "No img";
+          noImg.style.cssText = "font-size:10px;font-weight:900;color:#67e8f9;text-align:center;padding:4px;";
+          thumb.append(noImg);
+        }
+        const label = document.createElement("div");
+        label.textContent = sheet.name || "Ingredients Sheet";
+        label.style.cssText = "font-size:11px;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;";
+        wrap.append(thumb, label);
+        return wrap;
+      };
       if (!segments.length) {
         const empty = document.createElement("div");
         empty.style.cssText = "border:1px dashed #334155;border-radius:7px;padding:14px;text-align:center;color:#94a3b8;font-size:12px;";
@@ -20982,10 +22197,11 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
       segments.forEach((segment, index) => {
         const row = document.createElement("div");
-        row.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(170px,240px) minmax(170px,240px);gap:8px;align-items:center;border:1px solid #1f2937;border-radius:7px;background:#020617;padding:8px;";
+        row.style.cssText = "display:grid;grid-template-columns:minmax(170px,.7fr) minmax(180px,.85fr) minmax(200px,1fr) minmax(180px,.85fr);gap:10px;align-items:stretch;border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;";
         const label = document.createElement("div");
         const lyric = String(segment.lyric_text || "").trim();
-        label.innerHTML = `<div style="font-size:12px;font-weight:800;color:#f8fafc;">${escapeHtml(sceneDisplayName(segment, index))}</div><div style="font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(lyric || sceneConceptPromptText(segment) || segment.notes || "No notes yet")}</div>`;
+        label.innerHTML = `<div style="font-size:11px;color:#67e8f9;font-weight:900;text-transform:uppercase;">Scene ${index + 1}</div><div style="font-size:13px;font-weight:900;color:#f8fafc;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(sceneDisplayName(segment, index))}</div><div style="font-size:11px;color:#94a3b8;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(lyric || sceneConceptPromptText(segment) || segment.notes || "No notes yet")}</div>`;
+        label.style.cssText = "min-width:0;border:1px solid #1e3a5f;border-radius:7px;background:#071422;padding:10px;display:flex;flex-direction:column;justify-content:center;";
         const select = document.createElement("select");
         select.dataset.ingredientsSceneMap = "1";
         select.dataset.sceneId = segment.id || "";
@@ -20993,7 +22209,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         select.innerHTML = `<option value="">No Ingredients sheet</option>${sheets.map((sheet) => `<option value="${escapeHtml(sheet.id)}">${escapeHtml(sheet.name || "Ingredients Sheet")}</option>`).join("")}`;
         const sheetValue = sceneMappedValue(refs.ingredients_scene_map, segment, index);
         select.value = sheets.some((sheet) => sheet.id === sheetValue) ? sheetValue : "";
-        select.onchange = () => collectMappingsFromDom();
+        select.onchange = () => {
+          collectMappingsFromDom();
+          renderScenes();
+        };
         const locationSelect = document.createElement("select");
         locationSelect.dataset.ingredientsLocationMap = "1";
         locationSelect.dataset.sceneId = segment.id || "";
@@ -21014,7 +22233,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         locationSelect.disabled = !locations.length;
         locationSelect.title = locations.length ? "Location text sent to Gemma/prompt planning for this scene." : "Add or import locations with Location Text Tools below.";
         locationSelect.onchange = () => collectMappingsFromDom();
-        row.append(label, select, locationSelect);
+        row.append(label, select, makeSheetPreview(select.value), locationSelect);
         sceneList.append(row);
       });
     }
@@ -22106,7 +23325,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1180px,calc(100vw - 34px));max-height:calc(100vh - 38px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
+    box.style.cssText = "width:min(1380px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
     const title = document.createElement("div");
@@ -22118,7 +23337,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const locationsPanel = document.createElement("div");
     const castingPanel = document.createElement("div");
     for (const panel of [charactersPanel, locationsPanel, castingPanel]) {
-      panel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+      panel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:0 7px 7px 7px;background:#0b1220;padding:10px;max-height:min(64vh,740px);overflow:auto;";
     }
     const tabs = makeSubTabs([
       { value: "characters", label: "Characters", content: charactersPanel },
@@ -22126,8 +23345,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       { value: "casting", label: "Scene Casting", content: castingPanel },
     ]);
 
-    const rowCardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;display:flex;flex-direction:column;gap:8px;";
+    const rowCardStyle = "border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:flex;flex-direction:column;gap:8px;";
     const fieldGridStyle = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+    const idLoraImageSrc = (image = {}) => image?.data || (image?.path ? makeEditorImageUrl(image.path) : "");
+    const makeIdLoraThumb = (image = {}, label = "Reference") => {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "width:76px;height:58px;border:1px solid #155e75;border-radius:6px;background:#061620;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:10px;font-weight:900;text-align:center;";
+      const src = idLoraImageSrc(image);
+      if (src) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = label;
+        img.draggable = false;
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+        wrap.append(img);
+      } else {
+        wrap.textContent = "No img";
+      }
+      return wrap;
+    };
     const makeTinyButton = (label) => {
       const button = makeButton(label, "neutral");
       button.style.cssText += "padding:6px 9px;font-size:11px;";
@@ -22186,12 +23422,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const card = document.createElement("div");
         card.style.cssText = rowCardStyle;
         const top = document.createElement("div");
-        top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+        top.style.cssText = "display:grid;grid-template-columns:34px 76px minmax(180px,.8fr) minmax(120px,.55fr) minmax(230px,1fr) 100px;gap:10px;align-items:center;min-width:900px;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
         const label = document.createElement("div");
         label.textContent = `Character ${index + 1}`;
-        label.style.cssText = "font-weight:900;color:#cffafe;font-size:12px;";
+        label.style.cssText = "display:none;";
         const remove = makeTinyButton("Remove");
-        top.append(label, remove);
         const name = makeInput(character.name || "");
         const description = document.createElement("textarea");
         description.value = character.description || "";
@@ -22211,9 +23449,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const speechStyle = makeInput(character.speech_style || "");
         speechStyle.placeholder = "Optional speech style notes";
         const grid = document.createElement("div");
-        grid.style.cssText = fieldGridStyle;
-        grid.append(makeField("Name", name), makeField("Identity scale", identity), voiceField, imageField, makeField("Speech style", speechStyle));
-        card.append(top, grid, imageNote, makeField("Description", description));
+        grid.style.cssText = "display:grid;grid-template-columns:minmax(260px,1fr) minmax(260px,1fr);gap:8px;";
+        grid.append(voiceField, imageField, makeField("Speech style", speechStyle));
+        top.append(number, makeIdLoraThumb(character.image || {}, character.name || "Character"), makeField("Character label", name), makeField("Identity scale", identity), makeField("Description", description), remove);
+        card.append(top, grid, imageNote);
         charactersPanel.append(card);
         remove.onclick = () => {
           refs.characters.splice(index, 1);
@@ -22281,12 +23520,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const card = document.createElement("div");
         card.style.cssText = rowCardStyle;
         const top = document.createElement("div");
-        top.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;";
+        top.style.cssText = "display:grid;grid-template-columns:34px 76px minmax(180px,.85fr) minmax(320px,1.35fr) 100px;gap:10px;align-items:center;min-width:820px;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1);
+        number.style.cssText = "font-size:18px;font-weight:900;color:#f8fafc;text-align:center;";
         const label = document.createElement("div");
         label.textContent = `Location ${index + 1}`;
-        label.style.cssText = "font-weight:900;color:#cffafe;font-size:12px;";
+        label.style.cssText = "display:none;";
         const remove = makeTinyButton("Remove");
-        top.append(label, remove);
         const name = makeInput(location.name || "");
         const imagePath = makeInput(location.image?.path || "");
         const imagePick = makeTinyButton("Pick");
@@ -22298,7 +23539,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const grid = document.createElement("div");
         grid.style.cssText = fieldGridStyle;
         grid.append(makeField("Name", name), imageField);
-        card.append(top, grid, makeField("Description", description));
+        top.append(number, makeIdLoraThumb(location.image || {}, location.name || "Location"), makeField("Location label", name), makeField("Description", description), remove);
+        card.append(top, imageField);
         locationsPanel.append(card);
         remove.onclick = () => {
           refs.locations.splice(index, 1);
@@ -22373,6 +23615,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         toast(`Recalculated ${updated} ID-LoRA auto duration${updated === 1 ? "" : "s"}.`);
         renderAll();
       };
+      const makeCastingPreview = (item, emptyText) => {
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "display:flex;gap:7px;align-items:center;min-height:58px;overflow:hidden;padding:5px;border:1px solid #1e3a5f;border-radius:7px;background:#071422;";
+        if (!item) {
+          const empty = document.createElement("div");
+          empty.textContent = emptyText;
+          empty.style.cssText = "font-size:11px;color:#94a3b8;padding:0 6px;";
+          wrap.append(empty);
+          return wrap;
+        }
+        const thumb = makeIdLoraThumb(item.image || {}, item.name || "Reference");
+        thumb.style.width = "54px";
+        thumb.style.height = "54px";
+        const label = document.createElement("div");
+        label.textContent = item.name || "Reference";
+        label.style.cssText = "font-size:11px;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;";
+        wrap.append(thumb, label);
+        return wrap;
+      };
       state.segments.forEach((segment, index) => {
         const sceneId = String(segment.id || "");
         const entry = idLoraSceneEntry(refs, segment);
@@ -22400,8 +23661,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         manualDuration.step = "0.25";
         const manualDurationField = makeField("Duration", manualDuration);
         const grid = document.createElement("div");
-        grid.style.cssText = fieldGridStyle;
-        grid.append(makeField("Character", character), makeField("Location", location), autoDuration.wrapper, manualDurationField);
+        grid.style.cssText = "display:grid;grid-template-columns:minmax(150px,.7fr) minmax(180px,1fr) minmax(150px,.7fr) minmax(180px,1fr) minmax(120px,.45fr) minmax(100px,.4fr);gap:8px;align-items:stretch;min-width:1080px;";
+        const selectedCharacter = refs.characters.find((item) => item.id === entry.character_id);
+        const selectedLocation = refs.locations.find((item) => item.id === entry.location_id);
+        grid.append(
+          makeField("Character", character),
+          makeCastingPreview(selectedCharacter, "No character"),
+          makeField("Location", location),
+          makeCastingPreview(selectedLocation, "No location"),
+          autoDuration.wrapper,
+          manualDurationField
+        );
         card.append(heading, grid, makeField("Dialogue line", dialogue));
         castingPanel.append(card);
         const refreshDuration = (applyTiming = false) => {
@@ -22425,8 +23695,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           refreshDuration(applyTiming);
           refs.scene_map[sceneId] = entry;
         };
-        character.onchange = () => updateEntry(false);
-        location.onchange = () => updateEntry(false);
+        character.onchange = () => {
+          updateEntry(false);
+          renderCasting();
+        };
+        location.onchange = () => {
+          updateEntry(false);
+          renderCasting();
+        };
         dialogue.addEventListener("input", () => updateEntry(true));
         dialogue.addEventListener("change", () => {
           updateEntry(true);
@@ -22527,7 +23803,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     textMappingButton.onclick = () => {
       backdrop.remove();
-      openSceneTextMappingModal();
+      openFluxReferenceBuilderModal({ textOnlyMode: true });
     };
     imageRefsButton.onclick = () => openAndClose("image");
     ltxRefsButton.onclick = () => openAndClose("rtv");
@@ -23945,8 +25221,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function currentSessionData() {
     return {
-      segments: state.segments,
-      overlay_segments: state.overlaySegments,
+      segments: sanitizedSessionSegments(state.segments, "base"),
+      overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
       active_track: state.activeTrack,
       timing_frozen: state.timingFrozen,
       srt_mode: state.srtMode,
@@ -24157,6 +25433,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      ensureAllSegmentRuntimeFields();
       const projectFolder = activeProjectFolderForSave();
       if (!projectFolder) {
         const message = "Create a new project, load a project, or use Save Project As before Quick Save.";
@@ -24248,13 +25525,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncVideoTypeControl();
         syncLeftPanelTabs();
         applyLayoutSizes();
-        state.zimageSettings = data.session.zimage_settings || state.zimageSettings;
+        state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(data.session.zimage_settings || state.zimageSettings), state.projectFolder);
         state.referenceKrea2Settings = cloneKrea2ReferenceSettings(data.session.reference_krea2_settings || state.referenceKrea2Settings);
         state.fluxKleinSettings = data.session.flux_klein_settings || state.fluxKleinSettings;
         state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(data.session.flow_gpt_browser_settings || state.flowGptBrowserSettings);
         state.nbImageSettings = data.session.nb_image_settings || state.nbImageSettings;
-        state.ernieImageSettings = data.session.ernie_image_settings || state.ernieImageSettings;
-        state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(data.session.krea2_2pass_settings || state.krea2TwoPassSettings);
+        state.ernieImageSettings = scrubGlobalImageToImageSourceForProject(cloneErnieImageSettings(data.session.ernie_image_settings || state.ernieImageSettings), state.projectFolder);
+        state.krea2TwoPassSettings = scrubGlobalImageToImageSourceForProject(cloneKrea2TwoPassSettings(data.session.krea2_2pass_settings || state.krea2TwoPassSettings), state.projectFolder);
         state.useFluxGlobalImageIngredients = Boolean(data.session.use_flux_global_image_ingredients);
         state.fluxGlobalImageIngredients = Array.isArray(data.session.flux_global_image_ingredients) ? data.session.flux_global_image_ingredients : [];
         state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(data.session.flux_reference_builder);
@@ -24552,13 +25829,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncVideoTypeControl();
       syncLeftPanelTabs();
       applyLayoutSizes();
-      state.zimageSettings = session.zimage_settings || state.zimageSettings;
+      state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(session.zimage_settings || state.zimageSettings), state.projectFolder);
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
       state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(session.flow_gpt_browser_settings || state.flowGptBrowserSettings);
       state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
-      state.ernieImageSettings = session.ernie_image_settings || state.ernieImageSettings;
-      state.krea2TwoPassSettings = cloneKrea2TwoPassSettings(session.krea2_2pass_settings || state.krea2TwoPassSettings);
+      state.ernieImageSettings = scrubGlobalImageToImageSourceForProject(cloneErnieImageSettings(session.ernie_image_settings || state.ernieImageSettings), state.projectFolder);
+      state.krea2TwoPassSettings = scrubGlobalImageToImageSourceForProject(cloneKrea2TwoPassSettings(session.krea2_2pass_settings || state.krea2TwoPassSettings), state.projectFolder);
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
       state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(session.flux_reference_builder);
@@ -26221,9 +27498,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
     const textScriptMode = isRTV || isIngredients || isIdLora;
-    const useImageReference = isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
-    const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+    const useFirstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+    const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
+    const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+    const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = sceneVideoConceptPromptText(segment);
+    if (useFirstLastFrameVision && firstLastFrameReferences.length < 2) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: First Last Frame prompt needs both a first frame image and an end frame image.`);
+    }
     if (useImageReference && !imageReference.path && !imageReference.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
     }
@@ -26253,6 +27535,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
+        image_references: firstLastFrameReferences,
+        first_last_frame_mode: useFirstLastFrameVision,
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
@@ -26641,10 +27925,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const textScriptMode = isRTV || isIngredients || isIdLora;
-    const useImageReference = isIdLora ? true : textScriptMode ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
-    const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+    const useFirstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+    const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
+    const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
+    const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const conceptPrompt = sceneVideoConceptPromptText(segment);
     const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
+    if (useFirstLastFrameVision && firstLastFrameReferences.length < 2) {
+      toast("First Last Frame needs both the selected scene image and a generated end frame before Gemma can write the transition prompt.", true);
+      return;
+    }
     if (useImageReference && !imageReference.path && !imageReference.data) {
       toast(isT2V
         ? "Hey, T2V Gemma image reference is on, but no reference image is loaded. Drop/load a reference image or turn it off."
@@ -26683,6 +27973,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         performance_mode: effectiveVideoPerformanceModeForSegment(segment),
         image_reference_path: imageReference.path,
         image_reference_data: imageReference.data,
+        image_references: firstLastFrameReferences,
+        first_last_frame_mode: useFirstLastFrameVision,
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : videoGemmaNotesForSegment(segment),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
@@ -26765,6 +28057,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
     const isIngredients = videoMode === "ingredients";
+    const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const runnerName = promptRunnerActionName();
     const progress = options.progress || createProgressWindow(`${runnerName} ${modeLabel} All Scenes`);
@@ -26792,11 +28085,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const requestedUseImageReference = isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+      const firstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+      const requestedUseImageReference = firstLastFrameVision ? true : isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
       const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
       const useImageReference = requestedUseImageReference && !forceTextForContinuity;
-      const imageReference = useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
-      if (useImageReference && !imageReference.path && !imageReference.data) {
+      const firstLastFrameReferences = firstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
+      const imageReference = firstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+      if (firstLastFrameVision && firstLastFrameReferences.length < 2) {
+        missing.push(`${sceneDisplayName(segment, index)}: First Last Frame needs both a first frame image and a generated end frame.`);
+      } else if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
       if (useImageReference && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
@@ -26836,11 +28133,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * (deferEnhancement ? 68 : 100));
-        const requestedUseImageReference = isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
+        const firstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+        const requestedUseImageReference = firstLastFrameVision ? true : isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
         const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
         const useImageReference = requestedUseImageReference && !forceTextForContinuity;
         const displayIndex = segmentIndexInfo(segment).index;
-        progress.set(`${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${forceVision ? "vision" : forceTextOnly || forceTextForContinuity ? "text only" : "scene checkbox"}\n${useImageReference ? "Using image reference plus T2I prompt/motion notes." : forceTextForContinuity ? "Using T2I prompt text only; continuity will create this scene image during Render All." : "Using T2I prompt text only."}`, base);
+        progress.set(`${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${firstLastFrameVision ? "first/last vision" : forceVision ? "vision" : forceTextOnly || forceTextForContinuity ? "text only" : "scene checkbox"}\n${firstLastFrameVision ? "Using first frame + end frame images plus scene/pacing notes." : useImageReference ? "Using image reference plus T2I prompt/motion notes." : forceTextForContinuity ? "Using T2I prompt text only; continuity will create this scene image during Render All." : "Using T2I prompt text only."}`, base);
         await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly: forceTextOnly || forceTextForContinuity, forceVision, deferEnhancement });
         await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
@@ -27201,14 +28499,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ingredients_second_pass_strength: 0,
       ingredients_width: Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH),
       ingredients_height: Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT),
-      id_lora_name: settings.id_lora_name || REQUIRED_LTX_ID_LORA,
-      id_lora_first_pass_strength: Number(settings.id_lora_first_pass_strength ?? 1),
-      id_lora_second_pass_strength: Number(settings.id_lora_second_pass_strength ?? 1),
-      reference_audio_path: settings.id_lora_reference_audio_path || "",
-      id_reference_audio_path: settings.id_lora_reference_audio_path || "",
-      identity_guidance_scale: Number(settings.identity_guidance_scale ?? 3),
-      identity_start_percent: 0,
-      identity_end_percent: 1,
       duration: Math.max(0.25, Number(timelineSegmentDuration(segment) || settings.id_lora_duration || 5)),
       pass1_sampler_name: pass1SamplerName,
       pass1_sigmas: normalizeI2VSigmasText(pass1Sigmas, DEFAULT_I2V_PASS1_SIGMAS),
@@ -27226,6 +28516,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       payload[`lora_${index + 1}`] = useLoras && index < count ? (lora.name || "[none]") : "[none]";
       payload[`first_pass_strength_${index + 1}`] = Number(lora.first_pass_strength ?? lora.strength ?? 1);
       payload[`second_pass_strength_${index + 1}`] = singlePassLoras ? 0 : Number(lora.second_pass_strength ?? lora.strength ?? 1);
+    }
+    if (videoMode === "id_lora") {
+      payload.id_lora_name = settings.id_lora_name || REQUIRED_LTX_ID_LORA;
+      payload.id_lora_first_pass_strength = Number(settings.id_lora_first_pass_strength ?? 1);
+      payload.id_lora_second_pass_strength = Number(settings.id_lora_second_pass_strength ?? 1);
+      payload.reference_audio_path = settings.id_lora_reference_audio_path || "";
+      payload.id_reference_audio_path = settings.id_lora_reference_audio_path || "";
+      payload.identity_guidance_scale = Number(settings.identity_guidance_scale ?? 3);
+      payload.identity_start_percent = 0;
+      payload.identity_end_percent = 1;
     }
     return payload;
   }
@@ -27893,9 +29193,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "rtv") {
       const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
       const rtvReferences = rtvReferencesForSegment(segment);
-      const hasSubjectReference = Boolean(rtvReferences.use_subject_placeholder)
-        || referenceBuilderSubjectItemsForSegment(refs, segment).some(referenceBuilderSubjectHasImage);
-      if (!hasSubjectReference) missing.push(`${name}: Reference to Video needs a subject image in Reference Builder.`);
+      if (rtvReferenceBehaviorForSegment(segment) === "first_last_frame") {
+        const firstFrame = segmentImageSource(segment);
+        const lastFrame = firstLastFrameEndImageSource(segment);
+        if (!firstFrame?.path && !firstFrame?.data) missing.push(`${name}: First Last Frame needs a selected scene image for the first frame.`);
+        if (!lastFrame?.path && !lastFrame?.data) missing.push(`${name}: First Last Frame needs a generated/stored end frame.`);
+      } else {
+        const hasSubjectReference = Boolean(rtvReferences.use_subject_placeholder)
+          || referenceBuilderSubjectItemsForSegment(refs, segment).some(referenceBuilderSubjectHasImage);
+        if (!hasSubjectReference) missing.push(`${name}: Reference to Video needs a subject image in Reference Builder.`);
+      }
     }
     if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${promptLabel} prompt is missing.`);
     return missing;
@@ -28188,9 +29495,205 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await createErnieImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Ernie image`);
     } else if (imageMode === "krea2_2pass") {
       await createKrea2TwoPassImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Krea 2 image`);
+    } else if (imageMode === "flux_klein") {
+      await createFluxKleinImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Flux/Klein image`);
+    } else if (imageMode === "nano_banana") {
+      await createNBImageForSegmentWithRetry(segment, progress, percentBase, percentSpan, `${label}: NanoBanana image`, { maxRetries: 10 });
+    } else if (imageMode === "flow_gpt") {
+      await createFlowGptImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Flow/GPT image`);
     } else {
       await createZImageForSegment(segment, progress, percentBase, percentSpan, `${label}: ZImage`);
     }
+  }
+
+  function snapshotSceneImagePromptState(segment) {
+    return {
+      image: segment.image || null,
+      image_history: Array.isArray(segment.image_history) ? [...segment.image_history] : [],
+      image_history_index: Number(segment.image_history_index ?? -1),
+      custom_image_path: segment.custom_image_path || "",
+      custom_image_data: segment.custom_image_data || "",
+      custom_image_name: segment.custom_image_name || "",
+      approved_image_path: segment.approved_image_path || "",
+      preview_mode: segment.preview_mode || "image",
+      t2i_prompt: segment.t2i_prompt || "",
+      flux_prompt: segment.flux_prompt || "",
+      nb_prompt: segment.nb_prompt || "",
+      flow_gpt_prompt: segment.flow_gpt_prompt || "",
+      enhance_prompt: segment.enhance_prompt || "",
+    };
+  }
+
+  function restoreSceneImagePromptState(segment, snapshot) {
+    if (!segment || !snapshot) return;
+    segment.image = snapshot.image || null;
+    segment.image_history = Array.isArray(snapshot.image_history) ? [...snapshot.image_history] : [];
+    segment.image_history_index = Number(snapshot.image_history_index ?? -1);
+    segment.custom_image_path = snapshot.custom_image_path || "";
+    segment.custom_image_data = snapshot.custom_image_data || "";
+    segment.custom_image_name = snapshot.custom_image_name || "";
+    segment.approved_image_path = snapshot.approved_image_path || "";
+    segment.preview_mode = snapshot.preview_mode || "image";
+    segment.t2i_prompt = snapshot.t2i_prompt || "";
+    segment.flux_prompt = snapshot.flux_prompt || "";
+    segment.nb_prompt = snapshot.nb_prompt || "";
+    segment.flow_gpt_prompt = snapshot.flow_gpt_prompt || "";
+    segment.enhance_prompt = snapshot.enhance_prompt || "";
+    if (segment.id === activeSegment()?.id) {
+      syncInspector();
+      syncPreview(segment);
+    }
+  }
+
+  function firstLastFrameEndPromptForSegment(segment, firstFrame, imageMode = state.imageModelMode || "zimage") {
+    const sceneName = sceneDisplayName(segment, segmentIndexInfo(segment).index);
+    const motion = [
+      segment.i2v_notes,
+      segment.motion_notes,
+      segment.story_beat,
+      segment.notes,
+      segment.flux_notes,
+      segment.nb_notes,
+      segment.lyric_text,
+    ].map((value) => String(value || "").trim()).filter(Boolean).join("\n");
+    const modeHint = imageMode === "flow_gpt"
+      ? "Write as a browser image prompt."
+      : imageMode === "nano_banana"
+        ? "Write as a NanoBanana image prompt."
+        : imageMode === "flux_klein"
+          ? "Write as a Flux/Klein image prompt."
+          : "Write as a cinematic text-to-image prompt.";
+    const sourceName = firstFrame?.name || firstFrame?.path || "the first frame";
+    return [
+      `${modeHint} Create the LAST FRAME for a Reference-to-Video shot.`,
+      `Scene: ${sceneName}`,
+      `Use ${sourceName} as the FIRST FRAME identity, composition, style, lighting, wardrobe, environment, and color reference.`,
+      "The new image must feel like the natural end point of the same shot, not a different scene.",
+      "Preserve character identity and the same visual world. Change pose, camera endpoint, expression, staging, or revealed action only as needed to create a clear A-to-B video transition.",
+      motion ? `Scene motion/story direction:\n${motion}` : "Scene motion/story direction:\nCreate a clear cinematic endpoint with meaningful visual change from the first frame.",
+      "Final answer should be only the image prompt for the end frame. Do not mention files, inputs, first frame, last frame, references, MSR, LoRA, or workflow nodes.",
+    ].join("\n\n");
+  }
+
+  function addFirstFrameIngredientToSegment(segment, firstFrame, imageMode = state.imageModelMode || "zimage") {
+    if (!firstFrame?.path && !firstFrame?.data) return () => {};
+    const ingredient = {
+      path: firstFrame.path || "",
+      data: firstFrame.data || "",
+      name: firstFrame.name || "first_frame.png",
+    };
+    if (imageMode === "flux_klein" || imageMode === "nano_banana" || imageMode === "flow_gpt") {
+      const previous = Array.isArray(segment.flux_image_ingredients) ? [...segment.flux_image_ingredients] : [];
+      segment.flux_image_ingredients = [ingredient, ...previous];
+      return () => { segment.flux_image_ingredients = previous; };
+    }
+    return () => {};
+  }
+
+  function setFirstFrameAsImageToImageSourceForMode(firstFrame, imageMode = state.imageModelMode || "zimage") {
+    if (!firstFrame?.path && !firstFrame?.data) return () => {};
+    if (!["zimage", "ernie_image", "krea2_2pass"].includes(imageMode)) return () => {};
+    const path = firstFrame.path || "";
+    const data = firstFrame.data || "";
+    const name = firstFrame.name || "first_frame.png";
+    if (imageMode === "zimage") {
+      const settings = activeZImageSettings();
+      const previous = {
+        use_image_to_image: Boolean(settings.use_image_to_image),
+        image_to_image_path: settings.image_to_image_path || "",
+        image_to_image_data: settings.image_to_image_data || "",
+        image_to_image_name: settings.image_to_image_name || "",
+      };
+      settings.use_image_to_image = true;
+      settings.image_to_image_path = path;
+      settings.image_to_image_data = data;
+      settings.image_to_image_name = name;
+      syncZImageSettingsPanel();
+      return () => {
+        Object.assign(settings, previous);
+        syncZImageSettingsPanel();
+      };
+    }
+    if (imageMode === "ernie_image") {
+      const settings = activeSegment()?.use_scene_ernie_image_settings
+        ? (activeSegment().ernie_image_settings || cloneErnieImageSettings(state.ernieImageSettings))
+        : (state.ernieImageSettings || defaultErnieImageSettings());
+      const previous = {
+        use_image_to_image: Boolean(settings.use_image_to_image),
+        image_to_image_path: settings.image_to_image_path || "",
+        image_to_image_data: settings.image_to_image_data || "",
+        image_to_image_name: settings.image_to_image_name || "",
+      };
+      settings.use_image_to_image = true;
+      settings.image_to_image_path = path;
+      settings.image_to_image_data = data;
+      settings.image_to_image_name = name;
+      if (activeSegment()?.use_scene_ernie_image_settings) activeSegment().ernie_image_settings = settings;
+      else state.ernieImageSettings = settings;
+      syncErnieImagePanel();
+      return () => {
+        Object.assign(settings, previous);
+        if (activeSegment()?.use_scene_ernie_image_settings) activeSegment().ernie_image_settings = settings;
+        else state.ernieImageSettings = settings;
+        syncErnieImagePanel();
+      };
+    }
+    const settings = activeSegment()?.use_scene_krea2_2pass_settings
+      ? (activeSegment().krea2_2pass_settings || cloneKrea2TwoPassSettings(state.krea2TwoPassSettings))
+      : (state.krea2TwoPassSettings || defaultKrea2TwoPassSettings());
+    const previous = {
+      use_image_to_image: Boolean(settings.use_image_to_image),
+      image_to_image_path: settings.image_to_image_path || "",
+      image_to_image_data: settings.image_to_image_data || "",
+      image_to_image_name: settings.image_to_image_name || "",
+    };
+    settings.use_image_to_image = true;
+    settings.image_to_image_path = path;
+    settings.image_to_image_data = data;
+    settings.image_to_image_name = name;
+    if (activeSegment()?.use_scene_krea2_2pass_settings) activeSegment().krea2_2pass_settings = settings;
+    else state.krea2TwoPassSettings = settings;
+    syncKrea2TwoPassPanel();
+    return () => {
+      Object.assign(settings, previous);
+      if (activeSegment()?.use_scene_krea2_2pass_settings) activeSegment().krea2_2pass_settings = settings;
+      else state.krea2TwoPassSettings = settings;
+      syncKrea2TwoPassPanel();
+    };
+  }
+
+  async function createEndFrameForSegment(segment, imageMode, progress = null, percentBase = 20, percentSpan = 70, label = "Create End Frame") {
+    if (!segment) throw new Error("Scene is missing.");
+    const firstFrame = segmentImageSource(segment);
+    if (!firstFrame?.path && !firstFrame?.data) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: selected scene image is missing for the first frame.`);
+    }
+    const snapshot = snapshotSceneImagePromptState(segment);
+    const restoreIngredient = addFirstFrameIngredientToSegment(segment, firstFrame, imageMode);
+    state.activeId = segment.id;
+    syncInspector();
+    const restoreI2I = setFirstFrameAsImageToImageSourceForMode(firstFrame, imageMode);
+    try {
+      const endPrompt = applyMappedTriggerPhrases(
+        applyImageTriggerToPrompt(firstLastFrameEndPromptForSegment(segment, firstFrame, imageMode), segment, imageMode, { validateJunk: false }),
+        segment
+      );
+      if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, endPrompt);
+      else syncSegmentT2IPrompt(segment, endPrompt);
+      progress?.set(`${label}: creating end-frame image from first frame...`, percentBase);
+      await createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase + percentSpan * 0.18, percentSpan * 0.62, label);
+      const generated = segmentImageSource(segment);
+      if (!generated?.path && !generated?.data) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: end frame image did not return a saved image.`);
+      segment.first_last_frame_end_image_path = generated.path || "";
+      segment.first_last_frame_end_image_data = generated.data || "";
+      segment.first_last_frame_end_image_name = generated.name || "last_frame.png";
+    } finally {
+      restoreI2I();
+      restoreIngredient();
+      restoreSceneImagePromptState(segment, snapshot);
+    }
+    render();
+    return firstLastFrameEndImageSource(segment);
   }
 
   async function ensureSelectedImageForSceneVideo(segment, sceneIndex) {
@@ -28414,8 +29917,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       && lut.enabled !== false
       && String(applied.name || "") === lut.name
       && Math.abs(Number(applied.strength ?? -1) - Number(lut.strength ?? 10)) < 0.001
-      && (options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
-      && (options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
+      && (options.ignorePreserveAudio || options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
+      && (options.ignoreEncodeCrf || options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
       && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
     );
   }
@@ -28428,8 +29931,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       && grain.enabled !== false
       && Math.abs(Number(applied.grain_intensity ?? -1) - Number(grain.grain_intensity ?? 0.04)) < 0.0001
       && Math.abs(Number(applied.saturation_mix ?? -1) - Number(grain.saturation_mix ?? 0.5)) < 0.0001
-      && (options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
-      && (options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
+      && (options.ignorePreserveAudio || options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
+      && (options.ignoreEncodeCrf || options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
       && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
     );
   }
@@ -28441,10 +29944,43 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       adjust
       && sceneAdjustHasRenderableChanges(adjust)
       && String(applied.signature || "") === sceneAdjustSignature(adjust)
-      && (options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
-      && (options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
+      && (options.ignorePreserveAudio || options.preserveAudio == null || (options.preserveAudio === false ? applied.preserve_audio === false : applied.preserve_audio !== false))
+      && (options.ignoreEncodeCrf || options.encodeCrf == null || Number(applied.encode_crf || 0) === normalizePostProcessEncodeCrf(options.encodeCrf))
       && (!videoPath || !applied.video_path || mediaPathKey(applied.video_path) === mediaPathKey(videoPath))
     );
+  }
+
+  function postProcessPathMatches(pathA = "", pathB = "") {
+    return Boolean(String(pathA || "").trim() && String(pathB || "").trim() && mediaPathKey(pathA) === mediaPathKey(pathB));
+  }
+
+  function sceneVideoIncludesCurrentLut(segment, videoPath = "") {
+    const path = String(videoPath || selectedSegmentVideoPath(segment) || "").trim();
+    if (!path) return false;
+    if (sceneVideoHasCurrentLut(segment, path, { ignoreEncodeCrf: true, ignorePreserveAudio: true })) return true;
+    const lutPath = String(segment?.lut_last_applied?.video_path || "").trim();
+    if (!sceneVideoHasCurrentLut(segment, lutPath, { ignoreEncodeCrf: true, ignorePreserveAudio: true })) return false;
+    const adjustApplied = segment?.adjust_last_applied || {};
+    const grainApplied = segment?.film_grain_last_applied || {};
+    if (postProcessPathMatches(adjustApplied.source_video_path, lutPath) && postProcessPathMatches(adjustApplied.video_path, path)) return true;
+    if (postProcessPathMatches(grainApplied.source_video_path, lutPath) && postProcessPathMatches(grainApplied.video_path, path)) return true;
+    if (postProcessPathMatches(adjustApplied.source_video_path, lutPath) && postProcessPathMatches(grainApplied.source_video_path, adjustApplied.video_path) && postProcessPathMatches(grainApplied.video_path, path)) return true;
+    return false;
+  }
+
+  function sceneVideoIncludesCurrentAdjust(segment, videoPath = "") {
+    const path = String(videoPath || selectedSegmentVideoPath(segment) || "").trim();
+    if (!path) return false;
+    if (sceneVideoHasCurrentAdjust(segment, path, { ignoreEncodeCrf: true, ignorePreserveAudio: true })) return true;
+    const adjustPath = String(segment?.adjust_last_applied?.video_path || "").trim();
+    if (!sceneVideoHasCurrentAdjust(segment, adjustPath, { ignoreEncodeCrf: true, ignorePreserveAudio: true })) return false;
+    const grainApplied = segment?.film_grain_last_applied || {};
+    return Boolean(postProcessPathMatches(grainApplied.source_video_path, adjustPath) && postProcessPathMatches(grainApplied.video_path, path));
+  }
+
+  function sceneVideoIncludesCurrentFilmGrain(segment, videoPath = "") {
+    const path = String(videoPath || selectedSegmentVideoPath(segment) || "").trim();
+    return Boolean(path && sceneVideoHasCurrentFilmGrain(segment, path, { ignoreEncodeCrf: true, ignorePreserveAudio: true }));
   }
 
   async function ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options = {}) {
@@ -28453,7 +29989,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .map((segment, index) => ({ segment, index, videoPath: String(selectedSegmentVideoPath(segment) || "").trim() }))
       .filter(({ segment, videoPath }) => {
         const lut = normalizeSceneLut(segment?.lut || {});
-        return lut && lut.enabled !== false && videoPath && !sceneVideoHasCurrentLut(segment, videoPath, { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF });
+        return lut && lut.enabled !== false && videoPath && !sceneVideoIncludesCurrentLut(segment, videoPath);
       });
     if (!targets.length) return;
     for (let index = 0; index < targets.length; index += 1) {
@@ -28487,7 +30023,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .filter(({ segment, videoPath }) => {
         if (!segment?.adjust || segment.adjust.enabled !== true) return false;
         const adjust = normalizeSceneAdjust(segment?.adjust || {}, { keepEmpty: true });
-        return adjust && sceneAdjustHasRenderableChanges(adjust) && videoPath && !sceneVideoHasCurrentAdjust(segment, videoPath, { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF });
+        return adjust && sceneAdjustHasRenderableChanges(adjust) && videoPath && !sceneVideoIncludesCurrentAdjust(segment, videoPath);
       });
     if (!targets.length) return;
     for (let index = 0; index < targets.length; index += 1) {
@@ -28520,7 +30056,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .map((segment, index) => ({ segment, index, videoPath: String(selectedSegmentVideoPath(segment) || "").trim() }))
       .filter(({ segment, videoPath }) => {
         const grain = normalizeSceneFilmGrain(segment?.film_grain || {});
-        return grain && grain.enabled !== false && videoPath && !sceneVideoHasCurrentFilmGrain(segment, videoPath, { preserveAudio: false, encodeCrf: POST_PROCESS_STITCH_CRF });
+        return grain && grain.enabled !== false && videoPath && !sceneVideoIncludesCurrentFilmGrain(segment, videoPath);
       });
     if (!targets.length) return;
     for (let index = 0; index < targets.length; index += 1) {
@@ -28640,6 +30176,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const scenes = batchTargetItems(sceneScope);
     if (mode === "redo_prompts_images" || mode === "keep_prompts_redo_images") return scenes;
     return scenes.filter(({ segment }) => !segmentImageSource(segment));
+  }
+
+  function endFrameSegmentsForMode(mode = "resume_missing", sceneScope = "all") {
+    const scenes = batchTargetItems(sceneScope);
+    if (mode === "redo_end_frames") return scenes;
+    return scenes.filter(({ segment }) => !hasFirstLastFrameEndImage(segment));
+  }
+
+  function validateCreateEndFramesReady(options = {}) {
+    const mode = options.endFrameRunMode || "resume_missing";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const missing = [];
+    if (rtvReferenceBehaviorGlobalValue() !== "first_last_frame") {
+      missing.push("Reference to Video > Reference Behavior must be set to First Last Frame.");
+    }
+    if (!batchTargetItems(sceneScope).length) missing.push(batchEmptyMessage(sceneScope));
+    if (!String(projectInput.value || "").trim()) missing.push("Project folder is missing.");
+    endFrameSegmentsForMode(mode, sceneScope).forEach(({ segment, index }) => {
+      const firstFrame = segmentImageSource(segment);
+      if (!firstFrame?.path && !firstFrame?.data) {
+        missing.push(`${sceneDisplayName(segment, index)}: selected scene image is missing for the first frame.`);
+      }
+    });
+    return missing;
   }
 
   function validateZImageAllReady(options = {}) {
@@ -28810,13 +30370,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const payload = {
       ...i2vVideoSettingsPayload(segment),
       i2v_prompt: renderPromptForPayload,
-      id_lora_prompt: renderPromptForPayload,
       t2v_prompt: renderPromptForPayload,
       audio_path: audioPathForScene,
       prompt_number_one_based: promptNumberForScene,
       srt_path: srtPath,
       project_folder: projectInput.value,
     };
+    if (isIdLoraMode) payload.id_lora_prompt = renderPromptForPayload;
     if (autoChainPreFrames > 0) payload.pre_frames = autoChainPreFrames;
     if (videoMode === "i2v") {
       payload.image_folder = i2vImagesFolder();
@@ -30071,6 +31631,81 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       flowGptCreateImageButton.textContent = "Create with Flow/GPT";
       flowGptCreatePromptButton.disabled = false;
       flowGptCreatePromptButton.textContent = "Gemma Flow/GPT Prompt";
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
+  async function createEndFramesAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const endFrameRunMode = options.endFrameRunMode || "resume_missing";
+    const missing = validateCreateEndFramesReady({ endFrameRunMode, sceneScope });
+    const progress = createProgressWindow("Create End Frames");
+    if (missing.length) {
+      progress.setHtml(`
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:900;color:#fecaca;">Create End Frames cannot start yet.</div>
+          <div>Fix these first, then try again:</div>
+          <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
+        </div>
+      `, 100);
+      toast("Create End Frames needs First Last Frame mode and first-frame scene images.", true);
+      if (options.throwOnError) throw new Error(missing.join("\n"));
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "End Frames...";
+      progress.set(`Autosaving session/SRT before Create End Frames (${batchScopeLabel(sceneScope)})...`, 3);
+      await saveSessionForSceneVideo();
+      const scenes = endFrameSegmentsForMode(endFrameRunMode, sceneScope);
+      if (!scenes.length) {
+        progress.set("All target scenes already have end frames. Skipping Create End Frames.", 100);
+        progress.close(1800);
+        toast("All target scenes already have end frames.");
+        return;
+      }
+      progress.set(`Create End Frames: generating ${scenes.length} last frame image${scenes.length === 1 ? "" : "s"} with ${imageModeDisplayLabel(imageMode, true)}...`, 8);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 8 + Math.floor((index / scenes.length) * 82);
+        const span = Math.max(1, Math.floor(76 / scenes.length));
+        state.activeId = segment.id;
+        syncInspector();
+        render();
+        progress.set(`Create End Frames ${index + 1}/${scenes.length}: ${sceneLabel}\nUsing selected scene image as the first frame.`, base);
+        await createEndFrameForSegment(
+          segment,
+          imageMode,
+          progress,
+          base + span * 0.12,
+          span * 0.68,
+          `End Frame ${index + 1}/${scenes.length}: ${sceneLabel}`
+        );
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Create End Frame scene ${sceneIndex + 1}`);
+        await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+      }
+      await autoSaveSessionQuiet("Create End Frames complete");
+      progress.set("Create End Frames complete. Reference to Video can now use the first and last frame refs.", 100);
+      progress.close(4500);
+      toast("Create End Frames complete.");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}`, 100);
+      toast(errorMessage, !stopped);
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
       state.batchCancelled = false;
       syncInspector();
       render();
@@ -33612,12 +35247,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...imageModeChoices.filter((choice) => choice.value !== currentChoice.value),
     ];
     const scopeChoices = batchScopeChoices();
+    const firstLastFrameMode = rtvReferenceBehaviorGlobalValue() === "first_last_frame";
     const action = await chooseBatchModeAction({
       title: "Run Image All?",
-      intro: `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
+      intro: firstLastFrameMode
+        ? `Image All only works on the image stage. Current image model: ${modelLabel}. First Last Frame mode is active, so you can also create end frames from the existing scene images.`
+        : `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
       confirmLabel: "Run Image All",
       returnAll: true,
       choices: [
+        ...(firstLastFrameMode ? [{
+          value: "create_end_frames",
+          label: "Create End Frames",
+          description: "First Last Frame mode only. Keep current scene images as first frames and generate missing last-frame images for RTV/MSR.",
+        }] : []),
         {
           value: "resume_missing",
           label: "Resume missing images",
@@ -33656,6 +35299,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
     state.fluxKleinSettings.enabled = selectedImageMode === "flux_klein";
     syncFluxKleinPanel();
+    if (action.mode === "create_end_frames") {
+      await createEndFramesAllScenes({ imageMode: selectedImageMode, sceneScope, endFrameRunMode: "resume_missing" });
+      return;
+    }
     if (selectedImageMode === "flux_klein") await fluxKleinAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "nano_banana") await nbImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "ernie_image") await ernieImageAllScenes({ imageRunMode: action.mode, sceneScope });
@@ -34762,7 +36409,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         } else if (normalized === "id_lora") {
           openIdLoraReferenceBuilderModalSafely();
         } else {
-          openSceneTextMappingModal();
+          openFluxReferenceBuilderModal({ wizardMode: true, textOnlyMode: true });
         }
       },
       openLyricMapping: openLyricMappingWorkflowModal,
@@ -35073,12 +36720,77 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   useSceneI2VVideoSettings.input.addEventListener("change", () => {
     setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettings.input.checked));
   });
-  rtvSceneImageAnchor.input.addEventListener("change", () => {
+  rtvReferenceBehaviorSelect.addEventListener("change", () => {
     pushHistory();
-    applyRTVSceneImageAnchorToAll(Boolean(rtvSceneImageAnchor.input.checked));
+    applyRTVReferenceBehaviorToAll(rtvReferenceBehaviorSelect.value);
     syncRTVSceneImageAnchorPanel();
     render();
-    autoSaveSessionQuiet("RTV scene image character anchor changed globally").catch(() => null);
+    autoSaveSessionQuiet("RTV reference behavior changed globally").catch(() => null);
+  });
+  createSceneEndFrameButton.addEventListener("click", async () => {
+    updateActiveFromInputs();
+    const segment = activeSegment();
+    if (!segment) {
+      toast("Select a scene before creating an end frame.", true);
+      return;
+    }
+    if (rtvReferenceBehaviorForSegment(segment) !== "first_last_frame") {
+      toast("Set Reference Behavior to First Last Frame first.", true);
+      return;
+    }
+    const firstFrame = segmentImageSource(segment);
+    if (!firstFrame?.path && !firstFrame?.data) {
+      toast("This scene needs a first-frame image before creating the end frame.", true);
+      return;
+    }
+    const progress = createProgressWindow("Create Scene End Frame");
+    const previousLabel = createSceneEndFrameButton.textContent;
+    try {
+      createSceneEndFrameButton.disabled = true;
+      clearSceneEndFrameButton.disabled = true;
+      createSceneEndFrameButton.textContent = "Creating...";
+      progress.set("Autosaving before creating the scene end frame...", 4);
+      await saveSessionForSceneVideo();
+      const imageMode = state.imageModelMode || "zimage";
+      await createEndFrameForSegment(
+        segment,
+        imageMode,
+        progress,
+        12,
+        76,
+        `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} end frame`
+      );
+      await autoSaveSessionQuiet("First Last Frame end frame created");
+      progress.set("Scene end frame created. This scene is ready for First Last Frame RTV.", 100);
+      progress.close(2200);
+      toast("Scene end frame created.");
+    } catch (error) {
+      const message = String(error?.message || error);
+      progress.set(`Error:\n${message}`, 100);
+      toast(message, true);
+    } finally {
+      createSceneEndFrameButton.textContent = previousLabel;
+      syncRTVSceneImageAnchorPanel();
+      syncInspector();
+      render();
+    }
+  });
+  clearSceneEndFrameButton.addEventListener("click", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    if (!hasFirstLastFrameEndImage(segment)) {
+      syncRTVSceneImageAnchorPanel();
+      return;
+    }
+    pushHistory();
+    segment.first_last_frame_end_image_path = "";
+    segment.first_last_frame_end_image_data = "";
+    segment.first_last_frame_end_image_name = "";
+    syncRTVSceneImageAnchorPanel();
+    syncInspector();
+    render();
+    autoSaveSessionQuiet("First Last Frame end frame cleared").catch(() => null);
+    toast("Scene end frame cleared.");
   });
   refImageInput.addEventListener("input", updateActiveFromInputs);
   refImageInput.addEventListener("change", updateActiveFromInputs);
