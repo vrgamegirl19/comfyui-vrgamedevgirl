@@ -15412,6 +15412,8 @@ function openBuilder(node) {
 
   function normalizeTimestampedSceneDurations(segments = [], options = {}, payload = {}) {
     const minSceneSeconds = Math.max(1, Number(options.minSceneSeconds ?? payload?.min_scene_seconds ?? payload?.minSceneSeconds ?? 1) || 1);
+    const maxSceneSeconds = Math.max(minSceneSeconds, Number(options.maxSceneSeconds ?? payload?.max_scene_seconds ?? payload?.maxSceneSeconds ?? 8) || 8);
+    const softMaxSceneSeconds = maxSceneSeconds + 2;
     const instrumentalText = String(options.instrumentalText || payload?.instrumental_text || payload?.instrumentalText || "[instrumental]").trim() || "[instrumental]";
     const items = (Array.isArray(segments) ? segments : [])
       .filter(Boolean)
@@ -15444,6 +15446,9 @@ function openBuilder(node) {
         continue;
       }
       if (!target) continue;
+      const mergedStart = Math.min(Number(target.start || 0), segment.start);
+      const mergedEnd = Math.max(Number(target.end || target.start + minSceneSeconds), segment.end);
+      if (mergedEnd - mergedStart > softMaxSceneSeconds + 0.001) continue;
 
       const targetStartedBeforeSegment = Number(target.start || 0) <= Number(segment.start || 0);
       target.start = Math.min(Number(target.start || 0), segment.start);
@@ -15475,7 +15480,7 @@ function openBuilder(node) {
 
   function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
     const sourceSegments = Array.isArray(payload?.segments) ? payload.segments : [];
-    const ordered = sourceSegments
+    const orderedSource = sourceSegments
       .map((item) => ({
         item,
         start: Math.max(0, Number(item?.start || 0)),
@@ -15488,7 +15493,57 @@ function openBuilder(node) {
     const shouldFillGaps = options.includeInstrumentalGaps !== false && payload?.include_instrumental_gaps !== false && payload?.includeInstrumentalGaps !== false;
     const minGap = Math.max(0, Number(options.minGapSeconds ?? payload?.min_gap_seconds ?? payload?.minGapSeconds ?? 0.25) || 0);
     const maxScene = Math.max(0.5, Number(options.maxSceneSeconds ?? payload?.max_scene_seconds ?? payload?.maxSceneSeconds ?? 8) || 8);
+    const softMaxScene = maxScene + 2;
     const epsilon = 0.03;
+    const ordered = [];
+    for (const source of orderedSource) {
+      const duration = source.end - source.start;
+      if (duration <= softMaxScene + epsilon) {
+        ordered.push(source);
+        continue;
+      }
+      const timedWords = (Array.isArray(source.item?.words) ? source.item.words : [])
+        .map((word) => ({
+          ...word,
+          start: Number(word?.start),
+          end: Number(word?.end ?? word?.start),
+        }))
+        .filter((word) => Number.isFinite(word.start) && Number.isFinite(word.end) && word.end > word.start)
+        .sort((a, b) => a.start - b.start || a.end - b.end);
+      let partStart = source.start;
+      let wordCursor = 0;
+      while (source.end - partStart > softMaxScene + epsilon) {
+        const target = partStart + maxScene;
+        const limit = partStart + softMaxScene;
+        const candidates = timedWords
+          .map((word, index) => ({ word, index }))
+          .filter(({ word, index }) => index >= wordCursor && word.end > partStart + 0.1 && word.end <= limit + epsilon);
+        const chosen = candidates.length
+          ? candidates.reduce((best, candidate) => Math.abs(candidate.word.end - target) < Math.abs(best.word.end - target) ? candidate : best)
+          : null;
+        const partEnd = chosen ? chosen.word.end : target;
+        const partWords = chosen ? timedWords.slice(wordCursor, chosen.index + 1) : [];
+        const partItem = { ...source.item };
+        if (partWords.length) {
+          partItem.words = partWords;
+          partItem.text = partWords.map((word) => String(word.text || word.word || "").trim()).filter(Boolean).join(" ") || source.item?.text || "";
+          wordCursor = chosen.index + 1;
+        } else {
+          partItem.words = [];
+        }
+        partItem.timing_warning = `Long transcription chunk split near a word boundary to honor the ${maxScene.toFixed(2)} second maximum.`;
+        ordered.push({ item: partItem, start: partStart, end: partEnd });
+        partStart = partEnd;
+      }
+      const finalItem = { ...source.item };
+      const finalWords = timedWords.slice(wordCursor).filter((word) => word.end > partStart - epsilon);
+      if (finalWords.length) {
+        finalItem.words = finalWords;
+        finalItem.text = finalWords.map((word) => String(word.text || word.word || "").trim()).filter(Boolean).join(" ") || source.item?.text || "";
+      }
+      finalItem.timing_warning = `Continuation of a long transcription chunk split near word boundaries.`;
+      ordered.push({ item: finalItem, start: partStart, end: source.end });
+    }
     let cursor = 0;
     const addTimestampedSegment = (start, end, item = null, forcedText = "") => {
       const cleanStart = Math.max(0, Number(start || 0));
@@ -16101,7 +16156,8 @@ function openBuilder(node) {
     });
   }
 
-  function openLyricReviewModal() {
+  function openLyricReviewModal(options = {}) {
+    const focusSceneId = String(options?.focusSceneId || options?.focus_scene_id || "").trim();
     ensureAllSegmentRuntimeFields();
     const scenes = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
     const backdrop = document.createElement("div");
@@ -17395,6 +17451,16 @@ function openBuilder(node) {
     box.append(header, note, performerLabelPanel, timingModePanel, audioPanel, rowList, actions);
     backdrop.append(box);
     document.body.append(backdrop);
+    if (focusSceneId) {
+      requestAnimationFrame(() => {
+        const focusRow = rowList.querySelector(`[data-review-segment-id="${CSS.escape(focusSceneId)}"]`);
+        if (!focusRow) return;
+        focusRow.style.borderColor = "#22d3ee";
+        focusRow.style.boxShadow = "0 0 0 2px rgba(34,211,238,.28)";
+        focusRow.scrollIntoView({ behavior: "smooth", block: "center" });
+        focusRow.querySelector("[data-review-lyric-text]")?.focus({ preventScroll: true });
+      });
+    }
     const closeModal = () => {
       clearReviewStopGuards();
       reviewAudio.pause();
@@ -18038,14 +18104,16 @@ function openBuilder(node) {
     const exportGptSceneContext = makeButton("Export GPT Context", "primary");
     const importGptSceneMap = makeButton("Import GPT Map", "primary");
     const assignScenes = makeButton("Assign Scenes", "primary");
+    const openAdvancedLineMapping = makeButton("Open Advanced Line Mapping");
     mapSubjectsFromLyrics.title = "Use saved Line Review performer choices to assign character references per scene.";
     mapSubjectsFromSceneNotes.title = "Read SceneNotes.json and assign character references when scene notes mention saved character names.";
     exportGptSceneContext.title = "Copy subjects, locations, lyric lines, and current scene mappings as JSON, then open the Scene Mapping Assistant GPT.";
     importGptSceneMap.title = "Paste GPT scene mapping JSON to assign saved subjects and locations back to scenes.";
     assignScenes.title = "Bulk-assign saved characters and locations using random, rotating, or character-block patterns.";
+    openAdvancedLineMapping.title = "Open the existing Review Lines + Map Performers window for audio, timing, transcription, and detailed performer review.";
     const mappingActions = document.createElement("div");
     mappingActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes, assignScenes, exportGptSceneContext, importGptSceneMap);
+    mappingActions.append(openAdvancedLineMapping, mapSubjectsFromLyrics, mapSubjectsFromSceneNotes, assignScenes, exportGptSceneContext, importGptSceneMap);
     mappingHeader.append(mappingTitle, mappingActions);
     const mappingNote = document.createElement("div");
     mappingNote.textContent = "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.";
@@ -18053,6 +18121,12 @@ function openBuilder(node) {
     const mappingList = document.createElement("div");
     mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
     mappingCard.append(mappingHeader, mappingNote, mappingList);
+    const launchAdvancedLineMapping = (segment = null) => {
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      backdrop.remove();
+      openLyricReviewModal(segment ? { focusSceneId: segment.id } : {});
+    };
+    openAdvancedLineMapping.onclick = () => launchAdvancedLineMapping();
 
     function openSceneAssignmentDialog() {
       const scenes = allEditableSegments();
@@ -21528,6 +21602,76 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         }
         return wrap;
       };
+      const markVisualPicker = (preview, text = "Click to choose / change") => {
+        preview.style.position = "relative";
+        preview.style.paddingTop = "27px";
+        const hint = document.createElement("div");
+        hint.textContent = text;
+        hint.style.cssText = "position:absolute;left:8px;top:6px;font-size:10px;font-weight:900;color:#22d3ee;text-transform:uppercase;letter-spacing:.03em;pointer-events:none;";
+        preview.append(hint);
+        return preview;
+      };
+      const openVisualMappingPicker = ({ title = "Choose", items = [], selectedIds = [], multiple = false, onApply }) => {
+        const pickerBackdrop = document.createElement("div");
+        pickerBackdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px;";
+        const picker = document.createElement("div");
+        picker.style.cssText = "width:min(980px,calc(100vw - 44px));max-height:calc(100vh - 48px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#0b1220;color:#f8fafc;padding:14px;display:flex;flex-direction:column;gap:12px;";
+        const head = document.createElement("div");
+        head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
+        const heading = document.createElement("div");
+        heading.textContent = title;
+        heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+        const closePicker = makeButton("Cancel");
+        head.append(heading, closePicker);
+        const choices = document.createElement("div");
+        choices.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;";
+        const selected = new Set(selectedIds.map(String));
+        const renderChoices = () => {
+          choices.replaceChildren();
+          const unassigned = document.createElement("button");
+          unassigned.type = "button";
+          unassigned.textContent = multiple ? "Clear selection" : "Unassigned";
+          unassigned.style.cssText = "min-height:132px;border:1px dashed #475569;border-radius:7px;background:#111827;color:#94a3b8;cursor:pointer;font-weight:900;";
+          unassigned.onclick = () => { selected.clear(); if (!multiple) applySelection(); else renderChoices(); };
+          choices.append(unassigned);
+          items.forEach((item) => {
+            const card = document.createElement("button");
+            card.type = "button";
+            const active = selected.has(String(item.id));
+            card.style.cssText = `min-height:132px;border:2px solid ${active ? "#22d3ee" : "#334155"};border-radius:7px;background:${active ? "#083344" : "#111827"};color:#f8fafc;padding:8px;display:flex;flex-direction:column;gap:7px;align-items:center;cursor:pointer;`;
+            card.append(makeMappingThumb(item.image || {}, item.label || "Reference"));
+            const name = document.createElement("div");
+            name.textContent = item.label || "Reference";
+            name.style.cssText = "font-size:12px;font-weight:900;text-align:center;";
+            card.append(name);
+            card.onclick = () => {
+              if (multiple) {
+                if (selected.has(String(item.id))) selected.delete(String(item.id));
+                else selected.add(String(item.id));
+                renderChoices();
+              } else {
+                selected.clear();
+                selected.add(String(item.id));
+                applySelection();
+              }
+            };
+            choices.append(card);
+          });
+        };
+        const applySelection = () => { pickerBackdrop.remove(); onApply?.(Array.from(selected)); };
+        const footer = document.createElement("div");
+        footer.style.cssText = `display:${multiple ? "grid" : "none"};grid-template-columns:1fr 1fr;gap:8px;`;
+        const cancel = makeButton("Cancel");
+        const apply = makeButton("Apply Selection", "primary");
+        cancel.onclick = () => pickerBackdrop.remove();
+        apply.onclick = applySelection;
+        closePicker.onclick = () => pickerBackdrop.remove();
+        footer.append(cancel, apply);
+        picker.append(head, choices, footer);
+        pickerBackdrop.append(picker);
+        document.body.append(pickerBackdrop);
+        renderChoices();
+      };
       const subjectPreviewItems = (selectedIds) => {
         const ids = new Set(selectedIds);
         const items = [];
@@ -21542,21 +21686,22 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         return items;
       };
       mappingNote.textContent = singleGlobalSubject
-        ? `Your single character reference is global and will be included in every scene. The dropdowns below assign location references only; Unassigned means no location image for that scene.`
+        ? `Each row shows its current lyric or dialogue line. Click the visual cards to choose who is present, who performs the line, and the scene location.`
         : showSubjects
-        ? `Choose one or more characters and one location ${referenceBuilderTargetLabel} should receive for each scene.`
-        : `Choose which location image ${referenceBuilderTargetLabel} should receive for each scene. Use Unassigned for no location reference.`;
+        ? `Each row shows its current lyric or dialogue line. Click any Present, Performs Line, or Location image card to choose or change its visual mapping.`
+        : `Each row shows its current lyric or dialogue line. Click the Location image card to choose or change it; choose Unassigned for no location reference.`;
       allEditableSegments().forEach((segment, index) => {
         const row = document.createElement("div");
-        row.style.cssText = `border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:grid;grid-template-columns:minmax(160px,.7fr) ${showSubjects ? "minmax(260px,1.15fr) " : ""}minmax(260px,1fr);gap:10px;align-items:stretch;`;
+        row.style.cssText = `border:1px solid #334155;border-radius:7px;background:linear-gradient(135deg,#0f172a,#111827);padding:10px;display:grid;grid-template-columns:minmax(180px,.8fr) ${showSubjects ? "minmax(230px,1fr) minmax(190px,.8fr) " : ""}minmax(240px,1fr) 88px;gap:10px;align-items:stretch;`;
         const label = document.createElement("div");
-        label.innerHTML = `<div style="font-size:11px;color:#67e8f9;font-weight:900;text-transform:uppercase;">Scene ${index + 1}</div><div style="font-size:13px;color:#f8fafc;font-weight:900;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div>`;
+        const lyricLine = String(segment.lyric_text || "").trim();
+        label.innerHTML = `<div style="font-size:11px;color:#67e8f9;font-weight:900;text-transform:uppercase;">Scene ${index + 1}</div><div style="font-size:13px;color:#f8fafc;font-weight:900;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(segment.label || `Scene ${index + 1}`)}</div><div style="font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;margin-top:9px;">Lyric / dialogue</div><div title="${escapeHtml(lyricLine || "No lyric or dialogue for this scene")}" style="font-size:12px;color:${lyricLine ? "#fde68a" : "#71717a"};line-height:1.35;margin-top:3px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;">${escapeHtml(lyricLine || "No lyric — instrumental / visual scene")}</div>`;
         label.style.cssText = "min-width:0;border:1px solid #1e3a5f;border-radius:7px;background:#071422;padding:10px;display:flex;flex-direction:column;justify-content:center;";
         const subjectSelect = document.createElement("select");
         subjectSelect.multiple = true;
         subjectSelect.dataset.subjectMapSegmentId = segment.id;
         subjectSelect.size = Math.min(4, Math.max(2, logicalSubjects.length || 2));
-        subjectSelect.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:6px;font-size:12px;";
+        subjectSelect.style.display = "none";
         logicalSubjects.forEach((subject) => {
           const extraCount = refs.subjects.filter((item) => subjectExtraTargetId(item) === subject.id).length;
           subjectSelect.append(new Option(`${subject.name || "Character"}${extraCount ? ` (${extraCount + 1} ref images)` : ""}`, subject.id));
@@ -21571,7 +21716,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         };
         const select = document.createElement("select");
         select.dataset.locationMapSegmentId = segment.id;
-        select.style.cssText = "width:100%;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#f8fafc;padding:8px;font-size:12px;";
+        select.style.display = "none";
         select.append(new Option("Unassigned", ""));
         refs.locations.forEach((location) => select.append(new Option(location.name || "Location", location.id)));
         select.value = refs.scene_map?.[segment.id] || "";
@@ -21585,21 +21730,83 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           ? "display:grid;grid-template-columns:minmax(120px,.75fr) minmax(150px,1fr);gap:8px;align-items:stretch;min-width:0;"
           : "display:grid;grid-template-columns:minmax(160px,1fr);gap:8px;align-items:stretch;min-width:0;";
         if (showSubjects) {
-          subjectPanel.append(subjectSelect);
-          if (referenceImagesEnabled) subjectPanel.append(makeMappingPreview(subjectPreviewItems(selectedSubjectIds), "No subject"));
+          const presentTitle = document.createElement("div");
+          presentTitle.textContent = "Present";
+          presentTitle.style.cssText = "font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;grid-column:1/-1;";
+          const presentPreview = markVisualPicker(makeMappingPreview(subjectPreviewItems(selectedSubjectIds), "Choose characters present"));
+          presentPreview.style.cursor = "pointer";
+          presentPreview.style.gridColumn = "1 / -1";
+          presentPreview.onclick = () => openVisualMappingPicker({
+            title: `${sceneDisplayName(segment, index)} — Characters Present`,
+            items: logicalSubjects.map((subject) => ({ id: subject.id, label: subject.name || "Character", image: subjectPreviewImages(subject)[0]?.image || subject.image || {} })),
+            selectedIds: Array.from(selectedSubjectIds), multiple: true,
+            onApply: (ids) => { if (ids.length) refs.subject_scene_map[segment.id] = ids; else delete refs.subject_scene_map[segment.id]; renderMapping(); },
+          });
+          subjectPanel.append(presentTitle, subjectSelect, presentPreview);
         }
+        const performerPanel = document.createElement("div");
+        performerPanel.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;border:1px solid #1e3a5f;border-radius:7px;background:#071422;padding:8px;";
+        const performerTitle = document.createElement("div");
+        performerTitle.textContent = "Performs line";
+        performerTitle.style.cssText = "font-size:10px;color:#94a3b8;font-weight:900;text-transform:uppercase;";
+        const performerSelect = document.createElement("select");
+        performerSelect.multiple = true;
+        performerSelect.size = Math.min(4, Math.max(2, logicalSubjects.length || 2));
+        performerSelect.style.display = "none";
+        const selectedPerformers = new Set((Array.isArray(segment.lyric_singers) ? segment.lyric_singers : []).map((value) => String(value || "").trim().toLowerCase()));
+        logicalSubjects.forEach((subject) => {
+          const label = String(subject.name || "Character").trim();
+          const option = new Option(label, subject.id);
+          option.selected = selectedPerformers.has(label.toLowerCase()) || selectedPerformers.has(String(subject.id || "").toLowerCase());
+          performerSelect.append(option);
+        });
+        performerSelect.onchange = () => {
+          const selectedOptions = Array.from(performerSelect.selectedOptions || []);
+          segment.lyric_singers = selectedOptions.map((option) => option.textContent || option.value).filter(Boolean);
+          const present = new Set(Array.isArray(refs.subject_scene_map?.[segment.id]) ? refs.subject_scene_map[segment.id] : []);
+          selectedOptions.forEach((option) => present.add(option.value));
+          if (present.size) refs.subject_scene_map[segment.id] = Array.from(present);
+          renderMapping();
+        };
+        const selectedPerformerIds = Array.from(performerSelect.selectedOptions || []).map((option) => option.value);
+        const performerPreview = markVisualPicker(makeMappingPreview(subjectPreviewItems(new Set(selectedPerformerIds)), "Choose singer / speaker"));
+        performerPreview.style.cursor = "pointer";
+        performerPreview.onclick = () => openVisualMappingPicker({
+          title: `${sceneDisplayName(segment, index)} — Performs This Line`,
+          items: logicalSubjects.map((subject) => ({ id: subject.id, label: subject.name || "Character", image: subjectPreviewImages(subject)[0]?.image || subject.image || {} })),
+          selectedIds: selectedPerformerIds, multiple: true,
+          onApply: (ids) => {
+            segment.lyric_singers = logicalSubjects.filter((subject) => ids.includes(String(subject.id))).map((subject) => subject.name || "Character");
+            const present = new Set(Array.isArray(refs.subject_scene_map?.[segment.id]) ? refs.subject_scene_map[segment.id] : []);
+            ids.forEach((id) => present.add(id));
+            if (present.size) refs.subject_scene_map[segment.id] = Array.from(present);
+            renderMapping();
+          },
+        });
+        performerPanel.append(performerTitle, performerSelect, performerPreview);
         const locationPanel = document.createElement("div");
         locationPanel.style.cssText = referenceImagesEnabled
           ? "display:grid;grid-template-columns:minmax(120px,.78fr) minmax(150px,1fr);gap:8px;align-items:stretch;min-width:0;"
           : "display:grid;grid-template-columns:minmax(160px,1fr);gap:8px;align-items:stretch;min-width:0;";
         const selectedLocation = refs.locations.find((location) => location.id === select.value);
-        locationPanel.append(select);
-        if (referenceImagesEnabled) {
-          locationPanel.append(makeMappingPreview(selectedLocation ? [{ image: selectedLocation.image || {}, label: selectedLocation.name || "Location" }] : [], "No location"));
-        }
+        const locationPreview = markVisualPicker(makeMappingPreview(selectedLocation ? [{ image: selectedLocation.image || {}, label: selectedLocation.name || "Location" }] : [], "Choose location"));
+        locationPreview.style.cursor = "pointer";
+        locationPreview.style.gridColumn = "1 / -1";
+        locationPreview.onclick = () => openVisualMappingPicker({
+          title: `${sceneDisplayName(segment, index)} — Location`,
+          items: refs.locations.map((location) => ({ id: location.id, label: location.name || "Location", image: location.image || {} })),
+          selectedIds: select.value ? [select.value] : [], multiple: false,
+          onApply: (ids) => { if (ids[0]) refs.scene_map[segment.id] = ids[0]; else delete refs.scene_map[segment.id]; renderMapping(); },
+        });
+        locationPanel.append(select, locationPreview);
         row.append(label);
-        if (showSubjects) row.append(subjectPanel);
+        if (showSubjects) row.append(subjectPanel, performerPanel);
         row.append(locationPanel);
+        const advanced = makeButton("Advanced");
+        advanced.title = "Open Review Lines + Map Performers focused on this scene.";
+        advanced.style.cssText = "align-self:center;padding:8px 7px;min-width:0;color:#67e8f9;";
+        advanced.onclick = () => launchAdvancedLineMapping(segment);
+        row.append(advanced);
         mappingList.append(row);
       });
     }

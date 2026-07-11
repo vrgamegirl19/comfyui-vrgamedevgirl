@@ -1496,6 +1496,7 @@ export function openMusicVideoWizard(api = {}) {
       { value: "reference_lines", label: "One scene per lyric line" },
       { value: "reference_stanzas", label: "One scene per stanza" },
       { value: "whisper_chunks", label: "Whisper chunks" },
+      { value: "beat_scenes", label: "Beat Mode — cut scenes on detected beats" },
     ], wizardState.segmentMode);
     const segmentationHelpHtml = {
       reference_lines: `
@@ -1512,6 +1513,11 @@ export function openMusicVideoWizard(api = {}) {
         <strong>What it does:</strong> lets Whisper/stable-ts choose scene chunks from the audio transcription timing.<br>
         <strong>Use when:</strong> your pasted lyrics are only a guide, or you want timing driven mostly by the audio.<br>
         <strong>Result:</strong> less manual structure, but scene breaks may not match your pasted line breaks.
+      `,
+      beat_scenes: `
+        <strong>What it does:</strong> detects musical beats and chooses scene cuts inside your minimum/maximum duration window.<br>
+        <strong>Use when:</strong> you want scene changes to feel synchronized to the rhythm.<br>
+        <strong>Result:</strong> beat-aligned scene timing. If no beat exists inside the selected window, it cuts at the maximum instead.
       `,
     };
     const segmentationHelp = el("div", "vrgdg-wizard-setting-help");
@@ -1584,6 +1590,12 @@ export function openMusicVideoWizard(api = {}) {
           minSceneSeconds: Number(wizardState.minSceneSeconds || 1.0),
           maxSceneSeconds: Number(wizardState.maxSceneSeconds || 8.0),
           vocalTailPaddingSeconds: 0.3,
+          beatUseSrtDurations: true,
+          beatMinDuration: Number(wizardState.minSceneSeconds || 1.0),
+          beatMaxDuration: Number(wizardState.maxSceneSeconds || 8.0),
+          beatBias: 0.7,
+          beatDurationPreset: "varied_no_repeat",
+          beatEmptySegmentText: "Instrumental section.",
         });
         done.add("lyrics");
         await saveWizardProgress("wizard lyrics and scenes");
