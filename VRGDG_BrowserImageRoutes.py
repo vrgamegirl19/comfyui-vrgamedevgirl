@@ -332,6 +332,9 @@ def _run_manual_bridge(payload, action):
     if action == "upload":
         for image_path in _manual_image_paths(payload):
             command.extend(["--image", image_path])
+        prompt = str(payload.get("prompt", "") or "").strip()
+        if prompt:
+            command.extend(["--prompt", prompt])
 
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
@@ -377,28 +380,47 @@ def _manual_wait_download(payload):
 
 def _newest_manual_download(provider):
     provider = _normalize_provider(provider)
-    folder = os.path.join(DEFAULT_FLOW_DIR, "manual_downloads", provider)
-    image_exts = {".png", ".jpg", ".jpeg", ".webp"}
+    provider_folder = os.path.join(DEFAULT_FLOW_DIR, "manual_downloads", provider)
+    download_folders = [provider_folder]
+    user_profile = str(os.environ.get("USERPROFILE", "") or "").strip()
+    home_folder = os.path.expanduser("~")
+    for folder in [
+        os.path.join(user_profile, "Downloads") if user_profile else "",
+        os.path.join(home_folder, "Downloads") if home_folder else "",
+    ]:
+        normalized = os.path.normcase(os.path.abspath(folder)) if folder else ""
+        if folder and normalized not in {
+            os.path.normcase(os.path.abspath(item)) for item in download_folders
+        }:
+            download_folders.append(folder)
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".avif"}
     candidates = []
-    if not os.path.isdir(folder):
-        raise FileNotFoundError(f"Manual download folder does not exist:\n{folder}")
-    for filename in os.listdir(folder):
-        path = os.path.join(folder, filename)
-        if not os.path.isfile(path):
+    searched_folders = []
+    for folder in download_folders:
+        if not os.path.isdir(folder):
             continue
-        ext = os.path.splitext(filename)[1].lower()
-        if ext not in image_exts:
-            continue
-        try:
-            stat = os.stat(path)
-        except OSError:
-            continue
-        if stat.st_size <= 0:
-            continue
-        candidates.append((stat.st_mtime, path))
+        searched_folders.append(folder)
+        for filename in os.listdir(folder):
+            path = os.path.join(folder, filename)
+            if not os.path.isfile(path):
+                continue
+            lower_name = filename.lower()
+            if lower_name.endswith((".crdownload", ".part", ".tmp")):
+                continue
+            ext = os.path.splitext(filename)[1].lower()
+            if ext not in image_exts:
+                continue
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            if stat.st_size <= 0:
+                continue
+            candidates.append((stat.st_mtime, path))
     candidates.sort(reverse=True)
     if not candidates:
-        raise FileNotFoundError(f"No manual browser image downloads were found in:\n{folder}")
+        searched = "\n".join(searched_folders or download_folders)
+        raise FileNotFoundError(f"No manual browser image downloads were found in:\n{searched}")
     return candidates[0][1]
 
 

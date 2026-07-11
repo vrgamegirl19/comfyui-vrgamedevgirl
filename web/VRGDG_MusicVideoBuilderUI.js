@@ -23,6 +23,14 @@ import {
   setupBrowserImageAutomation,
   uploadManualBrowserImageRefs,
 } from "./VRGDG_BrowserImageBridge.js";
+import {
+  OVERLAY_TRACK_HELP_HTML,
+  clampOverlayTiming,
+  cloneSceneAsOverlay,
+  normalizeOverlayClip,
+  normalizeOverlayTrackState,
+  overlayClipIsEnabled,
+} from "./VRGDG_OverlayTrack.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
@@ -2552,6 +2560,12 @@ function openBuilder(node) {
   const flowGptCreateImageButton = makeButton("Create with Browser AI", "primary");
   const flowGptManualMode = makeCheckbox("Manual Mode", false);
   const flowGptManualAutoAdvance = makeCheckbox("Auto-advance after import", false);
+  const flowGptManualChatPrompt = document.createElement("textarea");
+  flowGptManualChatPrompt.placeholder = "Prompt to copy into the browser after exporting reference images...";
+  flowGptManualChatPrompt.style.cssText = "width:100%;box-sizing:border-box;min-height:120px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
+  ["keydown", "keypress", "keyup"].forEach((eventName) => {
+    flowGptManualChatPrompt.addEventListener(eventName, (event) => event.stopPropagation());
+  });
   const flowGptManualOpenButton = makeButton("Open Manual Browser", "primary");
   const flowGptManualExportRefsButton = makeButton("Export Scene Refs");
   const flowGptManualImportLatestButton = makeButton("Import Latest Download");
@@ -3494,6 +3508,7 @@ function openBuilder(node) {
       content: makeSettingsPanel([
         flowGptManualMode.wrapper,
         flowGptManualAutoAdvance.wrapper,
+        makeField("Prompt sent with reference images", flowGptManualChatPrompt),
         flowGptManualActions,
         flowGptManualStatus,
       ]),
@@ -3690,9 +3705,11 @@ function openBuilder(node) {
   const clearRangeButton = makeButton("Clear Range");
   const closeTimelineGapsButton = makeButton("Close Gaps");
   const idLoraTrimModeButton = makeButton("Trim Mode");
+  const overlayTrackToggleButton = makeButton("Overlay Track: Off");
+  const overlayTrackHintButton = makeButton("?");
   const addTimelineMarkerButton = makeButton("+ Timeline Note");
   const addSegmentButton = makeButton("Add Segment", "primary");
-  const addOverlaySegmentButton = makeButton("Add Insert", "primary");
+  const addOverlaySegmentButton = makeButton("+ Overlay Track", "primary");
   const undoButton = makeButton("Undo");
   const redoButton = makeButton("Redo");
   const playButton = makeButton("Play");
@@ -3712,9 +3729,11 @@ function openBuilder(node) {
   clearRangeButton.title = "Clear the selected timeline range.";
   closeTimelineGapsButton.title = "Shift later base scenes left to remove empty gaps in the timeline.";
   idLoraTrimModeButton.title = "ID-LoRA only: quiet scrub mode for finding trim points without autoplay.";
+  overlayTrackToggleButton.title = "Turn the advanced overlay timeline on or off.";
+  overlayTrackHintButton.title = "How does the overlay timeline work?";
   addTimelineMarkerButton.title = "Add a free timeline note/song marker at the playhead or selected In/Out range.";
   addSegmentButton.title = "Add segment";
-  addOverlaySegmentButton.title = "Add an insert/overlay segment at the playhead without changing the base timeline.";
+  addOverlaySegmentButton.title = "Add a new clip to the overlay track at the playhead without changing the base timeline.";
   undoButton.title = "Undo";
   redoButton.title = "Redo";
   playButton.title = "Play / Pause";
@@ -3727,7 +3746,7 @@ function openBuilder(node) {
   zoomInButton.title = "Zoom in timeline";
   bulkSegmentsButton.textContent = "Bulk Segments";
   addSegmentButton.textContent = "+ Segment";
-  addOverlaySegmentButton.textContent = "+ Insert";
+  addOverlaySegmentButton.textContent = "+ Overlay Track";
   undoButton.textContent = "↶";
   redoButton.textContent = "↷";
   playButton.textContent = "▶";
@@ -3739,7 +3758,7 @@ function openBuilder(node) {
   deleteSegmentButton.style.color = "#fecaca";
   deleteAllSegmentsButton.style.borderColor = "#7f1d1d";
   deleteAllSegmentsButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
@@ -3756,6 +3775,8 @@ function openBuilder(node) {
   addTimelineMarkerButton.style.width = "max-content";
   addSegmentButton.style.width = "max-content";
   addOverlaySegmentButton.style.width = "max-content";
+  overlayTrackToggleButton.style.width = "max-content";
+  overlayTrackHintButton.style.width = "34px";
   deleteAllSegmentsButton.style.width = "max-content";
   for (const button of [undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.width = "34px";
@@ -3827,9 +3848,9 @@ function openBuilder(node) {
   }
   bulkSegmentsButton.textContent = "Bulk";
   addSegmentButton.textContent = "+ Segment";
-  addOverlaySegmentButton.textContent = "+ Insert";
+  addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -3940,6 +3961,7 @@ function openBuilder(node) {
       max_retries: 10,
       failure_mode: "last_successful_image",
       ask_previous_scene_image: false,
+      manual_chat_prompt: "Using the character and location reference images, create 5 new images. Place the character naturally within the location in different areas, poses, and compositions. Vary the camera position and angle for each image. Integrate the character into the environment instead of simply pasting the character onto the scene.",
       setup_note_collapsed: false,
     };
   }
@@ -4179,6 +4201,7 @@ function openBuilder(node) {
     beats: [],
     segments: [],
     overlaySegments: [],
+    overlayTrack: normalizeOverlayTrackState(),
     activeId: "",
     activeTrack: "base",
     multiSelectMode: false,
@@ -4782,7 +4805,7 @@ function openBuilder(node) {
   async function applySceneAdjustToAllScenes(segment = activeSegment()) {
     const adjust = normalizeSceneAdjust(segment?.adjust || {}, { keepEmpty: true });
     if (!segment || !adjust) return;
-    const targets = state.segments.filter((item) => segmentTrack(item) !== "overlay");
+    const targets = allEditableSegments();
     if (!targets.length) return;
     const progress = createProgressWindow("Applying Adjust to All Scenes");
     progress.set(`Applying Adjust settings to ${targets.length} scene${targets.length === 1 ? "" : "s"}...`, 10);
@@ -5247,7 +5270,7 @@ function openBuilder(node) {
       toast("Apply film grain to this scene first.", true);
       return;
     }
-    const targets = state.segments.filter((item) => segmentTrack(item) !== "overlay");
+    const targets = allEditableSegments();
     if (!targets.length) return;
     pushHistory();
     for (const target of targets) {
@@ -5520,7 +5543,7 @@ function openBuilder(node) {
       toast("Apply a LUT to this scene first.", true);
       return;
     }
-    const targets = state.segments.filter((item) => segmentTrack(item) !== "overlay");
+    const targets = allEditableSegments();
     if (!targets.length) return;
     pushHistory();
     for (const target of targets) {
@@ -7127,6 +7150,7 @@ function openBuilder(node) {
       max_retries: Math.max(1, Math.min(20, Number(source.max_retries || 10))),
       failure_mode: ["last_successful_image", "try_other_provider", "stop"].includes(source.failure_mode) ? source.failure_mode : "last_successful_image",
       ask_previous_scene_image: Boolean(source.ask_previous_scene_image || source.askPreviousSceneImage),
+      manual_chat_prompt: String(source.manual_chat_prompt || defaultFlowGptBrowserSettings().manual_chat_prompt),
       setup_note_collapsed: Boolean(source.setup_note_collapsed),
     };
   }
@@ -7378,6 +7402,7 @@ function openBuilder(node) {
     return JSON.stringify({
       segments: state.segments,
       overlaySegments: state.overlaySegments,
+      overlayTrack: normalizeOverlayTrackState(state.overlayTrack),
       activeId: state.activeId,
       activeTrack: state.activeTrack,
       timingFrozen: state.timingFrozen,
@@ -7446,6 +7471,8 @@ function openBuilder(node) {
     state.isRestoringHistory = true;
     state.segments = data.segments || [];
     state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
+    state.overlaySegments.forEach(normalizeOverlayClip);
+    state.overlayTrack = normalizeOverlayTrackState(data.overlayTrack || data.overlay_track || state.overlayTrack);
     ensureAllSegmentRuntimeFields();
     state.activeId = data.activeId || state.segments[0]?.id || "";
     state.activeTrack = data.activeTrack || data.active_track || segmentTrack(activeSegment()) || "base";
@@ -9377,7 +9404,8 @@ function openBuilder(node) {
 
   function playbackSegmentAtTime(time) {
     const current = Number(time || 0);
-    const overlay = state.overlaySegments
+    const overlay = (state.overlayTrack.enabled ? state.overlaySegments : [])
+      .filter((segment) => overlayClipIsEnabled(segment, state.overlayTrack))
       .slice()
       .sort((a, b) => Number(b.start || 0) - Number(a.start || 0))
       .find((segment) => {
@@ -11063,6 +11091,7 @@ function openBuilder(node) {
     flowGptRetries.value = settings.max_retries || 10;
     flowGptFailureMode.value = settings.failure_mode || "last_successful_image";
     flowGptAskPreviousImage.input.checked = Boolean(settings.ask_previous_scene_image);
+    flowGptManualChatPrompt.value = settings.manual_chat_prompt || defaultFlowGptBrowserSettings().manual_chat_prompt;
     const segment = activeSegment();
     flowGptPrompt.value = segment?.flow_gpt_prompt || segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || "";
     flowGptAspectRatioField.style.display = isGpt ? "flex" : "none";
@@ -11096,6 +11125,7 @@ function openBuilder(node) {
       max_retries: Math.max(1, Math.min(20, Number(flowGptRetries.value || 10))),
       failure_mode: flowGptFailureMode.value || "last_successful_image",
       ask_previous_scene_image: Boolean(flowGptAskPreviousImage.input.checked),
+      manual_chat_prompt: String(flowGptManualChatPrompt.value || "").trim() || defaultFlowGptBrowserSettings().manual_chat_prompt,
     });
     syncFlowGptBrowserPanel();
     return state.flowGptBrowserSettings;
@@ -11238,10 +11268,11 @@ function openBuilder(node) {
       await uploadManualBrowserImageRefs(settings.provider, {
         ...manualFlowGptPayload(segment),
         image_ingredients: refs,
+        prompt: settings.manual_chat_prompt,
         timeoutMs: 300000,
       });
-      flowGptManualStatus.textContent = `Exported ${refs.length} reference image${refs.length === 1 ? "" : "s"} to ${providerLabel}.`;
-      toast(`Exported ${refs.length} reference image${refs.length === 1 ? "" : "s"} to ${providerLabel}.`);
+      flowGptManualStatus.textContent = `Exported ${refs.length} reference image${refs.length === 1 ? "" : "s"} and copied the editable prompt to ${providerLabel}.`;
+      toast(`Exported refs and copied the prompt to ${providerLabel}.`);
     } finally {
       flowGptManualExportRefsButton.disabled = !flowGptManualMode.input.checked;
     }
@@ -11688,7 +11719,7 @@ function openBuilder(node) {
     if (!options.skipHistory) pushHistory();
     segment.label = labelInput.value || "Scene";
     const isOverlay = segmentTrack(segment) === "overlay";
-    if ((!state.timingFrozen || isOverlay) && !hasLockedVideo(segment)) {
+    if ((!state.timingFrozen || isOverlay) && (isOverlay ? segment.overlay_locked === false : !hasLockedVideo(segment))) {
       segment.start = Math.max(0, Number(startInput.value || 0));
       segment.end = Math.max(segment.start + 0.1, Number(endInput.value || segment.start + 4));
     }
@@ -12220,11 +12251,12 @@ function openBuilder(node) {
     renderSelectedTimelineRangeOverlay();
     renderTimelineMarkersOverlay();
     const overlayLabel = document.createElement("div");
-    overlayLabel.textContent = "INSERTS";
+    overlayLabel.textContent = "OVERLAY";
     overlayLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_OVERLAY_TOP - 11}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
     const baseLabel = document.createElement("div");
     baseLabel.textContent = "BASE";
     baseLabel.style.cssText = `position:absolute;left:4px;top:${TIMELINE_SEGMENT_TOP - 14}px;color:#a5f3fc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
+    overlayLabel.style.display = state.overlayTrack.enabled ? "" : "none";
     segmentLayer.append(overlayLabel, baseLabel);
     if (state.showTimelineSceneNotes) {
       const noteLabel = document.createElement("div");
@@ -12244,7 +12276,8 @@ function openBuilder(node) {
       lyricLabel.style.cssText = `position:absolute;left:4px;top:${timelineLyricNoteTop() - 12}px;color:#f0abfc;font-size:10px;font-weight:900;letter-spacing:.08em;pointer-events:none;text-shadow:0 1px 2px #020617;`;
       segmentLayer.append(lyricLabel);
     }
-    for (const segment of [...state.overlaySegments, ...state.segments]) {
+    const visibleTimelineOverlays = state.overlayTrack.enabled ? state.overlaySegments : [];
+    for (const segment of [...visibleTimelineOverlays, ...state.segments]) {
       const isOverlay = segmentTrack(segment) === "overlay";
       const blockTop = isOverlay ? TIMELINE_OVERLAY_TOP : TIMELINE_SEGMENT_TOP;
       const blockHeight = isOverlay ? TIMELINE_OVERLAY_HEIGHT : TIMELINE_SEGMENT_HEIGHT;
@@ -12273,6 +12306,35 @@ function openBuilder(node) {
       `;
       if (showFirstLastFrameThumb) appendTimelineFirstLastFrameThumbnail(block, segment);
       else if (!thumb && hasVideoPreview) appendTimelineVideoThumbnail(block, segment);
+      if (isOverlay) {
+        normalizeOverlayClip(segment);
+        const eye = document.createElement("span");
+        eye.textContent = segment.overlay_enabled === false ? "◉̸" : "◉";
+        eye.title = segment.overlay_enabled === false ? "Enable this overlay clip" : "Hide this overlay clip and show the base video";
+        eye.style.cssText = "position:absolute;left:10px;top:5px;width:22px;height:20px;display:flex;align-items:center;justify-content:center;border:1px solid #fdba74;border-radius:4px;background:rgba(67,20,7,.92);color:#ffedd5;font-size:13px;font-weight:900;z-index:6;";
+        eye.onpointerdown = (event) => event.stopPropagation();
+        eye.onclick = (event) => {
+          event.stopPropagation();
+          pushHistory();
+          segment.overlay_enabled = segment.overlay_enabled === false;
+          render();
+          autoSaveSessionQuiet("overlay clip visibility changed");
+        };
+        const lock = document.createElement("span");
+        lock.textContent = segment.overlay_locked === false ? "🔓" : "🔒";
+        lock.title = segment.overlay_locked === false ? "Lock this overlay clip" : "Unlock this overlay clip for moving and trimming";
+        lock.style.cssText = "position:absolute;left:36px;top:5px;width:24px;height:20px;display:flex;align-items:center;justify-content:center;border:1px solid #fdba74;border-radius:4px;background:rgba(67,20,7,.92);color:#ffedd5;font-size:12px;z-index:6;";
+        lock.onpointerdown = (event) => event.stopPropagation();
+        lock.onclick = (event) => {
+          event.stopPropagation();
+          pushHistory();
+          segment.overlay_locked = segment.overlay_locked === false;
+          render();
+          autoSaveSessionQuiet("overlay clip lock changed");
+        };
+        if (segment.overlay_enabled === false) block.style.opacity = ".48";
+        block.append(eye, lock);
+      }
       block.title = lockedByVideo ? "This scene has a generated video, so timing is locked." : "";
       const dragImageSource = segmentImageSource(segment);
       if (dragImageSource) {
@@ -12890,6 +12952,51 @@ function openBuilder(node) {
     }
   }
 
+  async function trimOverlayVideoAtPlayhead(segment, side, trimTimeOverride = null) {
+    const videoPath = String(selectedSegmentVideoPath(segment) || "").trim();
+    if (!segment || segmentTrack(segment) !== "overlay" || !videoPath) return;
+    if (segment.overlay_locked !== false) {
+      toast("Unlock this overlay clip before trimming it.", true);
+      return;
+    }
+    const start = Number(segment.start || 0);
+    const end = Number(segment.end || 0);
+    const cut = Number.isFinite(Number(trimTimeOverride)) ? Number(trimTimeOverride) : currentGlobalTime();
+    if (cut <= start + 0.15 || cut >= end - 0.15) {
+      toast("Move the playhead inside the overlay clip before trimming.", true);
+      return;
+    }
+    const trimLeft = side === "left";
+    const sourceStart = trimLeft ? cut - start : 0;
+    const duration = trimLeft ? end - cut : cut - start;
+    const progress = createProgressWindow(trimLeft ? "Trimming overlay left" : "Trimming overlay right");
+    try {
+      progress.set(`Creating trimmed overlay video...\n${videoPath}`, 20);
+      const data = await postJson("/vrgdg/workflow_runner/trim_scene_video", {
+        project_folder: projectInput.value || state.projectFolder || "",
+        source_path: videoPath,
+        scene_number: sceneSlotNumber(segment),
+        start: sourceStart,
+        duration,
+        label: trimLeft ? "overlay_trim_left" : "overlay_trim_right",
+      }, 180000);
+      pushHistory();
+      activateSegmentVideoPath(segment, data.video_path || videoPath, data.thumbnail_path || "");
+      if (trimLeft) segment.start = cut;
+      else segment.end = cut;
+      segment.video_cache_bust = Date.now();
+      sortSegments(state.overlaySegments);
+      render();
+      syncInspector();
+      await autoSaveSessionQuiet("overlay video trimmed");
+      progress.set(`Overlay trim complete.\n${data.video_path || ""}`, 100);
+      progress.close(900);
+    } catch (error) {
+      progress.set(`Trim failed:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    }
+  }
+
   function openSegmentContextMenu(event, segment) {
     event.preventDefault();
     event.stopPropagation();
@@ -12902,14 +13009,26 @@ function openBuilder(node) {
     menu.style.cssText = "position:fixed;z-index:100010;min-width:180px;border:1px solid #155e75;border-radius:7px;background:#111827;color:#f8fafc;box-shadow:0 16px 50px rgba(0,0,0,.55);padding:6px;display:flex;flex-direction:column;gap:4px;";
     menu.style.left = `${Math.min(window.innerWidth - 190, event.clientX)}px`;
     menu.style.top = `${Math.min(window.innerHeight - 150, event.clientY)}px`;
+    const closeMenu = () => {
+      state.timelineEditMenuOpen = false;
+      menu.remove();
+      window.removeEventListener("pointerdown", closeOnPointer, true);
+      window.removeEventListener("contextmenu", closeOnPointer, true);
+      window.removeEventListener("keydown", closeOnKey, true);
+    };
+    const closeOnPointer = (closeEvent) => {
+      if (!menu.contains(closeEvent.target)) closeMenu();
+    };
+    const closeOnKey = (keyEvent) => {
+      if (keyEvent.key === "Escape") closeMenu();
+    };
     const addItem = (label, action, disabled = false) => {
       const button = makeButton(label);
       button.disabled = disabled;
       button.style.justifyContent = "flex-start";
       button.style.textAlign = "left";
       button.onclick = () => {
-        state.timelineEditMenuOpen = false;
-        menu.remove();
+        closeMenu();
         action();
       };
       menu.append(button);
@@ -12933,18 +13052,20 @@ function openBuilder(node) {
       addItem(`Trim Left at ${trimLabel}`, () => trimIdLoraSceneVideoAtPlayhead(segment, "left", trimTime), !(playheadInsideScene || clickInsideScene));
       addItem(`Trim Right at ${trimLabel}`, () => trimIdLoraSceneVideoAtPlayhead(segment, "right", trimTime), !(playheadInsideScene || clickInsideScene));
     }
+    if (isOverlay && String(selectedSegmentVideoPath(segment) || "").trim()) {
+      addItem(`Trim Left at ${trimLabel}`, () => trimOverlayVideoAtPlayhead(segment, "left", trimTime), segment.overlay_locked !== false || !(playheadInsideScene || clickInsideScene));
+      addItem(`Trim Right at ${trimLabel}`, () => trimOverlayVideoAtPlayhead(segment, "right", trimTime), segment.overlay_locked !== false || !(playheadInsideScene || clickInsideScene));
+    }
+    if (!isOverlay) addItem("Copy as insert track", () => copyBaseSceneAsOverlay(segment));
     addItem("Close timeline gaps", closeTimelineGapsFromMenu);
     addItem("Scene options", () => openSceneOptions(segment));
     addItem("Delete scene", deleteSegment);
     document.body.append(menu);
-    const close = (closeEvent) => {
-      if (!menu.contains(closeEvent.target)) {
-        state.timelineEditMenuOpen = false;
-        menu.remove();
-        window.removeEventListener("pointerdown", close);
-      }
-    };
-    setTimeout(() => window.addEventListener("pointerdown", close), 0);
+    setTimeout(() => {
+      window.addEventListener("pointerdown", closeOnPointer, true);
+      window.addEventListener("contextmenu", closeOnPointer, true);
+      window.addEventListener("keydown", closeOnKey, true);
+    }, 0);
   }
 
   function clearDirectorNote(segment, noteBox = null) {
@@ -13042,11 +13163,15 @@ function openBuilder(node) {
   function makeDragHandle(element, segment, mode) {
     element.addEventListener("pointerdown", (event) => {
       const isOverlay = segmentTrack(segment) === "overlay";
+      if (isOverlay && segment.overlay_locked !== false) {
+        toast("Unlock this overlay clip before moving or trimming it.", true);
+        return;
+      }
       if (state.timingFrozen && !isOverlay) {
         toast("Timing is frozen. Unfreeze timing before editing segment lengths.", true);
         return;
       }
-      if (hasLockedVideo(segment)) {
+      if (!isOverlay && hasLockedVideo(segment)) {
         toast("This scene already has a generated video, so its timing is locked.", true);
         return;
       }
@@ -13072,7 +13197,12 @@ function openBuilder(node) {
           segment.start = Math.max(0, Math.min((state.duration || 9999) - duration, snapTimeToBeat(start + delta)));
           segment.end = segment.start + duration;
         }
-        if (isOverlay) sortSegments(state.overlaySegments);
+        if (isOverlay) {
+          const safe = clampOverlayTiming(segment, state.overlaySegments, segment.start, segment.end);
+          segment.start = safe.start;
+          segment.end = safe.end;
+          sortSegments(state.overlaySegments);
+        }
         else normalizeSegments(segment);
         syncInspector();
         render();
@@ -13304,36 +13434,61 @@ function openBuilder(node) {
   }
 
   async function importTimelineImagesFromFolder(files) {
-    const audioPath = String(audioInput.value || state.audioPath || "").trim();
-    if (!audioPath) {
-      toast("Load an audio file first, then import the image folder.", true);
-      return;
-    }
-    const scenes = (Array.isArray(state.segments) ? state.segments : [])
+    const hasProjectAudio = Boolean(String(audioInput.value || state.audioPath || "").trim());
+    let scenes = (Array.isArray(state.segments) ? state.segments : [])
       .filter((segment) => segment && typeof segment === "object")
       .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
-    if (!scenes.length) {
-      toast("Create or import lyric/timing scenes before filling timeline images.", true);
-      return;
-    }
     const images = Array.from(files || []).filter(isTimelineImageFile).sort(compareNumericImageFiles);
     if (!images.length) {
       toast("No PNG, JPG, JPEG, or WEBP images were found in that folder.", true);
       return;
     }
-    const applyCount = Math.min(images.length, scenes.length);
-    const extraCount = Math.max(0, images.length - scenes.length);
-    const missingCount = Math.max(0, scenes.length - images.length);
+    const placeholderScene = scenes.length === 1 && !hasProjectAudio && ![
+      scenes[0].custom_image_path,
+      scenes[0].custom_image_data,
+      scenes[0].approved_image_path,
+      scenes[0].video_path,
+      scenes[0].custom_audio_path,
+      scenes[0].timeline_note,
+      scenes[0].notes,
+      scenes[0].i2v_notes,
+      scenes[0].lyric_text,
+      scenes[0].t2i_prompt,
+      scenes[0].flux_prompt,
+      scenes[0].nb_prompt,
+      scenes[0].i2v_prompt,
+    ].some((value) => String(value || "").trim());
+    const createScenesFromImages = scenes.length === 0 || placeholderScene;
+    const plannedSceneCount = createScenesFromImages ? images.length : scenes.length;
+    const plannedApplyCount = Math.min(images.length, plannedSceneCount);
+    const plannedExtraCount = Math.max(0, images.length - plannedSceneCount);
+    const plannedMissingCount = Math.max(0, plannedSceneCount - images.length);
     const confirmed = window.confirm(
-      `Fill ${applyCount} timeline scene${applyCount === 1 ? "" : "s"} from this image folder?\n\n`
+      `${createScenesFromImages ? `Create ${images.length} four-second scene${images.length === 1 ? "" : "s"} and fill them` : `Fill ${plannedApplyCount} timeline scene${plannedApplyCount === 1 ? "" : "s"}`} from this image folder?\n\n`
       + `Images are sorted by numbers in the file names.\n`
-      + (extraCount ? `${extraCount} extra image${extraCount === 1 ? "" : "s"} will be ignored.\n` : "")
-      + (missingCount ? `${missingCount} scene${missingCount === 1 ? "" : "s"} will stay blank.\n` : "")
+      + (createScenesFromImages && !hasProjectAudio ? "The blank project will use a silent timeline by default.\n" : "")
+      + (plannedExtraCount ? `${plannedExtraCount} extra image${plannedExtraCount === 1 ? "" : "s"} will be ignored.\n` : "")
+      + (plannedMissingCount ? `${plannedMissingCount} scene${plannedMissingCount === 1 ? "" : "s"} will stay blank.\n` : "")
       + "\nExisting scene images in those filled slots will be replaced."
     );
     if (!confirmed) return;
 
     pushHistory();
+    if (createScenesFromImages) {
+      scenes = images.map((_, index) => newSegment(index * 4, (index + 1) * 4));
+      state.segments = scenes;
+      state.duration = images.length * 4;
+      state.activeId = scenes[0]?.id || "";
+      state.activeTrack = "base";
+      if (!hasProjectAudio) {
+        globalAudioModeSelect.value = "silent";
+        silentAudioDurationInput.value = String(Math.max(4, state.duration));
+        syncGlobalAudioModeControls();
+      }
+    }
+    const applyCount = Math.min(images.length, scenes.length);
+    const extraCount = Math.max(0, images.length - scenes.length);
+    const missingCount = Math.max(0, scenes.length - images.length);
     let progress = null;
     try {
       importImageFolderButton.disabled = true;
@@ -24706,6 +24861,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function render() {
+    syncOverlayTrackControls();
     drawWaveform();
     renderSegments();
     renderList();
@@ -24714,7 +24870,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     updateSelectedMediaTools();
     updateMultiSelectButton();
-    timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} insert${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
+    timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} overlay${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
     const rangeInfo = selectedTimelineRangeInfo();
     timelineRangeInfo.textContent = rangeInfo
       ? `Range: ${formatTime(rangeInfo.start)} -> ${formatTime(rangeInfo.end)}  ${rangeInfo.duration.toFixed(2)}s`
@@ -25597,6 +25753,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return {
       segments: sanitizedSessionSegments(state.segments, "base"),
       overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
+      overlay_track: normalizeOverlayTrackState(state.overlayTrack),
       active_track: state.activeTrack,
       timing_frozen: state.timingFrozen,
       srt_mode: state.srtMode,
@@ -25830,6 +25987,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.srtPath = data.srt_path || "";
       if (data.session) {
         state.overlaySegments = Array.isArray(data.session.overlay_segments) ? data.session.overlay_segments : state.overlaySegments;
+        state.overlaySegments.forEach(normalizeOverlayClip);
+        state.overlayTrack = normalizeOverlayTrackState(data.session.overlay_track || state.overlayTrack);
         ensureAllSegmentRuntimeFields();
         state.activeTrack = data.session.active_track || state.activeTrack || "base";
         state.timingFrozen = Boolean(data.session.timing_frozen);
@@ -26133,6 +26292,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       pushHistory();
       state.segments = Array.isArray(session.segments) ? session.segments : [];
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
+      state.overlaySegments.forEach(normalizeOverlayClip);
+      state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});
       ensureAllSegmentRuntimeFields();
       state.projectFolder = data.project_folder || folder;
       state.sessionPath = data.session_path || "";
@@ -31048,11 +31209,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function stitchRenderedScenes(progress, options = {}) {
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
-    const overlaySegments = Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments;
+    const overlaySegments = state.overlayTrack.enabled
+      ? (Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments)
+          .filter((segment) => overlayClipIsEnabled(segment, state.overlayTrack))
+      : [];
     const timelineOffset = Number(options.timelineOffset || 0);
     await ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options);
     await ensureSceneAdjustsAppliedBeforeStitch(baseSegments, progress, options);
     await ensureSceneFilmGrainAppliedBeforeStitch(baseSegments, progress, options);
+    if (overlaySegments.length) {
+      await ensureSceneLutsAppliedBeforeStitch(overlaySegments, progress, options);
+      await ensureSceneAdjustsAppliedBeforeStitch(overlaySegments, progress, options);
+      await ensureSceneFilmGrainAppliedBeforeStitch(overlaySegments, progress, options);
+    }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
     const overlayItems = overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
@@ -31136,19 +31305,34 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       existingVideoAction = await askExistingSceneVideoAction(segment, sceneIndex);
       if (existingVideoAction === "cancel") return;
     }
+    let renderTarget = segment;
+    let renderIndex = sceneIndex;
+    if (existingVideoAction === "overlay" && segmentTrack(segment) !== "overlay") {
+      renderTarget = cloneSceneAsOverlay(
+        segment,
+        () => `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        nextOverlaySlotNumber(),
+      );
+      pushHistory();
+      state.overlaySegments.push(renderTarget);
+      sortSegments(state.overlaySegments);
+      setActiveSegment(renderTarget);
+      renderIndex = segmentIndexInfo(renderTarget).index;
+      existingVideoAction = "overwrite";
+    }
     let progress = null;
     try {
       state.batchCancelled = false;
       setButtonGroupState(createSceneVideoButtons, { disabled: true, text: "Creating..." });
       progress = createProgressWindow("Creating scene video");
-      const videoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+      const videoPath = await renderSceneVideoWithProgress(renderTarget, renderIndex, progress, {
         existingVideoAction,
       });
       progress.close(900);
       toast(`Scene video ready:\n${videoPath}`);
     } catch (error) {
       const stopped = /stopped by user/i.test(String(error?.message || error));
-      segment.video_status = stopped ? "none" : "error";
+      renderTarget.video_status = stopped ? "none" : "error";
       progress?.set(stopped ? "Scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
       toast(stopped ? "Scene video creation stopped." : String(error?.message || error), !stopped);
       renderList();
@@ -32986,7 +33170,39 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     updatePreview();
   }
 
+  async function copyBaseSceneAsOverlay(sourceSegment) {
+    if (!sourceSegment || segmentTrack(sourceSegment) === "overlay") return;
+    const segment = typeof structuredClone === "function"
+      ? structuredClone(sourceSegment)
+      : JSON.parse(JSON.stringify(sourceSegment));
+    segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    segment.track = "overlay";
+    segment.source = "overlay_copy";
+    segment.overlay_slot_number = nextOverlaySlotNumber();
+    delete segment.scene_slot_number;
+    delete segment.slot_number;
+    segment.label = `${sourceSegment.label || "Scene"} - Insert`;
+    segment.video_history = segment.video_path ? [segment.video_path] : [];
+    segment.video_thumbnail_history = segment.video_path ? [segment.video_thumbnail_path || ""] : [];
+    segment.video_backup_paths = [];
+    segment.video_backup_thumbnail_paths = [];
+    segment.video_history_index = segment.video_path ? 0 : -1;
+    normalizeOverlayClip(segment);
+    pushHistory();
+    state.overlayTrack = normalizeOverlayTrackState({ enabled: true });
+    state.overlaySegments.push(segment);
+    sortSegments(state.overlaySegments);
+    state.duration = Math.max(Number(state.duration || 0), Number(segment.end || 0));
+    setActiveSegment(segment);
+    await autoSaveSessionQuiet("base scene copied as insert track");
+    toast(`${sourceSegment.label || "Scene"} copied to the Overlay Track.`);
+  }
+
   async function addOverlaySegment() {
+    if (!state.overlayTrack.enabled) {
+      toast("Turn on Overlay Track before adding an overlay clip.", true);
+      return;
+    }
     const duration = 4;
     const start = Math.max(0, snapTimeToBeat(currentGlobalTime()));
     const end = Math.min(Math.max(start + duration, start + 0.1), Math.max(start + duration, timelineDuration() || start + duration));
@@ -32995,12 +33211,52 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     segment.source = "overlay";
     segment.overlay_slot_number = nextOverlaySlotNumber();
     segment.label = `Insert ${state.overlaySegments.length + 1}`;
+    normalizeOverlayClip(segment);
     pushHistory();
     state.overlaySegments.push(segment);
     sortSegments(state.overlaySegments);
     state.duration = Math.max(Number(state.duration || 0), end);
     setActiveSegment(segment);
     await autoSaveSessionQuiet("insert segment added");
+  }
+
+  function syncOverlayTrackControls() {
+    const enabled = Boolean(state.overlayTrack?.enabled);
+    overlayTrackToggleButton.textContent = `Overlay Track: ${enabled ? "On" : "Off"}`;
+    overlayTrackToggleButton.style.background = enabled ? "#0e7490" : "#27272a";
+    overlayTrackToggleButton.style.borderColor = enabled ? "#22d3ee" : "#3f3f46";
+    addOverlaySegmentButton.style.display = enabled ? "" : "none";
+  }
+
+  async function toggleOverlayTrack() {
+    pushHistory();
+    state.overlayTrack = normalizeOverlayTrackState({ enabled: !state.overlayTrack?.enabled });
+    syncOverlayTrackControls();
+    render();
+    await autoSaveSessionQuiet("overlay track toggled");
+    toast(state.overlayTrack.enabled
+      ? "Overlay Track enabled. Existing overlays will be used during playback and stitching."
+      : "Overlay Track disabled. Overlay clips are preserved but ignored during playback and stitching.");
+  }
+
+  function showOverlayTrackHelp() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:20px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(720px,calc(100vw - 40px));max-height:calc(100vh - 60px);overflow:auto;border:1px solid #0891b2;border-radius:9px;background:#111827;color:#d4d4d8;box-shadow:0 24px 80px rgba(0,0,0,.65);padding:18px;display:flex;flex-direction:column;gap:14px;";
+    const title = document.createElement("div");
+    title.textContent = "Overlay Track Help";
+    title.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+    const content = document.createElement("div");
+    content.innerHTML = OVERLAY_TRACK_HELP_HTML;
+    const close = makeButton("Close", "primary");
+    close.onclick = () => backdrop.remove();
+    box.append(title, content, close);
+    backdrop.append(box);
+    backdrop.onpointerdown = (event) => {
+      if (event.target === backdrop) backdrop.remove();
+    };
+    document.body.append(backdrop);
   }
 
   async function deleteSegment() {
@@ -35806,6 +36062,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function askExistingSceneVideoAction(segment, sceneIndex) {
     return new Promise((resolve) => {
+      const canAddToOverlayTrack = Boolean(state.overlayTrack.enabled) && segmentTrack(segment) !== "overlay";
       const backdrop = document.createElement("div");
       backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
       const box = document.createElement("div");
@@ -35821,14 +36078,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       path.textContent = String(segment?.video_path || "");
       path.style.cssText = "border:1px solid #303038;border-radius:6px;background:#18181b;padding:8px;color:#a5f3fc;overflow-wrap:anywhere;font-size:12px;";
       const note = document.createElement("div");
-      note.textContent = "Choose Backup and replace to keep the old clip, or Overwrite to replace it without saving a backup.";
+      note.textContent = canAddToOverlayTrack
+        ? "Choose Add to overlay track to keep the base clip and create an alternate take above it, or replace the current clip."
+        : "Choose Backup and replace to keep the old clip, or Overwrite to replace it without saving a backup.";
       note.style.cssText = "color:#fde68a;";
       body.append(scene, path, note);
       const actions = document.createElement("div");
-      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+      actions.style.cssText = `display:grid;grid-template-columns:repeat(${canAddToOverlayTrack ? 4 : 3},1fr);gap:8px;`;
       const cancel = makeButton("Cancel");
       const overwrite = makeButton("Overwrite");
       const backup = makeButton("Backup and replace", "primary");
+      const overlay = makeButton("Add to overlay track", "primary");
       cancel.onclick = () => {
         backdrop.remove();
         resolve("cancel");
@@ -35841,7 +36101,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         backdrop.remove();
         resolve("backup");
       };
+      overlay.onclick = () => {
+        backdrop.remove();
+        resolve("overlay");
+      };
       actions.append(cancel, overwrite, backup);
+      if (canAddToOverlayTrack) actions.append(overlay);
       box.append(heading, body, actions);
       backdrop.append(box);
       document.body.append(backdrop);
@@ -37489,6 +37754,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   undoButton.onclick = undo;
   redoButton.onclick = redo;
+  overlayTrackToggleButton.onclick = toggleOverlayTrack;
+  overlayTrackHintButton.onclick = showOverlayTrackHelp;
   loadSrtButton.onclick = loadSrt;
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;

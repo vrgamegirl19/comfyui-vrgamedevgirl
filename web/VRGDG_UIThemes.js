@@ -174,6 +174,7 @@
     "#fafafa": "text0",
     "#f8fafc": "text0",
     "#f4f4f5": "text0",
+    "#ecfeff": "text0",
     "#e5e7eb": "text1",
     "#d4d4d8": "text1",
     "#cbd5e1": "text1",

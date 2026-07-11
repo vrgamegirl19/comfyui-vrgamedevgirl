@@ -11,6 +11,7 @@ const outputDir = path.resolve(projectDir, args.out || "manual_downloads");
 const timeout = Number(args.timeout || 600000);
 const cdpUrl = args.cdp || args["connect-cdp"] || "";
 const imagePaths = normalizeList(args.image).map((imagePath) => path.resolve(imagePath));
+const prompt = String(args.prompt || "").trim();
 
 await fs.mkdir(outputDir, { recursive: true });
 
@@ -40,6 +41,10 @@ if (action === "upload") {
   if (provider === "meta_ai") {
     console.log("Waiting for Meta AI to finish preparing all manual attachments...");
     await page.waitForTimeout(2000);
+  }
+  if (prompt) {
+    console.log("Copying manual chat prompt into the provider composer...");
+    await fillManualChatPrompt(page, prompt);
   }
   console.log(`Uploaded ${imagePaths.length} image(s).`);
 } else if (action === "wait-download") {
@@ -95,6 +100,33 @@ function parseArgs(raw) {
     }
   }
   return parsed;
+}
+
+async function fillManualChatPrompt(page, promptText) {
+  const composer = await findVisibleLocator([
+    page.locator("textarea[placeholder*='message' i]"),
+    page.locator("textarea[placeholder*='ask' i]"),
+    page.locator("textarea[placeholder*='prompt' i]"),
+    page.locator("textarea"),
+    page.locator("[contenteditable='true'][data-placeholder]"),
+    page.locator("[contenteditable='true'][role='textbox']"),
+    page.locator("[contenteditable='true']"),
+  ], 20000);
+  if (!composer) throw new Error("Reference images uploaded, but the provider prompt box was not found.");
+  await composer.scrollIntoViewIfNeeded().catch(() => {});
+  await composer.click();
+  const tagName = await composer.evaluate((element) => element.tagName.toLowerCase());
+  if (tagName === "textarea" || tagName === "input") {
+    await composer.fill(promptText);
+  } else {
+    await composer.evaluate((element, value) => {
+      element.focus();
+      element.textContent = value;
+      element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    }, promptText);
+  }
+  await page.waitForTimeout(500);
 }
 
 async function getOrCreateProviderPage(context, providerName) {
