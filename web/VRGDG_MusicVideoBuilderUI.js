@@ -1854,6 +1854,7 @@ function openBuilder(node) {
   const loadLastProjectButton = makeButton("Load Last Project");
   const newProjectButton = makeButton("New Project");
   const saveProjectAsButton = makeButton("Save Project As");
+  const branchProjectButton = makeButton("Branch Project...");
   const saveButton = makeButton("Quick Save", "primary");
   const videoTypeSelect = makeVideoTypeSelect("singing");
   const videoTypeField = makeField("Video Type", videoTypeSelect);
@@ -1903,7 +1904,7 @@ function openBuilder(node) {
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -19408,6 +19409,19 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       }
     }
 
+    async function persistGeneratedReferenceImage(referenceType, target) {
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      renderFluxIngredientList(activeSegment());
+      renderNBIngredientList(activeSegment());
+      try {
+        await saveSession({ quiet: true, throwOnError: true });
+      } catch (error) {
+        console.warn(`[VRGDG Music Builder] Generated ${referenceType} reference image was saved, but the Reference Builder session autosave failed:`, error);
+        toast(`The generated image file was saved, but the Reference Builder list could not be autosaved.\nPlease click Save Reference Builder before closing.\n${String(error?.message || error)}`, true);
+      }
+      return target;
+    }
+
     async function runFluxReferenceWithZImage(referenceType, target, sourceText, name = "", generatorSettings = null) {
       const text = String(sourceText || "").trim();
       if (!text) {
@@ -19467,6 +19481,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
         applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
+        await persistGeneratedReferenceImage(referenceType, target);
         advanceZImageSeedAfterRun(zSettings);
         syncZImageSettingsPanel();
         renderAll();
@@ -19549,6 +19564,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
         applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
+        await persistGeneratedReferenceImage(referenceType, target);
         renderAll();
         setInlineProgress("Reference image ready.", 100);
         progress.set("Reference image ready.", 100);
@@ -19661,6 +19677,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           location.image.data = "";
           location.image.name = `${location.name || `location_${index + 1}`}.png`;
           applyGeneratedReferencePromptToDescription("location", location, prompt);
+          await persistGeneratedReferenceImage("location", location);
           if (!useFlowGpt && !useKrea2) {
             advanceZImageSeedAfterRun(zSettings);
             zSettings = cloneZImageSettings(state.zimageSettings);
@@ -19798,6 +19815,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           subject.image.data = "";
           subject.image.name = `${subject.name || `subject_${index + 1}`}.png`;
           applyGeneratedReferencePromptToDescription("subject", subject, prompt);
+          await persistGeneratedReferenceImage("subject", subject);
           if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
             refs.subject.image = subject.image;
           }
@@ -19942,6 +19960,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
         applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
+        await persistGeneratedReferenceImage(referenceType, target);
         renderAll();
         setInlineProgress("Cleaning memory after Krea2 reference...", 94);
         await runImageMemoryCleanupQuiet(progress, "Krea2 reference", 94);
@@ -36223,6 +36242,155 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     else await zImageAllScenes({ imageRunMode: action.mode, sceneScope });
   }
 
+  function showBranchProjectModal(defaultName = "") {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;padding:20px;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:9px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.65);padding:18px;display:flex;flex-direction:column;gap:14px;";
+      const title = document.createElement("div");
+      title.textContent = "Branch Project — Make a Safe Copy";
+      title.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+      const safety = document.createElement("div");
+      safety.innerHTML = "<strong>Your current project will not be changed.</strong><br>This creates a separate new project folder, then opens the new copy.";
+      safety.style.cssText = "border:1px solid #15803d;border-radius:7px;background:#052e16;color:#dcfce7;padding:11px;font-size:13px;line-height:1.5;";
+      const name = makeInput(defaultName);
+      name.placeholder = "Name for the new project copy";
+      const preset = makeSelect([
+        { value: "fresh_media", label: "Fresh Media — keep scenes, audio, and lyrics only (Recommended)" },
+        { value: "full", label: "Full Copy — keep everything" },
+        { value: "scenes_audio", label: "Scenes + Audio — remove lyrics and all creative/media data" },
+        { value: "custom", label: "Custom Copy — choose what to keep" },
+      ]);
+      const explanation = document.createElement("div");
+      explanation.style.cssText = "border:1px solid #334155;border-radius:7px;background:#18181b;padding:11px;font-size:12px;line-height:1.5;color:#d4d4d8;";
+      const custom = document.createElement("div");
+      custom.style.cssText = "display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border:1px solid #334155;border-radius:7px;padding:10px;";
+      const customOptions = {
+        lyrics: makeCheckbox("Keep lyrics/dialogue", true),
+        notes: makeCheckbox("Keep scene and video notes", false),
+        prompts: makeCheckbox("Keep image and video prompts", false),
+        mappings: makeCheckbox("Keep character/location mappings", false),
+        images: makeCheckbox("Keep images and image history", false),
+        videos: makeCheckbox("Keep videos, redos, and backups", false),
+        overlays: makeCheckbox("Keep overlay/insert clips", false),
+      };
+      Object.values(customOptions).forEach((option) => custom.append(option.wrapper));
+      const descriptions = {
+        fresh_media: "Best when you finished one version and want to create new visuals. Keeps scene order and timing, project audio, and lyrics/dialogue. Removes images, videos, histories, backups, overlays, prompts, notes, and mappings.",
+        full: "Makes a complete independent copy of the project, including current media, histories, prompts, notes, mappings, and overlays.",
+        scenes_audio: "Keeps only empty scene slots with their timing and the project audio. Lyrics, notes, prompts, mappings, images, videos, and overlays are removed.",
+        custom: "Choose the extra information you want in the new copy. Scene order, timing, and project audio are always kept.",
+      };
+      const syncPreset = () => {
+        explanation.textContent = descriptions[preset.value] || descriptions.fresh_media;
+        custom.style.display = preset.value === "custom" ? "grid" : "none";
+      };
+      preset.onchange = syncPreset;
+      syncPreset();
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+      const cancel = makeButton("Cancel");
+      const create = makeButton("Create and Open New Copy", "primary");
+      const finish = (result) => { backdrop.remove(); resolve(result); };
+      cancel.onclick = () => finish(null);
+      create.onclick = () => {
+        const target = String(name.value || "").trim();
+        if (!target) { name.focus(); return; }
+        finish({
+          target,
+          preset: preset.value,
+          keep: Object.fromEntries(Object.entries(customOptions).map(([key, option]) => [key, option.input.checked])),
+        });
+      };
+      backdrop.onpointerdown = (event) => { if (event.target === backdrop) finish(null); };
+      actions.append(cancel, create);
+      box.append(title, safety, makeField("New project name or full folder path", name), makeField("What should the new copy keep?", preset), explanation, custom, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      name.focus();
+      name.select();
+    });
+  }
+
+  function branchProjectSession(preset, customKeep = {}) {
+    const source = currentSessionData();
+    if (preset === "full") return source;
+    const keep = preset === "custom" ? customKeep : {
+      lyrics: preset === "fresh_media",
+      notes: false,
+      prompts: false,
+      mappings: false,
+      images: false,
+      videos: false,
+      overlays: false,
+    };
+    const imageKeys = ["custom_image_path", "custom_image_data", "custom_image_name", "approved_image_path", "image", "image_history", "image_history_index", "ref_image_path", "flux_subject_image_path", "flux_location_image_path", "image_output", "image_status"];
+    const videoKeys = ["video_path", "video_folder", "video_thumbnail_path", "video_history", "video_thumbnail_history", "video_backup_paths", "video_backup_thumbnail_paths", "video_history_index", "video_output", "video_original_path", "video_original_thumbnail_path"];
+    const noteKeys = ["timeline_note", "notes", "i2v_notes", "flux_notes", "nb_notes", "enhance_notes"];
+    const promptKeys = ["t2i_prompt", "flux_prompt", "nb_prompt", "enhance_prompt", "i2v_prompt", "flow_gpt_prompt"];
+    const mappingKeys = ["subject_ids", "location_id", "reference_subject_ids", "reference_location_id", "flux_image_ingredients", "nb_image_ingredients"];
+    const cleanSegment = (raw) => {
+      const segment = typeof structuredClone === "function" ? structuredClone(raw) : JSON.parse(JSON.stringify(raw));
+      if (!keep.lyrics) segment.lyric_text = "";
+      if (!keep.notes) noteKeys.forEach((key) => { if (key in segment) segment[key] = ""; });
+      if (!keep.prompts) promptKeys.forEach((key) => { if (key in segment) segment[key] = ""; });
+      if (!keep.mappings) mappingKeys.forEach((key) => { if (key in segment) segment[key] = Array.isArray(segment[key]) ? [] : ""; });
+      if (!keep.images) {
+        imageKeys.forEach((key) => { if (key in segment) segment[key] = Array.isArray(segment[key]) ? [] : key.endsWith("_index") ? -1 : key === "image" || key === "image_output" ? null : key === "image_status" ? "none" : ""; });
+        segment.preview_mode = "image";
+      }
+      if (!keep.videos) {
+        videoKeys.forEach((key) => { if (key in segment) segment[key] = Array.isArray(segment[key]) ? [] : key.endsWith("_index") ? -1 : key === "video_output" ? null : ""; });
+        segment.video_status = "none";
+      }
+      return segment;
+    };
+    const session = { ...source, segments: source.segments.map(cleanSegment) };
+    session.overlay_segments = keep.overlays ? source.overlay_segments.map(cleanSegment) : [];
+    session.overlay_track = normalizeOverlayTrackState({ enabled: keep.overlays && source.overlay_track?.enabled });
+    if (!keep.notes) session.timeline_markers = [];
+    if (!keep.prompts) {
+      session.prompt_json_path = "";
+      session.i2v_motion_json_path = "";
+      session.theme_style_path = "";
+      session.story_idea_path = "";
+      session.subject_scene_path = "";
+    }
+    if (!keep.mappings) session.flux_reference_builder = {};
+    if (!keep.images) {
+      session.flux_global_image_ingredients = [];
+      session.use_flux_global_image_ingredients = false;
+    }
+    return session;
+  }
+
+  async function branchProject() {
+    const currentProject = String(projectInput.value || state.projectFolder || "").trim();
+    if (!currentProject) {
+      toast("Create or load a project before making a branch copy.", true);
+      return;
+    }
+    const currentName = currentProject.split(/[\\/]/).filter(Boolean).pop() || "VRGDG_Project";
+    const choice = await showBranchProjectModal(`${currentName}_Fresh_${timestampForProjectName()}`);
+    if (!choice) return;
+    try {
+      updateActiveFromInputs();
+      saveI2VVideoSettingsFromPanel();
+      const session = branchProjectSession(choice.preset, choice.keep);
+      const data = await postJson("/vrgdg/music_builder/save_project_as", {
+        source_project_folder: currentProject,
+        target_project_folder: choice.target,
+        audio_path: audioInput.value,
+        session,
+      }, 120000);
+      await loadSessionFromProject(data.project_folder || choice.target);
+      toast(`New project copy created and opened.\nYour original project was not changed.\n${state.projectFolder}`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    }
+  }
+
   async function confirmAndRunZEnhanceAll() {
     const scopeChoices = batchScopeChoices();
     const imageTargets = zEnhanceBatchTargets("all").length;
@@ -37746,6 +37914,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (created && mode === "prompt_creator") openPromptCreatorPanel();
   };
   saveProjectAsButton.onclick = saveProjectAs;
+  branchProjectButton.onclick = branchProject;
   autoSaveControl.input.addEventListener("change", () => {
     state.autoSaveEnabled = Boolean(autoSaveControl.input.checked);
     if (state.projectFolder) {
