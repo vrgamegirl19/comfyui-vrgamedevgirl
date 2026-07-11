@@ -22,7 +22,6 @@ import {
   openManualBrowserImageProvider,
   setupBrowserImageAutomation,
   uploadManualBrowserImageRefs,
-  waitForManualBrowserImageDownload,
 } from "./VRGDG_BrowserImageBridge.js";
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
@@ -1877,6 +1876,9 @@ function openBuilder(node) {
   const gemmaT2IAllButton = makeButton("LLM T2I All");
   const gemmaVideoAllButton = makeButton("LLM Video All");
   const zImageAllButton = makeButton("Image All");
+  const zEnhanceAllButton = makeButton("Enhance All");
+  const zEnhanceAllToolButton = makeButton("Enhance All");
+  const importImageFolderButton = makeButton("Fill Timeline Images From Folder", "primary");
   const fullBuildButton = makeButton("Build Full Video");
   const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
@@ -1893,7 +1895,7 @@ function openBuilder(node) {
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -1952,6 +1954,8 @@ function openBuilder(node) {
     makeToolRow(sendToPromptCreatorButton, "Send this Video Builder timeline back into Prompt Creator as an editable draft."),
     makeToolRow(autoLoadAllButton, "Import the latest Prompt Creator outputs into this project, including timing and prompt data."),
     makeToolRow(importSceneNotesButton, "Load a scene-notes JSON file and map its notes onto the current scenes."),
+    makeToolRow(importImageFolderButton, "Choose a folder of numbered images and fill base timeline scenes in numeric order. Requires project audio and existing scenes."),
+    makeToolRow(zEnhanceAllToolButton, "Upscale/enhance every timeline scene that already has an image, using each scene's current T2I/image prompt."),
     makeToolRow(builderAgentButton, "Open Builder Agent for scene help, prompt edits, image references, and project guidance.")
   );
   const lutsTools = createMusicVideoBuilderLuts({
@@ -2031,6 +2035,14 @@ function openBuilder(node) {
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
   customImageFileInput.style.display = "none";
   shell.append(customImageFileInput);
+  const imageFolderFileInput = document.createElement("input");
+  imageFolderFileInput.type = "file";
+  imageFolderFileInput.accept = "image/png,image/jpeg,image/webp";
+  imageFolderFileInput.multiple = true;
+  imageFolderFileInput.setAttribute("webkitdirectory", "");
+  imageFolderFileInput.setAttribute("directory", "");
+  imageFolderFileInput.style.display = "none";
+  shell.append(imageFolderFileInput);
   const visionRefFileInput = document.createElement("input");
   visionRefFileInput.type = "file";
   visionRefFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -2493,23 +2505,23 @@ function openBuilder(node) {
   const flowGptModePanel = document.createElement("div");
   flowGptModePanel.style.cssText = "display:none;flex-direction:column;gap:8px;border:1px solid #27272a;border-radius:6px;background:#111113;padding:8px;";
   const flowGptProviderRow = document.createElement("div");
-  flowGptProviderRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  flowGptProviderRow.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;";
   const flowNanoProviderButton = makeButton("Flow Nano Banana", "primary");
   const gptImageProviderButton = makeButton("GPT Image", "primary");
-  flowGptProviderRow.append(flowNanoProviderButton, gptImageProviderButton);
+  const metaImageProviderButton = makeButton("Meta AI", "primary");
+  flowGptProviderRow.append(flowNanoProviderButton, gptImageProviderButton, metaImageProviderButton);
   const flowGptSetupNote = document.createElement("div");
   flowGptSetupNote.style.cssText = "font-size:11px;color:#d4d4d8;line-height:1.45;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;";
-  flowGptSetupNote.textContent = "Flow/GPT uses real Chrome browser profiles. Install the browser automation first, then open the provider login before overnight runs. For Flow Nano Banana, sign into Google and manually set Flow to create 1 image with the project aspect ratio and preferred settings. Flow prompts are sent as-is. GPT Image gets the selected aspect ratio appended to the prompt. If you choose the fallback-to-other-provider failure mode, log into both Flow and GPT first.";
+  flowGptSetupNote.textContent = "Browser image providers use real Chrome profiles. Install automation first, choose a provider, then open that provider login before long runs. Flow prompts are sent as-is and Flow must be manually set to 1 image/aspect ratio. GPT Image appends the selected aspect ratio. Meta AI uses meta.ai, supports reference uploads, and requires login before generation/download. If you use fallback mode, log into every provider you plan to allow.";
   const flowGptStatusText = document.createElement("div");
   flowGptStatusText.style.cssText = "font-size:11px;color:#a1a1aa;white-space:pre-wrap;line-height:1.35;";
   flowGptStatusText.textContent = "Browser automation status has not been checked yet.";
   const flowGptSetupButton = makeButton("Install Browser Automation", "primary");
   const flowGptStatusButton = makeButton("Check Browser Setup");
-  const flowLoginButton = makeButton("Open Flow Login");
-  const gptLoginButton = makeButton("Open GPT Login");
+  const flowGptLoginButton = makeButton("Open Selected Login");
   const flowGptSetupActions = document.createElement("div");
   flowGptSetupActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-  flowGptSetupActions.append(flowGptSetupButton, flowGptStatusButton, flowLoginButton, gptLoginButton);
+  flowGptSetupActions.append(flowGptSetupButton, flowGptStatusButton, flowGptLoginButton);
   const flowGptAspectRatio = makeSelect(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], "16:9");
   const flowGptTimeout = makeInput("600", "number");
   flowGptTimeout.min = "60";
@@ -2525,8 +2537,9 @@ function openBuilder(node) {
     else if (option.value === "try_other_provider") option.textContent = "Try other provider first";
     else if (option.value === "stop") option.textContent = "Stop";
   }
+  const flowGptAskPreviousImage = makeCheckbox("Ask to send previous scene image", false);
   const flowGptPrompt = document.createElement("textarea");
-  flowGptPrompt.placeholder = "Flow/GPT browser image prompt...";
+  flowGptPrompt.placeholder = "Browser AI image prompt...";
   flowGptPrompt.style.cssText = "width:100%;box-sizing:border-box;min-height:92px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
   ["keydown", "keypress", "keyup"].forEach((eventName) => {
     flowGptPrompt.addEventListener(eventName, (event) => {
@@ -2534,21 +2547,20 @@ function openBuilder(node) {
     });
   });
   const flowGptAspectRatioField = makeField("GPT aspect ratio", flowGptAspectRatio);
-  const flowGptCreatePromptButton = makeButton("Gemma Flow/GPT Prompt", "primary");
-  const editFlowGptT2IInstructionsButton = makeButton("Edit Flow/GPT T2I Instructions");
-  const flowGptCreateImageButton = makeButton("Create with Flow/GPT", "primary");
+  const flowGptCreatePromptButton = makeButton("Gemma Browser Prompt", "primary");
+  const editFlowGptT2IInstructionsButton = makeButton("Edit Browser T2I Instructions");
+  const flowGptCreateImageButton = makeButton("Create with Browser AI", "primary");
   const flowGptManualMode = makeCheckbox("Manual Mode", false);
   const flowGptManualAutoAdvance = makeCheckbox("Auto-advance after import", false);
   const flowGptManualOpenButton = makeButton("Open Manual Browser", "primary");
   const flowGptManualExportRefsButton = makeButton("Export Scene Refs");
-  const flowGptManualArmDownloadButton = makeButton("Arm Download Import", "primary");
   const flowGptManualImportLatestButton = makeButton("Import Latest Download");
   const flowGptManualStatus = document.createElement("div");
   flowGptManualStatus.style.cssText = "font-size:11px;color:#a1a1aa;white-space:pre-wrap;line-height:1.35;";
   flowGptManualStatus.textContent = "Manual Mode is off.";
   const flowGptManualActions = document.createElement("div");
   flowGptManualActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-  flowGptManualActions.append(flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualArmDownloadButton, flowGptManualImportLatestButton);
+  flowGptManualActions.append(flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualImportLatestButton);
   const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
   fluxImageRefsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
@@ -2636,7 +2648,7 @@ function openBuilder(node) {
   const nbImageCard = makeImageModelCard("Nano B", "nano_banana");
   const ernieImageCard = makeImageModelCard("Ernie", "ernie_image");
   const krea2TwoPassCard = makeImageModelCard("Krea 2", "krea2_2pass");
-  const flowGptCard = makeImageModelCard("Flow/GPT", "flow_gpt");
+  const flowGptCard = makeImageModelCard("Browser AI", "flow_gpt");
   const zEnhanceCard = makeImageModelCard("Enhance", "z_enhance");
   const loadCustomImageButton = makeImageModelCard("+ Custom", "custom_image");
   loadCustomImageButton.title = "Load a custom image for the selected scene";
@@ -3463,6 +3475,7 @@ function openBuilder(node) {
         makeField("Timeout seconds", flowGptTimeout),
         makeField("Retries", flowGptRetries),
         makeField("After final failure", flowGptFailureMode),
+        flowGptAskPreviousImage.wrapper,
       ]),
     },
     {
@@ -3923,10 +3936,58 @@ function openBuilder(node) {
       timeout_seconds: 600,
       flow_timeout_seconds: 420,
       gpt_timeout_seconds: 600,
+      meta_timeout_seconds: 600,
       max_retries: 10,
       failure_mode: "last_successful_image",
+      ask_previous_scene_image: false,
       setup_note_collapsed: false,
     };
+  }
+
+  function normalizeFlowGptBrowserProvider(provider) {
+    const value = String(provider || "").trim();
+    if (value === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE) return BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
+    if (value === BROWSER_IMAGE_PROVIDERS.META_AI) return BROWSER_IMAGE_PROVIDERS.META_AI;
+    return BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA;
+  }
+
+  function browserImageProviderLabel(provider) {
+    const normalized = normalizeFlowGptBrowserProvider(provider);
+    if (normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE) return "GPT Image";
+    if (normalized === BROWSER_IMAGE_PROVIDERS.META_AI) return "Meta AI";
+    return "Flow Nano Banana";
+  }
+
+  function browserImageProviderShortLabel(provider) {
+    const normalized = normalizeFlowGptBrowserProvider(provider);
+    if (normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE) return "GPT Image";
+    if (normalized === BROWSER_IMAGE_PROVIDERS.META_AI) return "Meta AI";
+    return "Flow";
+  }
+
+  function browserImageProviderDebugPort(provider) {
+    const normalized = normalizeFlowGptBrowserProvider(provider);
+    if (normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE) return 9223;
+    if (normalized === BROWSER_IMAGE_PROVIDERS.META_AI) return 9224;
+    return 9222;
+  }
+
+  function browserImageProviderTimeout(settings = {}) {
+    const normalized = normalizeFlowGptBrowserProvider(settings.provider);
+    if (normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE) return settings.gpt_timeout_seconds || settings.timeout_seconds || 600;
+    if (normalized === BROWSER_IMAGE_PROVIDERS.META_AI) return settings.meta_timeout_seconds || settings.timeout_seconds || 600;
+    return settings.flow_timeout_seconds || settings.timeout_seconds || 420;
+  }
+
+  function browserImageLoginStatus(provider, settings = {}) {
+    const normalized = normalizeFlowGptBrowserProvider(provider);
+    if (normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE) {
+      return `GPT Image login browser opened.\nGPT prompts will append aspect ratio: ${settings.aspect_ratio || "16:9"}.`;
+    }
+    if (normalized === BROWSER_IMAGE_PROVIDERS.META_AI) {
+      return "Meta AI login browser opened.\nLog into meta.ai first; Meta may look prompt-ready while still requiring login on submit.";
+    }
+    return `Flow login browser opened.\nSet Flow to 1 image and choose your aspect ratio before batch runs.\nRetries: ${settings.max_retries || 10}`;
   }
 
   function defaultErnieImageSettings() {
@@ -4167,6 +4228,7 @@ function openBuilder(node) {
     storyIdeaPath: "",
     subjectScenePath: "",
     textGemmaRunner: "builtin",
+    gemmaContextLimit: 8000,
     gemmaGpuLayers: 99,
     lmStudioBaseUrl: "http://127.0.0.1:1234/v1",
     lmStudioModel: "",
@@ -4241,14 +4303,19 @@ function openBuilder(node) {
   function facialPerformanceNoteForSegment(segment = null) {
     const facialText = resolvedFacialPerformanceText(segment);
     if (!facialText) return "";
-    const performanceMode = normalizeVideoType(state.videoType);
-    const rawLyricText = String(segment?.lyric_text || "").trim();
-    const lyricText = quoteOrderedLyricCues(rawLyricText).trim();
-    const noVocal = performanceMode === "no_lip_sync" || segmentUsesNoLipSyncPerformance(segment) || isInstrumentalLyricText(lyricText);
-    if (noVocal) {
-      return `Facial performance direction: ${facialText} For this non-vocal or no-lip-sync shot, keep the mouth relaxed or closed unless naturally reacting; do not mouth words, sing, or move lips like singing.`;
-    }
     return `Facial performance direction: ${facialText}`;
+  }
+
+  function removeNegativeAndVocalWordingFromVisualPrompt(text) {
+    const forbidden = /\b(?:lip[ -]?sync(?:ing|s)?|sing(?:s|ing)?|sang|sung|rap(?:s|ping)?|vocal(?:s|ization)?|lyric(?:s)?|speak(?:s|ing)?|say(?:s|ing)?|said|dialogue|mouth(?:s|ed|ing)?|lips?)\b/i;
+    const negative = /\b(?:no|not|never|without|avoid|omit|exclude|prevent|don['’]t|doesn['’]t|isn['’]t|aren['’]t|cannot|can['’]t|do\s+not|does\s+not)\b/i;
+    return String(text || "")
+      .split(/(?<=[.!?])\s+|\s*;\s*/)
+      .map((part) => part.trim())
+      .filter((part) => part && !forbidden.test(part) && !negative.test(part))
+      .join(" ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
   }
 
   function syncLeftPanelTabs() {
@@ -5983,6 +6050,7 @@ function openBuilder(node) {
   function textGemmaRunnerPayload() {
     return {
       text_runner: state.textGemmaRunner || "builtin",
+      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
       n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmstudio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lmstudio_model: state.lmStudioModel || "",
@@ -6628,6 +6696,18 @@ function openBuilder(node) {
     return String(audioInput.value || state.audioPath || "").trim();
   }
 
+  function audioSourceDurationForScene(segment) {
+    if (!segment) return 0;
+    if (String(segment.custom_audio_path || "").trim()) {
+      const fullDuration = Number(segment.custom_audio_full_duration);
+      if (Number.isFinite(fullDuration) && fullDuration > 0) return fullDuration;
+      const chunkDuration = Number(segment.custom_audio_duration);
+      return Number.isFinite(chunkDuration) && chunkDuration > 0 ? chunkDuration : 0;
+    }
+    const loadedDuration = Number(state.duration || audio.duration || 0);
+    return Number.isFinite(loadedDuration) && loadedDuration > 0 ? loadedDuration : 0;
+  }
+
   function seekAudioWhenReady(targetTime) {
     const time = Math.max(0, Number(targetTime || 0));
     const apply = () => {
@@ -7034,17 +7114,19 @@ function openBuilder(node) {
 
   function cloneFlowGptBrowserSettings(settings) {
     const source = settings || {};
-    const provider = String(source.provider || "").trim() || BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA;
+    const provider = normalizeFlowGptBrowserProvider(source.provider);
     return {
       ...defaultFlowGptBrowserSettings(),
       ...source,
-      provider: provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? BROWSER_IMAGE_PROVIDERS.GPT_IMAGE : BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA,
+      provider,
       aspect_ratio: String(source.aspect_ratio || source.aspectRatio || "16:9").trim() || "16:9",
       timeout_seconds: Math.max(60, Math.min(2400, Number(source.timeout_seconds || 600))),
       flow_timeout_seconds: Math.max(60, Math.min(1800, Number(source.flow_timeout_seconds || 420))),
       gpt_timeout_seconds: Math.max(60, Math.min(2400, Number(source.gpt_timeout_seconds || 600))),
+      meta_timeout_seconds: Math.max(60, Math.min(2400, Number(source.meta_timeout_seconds || 600))),
       max_retries: Math.max(1, Math.min(20, Number(source.max_retries || 10))),
       failure_mode: ["last_successful_image", "try_other_provider", "stop"].includes(source.failure_mode) ? source.failure_mode : "last_successful_image",
+      ask_previous_scene_image: Boolean(source.ask_previous_scene_image || source.askPreviousSceneImage),
       setup_note_collapsed: Boolean(source.setup_note_collapsed),
     };
   }
@@ -7132,6 +7214,9 @@ function openBuilder(node) {
     }
     if (Object.prototype.hasOwnProperty.call(defaults, "gemma_gpu_layers") || Object.prototype.hasOwnProperty.call(defaults, "gemmaGpuLayers") || Object.prototype.hasOwnProperty.call(defaults, "n_gpu_layers")) {
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(defaults.gemma_gpu_layers ?? defaults.gemmaGpuLayers ?? defaults.n_gpu_layers ?? state.gemmaGpuLayers);
+    }
+    if (Object.prototype.hasOwnProperty.call(defaults, "gemma_context_limit") || Object.prototype.hasOwnProperty.call(defaults, "gemmaContextLimit") || Object.prototype.hasOwnProperty.call(defaults, "n_ctx")) {
+      state.gemmaContextLimit = normalizeGemmaContextLimit(defaults.gemma_context_limit ?? defaults.gemmaContextLimit ?? defaults.n_ctx ?? state.gemmaContextLimit);
     }
     if (defaults.lm_studio_base_url || defaults.lmStudioBaseUrl) {
       state.lmStudioBaseUrl = defaults.lm_studio_base_url || defaults.lmStudioBaseUrl || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
@@ -7312,6 +7397,7 @@ function openBuilder(node) {
       storyIdeaPath: state.storyIdeaPath,
       subjectScenePath: state.subjectScenePath,
       textGemmaRunner: state.textGemmaRunner,
+      gemmaContextLimit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemmaGpuLayers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lmStudioBaseUrl: state.lmStudioBaseUrl,
       lmStudioModel: state.lmStudioModel,
@@ -7384,6 +7470,7 @@ function openBuilder(node) {
     state.storyIdeaPath = data.storyIdeaPath || "";
     state.subjectScenePath = data.subjectScenePath || "";
     state.textGemmaRunner = data.textGemmaRunner || data.text_gemma_runner || state.textGemmaRunner || "builtin";
+    state.gemmaContextLimit = normalizeGemmaContextLimit(data.gemmaContextLimit ?? data.gemma_context_limit ?? data.n_ctx ?? state.gemmaContextLimit);
     state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.gemmaGpuLayers ?? data.gemma_gpu_layers ?? data.n_gpu_layers ?? state.gemmaGpuLayers);
     state.lmStudioBaseUrl = data.lmStudioBaseUrl || data.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
     state.lmStudioModel = data.lmStudioModel || data.lm_studio_model || state.lmStudioModel || "";
@@ -8177,6 +8264,12 @@ function openBuilder(node) {
     return Math.max(0, Math.min(999, Math.round(parsed)));
   }
 
+  function normalizeGemmaContextLimit(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 8000;
+    return Math.max(512, Math.min(262144, Math.round(parsed)));
+  }
+
   function removeQuietFromSingingPrompt(text) {
     return String(text || "")
       .replace(/\bwith\s+a\s+quiet,\s*internal\s+intensity\b/gi, "with controlled internal intensity")
@@ -8200,9 +8293,10 @@ function openBuilder(node) {
     const facialText = facialPerformanceNoteForSegment(segment);
     const appendFacial = (text) => {
       const raw = String(text || "").trim();
+      const modeClean = isVisualOnly ? removeNegativeAndVocalWordingFromVisualPrompt(raw) : raw;
       const clean = performanceMode === "singing" && vocalDirectiveForSegment(segment)
-        ? replaceGenericSubjectLabels(removeQuietFromSingingPrompt(raw), segment)
-        : replaceGenericSubjectLabels(raw, segment);
+        ? replaceGenericSubjectLabels(removeQuietFromSingingPrompt(modeClean), segment)
+        : replaceGenericSubjectLabels(modeClean, segment);
       if (!facialText || (/facial performance direction/i.test(clean) && /blink/i.test(clean) && /\beye\s+movement\b|\beyes?\s+(?:shift|move|track|glance|flick|dart)\b/i.test(clean))) return clean;
       return clean ? `${clean} ${facialText}` : facialText;
     };
@@ -9803,6 +9897,7 @@ function openBuilder(node) {
       syncFluxKleinPanel();
       syncErnieImagePanel();
       syncKrea2TwoPassPanel();
+      syncZEnhanceSettingsPanel();
       syncVideoModePanel();
       syncPreview(null);
       return;
@@ -9849,6 +9944,7 @@ function openBuilder(node) {
     syncFluxKleinPanel();
     syncErnieImagePanel();
     syncKrea2TwoPassPanel();
+    syncZEnhanceSettingsPanel();
     syncVideoModePanel();
     syncPreview(segment);
     updateAudioScrubbers();
@@ -10752,8 +10848,8 @@ function openBuilder(node) {
       const locId = String(sceneReferenceMapValue(refs.scene_map, segment) || "");
       const location = refs.locations.find((item) => item.id === locId);
       const image = location?.image || {};
-      if (location && (image.path || image.data)) {
-        context.has_location_reference = true;
+      if (location && (image.path || image.data || location.name || location.description)) {
+        context.has_location_reference = Boolean(image.path || image.data);
         context.location_name = location.name || "";
         context.location_description = location.description || "";
       }
@@ -10963,15 +11059,22 @@ function openBuilder(node) {
     state.flowGptBrowserSettings = settings;
     const isGpt = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
     flowGptAspectRatio.value = settings.aspect_ratio || "16:9";
-    flowGptTimeout.value = isGpt ? settings.gpt_timeout_seconds : settings.flow_timeout_seconds;
+    flowGptTimeout.value = browserImageProviderTimeout(settings);
     flowGptRetries.value = settings.max_retries || 10;
     flowGptFailureMode.value = settings.failure_mode || "last_successful_image";
+    flowGptAskPreviousImage.input.checked = Boolean(settings.ask_previous_scene_image);
     const segment = activeSegment();
     flowGptPrompt.value = segment?.flow_gpt_prompt || segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || "";
     flowGptAspectRatioField.style.display = isGpt ? "flex" : "none";
     flowGptAspectRatio.disabled = !isGpt;
-    flowGptAspectRatio.title = isGpt ? "GPT Image gets this aspect ratio appended to the prompt." : "Flow uses the aspect ratio selected manually inside Flow.";
-    for (const [button, active] of [[flowNanoProviderButton, !isGpt], [gptImageProviderButton, isGpt]]) {
+    flowGptAspectRatio.title = isGpt ? "GPT Image gets this aspect ratio appended to the prompt." : "This provider does not use the appended GPT aspect-ratio setting.";
+    flowGptLoginButton.textContent = `Open ${browserImageProviderShortLabel(settings.provider)} Login`;
+    for (const [button, provider] of [
+      [flowNanoProviderButton, BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA],
+      [gptImageProviderButton, BROWSER_IMAGE_PROVIDERS.GPT_IMAGE],
+      [metaImageProviderButton, BROWSER_IMAGE_PROVIDERS.META_AI],
+    ]) {
+      const active = settings.provider === provider;
       button.style.background = active ? "#06b6d4" : "#27272a";
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
@@ -10982,16 +11085,17 @@ function openBuilder(node) {
   function saveFlowGptBrowserSettingsFromPanel() {
     pushHistory();
     const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-    const isGpt = current.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
     const timeout = Math.max(60, Math.min(2400, Number(flowGptTimeout.value || current.timeout_seconds || 600)));
     state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
       ...current,
       aspect_ratio: flowGptAspectRatio.value || "16:9",
       timeout_seconds: timeout,
-      flow_timeout_seconds: isGpt ? current.flow_timeout_seconds : timeout,
-      gpt_timeout_seconds: isGpt ? timeout : current.gpt_timeout_seconds,
+      flow_timeout_seconds: current.provider === BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA ? timeout : current.flow_timeout_seconds,
+      gpt_timeout_seconds: current.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? timeout : current.gpt_timeout_seconds,
+      meta_timeout_seconds: current.provider === BROWSER_IMAGE_PROVIDERS.META_AI ? timeout : current.meta_timeout_seconds,
       max_retries: Math.max(1, Math.min(20, Number(flowGptRetries.value || 10))),
       failure_mode: flowGptFailureMode.value || "last_successful_image",
+      ask_previous_scene_image: Boolean(flowGptAskPreviousImage.input.checked),
     });
     syncFlowGptBrowserPanel();
     return state.flowGptBrowserSettings;
@@ -11051,17 +11155,18 @@ function openBuilder(node) {
 
   function setFlowGptProvider(provider) {
     pushHistory();
+    const normalized = normalizeFlowGptBrowserProvider(provider);
     state.flowGptBrowserSettings = cloneFlowGptBrowserSettings({
       ...state.flowGptBrowserSettings,
-      provider,
+      provider: normalized,
     });
     syncFlowGptBrowserPanel();
-    autoSaveSessionQuiet(`Flow/GPT provider changed to ${provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana"}`).catch(() => null);
+    autoSaveSessionQuiet(`Browser image provider changed to ${browserImageProviderLabel(normalized)}`).catch(() => null);
   }
 
   function syncFlowGptManualPanel() {
     const enabled = Boolean(flowGptManualMode.input.checked);
-    for (const control of [flowGptManualAutoAdvance.input, flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualArmDownloadButton, flowGptManualImportLatestButton]) {
+    for (const control of [flowGptManualAutoAdvance.input, flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualImportLatestButton]) {
       control.disabled = !enabled;
       control.style.opacity = enabled ? "1" : "0.62";
     }
@@ -11071,7 +11176,7 @@ function openBuilder(node) {
     }
     const segment = activeSegment();
     const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    const providerLabel = browserImageProviderShortLabel(settings.provider);
     flowGptManualStatus.textContent = segment
       ? `Manual Mode: ${providerLabel} ready for ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}.`
       : `Manual Mode: ${providerLabel} ready. Select a scene before importing downloads.`;
@@ -11079,11 +11184,10 @@ function openBuilder(node) {
 
   function manualFlowGptPayload(segment = activeSegment()) {
     const settings = flowGptBrowserSettingsForSegment(segment);
-    const isGpt = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE;
     return {
       provider: settings.provider,
-      debug_port: isGpt ? 9223 : 9222,
-      timeout_seconds: settings.timeout_seconds || (isGpt ? 600 : 420),
+      debug_port: browserImageProviderDebugPort(settings.provider),
+      timeout_seconds: browserImageProviderTimeout(settings),
     };
   }
 
@@ -11107,7 +11211,7 @@ function openBuilder(node) {
 
   async function openManualFlowGptBrowser() {
     const settings = saveFlowGptBrowserSettingsFromPanel();
-    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    const providerLabel = browserImageProviderShortLabel(settings.provider);
     flowGptManualStatus.textContent = `Opening ${providerLabel} manual browser...`;
     const data = await openManualBrowserImageProvider(settings.provider, {
       ...manualFlowGptPayload(),
@@ -11127,7 +11231,7 @@ function openBuilder(node) {
       return;
     }
     const settings = saveFlowGptBrowserSettingsFromPanel();
-    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    const providerLabel = browserImageProviderShortLabel(settings.provider);
     flowGptManualExportRefsButton.disabled = true;
     flowGptManualStatus.textContent = `Exporting ${refs.length} reference image${refs.length === 1 ? "" : "s"} to ${providerLabel}...`;
     try {
@@ -11143,33 +11247,6 @@ function openBuilder(node) {
     }
   }
 
-  async function armManualFlowGptDownloadImport() {
-    const segment = requireActiveSegment();
-    if (!segment) return;
-    const projectFolder = projectInput.value || state.projectFolder;
-    if (!projectFolder) {
-      toast("Create or load a project before importing a manual browser download.", true);
-      return;
-    }
-    const settings = saveFlowGptBrowserSettingsFromPanel();
-    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
-    const sceneNumber = sceneSlotNumber(segment);
-    const sceneLabel = sceneDisplayName(segment, segmentIndexInfo(segment).index);
-    flowGptManualArmDownloadButton.disabled = true;
-    flowGptManualStatus.textContent = `Armed: waiting for the next ${providerLabel} download -> ${sceneLabel}.`;
-    try {
-      const data = await waitForManualBrowserImageDownload(settings.provider, {
-        ...manualFlowGptPayload(segment),
-        project_folder: projectFolder,
-        scene_number: sceneNumber,
-        timeoutMs: Math.max(900000, Number(settings.timeout_seconds || 600) * 1000 + 60000),
-      });
-      await applyManualFlowGptImportResult(segment, data, providerLabel, sceneLabel);
-    } finally {
-      flowGptManualArmDownloadButton.disabled = !flowGptManualMode.input.checked;
-    }
-  }
-
   async function importLatestManualFlowGptDownload() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -11179,7 +11256,7 @@ function openBuilder(node) {
       return;
     }
     const settings = saveFlowGptBrowserSettingsFromPanel();
-    const providerLabel = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow";
+    const providerLabel = browserImageProviderShortLabel(settings.provider);
     const sceneLabel = sceneDisplayName(segment, segmentIndexInfo(segment).index);
     flowGptManualImportLatestButton.disabled = true;
     flowGptManualStatus.textContent = `Importing latest ${providerLabel} download -> ${sceneLabel}...`;
@@ -11250,19 +11327,12 @@ function openBuilder(node) {
 
   function activeScenePromptForEnhance({ copyFallback = false } = {}) {
     const segment = activeSegment();
-    const explicitEnhancePrompt = String(segment?.enhance_prompt || "").trim();
-    if (explicitEnhancePrompt) return { prompt: explicitEnhancePrompt, source: "enhance" };
-
-    const scenePrompt = String(segment?.t2i_prompt || "").trim();
-    if (scenePrompt) {
-      if (copyFallback && segment) {
-        segment.enhance_prompt = scenePrompt;
-        zEnhancePromptPreview.value = scenePrompt;
-      }
-      return { prompt: scenePrompt, source: "scene" };
+    const promptInfo = sceneImagePromptForEnhanceAll(segment);
+    if (copyFallback && segment && promptInfo.prompt) {
+      segment.enhance_prompt = promptInfo.prompt;
+      zEnhancePromptPreview.value = promptInfo.prompt;
     }
-
-    return { prompt: "", source: "" };
+    return promptInfo;
   }
 
   function syncZEnhanceSettingsPanel() {
@@ -11294,7 +11364,7 @@ function openBuilder(node) {
     const segment = activeSegment();
     if (segment) {
       segment.enhance_notes = zEnhanceGemmaNotes.value || "";
-      segment.enhance_prompt = zEnhancePromptPreview.value || "";
+      segment.enhance_prompt = sceneImagePromptForEnhanceAll(segment).prompt || "";
     }
     const count = Math.max(0, Math.min(4, Number(zEnhanceLoraCount.value || 0)));
     state.zEnhanceSettings = {
@@ -11639,6 +11709,7 @@ function openBuilder(node) {
     else if (state.imageModelMode === "flux_klein") editedT2IPrompt = fluxPrompt.value || "";
     else if (state.imageModelMode === "nano_banana") editedT2IPrompt = nbPrompt.value || "";
     else if (state.imageModelMode === "flow_gpt") editedT2IPrompt = flowGptPrompt.value || "";
+    else if (state.imageModelMode === "z_enhance") editedT2IPrompt = zEnhancePromptPreview.value || "";
     segment.t2i_prompt = editedT2IPrompt;
     segment.flux_prompt = editedT2IPrompt;
     segment.nb_prompt = editedT2IPrompt;
@@ -11649,13 +11720,14 @@ function openBuilder(node) {
     if (fluxPrompt.value !== editedT2IPrompt) fluxPrompt.value = editedT2IPrompt;
     if (nbPrompt.value !== editedT2IPrompt) nbPrompt.value = editedT2IPrompt;
     if (flowGptPrompt.value !== editedT2IPrompt) flowGptPrompt.value = editedT2IPrompt;
+    if (zEnhancePromptPreview.value !== editedT2IPrompt) zEnhancePromptPreview.value = editedT2IPrompt;
     segment.i2v_prompt = i2vPrompt.value || "";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
     editImagePromptButtons.forEach((button) => {
       button.style.display = String(editedT2IPrompt || "").trim() ? "" : "none";
     });
     segment.enhance_notes = zEnhanceGemmaNotes.value || "";
-    segment.enhance_prompt = zEnhancePromptPreview.value || segment.enhance_prompt || "";
+    segment.enhance_prompt = sceneImagePromptForEnhanceAll(segment).prompt || "";
     segment.use_vision_reference = Boolean(useVisionReference.input.checked);
     if (state.imageModelMode === "ernie_image") {
       segment.use_vision_reference = Boolean(ernieUseVisionReference.input.checked);
@@ -13139,51 +13211,160 @@ function openBuilder(node) {
     return files.find((file) => /^audio\//i.test(file.type) || /\.(wav|mp3|flac|m4a|ogg)$/i.test(file.name || ""));
   }
 
-  function loadCustomImageFile(file, segment = activeSegment()) {
-    if (!segment || !file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      pushHistory();
-      const imageData = String(reader.result || "");
-      const projectFolder = projectInput.value || state.projectFolder;
-      if (projectFolder) {
-        try {
-          const sceneNumber = sceneSlotNumber(segment);
-          const saved = await postJson("/vrgdg/music_builder/archive_scene_image", {
-            image_data: imageData,
-            project_folder: projectFolder,
-            scene_number: sceneNumber,
-          });
-          if (saved.saved_path) {
-            addSceneImageHistoryPath(segment, saved.saved_path);
-            segment.custom_image_path = saved.saved_path;
-            segment.custom_image_data = "";
-            segment.custom_image_name = file.name || "custom_image";
-            segment.image = null;
-          }
-        } catch (error) {
-          console.warn("[VRGDG Music Builder] Failed to archive custom image:", error);
+  function isTimelineImageFile(file) {
+    const name = String(file?.name || "").trim();
+    return Boolean(file) && (/^image\//i.test(file.type || "") || /\.(png|jpe?g|webp)$/i.test(name));
+  }
+
+  function numericImageNameParts(file) {
+    const name = String(file?.name || file?.webkitRelativePath || "").trim();
+    return Array.from(name.matchAll(/\d+/g)).map((match) => Number.parseInt(match[0], 10)).filter(Number.isFinite);
+  }
+
+  function compareNumericImageFiles(a, b) {
+    const aParts = numericImageNameParts(a);
+    const bParts = numericImageNameParts(b);
+    if (aParts.length || bParts.length) {
+      if (!aParts.length) return 1;
+      if (!bParts.length) return -1;
+      const length = Math.max(aParts.length, bParts.length);
+      for (let index = 0; index < length; index += 1) {
+        const av = aParts[index] ?? -1;
+        const bv = bParts[index] ?? -1;
+        if (av !== bv) return av - bv;
+      }
+    }
+    return String(a.webkitRelativePath || a.name || "").localeCompare(String(b.webkitRelativePath || b.name || ""), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error(`Failed to read image file: ${file?.name || "image"}`));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function applyCustomImageDataToSegment(segment, imageData, imageName = "custom_image", options = {}) {
+    if (!segment || !imageData) return false;
+    const projectFolder = projectInput.value || state.projectFolder;
+    if (projectFolder) {
+      try {
+        const sceneNumber = sceneSlotNumber(segment);
+        const saved = await postJson("/vrgdg/music_builder/archive_scene_image", {
+          image_data: imageData,
+          project_folder: projectFolder,
+          scene_number: sceneNumber,
+        });
+        if (saved.saved_path) {
+          addSceneImageHistoryPath(segment, saved.saved_path);
+          segment.custom_image_path = saved.saved_path;
+          segment.custom_image_data = "";
+          segment.custom_image_name = imageName || "custom_image";
+          segment.image = null;
+        } else {
           segment.custom_image_data = imageData;
-          segment.custom_image_name = file.name || "custom_image";
+          segment.custom_image_name = imageName || "custom_image";
           segment.custom_image_path = "";
           segment.image = null;
         }
-      } else {
+      } catch (error) {
+        console.warn("[VRGDG Music Builder] Failed to archive custom image:", error);
         segment.custom_image_data = imageData;
-        segment.custom_image_name = file.name || "custom_image";
+        segment.custom_image_name = imageName || "custom_image";
         segment.custom_image_path = "";
         segment.image = null;
       }
-      segment.approved_image_path = "";
-      segment.preview_mode = "image";
-      setActiveSegment(segment);
+    } else {
+      segment.custom_image_data = imageData;
+      segment.custom_image_name = imageName || "custom_image";
+      segment.custom_image_path = "";
+      segment.image = null;
+    }
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    if (options.activate !== false) setActiveSegment(segment);
+    return true;
+  }
+
+  async function loadCustomImageFile(file, segment = activeSegment()) {
+    if (!segment || !file) return;
+    try {
+      const imageData = await readFileAsDataUrl(file);
+      pushHistory();
+      await applyCustomImageDataToSegment(segment, imageData, file.name || "custom_image", { activate: true });
       syncPreview(segment);
       render();
       toast(`Loaded custom image for ${segment.label || "scene"}:\n${file.name}`);
       autoSaveSessionQuiet("custom image load");
-    };
-    reader.onerror = () => toast("Failed to read the dropped image.", true);
-    reader.readAsDataURL(file);
+    } catch (error) {
+      toast(String(error?.message || error || "Failed to read the dropped image."), true);
+    }
+  }
+
+  async function importTimelineImagesFromFolder(files) {
+    const audioPath = String(audioInput.value || state.audioPath || "").trim();
+    if (!audioPath) {
+      toast("Load an audio file first, then import the image folder.", true);
+      return;
+    }
+    const scenes = (Array.isArray(state.segments) ? state.segments : [])
+      .filter((segment) => segment && typeof segment === "object")
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    if (!scenes.length) {
+      toast("Create or import lyric/timing scenes before filling timeline images.", true);
+      return;
+    }
+    const images = Array.from(files || []).filter(isTimelineImageFile).sort(compareNumericImageFiles);
+    if (!images.length) {
+      toast("No PNG, JPG, JPEG, or WEBP images were found in that folder.", true);
+      return;
+    }
+    const applyCount = Math.min(images.length, scenes.length);
+    const extraCount = Math.max(0, images.length - scenes.length);
+    const missingCount = Math.max(0, scenes.length - images.length);
+    const confirmed = window.confirm(
+      `Fill ${applyCount} timeline scene${applyCount === 1 ? "" : "s"} from this image folder?\n\n`
+      + `Images are sorted by numbers in the file names.\n`
+      + (extraCount ? `${extraCount} extra image${extraCount === 1 ? "" : "s"} will be ignored.\n` : "")
+      + (missingCount ? `${missingCount} scene${missingCount === 1 ? "" : "s"} will stay blank.\n` : "")
+      + "\nExisting scene images in those filled slots will be replaced."
+    );
+    if (!confirmed) return;
+
+    pushHistory();
+    let progress = null;
+    try {
+      importImageFolderButton.disabled = true;
+      importImageFolderButton.textContent = "Importing...";
+      progress = createProgressWindow("Import Timeline Image Folder");
+      progress.set(`Importing ${applyCount} image${applyCount === 1 ? "" : "s"} into timeline scenes...`, 4);
+      for (let index = 0; index < applyCount; index += 1) {
+        const file = images[index];
+        const segment = scenes[index];
+        const percent = 8 + Math.round((index / Math.max(1, applyCount)) * 84);
+        progress.set(`Importing ${index + 1}/${applyCount}\n${file.webkitRelativePath || file.name}\n→ ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`, percent);
+        const imageData = await readFileAsDataUrl(file);
+        await applyCustomImageDataToSegment(segment, imageData, file.name || `folder_image_${index + 1}.png`, { activate: false });
+      }
+      const active = activeSegment() || scenes[0];
+      if (active) {
+        setActiveSegment(active);
+        syncPreview(active);
+      }
+      render();
+      await autoSaveSessionQuiet("timeline image folder import");
+      progress.set(`Imported ${applyCount} image${applyCount === 1 ? "" : "s"}.${extraCount ? ` Ignored ${extraCount} extra.` : ""}${missingCount ? ` Left ${missingCount} scene${missingCount === 1 ? "" : "s"} blank.` : ""}`, 100);
+      progress.close(1500);
+      toast(`Imported ${applyCount} image${applyCount === 1 ? "" : "s"} into the timeline.${extraCount ? `\nIgnored ${extraCount} extra.` : ""}${missingCount ? `\nLeft ${missingCount} scene${missingCount === 1 ? "" : "s"} blank.` : ""}`);
+    } catch (error) {
+      progress?.set(`Import failed:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      importImageFolderButton.disabled = false;
+      importImageFolderButton.textContent = "Fill Timeline Images From Folder";
+    }
   }
 
   function setImageToImageSource({ path = "", data = "", name = "" } = {}) {
@@ -13718,7 +13899,7 @@ function openBuilder(node) {
           style_theme: styleTheme,
           story_idea: storyIdea || idea,
           unload_after: true,
-          n_ctx: 13000,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           max_new_tokens: 8000,
         }, 10 * 60 * 1000);
         const text = String(data.text || "").trim();
@@ -17475,7 +17656,7 @@ function openBuilder(node) {
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
-    box.style.cssText = "width:min(1380px,calc(100vw - 42px));max-height:calc(100vh - 44px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    box.style.cssText = "width:min(1380px,calc(100vw - 42px));height:calc(100vh - 44px);max-height:calc(100vh - 44px);box-sizing:border-box;overflow:hidden;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
@@ -17509,11 +17690,11 @@ function openBuilder(node) {
     };
 
     const tabShell = document.createElement("div");
-    tabShell.style.cssText = "border:1px solid #1e3a5f;border-radius:8px;background:#0b1220;overflow:hidden;display:flex;flex-direction:column;min-height:0;";
+    tabShell.style.cssText = "border:1px solid #1e3a5f;border-radius:8px;background:#0b1220;overflow:hidden;display:flex;flex:1 1 auto;flex-direction:column;min-height:0;";
     const tabBar = document.createElement("div");
     tabBar.style.cssText = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid #1e3a5f;background:#0f172a;";
     const tabContent = document.createElement("div");
-    tabContent.style.cssText = "padding:12px;min-height:0;";
+    tabContent.style.cssText = "padding:12px;min-height:0;overflow:auto;box-sizing:border-box;";
     const cardStyle = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;display:flex;flex-direction:column;gap:10px;";
 
     const modalDragGuard = (event) => {
@@ -17700,13 +17881,15 @@ function openBuilder(node) {
     const mapSubjectsFromSceneNotes = makeButton("Map Subjects From Scene Notes", "primary");
     const exportGptSceneContext = makeButton("Export GPT Context", "primary");
     const importGptSceneMap = makeButton("Import GPT Map", "primary");
+    const assignScenes = makeButton("Assign Scenes", "primary");
     mapSubjectsFromLyrics.title = "Use saved Line Review performer choices to assign character references per scene.";
     mapSubjectsFromSceneNotes.title = "Read SceneNotes.json and assign character references when scene notes mention saved character names.";
     exportGptSceneContext.title = "Copy subjects, locations, lyric lines, and current scene mappings as JSON, then open the Scene Mapping Assistant GPT.";
     importGptSceneMap.title = "Paste GPT scene mapping JSON to assign saved subjects and locations back to scenes.";
+    assignScenes.title = "Bulk-assign saved characters and locations using random, rotating, or character-block patterns.";
     const mappingActions = document.createElement("div");
     mappingActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
-    mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes, exportGptSceneContext, importGptSceneMap);
+    mappingActions.append(mapSubjectsFromLyrics, mapSubjectsFromSceneNotes, assignScenes, exportGptSceneContext, importGptSceneMap);
     mappingHeader.append(mappingTitle, mappingActions);
     const mappingNote = document.createElement("div");
     mappingNote.textContent = "Choose which character and location text each scene should send to Gemma. Images are only used by image/reference-image workflows that support them.";
@@ -17714,6 +17897,204 @@ function openBuilder(node) {
     const mappingList = document.createElement("div");
     mappingList.style.cssText = "display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto;padding-right:4px;";
     mappingCard.append(mappingHeader, mappingNote, mappingList);
+
+    function openSceneAssignmentDialog() {
+      const scenes = allEditableSegments();
+      const subjects = logicalReferenceSubjects(refs);
+      const locations = refs.locations || [];
+      if (!scenes.length) {
+        toast("Add scenes before assigning character and location mappings.", true);
+        return;
+      }
+      if (!subjects.length && !locations.length) {
+        toast("Add at least one character or location reference first.", true);
+        return;
+      }
+      const dialogBackdrop = document.createElement("div");
+      dialogBackdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+      const panel = document.createElement("div");
+      panel.style.cssText = "width:min(820px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:9px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.65);padding:16px;display:flex;flex-direction:column;gap:12px;";
+      const titleRow = document.createElement("div");
+      titleRow.style.cssText = "display:flex;align-items:flex-start;justify-content:space-between;gap:12px;";
+      const title = document.createElement("div");
+      title.innerHTML = `<div style="font-size:17px;font-weight:900;color:#cffafe;">Character &amp; Location Assignment</div><div style="font-size:12px;color:#94a3b8;margin-top:4px;">Choose a distribution pattern, preview it, then apply it to the shared scene mapping.</div>`;
+      const help = makeButton("?", "neutral");
+      help.title = "Explain every Character & Location Assignment setting";
+      help.style.cssText += "flex:0 0 34px;width:34px;height:34px;padding:0;border-radius:999px;font-size:16px;font-weight:900;";
+      titleRow.append(title, help);
+      const grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
+      const scope = makeSelect(["all", "selected", "range"], "all");
+      scope.options[0].textContent = "All scenes";
+      scope.options[1].textContent = "Multi-selected scenes";
+      scope.options[2].textContent = "Scene range";
+      scope.options[1].disabled = selectedSegmentsForBatch().length === 0;
+      const rangeStart = makeInput("1", "number");
+      const rangeEnd = makeInput(String(scenes.length), "number");
+      rangeStart.min = rangeEnd.min = "1";
+      rangeStart.max = rangeEnd.max = String(scenes.length);
+      const characterMode = makeSelect(["random", "rotate", "blocks", "unchanged"], subjects.length ? "random" : "unchanged");
+      characterMode.options[0].textContent = "Random character each scene";
+      characterMode.options[1].textContent = "Rotate characters in order";
+      characterMode.options[2].textContent = "Character blocks";
+      characterMode.options[3].textContent = "Leave characters unchanged";
+      const blockSize = makeInput("10", "number");
+      blockSize.min = "1";
+      const locationMode = makeSelect(["random", "rotate", "unchanged"], locations.length ? "random" : "unchanged");
+      locationMode.options[0].textContent = "Random location each scene";
+      locationMode.options[1].textContent = "Rotate locations in order";
+      locationMode.options[2].textContent = "Leave locations unchanged";
+      const replaceExisting = makeCheckbox("Replace existing mappings", false);
+      const avoidLocationRepeat = makeCheckbox("Avoid consecutive location repeats", true);
+      grid.append(
+        makeField("Scenes to assign", scope),
+        makeField("Scene range start", rangeStart),
+        makeField("Scene range end", rangeEnd),
+        makeField("Character pattern", characterMode),
+        makeField("Scenes per character block", blockSize),
+        makeField("Location pattern", locationMode),
+        replaceExisting.wrapper,
+        avoidLocationRepeat.wrapper,
+      );
+      const preview = document.createElement("textarea");
+      preview.readOnly = true;
+      preview.style.cssText = "min-height:230px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#dbeafe;padding:10px;font:12px/1.5 monospace;";
+      const note = document.createElement("div");
+      note.style.cssText = "font-size:11px;color:#94a3b8;line-height:1.4;";
+      note.textContent = "Scenes marked No character present keep their character mapping empty. Fill-empty mode preserves existing character and location assignments.";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;";
+      const cancelAssign = makeButton("Cancel");
+      const shuffle = makeButton("Preview / Shuffle", "primary");
+      const apply = makeButton("Apply Mapping", "primary");
+      actions.append(cancelAssign, shuffle, apply);
+      panel.append(titleRow, grid, note, preview, actions);
+      dialogBackdrop.append(panel);
+      document.body.append(dialogBackdrop);
+
+      let proposal = [];
+      help.onclick = () => {
+        const helpBackdrop = document.createElement("div");
+        helpBackdrop.style.cssText = "position:fixed;inset:0;z-index:100012;background:rgba(0,0,0,.76);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+        const helpPanel = document.createElement("div");
+        helpPanel.style.cssText = "width:min(760px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:9px;background:#111827;color:#e5e7eb;box-shadow:0 24px 80px rgba(0,0,0,.7);padding:18px;";
+        helpPanel.innerHTML = `
+          <div style="font-size:18px;font-weight:900;color:#cffafe;margin-bottom:5px;">Character &amp; Location Assignment Help</div>
+          <div style="font-size:12px;color:#94a3b8;line-height:1.5;margin-bottom:16px;">This tool fills the Reference Builder's character and location mappings across multiple scenes. It changes mappings only; it does not generate prompts, images, or videos.</div>
+          <div style="display:grid;gap:12px;font-size:12px;line-height:1.5;">
+            <div><b style="color:#67e8f9;">Scenes to assign</b><br><b>All scenes</b> includes the entire timeline. <b>Multi-selected scenes</b> includes only scenes selected with Select Multi. <b>Scene range</b> includes the numbered scenes between Range Start and Range End.</div>
+            <div><b style="color:#67e8f9;">Scene range start / end</b><br>These fields are used only when Scenes to assign is set to Scene range. Scene numbering starts at 1 and both endpoints are included.</div>
+            <div><b style="color:#67e8f9;">Character pattern</b><br><b>Random</b> chooses any saved character for each target scene. <b>Rotate</b> cycles through saved characters in order. <b>Character blocks</b> keeps one character for a group of scenes, then moves to the next character. <b>Leave unchanged</b> does not edit character mappings.</div>
+            <div><b style="color:#67e8f9;">Scenes per character block</b><br>Controls the size of each character block. For example, 10 assigns Character 1 to the first 10 target scenes, Character 2 to the next 10, and so on. It is used only with Character blocks.</div>
+            <div><b style="color:#67e8f9;">Location pattern</b><br><b>Random</b> chooses any saved location for each target scene. <b>Rotate</b> cycles through saved locations in order. <b>Leave unchanged</b> does not edit location mappings.</div>
+            <div><b style="color:#67e8f9;">Replace existing mappings</b><br>Off is the safe default: only empty character or location mappings are filled. Turn it on to overwrite mappings that are already assigned in the target scenes.</div>
+            <div><b style="color:#67e8f9;">Avoid consecutive location repeats</b><br>When Random location is selected and at least two locations exist, this prevents two neighboring target scenes from receiving the same location.</div>
+            <div><b style="color:#67e8f9;">No character present scenes</b><br>Scenes explicitly marked No character present always keep their character mapping empty. Their location can still be assigned.</div>
+            <div><b style="color:#67e8f9;">Preview / Shuffle</b><br>Builds a preview without changing saved mappings. With random patterns, click it again to generate a different arrangement.</div>
+            <div><b style="color:#67e8f9;">Apply Mapping</b><br>Applies the exact arrangement currently shown in the preview. One Undo history point is created before the mappings are changed.</div>
+            <div><b style="color:#67e8f9;">Cancel</b><br>Closes the assignment tool without applying the preview.</div>
+          </div>`;
+        const closeHelp = makeButton("Close", "primary");
+        closeHelp.style.cssText += "width:100%;margin-top:16px;";
+        helpPanel.append(closeHelp);
+        helpBackdrop.append(helpPanel);
+        document.body.append(helpBackdrop);
+        closeHelp.onclick = () => helpBackdrop.remove();
+        helpBackdrop.addEventListener("pointerdown", (event) => {
+          if (event.target === helpBackdrop) helpBackdrop.remove();
+        });
+      };
+      const targetScenes = () => {
+        if (scope.value === "selected") {
+          const ids = new Set(selectedSegmentsForBatch().map((scene) => scene.id));
+          return scenes.map((scene, index) => ({ scene, index })).filter(({ scene }) => ids.has(scene.id));
+        }
+        if (scope.value === "range") {
+          const start = Math.max(1, Math.min(scenes.length, Number(rangeStart.value) || 1));
+          const end = Math.max(start, Math.min(scenes.length, Number(rangeEnd.value) || scenes.length));
+          return scenes.map((scene, index) => ({ scene, index })).filter(({ index }) => index + 1 >= start && index + 1 <= end);
+        }
+        return scenes.map((scene, index) => ({ scene, index }));
+      };
+      const randomItem = (items, previousId = "", avoidRepeat = false) => {
+        const pool = avoidRepeat && items.length > 1 ? items.filter((item) => item.id !== previousId) : items;
+        return pool[Math.floor(Math.random() * pool.length)] || null;
+      };
+      const createProposal = () => {
+        let previousLocationId = "";
+        proposal = targetScenes().map(({ scene, index }, targetIndex) => {
+          const existingSubjects = logicalSubjectIdsForScene(refs, scene);
+          const existingLocation = refs.scene_map?.[scene.id] || "";
+          let subjectId = "";
+          let locationId = "";
+          if (!scene.no_character_present && characterMode.value !== "unchanged" && subjects.length) {
+            if (characterMode.value === "random") subjectId = randomItem(subjects)?.id || "";
+            else if (characterMode.value === "rotate") subjectId = subjects[targetIndex % subjects.length]?.id || "";
+            else subjectId = subjects[Math.floor(targetIndex / Math.max(1, Number(blockSize.value) || 1)) % subjects.length]?.id || "";
+          }
+          if (locationMode.value !== "unchanged" && locations.length) {
+            const chosen = locationMode.value === "rotate"
+              ? locations[targetIndex % locations.length]
+              : randomItem(locations, previousLocationId, avoidLocationRepeat.input.checked);
+            locationId = chosen?.id || "";
+            previousLocationId = locationId || previousLocationId;
+          }
+          const finalSubjects = scene.no_character_present
+            ? []
+            : characterMode.value === "unchanged" || (!replaceExisting.input.checked && existingSubjects.length)
+              ? existingSubjects
+              : subjectId ? [subjectId] : [];
+          const finalLocation = locationMode.value === "unchanged" || (!replaceExisting.input.checked && existingLocation)
+            ? existingLocation
+            : locationId;
+          return { scene, index, subjectIds: finalSubjects, locationId: finalLocation };
+        });
+        preview.value = proposal.map((item) => {
+          const characterNames = item.subjectIds.map((id) => subjects.find((subject) => subject.id === id)?.name || "Unknown").join(", ") || "Unassigned";
+          const locationName = locations.find((location) => location.id === item.locationId)?.name || "Unassigned";
+          return `Scene ${item.index + 1}: ${characterNames} — ${locationName}`;
+        }).join("\n");
+      };
+      const syncOptions = () => {
+        const isRange = scope.value === "range";
+        rangeStart.disabled = rangeEnd.disabled = !isRange;
+        blockSize.disabled = characterMode.value !== "blocks";
+        avoidLocationRepeat.input.disabled = locationMode.value !== "random";
+        createProposal();
+      };
+      for (const control of [scope, rangeStart, rangeEnd, characterMode, blockSize, locationMode, replaceExisting.input, avoidLocationRepeat.input]) {
+        control.addEventListener("change", syncOptions);
+      }
+      shuffle.onclick = createProposal;
+      cancelAssign.onclick = () => dialogBackdrop.remove();
+      dialogBackdrop.addEventListener("pointerdown", (event) => {
+        if (event.target === dialogBackdrop) dialogBackdrop.remove();
+      });
+      apply.onclick = () => {
+        if (!proposal.length) createProposal();
+        pushHistory();
+        refs.subject_scene_map = refs.subject_scene_map && typeof refs.subject_scene_map === "object" ? refs.subject_scene_map : {};
+        refs.scene_map = refs.scene_map && typeof refs.scene_map === "object" ? refs.scene_map : {};
+        for (const item of proposal) {
+          if (characterMode.value !== "unchanged") {
+            if (item.subjectIds.length) refs.subject_scene_map[item.scene.id] = [...item.subjectIds];
+            else delete refs.subject_scene_map[item.scene.id];
+          }
+          if (locationMode.value !== "unchanged") {
+            if (item.locationId) refs.scene_map[item.scene.id] = item.locationId;
+            else delete refs.scene_map[item.scene.id];
+          }
+        }
+        refs.use_subject_reference = Boolean(subjects.length);
+        refs.use_location_references = Boolean(locations.length);
+        renderAll();
+        dialogBackdrop.remove();
+        toast(`Assigned character/location mappings for ${proposal.length} scene${proposal.length === 1 ? "" : "s"}.`);
+      };
+      syncOptions();
+    }
+
+    assignScenes.onclick = openSceneAssignmentDialog;
 
     const referenceTabs = [
       { id: "subjects", label: "Subjects", node: subjectCard },
@@ -17747,7 +18128,7 @@ function openBuilder(node) {
     tabShell.append(tabBar, tabContent);
     setReferenceTab(wizardLocationMode ? "locations" : "subjects");
     const footer = document.createElement("div");
-    footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;flex:0 0 auto;";
     const cancel = makeButton("Cancel");
     const save = makeButton("Save Reference Builder", "primary");
     footer.append(cancel, save);
@@ -18966,7 +19347,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       let progress = null;
       try {
         const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-        const providerLabel = browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana";
+        const providerLabel = browserImageProviderLabel(browserSettings.provider);
         setInlineProgress(referenceType === "subject" ? "Creating subject prompt with Gemma..." : "Creating location prompt with Gemma...", 8);
         progress = createProgressWindow(referenceType === "subject" ? "Creating subject reference" : "Creating location reference", { zIndex: 100008 });
         progress.set(`Creating ${providerLabel} reference prompt with Gemma...\n${gemmaRunnerLine()}`, 8);
@@ -18979,9 +19360,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           style_theme: styleTheme,
           unload_after: true,
         }, 3 * 60 * 1000);
-        const timeout = browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
-          ? browserSettings.gpt_timeout_seconds
-          : browserSettings.flow_timeout_seconds;
+        const timeout = browserImageProviderTimeout(browserSettings);
         setInlineProgress(`Building ${providerLabel} browser workflow...`, 28);
         progress.set(`Building ${providerLabel} browser workflow...`, 28);
         const built = await buildBrowserImagePrompt({
@@ -19033,7 +19412,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const useFlowGpt = workflow === "flow_gpt";
       const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
       const workflowLabel = useFlowGpt
-        ? (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana")
+        ? browserImageProviderLabel(browserSettings.provider)
         : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
       const missingLocations = refs.locations
         .map((location, index) => ({ location, index }))
@@ -19094,7 +19473,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
               prompt,
               aspect_ratio: browserSettings.aspect_ratio || "16:9",
               image_ingredients: [],
-              timeout_seconds: (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? browserSettings.gpt_timeout_seconds : browserSettings.flow_timeout_seconds) || browserSettings.timeout_seconds || 600,
+              timeout_seconds: browserImageProviderTimeout(browserSettings),
             })
             : useKrea2
               ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
@@ -19173,7 +19552,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const useFlowGpt = workflow === "flow_gpt";
       const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
       const workflowLabel = useFlowGpt
-        ? (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana")
+        ? browserImageProviderLabel(browserSettings.provider)
         : useKrea2 ? "Krea2 + ZImage enhancer" : "ZImage";
       const missingSubjects = refs.subjects
         .map((subject, index) => ({ subject, index }))
@@ -19231,7 +19610,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
               prompt,
               aspect_ratio: browserSettings.aspect_ratio || "16:9",
               image_ingredients: [],
-              timeout_seconds: (browserSettings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? browserSettings.gpt_timeout_seconds : browserSettings.flow_timeout_seconds) || browserSettings.timeout_seconds || 600,
+              timeout_seconds: browserImageProviderTimeout(browserSettings),
             })
             : useKrea2
               ? await postJson("/vrgdg/workflow_runner/build_krea2_prompt", krea2ReferencePayload(prompt, kreaSettings))
@@ -19443,7 +19822,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
       note.textContent = referenceType === "subject"
         ? "Gemma will turn your selected source into one character reference-sheet prompt. If you choose lyrics/style, it can invent a character that fits the song. If you do not like the result, run it again."
-        : "ZImage uses the existing reference-image workflow. Krea2 uses the hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel. A location description is required before generation can run.";
+        : "ZImage uses the existing reference-image workflow. Krea2 uses the hidden Krea2 text-to-image workflow, then runs the ZImage enhancer pass. Browser AI uses the selected browser provider and login/settings from the Browser AI image panel. A location description is required before generation can run.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
@@ -19616,7 +19995,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           krea2: readKrea2(),
         })),
         optionCard("Flow/GPT", [
-          modalHelp("Use the selected Flow/GPT provider. Flow requires the Flow browser profile; GPT Image appends the selected aspect ratio from the Flow/GPT panel."),
+          modalHelp("Use the selected browser image provider. Flow requires its browser profile and manual aspect setup; GPT Image appends the selected aspect ratio; Meta AI uses the meta.ai profile and login."),
         ], "Use Flow/GPT", (runText) => runFluxReferenceWithFlowGpt(referenceType, target, runText, name)),
       );
       const footer = document.createElement("div");
@@ -19668,7 +20047,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       header.append(title, close);
       const note = document.createElement("div");
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-      note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel.";
+      note.textContent = "This runs Gemma prompts for each missing subject/reference, then generates each image with the workflow you choose here. Browser AI uses the selected browser provider and login/settings from the Browser AI image panel.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
@@ -19730,7 +20109,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           krea2: readKrea2(),
         })),
         optionCard("Flow/GPT", [
-          modalHelp("Use the selected Flow/GPT provider for every missing subject/reference image. Log into the chosen browser profile first."),
+          modalHelp("Use the selected browser image provider for every missing subject/reference image. Log into the chosen browser profile first."),
         ], "Use Flow/GPT For All Missing", () => createMissingSubjectReferencesWithImageWorkflow("flow_gpt")),
       );
       const footer = document.createElement("div");
@@ -19773,7 +20152,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       header.append(title, close);
       const note = document.createElement("div");
       note.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
-      note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here. Flow/GPT uses the current Browser Image provider and login/settings from the Flow/GPT image panel.";
+      note.textContent = "This runs Gemma prompts for each missing location, then generates each image with the workflow you choose here. Browser AI uses the selected browser provider and login/settings from the Browser AI image panel.";
 
       const generatorControls = buildReferenceGeneratorControls();
       const { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 } = generatorControls;
@@ -19835,7 +20214,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           krea2: readKrea2(),
         })),
         optionCard("Flow/GPT", [
-          modalHelp("Use the selected Flow/GPT provider for every missing location image. Log into the chosen browser profile first."),
+          modalHelp("Use the selected browser image provider for every missing location image. Log into the chosen browser profile first."),
         ], "Use Flow/GPT For All Missing", () => createMissingLocationReferencesWithZImage("flow_gpt")),
       );
       const footer = document.createElement("div");
@@ -19928,7 +20307,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-            n_ctx: 10000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 2200,
             unload_after: true,
           }, 10 * 60 * 1000)
@@ -19940,7 +20319,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-            n_ctx: 10000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             unload_after: true,
           }, 10 * 60 * 1000);
         progress.set("Adding extracted locations to the Reference Builder...", 78);
@@ -20154,7 +20533,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             used_location_counts: usedLocationCounts,
             previous_assignments: previousAssignments.slice(-24),
             unload_after: batchIndex === batches.length - 1,
-            n_ctx: 8000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 1200,
           }, 10 * 60 * 1000);
           mergedData.locations = batchData.locations || mergedData.locations || [];
@@ -20782,7 +21161,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
 
     function renderLocations() {
       locationsList.innerHTML = "";
-      locationsList.style.maxHeight = "min(62vh, 720px)";
+      locationsList.style.maxHeight = "none";
+      locationsList.style.overflow = "visible";
       if (!refs.locations.length) {
         const empty = document.createElement("div");
         empty.innerHTML = referenceImagesEnabled
@@ -21182,12 +21562,6 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     }
 
     function renderAll() {
-      if (refs.subjects.some((subject) => hasReferenceImage(subject?.image || {})) && refs.subjects.some(subjectLooksEmpty)) {
-        refs.subjects = refs.subjects.filter((subject) => !subjectLooksEmpty(subject));
-        refs.subject_count = refs.subjects.length;
-        subjectCountInput.value = String(refs.subject_count || 0);
-        if (refs.subjects.length <= 1) syncSingleSubjectInputsFromFirstSubject();
-      }
       if (refs.subjects.length || Number(refs.subject_count || 0) > 0) ensureSubjectCount();
       else refs.subject_count = 0;
       if (refs.subject_count === 1) {
@@ -22304,7 +22678,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-            n_ctx: 10000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 2200,
             unload_after: true,
           }, 10 * 60 * 1000)
@@ -22316,7 +22690,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-            n_ctx: 10000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             unload_after: true,
           }, 10 * 60 * 1000);
         const { added, updated } = upsertLocationText((data.locations || []).map((item) => ({ name: item.name, description: item.description })));
@@ -23034,7 +23408,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             style_theme: styleTheme,
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-            n_ctx: 10000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 2200,
             unload_after: true,
           }, 10 * 60 * 1000)
@@ -23046,7 +23420,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             style_theme: styleTheme,
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
-            n_ctx: 10000,
+            n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             unload_after: true,
           }, 10 * 60 * 1000);
         const { added, updated } = upsertTextMapLocations((data.locations || []).map((item) => ({ name: item.name, description: item.description })));
@@ -23119,7 +23493,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             description: compactTextForTextMap(item.description, 650),
           })),
           unload_after: true,
-          n_ctx: 8000,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           max_new_tokens: 1600,
         }, 10 * 60 * 1000);
         upsertTextMapLocations(data.locations || []);
@@ -25246,6 +25620,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       story_idea_path: state.storyIdeaPath,
       subject_scene_path: state.subjectScenePath,
       text_gemma_runner: state.textGemmaRunner || "builtin",
+      gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
       gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
       lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
       lm_studio_model: state.lmStudioModel || "",
@@ -25491,6 +25866,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || {});
         state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(data.session.builder_storyboard_defaults || data.session.builderStoryboardDefaults || {});
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
+        state.gemmaContextLimit = normalizeGemmaContextLimit(data.session.gemma_context_limit ?? data.session.n_ctx ?? state.gemmaContextLimit);
         state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.session.gemma_gpu_layers ?? data.session.n_gpu_layers ?? state.gemmaGpuLayers);
         state.lmStudioBaseUrl = data.session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
@@ -25795,6 +26171,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
+      state.gemmaContextLimit = normalizeGemmaContextLimit(session.gemma_context_limit ?? session.n_ctx ?? state.gemmaContextLimit);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(session.gemma_gpu_layers ?? session.n_gpu_layers ?? state.gemmaGpuLayers);
       state.lmStudioBaseUrl = session.lm_studio_base_url || state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
@@ -26709,9 +27086,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function flowGptBrowserSettingsForSegment(segment = activeSegment()) {
     const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-    const timeout = settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
-      ? settings.gpt_timeout_seconds
-      : settings.flow_timeout_seconds;
+    const timeout = browserImageProviderTimeout(settings);
     return {
       ...settings,
       timeout_seconds: timeout || settings.timeout_seconds || 600,
@@ -26721,14 +27096,100 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
-  async function createFlowGptImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Flow/GPT") {
+  function previousBaseSceneWithImage(segment) {
+    const info = segmentIndexInfo(segment);
+    if (!segment || info.track === "overlay") return null;
+    const base = Array.isArray(state.segments) ? state.segments : [];
+    for (let index = Math.min(info.index, base.length) - 1; index >= 0; index -= 1) {
+      const previous = base[index];
+      if (segmentImageSource(previous)) return previous;
+    }
+    return null;
+  }
+
+  function previousSceneImageIngredient(segment) {
+    const previous = previousBaseSceneWithImage(segment);
+    if (!previous) return null;
+    const image = segmentImageSource(previous);
+    if (!image?.path && !image?.data) return null;
+    const previousInfo = segmentIndexInfo(previous);
+    return {
+      path: String(image.path || ""),
+      data: String(image.data || ""),
+      name: `previous_scene_${previousInfo.index + 1}.png`,
+      source_scene_label: sceneDisplayName(previous, previousInfo.index),
+    };
+  }
+
+  function addUniqueBrowserImageIngredient(ingredients, item) {
+    if (!Array.isArray(ingredients) || !item) return ingredients;
+    const path = String(item.path || "");
+    const data = String(item.data || "");
+    const name = String(item.name || "");
+    if (!path && !data) return ingredients;
+    const key = path || data || name;
+    if (!ingredients.some((existing) => (existing.path || existing.data || existing.name) === key)) {
+      ingredients.push({ path, data, name: name || "reference.png" });
+    }
+    return ingredients;
+  }
+
+  async function maybeAttachPreviousSceneImage(settings, segment, options = {}) {
+    const next = {
+      ...settings,
+      image_ingredients: Array.isArray(settings.image_ingredients) ? settings.image_ingredients.map((item) => ({ ...item })) : [],
+    };
+    if (!next.ask_previous_scene_image || options.includePreviousSceneImage === false) return next;
+    const previousImage = previousSceneImageIngredient(segment);
+    if (!previousImage) return next;
+    const shouldAsk = options.includePreviousSceneImage !== true;
+    const include = shouldAsk
+      ? window.confirm(
+        `Send the previous scene image as a reference for this Browser AI generation?\n\n`
+        + `${previousImage.source_scene_label || "Previous scene"} will be uploaded with the prompt so ${browserImageProviderLabel(next.provider)} can see what happened last.`
+      )
+      : true;
+    if (!include) return next;
+    addUniqueBrowserImageIngredient(next.image_ingredients, previousImage);
+    next.previous_scene_image_attached = true;
+    next.previous_scene_image_label = previousImage.source_scene_label || "";
+    return next;
+  }
+
+  function browserImageReferencePrompt(prompt, settings = {}) {
+    const text = String(prompt || "").trim();
+    if (!text) return text;
+    const context = settings.reference_context || {};
+    const labels = [];
+    if (context.has_subject_reference) labels.push("character reference");
+    if (context.has_location_reference) labels.push("location reference");
+    if (settings.previous_scene_image_attached) labels.push("last scene image reference");
+    if (!labels.length && Array.isArray(settings.image_ingredients) && settings.image_ingredients.length) {
+      labels.push("reference images");
+    }
+    if (!labels.length) return text;
+    const joined = labels.length === 1
+      ? labels[0]
+      : labels.length === 2
+        ? `${labels[0]} and ${labels[1]}`
+        : `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+    const continuity = settings.previous_scene_image_attached
+      ? " Treat the last scene image as continuity context for what happened immediately before this scene; continue the story without simply copying the previous image unless requested."
+      : "";
+    const instruction = `Using the provided ${joined} as visual context, create the requested scene image.${continuity}`;
+    if (text.toLowerCase().startsWith(instruction.toLowerCase())) return text;
+    return `${instruction}\n\n${text}`.trim();
+  }
+
+  async function createFlowGptImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Flow/GPT", options = {}) {
     state.activeId = segment.id;
     syncInspector();
     render();
-    const settings = flowGptBrowserSettingsForSegment(segment);
-    const prompt = syncSegmentFlowGptPrompt(segment, settings.prompt || "");
-    if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flow/GPT prompt is missing.`);
-    progress?.set(`${label}: building hidden browser image workflow...`, percentBase + percentSpan * 0.25);
+    const settings = await maybeAttachPreviousSceneImage(flowGptBrowserSettingsForSegment(segment), segment, options);
+    const savedPrompt = syncSegmentFlowGptPrompt(segment, settings.prompt || "");
+    if (!savedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flow/GPT prompt is missing.`);
+    const prompt = browserImageReferencePrompt(savedPrompt, settings);
+    progress?.set(`${label}: building hidden browser image workflow${settings.previous_scene_image_attached ? ` with previous scene reference (${settings.previous_scene_image_label})` : ""}...`, percentBase + percentSpan * 0.25);
     const built = await buildBrowserImagePrompt({
       provider: settings.provider,
       prompt,
@@ -26746,7 +27207,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     pushHistory();
     segment.image = images[images.length - 1] || null;
     await archiveGeneratedSceneImage(segment, segment.image);
-    syncSegmentFlowGptPrompt(segment, prompt);
+    syncSegmentFlowGptPrompt(segment, savedPrompt);
     segment.custom_image_path = "";
     segment.custom_image_data = "";
     segment.custom_image_name = "";
@@ -26772,7 +27233,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       flowGptCreateImageButton.disabled = true;
       flowGptCreateImageButton.textContent = "Creating...";
-      progress = createProgressWindow(`Creating ${settings.provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image" : "Flow Nano Banana"} image`);
+      progress = createProgressWindow(`Creating ${browserImageProviderLabel(settings.provider)} image`);
       progress.set("Autosaving session/SRT before Flow/GPT image...", 8);
       await autoSaveSessionQuiet("Flow/GPT image");
       await createFlowGptImageForSegment(segment, progress, 15, 75, "Flow/GPT image");
@@ -26785,7 +27246,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(String(error?.message || error), true);
     } finally {
       flowGptCreateImageButton.disabled = false;
-      flowGptCreateImageButton.textContent = "Create with Flow/GPT";
+      flowGptCreateImageButton.textContent = "Create with Browser AI";
     }
   }
 
@@ -26824,23 +27285,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       flowGptCreatePromptButton.disabled = true;
       flowGptCreatePromptButton.textContent = "Gemma...";
-      progress = createProgressWindow("Creating Flow/GPT prompt");
-      progress.set("Autosaving session/SRT before Gemma Flow/GPT...", 8);
-      await autoSaveSessionQuiet("Gemma Flow/GPT prompt");
-      await generateNBPromptForSegment(segment, progress, 25, "Gemma Flow/GPT", { unloadAfter: true });
+      progress = createProgressWindow("Creating Browser AI prompt");
+      progress.set("Autosaving session/SRT before Gemma Browser AI...", 8);
+      await autoSaveSessionQuiet("Gemma Browser AI prompt");
+      await generateNBPromptForSegment(segment, progress, 25, "Gemma Browser AI", { unloadAfter: true });
       const prompt = syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
       flowGptPrompt.value = prompt;
-      progress.set("Flow/GPT prompt ready.", 100);
-      await autoSaveSessionQuiet("Gemma Flow/GPT prompt complete");
+      progress.set("Browser AI prompt ready.", 100);
+      await autoSaveSessionQuiet("Gemma Browser AI prompt complete");
       progress.close(900);
       render();
-      toast("Gemma created the Flow/GPT prompt.");
+      toast("Gemma created the Browser AI prompt.");
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
     } finally {
       flowGptCreatePromptButton.disabled = false;
-      flowGptCreatePromptButton.textContent = "Gemma Flow/GPT Prompt";
+      flowGptCreatePromptButton.textContent = "Gemma Browser Prompt";
     }
   }
 
@@ -26874,7 +27335,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       user_notes: userNotes,
       clear_before_load: options.clearBeforeLoad !== false,
       unload_after: options.unloadAfter !== false,
-      n_ctx: 8000,
+      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
       max_new_tokens: 900,
       seed: options.seed,
       temperature: options.temperature,
@@ -27022,6 +27483,99 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return null;
   }
 
+  function enhancePromptForSegment(segment, { copyFallback = false } = {}) {
+    const explicitEnhancePrompt = String(segment?.enhance_prompt || "").trim();
+    if (explicitEnhancePrompt) return { prompt: explicitEnhancePrompt, source: "enhance" };
+    const scenePrompt = String(segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || segment?.flow_gpt_prompt || segment?.notes || "").trim();
+    if (scenePrompt) {
+      if (copyFallback && segment) segment.enhance_prompt = scenePrompt;
+      return { prompt: scenePrompt, source: "scene" };
+    }
+    return { prompt: "", source: "" };
+  }
+
+  function sceneImagePromptForEnhanceAll(segment) {
+    const prompt = String(segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || segment?.flow_gpt_prompt || "").trim();
+    return { prompt, source: prompt ? "image_prompt" : "" };
+  }
+
+  function zEnhancePayloadFromSettings(settings = {}, prompt = "", source = {}) {
+    const loraCount = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    const useLoras = Boolean(settings.use_loras && loraCount > 0);
+    const payload = {
+      prompt,
+      source_image_path: source.path || "",
+      source_image_data: source.data || "",
+      source_image_name: source.name || "source.png",
+      unet_name: settings.unet_name || "",
+      clip_name: settings.clip_name || "",
+      vae_name: settings.vae_name || "",
+      width: settings.width || 1920,
+      height: settings.height || 1080,
+      seed: settings.seed || 1,
+      seed_mode: settings.seed_mode || "fixed",
+      enhance_amount: settings.enhance_amount || 8,
+      use_custom_loras: useLoras,
+      lora_count: useLoras ? loraCount : 0,
+    };
+    for (let index = 0; index < 4; index += 1) {
+      const lora = settings.loras?.[index] || {};
+      payload[`lora_${index + 1}`] = useLoras && index < loraCount ? (lora.name || "[none]") : "[none]";
+      payload[`strength_${index + 1}`] = Number(lora.strength ?? 1);
+    }
+    return payload;
+  }
+
+  async function enhanceImageForSegment(segment, progress = null, percentBase = 20, percentSpan = 70, label = "Enhance", options = {}) {
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    let source = options.source || currentEnhanceSource(segment);
+    if (!source?.path && !source?.data && segment.image?.filename) {
+      const archived = await archiveGeneratedSceneImage(segment, segment.image);
+      if (archived) source = { path: archived, name: "scene_image.png" };
+    }
+    if (!source?.path && !source?.data) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: selected scene image is missing.`);
+    }
+    const promptInfo = options.promptSource === "saved_enhance_prompt"
+      ? enhancePromptForSegment(segment, { copyFallback: true })
+      : sceneImagePromptForEnhanceAll(segment);
+    const enhancePrompt = promptInfo.prompt;
+    if (!enhancePrompt) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Enhance/T2I prompt is missing.`);
+    }
+    if (source.path) addSceneImageHistoryPath(segment, source.path);
+    const settings = options.settings || saveZEnhanceSettingsFromPanel();
+    progress?.set(`${label}: building hidden upscale/enhance workflow...`, percentBase + percentSpan * 0.18);
+    const built = await postJson("/vrgdg/workflow_runner/build_z_upscale_enhance_prompt", zEnhancePayloadFromSettings(settings, enhancePrompt, source));
+    if (Number.isFinite(Number(built.used_seed))) {
+      settings.seed = Number(built.used_seed);
+      zEnhanceSeed.value = String(settings.seed);
+    }
+    progress?.set(`${label}: queueing upscale/enhance workflow...`, percentBase + percentSpan * 0.38);
+    const queued = await queueWorkflowPrompt(built.prompt);
+    const promptId = queued?.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the upscale/enhance workflow but did not return a prompt_id.");
+    progress?.set(`${label}: queued prompt ID:\n${promptId}\n\nWaiting for enhanced image...`, percentBase + percentSpan * 0.58);
+    const images = await waitForImages(promptId, (message) => {
+      progress?.set(`${label}: ${message}\nPrompt ID: ${promptId}`, percentBase + percentSpan * 0.78);
+    });
+    for (const image of images) {
+      await archiveGeneratedSceneImage(segment, image);
+    }
+    segment.image = images[images.length - 1] || null;
+    segment.custom_image_path = "";
+    segment.custom_image_data = "";
+    segment.custom_image_name = "";
+    segment.approved_image_path = "";
+    segment.preview_mode = "image";
+    if (segment.id === activeSegment()?.id) syncPreview(segment);
+    render();
+    advanceZEnhanceSeedAfterRun(settings);
+    return images;
+  }
+
   async function generateEnhancePromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -27086,12 +27640,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const segment = requireActiveSegment();
     if (!segment) return;
     updateActiveFromInputs();
-    let source = currentEnhanceSource(segment);
-    if (!source?.path && !source?.data && segment.image?.filename) {
-      const archived = await archiveGeneratedSceneImage(segment, segment.image);
-      if (archived) source = { path: archived };
-    }
-    if (!source?.path && !source?.data) {
+    const source = currentEnhanceSource(segment);
+    if (!source?.path && !source?.data && !segment.image?.filename) {
       toast("Hey, you need an image first. Create, save, load, or choose a scene image before using upscale/enhance.", true);
       return;
     }
@@ -27102,60 +27652,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     const settings = saveZEnhanceSettingsFromPanel();
-    const useLoras = Boolean(settings.use_loras && settings.lora_count > 0);
     let progress = null;
     try {
       zEnhanceButton.disabled = true;
       zEnhanceButton.textContent = "Enhancing...";
-      if (source.path) addSceneImageHistoryPath(segment, source.path);
       progress = createProgressWindow("Upscale / Enhance image");
       progress.set("Autosaving session/SRT before Enhance...", 8);
       await autoSaveSessionQuiet("upscale/enhance");
-      progress.set("Building hidden upscale/enhance workflow...", 25);
-      const payload = {
-        prompt: enhancePrompt,
-        source_image_path: source.path || "",
-        source_image_data: source.data || "",
-        source_image_name: source.name || "source.png",
-        unet_name: settings.unet_name || "",
-        clip_name: settings.clip_name || "",
-        vae_name: settings.vae_name || "",
-        width: settings.width || 1920,
-        height: settings.height || 1080,
-        seed: settings.seed || 1,
-        seed_mode: settings.seed_mode || "fixed",
-        enhance_amount: settings.enhance_amount || 8,
-        use_custom_loras: useLoras,
-        lora_count: useLoras ? settings.lora_count : 0,
-      };
-      zEnhanceLoraSlots.forEach((slot, index) => {
-        payload[`lora_${index + 1}`] = useLoras && index < settings.lora_count ? slot.picker.input.value : "[none]";
-        payload[`strength_${index + 1}`] = Number(slot.strength.value || 1);
-      });
-      const built = await postJson("/vrgdg/workflow_runner/build_z_upscale_enhance_prompt", payload);
-      if (Number.isFinite(Number(built.used_seed))) {
-        settings.seed = Number(built.used_seed);
-        zEnhanceSeed.value = String(settings.seed);
-      }
-      progress.set("Queueing upscale/enhance workflow...", 45);
-      const queued = await queueWorkflowPrompt(built.prompt);
-      const promptId = queued?.prompt_id;
-      if (!promptId) throw new Error("ComfyUI queued the upscale/enhance workflow but did not return a prompt_id.");
-      progress.set(`Queued prompt ID:\n${promptId}\n\nWaiting for enhanced image...`, 65);
-      const images = await waitForImages(promptId, (message) => progress.set(`${message}\nPrompt ID: ${promptId}`, 80));
       pushHistory();
-      for (const image of images) {
-        await archiveGeneratedSceneImage(segment, image);
-      }
-      segment.image = images[images.length - 1] || null;
-      segment.custom_image_path = "";
-      segment.custom_image_data = "";
-      segment.custom_image_name = "";
-      segment.approved_image_path = "";
-      segment.preview_mode = "image";
+      await enhanceImageForSegment(segment, progress, 20, 70, "Upscale / Enhance image", {
+        settings,
+        source,
+        promptSource: "scene_image_prompt",
+      });
       syncPreview(segment);
       render();
-      advanceZEnhanceSeedAfterRun(settings);
       await autoSaveSessionQuiet("upscale/enhance complete");
       progress.set("Enhanced image ready.", 100);
       progress.close(900);
@@ -27227,7 +27738,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const header = document.createElement("div");
       header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
       const title = document.createElement("div");
-      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Load ${escapeHtml(data.label || key)} Preset</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Loading a preset only fills the editor. Save it after reviewing.</div>`;
+      const groupLabel = data.preset_group_label || data.label || key;
+      title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Load ${escapeHtml(groupLabel)} Preset</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Showing presets shared by compatible instruction editors. Loading a preset only fills the editor. Save it after reviewing.</div>`;
       const close = makeButton("Close");
       header.append(title, close);
       const list = document.createElement("div");
@@ -27238,14 +27750,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       };
       if (!data.presets?.length) {
         const empty = document.createElement("div");
-        empty.textContent = "No presets saved for this instruction yet.";
+        empty.textContent = `No presets saved for this shared group yet: ${groupLabel}.`;
         empty.style.cssText = "border:1px solid #334155;border-radius:7px;background:#020617;color:#cbd5e1;padding:10px;font-size:12px;";
         list.append(empty);
       } else {
         for (const preset of data.presets) {
           const row = document.createElement("button");
           row.type = "button";
-          row.textContent = preset.name;
+          row.textContent = preset.legacy ? `${preset.name} (legacy ${data.label || key})` : preset.name;
           row.title = preset.path || "";
           row.style.cssText = "text-align:left;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;font-weight:800;cursor:pointer;";
           row.onclick = () => finish(preset);
@@ -27394,8 +27906,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           name,
           text: editor.value,
         });
-        setStatus(data, `Saved preset: ${preset.name}`);
-        toast(`Saved ${instructionLabel} instruction preset: ${preset.name}`);
+        setStatus(data, `Saved shared preset: ${preset.name}\nGroup: ${preset.preset_group_label || instructionLabel}\nPreset path: ${preset.path || ""}\nPreset folder: ${preset.preset_folder || ""}`);
+        toast(`Saved ${preset.preset_group_label || instructionLabel} preset: ${preset.name}`);
       } catch (error) {
         toast(`Could not save preset:\n${String(error?.message || error)}`, true);
       }
@@ -27409,7 +27921,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           name: preset.name,
         });
         editor.value = loaded.text || "";
-        setStatus(data, `Loaded preset: ${loaded.name}. Review it, then save for this scene or all scenes.`);
+        setStatus(data, `Loaded shared preset: ${loaded.name}\nGroup: ${loaded.preset_group_label || instructionLabel}\nReview it, then save for this scene or all scenes.\nPreset path: ${loaded.path || ""}`);
       } catch (error) {
         toast(`Could not load preset:\n${String(error?.message || error)}`, true);
       }
@@ -27447,7 +27959,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       no_vocal: noVocal,
       no_character_present: Boolean(segment?.no_character_present),
       unload_after: options.unloadAfter !== false,
-      n_ctx: 8000,
+      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
       max_new_tokens: 1200,
     }, GEMMA_VIDEO_ENHANCE_TIMEOUT_MS);
     return String(data.prompt || "").trim() || base;
@@ -27799,7 +28311,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           no_character_present: Boolean(segment.no_character_present),
         } : {},
         unload_after: true,
-        n_ctx: 8000,
+        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         temperature: 0.25,
         top_p: 0.9,
         max_new_tokens: 1200,
@@ -27886,7 +28398,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           no_character_present: Boolean(segment.no_character_present),
         } : {},
         unload_after: true,
-        n_ctx: 8000,
+        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         temperature: 0.25,
         top_p: 0.9,
         max_new_tokens: 1200,
@@ -28821,6 +29333,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       let applied = 0;
       let storyChanged = false;
       let facialChanged = false;
+      let beatChanged = false;
       const hasIncomingFacialDefault = Object.prototype.hasOwnProperty.call(updates, "facial_performance_default")
         || Object.prototype.hasOwnProperty.call(updates, "facialPerformance")
         || Object.prototype.hasOwnProperty.call(updates, "default_facial_performance");
@@ -28868,7 +29381,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
         const videoType = String(scene.video_prompt_type || "").trim();
         segment.lyric_section = String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim();
-        segment.story_beat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim();
+        const nextStoryBeat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim();
+        if (segment.story_beat !== nextStoryBeat) beatChanged = true;
+        segment.story_beat = nextStoryBeat;
         const nextFacial = String(scene.facial_performance ?? scene.facialPerformance ?? segment.facial_performance ?? "").trim();
         const nextFacialCustom = String(scene.facial_performance_custom ?? scene.facialPerformanceCustom ?? segment.facial_performance_custom ?? "").trim();
         if (segment.facial_performance !== nextFacial || segment.facial_performance_custom !== nextFacialCustom) facialChanged = true;
@@ -28890,12 +29405,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryLayer = normalizeBuilderStoryLayer(updates.story_layer || updates.storyLayer);
         storyChanged = true;
       }
-      if (applied || storyChanged || facialChanged) {
+      if (applied || storyChanged || facialChanged || beatChanged) {
         ensureAllSegmentRuntimeFields();
         syncInspector();
         render();
-        autoSaveSessionQuiet("Storyboard prompt export");
+        autoSaveSessionQuiet(applied ? "Storyboard prompt export" : "Storyboard scene beat export");
         if (applied) toast(`Storyboard prompts copied into Video Builder for ${applied} prompt field${applied === 1 ? "" : "s"}.`);
+        else if (beatChanged) toast("Storyboard scene beats copied into Video Builder.");
       }
     };
     const findStoryboardSegment = (scene = {}) => {
@@ -29165,7 +29681,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
         vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
         mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-        n_ctx: 8000,
+        n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
         n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         n_threads: 8,
         unload_after: true,
@@ -29358,7 +29874,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       performance_mode: effectiveVideoPerformanceModeForSegment(nextSegment),
       repair_model_file: i2vTextGemmaModelSelect.value,
       unload_after: true,
-      n_ctx: 8000,
+      n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
       temperature: 0.25,
       top_p: 0.9,
       max_new_tokens: 1200,
@@ -30307,6 +30823,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const sourceAudioPath = segment.custom_audio_path || audioInput.value;
       const sceneDuration = Math.max(0.1, timelineSegmentDuration(segment) || 4);
       const sourceStart = segment.custom_audio_path ? audioSourceStart(segment) : Number(segment.start || 0);
+      const sourceDuration = audioSourceDurationForScene(segment);
+      if (sourceDuration > 0 && sourceStart >= sourceDuration - 0.01) {
+        const sourceLabel = segment.custom_audio_path ? "custom scene audio" : "global/project audio";
+        throw new Error(
+          `${sceneDisplayName(segment, sceneIndex)} starts after the available ${sourceLabel} ends.\n\n` +
+          `Scene audio start: ${formatTime(sourceStart)}\n` +
+          `Audio length: ${formatTime(sourceDuration)}\n\n` +
+          `Shorten or move this scene, load longer audio, or add silence before rendering.`
+        );
+      }
       const trimStart = Math.max(0, sourceStart - requestedPreSeconds);
       const actualPreSeconds = Math.max(0, sourceStart - trimStart);
       if (!String(sourceAudioPath || "").trim()) {
@@ -31033,6 +31559,106 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  function zEnhanceBatchTargets(sceneScope = "all") {
+    return batchTargetItems(sceneScope).filter(({ segment }) => {
+      const source = currentEnhanceSource(segment);
+      return Boolean(source?.path || source?.data || segment?.image?.filename);
+    });
+  }
+
+  function validateZEnhanceAllReady({ sceneScope = "all" } = {}) {
+    const missing = [];
+    const allTargets = batchTargetItems(sceneScope);
+    const imageTargets = zEnhanceBatchTargets(sceneScope);
+    if (!allTargets.length) missing.push(batchEmptyMessage(sceneScope));
+    if (!imageTargets.length) {
+      missing.push(`No scene images found in ${batchScopeLabel(sceneScope)}. Create, load, or choose scene images first.`);
+    }
+    for (const { segment, index } of imageTargets) {
+      if (!sceneImagePromptForEnhanceAll(segment).prompt) {
+        missing.push(`${sceneDisplayName(segment, index)}: current T2I/image prompt is missing.`);
+      }
+    }
+    return missing;
+  }
+
+  async function zEnhanceAllScenes(options = {}) {
+    updateActiveFromInputs();
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const missing = validateZEnhanceAllReady({ sceneScope });
+    const progress = createProgressWindow("Enhance All Images");
+    if (missing.length) {
+      progress.setHtml(`
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="font-weight:900;color:#fecaca;">Enhance All cannot start yet.</div>
+          <div>Fix these first, then press Enhance All again:</div>
+          <div style="max-height:360px;overflow:auto;border:1px solid #7f1d1d;border-radius:6px;background:#1f0808;padding:10px;white-space:pre-wrap;">${escapeHtml(missing.map((item) => `- ${item}`).join("\n"))}</div>
+        </div>
+      `, 100);
+      toast("Enhance All needs scene images and prompts first.", true);
+      if (options.throwOnError) throw new Error(missing.join("\n"));
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zEnhanceAllButton.disabled = true;
+      zEnhanceAllToolButton.disabled = true;
+      zEnhanceAllButton.textContent = "Enhancing...";
+      zEnhanceAllToolButton.textContent = "Enhancing...";
+      zEnhanceButton.disabled = true;
+      zEnhanceButton.textContent = "Enhancing...";
+      progress.set(`Autosaving session/SRT before Enhance All (${batchScopeLabel(sceneScope)})...`, 3);
+      await saveSessionForSceneVideo();
+      const scenes = zEnhanceBatchTargets(sceneScope);
+      const settings = saveZEnhanceSettingsFromPanel();
+      pushHistory();
+      progress.set(`Enhance All: enhancing ${scenes.length} timeline image${scenes.length === 1 ? "" : "s"}...`, 10);
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 10 + Math.floor((index / scenes.length) * 82);
+        const span = Math.max(1, Math.floor(76 / scenes.length));
+        progress.set(`Enhance All ${index + 1}/${scenes.length}: ${sceneLabel}\nUpscaling/enhancing selected scene image...`, base);
+        await enhanceImageForSegment(segment, progress, base + span * 0.1, span * 0.75, `Enhance All ${index + 1}/${scenes.length}: ${sceneLabel}`, {
+          settings,
+          promptSource: "scene_image_prompt",
+        });
+        assertBatchNotStopped();
+        await autoSaveSessionQuiet(`Enhance All scene ${sceneIndex + 1}`);
+        await runImageMemoryCleanupQuiet(progress, sceneLabel, Math.min(98, base + span));
+      }
+      await autoSaveSessionQuiet("Enhance All complete");
+      progress.set("Enhance All complete. Review the enhanced image versions in the timeline.", 100);
+      progress.close(4500);
+      toast("Enhance All complete.");
+    } catch (error) {
+      const errorMessage = String(error?.message || error);
+      const stopped = /stopped by user/i.test(errorMessage);
+      const statusLabel = stopped ? "Stopped" : "Error";
+      progress.set(`${statusLabel}:\n${errorMessage}\n\nRunning memory cleanup...`, 100);
+      toast(errorMessage, !stopped);
+      try {
+        const cleanupOutput = await runImageMemoryCleanupQuiet(progress, stopped ? "stopped Enhance All" : "Enhance All error", 100);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\n${cleanupOutput}`, 100);
+      } catch (cleanupError) {
+        console.warn("[VRGDG Music Builder] Cleanup after Enhance All stop failed:", cleanupError);
+        progress.set(`${statusLabel}:\n${errorMessage}\n\nCleanup also failed:\n${String(cleanupError?.message || cleanupError)}`, 100);
+      }
+      if (options.throwOnError) throw error;
+    } finally {
+      zEnhanceAllButton.disabled = false;
+      zEnhanceAllToolButton.disabled = false;
+      zEnhanceAllButton.textContent = "Enhance All";
+      zEnhanceAllToolButton.textContent = "Enhance All";
+      zEnhanceButton.disabled = false;
+      zEnhanceButton.textContent = "Upscale / Enhance Image";
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
   async function ernieImageAllScenes(options = {}) {
     updateActiveFromInputs();
     const imageRunMode = options.imageRunMode || "resume_missing";
@@ -31591,6 +32217,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (promptScenes.length) {
         await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
       }
+      const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+      let includePreviousSceneImage = false;
+      if (browserSettings.ask_previous_scene_image && scenes.some(({ segment }) => previousSceneImageIngredient(segment))) {
+        includePreviousSceneImage = window.confirm(
+          `Send each available previous scene image as a reference during this Browser AI batch?\n\n`
+          + `${browserImageProviderLabel(browserSettings.provider)} will receive the prior scene image when it exists, so it can better continue the visual story.`
+        );
+      }
       progress.set(`Image All: creating ${scenes.length} Flow/GPT image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
@@ -31606,6 +32240,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             base + span * 0.35,
             span * 0.45,
             `Flow/GPT All ${index + 1}/${scenes.length}: ${sceneLabel}`,
+            { includePreviousSceneImage },
           );
           assertBatchNotStopped();
           await autoSaveSessionQuiet(`Flow/GPT Image All scene ${sceneIndex + 1}`);
@@ -31628,9 +32263,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       zImageAllButton.disabled = false;
       zImageAllButton.textContent = "Image All";
       flowGptCreateImageButton.disabled = false;
-      flowGptCreateImageButton.textContent = "Create with Flow/GPT";
+      flowGptCreateImageButton.textContent = "Create with Browser AI";
       flowGptCreatePromptButton.disabled = false;
-      flowGptCreatePromptButton.textContent = "Gemma Flow/GPT Prompt";
+      flowGptCreatePromptButton.textContent = "Gemma Browser Prompt";
       state.batchCancelled = false;
       syncInspector();
       render();
@@ -32501,10 +33136,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return;
     }
     pushHistory();
-    segment.enhance_prompt = prompt;
-    zEnhancePromptPreview.value = prompt;
+    syncSegmentT2IPrompt(segment, prompt);
     syncZEnhanceSettingsPanel();
-    toast(`${sourceLabel} prompt sent to Enhance.`);
+    render();
+    toast(`${sourceLabel} prompt set as this scene's image/Enhance prompt.`);
   }
 
   function timestampForProjectName() {
@@ -32756,6 +33391,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         append_subject_to_prompts: true,
         repair_lyric_segments: false,
         text_gemma_runner: state.textGemmaRunner || "builtin",
+        gemma_context_limit: normalizeGemmaContextLimit(state.gemmaContextLimit),
         gemma_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
         lm_studio_base_url: state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1",
         lm_studio_model: state.lmStudioModel || "",
@@ -34687,7 +35323,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           image_ingredients: refs,
           user_notes: "These are performer, character, location, and aesthetic references for the whole project.",
           unload_after: true,
-          n_ctx: 4096,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           max_new_tokens: 500,
           temperature: 0.25,
           top_p: 0.95,
@@ -34871,6 +35507,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     runner.options[0].textContent = "Gemma Local";
     runner.options[1].textContent = "LM Studio";
     runner.options[2].textContent = "LLM API";
+    const gemmaContextLimit = makeInput(String(normalizeGemmaContextLimit(state.gemmaContextLimit)), "number");
+    gemmaContextLimit.min = "512";
+    gemmaContextLimit.max = "262144";
+    gemmaContextLimit.step = "256";
     const gemmaGpuLayers = makeInput(String(normalizeGemmaGpuLayers(state.gemmaGpuLayers)), "number");
     gemmaGpuLayers.min = "0";
     gemmaGpuLayers.max = "999";
@@ -34879,9 +35519,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     builtinPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;border:1px solid #334155;border-radius:7px;background:#0f172a;padding:12px;";
     const builtinNote = document.createElement("div");
     builtinNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
-    builtinNote.textContent = "Advanced local GGUF setting. Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
+    builtinNote.textContent = "Advanced local GGUF settings. Context limit controls how much text Gemma Local can accept. Higher context can use much more RAM/VRAM and may slow down, hang, fail, or run out of memory.";
+    const gpuNote = document.createElement("div");
+    gpuNote.style.cssText = "font-size:12px;color:#94a3b8;line-height:1.4;";
+    gpuNote.textContent = "Lower GPU layers if Gemma Local runs out of VRAM; try 12 for 10GB cards. Higher values use more VRAM and may run faster.";
     builtinPanel.append(
       builtinNote,
+      makeField("Context limit / n_ctx", gemmaContextLimit),
+      gpuNote,
       makeField("GPU layers / n_gpu_layers", gemmaGpuLayers),
     );
     const baseUrl = makeInput(state.lmStudioBaseUrl || "http://127.0.0.1:1234/v1");
@@ -35016,6 +35661,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     );
     const syncVisibility = () => {
       state.textGemmaRunner = runner.value || "builtin";
+      state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       builtinPanel.style.display = runner.value === "builtin" ? "flex" : "none";
       lmPanel.style.display = runner.value === "lm_studio" ? "flex" : "none";
@@ -35060,6 +35706,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     close.onclick = cancel.onclick = () => backdrop.remove();
     save.onclick = async () => {
       state.textGemmaRunner = runner.value || "builtin";
+      state.gemmaContextLimit = normalizeGemmaContextLimit(gemmaContextLimit.value);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(gemmaGpuLayers.value);
       state.lmStudioBaseUrl = baseUrl.value || "http://127.0.0.1:1234/v1";
       state.lmStudioModel = model.value || "";
@@ -35309,6 +35956,34 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     else if (selectedImageMode === "krea2_2pass") await krea2TwoPassImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else if (selectedImageMode === "flow_gpt") await flowGptImageAllScenes({ imageRunMode: action.mode, sceneScope });
     else await zImageAllScenes({ imageRunMode: action.mode, sceneScope });
+  }
+
+  async function confirmAndRunZEnhanceAll() {
+    const scopeChoices = batchScopeChoices();
+    const imageTargets = zEnhanceBatchTargets("all").length;
+    const action = await chooseBatchModeAction({
+      title: "Enhance All Images?",
+      intro: `Enhance All runs the current Enhance settings on existing timeline images only. It does not create missing scene images or rewrite prompts. Found ${imageTargets} scene image${imageTargets === 1 ? "" : "s"} in the full timeline.`,
+      confirmLabel: "Run Enhance All",
+      returnAll: true,
+      choices: [
+        {
+          value: "enhance_existing",
+          label: "Enhance existing images",
+          description: "Use each scene's current T2I/image prompt so every enhanced image keeps the right scene content.",
+        },
+      ],
+      extraGroups: [
+        ...(scopeChoices.length ? [{
+          key: "sceneScope",
+          label: "Scenes to run",
+          description: "Choose all scenes, start from the active clip, or run only the scenes selected with Select Multi.",
+          choices: scopeChoices,
+        }] : []),
+      ],
+    }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+    if (!action?.mode) return;
+    await zEnhanceAllScenes({ sceneScope: normalizeBatchScope(action.sceneScope) });
   }
 
   async function confirmAndRunGemmaT2IAll() {
@@ -35747,7 +36422,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             description: compactWizardText(item.description, 700),
           })),
           unload_after: true,
-          n_ctx: 10000,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           max_new_tokens: 2200,
         }, 10 * 60 * 1000);
         const { added, updated } = upsertWizardLocations(refs, data.locations || []);
@@ -35802,7 +36477,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             description: compactWizardText(item.description, 700),
           })),
           unload_after: true,
-          n_ctx: 10000,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           max_new_tokens: 1800,
         }, 10 * 60 * 1000);
         upsertWizardLocations(refs, data.locations || []);
@@ -36142,7 +36817,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
           vision_model_file: i2vGemmaModelSelect.value || gemmaModelSelect.value || "",
           mmproj_file: i2vMmprojSelect.value || mmprojSelect.value || "",
-          n_ctx: 8000,
+          n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           n_gpu_layers: normalizeGemmaGpuLayers(state.gemmaGpuLayers),
           n_threads: 8,
           unload_after: true,
@@ -36360,19 +37035,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return status;
       },
       openFlowGptLogin: async (provider = BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA) => {
-        const normalized = provider === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
-          ? BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
-          : BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA;
+        const normalized = normalizeFlowGptBrowserProvider(provider);
         const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
         await openBrowserImageLogin(normalized, {
-          debug_port: normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? 9223 : 9222,
+          debug_port: browserImageProviderDebugPort(normalized),
           timeoutMs: 60000,
         });
-        const status = normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE
-          ? `GPT Image login browser opened.\nGPT prompts will append aspect ratio: ${settings.aspect_ratio || "16:9"}.`
-          : `Flow login browser opened.\nSet Flow to 1 image and choose your aspect ratio before batch runs.\nRetries: ${settings.max_retries || 10}`;
+        const status = browserImageLoginStatus(normalized, settings);
         flowGptStatusText.textContent = status;
-        toast(normalized === BROWSER_IMAGE_PROVIDERS.GPT_IMAGE ? "GPT Image login browser opened." : "Flow login browser opened.");
+        toast(`${browserImageProviderLabel(normalized)} login browser opened.`);
         return status;
       },
       openFlowGptManualBrowser: async () => {
@@ -36386,12 +37057,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncFlowGptManualPanel();
         await exportManualFlowGptRefs();
         return flowGptManualStatus.textContent || "Scene refs exported.";
-      },
-      armFlowGptManualDownloadImport: async () => {
-        flowGptManualMode.input.checked = true;
-        syncFlowGptManualPanel();
-        await armManualFlowGptDownloadImport();
-        return flowGptManualStatus.textContent || "Manual download import armed.";
       },
       importLatestFlowGptManualDownload: async () => {
         flowGptManualMode.input.checked = true;
@@ -36502,6 +37167,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   flowGptTimeout.addEventListener("input", saveFlowGptBrowserSettingsFromPanel);
   flowGptRetries.addEventListener("input", saveFlowGptBrowserSettingsFromPanel);
   flowGptFailureMode.addEventListener("change", saveFlowGptBrowserSettingsFromPanel);
+  flowGptAskPreviousImage.input.addEventListener("change", saveFlowGptBrowserSettingsFromPanel);
   flowGptPrompt.addEventListener("input", () => {
     pushHistory();
     const segment = activeSegment();
@@ -36514,6 +37180,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   flowGptManualAutoAdvance.input.addEventListener("change", syncFlowGptManualPanel);
   flowNanoProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA);
   gptImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE);
+  metaImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.META_AI);
   flowGptStatusButton.onclick = () => refreshFlowGptBrowserStatus().catch((error) => toast(String(error?.message || error), true));
   flowGptSetupButton.onclick = async () => {
     flowGptSetupButton.disabled = true;
@@ -36529,22 +37196,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       flowGptSetupButton.disabled = false;
     }
   };
-  flowLoginButton.onclick = async () => {
+  flowGptLoginButton.onclick = async () => {
     try {
       const settings = saveFlowGptBrowserSettingsFromPanel();
-      await openBrowserImageLogin(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA, { debug_port: 9222, timeoutMs: 60000 });
-      flowGptStatusText.textContent = `Flow login browser opened.\nSet Flow to 1 image and choose your aspect ratio before batch runs.\nRetries: ${settings.max_retries}`;
-      toast("Flow login browser opened.");
-    } catch (error) {
-      toast(String(error?.message || error), true);
-    }
-  };
-  gptLoginButton.onclick = async () => {
-    try {
-      const settings = saveFlowGptBrowserSettingsFromPanel();
-      await openBrowserImageLogin(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE, { debug_port: 9223, timeoutMs: 60000 });
-      flowGptStatusText.textContent = `GPT Image login browser opened.\nGPT prompts will append aspect ratio: ${settings.aspect_ratio || "16:9"}.`;
-      toast("GPT Image login browser opened.");
+      await openBrowserImageLogin(settings.provider, {
+        debug_port: browserImageProviderDebugPort(settings.provider),
+        timeoutMs: 60000,
+      });
+      flowGptStatusText.textContent = browserImageLoginStatus(settings.provider, settings);
+      toast(`${browserImageProviderLabel(settings.provider)} login browser opened.`);
     } catch (error) {
       toast(String(error?.message || error), true);
     }
@@ -36556,10 +37216,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   });
   flowGptManualExportRefsButton.onclick = () => exportManualFlowGptRefs().catch((error) => {
     flowGptManualStatus.textContent = `Manual ref export failed:\n${String(error?.message || error)}`;
-    toast(String(error?.message || error), true);
-  });
-  flowGptManualArmDownloadButton.onclick = () => armManualFlowGptDownloadImport().catch((error) => {
-    flowGptManualStatus.textContent = `Manual download import failed:\n${String(error?.message || error)}`;
     toast(String(error?.message || error), true);
   });
   flowGptManualImportLatestButton.onclick = () => importLatestManualFlowGptDownload().catch((error) => {
@@ -36854,6 +37510,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   gemmaVideoAllButton.onclick = confirmAndRunGemmaVideoAll;
   updatePromptRunnerButtonLabels();
   zImageAllButton.onclick = confirmAndRunZImageAll;
+  zEnhanceAllButton.onclick = confirmAndRunZEnhanceAll;
+  zEnhanceAllToolButton.onclick = confirmAndRunZEnhanceAll;
   editI2VPromptButton.onclick = editCurrentVideoPromptWithGemma;
   fullBuildButton.onclick = confirmAndRunFullBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;
@@ -36952,6 +37610,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   editFlowGptT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flow_gpt_t2i");
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
+  importImageFolderButton.onclick = () => {
+    imageFolderFileInput.value = "";
+    imageFolderFileInput.click();
+  };
   for (const button of zCreateButtons) button.onclick = previewZImage;
   for (const button of ernieCreateButtons) button.onclick = previewErnieImage;
   for (const button of krea2TwoPassCreateButtons) button.onclick = previewKrea2TwoPassImage;
@@ -36960,6 +37622,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   customImageFileInput.addEventListener("change", () => {
     const file = customImageFileInput.files?.[0];
     if (file) loadCustomImageFile(file);
+  });
+  imageFolderFileInput.addEventListener("change", () => {
+    const files = Array.from(imageFolderFileInput.files || []);
+    if (files.length) importTimelineImagesFromFolder(files);
+    imageFolderFileInput.value = "";
   });
   i2iImageFileInput.addEventListener("change", () => {
     const file = i2iImageFileInput.files?.[0];

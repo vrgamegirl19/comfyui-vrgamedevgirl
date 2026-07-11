@@ -62,6 +62,8 @@ Rules:
 * When there is one subject in singing mode, write "she sings", "he sings", or "[subject label] sings", never "they sing".
 * When there is one subject in speaking mode, write only "she says", "he says", or "[subject label] says", never "they say".
 * Pull the location from `location_ref`.
+* `location_ref` is the required physical set. Do not replace it with a location from `story_layer`, `scene_story_beat`, lyrics, or the user story arc.
+* If the story layer mentions a different place, translate only its emotion, conflict, or action into the mapped `location_ref` environment.
 * Treat `first_frame_visual_inventory`, `text_to_image_prompt`, `scene_summary`, and existing image prompt text as first-frame visual inventory only. They may identify visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition.
 * Do not use first-frame visual inventory for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing.
 * Build video action from this hierarchy: `character_motion_guidance`, `camera_motion_speed_guidance`, `camera_guidance`, `performance_direction`, `vocal_status`, and scene story beat first; story layer second; first-frame visual inventory last, and only for visible environment/appearance details.
@@ -128,6 +130,8 @@ Rules:
 * If `subject_refs` has one subject, describe only that one visible subject. Do not create duplicates, backup singers, crowds, or extra people unless the scene notes explicitly ask for them.
 * If `vocal_status.no_character_present` is true, do not include, mention, imply, or describe any mapped character/singer/subject. Use the location, props, environment, objects, atmosphere, and composition instead.
 * Pull the setting from `location_ref`.
+* `location_ref` is the required physical set. Do not replace it with a location from `story_beat`, `song_story_brief`, `user_story_arc`, or lyrics.
+* If the story layer mentions a different place, translate only its emotion, symbolism, pose, or action into the mapped `location_ref` environment.
 * Include the mapped subject descriptions and location description when available.
 * Use the scene lyrics, lyric section, story beat, song story brief, and user story arc only as visual guidance. Do not quote long lyrics.
 * If the scene is a singing scene, show performance energy and emotion as a still expression only. Do not mention lip sync, audio behavior, mouth movement, eye movement, blinking, or animation.
@@ -1163,6 +1167,8 @@ def _build_story_layer_arc(payload):
     lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 16000)
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or storyboard.get("story_layer") or {})
     story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("user_story_arc") or "", 4000)
+    story_arc_seed = _clean_scene_text(payload.get("story_arc_seed") or payload.get("storyArcSeed") or payload.get("seed") or "", 80)
+    previous_story_arc = _clean_scene_text(payload.get("previous_story_arc") or payload.get("previousStoryArc") or "", 5000)
     style_theme = _clean_scene_text(payload.get("style_theme") or payload.get("styleTheme") or payload.get("theme") or "", 1600)
     performance_style = _clean_scene_text(payload.get("performance_style") or payload.get("performanceStyle") or storyboard.get("performance_style_default") or "", 200)
     facial_performance = _clean_scene_text(payload.get("facial_performance") or payload.get("facialPerformance") or storyboard.get("facial_performance_default") or "", 200)
@@ -1300,11 +1306,16 @@ def _build_story_layer_arc(payload):
         "* Unless the character motion level is very low, every section must include a distinct physical action by the singer or main character.\n"
         "* Vary the action between sections. Avoid repeating stand, stare, gaze, look, walk, or turn as the only beat.\n"
         "* Make the location support the action; do not let the location be the whole story beat.\n"
+        "* If Location descriptions are provided, use only those locations as the physical settings for the arc.\n"
+        "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
+        "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
         "* If the song does not clearly have every section, infer a natural structure.\n"
         "* If only lyrics are provided, build the arc from the lyrics.\n"
         "* If no lyrics are provided, build the arc from the theme or story idea.\n"
         "* Do not ask follow-up questions unless absolutely necessary.\n"
         "* Output only the story arc sections. No intro note, no markdown table, no JSON.\n\n"
+        f"Creative variation seed: {story_arc_seed or '[none]'}\n"
+        "Use this seed as a reroll key. If the user regenerates the story arc with a different seed, choose a meaningfully different visual interpretation, section action pattern, and location usage while still respecting the same subjects, locations, lyrics, and style.\n\n"
         f"Scene default style settings:\n"
         f"- Camera flow: {camera_flow or '[not provided]'}\n"
         f"- Camera motion speed: {camera_motion_speed}/10\n"
@@ -1314,6 +1325,8 @@ def _build_story_layer_arc(payload):
         f"{motion_guidance}\n\n"
         f"{_lyric_story_strength_guidance(story_layer)}\n\n"
         f"Story idea:\n{story_idea or '[not provided]'}\n\n"
+        f"Previous generated story arc to avoid copying:\n{previous_story_arc or '[not provided]'}\n\n"
+        "If a previous generated story arc is provided, do not preserve its specific locations, set pieces, or section actions. Use it only as a negative example of what should change on this reroll.\n\n"
         f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
         f"Character descriptions:\n{json.dumps(subjects[:24], ensure_ascii=False, indent=2) if subjects else '[not provided]'}\n\n"
         f"Location descriptions:\n{json.dumps(locations[:40], ensure_ascii=False, indent=2) if locations else '[not provided]'}\n\n"
@@ -1336,10 +1349,55 @@ def _build_story_layer_arc(payload):
         raise ValueError("Gemma returned an empty story arc.")
     return {
         "story_arc": text,
+        "story_arc_seed": story_arc_seed,
         "runner": run_info.get("runner", "builtin"),
         "used_model": run_info.get("used_model", ""),
         "unloaded": run_info.get("unloaded", True),
     }
+
+
+_STORYBOARD_DRIFT_LOCATION_PATTERNS = [
+    (r"\bwarehouse\b", "warehouse"),
+    (r"\bloading\s+dock\b", "loading dock"),
+    (r"\bindustrial\b", "industrial"),
+    (r"\bbackstage\s+corridor\b", "backstage corridor"),
+    (r"\bnarrow,\s*dimly\s*lit\s+corridor\b", "dimly lit corridor"),
+    (r"\bdark,\s*narrow\s+corridor\b", "dark corridor"),
+    (r"\bheavy\s+(?:metal|steel)\s+door\b", "heavy metal/steel door"),
+    (r"\bmassive\s+window\b", "massive window"),
+    (r"\bconcrete\b", "concrete"),
+    (r"\bmetal\s+pipes?\b", "metal pipes"),
+    (r"\bsteel\s+stairs?\b", "steel stairs"),
+    (r"\bvast,\s*silent\s+hall\b", "vast hall"),
+    (r"\bvast\s+empty\s+space\b", "vast empty space"),
+]
+
+
+def _storyboard_scene_location_context(scene):
+    if not isinstance(scene, dict):
+        return ""
+    location = scene.get("location_ref") if isinstance(scene.get("location_ref"), dict) else {}
+    parts = []
+    if isinstance(location, dict):
+        parts.extend([
+            location.get("name"),
+            location.get("description"),
+            location.get("trigger_phrase") or location.get("trigger") or location.get("Trigger"),
+        ])
+    parts.extend([scene.get("setting"), scene.get("location")])
+    return _clean_scene_text(" ".join(str(part or "") for part in parts if str(part or "").strip()), 2400)
+
+
+def _storyboard_location_drift_terms(text, location_context):
+    text_lower = str(text or "").lower()
+    location_lower = str(location_context or "").lower()
+    if not text_lower or not location_lower:
+        return []
+    drift_terms = []
+    for pattern, label in _STORYBOARD_DRIFT_LOCATION_PATTERNS:
+        if re.search(pattern, text_lower, flags=re.IGNORECASE) and not re.search(pattern, location_lower, flags=re.IGNORECASE):
+            drift_terms.append(label)
+    return drift_terms
 
 
 def _build_story_layer_scene_beat(payload):
@@ -1358,6 +1416,9 @@ def _build_story_layer_scene_beat(payload):
         "Rules:\n"
         "- Use the Song Story Brief and User Story Arc as continuity anchors.\n"
         "- Use the selected scene lyrics, lyric section, subject details, location details, vocal status, and no-character flag.\n"
+        "- Treat the selected scene location_ref as the required physical setting for this scene.\n"
+        "- Do not invent or import a different place from the story arc, song brief, previous beat, or next lyrics.\n"
+        "- If the story arc names a different location, translate only its emotion, tension, symbolism, or action into the selected location_ref.\n"
         "- Describe narrative purpose, emotional state, visual symbolism, and how the scene should feel.\n"
         "- Do not write the final video prompt.\n"
         "- Do not include camera technical instructions unless they are part of the story emotion.\n"
@@ -1387,6 +1448,53 @@ def _build_story_layer_scene_beat(payload):
     text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(text, 1800), flags=re.I)
     if not text:
         raise ValueError("Gemma returned an empty scene story beat.")
+    location_context = _storyboard_scene_location_context(scene)
+    drift_terms = _storyboard_location_drift_terms(text, location_context)
+    if drift_terms:
+        repair_instruction = (
+            "Rewrite the scene story beat so it obeys the mapped location.\n\n"
+            "Hard rules:\n"
+            "- Keep the same emotional purpose and subject energy.\n"
+            "- Use only the mapped location as the physical setting.\n"
+            "- Remove every incompatible place/object listed below.\n"
+            "- Do not mention a warehouse, loading dock, industrial corridor, metal door, concrete hall, steel stairs, pipes, or massive window unless those details are explicitly in the mapped location.\n"
+            "- Output one short paragraph only, under 80 words.\n\n"
+            f"Mapped location:\n{location_context or '[none]'}\n\n"
+            f"Incompatible leaked location terms:\n{', '.join(drift_terms)}\n\n"
+            f"Original scene beat:\n{text}"
+        )
+        repaired_text, repair_info = _run_builder_text_llm(
+            payload,
+            repair_instruction,
+            temperature=0.20,
+            top_p=0.85,
+            max_new_tokens=300,
+            label="Storyboard Scene Beat Location Repair Gemma",
+            preserve_paragraphs=True,
+        )
+        repaired_text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(repaired_text, 1800), flags=re.I)
+        repaired_drift_terms = _storyboard_location_drift_terms(repaired_text, location_context)
+        if repaired_text and not repaired_drift_terms:
+            text = repaired_text
+            run_info = {
+                **run_info,
+                "location_repaired": True,
+                "location_repair_terms": drift_terms,
+                "location_repair_runner": repair_info.get("runner", ""),
+                "location_repair_model": repair_info.get("used_model", ""),
+            }
+        else:
+            subject_hint = "The scene subject" if not scene.get("subject_refs") else _clean_scene_text((scene.get("subject_refs") or [{}])[0].get("name") or "The scene subject", 120)
+            text = (
+                f"{subject_hint} channels the story arc's defiant, boundary-breaking energy inside {location_context}. "
+                "The beat focuses on tension, control, and release through posture, expression, and interaction with the mapped studio environment, without changing the physical location."
+            )
+            run_info = {
+                **run_info,
+                "location_repaired": True,
+                "location_repair_terms": drift_terms,
+                "location_repair_fallback": True,
+            }
     return {
         "story_beat": text,
         "runner": run_info.get("runner", "builtin"),

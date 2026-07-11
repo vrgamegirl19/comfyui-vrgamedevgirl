@@ -12,6 +12,7 @@ const BROWSER_IMAGE_MANUAL_IMPORT_LATEST_ENDPOINT = "/vrgdg/browser_image/manual
 const PROVIDERS = Object.freeze({
   FLOW_NANO_BANANA: "flow_nano_banana",
   GPT_IMAGE: "gpt_image",
+  META_AI: "meta_ai",
 });
 
 async function readJsonResponse(response) {
@@ -61,6 +62,9 @@ function normalizeBrowserImageProvider(provider) {
   }
   if (["chatgpt", "chatgpt_image", "chatgpt_images", "gpt", "gpt_image", "gpt_image_2", "gpt_images"].includes(value)) {
     return PROVIDERS.GPT_IMAGE;
+  }
+  if (["meta", "meta_ai", "meta_image", "meta_images", "metaai"].includes(value)) {
+    return PROVIDERS.META_AI;
   }
   return value || PROVIDERS.FLOW_NANO_BANANA;
 }

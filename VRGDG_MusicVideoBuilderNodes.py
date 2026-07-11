@@ -761,6 +761,20 @@ _BUILDER_INSTRUCTION_LABELS = {
     "zimage_t2i": "ZImage Text to Image",
 }
 
+_BUILDER_INSTRUCTION_PRESET_GROUPS = {
+    "ernie_t2i": "standard_image_t2i",
+    "krea2_t2i": "standard_image_t2i",
+    "zimage_t2i": "standard_image_t2i",
+    "flow_gpt_t2i": "reference_image_t2i",
+    "flux_klein_t2i": "reference_image_t2i",
+    "nano_b_t2i": "reference_image_t2i",
+}
+
+_BUILDER_INSTRUCTION_PRESET_GROUP_LABELS = {
+    "standard_image_t2i": "Standard Image T2I",
+    "reference_image_t2i": "Reference/Image Edit T2I",
+}
+
 
 def _safe_builder_instruction_key(value):
     key = re.sub(r"[^a-z0-9_]+", "_", str(value or "").strip().lower()).strip("_")
@@ -801,7 +815,21 @@ def _builder_instruction_preset_root():
     return os.path.join(folder_paths.get_output_directory(), "VRGDG_LLM_Instruction_Presets", "builder")
 
 
+def _builder_instruction_preset_group(key):
+    safe_key = _safe_builder_instruction_key(key)
+    return _BUILDER_INSTRUCTION_PRESET_GROUPS.get(safe_key, safe_key)
+
+
+def _builder_instruction_preset_group_label(key):
+    group = _builder_instruction_preset_group(key)
+    return _BUILDER_INSTRUCTION_PRESET_GROUP_LABELS.get(group, _BUILDER_INSTRUCTION_LABELS.get(group, group))
+
+
 def _builder_instruction_preset_path(key, name):
+    return os.path.join(_builder_instruction_preset_root(), _builder_instruction_preset_group(key), f"{_safe_preset_name(name)}.txt")
+
+
+def _legacy_builder_instruction_preset_path(key, name):
     return os.path.join(_builder_instruction_preset_root(), _safe_builder_instruction_key(key), f"{_safe_preset_name(name)}.txt")
 
 
@@ -911,23 +939,39 @@ def _reset_builder_instruction(payload):
 
 def _list_builder_instruction_presets(payload):
     key = _safe_builder_instruction_key(payload.get("key"))
-    folder = os.path.join(_builder_instruction_preset_root(), key)
+    group = _builder_instruction_preset_group(key)
+    folder = os.path.join(_builder_instruction_preset_root(), group)
     presets = []
-    if os.path.isdir(folder):
-        for filename in os.listdir(folder):
+    seen = set()
+    folders = [(folder, False)]
+    legacy_folder = os.path.join(_builder_instruction_preset_root(), key)
+    if os.path.normcase(os.path.abspath(legacy_folder)) != os.path.normcase(os.path.abspath(folder)):
+        folders.append((legacy_folder, True))
+    for scan_folder, legacy in folders:
+        if not os.path.isdir(scan_folder):
+            continue
+        for filename in os.listdir(scan_folder):
             if not filename.lower().endswith(".txt"):
                 continue
-            path = os.path.join(folder, filename)
+            preset_name = os.path.splitext(filename)[0]
+            dedupe_key = preset_name.lower()
+            if dedupe_key in seen:
+                continue
+            path = os.path.join(scan_folder, filename)
             if os.path.isfile(path):
+                seen.add(dedupe_key)
                 presets.append({
-                    "name": os.path.splitext(filename)[0],
+                    "name": preset_name,
                     "path": os.path.abspath(path),
                     "updated": os.path.getmtime(path),
+                    "legacy": legacy,
                 })
     presets.sort(key=lambda item: item.get("updated", 0), reverse=True)
     return {
         "key": key,
         "label": _BUILDER_INSTRUCTION_LABELS.get(key, key),
+        "preset_group": group,
+        "preset_group_label": _builder_instruction_preset_group_label(key),
         "presets": presets,
         "preset_folder": folder,
     }
@@ -944,7 +988,14 @@ def _save_builder_instruction_preset(payload):
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(text)
         handle.write("\n")
-    return {"key": key, "name": name, "path": path}
+    return {
+        "key": key,
+        "name": name,
+        "path": path,
+        "preset_folder": os.path.dirname(path),
+        "preset_group": _builder_instruction_preset_group(key),
+        "preset_group_label": _builder_instruction_preset_group_label(key),
+    }
 
 
 def _load_builder_instruction_preset(payload):
@@ -953,8 +1004,23 @@ def _load_builder_instruction_preset(payload):
     path = _builder_instruction_preset_path(key, name)
     text = _read_optional_text_file(path)
     if not text:
+        legacy_path = _legacy_builder_instruction_preset_path(key, name)
+        if os.path.normcase(os.path.abspath(legacy_path)) != os.path.normcase(os.path.abspath(path)):
+            legacy_text = _read_optional_text_file(legacy_path)
+            if legacy_text:
+                path = legacy_path
+                text = legacy_text
+    if not text:
         raise FileNotFoundError(f"Instruction preset was not found or is empty: {path}")
-    return {"key": key, "name": name, "path": path, "text": text}
+    return {
+        "key": key,
+        "name": name,
+        "path": path,
+        "preset_folder": os.path.dirname(path),
+        "preset_group": _builder_instruction_preset_group(key),
+        "preset_group_label": _builder_instruction_preset_group_label(key),
+        "text": text,
+    }
 
 
 def _wizard_folder(project_folder):
@@ -3196,8 +3262,35 @@ def _repair_builder_gemma_prompt(payload, text, label):
 
 def _repair_and_validate_builder_gemma_prompt(payload, text, label):
     repaired = _repair_builder_gemma_prompt(payload, text, label)
+    performance_mode = str(
+        payload.get("performance_mode")
+        or payload.get("performanceMode")
+        or payload.get("video_type")
+        or payload.get("videoType")
+        or ""
+    ).strip().lower().replace("-", "_").replace(" ", "_")
+    if performance_mode in {"no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"}:
+        repaired = _clean_visual_only_positive_prompt(repaired)
     _validate_builder_gemma_prompt(repaired, label, payload)
     return repaired
+
+
+def _clean_visual_only_positive_prompt(text):
+    """Keep visual-only LTX prompts affirmative and free of vocal/mouth concepts."""
+    forbidden = re.compile(
+        r"\b(?:lip[ -]?sync(?:ing|s)?|sing(?:s|ing)?|sang|sung|rap(?:s|ping)?|"
+        r"vocal(?:s|ization)?|lyric(?:s)?|speak(?:s|ing)?|say(?:s|ing)?|said|"
+        r"dialogue|mouth(?:s|ed|ing)?|lips?)\b",
+        re.IGNORECASE,
+    )
+    negative = re.compile(
+        r"\b(?:no|not|never|without|avoid|omit|exclude|prevent|don['’]t|"
+        r"doesn['’]t|isn['’]t|aren['’]t|cannot|can['’]t|do\s+not|does\s+not)\b",
+        re.IGNORECASE,
+    )
+    parts = re.split(r"(?<=[.!?])\s+|\s*;\s*", str(text or ""))
+    kept = [part.strip() for part in parts if part.strip() and not forbidden.search(part) and not negative.search(part)]
+    return re.sub(r"\s{2,}", " ", " ".join(kept)).strip()
 
 
 def _generate_builder_agent_reply(payload):
@@ -7063,6 +7156,7 @@ def _gemma_choices():
 
 _MODEL_DEFAULT_KEYS = (
     "text_gemma_runner",
+    "gemma_context_limit",
     "lm_studio_base_url",
     "lm_studio_model",
     "lm_studio_api_key",
@@ -7707,6 +7801,17 @@ def _trim_scene_audio(payload):
     scene_number = int(payload.get("scene_number") or 1)
     start = max(0.0, float(payload.get("start") or 0))
     duration = max(0.05, float(payload.get("duration") or 0))
+    source_info = _read_audio_peaks(source_path, 16)
+    source_duration = float(source_info.get("duration") or 0)
+    if source_duration > 0:
+        remaining = source_duration - start
+        if remaining <= 0.01:
+            raise ValueError(
+                f"Scene {scene_number} audio trim starts after the source audio ends. "
+                f"Trim start: {start:.3f}s; audio length: {source_duration:.3f}s. "
+                "Shorten or move the scene, load longer audio, or add silence before rendering."
+            )
+        duration = min(duration, max(0.05, remaining))
     folder = os.path.join(project_folder, "scene_audio_trimmed")
     os.makedirs(folder, exist_ok=True)
     target_path = os.path.join(folder, f"scene_audio_{scene_number:04d}.wav")
@@ -7731,7 +7836,22 @@ def _trim_scene_audio(payload):
     result = subprocess.run(cmd, capture_output=True, text=True, errors="replace", check=False)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "ffmpeg failed to trim scene audio.").strip())
-    return {"audio_path": target_path, "scene_number": scene_number, "start": start, "duration": duration, "format": "pcm_s16le_wav"}
+    trimmed_info = _read_audio_peaks(target_path, 16)
+    trimmed_duration = float(trimmed_info.get("duration") or 0)
+    if trimmed_duration <= 0.01:
+        raise ValueError(
+            f"Scene {scene_number} audio trim was empty. "
+            f"Trim start: {start:.3f}s; requested duration: {duration:.3f}s. "
+            "Shorten or move the scene, load longer audio, or add silence before rendering."
+        )
+    return {
+        "audio_path": target_path,
+        "scene_number": scene_number,
+        "start": start,
+        "duration": trimmed_duration,
+        "requested_duration": float(payload.get("duration") or 0),
+        "format": "pcm_s16le_wav",
+    }
 
 
 def _find_ffmpeg_path():

@@ -44,6 +44,14 @@ _PROVIDERS = {
         "profile_name": "chrome-chatgpt-profile",
         "timeout_seconds": 600,
     },
+    "meta_ai": {
+        "label": "Meta AI",
+        "class_type": "VRGDG_MetaAIBrowserImage",
+        "url": "https://www.meta.ai/",
+        "debug_port": 9224,
+        "profile_name": "chrome-meta-profile",
+        "timeout_seconds": 600,
+    },
 }
 
 _PROVIDER_ALIASES = {
@@ -59,6 +67,11 @@ _PROVIDER_ALIASES = {
     "gpt_image": "gpt_image",
     "gpt_image_2": "gpt_image",
     "gpt_images": "gpt_image",
+    "meta": "meta_ai",
+    "meta_ai": "meta_ai",
+    "metaai": "meta_ai",
+    "meta_image": "meta_ai",
+    "meta_images": "meta_ai",
 }
 
 

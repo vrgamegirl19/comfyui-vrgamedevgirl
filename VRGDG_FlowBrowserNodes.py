@@ -420,7 +420,7 @@ class VRGDG_FlowBrowserImageEdit:
             cwd=flow_dir,
             capture_output=True,
             text=True,
-            timeout=timeout_seconds,
+            timeout=timeout_seconds + 120,
             env=env,
         )
 
@@ -781,14 +781,193 @@ class VRGDG_ChatGPTImagesBrowser:
         return (_load_image_as_tensor(saved_path),)
 
 
+class VRGDG_MetaAIBrowserImage:
+    @classmethod
+    def INPUT_TYPES(cls):
+        optional = {
+            f"image{i}": (
+                "IMAGE",
+                {
+                    "tooltip": (
+                        f"Optional image attachment #{i}. Set image_count high enough to include this socket. "
+                        "Images are attached to Meta AI with the plus/upload control before the prompt is submitted."
+                    )
+                },
+            )
+            for i in range(1, MAX_FLOW_IMAGES + 1)
+        }
+        optional["reuse_open_project"] = (
+            "BOOLEAN",
+            {
+                "default": True,
+                "tooltip": (
+                    "When enabled, automation reuses the current Meta AI tab/conversation instead of navigating "
+                    "back to the Meta AI start page for every image."
+                ),
+            },
+        )
+        return {
+            "required": {
+                "prompt": (
+                    "STRING",
+                    {
+                        "default": "create a cinematic image",
+                        "multiline": True,
+                        "tooltip": (
+                            "Prompt to paste into Meta AI. Connected images are attached first, then this prompt is submitted."
+                        ),
+                    },
+                ),
+                "image_count": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": MAX_FLOW_IMAGES,
+                        "step": 1,
+                        "tooltip": (
+                            "How many image sockets this run should attach, starting at image1. Use 0 for text-only generation."
+                        ),
+                    },
+                ),
+                "debug_port": (
+                    "INT",
+                    {
+                        "default": 9224,
+                        "min": 1,
+                        "max": 65535,
+                        "step": 1,
+                        "tooltip": (
+                            "Local Chrome remote-debugging port for Meta AI automation. "
+                            "Default 9224 keeps it separate from Flow and GPT Image."
+                        ),
+                    },
+                ),
+                "timeout_seconds": (
+                    "INT",
+                    {
+                        "default": 600,
+                        "min": 60,
+                        "max": 2400,
+                        "step": 10,
+                        "tooltip": (
+                            "Maximum time to let Meta AI create and download the image. Increase for slow generations."
+                        ),
+                    },
+                ),
+            },
+            "optional": optional,
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "run_meta_ai"
+    CATEGORY = "VRGDG/Meta AI"
+    DESCRIPTION = "Automates Meta AI image generation in Chrome. Optional dynamic image inputs are attached before the prompt; the downloaded image is returned as a ComfyUI IMAGE."
+
+    def run_meta_ai(
+        self,
+        prompt: str,
+        image_count: int,
+        debug_port: int,
+        timeout_seconds: int,
+        **kwargs,
+    ):
+        flow_dir = DEFAULT_FLOW_DIR
+        if _looks_like_path(debug_port):
+            debug_port = timeout_seconds
+            timeout_seconds = 600
+        debug_port = _coerce_int(debug_port, 9224, 1, 65535)
+        timeout_seconds = _coerce_int(timeout_seconds, 600, 60, 2400)
+        output_dir = os.path.abspath(os.path.join(flow_dir, "meta_outputs"))
+        os.makedirs(output_dir, exist_ok=True)
+
+        script_path = os.path.join(flow_dir, "meta-ai-poc.mjs")
+        if not os.path.isfile(script_path):
+            raise RuntimeError(f"Meta AI automation script not found: {script_path}")
+
+        playwright_dir = os.path.join(flow_dir, "node_modules", "playwright")
+        if not os.path.isdir(playwright_dir):
+            raise RuntimeError(
+                "Browser automation dependencies are not installed.\n\n"
+                "Add and run this ComfyUI node once:\n"
+                "VRGDG Flow Browser Setup\n\n"
+                "That setup node installs the shared portable Node.js and Playwright dependencies."
+            )
+
+        count = _coerce_int(image_count, 0, 0, MAX_FLOW_IMAGES)
+        reuse_open_project = _coerce_bool(kwargs.get("reuse_open_project"), True)
+        input_images = []
+        for index in range(1, count + 1):
+            image = kwargs.get(f"image{index}")
+            if image is not None:
+                input_images.append(image)
+
+        image_paths = _save_input_images(flow_dir, input_images, prefix="comfy_meta_input") if input_images else []
+        url = "https://www.meta.ai/"
+        _start_debug_chrome(flow_dir, debug_port, url, profile_name="chrome-meta-profile")
+
+        started_at = time.time()
+        command = [
+            _node_command(flow_dir),
+            script_path,
+            "--url",
+            url,
+            "--prompt",
+            prompt or "",
+            "--out",
+            output_dir,
+            "--timeout",
+            str(timeout_seconds * 1000),
+            "--connect-cdp",
+            f"http://127.0.0.1:{debug_port}",
+        ]
+        if reuse_open_project:
+            command.append("--no-navigate")
+        for image_path in image_paths:
+            command.extend(["--image", image_path])
+
+        env = os.environ.copy()
+        env["NO_COLOR"] = "1"
+        process = subprocess.run(
+            command,
+            cwd=flow_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=env,
+        )
+
+        stdout = process.stdout or ""
+        stderr = process.stderr or ""
+        saved_path = _extract_saved_path(stdout) or _newest_image_file(output_dir, started_at)
+
+        if process.returncode != 0 and not saved_path:
+            raise RuntimeError(
+                "Meta AI automation failed.\n\n"
+                f"Command: {' '.join(command)}\n\n"
+                f"STDOUT:\n{stdout[-4000:]}\n\nSTDERR:\n{stderr[-4000:]}"
+            )
+
+        if not saved_path:
+            raise RuntimeError(
+                "Meta AI automation completed, but no output image was found.\n\n"
+                f"STDOUT:\n{stdout[-4000:]}\n\nSTDERR:\n{stderr[-4000:]}"
+            )
+
+        return (_load_image_as_tensor(saved_path),)
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_FlowBrowserImageEdit": VRGDG_FlowBrowserImageEdit,
     "VRGDG_FlowBrowserSetup": VRGDG_FlowBrowserSetup,
     "VRGDG_ChatGPTImagesBrowser": VRGDG_ChatGPTImagesBrowser,
+    "VRGDG_MetaAIBrowserImage": VRGDG_MetaAIBrowserImage,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_FlowBrowserImageEdit": "VRGDG Flow Browser Image Edit",
     "VRGDG_FlowBrowserSetup": "VRGDG Flow Browser Setup",
     "VRGDG_ChatGPTImagesBrowser": "VRGDG ChatGPT Images Browser",
+    "VRGDG_MetaAIBrowserImage": "VRGDG Meta AI Browser Image",
 }

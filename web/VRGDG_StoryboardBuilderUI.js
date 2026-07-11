@@ -1887,7 +1887,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
     image_prompt_target: imagePromptTarget,
     ...(imageMode
       ? {
-        task_instruction: `Create detailed ${imagePromptTarget}s for Image Prep using advanced Krea 2-style still-image prompting. These are still-image prompts, not video or lip-sync prompts. Use lyrics and story beats for mood, symbolism, emotion, styling, and scene direction only. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless the scene notes explicitly ask for a live singing image. Preserve mapped subject prompt names exactly as provided in each scene's visible_subjects and subjects.name. When a subject has a trigger_phrase, that trigger phrase is the subject identity for prompt wording, so write natural phrases like 'a photo of TRIGGER_PHRASE' instead of 'a photo of a woman'. Do not rename 'the woman' as 'one woman' or 'a woman', and do not rename trigger phrases. If global_consistency_phrase is present, weave it naturally into the prompt where it fits instead of slapping it onto the front.`,
+        task_instruction: `Create detailed ${imagePromptTarget}s for Image Prep using advanced Krea 2-style still-image prompting. These are still-image prompts, not video or lip-sync prompts. Use lyrics and story beats for mood, symbolism, emotion, styling, and scene direction only. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, or lyrics. If story context mentions another place, translate only its emotion, symbolism, pose, or action into the mapped location_ref environment. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless the scene notes explicitly ask for a live singing image. Preserve mapped subject prompt names exactly as provided in each scene's visible_subjects and subjects.name. When a subject has a trigger_phrase, that trigger phrase is the subject identity for prompt wording, so write natural phrases like 'a photo of TRIGGER_PHRASE' instead of 'a photo of a woman'. Do not rename 'the woman' as 'one woman' or 'a woman', and do not rename trigger phrases. If global_consistency_phrase is present, weave it naturally into the prompt where it fits instead of slapping it onto the front.`,
         output_format: {
           type: "image_prompt_import_json",
           instruction: "Return only a JSON code block with an array of objects. Include every scene. Each object must have scene_number and image_prompt. Do not include prose outside the JSON code block.",
@@ -1898,7 +1898,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
         },
       }
       : {
-        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Build the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 9-10, do not write 'then holds', 'holds on', or static hold endings; use multiple coordinated readable camera moves. At character speed 9-10, do not leave the subject merely poised or standing; include clear full-body action or set interaction.",
+        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Build the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 9-10, do not write 'then holds', 'holds on', or static hold endings; use multiple coordinated readable camera moves. At character speed 9-10, do not leave the subject merely poised or standing; include clear full-body action or set interaction.",
       }),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),
@@ -2650,13 +2650,23 @@ function openStoryboardBuilder(payload = {}) {
   const createStoryArcWithGemma = async () => {
     syncStoryLayerFromInputs();
     const progress = createStoryboardProgressWindow("Story Arc Gemma");
+    const storyArcSeed = Math.floor(Math.random() * 2147483647);
+    const existingStoryArcText = String(userStoryArcInput.value || "").trim();
+    const existingLooksGeneratedArc = /\b(?:Intro|Verse\s*1?|Pre[-\s]?Chorus|Chorus|Bridge|Outro|Final\s+Chorus)\s*:/i.test(existingStoryArcText);
+    const storyLayerForRequest = normalizeStoryLayer({
+      ...state.storyLayer,
+      user_story_arc: existingLooksGeneratedArc ? "" : existingStoryArcText,
+    });
     try {
-      progress.set("Creating a short song-structure story arc from lyrics, subjects, and locations...", 18);
+      progress.set(`Creating a short song-structure story arc from lyrics, subjects, and locations...\nReroll seed: ${storyArcSeed}`, 18);
       const data = await postJson("/vrgdg/storyboard/story_arc", {
         ...(state.gemmaSettings || {}),
-        story_layer: normalizeStoryLayer(state.storyLayer),
+        seed: storyArcSeed,
+        story_arc_seed: storyArcSeed,
+        story_layer: storyLayerForRequest,
         storyboard: slimStoryboardForRequest(state),
-        story_idea: userStoryArcInput.value,
+        story_idea: existingLooksGeneratedArc ? "" : existingStoryArcText,
+        previous_story_arc: existingLooksGeneratedArc ? existingStoryArcText : "",
         lyrics: lyricsForStoryBrief(),
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         reference_builder: state.referenceBuilder || {},
@@ -2673,9 +2683,9 @@ function openStoryboardBuilder(payload = {}) {
       state.storyLayer.user_story_arc = String(data.story_arc || "").trim();
       userStoryArcInput.value = state.storyLayer.user_story_arc;
       syncStoryLayerFromInputs({ notify: true });
-      progress.set("Story arc saved into the Story Layer.", 100);
+      progress.set(`Story arc saved into the Story Layer.\nSeed: ${storyArcSeed}`, 100);
       progress.close(1600);
-      createToast("Story arc created.");
+      createToast(`Story arc created. Seed: ${storyArcSeed}`);
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       createToast(`Story arc failed:\n${String(error?.message || error)}`, true);
