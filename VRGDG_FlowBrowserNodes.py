@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import time
 import urllib.request
 import zipfile
@@ -25,14 +26,40 @@ def _is_debug_chrome_ready(port: int) -> bool:
 
 
 def _chrome_exe() -> str:
-    candidates = [
-        os.path.join(os.environ.get("ProgramFiles", ""), "Google", "Chrome", "Application", "chrome.exe"),
-        os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
-    ]
+    override = (os.environ.get("VRGDG_CHROME_PATH") or os.environ.get("CHROME_PATH") or "").strip()
+    if override:
+        override = os.path.expandvars(os.path.expanduser(override))
+        if os.path.isfile(override):
+            return override
+        raise RuntimeError(f"Configured Chrome/Chromium executable was not found: {override}")
+
+    candidates = []
+    command_names = []
+    if os.name == "nt":
+        candidates.extend([
+            os.path.join(os.environ.get("ProgramFiles", ""), "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
+        ])
+    elif sys.platform == "darwin":
+        candidates.extend([
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        ])
+        command_names.extend(["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"])
+    else:
+        candidates.extend([
+            "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/usr/bin/chromium",
+            "/usr/bin/chromium-browser", "/snap/bin/chromium",
+        ])
+        command_names.extend(["google-chrome-stable", "google-chrome", "chromium", "chromium-browser"])
     for candidate in candidates:
         if candidate and os.path.isfile(candidate):
             return candidate
-    raise RuntimeError("Could not find chrome.exe in the standard Program Files locations.")
+    for command_name in command_names:
+        candidate = shutil.which(command_name)
+        if candidate:
+            return candidate
+    raise RuntimeError("Could not find Chrome/Chromium. Install Google Chrome or Chromium, or set VRGDG_CHROME_PATH to the browser executable.")
 
 
 def _start_debug_chrome(flow_dir: str, port: int, url: str, profile_name: str = "chrome-flow-profile") -> None:
@@ -549,14 +576,17 @@ class VRGDG_FlowBrowserSetup:
         npm_cmd = _find_local_npm_cmd(flow_dir)
         if node_exe and npm_cmd:
             lines.append(f"Portable Node.js is ready: {node_exe}")
-        elif install_portable_node:
+        elif install_portable_node and os.name == "nt":
             lines.append(f"Installing portable Node.js {node_version or DEFAULT_NODE_VERSION}...")
             node_exe = _ensure_portable_node(flow_dir, node_version, timeout_seconds)
             npm_cmd = _find_local_npm_cmd(flow_dir)
             lines.append(f"Portable Node.js installed: {node_exe}")
         else:
-            lines.append("Portable Node.js is missing.")
-            lines.append("Setup will try system npm instead.")
+            if os.name == "nt":
+                lines.append("Portable Node.js is missing.")
+                lines.append("Setup will try system npm instead.")
+            else:
+                lines.append("Linux/macOS uses system Node.js and npm.")
 
         if os.path.isdir(playwright_dir):
             lines.append("Playwright dependency is already installed.")
@@ -581,9 +611,8 @@ class VRGDG_FlowBrowserSetup:
                 timeout=timeout_seconds,
             )
         except FileNotFoundError as exc:
-            raise RuntimeError(
-                "npm was not found. Enable install_portable_node and run this setup node again."
-            ) from exc
+            message = ("npm was not found. Enable install_portable_node and run this setup node again." if os.name == "nt" else "System Node.js/npm was not found. Install Node.js and npm, or set PATH before starting ComfyUI.")
+            raise RuntimeError(message) from exc
 
         stdout = process.stdout or ""
         stderr = process.stderr or ""

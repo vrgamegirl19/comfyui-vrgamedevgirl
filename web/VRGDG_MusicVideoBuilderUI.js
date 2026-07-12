@@ -2521,7 +2521,7 @@ function openBuilder(node) {
   flowGptProviderRow.append(flowNanoProviderButton, gptImageProviderButton, metaImageProviderButton);
   const flowGptSetupNote = document.createElement("div");
   flowGptSetupNote.style.cssText = "font-size:11px;color:#d4d4d8;line-height:1.45;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;";
-  flowGptSetupNote.textContent = "Browser image providers use real Chrome profiles. Install automation first, choose a provider, then open that provider login before long runs. Flow prompts are sent as-is and Flow must be manually set to 1 image/aspect ratio. GPT Image appends the selected aspect ratio. Meta AI uses meta.ai, supports reference uploads, and requires login before generation/download. If you use fallback mode, log into every provider you plan to allow.";
+  flowGptSetupNote.textContent = "Browser image providers use real Chrome/Chromium profiles. Install automation first, choose a provider, then open that provider login before long runs. Linux/macOS require system Node.js/npm; Windows can use portable Node. Flow prompts are sent without appended aspect-ratio text and Flow must be manually set to 1 image/aspect ratio. GPT Image appends the selected aspect ratio. Meta AI uses meta.ai, supports reference uploads, and requires login before generation/download. If you use fallback mode, log into every provider you plan to allow.";
   const flowGptStatusText = document.createElement("div");
   flowGptStatusText.style.cssText = "font-size:11px;color:#a1a1aa;white-space:pre-wrap;line-height:1.35;";
   flowGptStatusText.textContent = "Browser automation status has not been checked yet.";
@@ -8534,6 +8534,7 @@ function openBuilder(node) {
       scene_map: {},
       scene_trigger_map: {},
       location_style_theme: "",
+      max_generated_locations: 8,
       locations_cleared: false,
       cleared: false,
       trigger_position: "start",
@@ -9041,6 +9042,7 @@ function openBuilder(node) {
     normalized.subject_trigger_position = String(source.subject_trigger_position || source.subjectTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
     normalized.location_trigger_position = String(source.location_trigger_position || source.locationTriggerPosition || source.trigger_position || "start") === "end" ? "end" : "start";
     normalized.location_style_theme = String(source.location_style_theme || source.locationStyleTheme || "");
+    normalized.max_generated_locations = Math.max(1, Math.min(50, Number(source.max_generated_locations || source.maxGeneratedLocations || 8) || 8));
     const hasExplicitSubjectsArray = Array.isArray(source.subjects);
     const rawSubjects = dedupeRefsByName(hasExplicitSubjectsArray ? source.subjects : []);
     normalized.subject_count = normalized.cleared
@@ -21033,6 +21035,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 2200,
             unload_after: true,
@@ -21045,6 +21048,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: referenceSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             unload_after: true,
           }, 10 * 60 * 1000);
@@ -22815,6 +22819,17 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
     locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
+    const maxGeneratedLocations = makeInput(String(refs.max_generated_locations || 8), "number");
+    maxGeneratedLocations.min = "1";
+    maxGeneratedLocations.max = "50";
+    maxGeneratedLocations.step = "1";
+    maxGeneratedLocations.title = "Maximum number of locations Gemma may add during one automatic extraction.";
+    maxGeneratedLocations.addEventListener("change", () => {
+      refs.max_generated_locations = Math.max(1, Math.min(50, Number(maxGeneratedLocations.value || 8) || 8));
+      maxGeneratedLocations.value = String(refs.max_generated_locations);
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      autoSaveSessionQuiet("maximum generated locations").catch(() => null);
+    });
     locationStyleTheme.addEventListener("input", () => {
       refs.location_style_theme = locationStyleTheme.value;
     });
@@ -23537,6 +23552,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 2200,
             unload_after: true,
@@ -23549,6 +23565,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
             style_theme: styleTheme,
             subject_context: ingredientSubjectContextForLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             unload_after: true,
           }, 10 * 60 * 1000);
@@ -23814,9 +23831,20 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
     const locationStyleTheme = makeInput(refs.location_style_theme || "");
     locationStyleTheme.placeholder = "Optional style/theme for extracted locations...";
     locationStyleTheme.title = "Optional. Helps Gemma choose locations that match your character/style/theme.";
+    const maxGeneratedLocations = makeInput(String(refs.max_generated_locations || 8), "number");
+    maxGeneratedLocations.min = "1";
+    maxGeneratedLocations.max = "50";
+    maxGeneratedLocations.step = "1";
+    maxGeneratedLocations.title = "Maximum number of locations Gemma may add during one automatic extraction.";
+    maxGeneratedLocations.addEventListener("change", () => {
+      refs.max_generated_locations = Math.max(1, Math.min(50, Number(maxGeneratedLocations.value || 8) || 8));
+      maxGeneratedLocations.value = String(refs.max_generated_locations);
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(refs);
+      autoSaveSessionQuiet("maximum generated locations").catch(() => null);
+    });
     const locationsList = document.createElement("div");
     locationsList.style.cssText = subjectsList.style.cssText;
-    locationsCard.append(locationsHeader, locationTools, makeField("Optional style/theme for location extraction", locationStyleTheme), locationsList);
+    locationsCard.append(locationsHeader, locationTools, makeField("Maximum generated locations", maxGeneratedLocations), makeField("Optional style/theme for location extraction", locationStyleTheme), locationsList);
 
     const mappingCard = document.createElement("div");
     mappingCard.style.cssText = cardStyle;
@@ -24267,6 +24295,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             style_theme: styleTheme,
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             max_new_tokens: 2200,
             unload_after: true,
@@ -24279,6 +24308,7 @@ Chrome vault corridor = A sealed industrial passage...</pre>`;
             style_theme: styleTheme,
             subject_context: subjectContextForTextMapLocations(),
             existing_locations: refs.locations.map((item) => ({ name: item.name || "", description: item.description || "" })),
+            max_locations: refs.max_generated_locations || 8,
             n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
             unload_after: true,
           }, 10 * 60 * 1000);
@@ -37778,6 +37808,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             name: compactWizardText(item.name, 90),
             description: compactWizardText(item.description, 700),
           })),
+          max_locations: refs.max_generated_locations || 8,
           unload_after: true,
           n_ctx: normalizeGemmaContextLimit(state.gemmaContextLimit),
           max_new_tokens: 2200,

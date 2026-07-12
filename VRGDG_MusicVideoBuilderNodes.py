@@ -6750,6 +6750,7 @@ def _generate_flux_reference_locations(payload):
     style_theme = _clean_location_context_text(payload.get("style_theme", ""))
     subject_context = _clean_location_context_text(payload.get("subject_context", ""))
     existing_locations = payload.get("existing_locations") or []
+    max_locations = max(1, min(50, int(payload.get("max_locations") or 8)))
     existing_lines = []
     if isinstance(existing_locations, list):
         for item in existing_locations:
@@ -6787,7 +6788,7 @@ def _generate_flux_reference_locations(payload):
         "- Descriptions must describe only the place/background: architecture, layout, surfaces, lighting, weather, atmosphere, era, and color.\n"
         "- Do not include characters or actions in descriptions. No bride, woman, man, face, hand, tooth, dress, razor, locket, veil, or similar subject/object details.\n"
         "- Reuse broad locations instead of creating one unique location for every scene.\n"
-        "- 3 to 8 locations is usually enough unless the project clearly needs more.\n\n"
+        f"- Return no more than {max_locations} locations. Reuse broad locations instead of exceeding this maximum.\n\n"
         f"Optional style/theme guidance:\n{style_theme or '(none)'}\n\n"
         f"Character/reference descriptions for style guidance only:\n{subject_context or '(none)'}\n\n"
         f"Optional extra context:\n{subject_scene or '(none)'}\n\n"
@@ -6826,7 +6827,7 @@ def _generate_flux_reference_locations(payload):
             "Return only reusable music video filming locations from the scene text below.\n"
             "Do not explain anything.\n"
             "Do not summarize the scenes.\n"
-            "Write 3 to 12 locations.\n"
+            f"Write no more than {max_locations} locations.\n"
             "Write one location per line as a short bullet.\n"
             "Each bullet must be a concrete visual place/background where the subject could stand or move.\n"
             "Reject props, objects, clothing, accessories, people, body parts, symbolic items, and actions.\n"
@@ -6903,7 +6904,7 @@ def _generate_flux_reference_locations(payload):
             preview = preview[:697].rstrip() + "..."
         raise ValueError(f"Gemma returned only non-location items. Raw response preview: {preview or '(empty)'}")
     return {
-        "locations": deduped,
+        "locations": deduped[:max_locations],
         "raw_text": text,
         "used_model": run_info.get("used_model", ""),
         "runner": run_info.get("runner", "builtin"),
@@ -6919,6 +6920,7 @@ def _generate_wizard_locations_from_lyrics(payload):
     user_input = str(payload.get("user_input", "") or payload.get("notes", "") or "").strip()
     style_theme = _clean_location_context_text(payload.get("style_theme", ""))
     subject_context = _clean_location_context_text(payload.get("subject_context", ""))
+    max_locations = max(1, min(50, int(payload.get("max_locations") or 8)))
     if not lyrics_text:
         raise ValueError("Paste or create lyrics before creating locations from lyrics.")
 
@@ -6954,7 +6956,7 @@ def _generate_wizard_locations_from_lyrics(payload):
         "Do not include characters or actions in descriptions. No bride, woman, man, face, hand, tooth, dress, razor, locket, veil, or similar subject/object details.\n"
         "Test every idea: could the selected subject stand, walk, sit, perform, or be filmed inside this place? If no, reject it.\n"
         "Make the locations specific and cinematic.\n"
-        "Output 10-20 locations.\n"
+        f"Output no more than {max_locations} locations. Prefer reusable locations rather than one location per scene.\n"
         "Use short bullet points.\n"
         "Each bullet should be a place only, with a brief visual detail if helpful.\n\n"
         "Output format:\n\n"
@@ -6979,7 +6981,7 @@ def _generate_wizard_locations_from_lyrics(payload):
     locations = _parse_location_ideas_flexible(text)
     if not locations:
         retry_instruction = (
-            "Return exactly 12 reusable music video filming locations for the lyrics below.\n"
+            f"Return no more than {max_locations} reusable music video filming locations for the lyrics below.\n"
             "Do not write a heading.\n"
             "Do not explain anything.\n"
             "Do not summarize the lyrics.\n"
@@ -7033,7 +7035,7 @@ def _generate_wizard_locations_from_lyrics(payload):
             preview = preview[:697].rstrip() + "..."
         raise ValueError(f"Gemma returned only non-location items. Raw response preview: {preview or '(empty)'}")
     return {
-        "locations": deduped[:20],
+        "locations": deduped[:max_locations],
         "raw_text": text,
         "used_model": run_info.get("used_model", ""),
         "runner": run_info.get("runner", "builtin"),

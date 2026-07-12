@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 
@@ -107,8 +108,8 @@ def _browser_image_status():
     flow_dir = DEFAULT_FLOW_DIR
     package_path = os.path.join(flow_dir, "package.json")
     playwright_dir = os.path.join(flow_dir, "node_modules", "playwright")
-    node_exe = _find_local_node_exe(flow_dir)
-    npm_cmd = _find_local_npm_cmd(flow_dir)
+    node_exe = _find_local_node_exe(flow_dir) or shutil.which("node")
+    npm_cmd = _find_local_npm_cmd(flow_dir) or shutil.which("npm")
     chrome_path = ""
     chrome_error = ""
     try:
@@ -120,9 +121,9 @@ def _browser_image_status():
         "package_json": package_path,
         "package_json_exists": os.path.isfile(package_path),
         "node_exe": node_exe or "",
-        "node_ready": bool(node_exe and os.path.isfile(node_exe)),
+        "node_ready": bool(node_exe),
         "npm_cmd": npm_cmd or "",
-        "npm_ready": bool(npm_cmd and os.path.isfile(npm_cmd)),
+        "npm_ready": bool(npm_cmd),
         "playwright_dir": playwright_dir,
         "playwright_ready": os.path.isdir(playwright_dir),
         "chrome_exe": chrome_path,
@@ -157,13 +158,21 @@ def _install_browser_image_deps(payload):
     npm_cmd = _find_local_npm_cmd(flow_dir)
     if node_exe and npm_cmd:
         lines.append(f"Portable Node.js is ready: {node_exe}")
-    elif install_portable_node:
+    elif install_portable_node and os.name == "nt":
         lines.append(f"Installing portable Node.js {node_version}...")
         node_exe = _ensure_portable_node(flow_dir, node_version, timeout_seconds)
         npm_cmd = _find_local_npm_cmd(flow_dir)
         lines.append(f"Portable Node.js installed: {node_exe}")
     else:
-        lines.append("Portable Node.js is missing; setup will try system npm.")
+        if os.name == "nt":
+            lines.append("Portable Node.js is missing; setup will try system npm.")
+        else:
+            node_exe = shutil.which("node")
+            npm_cmd = shutil.which("npm")
+            if not node_exe or not npm_cmd:
+                raise RuntimeError("System Node.js/npm was not found. Install Node.js and npm, or set PATH before starting ComfyUI.")
+            lines.append(f"System Node.js is ready: {node_exe}")
+            lines.append(f"System npm is ready: {npm_cmd}")
 
     playwright_dir = os.path.join(flow_dir, "node_modules", "playwright")
     if os.path.isdir(playwright_dir):

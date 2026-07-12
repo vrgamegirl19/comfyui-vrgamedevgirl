@@ -11,11 +11,20 @@ The easiest setup path is to add and run this ComfyUI node once:
 VRGDG Flow Browser Setup
 ```
 
-It can download a private portable Node.js runtime into `runtime/`, then run `npm install` in this folder for you. Users should not need a command prompt for the normal setup path.
+On Windows it can download a private portable Node.js runtime into `runtime/`. On Linux and macOS it uses system Node.js/npm. It then runs `npm install` in this folder for you.
 
-Chrome is still required because the automation controls Google Flow in a real Chrome browser profile.
+Chrome or Chromium is still required because the automation controls the providers in a real browser profile.
 
 Manual setup is also available:
+
+Linux/macOS:
+
+```bash
+cd ComfyUI/custom_nodes/comfyui-vrgamedevgirl/flow_automation
+npm install
+```
+
+Windows PowerShell:
 
 ```powershell
 cd ComfyUI\custom_nodes\comfyui-vrgamedevgirl\flow_automation
@@ -44,6 +53,8 @@ Flow Image Edit Automatic.bat
 
 Chrome opens with a separate profile stored in `chrome-flow-profile/`. Sign into Google Flow once in that browser profile. Do not share or commit `chrome-flow-profile/`.
 
+GPT Image uses `chrome-chatgpt-profile/`, and Meta AI uses `chrome-meta-profile/`. Each provider must be logged into separately. The `.bat` launchers are Windows-only.
+
 ## ComfyUI Node
 
 The ComfyUI node saves temporary input images to:
@@ -71,9 +82,11 @@ The nodes find this `flow_automation/` folder automatically from the installed c
 
 ## Notes
 
-- Requires Chrome.
-- Node.js is installed locally by the setup node on Windows, unless you disable `install_portable_node`.
+- Requires Chrome or Chromium. Set `VRGDG_CHROME_PATH` (or `CHROME_PATH`) when the browser executable is in a custom location.
+- Node.js can be installed locally by the setup node on Windows, unless you disable `install_portable_node`.
+- Linux and macOS require system Node.js/npm available on `PATH`.
 - Requires Google Flow access on the signed-in account.
 - Requires ChatGPT image generation access on the signed-in account when using the ChatGPT Images node.
+- Requires Meta AI access on the signed-in account when using Meta AI.
 - This is UI automation; Google Flow UI changes may require selector updates.
 - ChatGPT UI changes may require selector updates.
