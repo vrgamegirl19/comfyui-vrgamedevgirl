@@ -946,6 +946,27 @@ def _build_storyboard_image_prompt(payload):
         from .VRGDG_MusicVideoBuilderNodes import _STANDARD_IMAGE_T2I_INSTRUCTIONS, _effective_builder_instruction
 
         instruction_text = _effective_builder_instruction(payload, instruction_key, _STANDARD_IMAGE_T2I_INSTRUCTIONS)
+    selected_scene = _selected_storyboard_scene(scene_bundle)
+    flf_image_target = str(payload.get("flf_image_target") or "").strip().lower()
+    if flf_image_target in {"start", "end"}:
+        story_layer = selected_scene.get("story_layer") if isinstance(selected_scene.get("story_layer"), dict) else {}
+        start_state = _clean_scene_text(story_layer.get("flf_start_state") or selected_scene.get("flf_start_state") or "", 1800)
+        transformation = _clean_scene_text(story_layer.get("flf_transformation") or selected_scene.get("flf_transformation") or "", 1800)
+        end_state = _clean_scene_text(story_layer.get("flf_end_state") or selected_scene.get("flf_end_state") or "", 1800)
+        carry_forward = _clean_scene_text(story_layer.get("flf_carry_forward") or selected_scene.get("flf_carry_forward") or "", 1800)
+        target_state = start_state if flf_image_target == "start" else end_state
+        endpoint_instruction = (
+            "\n\nFIRST / LAST FRAME STILL-IMAGE RULES:\n"
+            f"- You are writing the {flf_image_target.upper()} endpoint still image, not a video prompt.\n"
+            f"- Required visible endpoint state: {target_state or '[use the scene card literally]'}\n"
+            f"- Planned transformation context: {transformation or '[none]'}\n"
+            f"- Carry-forward continuity: {carry_forward or '[none]'}\n"
+            "- Make the required endpoint state visually concrete in one frozen image.\n"
+            "- Preserve mapped subject identity, wardrobe, environment, lighting, and established anatomy unless the required endpoint explicitly changes one of them.\n"
+            "- Do not describe motion over time, a transition, morphing process, first/last frames, or workflow instructions in the final image prompt.\n"
+            "- Output only the image prompt."
+        )
+        instruction_text += endpoint_instruction
     instruction = (
         instruction_text
         + "\n\nScene-card JSON:\n"
@@ -963,7 +984,6 @@ def _build_storyboard_image_prompt(payload):
         preserve_paragraphs=True,
     )
     prompt = extract_prompt_text_from_gemma_output(prompt, scene_bundle.get("selected_scene_number"))
-    selected_scene = _selected_storyboard_scene(scene_bundle)
     prompt = _clean_scene_text(_fix_single_subject_prompt_pronouns(prompt, scene_bundle), 12000)
     if _storyboard_image_mode_uses_reference_opening(scene_bundle):
         prompt = _ensure_storyboard_reference_opening(prompt, selected_scene)
@@ -1409,7 +1429,24 @@ def _build_story_layer_scene_beat(payload):
         raise ValueError("Storyboard scene-card payload has no selected scene.")
     story_layer = _normalize_story_layer(payload.get("story_layer") or scene_bundle.get("story_layer") or {})
     previous_beat = _clean_scene_text(payload.get("previous_beat") or "", 1200)
+    previous_lyrics = _clean_scene_text(payload.get("previous_lyrics") or "", 800)
+    previous_end_state = _clean_scene_text(payload.get("previous_end_state") or "", 1800)
+    previous_carry_forward = _clean_scene_text(payload.get("previous_carry_forward") or "", 1800)
+    current_lyrics = _clean_scene_text(payload.get("current_lyrics") or scene.get("lyrics") or scene.get("lyric_text") or "", 1200)
     next_lyrics = _clean_scene_text(payload.get("next_lyrics") or "", 800)
+    flf_mode = bool(payload.get("flf_mode")) or str(scene.get("video_prompt_type") or "").strip().lower() == "flf"
+    output_rules = (
+        "Return valid JSON only with exactly these string keys: story_beat, flf_start_state, flf_transformation, flf_end_state, flf_carry_forward.\n"
+        "The story_beat is a concise compatibility summary under 80 words.\n"
+        "flf_start_state describes the concrete visible opening image. If Previous FLF end state is provided, copy it exactly as flf_start_state; do not reinterpret or redesign it.\n"
+        "flf_transformation describes one continuous, progressive visual change that expresses the CURRENT lyric.\n"
+        "flf_end_state describes the concrete visible destination image reached by the end of the CURRENT lyric.\n"
+        "flf_carry_forward records the subject, anatomy, wardrobe, props, setting, lighting, and transformation state that the next scene must inherit.\n"
+        "The current lyric is authoritative. Previous and next lyrics provide continuity only and must not replace or steal this scene's action.\n"
+        "Do not include Markdown fences or any text outside the JSON object."
+        if flf_mode else
+        "Output one short paragraph only, no label, no bullets.\nKeep it under 80 words."
+    )
     instruction = (
         "You are a music video scene-story planner.\n"
         "Create one concise scene story beat that tells the video prompt writer what this scene contributes to the larger music-video story.\n\n"
@@ -1424,12 +1461,15 @@ def _build_story_layer_scene_beat(payload):
         "- Do not include camera technical instructions unless they are part of the story emotion.\n"
         "- Do not quote long lyric text.\n"
         "- If no character is present, make the beat about location, objects, atmosphere, memory, or symbolism.\n"
-        "- Output one short paragraph only, no label, no bullets.\n"
-        "- Keep it under 80 words.\n\n"
+        f"- {output_rules}\n\n"
         f"{_lyric_story_strength_guidance(story_layer)}\n\n"
         f"User Story Arc:\n{story_layer.get('user_story_arc') or '[none]'}\n\n"
         f"Song Story Brief:\n{story_layer.get('song_story_brief') or '[none]'}\n\n"
         f"Previous scene beat:\n{previous_beat or '[none]'}\n\n"
+        f"Previous scene lyric text (continuity only):\n{previous_lyrics or '[none]'}\n\n"
+        f"Previous FLF end state (required opening state when present):\n{previous_end_state or '[none — this is the first scene]'}\n\n"
+        f"Previous FLF carry-forward constraints:\n{previous_carry_forward or '[none]'}\n\n"
+        f"CURRENT scene lyric text (main authority):\n{current_lyrics or '[none]'}\n\n"
         f"Next scene lyric text:\n{next_lyrics or '[none]'}\n\n"
         "Selected scene JSON:\n"
         + json.dumps(scene, ensure_ascii=False, indent=2)
@@ -1445,7 +1485,27 @@ def _build_story_layer_scene_beat(payload):
         label="Storyboard Scene Beat Gemma",
         preserve_paragraphs=True,
     )
-    text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(text, 1800), flags=re.I)
+    flf_fields = {}
+    if flf_mode:
+        raw_json = str(text or "").strip()
+        raw_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_json, flags=re.I | re.S).strip()
+        match = re.search(r"\{.*\}", raw_json, flags=re.S)
+        try:
+            parsed = json.loads(match.group(0) if match else raw_json)
+        except Exception as exc:
+            raise ValueError(f"Gemma did not return valid FLF endpoint JSON: {exc}") from exc
+        flf_fields = {
+            key: _clean_scene_text(parsed.get(key) or "", 1800)
+            for key in ("flf_start_state", "flf_transformation", "flf_end_state", "flf_carry_forward")
+        }
+        if previous_end_state:
+            flf_fields["flf_start_state"] = previous_end_state
+        text = _clean_scene_text(parsed.get("story_beat") or "", 1800)
+        missing = [key for key, value in flf_fields.items() if not value]
+        if not text or missing:
+            raise ValueError("Gemma returned incomplete FLF endpoint fields: " + ", ".join((["story_beat"] if not text else []) + missing))
+    else:
+        text = re.sub(r"^\s*(scene\s+story\s+beat|story\s+beat|beat)\s*:\s*", "", _clean_scene_text(text, 1800), flags=re.I)
     if not text:
         raise ValueError("Gemma returned an empty scene story beat.")
     location_context = _storyboard_scene_location_context(scene)
@@ -1497,6 +1557,7 @@ def _build_story_layer_scene_beat(payload):
             }
     return {
         "story_beat": text,
+        **flf_fields,
         "runner": run_info.get("runner", "builtin"),
         "used_model": run_info.get("used_model", ""),
         "unloaded": run_info.get("unloaded", True),

@@ -4895,6 +4895,10 @@ def _generate_builder_t2v_prompt(payload):
             vision_images.append(Image.open(image_path).convert("RGB"))
     first_last_frame_mode = bool(payload.get("first_last_frame_mode") or payload.get("firstLastFrameMode"))
     transition_lora_active = bool(payload.get("transition_lora_active") or payload.get("transitionLoraActive"))
+    flf_start_state = str(payload.get("flf_start_state") or "").strip()[:1800]
+    flf_transformation = str(payload.get("flf_transformation") or "").strip()[:2400]
+    flf_end_state = str(payload.get("flf_end_state") or "").strip()[:1800]
+    flf_carry_forward = str(payload.get("flf_carry_forward") or "").strip()[:1800]
     if first_last_frame_mode and len(vision_images) >= 2:
         first_image, last_image = vision_images[0], vision_images[1]
         total_width = max(1, first_image.width + last_image.width)
@@ -4990,6 +4994,18 @@ def _generate_builder_t2v_prompt(payload):
             "- Preserve any supplied singing, lyric, dialogue, emotional-performance, and selected facial-performance direction; integrate it naturally without disrupting the continuous visual motion.\n"
             "- Preserve the normal one-paragraph video prompt structure from the instructions. Do not mention images, frames, references, inputs, MSR, or LoRA in the final prompt.\n\n"
         )
+        if any((flf_start_state, flf_transformation, flf_end_state, flf_carry_forward)):
+            image_guidance += (
+                "Storyboard FLF motion contract:\n"
+                f"- Opening state: {flf_start_state or '[derive exactly from the LEFT image]'}\n"
+                f"- Required continuous transformation: {flf_transformation or '[derive one continuous physical transition from both images]'}\n"
+                f"- Required destination state: {flf_end_state or '[derive exactly from the RIGHT image]'}\n"
+                f"- Carry-forward continuity: {flf_carry_forward or '[preserve all shared continuity]'}\n"
+                "- The images remain the visual truth. The storyboard transformation is the primary motion plan and must be expressed as progressive physical action rather than replaced by generic morph language.\n"
+                "- Begin the planned action and camera travel immediately, keep them continuous, and finish at the exact RIGHT destination.\n"
+                "- Preserve all supplied singing, lyric, emotional-performance, and selected facial-performance directions while carrying out this transformation.\n"
+                "- Do not output these labels or quote this contract in the final paragraph.\n\n"
+            )
     elif has_image_reference and instruction_key == "id_lora":
         image_guidance = (
             "Use the provided image as the primary visual truth for the [VISUAL] section. "

@@ -7017,6 +7017,10 @@ function openBuilder(node) {
     if (segment.lyric_text == null) segment.lyric_text = "";
     if (segment.lyric_section == null) segment.lyric_section = "";
     if (segment.story_beat == null) segment.story_beat = "";
+    if (segment.flf_start_state == null) segment.flf_start_state = "";
+    if (segment.flf_transformation == null) segment.flf_transformation = "";
+    if (segment.flf_end_state == null) segment.flf_end_state = "";
+    if (segment.flf_carry_forward == null) segment.flf_carry_forward = "";
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
     if (segment.facial_performance == null) segment.facial_performance = "";
     if (segment.facial_performance_custom == null) segment.facial_performance_custom = "";
@@ -8245,6 +8249,10 @@ function openBuilder(node) {
     };
     const parts = [];
     add(parts, "Storyboard scene story beat", scene.story_beat || segment.story_beat);
+    add(parts, "FLF storyboard start state", scene.flf_start_state || segment.flf_start_state);
+    add(parts, "FLF storyboard continuous transformation", scene.flf_transformation || segment.flf_transformation);
+    add(parts, "FLF storyboard end state", scene.flf_end_state || segment.flf_end_state);
+    add(parts, "FLF storyboard carry-forward continuity", scene.flf_carry_forward || segment.flf_carry_forward);
     add(parts, "Storyboard motion/video summary", scene.motion_summary || segment.i2v_notes || segment.video_notes);
     add(parts, "Storyboard still shot direction", scene.shot_type || segment.shot_type);
     add(parts, "Storyboard camera motion", scene.camera_motion || segment.camera_motion || segment.motion_preset);
@@ -11646,11 +11654,28 @@ function openBuilder(node) {
     }
   }
 
+  function flfStillEndpointNotes(segment, target = "start") {
+    if (state.videoModelMode !== "flf" || !segment) return "";
+    const endpoint = target === "end" ? String(segment.flf_end_state || "").trim() : String(segment.flf_start_state || "").trim();
+    const transformation = String(segment.flf_transformation || "").trim();
+    const carryForward = String(segment.flf_carry_forward || "").trim();
+    return [
+      `First / Last Frame storyboard target: ${target === "end" ? "END FRAME" : "START FRAME"} still image.`,
+      endpoint ? `Required visible endpoint state:\n${endpoint}` : "",
+      transformation ? `Transformation context (use only to choose the correct frozen endpoint):\n${transformation}` : "",
+      carryForward ? `Continuity constraints:\n${carryForward}` : "",
+      "Create one frozen still image matching the required endpoint. Do not describe animation, morphing over time, or workflow terminology in the final prompt.",
+    ].filter(Boolean).join("\n\n");
+  }
+
   function imagePromptNotesWithDirector(segment, notes, useDirectorNotes = false) {
     const parts = [];
     const baseNotes = String(notes || "").trim();
     const directorNote = String(segment?.timeline_note || "").trim();
     if (baseNotes) parts.push(baseNotes);
+    const flfTarget = /create the LAST FRAME/i.test(baseNotes) ? "end" : "start";
+    const flfEndpoint = flfStillEndpointNotes(segment, flfTarget);
+    if (flfEndpoint) parts.push(flfEndpoint);
     if (useDirectorNotes && directorNote) {
       parts.push(`Director note for this scene:\n${directorNote}`);
     }
@@ -27413,6 +27438,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     add("Lyric line as still-image mood context", isInstrumentalLyricText(segment?.lyric_text) ? "" : segment?.lyric_text);
     add("Lyric section", segment?.lyric_section);
     add("Scene story beat", segment?.story_beat);
+    add("First / Last Frame endpoint guidance", flfStillEndpointNotes(segment, "start"));
     add("Still shot direction", segment?.shot_type);
     const context = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : fluxReferenceContextForSegment(segment);
     add("Reference subject description", context?.subject_description);
@@ -27434,6 +27460,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     parts.push("Image Prep rule:\nCreate a still text-to-image prompt. The final answer must be a visual image prompt, not the lyric line. Use lyrics only for mood, symbolism, emotion, styling, and visual direction. Do not quote or return the lyrics as the prompt. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless scene notes explicitly request a live singing image.");
     return parts.join("\n\n");
+  }
+
+  function flfStoryboardVideoDirection(segment) {
+    if (currentVideoMode() !== "flf" || !segment) return "";
+    const startState = String(segment.flf_start_state || "").trim();
+    const transformation = String(segment.flf_transformation || "").trim();
+    const endState = String(segment.flf_end_state || "").trim();
+    const carryForward = String(segment.flf_carry_forward || "").trim();
+    if (![startState, transformation, endState, carryForward].some(Boolean)) return "";
+    return [
+      "STORYBOARD FLF MOTION CONTRACT:",
+      startState ? `Opening state:\n${startState}` : "",
+      transformation ? `Required continuous transformation:\n${transformation}` : "",
+      endState ? `Required destination state:\n${endState}` : "",
+      carryForward ? `Continuity that must survive into the destination:\n${carryForward}` : "",
+      "Use the two supplied images as visual truth. Use the required transformation as the primary motion plan connecting them.",
+      "Begin the physical action and camera travel immediately, progress continuously, and complete at the exact destination. Do not replace the transformation with a generic dissolve, fade, cut, texture swap, or unrelated invented action.",
+      "Keep all singing, exact lyric, performance, and selected facial-performance directions active when they are supplied.",
+    ].filter(Boolean).join("\n\n");
   }
 
   function sceneLyricTextForPromptValidation(segment) {
@@ -27527,6 +27572,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const scene = scenes.find((item) => item.id === segment.id);
     if (!scene) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: storyboard scene card could not be built.`);
     const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const flfImageTarget = state.videoModelMode === "flf" ? String(options.flfImageTarget || "start").trim().toLowerCase() : "";
     const storyboardState = wizardStoryboardState(scenes, { promptMode: "image", imageMode });
     progress?.set(`${label}: sending storyboard scene card to ${promptRunnerActionName()}...\nConcept prompt is included as the scene story beat.`, percent);
     const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", {
@@ -28257,6 +28303,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       lyric_text: sceneLyricTextForPromptValidation(segment),
       prompt_mode: imageMode,
       builder_instruction_key: builderImageInstructionKey(imageMode),
+      flf_image_target: flfImageTarget,
       image_ingredients: settings.image_ingredients || [],
       reference_context: settings.reference_context || {},
       repair_model_file: t2iTextGemmaModelSelect.value,
@@ -28883,7 +28930,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       performance_mode: effectiveVideoPerformanceModeForSegment(segment),
       t2i_prompt: sceneVideoConceptPromptText(segment),
-      user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim(), isFLF ? flfTransitionPromptDirection(segment) : ""].filter(Boolean).join("\n\n"),
+      user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim(), isFLF ? flfTransitionPromptDirection(segment) : "", isFLF ? flfStoryboardVideoDirection(segment) : ""].filter(Boolean).join("\n\n"),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
       singers: segment?.no_character_present ? [] : singers,
       no_vocal: noVocal,
@@ -28961,7 +29008,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const baseNotes = videoGemmaNotesForSegment(segment);
     const modeNotes = isIdLora ? idLoraGemmaNotesForSegment(segment, baseNotes) : isFLF
-      ? `${baseNotes}\n${flfTransitionPromptDirection(segment)}`.trim()
+      ? [baseNotes, flfTransitionPromptDirection(segment), flfStoryboardVideoDirection(segment)].filter(Boolean).join("\n\n")
       : baseNotes;
     const storyboardNotes = String(options.skipStoryboardExtraNotes ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
     const extraNotes = [storyboardNotes, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
@@ -28983,6 +29030,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_references: firstLastFrameReferences,
         first_last_frame_mode: useFirstLastFrameVision,
         transition_lora_active: isFLF && flfTransitionLoraActive(segment),
+        flf_start_state: isFLF ? String(segment.flf_start_state || "").trim() : "",
+        flf_transformation: isFLF ? String(segment.flf_transformation || "").trim() : "",
+        flf_end_state: isFLF ? String(segment.flf_end_state || "").trim() : "",
+        flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
@@ -29423,8 +29474,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_references: firstLastFrameReferences,
         first_last_frame_mode: useFirstLastFrameVision,
         transition_lora_active: isFLF && flfTransitionLoraActive(segment),
+        flf_start_state: isFLF ? String(segment.flf_start_state || "").trim() : "",
+        flf_transformation: isFLF ? String(segment.flf_transformation || "").trim() : "",
+        flf_end_state: isFLF ? String(segment.flf_end_state || "").trim() : "",
+        flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? [videoGemmaNotesForSegment(segment), flfTransitionPromptDirection(segment)].filter(Boolean).join("\n\n") : videoGemmaNotesForSegment(segment),
+        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? [videoGemmaNotesForSegment(segment), flfTransitionPromptDirection(segment), flfStoryboardVideoDirection(segment), storyboardVideoExtraNotesForSegment(segment)].filter(Boolean).join("\n\n") : videoGemmaNotesForSegment(segment),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
         location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
@@ -30122,6 +30177,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           lyrics: lyric,
           lyric_section: String(segment.lyric_section || "").trim(),
           story_beat: String(segment.story_beat || "").trim(),
+          flf_start_state: String(segment.flf_start_state || "").trim(),
+          flf_transformation: String(segment.flf_transformation || "").trim(),
+          flf_end_state: String(segment.flf_end_state || "").trim(),
+          flf_carry_forward: String(segment.flf_carry_forward || "").trim(),
           performance_mode: effectiveVideoPerformanceModeForSegment(segment),
           prompt_summary: promptSummary,
           motion_summary: videoNotes,
@@ -30132,7 +30191,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           facial_performance: String(segment.facial_performance || "").trim(),
           facial_performance_custom: String(segment.facial_performance_custom || "").trim(),
           performance_style: String(segment.performance_style || defaults.performance_style || "").trim(),
-          video_prompt_type: ["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(String(segment.video_prompt_type || "").trim())
+          video_prompt_type: ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
           subjects: segment.no_character_present ? [] : subjects,
@@ -30342,6 +30401,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const nextStoryBeat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim();
         if (segment.story_beat !== nextStoryBeat) beatChanged = true;
         segment.story_beat = nextStoryBeat;
+        segment.flf_start_state = String(scene.flf_start_state || segment.flf_start_state || "").trim();
+        segment.flf_transformation = String(scene.flf_transformation || segment.flf_transformation || "").trim();
+        segment.flf_end_state = String(scene.flf_end_state || segment.flf_end_state || "").trim();
+        segment.flf_carry_forward = String(scene.flf_carry_forward || segment.flf_carry_forward || "").trim();
         const nextFacial = String(scene.facial_performance ?? scene.facialPerformance ?? segment.facial_performance ?? "").trim();
         const nextFacialCustom = String(scene.facial_performance_custom ?? scene.facialPerformanceCustom ?? segment.facial_performance_custom ?? "").trim();
         if (segment.facial_performance !== nextFacial || segment.facial_performance_custom !== nextFacialCustom) facialChanged = true;
@@ -30408,6 +30471,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync || segmentUsesNoLipSyncPerformance(segment)),
         no_character_present: Boolean(scene.no_character_present || scene.noCharacterPresent || segment.no_character_present),
         story_beat: String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim(),
+        flf_start_state: String(scene.flf_start_state || segment.flf_start_state || "").trim(),
+        flf_transformation: String(scene.flf_transformation || segment.flf_transformation || "").trim(),
+        flf_end_state: String(scene.flf_end_state || segment.flf_end_state || "").trim(),
+        flf_carry_forward: String(scene.flf_carry_forward || segment.flf_carry_forward || "").trim(),
         shot_type: String(scene.shot_type || segment.shot_type || "").trim(),
         camera_motion: String(scene.camera_motion || segment.camera_motion || "").trim(),
         subject_refs: Array.isArray(scene.subject_refs) ? scene.subject_refs : Array.isArray(segment.subject_refs) ? segment.subject_refs : [],
@@ -31081,15 +31148,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? "Write as a Flux/Klein image prompt."
           : "Write as a cinematic text-to-image prompt.";
     const sourceName = firstFrame?.name || firstFrame?.path || "the first frame";
+    const startState = String(segment.flf_start_state || "").trim();
+    const transformation = String(segment.flf_transformation || "").trim();
+    const endState = String(segment.flf_end_state || "").trim();
+    const carryForward = String(segment.flf_carry_forward || "").trim();
     return [
       `${modeHint} Create the LAST FRAME for a First Last Frame video shot.`,
       `Scene: ${sceneName}`,
       `Use ${sourceName} as the FIRST FRAME identity, composition, style, lighting, wardrobe, environment, and color reference.`,
       "The new image must feel like the natural end point of the same shot, not a different scene.",
       "Preserve character identity and the same visual world. Change pose, camera endpoint, expression, staging, or revealed action only as needed to create a clear A-to-B video transition.",
+      startState ? `Storyboard opening state:\n${startState}` : "",
+      transformation ? `Required continuous transformation:\n${transformation}` : "",
+      endState ? `REQUIRED ENDPOINT — make the generated image visibly match this destination:\n${endState}` : "",
+      carryForward ? `Continuity details that must remain usable by the following scene:\n${carryForward}` : "",
       motion ? `Scene motion/story direction:\n${motion}` : "Scene motion/story direction:\nCreate a clear cinematic endpoint with meaningful visual change from the first frame.",
+      endState ? "Treat the required endpoint as authoritative. Do not substitute a generic pose or invent a different destination." : "",
       "Final answer should be only the image prompt for the end frame. Do not mention files, inputs, first frame, last frame, references, MSR, LoRA, or workflow nodes.",
-    ].join("\n\n");
+    ].filter(Boolean).join("\n\n");
   }
 
   function addFirstFrameIngredientToSegment(segment, firstFrame, imageMode = state.imageModelMode || "zimage") {
@@ -31215,7 +31291,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await generateNBPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma ${imageMode === "flow_gpt" ? "Browser AI" : "NanoBanana"}`, { imageMode, unloadAfter: true });
         if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
       } else {
-        await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true });
+        await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true, flfImageTarget: "end" });
       }
       progress?.set(`${label}: creating end-frame image with ${imageModeDisplayLabel(imageMode)}...`, percentBase + percentSpan * 0.3);
       await createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase + percentSpan * 0.38, percentSpan * 0.5, label);
@@ -34057,10 +34133,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       <div><strong style="color:#bbf7d0;">Append after last scene</strong> adds duration-based scenes after the current last base scene.</div>
     `;
     explanation.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:10px;color:#d4d4d8;font-size:12px;line-height:1.45;";
-    const modeSelect = makeSelect(["durations", "ranges", "markers"], "durations");
-    modeSelect.options[0].textContent = "Durations";
-    modeSelect.options[1].textContent = "Start - End rows";
-    modeSelect.options[2].textContent = "Timestamp markers";
+    const modeSelect = makeSelect(["fixed", "fit", "durations", "ranges", "markers"], "fixed");
+    modeSelect.options[0].textContent = "Fixed length + scene count";
+    modeSelect.options[1].textContent = "Fit to song duration";
+    modeSelect.options[2].textContent = "Durations";
+    modeSelect.options[3].textContent = "Start - End rows";
+    modeSelect.options[4].textContent = "Timestamp markers";
     const actionSelect = makeSelect(["replace", "append"], "replace");
     actionSelect.options[0].textContent = "Replace current base timeline";
     actionSelect.options[1].textContent = "Append after last scene";
@@ -34071,8 +34149,52 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     examples.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;color:#cbd5e1;font-size:12px;line-height:1.45;";
     const textarea = document.createElement("textarea");
     textarea.style.cssText = "min-height:220px;resize:vertical;border:1px solid #3f3f46;border-radius:7px;background:#09090b;color:#f8fafc;padding:10px;font-size:12px;font-family:monospace;line-height:1.45;";
+    const fixedControls = document.createElement("div");
+    fixedControls.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    const fixedDuration = document.createElement("input");
+    fixedDuration.type = "number";
+    fixedDuration.min = "0.1";
+    fixedDuration.step = "0.1";
+    fixedDuration.value = "8";
+    const fixedCount = document.createElement("input");
+    fixedCount.type = "number";
+    fixedCount.min = "1";
+    fixedCount.step = "1";
+    fixedCount.value = "24";
+    fixedControls.append(makeField("Scene length (seconds)", fixedDuration), makeField("Scene count", fixedCount));
+    const fixedTimings = (start) => {
+      const duration = Number(fixedDuration.value);
+      const count = Number(fixedCount.value);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Scene length must be greater than zero.");
+      if (!Number.isInteger(count) || count < 1) throw new Error("Scene count must be a whole number of at least 1.");
+      return Array.from({ length: count }, (_, index) => ({ start: start + index * duration, end: start + (index + 1) * duration }));
+    };
+    const fitTimings = () => {
+      const duration = Number(fixedDuration.value);
+      const songDuration = Number(audio.duration || state.duration || 0);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Scene length must be greater than zero.");
+      if (!Number.isFinite(songDuration) || songDuration <= 0) throw new Error("Load a song first so its duration is available.");
+      const fullScenes = Math.floor(songDuration / duration);
+      const remainder = songDuration - fullScenes * duration;
+      const count = Math.max(1, fullScenes + (remainder >= duration * 0.5 ? 1 : 0));
+      return Array.from({ length: count }, (_, index) => ({
+        start: index * duration,
+        end: index === count - 1 ? songDuration : (index + 1) * duration,
+      }));
+    };
     const setExample = () => {
-      if (modeSelect.value === "durations") {
+      fixedControls.style.display = ["fixed", "fit"].includes(modeSelect.value) ? "grid" : "none";
+      fixedControls.style.gridTemplateColumns = modeSelect.value === "fit" ? "1fr" : "1fr 1fr";
+      fixedCount.parentElement.style.display = modeSelect.value === "fit" ? "none" : "block";
+      textarea.style.display = ["fixed", "fit"].includes(modeSelect.value) ? "none" : "block";
+      if (modeSelect.value === "fixed") {
+        examples.innerHTML = `<strong style="color:#e0f2fe;">Fixed length + scene count</strong><br>Create the requested number of consecutive scenes, all with the same duration.`;
+        actionSelect.disabled = false;
+      } else if (modeSelect.value === "fit") {
+        examples.innerHTML = `<strong style="color:#e0f2fe;">Fit to song duration</strong><br>Fill the loaded song using the preferred scene length. A final scene at least half that length is kept; a smaller remainder is added to the previous scene.`;
+        actionSelect.value = "replace";
+        actionSelect.disabled = true;
+      } else if (modeSelect.value === "durations") {
         examples.innerHTML = `<strong style="color:#e0f2fe;">Durations</strong><br>One scene duration per line. Values can be seconds, <code>mm:ss</code>, or <code>hh:mm:ss</code>.`;
         if (!textarea.value.trim()) textarea.value = "4\n6.5\n3\n8\n5";
         actionSelect.disabled = false;
@@ -34093,7 +34215,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const updatePreview = () => {
       try {
         const appendStart = actionSelect.value === "append" ? Number(state.segments[state.segments.length - 1]?.end || 0) : 0;
-        const timings = parseBulkSegmentTimings(textarea.value, modeSelect.value, appendStart);
+        const timings = modeSelect.value === "fixed" ? fixedTimings(appendStart) : modeSelect.value === "fit" ? fitTimings() : parseBulkSegmentTimings(textarea.value, modeSelect.value, appendStart);
         const first = timings[0];
         const last = timings[timings.length - 1];
         preview.textContent = `Ready: ${timings.length} scene${timings.length === 1 ? "" : "s"} | ${formatTime(first.start)} - ${formatTime(last.end)} | total ${(last.end - first.start).toFixed(2)}s`;
@@ -34106,7 +34228,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const cancel = makeButton("Cancel");
     const apply = makeButton("Apply Bulk Segments", "primary");
     actions.append(cancel, apply);
-    body.append(explanation, controls, examples, textarea, preview);
+    body.append(explanation, controls, examples, fixedControls, textarea, preview);
     box.append(header, body, actions);
     backdrop.append(box);
     document.body.append(backdrop);
@@ -34120,10 +34242,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     actionSelect.onchange = updatePreview;
     textarea.addEventListener("input", updatePreview);
+    fixedDuration.addEventListener("input", updatePreview);
+    fixedCount.addEventListener("input", updatePreview);
     apply.onclick = async () => {
       try {
         const appendStart = actionSelect.value === "append" ? Number(state.segments[state.segments.length - 1]?.end || 0) : 0;
-        const timings = parseBulkSegmentTimings(textarea.value, modeSelect.value, appendStart);
+        const timings = modeSelect.value === "fixed" ? fixedTimings(appendStart) : modeSelect.value === "fit" ? fitTimings() : parseBulkSegmentTimings(textarea.value, modeSelect.value, appendStart);
         await applyBulkSegmentTimings(timings, actionSelect.value);
         toast(`Created ${timings.length} manual scene${timings.length === 1 ? "" : "s"}.`);
         closeModal();

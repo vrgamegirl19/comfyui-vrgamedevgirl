@@ -1352,7 +1352,7 @@ function storyboardStillFacialDirection(value = "") {
 
 function normalizeScene(scene = {}, index = 0) {
   const rawVideoType = String(scene.video_prompt_type || scene.video_type || scene.mode || "").trim();
-  const videoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(rawVideoType) ? rawVideoType : "i2v";
+  const videoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(rawVideoType) ? rawVideoType : "i2v";
   const lyrics = scene.lyrics || scene.lyric_text || "";
   const lyricSingers = Array.isArray(scene.lyric_singers)
     ? scene.lyric_singers.map((item) => String(item || "").trim()).filter(Boolean)
@@ -1367,6 +1367,10 @@ function normalizeScene(scene = {}, index = 0) {
     lyrics,
     lyric_section: scene.lyric_section || scene.section || scene.song_section || "",
     story_beat: scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "",
+    flf_start_state: scene.flf_start_state || scene.first_frame_state || "",
+    flf_transformation: scene.flf_transformation || scene.transition_action || "",
+    flf_end_state: scene.flf_end_state || scene.last_frame_state || "",
+    flf_carry_forward: scene.flf_carry_forward || scene.carry_forward_state || "",
     performance_mode: normalizeStoryboardPerformanceMode(scene.performance_mode || scene.performanceMode || scene.video_performance_mode || scene.videoPerformanceMode),
     lyric_singers: lyricSingers,
     lyric_no_lip_sync: lyricNoLipSync,
@@ -1447,6 +1451,10 @@ function scenesFromBuilderPayload(payload = {}) {
     lyrics: scene.lyric_text || scene.lyrics || "",
     lyric_section: scene.lyric_section || scene.section || scene.song_section || "",
     story_beat: scene.story_beat || scene.scene_story_beat || scene.narrative_beat || "",
+    flf_start_state: scene.flf_start_state || scene.first_frame_state || "",
+    flf_transformation: scene.flf_transformation || scene.transition_action || "",
+    flf_end_state: scene.flf_end_state || scene.last_frame_state || "",
+    flf_carry_forward: scene.flf_carry_forward || scene.carry_forward_state || "",
     performance_mode: scene.performance_mode || scene.performanceMode || payload.performance_mode || payload.performanceMode || "",
     lyric_singers: scene.lyric_singers || scene.singers || [],
     lyric_no_lip_sync: Boolean(scene.lyric_no_lip_sync || scene.no_lip_sync),
@@ -1699,6 +1707,7 @@ function storyboardVideoPromptTypeLabel(type) {
   if (key === "ingredients") return "ingredients to video";
   if (key === "t2v") return "text to video";
   if (key === "rtv") return "reference to video";
+  if (key === "flf") return "first / last frame video";
   if (key === "i2v") return "image to video";
   return key || "image to video";
 }
@@ -1803,6 +1812,10 @@ function storyboardScenesForGpt(state) {
       story_layer: {
         lyric_section: normalized.lyric_section,
         scene_story_beat: normalized.story_beat,
+        flf_start_state: normalized.flf_start_state,
+        flf_transformation: normalized.flf_transformation,
+        flf_end_state: normalized.flf_end_state,
+        flf_carry_forward: normalized.flf_carry_forward,
         song_story_brief: state.storyLayer?.enabled === false ? "" : String(state.storyLayer?.song_story_brief || ""),
         user_story_arc: state.storyLayer?.enabled === false ? "" : String(state.storyLayer?.user_story_arc || ""),
         lyric_story_strength: normalizeStoryLayer(state.storyLayer).lyric_story_strength,
@@ -1944,7 +1957,7 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
-  const payloadVideoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
+  const payloadVideoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
     ? String(payload.videoPromptType || payload.video_prompt_type || "").trim()
     : "";
   const isIdLoraMode = payloadVideoPromptType === "id_lora";
@@ -2713,22 +2726,54 @@ function openStoryboardBuilder(payload = {}) {
     ...overrides,
     story_layer: normalizeStoryLayer(state.storyLayer),
     storyboard_payload: storyboardGptPayload(state, [scene]),
-    max_new_tokens: 360,
+    max_new_tokens: state.videoPromptType === "flf" ? 700 : 360,
     temperature: 0.35,
     top_p: 0.90,
   });
 
-  const createSceneBeatWithGemma = async (scene, { quiet = false, unloadAfter = true, previousBeat = "", nextLyrics = "", progress = null, progressPercent = 35, progressLabel = "" } = {}) => {
+  const propagateFlfEndStateToNextScene = (scene) => {
+    if (state.videoPromptType !== "flf" && scene?.video_prompt_type !== "flf") return;
+    const sceneIndex = state.scenes.findIndex((item) => item.id === scene?.id);
+    if (sceneIndex < 0 || sceneIndex >= state.scenes.length - 1) return;
+    const endState = String(scene.flf_end_state || "").trim();
+    if (!endState) return;
+    state.scenes[sceneIndex + 1].flf_start_state = endState;
+  };
+
+  const createSceneBeatWithGemma = async (scene, { quiet = false, unloadAfter = true, previousBeat = "", previousLyrics = "", previousEndState = "", previousCarryForward = "", nextLyrics = "", progress = null, progressPercent = 35, progressLabel = "" } = {}) => {
     syncStoryLayerFromInputs();
     const normalized = normalizeScene(scene, 0);
+    const sceneIndex = state.scenes.findIndex((item) => item.id === scene.id);
+    if (!previousBeat && sceneIndex > 0) previousBeat = String(state.scenes[sceneIndex - 1]?.story_beat || "");
+    if (!previousLyrics && sceneIndex > 0) previousLyrics = String(state.scenes[sceneIndex - 1]?.lyrics || "");
+    if (!previousEndState && sceneIndex > 0) previousEndState = String(state.scenes[sceneIndex - 1]?.flf_end_state || "");
+    if (!previousCarryForward && sceneIndex > 0) previousCarryForward = String(state.scenes[sceneIndex - 1]?.flf_carry_forward || "");
+    if (!nextLyrics && sceneIndex >= 0 && sceneIndex < state.scenes.length - 1) nextLyrics = String(state.scenes[sceneIndex + 1]?.lyrics || "");
+    if ((state.videoPromptType === "flf" || normalized.video_prompt_type === "flf") && sceneIndex > 0 && previousEndState.trim()) {
+      scene.flf_start_state = previousEndState.trim();
+    }
     try {
       progress?.set(`${progressLabel || normalized.label || "Scene"}: creating scene story beat...`, progressPercent);
       const data = await postJson("/vrgdg/storyboard/scene_story_beat", sceneBeatGemmaPayload(scene, {
         unload_after: unloadAfter,
         previous_beat: previousBeat,
+        previous_lyrics: previousLyrics,
+        previous_end_state: previousEndState,
+        previous_carry_forward: previousCarryForward,
+        current_lyrics: normalized.lyrics,
         next_lyrics: nextLyrics,
+        flf_mode: state.videoPromptType === "flf" || normalized.video_prompt_type === "flf",
       }), 240000);
       scene.story_beat = String(data.story_beat || "").trim();
+      if (state.videoPromptType === "flf" || normalized.video_prompt_type === "flf") {
+        scene.flf_start_state = sceneIndex > 0 && previousEndState.trim()
+          ? previousEndState.trim()
+          : String(data.flf_start_state || "").trim();
+        scene.flf_transformation = String(data.flf_transformation || "").trim();
+        scene.flf_end_state = String(data.flf_end_state || "").trim();
+        scene.flf_carry_forward = String(data.flf_carry_forward || "").trim();
+        propagateFlfEndStateToNextScene(scene);
+      }
       if (!scene.story_beat) throw new Error("Gemma returned an empty scene story beat.");
       if (!quiet) createToast(`Scene story beat created for ${normalized.label || "scene"}.`);
       return scene.story_beat;
@@ -2742,7 +2787,10 @@ function openStoryboardBuilder(payload = {}) {
 
   const createAllSceneBeatsWithGemma = async ({ overwrite = false } = {}) => {
     syncStoryLayerFromInputs();
-    const scenes = currentRows().filter((scene) => overwrite || !String(scene.story_beat || "").trim());
+    const flfMode = state.videoPromptType === "flf";
+    const scenes = currentRows().filter((scene) => overwrite
+      || !String(scene.story_beat || "").trim()
+      || (flfMode && [scene.flf_start_state, scene.flf_transformation, scene.flf_end_state, scene.flf_carry_forward].some((value) => !String(value || "").trim())));
     if (!scenes.length) {
       createToast(overwrite ? "No scenes found." : "No scene story beats are missing.");
       return;
@@ -2755,12 +2803,18 @@ function openStoryboardBuilder(payload = {}) {
         const scene = scenes[index];
         const allIndex = state.scenes.findIndex((item) => item.id === scene.id);
         const previousBeat = allIndex > 0 ? String(state.scenes[allIndex - 1]?.story_beat || "") : "";
+        const previousLyrics = allIndex > 0 ? String(state.scenes[allIndex - 1]?.lyrics || "") : "";
+        const previousEndState = allIndex > 0 ? String(state.scenes[allIndex - 1]?.flf_end_state || "") : "";
+        const previousCarryForward = allIndex > 0 ? String(state.scenes[allIndex - 1]?.flf_carry_forward || "") : "";
         const nextLyrics = allIndex >= 0 && allIndex < state.scenes.length - 1 ? String(state.scenes[allIndex + 1]?.lyrics || "") : "";
         const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
         await createSceneBeatWithGemma(scene, {
           quiet: true,
           unloadAfter: index === scenes.length - 1,
           previousBeat,
+          previousLyrics,
+          previousEndState,
+          previousCarryForward,
           nextLyrics,
           progress,
           progressPercent: base,
@@ -3268,6 +3322,9 @@ function openStoryboardBuilder(payload = {}) {
   const openSceneEditor = (scene) => {
     const isVideoPrepMode = state.mode === "image_to_video_prep";
     const isImagePrepMode = !isVideoPrepMode;
+    const editorSceneIndex = state.scenes.findIndex((item) => item.id === scene.id);
+    const inheritedFlfStart = editorSceneIndex > 0 ? String(state.scenes[editorSceneIndex - 1]?.flf_end_state || "").trim() : "";
+    if ((state.videoPromptType === "flf" || scene.video_prompt_type === "flf") && inheritedFlfStart) scene.flf_start_state = inheritedFlfStart;
     absorbSceneReferencesIntoCatalog([scene]);
     const editorBackdrop = document.createElement("div");
     editorBackdrop.style.cssText = "position:fixed;inset:0;z-index:100012;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:18px;";
@@ -3277,6 +3334,15 @@ function openStoryboardBuilder(payload = {}) {
     const lyricSection = makeInput(scene.lyric_section || "", "Verse 1, Chorus, Bridge, Outro...");
     const lyrics = makeTextarea(scene.lyrics, "Lyrics, script, or beat for this scene...", 4);
     const storyBeat = makeTextarea(scene.story_beat || "", "Scene story beat for this scene...", 4);
+    const flfStartState = makeTextarea(scene.flf_start_state || "", "What must be visible in this scene's first frame...", 3);
+    const flfTransformation = makeTextarea(scene.flf_transformation || "", "What changes continuously between the two frames...", 3);
+    const flfEndState = makeTextarea(scene.flf_end_state || "", "What must be visible in this scene's last frame...", 3);
+    const flfCarryForward = makeTextarea(scene.flf_carry_forward || "", "Continuity details the next scene should inherit...", 3);
+    if ((state.videoPromptType === "flf" || scene.video_prompt_type === "flf") && editorSceneIndex > 0) {
+      flfStartState.readOnly = true;
+      flfStartState.title = "Automatically inherited from the previous scene's end-frame state.";
+      flfStartState.style.opacity = "0.78";
+    }
     const summary = makeTextarea(scene.prompt_summary, "Image prompt summary...", 3);
     const motion = makeTextarea(scene.motion_summary, isImagePrepMode ? "Still photography notes..." : "Motion/video summary...", 3);
     const cameraGroups = isImagePrepMode ? STILL_CAMERA_STYLE_GROUPS : CAMERA_MOTION_GROUPS;
@@ -3527,14 +3593,28 @@ function openStoryboardBuilder(payload = {}) {
     }
     const notesWrap = document.createElement("div");
     notesWrap.append(notes);
-    editor.replaceChildren(
+    const flfBeatGrid = twoCol();
+    flfBeatGrid.append(
+      field(editorSceneIndex > 0 ? "Start-frame state (inherited from previous end)" : "Start-frame state", flfStartState),
+      field("Transformation during scene", flfTransformation),
+      field("End-frame state", flfEndState),
+      field("Carry-forward state", flfCarryForward),
+    );
+    const flfBeatSection = section(2, "First / Last Frame Endpoint Beat", flfBeatGrid);
+    const editorSections = [
       header,
       section(1, "Scene Basics", basicsGrid),
-      section(2, "References", referencesGrid),
-      section(3, isVideoPrepMode ? "Camera & Motion" : "Shot & Still Camera", motionGrid),
-      section(4, "Advanced Options", advancedGrid, { collapsible: true, open: false }),
-      section(5, "Notes", notesWrap),
+    ];
+    if (state.videoPromptType === "flf" || scene.video_prompt_type === "flf") editorSections.push(flfBeatSection);
+    editorSections.push(
+      section(3, "References", referencesGrid),
+      section(4, isVideoPrepMode ? "Camera & Motion" : "Shot & Still Camera", motionGrid),
+      section(5, "Advanced Options", advancedGrid, { collapsible: true, open: false }),
+      section(6, "Notes", notesWrap),
       actions,
+    );
+    editor.replaceChildren(
+      ...editorSections,
     );
     editorBackdrop.append(editor);
     document.body.append(editorBackdrop);
@@ -3652,6 +3732,11 @@ function openStoryboardBuilder(payload = {}) {
       scene.lyric_section = lyricSection.value.trim();
       scene.lyrics = lyrics.value.trim();
       scene.story_beat = storyBeat.value.trim();
+      scene.flf_start_state = flfStartState.value.trim();
+      scene.flf_transformation = flfTransformation.value.trim();
+      scene.flf_end_state = flfEndState.value.trim();
+      scene.flf_carry_forward = flfCarryForward.value.trim();
+      propagateFlfEndStateToNextScene(scene);
       scene.prompt_summary = isVideoPrepMode ? summary.value.trim() : "";
       scene.motion_summary = motion.value.trim();
       scene.video_prompt_type = isVideoPrepMode ? (videoPromptType.value || "i2v") : "i2v";
@@ -3744,6 +3829,10 @@ function openStoryboardBuilder(payload = {}) {
         saveEditorFieldsToScene();
         await createSceneBeatWithGemma(scene, { progress, progressPercent: 35 });
         storyBeat.value = scene.story_beat || "";
+        flfStartState.value = scene.flf_start_state || "";
+        flfTransformation.value = scene.flf_transformation || "";
+        flfEndState.value = scene.flf_end_state || "";
+        flfCarryForward.value = scene.flf_carry_forward || "";
         progress.set("Scene story beat ready.", 100);
         progress.close(1200);
       } catch (error) {
@@ -3905,6 +3994,10 @@ function openStoryboardBuilder(payload = {}) {
             lyrics: fresh.lyrics || normalized.lyrics,
             lyric_section: fresh.lyric_section || normalized.lyric_section,
             story_beat: fresh.story_beat || normalized.story_beat,
+            flf_start_state: fresh.flf_start_state || normalized.flf_start_state,
+            flf_transformation: fresh.flf_transformation || normalized.flf_transformation,
+            flf_end_state: fresh.flf_end_state || normalized.flf_end_state,
+            flf_carry_forward: fresh.flf_carry_forward || normalized.flf_carry_forward,
             performance_mode: fresh.performance_mode || normalized.performance_mode || state.performanceMode,
             prompt_summary: state.mode === "image_to_video_prep" ? (fresh.prompt_summary || normalized.prompt_summary) : "",
             motion_summary: fresh.motion_summary || normalized.motion_summary,
