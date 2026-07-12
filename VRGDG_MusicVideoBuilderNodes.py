@@ -4893,6 +4893,24 @@ def _generate_builder_t2v_prompt(payload):
         elif image_reference_path:
             image_path = _resolve_existing_file(image_reference_path, "T2V Gemma image reference")
             vision_images.append(Image.open(image_path).convert("RGB"))
+    first_last_frame_mode = bool(payload.get("first_last_frame_mode") or payload.get("firstLastFrameMode"))
+    transition_lora_active = bool(payload.get("transition_lora_active") or payload.get("transitionLoraActive"))
+    if first_last_frame_mode and len(vision_images) >= 2:
+        first_image, last_image = vision_images[0], vision_images[1]
+        total_width = max(1, first_image.width + last_image.width)
+        if total_width > 1920:
+            scale = 1920.0 / total_width
+            resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+            first_image = first_image.resize((max(1, int(round(first_image.width * scale))), max(1, int(round(first_image.height * scale)))), resample)
+            last_image = last_image.resize((max(1, int(round(last_image.width * scale))), max(1, int(round(last_image.height * scale)))), resample)
+        if first_image.width + last_image.width > 1920:
+            last_image = last_image.crop((0, 0, max(1, 1920 - first_image.width), last_image.height))
+        canvas_width = first_image.width + last_image.width
+        canvas_height = max(first_image.height, last_image.height)
+        combined = Image.new("RGB", (canvas_width, canvas_height), (0, 0, 0))
+        combined.paste(first_image, (0, (canvas_height - first_image.height) // 2))
+        combined.paste(last_image, (first_image.width, (canvas_height - last_image.height) // 2))
+        vision_images = [combined]
     has_image_reference = bool(vision_images)
     if has_image_reference and text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a T2V vision Gemma model first.")
@@ -4934,14 +4952,42 @@ def _generate_builder_t2v_prompt(payload):
     instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
     prompt_label = "ID-LoRA I2V" if instruction_key == "id_lora" else "Reference to Video" if instruction_key == "rtv" else "T2V"
-    first_last_frame_mode = bool(payload.get("first_last_frame_mode") or payload.get("firstLastFrameMode"))
     if has_image_reference and first_last_frame_mode:
+        # Generic I2V instructions describe a single first-frame reference and
+        # can conflict with FLF endpoint framing (for example, demanding that a
+        # face remain visible). FLF uses its dedicated contract below instead.
+        t2v_instructions = (
+            "Write only one polished First Last Frame video prompt paragraph. "
+            "Use the locked START and END facts, scene performance context, and transition direction exactly. "
+            "Do not output analysis, labels, headings, or hidden reasoning."
+        )
+        transition_trigger_guidance = (
+            "- The LTX 2.3 transition LoRA is active. End the final prompt with the trigger word 'zhuanchang' exactly once, and do not place it anywhere else.\n"
+            if transition_lora_active
+            else "- No transition LoRA is active. Do not include the trigger word 'zhuanchang'.\n"
+        )
         image_guidance = (
             "First Last Frame guidance:\n"
-            "- Image 1 is the opening visual state. Image 2 is the ending visual state.\n"
-            "- Use the two images as the visual truth for subject identity, wardrobe, setting, lighting, composition, pose, and camera endpoint.\n"
-            "- The final prompt must describe a believable continuous transition from the opening state to the ending state.\n"
+            "- You receive one side-by-side image: the LEFT half is the opening visual state and the RIGHT half is the ending visual state.\n"
+            "- Use both halves as the visual truth for subject identity, wardrobe, setting, lighting, composition, pose, and camera endpoint.\n"
+            "- Write ONE compact, flowing paragraph in this exact motion structure; do not use headings, bullets, timestamps, numbered phases, or separate staged blocks.\n"
+            "- Sentence 1 establishes the actual LEFT composition, subject, setting, and starting condition without inventing a wider establishing shot.\n"
+            "- Sentence 2 begins with an explicit natural physical action by the subject (for example shoulders lift, the body rises, the head turns, or the subject steps/moves as supported by the endpoints) and joins all material/anatomical changes into ONE continuous progressive transformation. Do not merely change textures on a motionless subject. Describe a few precise visible changes with coordinated verbs such as softens, closes, separates, lengthens, opens, or forms. Do not schedule them as disconnected events.\n"
+            "- Sentence 3 starts a continuous camera move at the same time as the transformation and follows it toward the exact RIGHT crop. Keep that camera motion active throughout instead of delaying it until late in the clip.\n"
+            "- Sentence 4 describes the most distinctive RIGHT destination anatomy, object, material, color, pose, and focal detail forming gradually and coherently. Never replace an unusual endpoint with generic wording such as 'fleshy anatomy,' 'human visage,' or 'living form.'\n"
+            "- Sentence 5 anchors shared environmental motion and explicitly keeps the setting, lighting, and spatial layout consistent.\n"
+            "- Sentence 6 states that the transformation completes as the camera settles on the exact RIGHT destination, preserving continuous movement and coherent anatomy/structure throughout.\n"
+            "- Both subject motion and camera travel begin immediately and proceed continuously. Do not hold one endpoint, introduce a second figure, overlay both compositions, or wait until the middle of the clip to reframe.\n"
+            "- Never move, collapse, or recede facial features into another body region. Preserve coherent identity and anatomy while the camera moves away from any region excluded by the END crop.\n"
+            "- When framing or camera angle differs, derive the camera direction strictly from the relative location of the RIGHT endpoint crop, then describe a precise continuous trajectory using direction and distance. If the LEFT shows a face and the RIGHT is centered lower on the neck, chest, shoulders, torso, or legs, the camera must tilt/pan DOWNWARD and must never say upward. If the RIGHT endpoint is physically above the LEFT focal region, only then may it say upward. The camera must end at the exact crop and focal region shown on the right. Explicitly name what remains visible at that endpoint and do not claim the face or full subject remains visible when the ending crop excludes it.\n"
+            "- Preserve environmental elements that remain shared between the endpoints so the background does not reset unnecessarily.\n"
+            "- Describe every change as progressive physical formation rather than a fade, crossfade, cut, overlay, double exposure, collage, split screen, or abrupt replacement.\n"
             "- Let the images decide the camera/character endpoints. Use motion/camera notes and speed/pacing guidance only to decide how quickly, smoothly, forcefully, or emotionally the subject and camera travel between those endpoints.\n"
+            + transition_trigger_guidance
+            +
+            "- Do not include an aspect ratio, resolution, widescreen label, or phrases such as 'cinematic 16:9' in the final prompt. Width and height are controlled by the workflow settings.\n"
+            "- Before answering, silently check that every camera-direction word moves toward the RIGHT crop and that no sentence contradicts the endpoint. Correct any upward/downward, closer/wider, or visible/out-of-frame contradiction.\n"
+            "- Preserve any supplied singing, lyric, dialogue, emotional-performance, and selected facial-performance direction; integrate it naturally without disrupting the continuous visual motion.\n"
             "- Preserve the normal one-paragraph video prompt structure from the instructions. Do not mention images, frames, references, inputs, MSR, or LoRA in the final prompt.\n\n"
         )
     elif has_image_reference and instruction_key == "id_lora":
@@ -4976,27 +5022,8 @@ def _generate_builder_t2v_prompt(payload):
     unload_after = bool(payload.get("unload_after", True))
 
     try:
-        if has_image_reference and text_runner == "llm_api":
-            text, run_info = _run_llm_api_vision(
-                payload,
-                prompt,
-                vision_images,
-            )
-        elif has_image_reference and text_runner == "lm_studio":
-            text = _run_lm_studio_vision(
-                payload,
-                prompt,
-                vision_images,
-                temperature=temperature,
-                top_p=top_p,
-                max_new_tokens=max_new_tokens,
-            )
-            run_info = {
-                "runner": "lm_studio_vision",
-                "used_model": str(payload.get("lmstudio_model") or "").strip(),
-                "unloaded": False,
-            }
-        elif has_image_reference:
+        model = None
+        if has_image_reference and text_runner not in {"lm_studio", "llm_api"}:
             model = llm._load_gguf_model(
                 model_path=model_path,
                 n_ctx=n_ctx,
@@ -5005,15 +5032,54 @@ def _generate_builder_t2v_prompt(payload):
                 chat_format=chat_format,
                 mmproj_path=mmproj_path,
             )
-            text = llm._run_gguf_vision_pipeline(
+
+        def run_vision_instruction(instruction_text, token_limit):
+            if text_runner == "llm_api":
+                vision_payload = dict(payload)
+                vision_payload["max_new_tokens"] = int(token_limit)
+                return _run_llm_api_vision(vision_payload, instruction_text, vision_images)
+            if text_runner == "lm_studio":
+                result_text = _run_lm_studio_vision(
+                    payload,
+                    instruction_text,
+                    vision_images,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_new_tokens=int(token_limit),
+                )
+                return result_text, {
+                    "runner": "lm_studio_vision",
+                    "used_model": str(payload.get("lmstudio_model") or "").strip(),
+                    "unloaded": False,
+                }
+            result_text = llm._run_gguf_vision_pipeline(
                 model=model,
                 pil_images=vision_images,
-                instruction_text=prompt,
+                instruction_text=instruction_text,
                 temperature=temperature,
                 top_p=top_p,
-                max_new_tokens=max_new_tokens,
+                max_new_tokens=int(token_limit),
             )
-            run_info = {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
+            return result_text, {"runner": "builtin", "used_model": model_path, "unloaded": unload_after}
+
+        if has_image_reference:
+            if first_last_frame_mode:
+                observation_prompt = (
+                    "Inspect the side-by-side visual carefully. The LEFT half is START and the RIGHT half is END. "
+                    "Do visual observation only; do not write a video prompt, story, transition, or camera direction. "
+                    "Return exactly two compact labeled lines. START: describe the visible subject, material, pose, setting, and crop. "
+                    "END: literally describe the visible subject, exact crop, and every unusual destination feature, prioritizing openings, cavities, "
+                    "translucent anatomy, internal structures, distinctive colors, materials, and which body regions are out of frame. "
+                    "Do not normalize an unusual feature into generic anatomy and do not infer what ought to be present. State only what is visibly present."
+                )
+                locked_observation, _ = run_vision_instruction(observation_prompt, 900)
+                locked_observation = _clean_gemma_prompt_text(locked_observation)
+                prompt += (
+                    "\n\nLOCKED VISUAL OBSERVATION FROM THE REQUIRED FIRST PASS:\n"
+                    f"{locked_observation}\n\n"
+                    "Use these locked facts as literal visual truth. The final prompt must reach every distinctive END fact without replacing it with generic wording."
+                )
+            text, run_info = run_vision_instruction(prompt, max_new_tokens)
         else:
             text, run_info = _run_builder_text_llm(
                 payload,
@@ -5024,7 +5090,17 @@ def _generate_builder_t2v_prompt(payload):
                 label=f"{prompt_label} Gemma",
             )
         text = _clean_gemma_prompt_text(text)
+        if first_last_frame_mode:
+            text = re.sub(r"(?i)\b(?:cinematic\s+)?(?:aspect\s+ratio\s*[:=]?\s*)?(?:16\s*:\s*9|9\s*:\s*16|21\s*:\s*9|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)(?:\s+(?:aspect\s+ratio|widescreen|portrait|landscape))?\b[,]?\s*", "", text)
+            text = re.sub(r"(?i)\b(?:widescreen|portrait|landscape)\s+aspect\s+ratio\b[,]?\s*", "", text)
+            text = re.sub(r"(?i)\b(?:fades?|dissolves?|crossfades?|blends?)\s+(?:smoothly\s+|seamlessly\s+|gradually\s+)?into\b", "progressively transforms into", text)
+            text = re.sub(r"(?i),?\s*(?:while\s+)?maintaining (?:her|his|their|the subject(?:'s)?) visibility throughout(?: the transformation)?", "", text)
+            text = re.sub(r"\s{2,}", " ", text).strip(" ,")
         text = _repair_and_validate_builder_gemma_prompt(payload, text, prompt_label)
+        if first_last_frame_mode:
+            text = re.sub(r"(?i)(?:\s*[,.;:-]?\s*)\bzhuanchang\b", "", text).strip(" ,.;:-")
+            if transition_lora_active:
+                text = f"{text}. zhuanchang"
         return {
             "prompt": text,
             "used_model": run_info.get("used_model", model_path if has_image_reference else ""),

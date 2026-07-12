@@ -17,6 +17,12 @@ _PROMPT_KEYS = (
 
 def _strip_json_fence(text):
     cleaned = str(text or "").strip()
+    cleaned = re.sub(
+        r"^\s*[^A-Za-z0-9]*(?:(?:user|assistant|model)\b)?[^A-Za-z0-9]*(?:thought|analysis|reasoning)(?=[A-Z]|[^A-Za-z0-9]|$)[^A-Za-z0-9]*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```$", "", cleaned)
     return cleaned.strip()
@@ -82,7 +88,7 @@ def _items_for_scene(parsed, target_scene_number):
 
 
 def extract_prompt_text_from_gemma_output(text, scene_number=None):
-    original = str(text or "").strip()
+    original = _strip_json_fence(text)
     if not original:
         return original
     target_scene_number = _scene_number(scene_number)

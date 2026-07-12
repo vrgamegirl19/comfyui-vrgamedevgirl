@@ -494,6 +494,7 @@ def _clean_visual_gemma_text(text):
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
     cleaned = re.sub(r"^(?:Assistant|Answer|Final prompt)\s*:\s*", "", cleaned, flags=re.IGNORECASE).strip()
     control_patterns = [
+        r"^\s*_?(?:user|assistant|model)?_?\s*(?:thought|analysis|reasoning)\s*[:=\-]?\s*",
         r"^\s*_?(?:start_of_)?turn\s*",
         r"^\s*<\|?start_of_turn\|?>\s*(?:model|assistant)?\s*",
         r"\s*<\|?end_of_turn\|?>\s*",

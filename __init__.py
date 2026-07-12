@@ -31,6 +31,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_ImageCompareNode",
     ".vrgdg_ltx_msr_reference_builder",
     ".VRGDG_LTXICIngredientsGrid",
+    ".VRGDG_LTXFirstLastGuide",
     ".VRGDG_FlowBrowserNodes",
     ".VRGDG_BrowserImageRoutes",
     ".VRGDG_SilentAudioRoutes",

@@ -739,6 +739,11 @@ export const STORYBOARD_CAMERA_FLOW_PRESETS = {
 
 export const PERFORMANCE_STYLE_PRESETS = [
   {
+    value: "off",
+    label: "Off",
+    direction: "",
+  },
+  {
     value: "",
     label: "Default cinematic",
     direction: "Use a natural cinematic music-video performance with visible emotion, expressive face, motivated body language, and camera energy that fits the scene.",
@@ -795,6 +800,12 @@ export function storyboardPerformancePreset(value = "") {
 }
 
 export const FACIAL_PERFORMANCE_PRESETS = [
+  {
+    value: "off",
+    label: "Off",
+    description: "Do not attach facial direction",
+    direction: "",
+  },
   {
     value: "",
     label: "Default natural",
@@ -1710,11 +1721,16 @@ function storyboardScenesForGpt(state) {
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
     const performanceMode = normalizeStoryboardPerformanceMode(normalized.performance_mode || state.performanceMode || state.videoType || state.performance_mode);
-    const facialPreset = facialPresetForPayload(normalized.facial_performance || state.facialPerformance);
+    const selectedFacialPerformance = normalized.facial_performance || state.facialPerformance;
+    const facialPreset = facialPresetForPayload(selectedFacialPerformance);
     const facialCustom = String(normalized.facial_performance_custom || state.facialPerformanceCustom || "").trim();
-    const facialDirection = (normalized.facial_performance || state.facialPerformance) === "custom" && facialCustom
+    const facialDirection = selectedFacialPerformance === "off"
+      ? ""
+      : selectedFacialPerformance === "custom" && facialCustom
       ? facialCustom
       : [facialPreset.direction, facialCustom].filter(Boolean).join(" ");
+    const selectedPerformanceStyle = normalized.performance_style || state.performanceStyle;
+    const selectedPerformancePreset = performancePreset(selectedPerformanceStyle);
     const instrumental = Boolean(normalized.lyric_instrumental);
     const noLipSync = Boolean(normalized.lyric_no_lip_sync || performanceMode === "no_lip_sync");
     const noCharacterPresent = Boolean(normalized.no_character_present);
@@ -1802,11 +1818,11 @@ function storyboardScenesForGpt(state) {
       global_consistency_instruction: String(state.globalConsistencyPhrase || "").trim()
         ? "Incorporate the global_consistency_phrase naturally into the prompt where it fits. Preserve its key wording, but do not force it to the beginning unless that is the most natural phrasing."
         : "",
-      performance_style: performancePreset(normalized.performance_style || state.performanceStyle).label,
-      performance_direction: performancePreset(normalized.performance_style || state.performanceStyle).direction,
-      facial_performance: facialPreset.label,
+      performance_style: selectedPerformanceStyle === "off" ? "" : selectedPerformancePreset.label,
+      performance_direction: selectedPerformanceStyle === "off" ? "" : selectedPerformancePreset.direction,
+      facial_performance: selectedFacialPerformance === "off" ? "" : facialPreset.label,
       facial_performance_direction: imageMode ? storyboardStillFacialDirection(facialDirection) : facialDirection,
-      facial_performance_custom: imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom,
+      facial_performance_custom: selectedFacialPerformance === "off" ? "" : (imageMode ? storyboardStillFacialDirection(facialCustom) : facialCustom),
       microphone: {
         include: Boolean(normalized.include_microphone),
         instruction: normalized.include_microphone

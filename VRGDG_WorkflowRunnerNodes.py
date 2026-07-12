@@ -176,6 +176,13 @@ def _id_lora_api_template_path():
     )
 
 
+def _flf_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows", "UsedForUIDoNotTouch", "LTX2.3_FLF_API.json",
+    )
+
+
 def _clear_memory_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -2215,6 +2222,110 @@ def _build_ingredients_api_prompt(payload):
     }
 
 
+def _patch_flf_api_prompt(prompt, payload):
+    prompt = copy.deepcopy(prompt)
+    video_prompt = str(payload.get("i2v_prompt", "") or "").strip()
+    if not video_prompt:
+        raise ValueError("First Last Frame prompt is empty.")
+    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    srt_path = os.path.abspath(str(payload.get("srt_path", "") or "").strip().strip('"'))
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    if not os.path.isfile(audio_path): raise FileNotFoundError(f"Audio file was not found: {audio_path}")
+    if not os.path.isfile(srt_path): raise FileNotFoundError(f"SRT file was not found: {srt_path}")
+    if not project_folder: raise ValueError("Project folder is empty.")
+    first = payload.get("first_frame") if isinstance(payload.get("first_frame"), dict) else {}
+    last = payload.get("last_frame") if isinstance(payload.get("last_frame"), dict) else {}
+    first_name = _prepare_optional_input_image_name(first)
+    last_name = _prepare_optional_input_image_name(last)
+    if first_name == "(none)": raise ValueError("First Last Frame needs a first-frame image.")
+    if last_name == "(none)": raise ValueError("First Last Frame needs a last-frame image.")
+    if os.path.normcase(first_name) == os.path.normcase(last_name):
+        raise ValueError(f"First Last Frame resolved both inputs to the same image: {first_name}")
+    output_folder = _scene_render_output_folder(project_folder, "first_last_frame_clips", payload)
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+    _patch_ltx_video_model_loader(prompt, payload)
+    for node_id, key, value in (("271:256","vae_name",payload.get("vae_name","")),("271:216","clip_name1",payload.get("clip_name1","")),("271:216","clip_name2",payload.get("clip_name2","")),("271:211","model_name",payload.get("upscale_model_name","")),("271:254","vae_name",payload.get("audio_vae_name",""))):
+        _set_api_input(prompt, node_id, key, str(value or ""))
+    _set_api_input(prompt, "736:424", "value", fps)
+    _set_api_input(prompt, "736:425", "value", _int_payload(payload,"width",1920,64,4096))
+    _set_api_input(prompt, "736:426", "value", _int_payload(payload,"height",1080,64,4096))
+    _set_api_input(prompt, "736:449", "value", _int_payload(payload,"seed",69,0,0xFFFFFFFFFFFFFFFF))
+    _set_api_input(prompt, "736:551", "value", 0)
+
+    # FLF is a single-pass render, but its hidden workflow deliberately uses the
+    # shared two-pass LoRA loader and consumes output 0 (the first-pass model).
+    # Patch that loader here as well; otherwise the UI can send enabled LoRAs
+    # while the template remains at lora_count=0 and silently applies none.
+    use_custom_loras = _bool_payload(payload, "use_custom_loras", False)
+    lora_count = _int_payload(payload, "lora_count", 0, 0, _MAX_LORA_SLOTS) if use_custom_loras else 0
+    _set_api_input(prompt, "937", "use_custom_loras", use_custom_loras)
+    _set_api_input(prompt, "937", "lora_count", lora_count)
+    for slot in range(1, _MAX_LORA_SLOTS + 1):
+        lora_name = _clean_lora_name(payload.get(f"lora_{slot}", _NONE_LORA)) if slot <= lora_count else _NONE_LORA
+        first_pass_strength = _float_payload(payload, f"first_pass_strength_{slot}", _float_payload(payload, f"strength_{slot}", 1.0))
+        _set_api_input(prompt, "937", f"lora_{slot}", lora_name)
+        _set_api_input(prompt, "937", f"first_pass_strength_{slot}", first_pass_strength)
+        _set_api_input(prompt, "937", f"second_pass_strength_{slot}", 0.0)
+
+    _set_api_input(prompt, "950", "image", first_name)
+    _set_api_input(prompt, "945", "image", last_name)
+    for node_id, prefix, defaults in (("958", "first", (0, 0.7, 29, 1, 0.9)), ("959", "last", (-1, 0.7, 29, 1, 1.0))):
+        frame_idx, strength, crf, blur_radius, attention_strength = defaults
+        _set_api_input(prompt, node_id, "frame_idx", _int_payload(payload, f"{prefix}_guide_frame_idx", frame_idx, -9999, 9999))
+        _set_api_input(prompt, node_id, "strength", _float_payload(payload, f"{prefix}_guide_strength", strength, 0.0, 1.0))
+        _set_api_input(prompt, node_id, "crf", _int_payload(payload, f"{prefix}_guide_crf", crf, 0, 51))
+        _set_api_input(prompt, node_id, "blur_radius", _int_payload(payload, f"{prefix}_guide_blur_radius", blur_radius, 0, 7))
+        interpolation = str(payload.get(f"{prefix}_guide_interpolation") or "lanczos")
+        if interpolation not in {"lanczos", "bislerp", "nearest", "bilinear", "bicubic", "area", "nearest-exact"}:
+            interpolation = "lanczos"
+        crop = str(payload.get(f"{prefix}_guide_crop") or "center")
+        if crop not in {"center", "disabled"}:
+            crop = "center"
+        _set_api_input(prompt, node_id, "interpolation", interpolation)
+        _set_api_input(prompt, node_id, "crop", crop)
+        _set_api_input(prompt, node_id, "attention_strength", _float_payload(payload, f"{prefix}_attention_strength", attention_strength, 0.0, 1.0))
+    _set_api_input(prompt, "927", "audio_file", audio_path)
+    _set_api_input(prompt, "927", "seek_seconds", 0); _set_api_input(prompt, "927", "duration", 0)
+    _set_api_input(prompt, "930", "value", _int_payload(payload,"prompt_number_one_based",1,1,999999))
+    _set_api_input(prompt, "933", "text", video_prompt); _set_api_input(prompt, "935", "value", srt_path)
+    _set_api_input(prompt, "218:287", "overwrite_mode", "overwrite")
+    _set_api_input(prompt, "218:287", "tail_loss_frames", _int_payload(payload, "tail_loss_frames", 25, 0, 10000))
+    _set_api_input(prompt, "218:287", "pre_frames", _int_payload(payload, "pre_frames", 0, 0, 10000))
+    _set_api_input(prompt, "437", "value", output_folder)
+    _patch_ltx_single_pass_sampler_overrides(prompt, payload)
+    return prompt, output_folder
+
+
+def _build_flf_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_flf_api_template_path())
+    patched, output_folder = _patch_flf_api_prompt(prompt, payload)
+    first_name = str(patched.get("950", {}).get("inputs", {}).get("image", "") or "")
+    last_name = str(patched.get("945", {}).get("inputs", {}).get("image", "") or "")
+    first_source = payload.get("first_frame") if isinstance(payload.get("first_frame"), dict) else {}
+    last_source = payload.get("last_frame") if isinstance(payload.get("last_frame"), dict) else {}
+    flf_inputs = {
+        "first_node": "950",
+        "last_node": "945",
+        "first_load_image": first_name,
+        "last_load_image": last_name,
+        "first_source": str(first_source.get("path") or first_source.get("name") or "embedded image data"),
+        "last_source": str(last_source.get("path") or last_source.get("name") or "embedded image data"),
+        "inputs_are_different": os.path.normcase(first_name) != os.path.normcase(last_name),
+        "lora_node": "937",
+        "loras_enabled": bool(patched.get("937", {}).get("inputs", {}).get("use_custom_loras", False)),
+        "lora_count": int(patched.get("937", {}).get("inputs", {}).get("lora_count", 0) or 0),
+        "loras": [
+            {
+                "name": str(patched.get("937", {}).get("inputs", {}).get(f"lora_{slot}", _NONE_LORA)),
+                "strength": float(patched.get("937", {}).get("inputs", {}).get(f"first_pass_strength_{slot}", 1.0) or 0.0),
+            }
+            for slot in range(1, int(patched.get("937", {}).get("inputs", {}).get("lora_count", 0) or 0) + 1)
+        ],
+    }
+    print(f"[VRGDG FLF] Verified inputs: {json.dumps(flf_inputs, ensure_ascii=False)}", flush=True)
+    return {"workflow_path": workflow_path, "output_folder": output_folder, "prompt": patched, "flf_inputs": flf_inputs}
+
+
 def _build_id_lora_api_prompt(payload):
     workflow_path, prompt = _load_api_template(_id_lora_api_template_path())
     patched_prompt, output_folder = _patch_id_lora_api_prompt(prompt, payload)
@@ -3320,6 +3431,15 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_ingredients_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_flf_prompt")
+    async def vrgdg_workflow_runner_build_flf_prompt(request):
+        try:
+            payload = await request.json()
+            result = _build_flf_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

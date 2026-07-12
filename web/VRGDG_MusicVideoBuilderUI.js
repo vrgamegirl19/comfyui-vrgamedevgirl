@@ -2687,6 +2687,14 @@ function openBuilder(node) {
   const i2vNotesInput = document.createElement("textarea");
   i2vNotesInput.placeholder = "Extra video motion notes, camera movement, character movement...";
   i2vNotesInput.style.cssText = notesInput.style.cssText;
+  const flfTransitionTypeSelect = makeSelect([
+    { value: "global", label: "Use Global Setting" },
+    { value: "auto", label: "Auto: Gemma decides" },
+    { value: "smooth", label: "Smooth Transition" },
+    { value: "morph", label: "Surreal Morph" },
+  ], "global");
+  const flfTransitionTypeField = makeField("First Last Frame transition type", flfTransitionTypeSelect);
+  flfTransitionTypeField.style.display = "none";
   const lyricTextInput = document.createElement("textarea");
   lyricTextInput.placeholder = "Lyric, dialogue, or timing line for this scene...";
   lyricTextInput.style.cssText = notesInput.style.cssText;
@@ -2832,7 +2840,7 @@ function openBuilder(node) {
   i2vPrompt.placeholder = "Image-to-video prompt...";
   i2vPrompt.style.cssText = notesInput.style.cssText;
   const videoModeChooser = document.createElement("div");
-  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,auto);gap:6px;";
+  videoModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,auto);gap:6px;";
   const styleVideoModeCard = (card, column, row) => {
     card.style.gridColumn = String(column);
     card.style.gridRow = String(row);
@@ -2852,9 +2860,11 @@ function openBuilder(node) {
   styleVideoModeCard(referenceToVideoCard, 2, 2);
   const ingredientsToVideoCard = makeImageModelCard("Ingredients to Video", "ingredients");
   styleVideoModeCard(ingredientsToVideoCard, 1, 3);
+  const firstLastFrameVideoCard = makeImageModelCard("First Last Frame", "flf");
+  styleVideoModeCard(firstLastFrameVideoCard, 2, 3);
   const importCustomVideoCard = makeImageModelCard("Import Custom Video", "import");
-  styleVideoModeCard(importCustomVideoCard, 2, 3);
-  videoModeChooser.append(imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, importCustomVideoCard);
+  styleVideoModeCard(importCustomVideoCard, 1, 4);
+  videoModeChooser.append(imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, firstLastFrameVideoCard, importCustomVideoCard);
   const importCustomVideoComingSoon = document.createElement("div");
   importCustomVideoComingSoon.textContent = "Import Custom Video is coming soon. Use Restore Video from a scene's right-click menu for manual scene repair.";
   importCustomVideoComingSoon.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;color:#dbeafe;padding:10px;font-size:12px;line-height:1.45;";
@@ -2893,6 +2903,9 @@ function openBuilder(node) {
   i2vLoraHintButton.title = "Optional extra video LoRAs use one strength for Reference to Video, or separate pass strengths for I2V/T2V.";
   i2vLoraHintButton.style.cssText += "width:34px;padding:7px 0;";
   i2vLoraHintRow.append(i2vLoraHintButton);
+  const flfTransitionLoraNote = document.createElement("div");
+  flfTransitionLoraNote.textContent = "FLF recommendation: use an LTX 2.3 transition LoRA when the endpoints differ substantially in subject, framing, material, style, or scene content. It helps LTX create a continuous semantic transformation instead of a late cut or dissolve.";
+  flfTransitionLoraNote.style.cssText = "display:none;border:1px solid #7c3aed;border-radius:7px;background:#2e1065;color:#ddd6fe;padding:8px 10px;font-size:11px;line-height:1.4;";
   const i2vLoraCount = makeInput("0", "number");
   i2vLoraCount.min = "0";
   i2vLoraCount.max = "4";
@@ -2955,6 +2968,7 @@ function openBuilder(node) {
     { value: "first_last_frame", label: "First Last Frame: first image to end image" },
   ], "none");
   rtvReferenceBehaviorSelect.title = "Choose how Reference to Video should pack MSR reference images. Only one behavior can be active at a time.";
+  const rtvReferenceBehaviorField = makeField("Mode", rtvReferenceBehaviorSelect);
   const rtvReferenceBehaviorNote = document.createElement("div");
   rtvReferenceBehaviorNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
   const firstLastFramePreviewPanel = document.createElement("div");
@@ -2966,13 +2980,19 @@ function openBuilder(node) {
   const createSceneEndFrameButton = makeMiniButton("Create End Frame");
   createSceneEndFrameButton.title = "Generate or replace the active scene's First Last Frame end image using the current image model.";
   const clearSceneEndFrameButton = makeMiniButton("Clear End Frame");
+  const loadSceneEndFrameButton = makeMiniButton("Load End Frame");
+  loadSceneEndFrameButton.title = "Load an existing image as this scene's end frame. No image provider is required.";
+  const sceneEndFrameFileInput = document.createElement("input");
+  sceneEndFrameFileInput.type = "file";
+  sceneEndFrameFileInput.accept = "image/png,image/jpeg,image/webp";
+  sceneEndFrameFileInput.style.display = "none";
   clearSceneEndFrameButton.title = "Remove the active scene's stored First Last Frame end image.";
   const firstLastFrameActions = document.createElement("div");
   firstLastFrameActions.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
-  firstLastFrameActions.append(createSceneEndFrameButton, clearSceneEndFrameButton);
+  firstLastFrameActions.append(loadSceneEndFrameButton, createSceneEndFrameButton, clearSceneEndFrameButton, sceneEndFrameFileInput);
   firstLastFramePreviewPanel.append(firstLastFramePreviewGrid, firstLastFrameStatus, firstLastFrameActions);
   const rtvSceneImageAnchorSection = makeSettingsSection("Reference Behavior", [
-    makeField("Mode", rtvReferenceBehaviorSelect),
+    rtvReferenceBehaviorField,
     rtvReferenceBehaviorNote,
     firstLastFramePreviewPanel,
   ]);
@@ -3028,7 +3048,7 @@ function openBuilder(node) {
   idLoraIdentityGrid.append(
     makeField("Identity scale", idLoraIdentityScaleInput)
   );
-  i2vLoraPanel.append(i2vLoraHintRow, makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
+  i2vLoraPanel.append(i2vLoraHintRow, flfTransitionLoraNote, makeField("Video LoRA count", i2vLoraCount), i2vLoraRows);
   const i2vSettingsGrid = document.createElement("div");
   i2vSettingsGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   i2vSettingsGrid.append(makeField("FPS", i2vFpsInput), makeField("Seed", i2vSeedInput), makeField("Width", i2vWidthInput), makeField("Height", i2vHeightInput));
@@ -3042,6 +3062,75 @@ function openBuilder(node) {
     i2vSrtSplitAdvancedNote,
     i2vSrtSplitGrid,
   ]);
+  const flfGuideSettingsGrid = document.createElement("div");
+  flfGuideSettingsGrid.style.cssText = i2vSettingsGrid.style.cssText;
+  const flfFirstGuideStrengthInput = makeInput("0.7", "number");
+  const flfLastGuideStrengthInput = makeInput("0.7", "number");
+  const flfFirstGuideFrameIndexInput = makeInput("0", "number");
+  const flfLastGuideFrameIndexInput = makeInput("-1", "number");
+  for (const control of [flfFirstGuideStrengthInput, flfLastGuideStrengthInput]) {
+    control.min = "0"; control.max = "1"; control.step = "0.01";
+  }
+  flfGuideSettingsGrid.append(makeField("First Frame Guide", flfFirstGuideStrengthInput), makeField("Last Frame Guide", flfLastGuideStrengthInput));
+  flfGuideSettingsGrid.append(makeField("First Guide Frame Index", flfFirstGuideFrameIndexInput), makeField("Last Guide Frame Index", flfLastGuideFrameIndexInput));
+  const flfFirstGuideCrfInput = makeInput("29", "number");
+  const flfLastGuideCrfInput = makeInput("29", "number");
+  const flfFirstGuideBlurInput = makeInput("1", "number");
+  const flfLastGuideBlurInput = makeInput("1", "number");
+  for (const control of [flfFirstGuideCrfInput, flfLastGuideCrfInput]) { control.min = "0"; control.max = "51"; control.step = "1"; }
+  for (const control of [flfFirstGuideBlurInput, flfLastGuideBlurInput]) { control.min = "0"; control.max = "7"; control.step = "1"; }
+  const flfFirstGuideInterpolation = makeSelect(["lanczos", "bislerp", "nearest", "bilinear", "bicubic", "area", "nearest-exact"], "lanczos");
+  const flfLastGuideInterpolation = makeSelect(["lanczos", "bislerp", "nearest", "bilinear", "bicubic", "area", "nearest-exact"], "lanczos");
+  const flfFirstGuideCrop = makeSelect(["center", "disabled"], "center");
+  const flfLastGuideCrop = makeSelect(["center", "disabled"], "center");
+  const flfFirstAttentionStrength = makeInput("0.90", "number");
+  const flfLastAttentionStrength = makeInput("1.00", "number");
+  for (const control of [flfFirstAttentionStrength, flfLastAttentionStrength]) { control.min = "0"; control.max = "1"; control.step = "0.01"; }
+  const flfAdvancedDetails = document.createElement("details");
+  flfAdvancedDetails.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:8px;";
+  const flfAdvancedSummary = document.createElement("summary");
+  flfAdvancedSummary.textContent = "Advanced guide preprocessing and attention";
+  flfAdvancedSummary.style.cssText = "cursor:pointer;color:#bae6fd;font-weight:800;";
+  const flfAdvancedGrid = document.createElement("div");
+  flfAdvancedGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;";
+  flfAdvancedGrid.append(
+    makeField("First CRF", flfFirstGuideCrfInput), makeField("Last CRF", flfLastGuideCrfInput),
+    makeField("First blur radius", flfFirstGuideBlurInput), makeField("Last blur radius", flfLastGuideBlurInput),
+    makeField("First interpolation", flfFirstGuideInterpolation), makeField("Last interpolation", flfLastGuideInterpolation),
+    makeField("First crop", flfFirstGuideCrop), makeField("Last crop", flfLastGuideCrop),
+    makeField("First attention strength", flfFirstAttentionStrength), makeField("Last attention strength", flfLastAttentionStrength)
+  );
+  const flfAdvancedNote = document.createElement("div");
+  flfAdvancedNote.style.cssText = "font-size:11px;color:#cbd5e1;line-height:1.45;margin-top:10px;white-space:pre-line;";
+  flfAdvancedNote.textContent = "CRF: preprocessing compression; higher values can encourage motion, lower values preserve more image detail.\nBlur radius: softens guide detail; more blur can release motion but reduces exactness.\nInterpolation: resize method; Lanczos is the recommended quality default.\nCrop: center crops to the target frame; Disabled resizes without the node's center-crop step.\nAttention strength: how strongly each image influences LTX self-attention, separately from latent guide strength.\nFrame index: 0 anchors the opening; negative values count backward from the end.\nStrength: how exactly the latent follows that guide image.";
+  flfAdvancedDetails.append(flfAdvancedSummary, flfAdvancedGrid, flfAdvancedNote);
+  const flfRestoreWorkflowDefaultsButton = makeButton("Restore Workflow Defaults", "neutral");
+  flfRestoreWorkflowDefaultsButton.title = "Reset all First Last Frame guide controls to the values currently stored in the hidden workflow.";
+  const flfGuideSettingsNote = document.createElement("div");
+  flfGuideSettingsNote.textContent = "The current workflow defaults are preserved: strengths 0.70, indexes 0 and -1, CRF 29, blur 1, Lanczos, center crop, and attention strengths 0.90 and 1.00.";
+  flfGuideSettingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.35;margin-top:-4px;";
+  const flfDurationGuidanceNote = document.createElement("div");
+  flfDurationGuidanceNote.textContent = "Duration guidance: similar endpoints or simple camera changes may work in 4–5 seconds. If the images differ substantially in anatomy, identity, material, framing, style, or scene content, use at least 8 seconds so LTX has enough time to complete and stabilize the transition. Keep 24 FPS; increasing FPS does not add transition time.";
+  flfDurationGuidanceNote.style.cssText = "border:1px solid #0e7490;border-radius:7px;background:#083344;color:#cffafe;padding:8px 10px;font-size:11px;line-height:1.45;";
+  const flfChainPreviousEndFrame = makeCheckbox("Global: reuse previous scene's end frame as the next first frame", true);
+  const flfRenderChainSourceSelect = makeSelect([
+    { value: "rendered_frame", label: "Previous video's extracted final frame" },
+    { value: "previous_image", label: "Previous scene's assigned end image" },
+  ], "rendered_frame");
+  const flfPreGeneratePromptsFromSceneImages = makeCheckbox("Global: pre-generate prompts from scene images", false);
+  const flfGlobalTransitionTypeSelect = makeSelect([
+    { value: "auto", label: "Auto: Gemma decides" },
+    { value: "smooth", label: "Smooth Transition" },
+    { value: "morph", label: "Surreal Morph" },
+  ], "auto");
+  const flfChainNote = document.createElement("div");
+  flfChainNote.textContent = "Scene 1 always uses its own selected image. For Scene 2 onward, choose whether the actual video workflow starts from the prior rendered video's extracted final frame or the prior scene's assigned end image.";
+  flfChainNote.style.cssText = flfGuideSettingsNote.style.cssText;
+  const flfPreGenerateNote = document.createElement("div");
+  flfPreGenerateNote.textContent = "Prompt-only shortcut: when all scene/end images already exist, Gemma uses the previous scene's assigned end image as a provisional start reference and can prepare every prompt before rendering. This does not choose the workflow's actual render input; the Actual chained render start selector above controls whether rendering uses the extracted video frame or the previous assigned image. If no provisional image exists, prompt generation automatically waits for the rendered frame.";
+  flfPreGenerateNote.style.cssText = flfGuideSettingsNote.style.cssText;
+  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("Global transition type", flfGlobalTransitionTypeSelect), flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainPreviousEndFrame.wrapper, makeField("Global actual chained render start", flfRenderChainSourceSelect), flfChainNote, flfPreGeneratePromptsFromSceneImages.wrapper, flfPreGenerateNote]);
+  flfGuideSettingsSection.style.display = "none";
   const i2vPass1SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
   const i2vPass1SigmasInput = makeInput(DEFAULT_I2V_PASS1_SIGMAS);
   const i2vPass1StrengthSlider = makeInput("1", "range");
@@ -3086,10 +3175,24 @@ function openBuilder(node) {
   const i2vAdvancedNodeSettingsSection = i2vAdvancedNodeSettingsPanel;
   const createSceneVideoButton = makeButton("Create Scene Video", "primary");
   const createSceneVideoButtons = [createSceneVideoButton];
+  const gemmaThenCreateVideoButtons = [];
+  function wrapCreateSceneVideoActions(button) {
+    const quickButton = makeButton("✨▶", "primary");
+    quickButton.title = "Run Gemma for the current video mode, then immediately create the scene video without stopping for prompt review.";
+    quickButton.setAttribute("aria-label", "Run Gemma then create scene video");
+    quickButton.style.cssText = "flex:0 0 42px;min-width:42px;padding-left:8px;padding-right:8px;";
+    button.style.flex = "1 1 auto";
+    gemmaThenCreateVideoButtons.push(quickButton);
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:stretch;gap:6px;width:100%;";
+    row.append(button, quickButton);
+    return row;
+  }
+  const createSceneVideoActions = wrapCreateSceneVideoActions(createSceneVideoButton);
   function makeCreateSceneVideoButton() {
     const button = makeButton("Create Scene Video", "primary");
     createSceneVideoButtons.push(button);
-    return button;
+    return wrapCreateSceneVideoActions(button);
   }
   const previewButton = makeButton("Create Z-Image", "primary");
   const zCreateButtons = [previewButton];
@@ -3577,8 +3680,19 @@ function openBuilder(node) {
     { label: "Adjust", value: "adjust", content: sceneAdjustPanel },
   ]);
   scenePanel.append(sceneSubTabs.wrapper);
+  const imageContinuityEnabled = makeCheckbox("Continue Image All from the previous scene", false);
+  const imageContinuityStrength = makeSelect([
+    { value: "close", label: "Close Continuation" },
+    { value: "balanced", label: "Balanced Progression" },
+    { value: "creative", label: "Creative Progression" },
+  ], "balanced");
+  const imageContinuityPanel = makeSettingsPanel([
+    imageContinuityEnabled.wrapper,
+    makeField("Continuity strength", imageContinuityStrength),
+  ]);
   imagePanel.append(
     imageModelChooserWrap,
+    imageContinuityPanel,
     zImageModePanel,
     fluxKleinModePanel,
     ernieImageModePanel,
@@ -3622,7 +3736,7 @@ function openBuilder(node) {
         ltxIdLoraRequiredPanel,
         i2vUseLora.wrapper,
         i2vLoraPanel,
-        createSceneVideoButton,
+        createSceneVideoActions,
       ]),
     },
     {
@@ -3636,6 +3750,7 @@ function openBuilder(node) {
           ltxIngredientsResolutionWarning,
         ]),
         idLoraVoiceSettingsSection,
+        flfGuideSettingsSection,
         makeSettingsSection("Advanced Settings", [
           i2vWarmCooldownSection,
           i2vAdvancedNodeSettingsSection,
@@ -3653,6 +3768,7 @@ function openBuilder(node) {
         makeField("Line / lyric / dialogue", lyricTextInput),
         makeField("Performer(s) / speaker(s)", lyricSingersInput),
         makeField("Video motion notes", i2vNotesInput),
+        flfTransitionTypeField,
         useI2VVisionReference.wrapper,
         i2vReferenceNote,
         useT2VVisionReference.wrapper,
@@ -4091,6 +4207,25 @@ function openBuilder(node) {
       seed: 69,
       tail_loss_frames: 25,
       pre_frames: 50,
+      flf_pre_frames: 0,
+      flf_first_guide_strength: 0.7,
+      flf_last_guide_strength: 0.7,
+      flf_first_guide_frame_idx: 0,
+      flf_last_guide_frame_idx: -1,
+      flf_first_guide_crf: 29,
+      flf_last_guide_crf: 29,
+      flf_first_guide_blur_radius: 1,
+      flf_last_guide_blur_radius: 1,
+      flf_first_guide_interpolation: "lanczos",
+      flf_last_guide_interpolation: "lanczos",
+      flf_first_guide_crop: "center",
+      flf_last_guide_crop: "center",
+      flf_first_attention_strength: 0.9,
+      flf_last_attention_strength: 1,
+      flf_chain_previous_end_frame: true,
+      flf_render_chain_start_source: "rendered_frame",
+      flf_pregenerate_prompts_from_scene_images: false,
+      flf_global_transition_type: "auto",
       msr_lora_name: REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: 1,
       msr_second_pass_strength: 0,
@@ -4220,6 +4355,8 @@ function openBuilder(node) {
     showTimelineSceneNotes: false,
     showTimelineVideoNotes: false,
     showTimelineLyricNotes: false,
+    imageContinuityEnabled: false,
+    imageContinuityStrength: "balanced",
     leftPanelWidth: 260,
     rightPanelWidth: 360,
     timelinePanelHeight: 300,
@@ -4314,6 +4451,7 @@ function openBuilder(node) {
     if (segment?.no_character_present) return "";
     const presetKey = String(segment?.facial_performance || state.defaultFacialPerformance || "").trim();
     const custom = String(segment?.facial_performance_custom || state.defaultFacialPerformanceCustom || "").trim();
+    if (presetKey === "off") return "";
     const preset = storyboardFacialPerformancePreset(presetKey);
     const base = presetKey === "custom" && custom
       ? custom
@@ -6886,6 +7024,7 @@ function openBuilder(node) {
     segment.no_character_present = Boolean(segment.no_character_present || segment.no_subject || segment.no_visible_subject);
     if (segment.timeline_note == null) segment.timeline_note = "";
     if (segment.i2v_notes == null) segment.i2v_notes = "";
+    if (!["global", "auto", "smooth", "morph"].includes(String(segment.flf_transition_type || ""))) segment.flf_transition_type = "global";
     if (segment.id == null || !String(segment.id).trim()) segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
     const approvedImagePath = String(segment.approved_image_path || "");
@@ -7485,6 +7624,9 @@ function openBuilder(node) {
     state.videoTriggerPhrase = data.videoTriggerPhrase || "";
     state.useI2VPromptEnhancementPass = data.useI2VPromptEnhancementPass ?? data.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
     state.autoChainLastFrame = data.autoChainLastFrame ?? data.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+    state.imageContinuityEnabled = data.image_continuity_enabled ?? state.imageContinuityEnabled ?? false;
+    state.imageContinuityStrength = ["close", "balanced", "creative"].includes(data.image_continuity_strength) ? data.image_continuity_strength : (state.imageContinuityStrength || "balanced");
+    imageContinuityEnabled.input.checked = Boolean(state.imageContinuityEnabled); imageContinuityStrength.value = state.imageContinuityStrength;
     state.continuityMode = normalizeContinuityMode(data.continuityMode || data.continuity_mode || state.continuityMode, state.autoChainLastFrame);
     state.autoChainLastFrame = state.continuityMode === "i2v_chain";
     state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(data.autoImg2ImgStartStep ?? data.auto_img2img_start_step ?? state.autoImg2ImgStartStep);
@@ -8110,7 +8252,7 @@ function openBuilder(node) {
     add(parts, "Storyboard character motion guidance", segment.character_motion || defaults.character_guidance || builderMotionSpeedGuidance(defaults.character_motion_speed, "character"));
     const performanceStyle = String(segment.performance_style || defaults.performance_style || "").trim();
     const performancePreset = storyboardPerformancePreset(performanceStyle) || {};
-    add(parts, "Storyboard performance direction", performancePreset.direction || performancePreset.label || performanceStyle);
+    if (performanceStyle !== "off") add(parts, "Storyboard performance direction", performancePreset.direction || performancePreset.label || performanceStyle);
     add(parts, "Storyboard facial performance direction", resolvedFacialPerformanceText(segment));
     add(parts, "Storyboard lyric section", scene.lyric_section || segment.lyric_section);
     add(parts, "Storyboard global consistency phrase", defaults.global_consistency_phrase);
@@ -9600,10 +9742,15 @@ function openBuilder(node) {
   }
 
   function appendTimelineFirstLastFrameThumbnail(block, segment) {
-    const firstPath = selectedSegmentImageThumbnailPath(segment);
-    const firstSource = segmentImageSource(segment) || {};
-    const lastSource = firstLastFrameEndImageSource(segment) || {};
-    const firstUrl = timelineImageSourceUrl(firstPath ? { path: firstPath } : firstSource);
+    const promptStart = firstLastFramePromptReferences(segment)[0] || {};
+    const resolvedStart = firstLastFrameStartImageSource(segment) || {};
+    const firstSource = (resolvedStart.path || resolvedStart.data)
+      ? resolvedStart
+      : (promptStart.path || promptStart.data)
+        ? promptStart
+        : segmentImageSource(segment) || {};
+    const lastSource = firstLastFrameResolvedEndImageSource(segment) || {};
+    const firstUrl = timelineImageSourceUrl(firstSource);
     const lastUrl = timelineImageSourceUrl(lastSource);
     const wrap = document.createElement("span");
     wrap.title = lastUrl
@@ -9683,6 +9830,32 @@ function openBuilder(node) {
     }
     slot.append(title, frame);
     return slot;
+  }
+
+  function openFirstLastFrameImagePreview(image = {}, label = "First Last Frame image") {
+    const src = timelineImageSourceUrl(image);
+    if (!src) return;
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.84);display:flex;align-items:center;justify-content:center;padding:24px;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1180px,calc(100vw - 48px));max-height:calc(100vh - 48px);border:1px solid #155e75;border-radius:8px;background:#07111f;color:#f8fafc;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.65);";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #155e75;background:#0f172a;";
+    const title = document.createElement("div");
+    title.textContent = String(image.name || image.path || label);
+    title.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    const close = makeButton("Close");
+    const stage = document.createElement("div");
+    stage.style.cssText = "min-height:180px;max-height:calc(100vh - 118px);background:#020617;display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto;";
+    const img = document.createElement("img");
+    img.src = src; img.alt = label; img.draggable = false;
+    img.style.cssText = "display:block;max-width:100%;max-height:calc(100vh - 150px);object-fit:contain;border-radius:4px;";
+    stage.append(img); header.append(title, close); box.append(header, stage); backdrop.append(box); document.body.append(backdrop);
+    const dismiss = () => { backdrop.remove(); document.removeEventListener("keydown", keydown, true); };
+    const keydown = (event) => { if (event.key === "Escape") dismiss(); };
+    close.onclick = dismiss;
+    backdrop.addEventListener("pointerdown", (event) => { if (event.target === backdrop) dismiss(); });
+    document.addEventListener("keydown", keydown, true);
   }
 
   function selectedMediaForDelete() {
@@ -9941,6 +10114,7 @@ function openBuilder(node) {
     lyricTextInput.value = segment.lyric_text || "";
     lyricSingersInput.value = Array.isArray(segment.lyric_singers) ? segment.lyric_singers.join(", ") : "";
     i2vNotesInput.value = segment.i2v_notes || "";
+    flfTransitionTypeSelect.value = segment.flf_transition_type || "global";
     t2iPrompt.value = segment.t2i_prompt || "";
     ernieT2IPrompt.value = segment.t2i_prompt || "";
     krea2TwoPassT2IPrompt.value = segment.t2i_prompt || "";
@@ -10698,9 +10872,106 @@ function openBuilder(node) {
     return Boolean(image?.path || image?.data);
   }
 
+  function firstLastFrameAssignedEndImageSource(segment = activeSegment()) {
+    const explicitEnd = firstLastFrameEndImageSource(segment) || {};
+    if (explicitEnd.path || explicitEnd.data) return explicitEnd;
+    const assignedImage = segmentImageSource(segment) || {};
+    return (assignedImage.path || assignedImage.data)
+      ? { ...assignedImage, resolved_from_scene_image: true }
+      : explicitEnd;
+  }
+
+  function firstLastFrameResolvedEndImageSource(segment = activeSegment()) {
+    const explicitEnd = firstLastFrameEndImageSource(segment) || {};
+    if (explicitEnd.path || explicitEnd.data) return explicitEnd;
+    const previous = previousAutoChainSourceSegment(segment);
+    const mayUseAssignedSceneImage = Boolean(previous) && (
+      flfPreGeneratePromptsEnabled(segment)
+      || flfRenderChainStartSource(segment) === "previous_image"
+    );
+    if (mayUseAssignedSceneImage) {
+      return firstLastFrameAssignedEndImageSource(segment);
+    }
+    return explicitEnd;
+  }
+
+  async function loadFirstLastFrameEndFile(file, segment = activeSegment()) {
+    if (!file || !segment) return;
+    const isImage = String(file.type || "").startsWith("image/") || /\.(?:png|jpe?g|webp)$/i.test(String(file.name || ""));
+    if (!isImage) throw new Error("Drop a PNG, JPG, JPEG, or WEBP image for the end frame.");
+    const data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Could not read the end-frame image."));
+      reader.readAsDataURL(file);
+    });
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    const saved = projectFolder ? await postJson("/vrgdg/music_builder/archive_scene_image", {
+      image_data: data,
+      project_folder: projectFolder,
+      scene_number: sceneSlotNumber(segment),
+    }) : { saved_path: "" };
+    pushHistory();
+    segment.first_last_frame_end_image_path = saved.saved_path || "";
+    segment.first_last_frame_end_image_data = saved.saved_path ? "" : data;
+    segment.first_last_frame_end_image_name = file.name || "end_frame.png";
+    syncRTVSceneImageAnchorPanel();
+    renderList();
+    if (projectFolder) await autoSaveSessionQuiet("First Last Frame end image loaded");
+    toast("End frame loaded. No image provider was used.");
+  }
+
+  function flfChainingEnabled(segment = activeSegment()) {
+    return state.i2vVideoSettings?.flf_chain_previous_end_frame !== false;
+  }
+
+  function flfPreGeneratePromptsEnabled(segment = activeSegment()) {
+    return state.i2vVideoSettings?.flf_pregenerate_prompts_from_scene_images === true;
+  }
+
+  function flfRenderChainStartSource(segment = activeSegment()) {
+    return state.i2vVideoSettings?.flf_render_chain_start_source === "previous_image" ? "previous_image" : "rendered_frame";
+  }
+
+  function firstLastFrameStartImageSource(segment = activeSegment()) {
+    if (!segment) return null;
+    if (currentVideoMode() === "flf" && flfChainingEnabled(segment)) {
+      const previous = previousAutoChainSourceSegment(segment);
+      if (previous) {
+        if (flfRenderChainStartSource(segment) === "previous_image") {
+          const previousEnd = firstLastFrameAssignedEndImageSource(previous);
+          if (previousEnd?.path || previousEnd?.data) {
+            return { ...previousEnd, chained_from_scene_id: previous.id || "", render_chain_source: "previous_image" };
+          }
+          return null;
+        }
+        if (segment.flf_rendered_start_frame_path || segment.flf_rendered_start_frame_data) {
+          return {
+            path: String(segment.flf_rendered_start_frame_path || ""),
+            data: String(segment.flf_rendered_start_frame_data || ""),
+            name: String(segment.flf_rendered_start_frame_name || "rendered_previous_end.png"),
+            chained_from_rendered_video: true,
+            render_chain_source: "rendered_frame",
+          };
+        }
+        return null;
+      }
+    }
+    return segmentImageSource(segment);
+  }
+
   function firstLastFramePromptReferences(segment = activeSegment()) {
-    const firstFrame = segmentImageSource(segment);
-    const lastFrame = firstLastFrameEndImageSource(segment);
+    let firstFrame = firstLastFrameStartImageSource(segment);
+    const previous = previousAutoChainSourceSegment(segment);
+    if (previous && (flfChainingEnabled(segment) || flfPreGeneratePromptsEnabled(segment))) {
+      if (flfPreGeneratePromptsEnabled(segment)) {
+        const provisional = firstLastFrameAssignedEndImageSource(previous);
+        if (provisional?.path || provisional?.data) firstFrame = { ...provisional, prompt_only_provisional: true };
+      } else if (!segment?.flf_rendered_start_frame_path && !segment?.flf_rendered_start_frame_data) {
+        firstFrame = null;
+      }
+    }
+    const lastFrame = firstLastFrameResolvedEndImageSource(segment);
     const refs = [];
     if (firstFrame?.path || firstFrame?.data) {
       refs.push({
@@ -10721,6 +10992,33 @@ function openBuilder(node) {
       });
     }
     return refs;
+  }
+
+  function flfTransitionLoraActive(segment = activeSegment()) {
+    const settings = i2vVideoSettingsForSegment(segment) || {};
+    if (!settings.use_loras) return false;
+    const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
+    return (settings.loras || []).slice(0, count).some((item) => {
+      const name = String(item?.name || "").trim().toLowerCase();
+      return name && name !== "[none]" && /ltx[^\n]*2[._-]?3[^\n]*transition|transition[^\n]*lora|ltx2[._-]?3-transition/.test(name);
+    });
+  }
+
+  function flfTransitionPromptDirection(segment = activeSegment()) {
+    const sceneType = String(segment?.flf_transition_type || "global");
+    const settings = segment?.use_scene_i2v_video_settings
+      ? (segment.i2v_video_settings || state.i2vVideoSettings || {})
+      : (state.i2vVideoSettings || {});
+    const type = sceneType === "global"
+      ? (["smooth", "morph"].includes(settings.flf_global_transition_type) ? settings.flf_global_transition_type : "auto")
+      : sceneType;
+    if (type === "smooth") {
+      return "First Last Frame transition type: SMOOTH TRANSITION. Treat both images as the same continuous subject and world. Preserve identity, wardrobe, environment, lighting logic, and physical continuity while describing a seamless camera move, reframing, or natural action that arrives exactly at the last frame. Do not morph identities or invent a surreal transformation.";
+    }
+    if (type === "morph") {
+      return "First Last Frame transition type: SURREAL MORPH. Describe a creative, continuous, visually legible transformation from every important element of the first frame into the last frame. Use organic shape changes, material transformations, match-motion, and cinematic surrealism while arriving exactly at the last image.";
+    }
+    return "First Last Frame transition type: AUTO. Inspect both images. If they show the same subject or setting from different framing, angles, poses, or camera distances, create a smooth cinematic continuity transition. If they are substantially different, create a seamless surreal morph from the first visual state into the last. Choose the approach that best fits the images and describe continuous motion rather than listing them.";
   }
 
   function rtvSceneImageAnchorPayload(segment = activeSegment()) {
@@ -10790,7 +11088,7 @@ function openBuilder(node) {
     references.reference_behavior = referenceBehavior;
     if (referenceBehavior === "first_last_frame") {
       const firstFrame = segmentImageSource(segment);
-      const lastFrame = firstLastFrameEndImageSource(segment);
+      const lastFrame = firstLastFrameResolvedEndImageSource(segment);
       if (firstFrame?.path || firstFrame?.data) {
         references.subjects.push({
           ...rtvReferenceImagePayload(firstFrame),
@@ -11447,7 +11745,26 @@ function openBuilder(node) {
     i2vHeightInput.value = isIngredientsMode ? ingredientsHeight : repairedRegularHeight;
     i2vSeedInput.value = settings.seed || 69;
     i2vTailLossFramesInput.value = Math.max(0, Number(settings.tail_loss_frames ?? 25));
-    i2vPreFramesInput.value = Math.max(0, Number(settings.pre_frames ?? 50));
+    const isFLFMode = currentVideoMode() === "flf";
+    i2vPreFramesInput.value = Math.max(0, Number(isFLFMode ? (settings.flf_pre_frames ?? 0) : (settings.pre_frames ?? 50)));
+    flfFirstGuideStrengthInput.value = Number(settings.flf_first_guide_strength ?? 0.7);
+    flfLastGuideStrengthInput.value = Number(settings.flf_last_guide_strength ?? 0.7);
+    flfFirstGuideFrameIndexInput.value = Number(settings.flf_first_guide_frame_idx ?? 0);
+    flfLastGuideFrameIndexInput.value = Number(settings.flf_last_guide_frame_idx ?? -1);
+    flfFirstGuideCrfInput.value = Number(settings.flf_first_guide_crf ?? 29);
+    flfLastGuideCrfInput.value = Number(settings.flf_last_guide_crf ?? 29);
+    flfFirstGuideBlurInput.value = Number(settings.flf_first_guide_blur_radius ?? 1);
+    flfLastGuideBlurInput.value = Number(settings.flf_last_guide_blur_radius ?? 1);
+    flfFirstGuideInterpolation.value = settings.flf_first_guide_interpolation || "lanczos";
+    flfLastGuideInterpolation.value = settings.flf_last_guide_interpolation || "lanczos";
+    flfFirstGuideCrop.value = settings.flf_first_guide_crop || "center";
+    flfLastGuideCrop.value = settings.flf_last_guide_crop || "center";
+    flfFirstAttentionStrength.value = Number(settings.flf_first_attention_strength ?? 0.9);
+    flfLastAttentionStrength.value = Number(settings.flf_last_attention_strength ?? 1);
+    flfChainPreviousEndFrame.input.checked = state.i2vVideoSettings?.flf_chain_previous_end_frame !== false;
+    flfRenderChainSourceSelect.value = state.i2vVideoSettings?.flf_render_chain_start_source === "previous_image" ? "previous_image" : "rendered_frame";
+    flfPreGeneratePromptsFromSceneImages.input.checked = state.i2vVideoSettings?.flf_pregenerate_prompts_from_scene_images === true;
+    flfGlobalTransitionTypeSelect.value = ["smooth", "morph"].includes(settings.flf_global_transition_type) ? settings.flf_global_transition_type : "auto";
     ltxMsrLoraPicker.input.value = settings.msr_lora_name || REQUIRED_LTX_MSR_LORA;
     ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength ?? 1);
     ltxMsrSecondPassStrength.value = 0;
@@ -11491,6 +11808,7 @@ function openBuilder(node) {
     const isRTVMode = mode === "rtv";
     const isIngredientsMode = mode === "ingredients";
     const isIdLoraMode = mode === "id_lora";
+    const isFLFMode = mode === "flf";
     const previousRegularWidth = Number(previous.width || 1920);
     const previousRegularHeight = Number(previous.height || 1080);
     const repairedPreviousWidth = previousRegularWidth === DEFAULT_LTX_INGREDIENTS_WIDTH && previousRegularHeight === DEFAULT_LTX_INGREDIENTS_HEIGHT ? 1920 : previousRegularWidth;
@@ -11522,7 +11840,26 @@ function openBuilder(node) {
       height: regularHeight,
       seed: Number(i2vSeedInput.value || 69),
       tail_loss_frames: isIdLoraMode ? 0 : Math.max(0, Number(i2vTailLossFramesInput.value || 0)),
-      pre_frames: isIdLoraMode ? 0 : Math.max(0, Number(i2vPreFramesInput.value || 0)),
+      pre_frames: isIdLoraMode ? 0 : isFLFMode ? Math.max(0, Number(previous.pre_frames ?? 50)) : Math.max(0, Number(i2vPreFramesInput.value || 0)),
+      flf_pre_frames: isFLFMode ? Math.max(0, Number(i2vPreFramesInput.value || 0)) : Math.max(0, Number(previous.flf_pre_frames ?? 0)),
+      flf_first_guide_strength: isFLFMode ? Math.max(0, Math.min(1, Number(flfFirstGuideStrengthInput.value || 0))) : Number(previous.flf_first_guide_strength ?? 0.7),
+      flf_last_guide_strength: isFLFMode ? Math.max(0, Math.min(1, Number(flfLastGuideStrengthInput.value || 0))) : Number(previous.flf_last_guide_strength ?? 0.7),
+      flf_first_guide_frame_idx: isFLFMode ? Math.trunc(Number(flfFirstGuideFrameIndexInput.value || 0)) : Math.trunc(Number(previous.flf_first_guide_frame_idx ?? 0)),
+      flf_last_guide_frame_idx: isFLFMode ? Math.trunc(Number(flfLastGuideFrameIndexInput.value || 0)) : Math.trunc(Number(previous.flf_last_guide_frame_idx ?? -1)),
+      flf_first_guide_crf: isFLFMode ? Math.max(0, Math.min(51, Math.trunc(Number(flfFirstGuideCrfInput.value || 0)))) : Number(previous.flf_first_guide_crf ?? 29),
+      flf_last_guide_crf: isFLFMode ? Math.max(0, Math.min(51, Math.trunc(Number(flfLastGuideCrfInput.value || 0)))) : Number(previous.flf_last_guide_crf ?? 29),
+      flf_first_guide_blur_radius: isFLFMode ? Math.max(0, Math.min(7, Math.trunc(Number(flfFirstGuideBlurInput.value || 0)))) : Number(previous.flf_first_guide_blur_radius ?? 1),
+      flf_last_guide_blur_radius: isFLFMode ? Math.max(0, Math.min(7, Math.trunc(Number(flfLastGuideBlurInput.value || 0)))) : Number(previous.flf_last_guide_blur_radius ?? 1),
+      flf_first_guide_interpolation: isFLFMode ? flfFirstGuideInterpolation.value : (previous.flf_first_guide_interpolation || "lanczos"),
+      flf_last_guide_interpolation: isFLFMode ? flfLastGuideInterpolation.value : (previous.flf_last_guide_interpolation || "lanczos"),
+      flf_first_guide_crop: isFLFMode ? flfFirstGuideCrop.value : (previous.flf_first_guide_crop || "center"),
+      flf_last_guide_crop: isFLFMode ? flfLastGuideCrop.value : (previous.flf_last_guide_crop || "center"),
+      flf_first_attention_strength: isFLFMode ? Math.max(0, Math.min(1, Number(flfFirstAttentionStrength.value || 0))) : Number(previous.flf_first_attention_strength ?? 0.9),
+      flf_last_attention_strength: isFLFMode ? Math.max(0, Math.min(1, Number(flfLastAttentionStrength.value || 0))) : Number(previous.flf_last_attention_strength ?? 1),
+      flf_chain_previous_end_frame: isFLFMode ? Boolean(flfChainPreviousEndFrame.input.checked) : previous.flf_chain_previous_end_frame !== false,
+      flf_render_chain_start_source: isFLFMode ? (flfRenderChainSourceSelect.value === "previous_image" ? "previous_image" : "rendered_frame") : (previous.flf_render_chain_start_source || "rendered_frame"),
+      flf_pregenerate_prompts_from_scene_images: isFLFMode ? Boolean(flfPreGeneratePromptsFromSceneImages.input.checked) : previous.flf_pregenerate_prompts_from_scene_images === true,
+      flf_global_transition_type: isFLFMode && ["smooth", "morph"].includes(flfGlobalTransitionTypeSelect.value) ? flfGlobalTransitionTypeSelect.value : isFLFMode ? "auto" : (previous.flf_global_transition_type || "auto"),
       video_trigger_phrase: videoTriggerInput.value || "",
       msr_lora_name: ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: Number(ltxMsrFirstPassStrength.value || 1),
@@ -11590,6 +11927,7 @@ function openBuilder(node) {
     if (state.videoModelMode === "t2v") return "t2v";
     if (state.videoModelMode === "rtv") return "rtv";
     if (state.videoModelMode === "ingredients") return "ingredients";
+    if (state.videoModelMode === "flf") return "flf";
     return "i2v";
   }
 
@@ -11619,44 +11957,76 @@ function openBuilder(node) {
   function syncRTVSceneImageAnchorPanel() {
     const segment = activeSegment();
     const isRTV = currentVideoMode() === "rtv";
-    const image = segment ? segmentImageSource(segment) : null;
+    const isFLF = currentVideoMode() === "flf";
+    const image = segment ? (isFLF ? firstLastFrameStartImageSource(segment) : segmentImageSource(segment)) : null;
     const hasImage = Boolean(image?.path || image?.data);
     const behavior = rtvReferenceBehaviorGlobalValue();
     const lastImage = segment ? firstLastFrameEndImageSource(segment) : null;
     const hasLastImage = Boolean(lastImage?.path || lastImage?.data);
-    rtvSceneImageAnchorSection.style.display = isRTV ? "" : "none";
-    rtvReferenceBehaviorSelect.value = behavior;
-    rtvReferenceBehaviorSelect.disabled = !isRTV;
-    firstLastFramePreviewPanel.style.display = isRTV && behavior === "first_last_frame" ? "flex" : "none";
+    rtvSceneImageAnchorSection.style.display = isRTV || isFLF ? "" : "none";
+    if (rtvSceneImageAnchorSection.firstElementChild) rtvSceneImageAnchorSection.firstElementChild.textContent = isFLF ? "First / End Frames" : "Reference Behavior";
+    rtvReferenceBehaviorField.style.display = isFLF ? "none" : "flex";
+    rtvReferenceBehaviorNote.style.display = isFLF ? "none" : "block";
+    rtvReferenceBehaviorSelect.value = isFLF ? "first_last_frame" : behavior;
+    rtvReferenceBehaviorSelect.disabled = isFLF || !isRTV;
+    firstLastFramePreviewPanel.style.display = isFLF || (isRTV && behavior === "first_last_frame") ? "flex" : "none";
     firstLastFramePreviewGrid.textContent = "";
-    if (isRTV && behavior === "first_last_frame") {
-      const firstThumbPath = segment ? selectedSegmentImageThumbnailPath(segment) : "";
+    if (isFLF || (isRTV && behavior === "first_last_frame")) {
+      const chainedFirst = Boolean(image?.chained_from_scene_id || image?.chained_from_rendered_video);
+      const firstThumbPath = segment && !chainedFirst ? selectedSegmentImageThumbnailPath(segment) : "";
       const firstImage = firstThumbPath ? { path: firstThumbPath } : image;
       const arrow = document.createElement("div");
       arrow.textContent = ">";
       arrow.style.cssText = "display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:16px;font-weight:900;";
-      firstLastFramePreviewGrid.append(
-        createFirstLastFramePreviewSlot("First Frame", firstImage || {}, segment ? "Missing" : "No scene"),
-        arrow,
-        createFirstLastFramePreviewSlot("End Frame", lastImage || {}, "Missing")
-      );
+      const firstSlot = createFirstLastFramePreviewSlot(image?.chained_from_rendered_video ? "First Frame (Rendered Video End)" : chainedFirst ? "First Frame (Previous End Guide)" : "First Frame", firstImage || {}, segment ? "Missing" : "No scene");
+      const endSlot = createFirstLastFramePreviewSlot("End Frame — Drop Image", lastImage || {}, "Drop or load image");
+      endSlot.style.cursor = "copy";
+      const holdEndFrameDrop = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        endSlot.style.opacity = ".72";
+        endSlot.style.outline = "2px solid #22d3ee";
+      };
+      endSlot.addEventListener("dragenter", holdEndFrameDrop, true);
+      endSlot.addEventListener("dragover", holdEndFrameDrop, true);
+      endSlot.addEventListener("dragleave", (event) => {
+        event.preventDefault(); event.stopPropagation();
+        endSlot.style.opacity = "1"; endSlot.style.outline = "none";
+      }, true);
+      endSlot.addEventListener("drop", async (event) => {
+        event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation();
+        endSlot.style.opacity = "1"; endSlot.style.outline = "none";
+        try {
+          const file = Array.from(event.dataTransfer?.files || []).find((item) => String(item.type || "").startsWith("image/") || /\.(?:png|jpe?g|webp)$/i.test(String(item.name || "")));
+          if (!file) throw new Error("No supported image file reached the End Frame drop target. Drop a PNG, JPG, JPEG, or WEBP file from Explorer.");
+          await loadFirstLastFrameEndFile(file, segment);
+        }
+        catch (error) { toast(String(error?.message || error), true); }
+      }, true);
+      endSlot.title = hasLastImage ? "Click to open the end frame. Drag an image here to replace it." : "Click to load an end frame, or drag an image here.";
+      endSlot.addEventListener("click", () => {
+        if (hasLastImage) openFirstLastFrameImagePreview(lastImage, "End Frame");
+        else sceneEndFrameFileInput.click();
+      });
+      firstLastFramePreviewGrid.append(firstSlot, arrow, endSlot);
       firstLastFrameStatus.textContent = !segment
         ? "Select a scene to inspect its First Last Frame refs."
         : hasImage && hasLastImage
-          ? "Ready: this scene will send the first frame and end frame as the two MSR references."
+          ? (isFLF ? "Ready: this scene will guide the video from its first frame to its last frame." : "Ready: this scene will send the first frame and end frame as the two references.")
           : hasImage
-            ? "Missing end frame: create one before generating RTV prompts or rendering."
+            ? `Missing end frame: create one before generating ${isFLF ? "First Last Frame" : "reference-video"} prompts or rendering.`
             : "Missing first frame: run normal Image All first, then create the end frame.";
       firstLastFrameStatus.style.color = hasImage && hasLastImage ? "#bbf7d0" : "#fde68a";
     }
     createSceneEndFrameButton.textContent = hasLastImage ? "Replace End Frame" : "Create End Frame";
-    createSceneEndFrameButton.disabled = !isRTV || behavior !== "first_last_frame" || !segment || !hasImage;
-    clearSceneEndFrameButton.disabled = !isRTV || behavior !== "first_last_frame" || !segment || !hasLastImage;
+    createSceneEndFrameButton.disabled = !(isFLF || (isRTV && behavior === "first_last_frame")) || !segment || !hasImage;
+    clearSceneEndFrameButton.disabled = !(isFLF || (isRTV && behavior === "first_last_frame")) || !segment || !hasLastImage;
     createSceneEndFrameButton.style.opacity = createSceneEndFrameButton.disabled ? ".55" : "1";
     clearSceneEndFrameButton.style.opacity = clearSceneEndFrameButton.disabled ? ".55" : "1";
     if (behavior === "first_last_frame") {
       rtvReferenceBehaviorNote.textContent = hasImage
-        ? "Global: each scene's selected image is the first frame. The next step will generate/store a separate last frame for MSR ref 2."
+        ? (isFLF ? "Each scene's selected image is its first frame. Create or replace the separate end frame below." : "Global: each scene's selected image is the first frame. The next step will generate/store a separate last frame.")
         : "Global: run normal Image All first. Those images become first frames, then Create End Frames will make last frames.";
     } else if (behavior === "character_anchor") {
       rtvReferenceBehaviorNote.textContent = hasImage
@@ -11670,7 +12040,7 @@ function openBuilder(node) {
   function syncVideoModePanel() {
     const mode = currentVideoMode();
     state.videoModelMode = mode;
-    for (const card of [imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, importCustomVideoCard]) {
+    for (const card of [imageToVideoCard, idLoraVideoCard, textToVideoCard, referenceToVideoCard, ingredientsToVideoCard, firstLastFrameVideoCard, importCustomVideoCard]) {
       const active = card.dataset.model === mode;
       card.style.borderColor = active ? "#71717a" : "#3f3f46";
       card.style.background = active ? "#52525b" : "#27272a";
@@ -11682,7 +12052,8 @@ function openBuilder(node) {
     const isT2V = mode === "t2v";
     const isRTV = mode === "rtv";
     const isIngredients = mode === "ingredients";
-    const isT2VLike = isT2V || isRTV || isIngredients || isIdLora;
+    const isFLF = mode === "flf";
+    const isT2VLike = isT2V || isRTV || isFLF || isIngredients || isIdLora;
     importCustomVideoPanel.style.display = isImport ? "flex" : "none";
     videoSubTabs.wrapper.style.display = isImport ? "none" : "";
     useI2VPromptEnhancementPass.input.checked = Boolean(state.useI2VPromptEnhancementPass);
@@ -11696,9 +12067,12 @@ function openBuilder(node) {
     ltxIngredientsRequiredPanel.style.display = isIngredients ? "flex" : "none";
     ltxIdLoraRequiredPanel.style.display = isIdLora ? "flex" : "none";
     idLoraVoiceSettingsSection.style.display = isIdLora ? "" : "none";
+    flfGuideSettingsSection.style.display = isFLF ? "" : "none";
+    flfTransitionTypeField.style.display = isFLF ? "flex" : "none";
+    i2vPass2NodePanel.style.display = isFLF || isRTV ? "none" : "";
     syncTimelineTrimModeButton();
     i2vWarmCooldownSection.style.display = isIdLora ? "none" : "";
-    createI2VButton.textContent = isIdLora ? "Gemma ID Script" : isIngredients ? "Gemma Ingredients Video" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
+    createI2VButton.textContent = isIdLora ? "Gemma ID Script" : isIngredients ? "Gemma Ingredients Video" : isFLF ? "Gemma First/Last Prompt" : isRTV ? "Gemma Reference Video" : isT2V ? "Gemma T2V" : "Gemma I2V";
     syncVideoInstructionEditorButtons();
     i2vNotesInput.placeholder = isT2V
       ? "Extra text-to-video motion notes, camera movement, character movement..."
@@ -11708,8 +12082,10 @@ function openBuilder(node) {
         ? "Short-film direction, dialogue intent, voice tone, camera movement, and sound cues..."
       : isRTV
         ? "Extra reference-to-video motion notes, camera movement, subject actions..."
+      : isFLF
+        ? "Describe the desired motion between the first and last frame..."
       : "Extra video motion notes, camera movement, character movement...";
-    i2vPrompt.placeholder = isIdLora ? "[VISUAL]: ...\n[SPEECH]: ...\n[SOUNDS]: ..." : isIngredients ? "Ingredients-to-video prompt..." : isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
+    i2vPrompt.placeholder = isIdLora ? "[VISUAL]: ...\n[SPEECH]: ...\n[SOUNDS]: ..." : isIngredients ? "Ingredients-to-video prompt..." : isFLF ? "First-to-last-frame motion prompt..." : isRTV ? "Reference-to-video prompt..." : isT2V ? "Text-to-video prompt..." : "Image-to-video prompt...";
     syncRTVSceneImageAnchorPanel();
     updateI2VLoraVisibility();
   }
@@ -11733,6 +12109,7 @@ function openBuilder(node) {
       segment.nb_notes = nbNotes.value || "";
     }
     segment.i2v_notes = i2vNotesInput.value || "";
+    segment.flf_transition_type = ["auto", "smooth", "morph"].includes(flfTransitionTypeSelect.value) ? flfTransitionTypeSelect.value : "global";
     segment.lyric_text = lyricTextInput.value || "";
     segment.lyric_singers = lyricSingersInput.value.split(",").map((item) => item.trim()).filter(Boolean);
     let editedT2IPrompt = t2iPrompt.value || "";
@@ -13436,6 +13813,9 @@ function openBuilder(node) {
 
   async function importTimelineImagesFromFolder(files) {
     const hasProjectAudio = Boolean(String(audioInput.value || state.audioPath || "").trim());
+    const projectAudioDuration = hasProjectAudio
+      ? Math.max(0, Number(audio.duration || state.duration || 0))
+      : 0;
     let scenes = (Array.isArray(state.segments) ? state.segments : [])
       .filter((segment) => segment && typeof segment === "object")
       .sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
@@ -13444,7 +13824,7 @@ function openBuilder(node) {
       toast("No PNG, JPG, JPEG, or WEBP images were found in that folder.", true);
       return;
     }
-    const placeholderScene = scenes.length === 1 && !hasProjectAudio && ![
+    const placeholderScene = scenes.length === 1 && ![
       scenes[0].custom_image_path,
       scenes[0].custom_image_data,
       scenes[0].approved_image_path,
@@ -13460,12 +13840,81 @@ function openBuilder(node) {
       scenes[0].i2v_prompt,
     ].some((value) => String(value || "").trim());
     const createScenesFromImages = scenes.length === 0 || placeholderScene;
+    if (currentVideoMode() === "flf") {
+      if (images.length < 2) {
+        toast("First Last Frame folder fill needs at least two images: Scene 1 first frame, then Scene 1 end frame.", true);
+        return;
+      }
+      const flfSceneCount = createScenesFromImages ? images.length - 1 : scenes.length;
+      const neededImages = flfSceneCount + 1;
+      const confirmed = window.confirm(
+        `Fill ${flfSceneCount} First Last Frame scene${flfSceneCount === 1 ? "" : "s"} from this folder?\n\n`
+        + "Image 1 → Scene 1 first frame\n"
+        + "Image 2 → Scene 1 end frame\n"
+        + "Image 3 → Scene 2 end frame, and so on.\n\n"
+        + "Each previous end frame will be reused as the next scene's first frame.\n"
+        + (images.length > neededImages ? `${images.length - neededImages} extra image${images.length - neededImages === 1 ? "" : "s"} will be ignored.\n` : "")
+        + (images.length < neededImages ? `${neededImages - images.length} scene end frame${neededImages - images.length === 1 ? "" : "s"} will remain missing.\n` : "")
+        + "Images are sorted by numbers in their file names."
+      );
+      if (!confirmed) return;
+      pushHistory();
+      state.i2vVideoSettings = { ...(state.i2vVideoSettings || defaultI2VVideoSettings()), flf_chain_previous_end_frame: true };
+      if (createScenesFromImages) {
+        const duration = hasProjectAudio && projectAudioDuration > 0 ? projectAudioDuration : flfSceneCount * 4;
+        const sceneDuration = duration / flfSceneCount;
+        scenes = Array.from({ length: flfSceneCount }, (_, index) => newSegment(index * sceneDuration, index === flfSceneCount - 1 ? duration : (index + 1) * sceneDuration));
+        state.segments = scenes; state.duration = duration; state.activeId = scenes[0]?.id || "";
+        if (!hasProjectAudio) {
+          globalAudioModeSelect.value = "silent";
+          silentAudioDurationInput.value = String(Math.max(4, duration));
+          syncGlobalAudioModeControls();
+        }
+      }
+      scenes.forEach((segment) => {
+        if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) segment.i2v_video_settings.flf_chain_previous_end_frame = true;
+        segment.flf_rendered_start_frame_path = "";
+        segment.flf_rendered_start_frame_data = "";
+        segment.flf_rendered_start_frame_name = "";
+        segment.flf_rendered_source_video_path = "";
+      });
+      const progress = createProgressWindow("Fill First Last Frame Images From Folder");
+      try {
+        importImageFolderButton.disabled = true; importImageFolderButton.textContent = "Importing FLF...";
+        const firstData = await readFileAsDataUrl(images[0]);
+        await applyCustomImageDataToSegment(scenes[0], firstData, images[0].name || "scene_1_first.png", { activate: false });
+        const endCount = Math.min(scenes.length, images.length - 1);
+        for (let index = 0; index < endCount; index += 1) {
+          const file = images[index + 1];
+          progress.set(`Importing end frame ${index + 1}/${endCount}\n${file.webkitRelativePath || file.name}\n→ ${sceneDisplayName(scenes[index], index)}`, 10 + Math.round((index / Math.max(1, endCount)) * 82));
+          const data = await readFileAsDataUrl(file);
+          const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+          const saved = projectFolder ? await postJson("/vrgdg/music_builder/archive_scene_image", { image_data: data, project_folder: projectFolder, scene_number: sceneSlotNumber(scenes[index]) }) : { saved_path: "" };
+          scenes[index].first_last_frame_end_image_path = saved.saved_path || "";
+          scenes[index].first_last_frame_end_image_data = saved.saved_path ? "" : data;
+          scenes[index].first_last_frame_end_image_name = file.name || `scene_${index + 1}_end.png`;
+        }
+        setActiveSegment(scenes[0]); render(); await autoSaveSessionQuiet("First Last Frame folder fill");
+        progress.set(`First Last Frame folder fill complete: Scene 1 first frame plus ${endCount} end frame${endCount === 1 ? "" : "s"}.`, 100); progress.close(1800);
+        toast("First Last Frame images filled from folder.");
+      } catch (error) {
+        progress.set(`Import failed:\n${String(error?.message || error)}`, 100); toast(String(error?.message || error), true);
+      } finally {
+        importImageFolderButton.disabled = false; importImageFolderButton.textContent = "Fill Timeline Images From Folder";
+      }
+      return;
+    }
     const plannedSceneCount = createScenesFromImages ? images.length : scenes.length;
     const plannedApplyCount = Math.min(images.length, plannedSceneCount);
     const plannedExtraCount = Math.max(0, images.length - plannedSceneCount);
     const plannedMissingCount = Math.max(0, plannedSceneCount - images.length);
+    const matchLoadedAudio = createScenesFromImages && hasProjectAudio && projectAudioDuration > 0;
+    const newSceneDuration = matchLoadedAudio ? projectAudioDuration / images.length : 4;
+    const creationSummary = matchLoadedAudio
+      ? `Create ${images.length} scene${images.length === 1 ? "" : "s"} across the full ${formatTime(projectAudioDuration)} audio timeline (about ${newSceneDuration.toFixed(2)} seconds each) and fill them`
+      : `Create ${images.length} four-second scene${images.length === 1 ? "" : "s"} and fill them`;
     const confirmed = window.confirm(
-      `${createScenesFromImages ? `Create ${images.length} four-second scene${images.length === 1 ? "" : "s"} and fill them` : `Fill ${plannedApplyCount} timeline scene${plannedApplyCount === 1 ? "" : "s"}`} from this image folder?\n\n`
+      `${createScenesFromImages ? creationSummary : `Fill ${plannedApplyCount} timeline scene${plannedApplyCount === 1 ? "" : "s"}`} from this image folder?\n\n`
       + `Images are sorted by numbers in the file names.\n`
       + (createScenesFromImages && !hasProjectAudio ? "The blank project will use a silent timeline by default.\n" : "")
       + (plannedExtraCount ? `${plannedExtraCount} extra image${plannedExtraCount === 1 ? "" : "s"} will be ignored.\n` : "")
@@ -13476,9 +13925,13 @@ function openBuilder(node) {
 
     pushHistory();
     if (createScenesFromImages) {
-      scenes = images.map((_, index) => newSegment(index * 4, (index + 1) * 4));
+      const timelineDuration = matchLoadedAudio ? projectAudioDuration : images.length * 4;
+      scenes = images.map((_, index) => newSegment(
+        index * newSceneDuration,
+        index === images.length - 1 ? timelineDuration : (index + 1) * newSceneDuration
+      ));
       state.segments = scenes;
-      state.duration = images.length * 4;
+      state.duration = timelineDuration;
       state.activeId = scenes[0]?.id || "";
       state.activeTrack = "base";
       if (!hasProjectAudio) {
@@ -13741,7 +14194,7 @@ function openBuilder(node) {
       event.stopPropagation();
       element.style.outline = "";
     });
-    element.addEventListener("drop", (event) => {
+    element.addEventListener("drop", async (event) => {
       if (!dropHasFiles(event)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -13749,6 +14202,31 @@ function openBuilder(node) {
       const file = imageFileFromDrop(event);
       if (!file) {
         toast("Drop a PNG, JPG, WEBP, GIF, BMP, TIFF, or AVIF image file.", true);
+        return;
+      }
+      if (currentVideoMode() === "flf") {
+        const role = await new Promise((resolve) => {
+          const backdrop = document.createElement("div");
+          backdrop.style.cssText = "position:fixed;inset:0;z-index:100030;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;";
+          const box = document.createElement("div");
+          box.style.cssText = "width:min(520px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 70px rgba(0,0,0,.6);";
+          const heading = document.createElement("div"); heading.textContent = "Add dropped image as…"; heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+          const body = document.createElement("div"); body.textContent = `${file.name || "Dropped image"} can be the opening or ending frame for ${sceneDisplayName(segment, segmentIndexInfo(segment).index)}.`; body.style.cssText = "font-size:12px;color:#d4d4d8;line-height:1.45;";
+          const actions = document.createElement("div"); actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+          const cancel = makeButton("Cancel"); const first = makeButton("First Frame", "primary"); const last = makeButton("End Frame", "primary");
+          cancel.onclick = () => { backdrop.remove(); resolve(""); };
+          first.onclick = () => { backdrop.remove(); resolve("first"); };
+          last.onclick = () => { backdrop.remove(); resolve("last"); };
+          actions.append(cancel, first, last); box.append(heading, body, actions); backdrop.append(box); document.body.append(backdrop);
+        });
+        if (role === "last") await loadFirstLastFrameEndFile(file, segment);
+        else if (role === "first") {
+          if (previousAutoChainSourceSegment(segment) && flfChainingEnabled(segment)) {
+            segment.use_scene_i2v_video_settings = true;
+            segment.i2v_video_settings = { ...cloneI2VVideoSettings(state.i2vVideoSettings), flf_chain_previous_end_frame: false };
+          }
+          loadCustomImageFile(file, segment);
+        }
         return;
       }
       loadCustomImageFile(file, segment);
@@ -25994,6 +26472,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       auto_img2img_start_step: normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep),
       auto_img2img_creativity: normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity),
       auto_chain_last_frame: Boolean(state.autoChainLastFrame),
+      image_continuity_enabled: Boolean(state.imageContinuityEnabled),
+      image_continuity_strength: state.imageContinuityStrength || "balanced",
       auto_chain_style: state.autoChainStyle || "continuous",
       auto_chain_direction: state.autoChainDirection || "",
       auto_chain_transition_lora_prompt: Boolean(state.autoChainTransitionLoraPrompt),
@@ -26227,6 +26707,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.defaultFacialPerformanceCustom = data.session.default_facial_performance_custom || data.session.defaultFacialPerformanceCustom || state.defaultFacialPerformanceCustom || "";
         state.useI2VPromptEnhancementPass = data.session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
         state.autoChainLastFrame = data.session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+        state.imageContinuityEnabled = data.session.image_continuity_enabled ?? state.imageContinuityEnabled ?? false;
+        state.imageContinuityStrength = data.session.image_continuity_strength || state.imageContinuityStrength || "balanced";
+        imageContinuityEnabled.input.checked = Boolean(state.imageContinuityEnabled); imageContinuityStrength.value = state.imageContinuityStrength;
         state.continuityMode = normalizeContinuityMode(data.session.continuity_mode || state.continuityMode, state.autoChainLastFrame);
         state.autoChainLastFrame = state.continuityMode === "i2v_chain";
         state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(data.session.auto_img2img_start_step ?? state.autoImg2ImgStartStep);
@@ -26534,6 +27017,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.defaultFacialPerformanceCustom = session.default_facial_performance_custom || session.defaultFacialPerformanceCustom || "";
       state.useI2VPromptEnhancementPass = session.use_i2v_prompt_enhancement_pass ?? state.useI2VPromptEnhancementPass ?? false;
       state.autoChainLastFrame = session.auto_chain_last_frame ?? state.autoChainLastFrame ?? false;
+      state.imageContinuityEnabled = session.image_continuity_enabled ?? state.imageContinuityEnabled ?? false;
+      state.imageContinuityStrength = session.image_continuity_strength || state.imageContinuityStrength || "balanced";
+      imageContinuityEnabled.input.checked = Boolean(state.imageContinuityEnabled); imageContinuityStrength.value = state.imageContinuityStrength;
       state.continuityMode = normalizeContinuityMode(session.continuity_mode || state.continuityMode, state.autoChainLastFrame);
       state.autoChainLastFrame = state.continuityMode === "i2v_chain";
       state.autoImg2ImgStartStep = normalizeAutoImg2ImgStartStep(session.auto_img2img_start_step ?? state.autoImg2ImgStartStep);
@@ -26912,6 +27398,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       parts.push(`Scene:\n${sceneDisplayName(segment, segmentIndexInfo(segment).index)}`);
       parts.push("Direction:\nCreate a cinematic image prompt that fits this scene.");
     }
+    if (state.imageContinuityEnabled) {
+      const continuity = applyImageContinuityToPromptSettings(segment, { image_ingredients: [] }, "").userNotes;
+      if (continuity) parts.push(`Previous-scene continuity:\n${continuity}`);
+    }
     parts.push("Image Prep rule:\nCreate a still text-to-image prompt. The final answer must be a visual image prompt, not the lyric line. Use lyrics only for mood, symbolism, emotion, styling, and visual direction. Do not quote or return the lyrics as the prompt. Do not say the subject is singing, lip-syncing, performing vocals, or singing the lyric unless scene notes explicitly request a live singing image.");
     return parts.join("\n\n");
   }
@@ -26948,7 +27438,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncInspector();
     const imageMode = options.imageMode || state.imageModelMode || "zimage";
     const textModelSelect = imageMode === "ernie_image" ? ernieTextGemmaModelSelect : t2iTextGemmaModelSelect;
-    const userNotes = String(options.userNotes || "").trim() || textOnlyFallbackNotesForSegment(segment, imageMode);
+    let userNotes = String(options.userNotes || "").trim() || textOnlyFallbackNotesForSegment(segment, imageMode);
+    ({ userNotes } = applyImageContinuityToPromptSettings(segment, { image_ingredients: [] }, userNotes));
     const referenceContext = imageMode === "nano_banana" ? nbImageSettingsForSegment(segment).reference_context : imageMode === "flux_klein" ? fluxReferenceContextForSegment(segment) : {};
     progress?.set(`${label}: creating prompt from notes with non-vision Gemma...\n${gemmaRunnerLine({ vision: false })}`, percent);
     const data = await postJson("/vrgdg/music_builder/generate_t2i", {
@@ -27382,12 +27873,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return payload;
   }
 
+  function applyImageContinuityToPromptSettings(segment, settings, baseNotes) {
+    if (!state.imageContinuityEnabled) return { settings, userNotes: baseNotes };
+    const previous = previousAutoChainSourceSegment(segment);
+    if (!previous) return { settings, userNotes: baseNotes };
+    const image = segmentImageSource(previous);
+    const previousPrompt = String(previous.t2i_prompt || previous.flux_prompt || previous.nb_prompt || "").trim();
+    const strength = ["close", "creative"].includes(state.imageContinuityStrength) ? state.imageContinuityStrength : "balanced";
+    const direction = strength === "close"
+      ? "Create the immediate next visual moment with very close continuity. Preserve identity, wardrobe, location, lighting, palette, lens language, and composition; allow only modest natural progression."
+      : strength === "creative"
+        ? "Create a clearly connected next visual moment with imaginative progression while preserving recognizable identity, story world, style, palette, and continuity anchors."
+        : "Create the next connected visual moment with balanced progression. Preserve identity, wardrobe, setting, lighting logic, palette, and style while advancing pose, action, expression, or camera framing.";
+    const next = { ...settings, image_ingredients: [...(settings.image_ingredients || [])] };
+    if (image?.path || image?.data) next.image_ingredients.unshift({ path: image.path || "", data: image.data || "", name: image.name || "previous_scene.png", label: "Previous scene continuity image" });
+    return { settings: next, userNotes: [baseNotes, direction, previousPrompt ? `Previous scene prompt:\n${previousPrompt}` : ""].filter(Boolean).join("\n\n") };
+  }
+
   async function generateFluxKleinPromptForSegment(segment, progress = null, percent = 25, label = "Flux/Klein Gemma", options = {}) {
     state.activeId = segment.id;
     syncInspector();
     render();
-    const settings = fluxKleinSettingsForSegment(segment);
-    const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
+    let settings = fluxKleinSettingsForSegment(segment);
+    let userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
+    ({ settings, userNotes } = applyImageContinuityToPromptSettings(segment, settings, userNotes));
     if (settings.use_text_only_gemma_prompt || !Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode: "flux_klein", userNotes });
     }
@@ -27420,7 +27929,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     syncInspector();
     render();
-    const settings = fluxKleinSettingsForSegment(segment);
+    let settings = fluxKleinSettingsForSegment(segment);
+    ({ settings } = applyImageContinuityToPromptSettings(segment, settings, ""));
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "flux_klein", settings.prompt || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flux/Klein prompt is missing.`);
     progress?.set(`${label}: building hidden Flux/Klein workflow...`, percentBase + percentSpan * 0.25);
@@ -27526,10 +28036,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...settings,
       image_ingredients: Array.isArray(settings.image_ingredients) ? settings.image_ingredients.map((item) => ({ ...item })) : [],
     };
-    if (!next.ask_previous_scene_image || options.includePreviousSceneImage === false) return next;
+    if ((!next.ask_previous_scene_image && !state.imageContinuityEnabled) || options.includePreviousSceneImage === false) return next;
     const previousImage = previousSceneImageIngredient(segment);
     if (!previousImage) return next;
-    const shouldAsk = options.includePreviousSceneImage !== true;
+    const shouldAsk = options.includePreviousSceneImage !== true && !state.imageContinuityEnabled;
     const include = shouldAsk
       ? window.confirm(
         `Send the previous scene image as a reference for this Browser AI generation?\n\n`
@@ -27698,8 +28208,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     render();
     const imageMode = options.imageMode || state.imageModelMode || "nano_banana";
     const isFlowGpt = imageMode === "flow_gpt";
-    const settings = nbImageSettingsForSegment(segment);
-    const userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
+    let settings = nbImageSettingsForSegment(segment);
+    let userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
+    ({ settings, userNotes } = applyImageContinuityToPromptSettings(segment, settings, userNotes));
     if (settings.use_text_only_gemma_prompt || !Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode, userNotes });
     }
@@ -27742,7 +28253,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.activeId = segment.id;
     syncInspector();
     render();
-    const settings = nbImageSettingsForSegment(segment);
+    let settings = nbImageSettingsForSegment(segment);
+    ({ settings } = applyImageContinuityToPromptSettings(segment, settings, ""));
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "nano_banana", settings.prompt || "");
     if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: NanoBanana prompt is missing.`);
     if (!String(settings.api_key || "").trim()) throw new Error("NanoBanana API key is missing.");
@@ -28326,6 +28838,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isFLF = videoMode === "flf";
     const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const lyricText = quoteOrderedLyricCues(String(segment?.lyric_text || "").trim()).trim();
@@ -28340,7 +28853,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       performance_mode: effectiveVideoPerformanceModeForSegment(segment),
       t2i_prompt: sceneVideoConceptPromptText(segment),
-      user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim()].filter(Boolean).join("\n\n"),
+      user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim(), isFLF ? flfTransitionPromptDirection(segment) : ""].filter(Boolean).join("\n\n"),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
       singers: segment?.no_character_present ? [] : singers,
       no_vocal: noVocal,
@@ -28391,13 +28904,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isFLF = videoMode === "flf";
     const isIngredients = videoMode === "ingredients";
     const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
-    const textScriptMode = isRTV || isIngredients || isIdLora;
-    const useFirstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+    const textScriptMode = isRTV || isFLF || isIngredients || isIdLora;
+    const useFirstLastFrameVision = isFLF || (isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame");
     const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
     const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
@@ -28412,11 +28926,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM API vision needs a vision-capable API model selected. Open LLM Runner and choose an API model that supports images.`);
     }
     const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
-    if ((isT2V || textScriptMode || !useImageReference) && !t2iText && !(isIdLora && idLoraContext?.contextText)) {
+    if (!useFirstLastFrameVision && (isT2V || textScriptMode || !useImageReference) && !t2iText && !(isIdLora && idLoraContext?.contextText)) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: scene text/concept is missing.`);
     }
     const baseNotes = videoGemmaNotesForSegment(segment);
-    const modeNotes = isIdLora ? idLoraGemmaNotesForSegment(segment, baseNotes) : baseNotes;
+    const modeNotes = isIdLora ? idLoraGemmaNotesForSegment(segment, baseNotes) : isFLF
+      ? `${baseNotes}\n${flfTransitionPromptDirection(segment)}`.trim()
+      : baseNotes;
     const storyboardNotes = String(options.skipStoryboardExtraNotes ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
     const extraNotes = [storyboardNotes, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
     return {
@@ -28436,6 +28952,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_reference_data: imageReference.data,
         image_references: firstLastFrameReferences,
         first_last_frame_mode: useFirstLastFrameVision,
+        transition_lora_active: isFLF && flfTransitionLoraActive(segment),
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
@@ -28820,18 +29337,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoMode = currentVideoMode();
     const isT2V = videoMode === "t2v";
     const isRTV = videoMode === "rtv";
+    const isFLF = videoMode === "flf";
     const isIngredients = videoMode === "ingredients";
     const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
-    const textScriptMode = isRTV || isIngredients || isIdLora;
-    const useFirstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+    const textScriptMode = isRTV || isFLF || isIngredients || isIdLora;
+    const useFirstLastFrameVision = isFLF || (isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame");
     const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
     const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const conceptPrompt = sceneVideoConceptPromptText(segment);
     const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
     if (useFirstLastFrameVision && firstLastFrameReferences.length < 2) {
-      toast("First Last Frame needs both the selected scene image and a generated end frame before Gemma can write the transition prompt.", true);
+      toast("First Last Frame needs a resolved start and end image before Gemma can write the transition prompt. With prompt pre-generation enabled, later scenes may use their assigned timeline images.", true);
       return;
     }
     if (useImageReference && !imageReference.path && !imageReference.data) {
@@ -28844,7 +29362,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Hey, LLM API vision needs a vision-capable API model selected. Open LLM Runner, choose an API model that supports images, then try again.", true);
       return;
     }
-    if ((isT2V || textScriptMode || !useImageReference) && !conceptPrompt && !(isIdLora && idLoraContext?.contextText)) {
+    if (!useFirstLastFrameVision && (isT2V || textScriptMode || !useImageReference) && !conceptPrompt && !(isIdLora && idLoraContext?.contextText)) {
       toast(isT2V || textScriptMode
         ? "Hey, this scene needs some scene text, notes, lyrics, or mapped references before Gemma can make a text-to-video prompt."
         : "Hey, you need scene text or a T2I prompt first, or turn image reference back on and use a saved/custom image.", true);
@@ -28865,7 +29383,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ...textGemmaRunnerPayload(),
         project_folder: activeProjectFolderForSave(),
         scene_id: segment.id || "",
-        builder_instruction_key: isIdLora ? "id_lora" : isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
+        builder_instruction_key: isIdLora ? "id_lora" : isIngredients ? "ingredients" : isFLF ? "i2v" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isIdLora ? [conceptPrompt, idLoraContext?.contextText || ""].filter(Boolean).join("\n\n") : isT2V || textScriptMode ? conceptPrompt : useImageReference ? "" : conceptPrompt,
@@ -28874,8 +29392,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_reference_data: imageReference.data,
         image_references: firstLastFrameReferences,
         first_last_frame_mode: useFirstLastFrameVision,
+        transition_lora_active: isFLF && flfTransitionLoraActive(segment),
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : videoGemmaNotesForSegment(segment),
+        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? [videoGemmaNotesForSegment(segment), flfTransitionPromptDirection(segment)].filter(Boolean).join("\n\n") : videoGemmaNotesForSegment(segment),
         subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
         location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
@@ -28984,14 +29503,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!allScenes.length) missing.push(batchEmptyMessage(sceneScope));
     scenes.forEach((segment) => {
       const index = segmentIndexInfo(segment).index;
-      const firstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+      const firstLastFrameVision = videoMode === "flf" || (isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame");
       const requestedUseImageReference = firstLastFrameVision ? true : isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
       const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
       const useImageReference = requestedUseImageReference && !forceTextForContinuity;
       const firstLastFrameReferences = firstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
       const imageReference = firstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
       if (firstLastFrameVision && firstLastFrameReferences.length < 2) {
-        missing.push(`${sceneDisplayName(segment, index)}: First Last Frame needs both a first frame image and a generated end frame.`);
+        missing.push(`${sceneDisplayName(segment, index)}: First Last Frame needs a resolved start and end image; assign a timeline image or dedicated end frame.`);
       } else if (useImageReference && !imageReference.path && !imageReference.data) {
         missing.push(`${sceneDisplayName(segment, index)}: ${modeLabel} image reference is enabled, but no reference image was found.`);
       }
@@ -29032,7 +29551,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncInspector();
         render();
         const base = Math.floor((index / scenes.length) * (deferEnhancement ? 68 : 100));
-        const firstLastFrameVision = isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+        const firstLastFrameVision = videoMode === "flf" || (isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame");
         const requestedUseImageReference = firstLastFrameVision ? true : isIdLora ? false : forceVision ? true : forceTextOnly ? false : videoVisionReferenceEnabled(segment);
         const forceTextForContinuity = continuityCanCreateImageLater(segment, requestedUseImageReference);
         const useImageReference = requestedUseImageReference && !forceTextForContinuity;
@@ -29258,6 +29777,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function ingredientsVideoOutputFolder() {
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\ingredients_to_video_clips`;
   }
+  function flfVideoOutputFolder() { return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\first_last_frame_clips`; }
 
   function idLoraVideoOutputFolder() {
     return `${String(projectInput.value || "").replace(/[\\/]+$/, "")}\\id_lora_i2v_clips`;
@@ -29269,6 +29789,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "ingredients") return compact ? "Ingredients" : "Ingredients to Video";
     if (mode === "rtv") return compact ? "RTV" : "Reference to Video";
     if (mode === "t2v") return compact ? "T2V" : "Text to Video";
+    if (mode === "flf") return compact ? "FLF" : "First Last Frame";
     return compact ? "I2V" : "Image to Video";
   }
 
@@ -29286,6 +29807,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (mode === "id_lora") return idLoraVideoOutputFolder();
     if (mode === "ingredients") return ingredientsVideoOutputFolder();
     if (mode === "rtv") return rtvVideoOutputFolder();
+    if (mode === "flf") return flfVideoOutputFolder();
     return mode === "t2v" ? t2vVideoOutputFolder() : i2vVideoOutputFolder();
   }
 
@@ -29294,10 +29816,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function sceneVideoDetailsHtml(segment, sceneIndex, srtPath, outputFolder, statusText = "Preparing hidden video workflow...", details = {}) {
-    const videoMode = details.videoMode === "id_lora" ? "id_lora" : details.videoMode === "ingredients" ? "ingredients" : details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
+    const videoMode = details.videoMode === "id_lora" ? "id_lora" : details.videoMode === "ingredients" ? "ingredients" : details.videoMode === "flf" ? "flf" : details.videoMode === "rtv" ? "rtv" : details.videoMode === "t2v" ? "t2v" : "i2v";
     const promptNumber = Number(details.promptNumber || sceneIndex + 1);
     const imageIndex = sceneSlotNumber(segment) - 1;
-    const imageSource = segmentImageSource(segment);
+    const imageSource = videoMode === "flf" ? firstLastFrameStartImageSource(segment) : segmentImageSource(segment);
     const imagePath = imageSource?.path || "";
     const imageSrc = imagePath ? makeEditorImageUrl(imagePath) : imageSource?.data || "";
     const audioPath = String(details.audioPath || audioInput.value || "");
@@ -29311,10 +29833,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       .join("\n");
     const rtvBackground = details.rtvReferences?.background || {};
     const rtvBackgroundText = String(rtvBackground?.label || rtvBackground?.name || rtvBackground?.path || "").trim();
+    const flfInputs = details.flfInputs || null;
     return `
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div style="font-weight:900;color:#cffafe;">${escapeHtml(statusText)}</div>
-        ${(videoMode === "i2v" || videoMode === "ingredients" || videoMode === "id_lora") && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
+        ${(videoMode === "i2v" || videoMode === "flf" || videoMode === "ingredients" || videoMode === "id_lora") && imageSrc ? `<img src="${imageSrc}" style="width:180px;max-height:110px;object-fit:cover;border:1px solid #155e75;border-radius:6px;background:#050505;">` : ""}
         <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:5px 10px;font-size:11px;">
           <div style="color:#67e8f9;font-weight:900;">Scene</div><div>${escapeHtml(segment.label || `Scene ${promptNumber}`)}</div>
           <div style="color:#67e8f9;font-weight:900;">Video mode</div><div>${videoModeDisplayLabel(videoMode)}</div>
@@ -29329,6 +29852,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           <div style="color:#67e8f9;font-weight:900;">Collected clips</div><div style="overflow-wrap:anywhere;">${escapeHtml(collectedSceneVideoFolder())}</div>
           ${videoMode === "rtv" ? `<div style="color:#67e8f9;font-weight:900;">RTV subject refs</div><div style="overflow-wrap:anywhere;white-space:pre-wrap;">${escapeHtml(rtvSubjectText || "None")}</div>` : ""}
           ${videoMode === "rtv" ? `<div style="color:#67e8f9;font-weight:900;">RTV location ref</div><div style="overflow-wrap:anywhere;">${escapeHtml(rtvBackgroundText || "None")}</div>` : ""}
+          ${videoMode === "flf" && flfInputs ? `<div style="color:#67e8f9;font-weight:900;">First frame → node ${escapeHtml(flfInputs.first_node || "950")}</div><div style="overflow-wrap:anywhere;">Source: ${escapeHtml(flfInputs.first_source || "")}` + `<br>LoadImage: ${escapeHtml(flfInputs.first_load_image || "")}</div>` : ""}
+          ${videoMode === "flf" && flfInputs ? `<div style="color:#67e8f9;font-weight:900;">End frame → node ${escapeHtml(flfInputs.last_node || "945")}</div><div style="overflow-wrap:anywhere;">Source: ${escapeHtml(flfInputs.last_source || "")}` + `<br>LoadImage: ${escapeHtml(flfInputs.last_load_image || "")}</div>` : ""}
+          ${videoMode === "flf" && flfInputs ? `<div style="color:#67e8f9;font-weight:900;">Input verification</div><div style="font-weight:900;color:${flfInputs.inputs_are_different ? "#86efac" : "#fca5a5"};">${flfInputs.inputs_are_different ? "PASS — two different images" : "FAILED — same image"}</div>` : ""}
+          ${videoMode === "flf" && flfInputs ? `<div style="color:#67e8f9;font-weight:900;">LoRA verification → node ${escapeHtml(flfInputs.lora_node || "937")}</div><div style="font-weight:900;color:${flfInputs.loras_enabled && Number(flfInputs.lora_count || 0) > 0 ? "#86efac" : "#fbbf24"};">${flfInputs.loras_enabled && Number(flfInputs.lora_count || 0) > 0 ? `ACTIVE — ${escapeHtml(String(flfInputs.lora_count))} LoRA(s)` : "OFF — no LoRA attached"}</div>${Array.isArray(flfInputs.loras) ? flfInputs.loras.map((item) => `<div style="overflow-wrap:anywhere;">${escapeHtml(item.name || "[none]")} @ ${escapeHtml(String(item.strength ?? 1))}</div>`).join("") : ""}` : ""}
         </div>
         <div>
           <div style="color:#67e8f9;font-weight:900;margin-bottom:4px;">${videoModeDisplayLabel(videoMode, true)} prompt</div>
@@ -29354,7 +29881,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const useLoras = Boolean(settings.use_loras && Number(settings.lora_count || 0) > 0);
     const count = Math.max(0, Math.min(4, Number(settings.lora_count || 0)));
     const videoMode = currentVideoMode();
-    const singlePassLoras = videoMode === "rtv";
+    const singlePassLoras = videoMode === "rtv" || videoMode === "flf";
     let pass1SamplerName = settings.pass1_sampler_name || "euler_ancestral";
     let pass1Sigmas = settings.pass1_sigmas || DEFAULT_I2V_PASS1_SIGMAS;
     let pass2SamplerName = settings.pass2_sampler_name || "euler_ancestral";
@@ -29387,7 +29914,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       height: videoMode === "ingredients" ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT) : Number(settings.height || 1080),
       seed: Number(settings.seed || 1),
       tail_loss_frames: videoMode === "id_lora" ? 0 : Math.max(0, Number(settings.tail_loss_frames ?? 25)),
-      pre_frames: videoMode === "id_lora" ? 0 : Math.max(0, Number(settings.pre_frames ?? 50)),
+      pre_frames: videoMode === "id_lora" ? 0 : videoMode === "flf" ? Math.max(0, Number(settings.flf_pre_frames ?? 0)) : Math.max(0, Number(settings.pre_frames ?? 50)),
+      first_guide_strength: Math.max(0, Math.min(1, Number(settings.flf_first_guide_strength ?? 0.7))),
+      last_guide_strength: Math.max(0, Math.min(1, Number(settings.flf_last_guide_strength ?? 0.7))),
+      first_guide_frame_idx: Math.trunc(Number(settings.flf_first_guide_frame_idx ?? 0)),
+      last_guide_frame_idx: Math.trunc(Number(settings.flf_last_guide_frame_idx ?? -1)),
+      first_guide_crf: Number(settings.flf_first_guide_crf ?? 29),
+      last_guide_crf: Number(settings.flf_last_guide_crf ?? 29),
+      first_guide_blur_radius: Number(settings.flf_first_guide_blur_radius ?? 1),
+      last_guide_blur_radius: Number(settings.flf_last_guide_blur_radius ?? 1),
+      first_guide_interpolation: settings.flf_first_guide_interpolation || "lanczos",
+      last_guide_interpolation: settings.flf_last_guide_interpolation || "lanczos",
+      first_guide_crop: settings.flf_first_guide_crop || "center",
+      last_guide_crop: settings.flf_last_guide_crop || "center",
+      first_attention_strength: Number(settings.flf_first_attention_strength ?? 0.9),
+      last_attention_strength: Number(settings.flf_last_attention_strength ?? 1),
       msr_lora_name: settings.msr_lora_name || REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: Number(settings.msr_first_pass_strength ?? 1),
       msr_second_pass_strength: 0,
@@ -30085,7 +30626,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const name = sceneDisplayName(segment, sceneIndex);
     const missing = [];
     const mode = currentVideoMode();
-    const promptLabel = mode === "id_lora" ? "ID-LoRA I2V" : mode === "ingredients" ? "Ingredients to Video" : mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
+    const promptLabel = mode === "id_lora" ? "ID-LoRA I2V" : mode === "ingredients" ? "Ingredients to Video" : mode === "flf" ? "First Last Frame" : mode === "rtv" ? "Reference to Video" : mode === "t2v" ? "T2V" : "I2V";
     if (mode === "ingredients") applyIngredientsSheetForSceneIfMapped(segment);
     if ((mode === "i2v" || mode === "ingredients" || mode === "id_lora") && !segmentImageSource(segment)) missing.push(`${name}: selected scene image is missing.`);
     if (mode === "id_lora") {
@@ -30106,6 +30647,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           || referenceBuilderSubjectItemsForSegment(refs, segment).some(referenceBuilderSubjectHasImage);
         if (!hasSubjectReference) missing.push(`${name}: Reference to Video needs a subject image in Reference Builder.`);
       }
+    }
+    if (mode === "flf") {
+      const previous = previousAutoChainSourceSegment(segment);
+      const firstFrame = firstLastFrameStartImageSource(segment);
+      const lastFrame = firstLastFrameResolvedEndImageSource(segment);
+      if (!firstFrame?.path && !firstFrame?.data) {
+        if (!(previous && flfChainingEnabled(segment) && flfRenderChainStartSource(segment) === "rendered_frame")) {
+          missing.push(previous && flfChainingEnabled(segment)
+            ? `${name}: the previous scene needs an assigned end image to use as this scene's first frame.`
+            : `${name}: First Last Frame needs a selected first-frame image.`);
+        }
+      }
+      if (!lastFrame?.path && !lastFrame?.data) missing.push(`${name}: First Last Frame needs its own end image or assigned scene image.`);
     }
     if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${promptLabel} prompt is missing.`);
     return missing;
@@ -30409,6 +30963,36 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function prepareFLFRenderedFrameNextScene(previousSegment, nextSegment, progress = null, percent = 50, label = "FLF Render Chain") {
+    if (!previousSegment || !nextSegment) return null;
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
+    if (!projectFolder) throw new Error("Project folder is missing.");
+    if (!previousVideoPath) throw new Error(`${sceneDisplayName(previousSegment, segmentIndexInfo(previousSegment).index)} has no rendered video to extract its end frame.`);
+    progress?.set(`${label}: extracting the actual final video frame...`, percent);
+    const extracted = await postJson("/vrgdg/music_builder/extract_video_final_frame", {
+      project_folder: projectFolder,
+      source_path: previousVideoPath,
+      scene_number: sceneSlotNumber(nextSegment),
+    }, 120000);
+    const framePath = String(extracted.saved_path || "").trim();
+    if (!framePath) throw new Error("Rendered final-frame extraction did not return an image path.");
+    pushHistory();
+    nextSegment.flf_rendered_start_frame_path = framePath;
+    nextSegment.flf_rendered_start_frame_data = "";
+    nextSegment.flf_rendered_start_frame_name = String(framePath).split(/[\\/]/).pop() || "rendered_previous_end.png";
+    nextSegment.flf_rendered_source_video_path = previousVideoPath;
+    progress?.set(`${label}: Gemma is viewing the extracted video frame and this scene's target end frame...`, Math.min(98, percent + 3));
+    await generateI2VPromptForSegment(nextSegment, progress, Math.min(98, percent + 5), `${label}: Gemma FLF`, { unloadAfter: true, forceVision: true });
+    if (nextSegment.id === state.activeId) {
+      i2vPrompt.value = nextSegment.i2v_prompt || "";
+      syncRTVSceneImageAnchorPanel();
+    }
+    render();
+    await autoSaveSessionQuiet("FLF rendered-frame chain prepared");
+    return { framePath, prompt: nextSegment.i2v_prompt || "" };
+  }
+
   function snapshotSceneImagePromptState(segment) {
     return {
       image: segment.image || null,
@@ -30468,7 +31052,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : "Write as a cinematic text-to-image prompt.";
     const sourceName = firstFrame?.name || firstFrame?.path || "the first frame";
     return [
-      `${modeHint} Create the LAST FRAME for a Reference-to-Video shot.`,
+      `${modeHint} Create the LAST FRAME for a First Last Frame video shot.`,
       `Scene: ${sceneName}`,
       `Use ${sourceName} as the FIRST FRAME identity, composition, style, lighting, wardrobe, environment, and color reference.`,
       "The new image must feel like the natural end point of the same shot, not a different scene.",
@@ -30567,30 +31151,51 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function createEndFrameForSegment(segment, imageMode, progress = null, percentBase = 20, percentSpan = 70, label = "Create End Frame") {
     if (!segment) throw new Error("Scene is missing.");
-    const firstFrame = segmentImageSource(segment);
+    const firstFrame = firstLastFrameStartImageSource(segment);
     if (!firstFrame?.path && !firstFrame?.data) {
-      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: selected scene image is missing for the first frame.`);
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: first-frame image is missing${flfChainingEnabled(segment) && previousAutoChainSourceSegment(segment) ? "; the previous scene needs an end frame" : ""}.`);
     }
     const snapshot = snapshotSceneImagePromptState(segment);
     const restoreIngredient = addFirstFrameIngredientToSegment(segment, firstFrame, imageMode);
     state.activeId = segment.id;
     syncInspector();
     const restoreI2I = setFirstFrameAsImageToImageSourceForMode(firstFrame, imageMode);
+    const originalPromptContext = {
+      notes: segment.notes || "",
+      flux_notes: segment.flux_notes || "",
+      nb_notes: segment.nb_notes || "",
+      ref_image_path: segment.ref_image_path || "",
+      ref_image_data: segment.ref_image_data || "",
+      ref_image_name: segment.ref_image_name || "",
+      use_vision_reference: segment.use_vision_reference,
+    };
     try {
-      const endPrompt = applyMappedTriggerPhrases(
-        applyImageTriggerToPrompt(firstLastFrameEndPromptForSegment(segment, firstFrame, imageMode), segment, imageMode, { validateJunk: false }),
-        segment
-      );
-      if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, endPrompt);
-      else syncSegmentT2IPrompt(segment, endPrompt);
-      progress?.set(`${label}: creating end-frame image from first frame...`, percentBase);
-      await createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase + percentSpan * 0.18, percentSpan * 0.62, label);
+      const endDirection = firstLastFrameEndPromptForSegment(segment, firstFrame, imageMode);
+      segment.notes = endDirection;
+      segment.flux_notes = endDirection;
+      segment.nb_notes = endDirection;
+      segment.ref_image_path = firstFrame.path || "";
+      segment.ref_image_data = firstFrame.data || "";
+      segment.ref_image_name = firstFrame.name || "first_frame.png";
+      segment.use_vision_reference = true;
+      progress?.set(`${label}: Gemma Vision is inspecting the first frame and writing the endpoint prompt...`, percentBase);
+      if (imageMode === "flux_klein") {
+        await generateFluxKleinPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Flux/Klein`, { unloadAfter: true });
+      } else if (imageMode === "nano_banana" || imageMode === "flow_gpt") {
+        await generateNBPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma ${imageMode === "flow_gpt" ? "Browser AI" : "NanoBanana"}`, { imageMode, unloadAfter: true });
+        if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
+      } else {
+        await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true });
+      }
+      progress?.set(`${label}: creating end-frame image with ${imageModeDisplayLabel(imageMode)}...`, percentBase + percentSpan * 0.3);
+      await createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase + percentSpan * 0.38, percentSpan * 0.5, label);
       const generated = segmentImageSource(segment);
       if (!generated?.path && !generated?.data) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: end frame image did not return a saved image.`);
       segment.first_last_frame_end_image_path = generated.path || "";
       segment.first_last_frame_end_image_data = generated.data || "";
       segment.first_last_frame_end_image_name = generated.name || "last_frame.png";
     } finally {
+      Object.assign(segment, originalPromptContext);
       restoreI2I();
       restoreIngredient();
       restoreSceneImagePromptState(segment, snapshot);
@@ -31023,7 +31628,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         missing.push(...validateSceneReadyForAutoImg2ImgContinuity(segment, segmentIndexInfo(segment).index, autoImg2ImgImageMode));
         return;
       }
-      missing.push(...validateSceneReadyForVideo(segment, segmentIndexInfo(segment).index));
+      const sceneMissing = validateSceneReadyForVideo(segment, segmentIndexInfo(segment).index);
+      missing.push(...(currentVideoMode() === "flf" ? sceneMissing.filter((message) => !/First Last Frame prompt is missing/i.test(message)) : sceneMissing));
     });
     return missing;
   }
@@ -31299,6 +31905,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       payload.ingredients_image_path = segment.approved_image_path || selectedSegmentImagePath(segment);
       payload.ingredients_image_name = segment.image?.name || "ingredients_reference.png";
     }
+    if (videoMode === "flf") {
+      const first = firstLastFrameStartImageSource(segment) || {};
+      const last = firstLastFrameResolvedEndImageSource(segment) || {};
+      payload.first_frame = rtvReferenceImagePayload(first);
+      payload.last_frame = rtvReferenceImagePayload(last);
+    }
     if (isIdLoraMode) {
       payload.source_image_path = segment.approved_image_path || selectedSegmentImagePath(segment);
       payload.image_path = payload.source_image_path;
@@ -31325,6 +31937,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? "/vrgdg/workflow_runner/build_ingredients_prompt"
       : videoMode === "rtv"
       ? "/vrgdg/workflow_runner/build_rtv_prompt"
+      : videoMode === "flf"
+      ? "/vrgdg/workflow_runner/build_flf_prompt"
       : videoMode === "t2v"
         ? "/vrgdg/workflow_runner/build_t2v_prompt"
         : "/vrgdg/workflow_runner/build_i2v_prompt";
@@ -31334,6 +31948,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, defaultOutputFolder, readyMessage, workflowDetails), pct(15));
     const renderStartedAt = Date.now() / 1000 - 2;
     const built = await postJson(buildEndpoint, payload);
+    if (videoMode === "flf") {
+      workflowDetails.flfInputs = built.flf_inputs || null;
+      console.log("[VRGDG FLF] Verified queued inputs", workflowDetails.flfInputs);
+      if (!workflowDetails.flfInputs?.inputs_are_different) {
+        throw new Error("First Last Frame verification failed: the first and end frame resolved to the same image.");
+      }
+    }
     progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, built.output_folder || defaultOutputFolder, `${batchLabel}Queueing hidden ${modeLabel} workflow...`, workflowDetails), pct(40));
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
@@ -31508,6 +32129,42 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return data;
   }
 
+  async function runGemmaThenCreateSceneVideo() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const mode = currentVideoMode();
+    if (mode === "import") {
+      toast("Imported-video mode does not use Gemma prompt generation. Use Create Scene Video instead.", true);
+      return;
+    }
+    const modeLabel = videoModeDisplayLabel(mode, true);
+    if (!window.confirm(`Run Gemma to replace this scene's ${modeLabel} prompt, then immediately create the video without stopping for prompt review?`)) return;
+    updateActiveFromInputs();
+    let progress = null;
+    try {
+      setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
+      progress = createProgressWindow("Gemma → Create Scene Video");
+      progress.set(`Creating the ${modeLabel} prompt with Gemma...`, 8);
+      await generateI2VPromptForSegment(
+        segment,
+        progress,
+        18,
+        `Gemma ${modeLabel}`,
+        { unloadAfter: true, forceVision: mode === "flf" },
+      );
+      await autoSaveSessionQuiet(`Gemma ${modeLabel} prompt before scene video`);
+      progress.set("Gemma prompt ready. Starting scene video automatically...", 100);
+      progress.close(350);
+      progress = null;
+      await createSceneVideo();
+    } catch (error) {
+      progress?.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
+    }
+  }
+
   async function createSceneVideo() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -31550,7 +32207,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     try {
       state.batchCancelled = false;
       setButtonGroupState(createSceneVideoButtons, { disabled: true, text: "Creating..." });
+      setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
       progress = createProgressWindow("Creating scene video");
+      if (currentVideoMode() === "flf" && flfChainingEnabled(renderTarget) && flfRenderChainStartSource(renderTarget) === "rendered_frame") {
+        const previousSegment = previousAutoChainSourceSegment(renderTarget);
+        if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
+          await prepareFLFRenderedFrameNextScene(previousSegment, renderTarget, progress, 4, `FLF rendered-frame chain into ${sceneDisplayName(renderTarget, renderIndex)}`);
+        }
+      }
       const videoPath = await renderSceneVideoWithProgress(renderTarget, renderIndex, progress, {
         existingVideoAction,
       });
@@ -31564,6 +32228,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderList();
     } finally {
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
+      setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
     }
   }
 
@@ -31740,6 +32405,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = true;
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
+      setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
       const preparedAudio = skipFinalStitch
@@ -31750,6 +32416,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!scenes.length) {
         progress.set(skipFinalStitch ? "Selected scenes already have video. Nothing to render." : "All scenes already have video. Stitching existing scene videos...", 80);
       }
+      if (currentVideoMode() === "flf" && scenes.length && flfPreGeneratePromptsEnabled()) {
+        const promptTargets = scenes.filter(({ segment }) =>
+          !String(segment.i2v_prompt || "").trim()
+          && firstLastFramePromptReferences(segment).length >= 2
+        );
+        for (let promptIndex = 0; promptIndex < promptTargets.length; promptIndex += 1) {
+          assertBatchNotStopped();
+          const { segment, index: sceneIndex } = promptTargets[promptIndex];
+          const promptPercent = 4 + Math.floor(((promptIndex + 1) / Math.max(1, promptTargets.length)) * 8);
+          progress.set(`Pre-generating FLF prompt ${promptIndex + 1}/${promptTargets.length}: ${sceneDisplayName(segment, sceneIndex)}\nUsing the previous scene image as a prompt-only provisional start reference.`, promptPercent);
+          await generateI2VPromptForSegment(
+            segment,
+            progress,
+            promptPercent,
+            `FLF prompt batch ${promptIndex + 1}/${promptTargets.length}`,
+            { unloadAfter: promptIndex === promptTargets.length - 1, forceVision: true },
+          );
+        }
+        if (promptTargets.length) await autoSaveSessionQuiet("FLF provisional prompt batch complete");
+      }
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
@@ -31757,6 +32443,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
         if (randomizeVideoSeed) setVideoSeedRandom(segment);
+        if (currentVideoMode() === "flf" && index === 0 && flfRenderChainStartSource(segment) === "rendered_frame") {
+          const previousSegment = previousAutoChainSourceSegment(segment);
+          if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
+            await prepareFLFRenderedFrameNextScene(previousSegment, segment, progress, Math.min(98, base + 1), `FLF Render Chain resume into ${sceneLabel}`);
+          }
+        }
+        if (currentVideoMode() === "flf" && !String(segment.i2v_prompt || "").trim()) {
+          progress.set(`Creating First Last Frame prompt for ${sceneLabel}...`, Math.min(98, base + 1));
+          await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 2), `Render All ${index + 1}/${scenes.length}: Gemma FLF`, { unloadAfter: true, forceVision: true });
+        }
         if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && index === 0) {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
@@ -31804,6 +32500,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
           srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
         });
+        if (currentVideoMode() === "flf" && scenes[index + 1]?.segment && flfChainingEnabled(scenes[index + 1].segment) && flfRenderChainStartSource(scenes[index + 1].segment) === "rendered_frame") {
+          assertBatchNotStopped();
+          const nextSegment = scenes[index + 1].segment;
+          const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
+          await prepareFLFRenderedFrameNextScene(
+            segment,
+            nextSegment,
+            progress,
+            chainBase,
+            `FLF rendered-frame chain ${index + 1}->${index + 2}`,
+          );
+        }
         if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
@@ -31840,6 +32548,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = false;
       renderAllButton.textContent = "Render All";
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
+      setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
       state.batchCancelled = false;
       syncInspector();
       render();
@@ -32034,6 +32743,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           settings,
           promptSource: "scene_image_prompt",
         });
+        if (currentVideoMode() === "flf" && scenes[index + 1]?.segment) {
+          assertBatchNotStopped();
+          await prepareFLFRenderedFrameNextScene(segment, scenes[index + 1].segment, progress, Math.min(98, base + Math.max(1, Math.floor(span * 0.72))), `FLF Render Chain ${index + 1}->${index + 2}`);
+        }
         assertBatchNotStopped();
         await autoSaveSessionQuiet(`Enhance All scene ${sceneIndex + 1}`);
         await runImageMemoryCleanupQuiet(progress, sceneLabel, Math.min(98, base + span));
@@ -33535,6 +34248,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     sceneAudio.removeAttribute("src");
     sceneAudio.load();
     freezeTimingControl.input.checked = false;
+    // Clear stale visual blocks immediately. The normal render below rebuilds
+    // labels/overlays, but deleted scene nodes must never survive a render error.
+    segmentLayer.textContent = "";
+    sceneListPane.textContent = "";
     syncTimelineTrimModeButton();
     syncInspector();
     render();
@@ -36397,7 +37114,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ...(firstLastFrameMode ? [{
           value: "create_end_frames",
           label: "Create End Frames",
-          description: "First Last Frame mode only. Keep current scene images as first frames and generate missing last-frame images for RTV/MSR.",
+          description: "First Last Frame mode only. Keep current scene images as first frames and generate missing end-frame images.",
         }] : []),
         {
           value: "resume_missing",
@@ -37934,6 +38651,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   ernieUseVisionReference.input.addEventListener("change", updateActiveFromInputs);
   krea2TwoPassUseVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
+  flfTransitionTypeSelect.addEventListener("change", async () => {
+    updateActiveFromInputs();
+    await autoSaveSessionQuiet("First Last Frame transition type changed");
+  });
   useT2VVisionReference.input.addEventListener("change", updateActiveFromInputs);
   useI2VPromptEnhancementPass.input.addEventListener("change", async () => {
     state.useI2VPromptEnhancementPass = Boolean(useI2VPromptEnhancementPass.input.checked);
@@ -38057,7 +38778,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} end frame`
       );
       await autoSaveSessionQuiet("First Last Frame end frame created");
-      progress.set("Scene end frame created. This scene is ready for First Last Frame RTV.", 100);
+      progress.set("Scene end frame created. This scene is ready for First Last Frame video.", 100);
       progress.close(2200);
       toast("Scene end frame created.");
     } catch (error) {
@@ -38087,6 +38808,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     render();
     autoSaveSessionQuiet("First Last Frame end frame cleared").catch(() => null);
     toast("Scene end frame cleared.");
+  });
+  loadSceneEndFrameButton.addEventListener("click", () => sceneEndFrameFileInput.click());
+  sceneEndFrameFileInput.addEventListener("change", async () => {
+    try { await loadFirstLastFrameEndFile(sceneEndFrameFileInput.files?.[0]); }
+    catch (error) { toast(String(error?.message || error), true); }
+    finally { sceneEndFrameFileInput.value = ""; }
   });
   refImageInput.addEventListener("input", updateActiveFromInputs);
   refImageInput.addEventListener("change", updateActiveFromInputs);
@@ -38252,6 +38979,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   flowGptCreatePromptButton.onclick = createFlowGptPromptWithGemma;
   editFlowGptT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flow_gpt_t2i");
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
+  for (const button of gemmaThenCreateVideoButtons) button.onclick = runGemmaThenCreateSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
   importImageFolderButton.onclick = () => {
     imageFolderFileInput.value = "";
@@ -38362,6 +39090,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   ingredientsToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "ingredients";
+    syncVideoModePanel();
+    syncI2VVideoSettingsPanel();
+  };
+  firstLastFrameVideoCard.onclick = () => {
+    pushHistory();
+    state.videoModelMode = "flf";
+    applyRTVReferenceBehaviorToAll("first_last_frame");
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
   };
@@ -39069,7 +39804,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       title: "Video LoRA Strengths",
       lines: [
         "Image to Video, Text to Video, and Ingredients to Video use separate Pass 1 and Pass 2 strengths.",
-        "Reference to Video uses one LoRA strength only; Pass 2 is hidden and ignored in that mode.",
+        "Reference to Video and First Last Frame use one LoRA strength only; Pass 2 is hidden and ignored in those modes.",
         "If a LoRA hurts I2V/T2V motion, lower Pass 1. If you want more LoRA detail in the final result, raise Pass 2.",
       ],
     });
@@ -39077,14 +39812,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   function updateI2VLoraVisibility() {
     const count = Math.max(0, Math.min(4, Number(i2vLoraCount.value || 0)));
-    const isReferenceToVideo = currentVideoMode() === "rtv";
+    const isSinglePassMode = currentVideoMode() === "rtv" || currentVideoMode() === "flf";
     i2vLoraPanel.style.display = i2vUseLora.input.checked ? "flex" : "none";
+    flfTransitionLoraNote.style.display = currentVideoMode() === "flf" ? "block" : "none";
     i2vLoraRows.style.display = i2vUseLora.input.checked && count > 0 ? "flex" : "none";
     i2vLoraSlots.forEach((slot, index) => {
       slot.row.style.display = index < count ? "grid" : "none";
-      slot.row.style.gridTemplateColumns = isReferenceToVideo ? "1fr 84px" : "1fr 84px 84px";
-      if (slot.firstPassLabel) slot.firstPassLabel.textContent = isReferenceToVideo ? "Strength" : "Pass 1";
-      if (slot.secondPassField) slot.secondPassField.style.display = isReferenceToVideo ? "none" : "flex";
+      slot.row.style.gridTemplateColumns = isSinglePassMode ? "1fr 84px" : "1fr 84px 84px";
+      if (slot.firstPassLabel) slot.firstPassLabel.textContent = isSinglePassMode ? "Strength" : "Pass 1";
+      if (slot.secondPassField) slot.secondPassField.style.display = isSinglePassMode ? "none" : "flex";
     });
   }
 
@@ -39156,10 +39892,65 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     slot.secondPassStrength.addEventListener("input", saveI2VVideoSettingsFromPanel);
     slot.secondPassStrength.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
-  for (const control of [i2vFpsInput, i2vWidthInput, i2vHeightInput, i2vSeedInput]) {
+  for (const control of [i2vFpsInput, i2vWidthInput, i2vHeightInput, i2vSeedInput, i2vTailLossFramesInput, i2vPreFramesInput, flfFirstGuideStrengthInput, flfLastGuideStrengthInput, flfFirstGuideFrameIndexInput, flfLastGuideFrameIndexInput, flfFirstGuideCrfInput, flfLastGuideCrfInput, flfFirstGuideBlurInput, flfLastGuideBlurInput, flfFirstAttentionStrength, flfLastAttentionStrength]) {
     control.addEventListener("input", saveI2VVideoSettingsFromPanel);
     control.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
+  for (const control of [flfFirstGuideInterpolation, flfLastGuideInterpolation, flfFirstGuideCrop, flfLastGuideCrop]) {
+    control.addEventListener("change", saveI2VVideoSettingsFromPanel);
+  }
+  flfChainPreviousEndFrame.input.addEventListener("change", () => {
+    state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
+    state.i2vVideoSettings.flf_chain_previous_end_frame = Boolean(flfChainPreviousEndFrame.input.checked);
+    syncRTVSceneImageAnchorPanel();
+    renderList();
+    autoSaveSessionQuiet("Global FLF chaining changed");
+  });
+  flfPreGeneratePromptsFromSceneImages.input.addEventListener("change", async () => {
+    state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
+    state.i2vVideoSettings.flf_pregenerate_prompts_from_scene_images = Boolean(flfPreGeneratePromptsFromSceneImages.input.checked);
+    await autoSaveSessionQuiet("FLF prompt pre-generation mode changed");
+  });
+  flfRenderChainSourceSelect.addEventListener("change", async () => {
+    state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
+    state.i2vVideoSettings.flf_render_chain_start_source = flfRenderChainSourceSelect.value === "previous_image" ? "previous_image" : "rendered_frame";
+    syncRTVSceneImageAnchorPanel();
+    renderList();
+    await autoSaveSessionQuiet("FLF actual render-chain source changed");
+  });
+  flfGlobalTransitionTypeSelect.addEventListener("change", async () => {
+    saveI2VVideoSettingsFromPanel();
+    await autoSaveSessionQuiet("Global First Last Frame transition type changed");
+  });
+  flfRestoreWorkflowDefaultsButton.addEventListener("click", async () => {
+    flfFirstGuideStrengthInput.value = "0.7";
+    flfLastGuideStrengthInput.value = "0.7";
+    flfFirstGuideFrameIndexInput.value = "0";
+    flfLastGuideFrameIndexInput.value = "-1";
+    flfFirstGuideCrfInput.value = "29";
+    flfLastGuideCrfInput.value = "29";
+    flfFirstGuideBlurInput.value = "1";
+    flfLastGuideBlurInput.value = "1";
+    flfFirstGuideInterpolation.value = "lanczos";
+    flfLastGuideInterpolation.value = "lanczos";
+    flfFirstGuideCrop.value = "center";
+    flfLastGuideCrop.value = "center";
+    flfFirstAttentionStrength.value = "0.9";
+    flfLastAttentionStrength.value = "1";
+    saveI2VVideoSettingsFromPanel();
+    await autoSaveSessionQuiet("FLF workflow defaults restored");
+    toast("First Last Frame guide settings restored to the hidden workflow defaults.");
+  });
+  imageContinuityEnabled.input.checked = Boolean(state.imageContinuityEnabled);
+  imageContinuityStrength.value = state.imageContinuityStrength || "balanced";
+  imageContinuityEnabled.input.addEventListener("change", async () => {
+    state.imageContinuityEnabled = Boolean(imageContinuityEnabled.input.checked);
+    await autoSaveSessionQuiet("Image All continuity changed");
+  });
+  imageContinuityStrength.addEventListener("change", async () => {
+    state.imageContinuityStrength = ["close", "creative"].includes(imageContinuityStrength.value) ? imageContinuityStrength.value : "balanced";
+    await autoSaveSessionQuiet("Image All continuity strength changed");
+  });
   updateI2VLoraVisibility();
 
   syncInspector();
