@@ -20,6 +20,7 @@ _VRGDG_SUBMODULES = (
     ".LTXLoraTrain",
     ".VRGDG_VoxCPM2Node",
     ".VRGDG_LTXICIngredientsGrid",
+    ".VRGDG_TryV9Dev",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (
