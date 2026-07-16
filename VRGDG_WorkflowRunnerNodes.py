@@ -780,6 +780,9 @@ def _patch_krea2_api_prompt(prompt, payload):
     if seed_mode in {"random", "randomize"}:
         seed = random.randint(0, 0xFFFFFFFFFFFFFFFF)
 
+    use_zimage_enhance = _bool_payload(payload, "use_zimage_enhance", True)
+    enhance_strength = max(0.1, min(1.0, _float_payload(payload, "zimage_enhance_strength", 0.5)))
+
     krea_unet = str(payload.get("krea_unet_name") or payload.get("unet_name") or "krea2_turbo_fp8_scaled.safetensors").strip()
     krea_clip = str(payload.get("krea_clip_name") or payload.get("clip_name") or "qwen3vl_4b_fp8_scaled.safetensors").strip()
     krea_vae = str(payload.get("krea_vae_name") or payload.get("vae_name") or "qwen_image_vae.safetensors").strip()
@@ -790,9 +793,10 @@ def _patch_krea2_api_prompt(prompt, payload):
     _require_model_choice(("diffusion_models", "unet"), krea_unet, "Krea2 diffusion model")
     _require_model_choice(("text_encoders", "clip"), krea_clip, "Krea2 text encoder")
     _require_model_choice("vae", krea_vae, "Krea2 VAE")
-    _require_model_choice(("unet", "diffusion_models"), z_unet, "ZImage enhancer diffusion model")
-    _require_model_choice(("clip", "text_encoders"), z_clip, "ZImage enhancer text encoder")
-    _require_model_choice("vae", z_vae, "ZImage enhancer VAE")
+    if use_zimage_enhance:
+        _require_model_choice(("unet", "diffusion_models"), z_unet, "ZImage enhancer diffusion model")
+        _require_model_choice(("clip", "text_encoders"), z_clip, "ZImage enhancer text encoder")
+        _require_model_choice("vae", z_vae, "ZImage enhancer VAE")
 
     _set_api_input(prompt, "200", "text", prompt_text)
     _set_api_input(prompt, "30:10", "unet_name", krea_unet)
@@ -809,6 +813,19 @@ def _patch_krea2_api_prompt(prompt, payload):
     _set_api_input(prompt, "193:86", "noise_seed", seed)
     _set_api_input(prompt, "193:98", "width", width)
     _set_api_input(prompt, "193:98", "height", height)
+
+    # The ZImage branch uses a 10-step partial-denoise schedule. A larger
+    # strength begins earlier and therefore allows ZImage to change/add more.
+    enhance_steps = 10
+    enhance_start = max(0, min(enhance_steps - 1, round(enhance_steps * (1.0 - enhance_strength))))
+    _set_api_input(prompt, "193:82", "steps", enhance_steps)
+    _set_api_input(prompt, "193:82", "start_at_step", enhance_start)
+    _set_api_input(prompt, "193:82", "end_at_step", enhance_steps)
+
+    if not use_zimage_enhance:
+        # PreviewImage is the workflow output. Pointing it at the Krea decode
+        # removes the unreferenced ZImage branch from ComfyUI execution.
+        _set_api_input(prompt, "199", "images", ["30:8", 0])
 
     aspect_node = prompt.get("49")
     if isinstance(aspect_node, dict):
@@ -2434,7 +2451,7 @@ def _patch_timestamped_transcribe_api_prompt(prompt, payload):
     _set_api_input(prompt, extractor_id, "reference_lyrics", str(payload.get("reference_lyrics", "") or ""))
     _set_api_input(prompt, extractor_id, "language", str(payload.get("language", "") or "english"))
     segment_mode = str(payload.get("segment_mode", "") or "reference_lines").strip()
-    if segment_mode not in {"whisper_chunks", "reference_lines", "reference_stanzas"}:
+    if segment_mode not in {"whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas"}:
         segment_mode = "reference_lines"
     _set_api_input(prompt, extractor_id, "segment_mode", segment_mode)
     _set_api_input(prompt, extractor_id, "include_instrumental_gaps", _bool_payload(payload, "include_instrumental_gaps", True))
@@ -2906,6 +2923,113 @@ def _trim_scene_video(payload):
         "start": start,
         "duration": duration,
     }
+
+
+def _apply_scene_start_color_match(payload):
+    """Match a new clip's opening color to the prior clip, then fade the correction out."""
+    from PIL import Image, ImageStat
+
+    project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
+    video_path = os.path.abspath(str(payload.get("video_path", "") or "").strip().strip('"'))
+    reference_video_path = os.path.abspath(str(payload.get("reference_video_path", "") or "").strip().strip('"'))
+    if not project_folder or not os.path.isdir(project_folder):
+        raise ValueError("Project folder is empty or does not exist.")
+    for label, path in (("Scene video", video_path), ("Previous scene video", reference_video_path)):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"{label} was not found: {path}")
+        try:
+            inside_project = os.path.commonpath([project_folder, path]) == project_folder
+        except ValueError:
+            inside_project = False
+        if not inside_project:
+            raise ValueError(f"{label} must be inside the current project folder.")
+
+    fade_seconds = max(0.05, min(30.0, float(payload.get("fade_seconds", 1.0) or 1.0)))
+    strength = max(0.0, min(1.0, float(payload.get("strength", 0.85) or 0.85)))
+    if strength <= 0.0:
+        return {"video_path": video_path, "applied": False, "reason": "strength is zero"}
+
+    ffmpeg_path = _find_ffmpeg_path()
+    work_dir = os.path.dirname(video_path)
+    token = f"{int(time.time() * 1000)}_{os.getpid()}"
+    reference_frame = os.path.join(work_dir, f".vrgdg_color_reference_{token}.png")
+    target_frame = os.path.join(work_dir, f".vrgdg_color_target_{token}.png")
+    cube_path = os.path.join(work_dir, f".vrgdg_color_match_{token}.cube")
+    output_path = os.path.join(work_dir, f".vrgdg_color_matched_{token}.mp4")
+
+    def run_ffmpeg(command, message):
+        result = subprocess.run(command, capture_output=True, text=True, errors="replace", cwd=work_dir)
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or message).strip())
+
+    try:
+        # -update 1 leaves the last decoded frame in the PNG after processing the final second.
+        run_ffmpeg([
+            ffmpeg_path, "-y", "-sseof", "-1", "-i", reference_video_path,
+            "-map", "0:v:0", "-an", "-update", "1", reference_frame,
+        ], "FFmpeg could not read the previous clip's final frame.")
+        run_ffmpeg([
+            ffmpeg_path, "-y", "-i", video_path, "-map", "0:v:0", "-an",
+            "-frames:v", "1", target_frame,
+        ], "FFmpeg could not read the new clip's first frame.")
+
+        with Image.open(reference_frame) as image:
+            reference_stats = ImageStat.Stat(image.convert("RGB"))
+        with Image.open(target_frame) as image:
+            target_stats = ImageStat.Stat(image.convert("RGB"))
+        reference_mean = [float(value) for value in reference_stats.mean[:3]]
+        reference_std = [max(1.0, float(value)) for value in reference_stats.stddev[:3]]
+        target_mean = [float(value) for value in target_stats.mean[:3]]
+        target_std = [max(1.0, float(value)) for value in target_stats.stddev[:3]]
+        scales = [max(0.25, min(4.0, reference_std[i] / target_std[i])) for i in range(3)]
+        offsets = [reference_mean[i] - target_mean[i] * scales[i] for i in range(3)]
+
+        cube_size = 17
+        with open(cube_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write('TITLE "VRGDG opening color match"\n')
+            handle.write(f"LUT_3D_SIZE {cube_size}\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n")
+            for blue in range(cube_size):
+                for green in range(cube_size):
+                    for red in range(cube_size):
+                        values = [red, green, blue]
+                        corrected = [
+                            max(0.0, min(1.0, ((values[i] / (cube_size - 1)) * 255.0 * scales[i] + offsets[i]) / 255.0))
+                            for i in range(3)
+                        ]
+                        handle.write(f"{corrected[0]:.8f} {corrected[1]:.8f} {corrected[2]:.8f}\n")
+
+        weight = f"max(0\\,min(1\\,{strength:.6f}*(1-T/{fade_seconds:.6f})))"
+        filter_graph = (
+            f"[0:v]split=2[original][to_match];"
+            f"[to_match]lut3d=file='{os.path.basename(cube_path)}'[matched];"
+            f"[original][matched]blend=all_expr='A*(1-({weight}))+B*({weight})'[video]"
+        )
+        run_ffmpeg([
+            ffmpeg_path, "-y", "-i", video_path,
+            "-filter_complex", filter_graph,
+            "-map", "[video]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-c:a", "copy", "-movflags", "+faststart", output_path,
+        ], "FFmpeg could not apply the opening color match.")
+        if not os.path.isfile(output_path) or os.path.getsize(output_path) <= 0:
+            raise RuntimeError("Opening color match did not create a valid video.")
+        os.replace(output_path, video_path)
+        thumbnail_path = _create_scene_video_thumbnail(video_path, _scene_video_thumbnail_path(video_path))
+        return {
+            "video_path": video_path,
+            "thumbnail_path": thumbnail_path,
+            "applied": True,
+            "fade_seconds": fade_seconds,
+            "strength": strength,
+            "reference_video_path": reference_video_path,
+        }
+    finally:
+        for temporary_path in (reference_frame, target_frame, cube_path, output_path):
+            try:
+                if os.path.isfile(temporary_path):
+                    os.remove(temporary_path)
+            except Exception:
+                pass
 
 
 def _find_scene_video_output(payload):
@@ -3544,6 +3668,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _collect_scene_video(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/match_scene_video_start_color")
+    async def vrgdg_workflow_runner_match_scene_video_start_color(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _apply_scene_start_color_match(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

@@ -1570,11 +1570,17 @@ function slimSceneForRequest(scene, index = 0) {
 function normalizeStoryLayer(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const lyricStoryStrength = Math.max(0, Math.min(10, Number(source.lyric_story_strength ?? source.lyricStoryStrength ?? 7)));
+  const imageWorldStyle = ["natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom"].includes(String(source.image_world_style || source.imageWorldStyle || "natural"))
+    ? String(source.image_world_style || source.imageWorldStyle || "natural")
+    : "natural";
   return {
     enabled: source.enabled !== false,
+    overall_story_idea: String(source.overall_story_idea || source.overallStoryIdea || source.story_idea || source.storyIdea || ""),
     user_story_arc: String(source.user_story_arc || source.userStoryArc || ""),
     song_story_brief: String(source.song_story_brief || source.songStoryBrief || ""),
     lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
+    image_world_style: imageWorldStyle,
+    image_custom_style_direction: String(source.image_custom_style_direction || source.imageCustomStyleDirection || ""),
   };
 }
 
@@ -1649,6 +1655,7 @@ function mergeStoryLayers(primary = {}, fallback = {}) {
   const fallbackLayer = normalizeStoryLayer(fallback);
   return normalizeStoryLayer({
     enabled: primaryLayer.enabled !== false,
+    overall_story_idea: primaryLayer.overall_story_idea || fallbackLayer.overall_story_idea,
     user_story_arc: primaryLayer.user_story_arc || fallbackLayer.user_story_arc,
     song_story_brief: primaryLayer.song_story_brief || fallbackLayer.song_story_brief,
   });
@@ -1964,6 +1971,7 @@ function openStoryboardBuilder(payload = {}) {
   const payloadPerformanceMode = normalizeStoryboardPerformanceMode(payload.performanceMode || payload.performance_mode || payload.videoType || payload.video_type);
   const state = {
     projectFolder,
+    lineMappingLyrics: String(payload.lineMappingLyrics || payload.line_mapping_lyrics || payload.lyricMapper?.source_text || payload.lyric_mapper?.source_text || ""),
     mode: "storyboard_prompts",
     scenes: scenesFromBuilderPayload(payload).map((scene) => ({
       ...scene,
@@ -2297,7 +2305,34 @@ function openStoryboardBuilder(payload = {}) {
   facialCustomControls.append(facialCustomLabel, facialCustomInput);
   const facialCustomInfo = document.createElement("div");
   facialCustomInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
-  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
+  const imageWorldStyleControls = document.createElement("div");
+  imageWorldStyleControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
+  const imageWorldStyleLabel = document.createElement("div");
+  imageWorldStyleLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;";
+  imageWorldStyleLabel.textContent = "Image world style";
+  const imageWorldStyleSelect = makeSelect([
+    { value: "natural", label: "Natural / realistic world" },
+    { value: "surreal_subject", label: "Realistic world + surreal subject" },
+    { value: "balanced_surreal", label: "Balanced surrealism" },
+    { value: "full_surreal", label: "Fully surreal world" },
+    { value: "abstract", label: "Abstract / nonliteral world" },
+    { value: "custom", label: "Fully custom" },
+  ], normalizeStoryLayer(state.storyLayer).image_world_style);
+  imageWorldStyleSelect.style.minWidth = "240px";
+  imageWorldStyleControls.append(imageWorldStyleLabel, imageWorldStyleSelect);
+  const imageWorldStyleInfo = document.createElement("div");
+  imageWorldStyleInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const imageCustomStyleControls = document.createElement("div");
+  imageCustomStyleControls.style.cssText = "display:flex;gap:8px;align-items:flex-start;";
+  const imageCustomStyleLabel = document.createElement("div");
+  imageCustomStyleLabel.style.cssText = "font-weight:900;color:#cffafe;white-space:nowrap;text-align:right;min-width:160px;padding-top:9px;";
+  imageCustomStyleLabel.textContent = "Custom world direction";
+  const imageCustomStyleInput = makeTextarea(normalizeStoryLayer(state.storyLayer).image_custom_style_direction, "Describe the whole visual world: environment, architecture, materials, lighting, color, perspective, subject styling, and anything to avoid...", 4);
+  imageCustomStyleInput.style.minWidth = "520px";
+  imageCustomStyleControls.append(imageCustomStyleLabel, imageCustomStyleInput);
+  const imageCustomStyleInfo = document.createElement("div");
+  imageCustomStyleInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
   storyLayerBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;color:#cbd5e1;font-size:12px;";
@@ -2314,6 +2349,12 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
   storyLayerEnabledLabel.append(storyLayerEnabledInput, document.createTextNode("Use in Gemma prompts"));
   storyLayerHeader.append(storyLayerTitle, storyLayerEnabledLabel);
+  const overallStoryIdeaInput = makeTextarea(
+    state.storyLayer.overall_story_idea || "",
+    "Optional short premise, e.g. A woman navigates a surreal dream world.",
+    3,
+  );
+  overallStoryIdeaInput.title = "Optional. Sets the overall premise, world, or theme that Gemma develops through the real lyric sections.";
   const userStoryArcInput = makeTextarea(
     state.storyLayer.user_story_arc || "",
     isIdLoraMode ? "Short film premise, conflict, tone, character goal..." : "Optional user story arc, e.g. Verse 1: she feels trapped. Chorus: she breaks free...",
@@ -2352,6 +2393,12 @@ function openStoryboardBuilder(payload = {}) {
     wrap.append(control);
     return wrap;
   };
+  const overallStoryIdeaField = storyField("Overall Story Idea (optional)", overallStoryIdeaInput);
+  overallStoryIdeaField.style.gridColumn = "1/-1";
+  const overallStoryIdeaHint = document.createElement("div");
+  overallStoryIdeaHint.style.cssText = "font-size:11px;font-weight:500;color:#94a3b8;line-height:1.4;";
+  overallStoryIdeaHint.textContent = "Sets the overall premise, world, or theme. Gemma will develop it through the actual reference-lyric sections; leave blank for a lyric-led idea.";
+  overallStoryIdeaField.append(overallStoryIdeaHint);
   syncLyricStoryStrengthLabel();
   const lyricStoryStrengthRow = document.createElement("div");
   lyricStoryStrengthRow.style.cssText = "grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:end;";
@@ -2387,6 +2434,7 @@ function openStoryboardBuilder(payload = {}) {
   storyLayerBar.append(
     storyLayerHeader,
     lyricStoryStrengthRow,
+    overallStoryIdeaField,
     storyField("User Story Arc", userStoryArcInput),
     storyField("Song Story Brief", songStoryBriefInput),
     idLoraDialoguePlanner,
@@ -2394,7 +2442,7 @@ function openStoryboardBuilder(payload = {}) {
   );
 
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: false });
-  const hasStoryLayerContent = Boolean(String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
+  const hasStoryLayerContent = Boolean(String(state.storyLayer.overall_story_idea || "").trim() || String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
   const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: hasStoryLayerContent });
 
   const tableWrap = document.createElement("div");
@@ -2444,6 +2492,10 @@ function openStoryboardBuilder(payload = {}) {
     imageShotInfo.style.display = isVideoPrepMode ? "none" : "";
     imageAestheticControls.style.display = isVideoPrepMode ? "none" : "flex";
     imageAestheticInfo.style.display = isVideoPrepMode ? "none" : "";
+    imageWorldStyleControls.style.display = isVideoPrepMode ? "none" : "flex";
+    imageWorldStyleInfo.style.display = isVideoPrepMode ? "none" : "";
+    imageCustomStyleControls.style.display = isVideoPrepMode ? "none" : "flex";
+    imageCustomStyleInfo.style.display = isVideoPrepMode ? "none" : "";
     cameraFlowControls.style.display = isVideoPrepMode ? "flex" : "none";
     cameraFlowInfo.style.display = isVideoPrepMode ? "" : "none";
     cameraSpeedControls.style.display = isVideoPrepMode ? "flex" : "none";
@@ -2542,6 +2594,22 @@ function openStoryboardBuilder(payload = {}) {
     refreshSetupPanelSummaries();
   };
 
+  const refreshImageWorldStyleInfo = () => {
+    const labels = {
+      natural: "Naturalistic world; surreal details appear only when the scene requires them.",
+      surreal_subject: "The setting stays believable while the subject receives the strongest surreal treatment.",
+      balanced_surreal: "Subject and environment are both visibly surreal while remaining spatially readable.",
+      full_surreal: "Every visible layer follows dream logic—including environment, background, architecture, lighting, perspective, props, subject, and materials.",
+      abstract: "A strongly nonliteral world built from symbolic form, impossible space, expressive material, color, and light.",
+      custom: "Your custom direction is the primary whole-frame visual contract.",
+    };
+    imageWorldStyleInfo.textContent = labels[imageWorldStyleSelect.value] || labels.natural;
+    imageCustomStyleInfo.textContent = imageCustomStyleInput.value.trim()
+      ? "This custom direction is added to the selected preset and applies to the entire frame."
+      : "Optional. Enter your complete style idea; select Fully custom when it should be the primary direction.";
+    refreshSetupPanelSummaries();
+  };
+
   const refreshConsistencyInfo = () => {
     consistencyInfo.textContent = state.globalConsistencyPhrase
       ? "Gemma will incorporate this phrase into every generated prompt while keeping the wording as intact as the scene allows."
@@ -2577,9 +2645,12 @@ function openStoryboardBuilder(payload = {}) {
   const syncStoryLayerFromInputs = ({ notify = false } = {}) => {
     state.storyLayer = normalizeStoryLayer({
       enabled: storyLayerEnabledInput.checked,
+      overall_story_idea: overallStoryIdeaInput.value,
       user_story_arc: userStoryArcInput.value,
       song_story_brief: songStoryBriefInput.value,
       lyric_story_strength: lyricStoryStrengthInput.value,
+      image_world_style: imageWorldStyleSelect.value,
+      image_custom_style_direction: imageCustomStyleInput.value,
     });
     if (notify && state.onStoryLayerChanged) {
       state.onStoryLayerChanged({
@@ -2681,22 +2752,26 @@ function openStoryboardBuilder(payload = {}) {
     const progress = createStoryboardProgressWindow("Story Arc Gemma");
     const storyArcSeed = Math.floor(Math.random() * 2147483647);
     const existingStoryArcText = String(userStoryArcInput.value || "").trim();
-    const existingLooksGeneratedArc = /\b(?:Intro|Verse\s*1?|Pre[-\s]?Chorus|Chorus|Bridge|Outro|Final\s+Chorus)\s*:/i.test(existingStoryArcText);
+    const overallStoryIdea = String(overallStoryIdeaInput.value || "").trim();
     const storyLayerForRequest = normalizeStoryLayer({
       ...state.storyLayer,
-      user_story_arc: existingLooksGeneratedArc ? "" : existingStoryArcText,
+      overall_story_idea: overallStoryIdea,
+      user_story_arc: "",
     });
     try {
       progress.set(`Creating a short song-structure story arc from lyrics, subjects, and locations...\nReroll seed: ${storyArcSeed}`, 18);
       const data = await postJson("/vrgdg/storyboard/story_arc", {
         ...(state.gemmaSettings || {}),
+        n_ctx: Math.max(16384, Number(state.gemmaSettings?.n_ctx) || 0),
         seed: storyArcSeed,
         story_arc_seed: storyArcSeed,
         story_layer: storyLayerForRequest,
         storyboard: slimStoryboardForRequest(state),
-        story_idea: existingLooksGeneratedArc ? "" : existingStoryArcText,
-        previous_story_arc: existingLooksGeneratedArc ? existingStoryArcText : "",
+        story_idea: overallStoryIdea,
+        previous_story_arc: existingStoryArcText,
         lyrics: lyricsForStoryBrief(),
+        project_folder: state.projectFolder,
+        line_mapping_lyrics: state.lineMappingLyrics,
         scenes: state.scenes.map((scene, index) => slimSceneForRequest(scene, index)),
         reference_builder: state.referenceBuilder || {},
         camera_flow: state.cameraFlow || "",
@@ -2707,7 +2782,7 @@ function openStoryboardBuilder(payload = {}) {
         facial_performance: state.facialPerformance || "",
         facial_performance_custom: state.facialPerformanceCustom || "",
         unload_after: true,
-        max_new_tokens: 900,
+        max_new_tokens: 2400,
       }, 240000);
       state.storyLayer.user_story_arc = String(data.story_arc || "").trim();
       userStoryArcInput.value = state.storyLayer.user_story_arc;
@@ -4046,6 +4121,7 @@ function openStoryboardBuilder(payload = {}) {
       characterSpeedInput.value = String(state.characterMotionSpeed);
       state.storyLayer = normalizeStoryLayer(saved.story_layer || saved.storyLayer || {});
       storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
+      overallStoryIdeaInput.value = state.storyLayer.overall_story_idea || "";
       userStoryArcInput.value = state.storyLayer.user_story_arc || "";
       songStoryBriefInput.value = state.storyLayer.song_story_brief || "";
       lyricStoryStrengthInput.value = String(state.storyLayer.lyric_story_strength ?? 7);
@@ -4265,10 +4341,13 @@ function openStoryboardBuilder(payload = {}) {
 
   function storyboardGemmaPayload(scene, overrides = {}) {
     const payload = storyboardGptPayload(state, [scene]);
+    const imageStyle = normalizeStoryLayer(state.storyLayer);
     return {
       ...(state.gemmaSettings || {}),
       ...overrides,
       storyboard_payload: payload,
+      image_world_style: imageStyle.image_world_style,
+      image_custom_style_direction: imageStyle.image_custom_style_direction,
       max_new_tokens: 2000,
       temperature: 0.35,
       top_p: 0.90,
@@ -4572,6 +4651,15 @@ function openStoryboardBuilder(payload = {}) {
   gemmaAllButton.onclick = createAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   storyLayerEnabledInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
+  imageWorldStyleSelect.addEventListener("change", () => {
+    refreshImageWorldStyleInfo();
+    syncStoryLayerFromInputs({ notify: true });
+  });
+  imageCustomStyleInput.addEventListener("input", () => {
+    refreshImageWorldStyleInfo();
+    syncStoryLayerFromInputs();
+  });
+  imageCustomStyleInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   lyricStoryStrengthInput.addEventListener("input", () => {
     syncLyricStoryStrengthLabel();
     syncStoryLayerFromInputs();
@@ -4588,6 +4676,8 @@ function openStoryboardBuilder(payload = {}) {
       "9-10: use lyrics as literally as possible; non-instrumental scenes should include a concrete object, action, emotion, or situation from the exact lyric line whenever possible.",
     ].join("\n"));
   };
+  overallStoryIdeaInput.addEventListener("input", syncStoryLayerFromInputs);
+  overallStoryIdeaInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   userStoryArcInput.addEventListener("input", syncStoryLayerFromInputs);
   userStoryArcInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   songStoryBriefInput.addEventListener("input", syncStoryLayerFromInputs);
@@ -4614,6 +4704,7 @@ function openStoryboardBuilder(payload = {}) {
   refreshCameraFlowInfo();
   refreshImageShotInfo();
   refreshImageAestheticInfo();
+  refreshImageWorldStyleInfo();
   refreshConsistencyInfo();
   refreshCameraSpeedInfo();
   refreshPerformanceInfo();

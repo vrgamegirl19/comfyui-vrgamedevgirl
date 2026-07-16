@@ -372,6 +372,7 @@ def _normalize_story_layer(value):
     lyric_story_strength = max(0, min(10, lyric_story_strength))
     return {
         "enabled": bool(source.get("enabled", True)),
+        "overall_story_idea": _clean_scene_text(source.get("overall_story_idea") or source.get("overallStoryIdea") or source.get("story_idea") or source.get("storyIdea") or "", 4000),
         "user_story_arc": _clean_scene_text(source.get("user_story_arc") or source.get("userStoryArc") or "", 8000),
         "song_story_brief": _clean_scene_text(source.get("song_story_brief") or source.get("songStoryBrief") or "", 4000),
         "lyric_story_strength": lyric_story_strength,
@@ -947,6 +948,24 @@ def _build_storyboard_image_prompt(payload):
 
         instruction_text = _effective_builder_instruction(payload, instruction_key, _STANDARD_IMAGE_T2I_INSTRUCTIONS)
     selected_scene = _selected_storyboard_scene(scene_bundle)
+    image_world_style = str(payload.get("image_world_style") or "natural").strip().lower()
+    image_custom_style_direction = _clean_scene_text(payload.get("image_custom_style_direction") or "", 3000)
+    image_style_presets = {
+        "natural": "Use a naturalistic, believable visual world. Surreal details may appear only when required by the scene.",
+        "surreal_subject": "Keep the environment broadly believable, but render the subject and its materials with unmistakable surreal invention.",
+        "balanced_surreal": "Make both subject and environment visibly surreal while retaining enough spatial coherence to read as one designed cinematic world.",
+        "full_surreal": "Construct the entire image as an unmistakably surreal world. Environment, architecture, ground, sky, vegetation, furniture, props, lighting, perspective, scale, gravity, subject, anatomy, clothing, and materials must all obey deliberate dream logic. Do not place a surreal subject inside an otherwise ordinary realistic location. Avoid generic cinematic realism, conventional architecture, naturalistic staging, and merely photoreal backgrounds.",
+        "abstract": "Create a strongly abstract, nonliteral visual world using impossible space, symbolic forms, transformed materials, unconventional scale, and expressive color and light. Literal realism is not the goal.",
+        "custom": "Follow the user's custom style direction as the primary visual-world contract. Apply it to every visible layer of the image, including the environment and background.",
+    }
+    style_instruction = image_style_presets.get(image_world_style, image_style_presets["natural"])
+    instruction_text += (
+        "\n\nGLOBAL IMAGE WORLD STYLE CONTRACT:\n"
+        f"- {style_instruction}\n"
+        + (f"- User's custom visual direction: {image_custom_style_direction}\n" if image_custom_style_direction else "")
+        + "- Apply this contract to the complete frame, not only the main subject. Preserve required scene content and endpoint facts while expressing them through this style.\n"
+        + "- Do not mention this contract, preset names, or workflow settings in the final prompt."
+    )
     flf_image_target = str(payload.get("flf_image_target") or "").strip().lower()
     if flf_image_target in {"start", "end"}:
         story_layer = selected_scene.get("story_layer") if isinstance(selected_scene.get("story_layer"), dict) else {}
@@ -955,12 +974,20 @@ def _build_storyboard_image_prompt(payload):
         end_state = _clean_scene_text(story_layer.get("flf_end_state") or selected_scene.get("flf_end_state") or "", 1800)
         carry_forward = _clean_scene_text(story_layer.get("flf_carry_forward") or selected_scene.get("flf_carry_forward") or "", 1800)
         target_state = start_state if flf_image_target == "start" else end_state
+        endpoint_context = (
+            "- This is strictly the untouched opening condition before the scene action begins.\n"
+            "- Do not include, foreshadow, partially reveal, or imply the later transformation, destination anatomy, destination objects, or completed action.\n"
+            "- Ignore transformation, end-state, and carry-forward fields when writing this START image.\n"
+            "- Lyrics and the general story beat may guide mood only; do not include any lyric/story action that is not already explicitly visible in the required opening state.\n"
+            if flf_image_target == "start" else
+            f"- Planned transformation context: {transformation or '[none]'}\n"
+            f"- Carry-forward continuity: {carry_forward or '[none]'}\n"
+        )
         endpoint_instruction = (
             "\n\nFIRST / LAST FRAME STILL-IMAGE RULES:\n"
             f"- You are writing the {flf_image_target.upper()} endpoint still image, not a video prompt.\n"
             f"- Required visible endpoint state: {target_state or '[use the scene card literally]'}\n"
-            f"- Planned transformation context: {transformation or '[none]'}\n"
-            f"- Carry-forward continuity: {carry_forward or '[none]'}\n"
+            f"{endpoint_context}"
             "- Make the required endpoint state visually concrete in one frozen image.\n"
             "- Preserve mapped subject identity, wardrobe, environment, lighting, and established anatomy unless the required endpoint explicitly changes one of them.\n"
             "- Do not describe motion over time, a transition, morphing process, first/last frames, or workflow instructions in the final image prompt.\n"
@@ -1182,11 +1209,94 @@ def _build_story_layer_brief(payload):
     }
 
 
+def _parse_story_arc_lyric_sections(lyrics):
+    """Return ordered (display label, body) pairs from exact bracketed lyric headers."""
+    sections = []
+    current_label = ""
+    current_lines = []
+    for raw_line in str(lyrics or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        header = re.match(r"^\s*\[([^\]\n]{1,80})\]\s*$", raw_line)
+        if header:
+            if current_label:
+                sections.append((current_label, "\n".join(current_lines).strip()))
+            current_label = re.sub(r"\s+", " ", header.group(1)).strip()
+            current_lines = []
+        elif current_label:
+            current_lines.append(raw_line)
+    if current_label:
+        sections.append((current_label, "\n".join(current_lines).strip()))
+    if not sections:
+        return []
+
+    counts = {}
+    numbered = []
+    for label, body in sections:
+        key = label.casefold()
+        counts[key] = counts.get(key, 0) + 1
+        occurrence = counts[key]
+        display = label if occurrence == 1 else f"{label} {occurrence}"
+        numbered.append((display, body))
+    return numbered
+
+
+def _cap_story_arc_words(text, maximum=100):
+    words = re.findall(r"\S+", str(text or ""))
+    if len(words) <= maximum:
+        return " ".join(words)
+    clipped = " ".join(words[:maximum])
+    sentence_end = max(clipped.rfind(". "), clipped.rfind("! "), clipped.rfind("? "))
+    if sentence_end >= max(80, len(clipped) // 2):
+        return clipped[:sentence_end + 1].strip()
+    return clipped.rstrip(" ,;:") + "…"
+
+
+def _normalize_story_arc_output(text, required_labels):
+    """Enforce the detected headings and the 100-word per-section contract."""
+    raw = str(text or "").strip()
+    heading_pattern = re.compile(r"(?m)^\s*([^\n:]{1,80}):\s*(?:\n|$)")
+    matches = list(heading_pattern.finditer(raw))
+    if not matches:
+        if required_labels:
+            raise ValueError("Gemma did not return the required lyric section headings. Please rerun Story Arc.")
+        return _cap_story_arc_words(raw, 100)
+    blocks = []
+    for index, match in enumerate(matches):
+        label = re.sub(r"\s+", " ", match.group(1)).strip()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+        blocks.append((label, raw[match.end():end].strip()))
+    if required_labels:
+        returned = [label.casefold() for label, _body in blocks]
+        required = [label.casefold() for label in required_labels]
+        if returned != required:
+            raise ValueError(
+                "Gemma changed the lyric structure. Expected: "
+                + ", ".join(required_labels)
+                + ". Please rerun Story Arc."
+            )
+    return "\n\n".join(f"{label}:\n{_cap_story_arc_words(body, 100)}" for label, body in blocks if body)
+
+
 def _build_story_layer_arc(payload):
     storyboard = payload.get("storyboard") if isinstance(payload.get("storyboard"), dict) else {}
-    lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 16000)
+    timeline_lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 40000)
+    line_mapping_lyrics = _clean_scene_text(payload.get("line_mapping_lyrics") or payload.get("lineMappingLyrics") or "", 40000)
+    project_value = payload.get("project_folder") or payload.get("projectFolder") or ""
+    project_folder = os.path.abspath(str(project_value).strip().strip('"')) if project_value else ""
+    prompt_creator_lyrics = ""
+    if project_folder:
+        full_lyrics_path = os.path.join(project_folder, "project_context", "full_lyrics.txt")
+        if os.path.isfile(full_lyrics_path):
+            try:
+                with open(full_lyrics_path, "r", encoding="utf-8-sig") as handle:
+                    prompt_creator_lyrics = _clean_scene_text(handle.read(), 40000)
+            except OSError:
+                prompt_creator_lyrics = ""
+    lyrics = prompt_creator_lyrics or line_mapping_lyrics or timeline_lyrics
+    lyrics_source = "Prompt Creator reference lyrics" if prompt_creator_lyrics else ("Line Mapping reference lyrics" if line_mapping_lyrics else "timeline scene lyrics")
+    lyric_sections = _parse_story_arc_lyric_sections(lyrics)
+    required_section_labels = [item[0] for item in lyric_sections]
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or storyboard.get("story_layer") or {})
-    story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("user_story_arc") or "", 4000)
+    story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("overall_story_idea") or "", 4000)
     story_arc_seed = _clean_scene_text(payload.get("story_arc_seed") or payload.get("storyArcSeed") or payload.get("seed") or "", 80)
     previous_story_arc = _clean_scene_text(payload.get("previous_story_arc") or payload.get("previousStoryArc") or "", 5000)
     style_theme = _clean_scene_text(payload.get("style_theme") or payload.get("styleTheme") or payload.get("theme") or "", 1600)
@@ -1281,6 +1391,18 @@ def _build_story_layer_arc(payload):
             if key and key not in seen_locations:
                 seen_locations.add(key)
                 locations.append({"name": name, "description": description})
+    if required_section_labels:
+        structure_instruction = (
+            "The reference lyrics contain explicit section headers. Preserve exactly this section order and these output headings; "
+            "do not add, remove, merge, rename, or invent sections:\n"
+            + "\n".join(f"- {label}" for label in required_section_labels)
+            + "\nRepeated sections have been numbered by occurrence so every real section has its own summary."
+        )
+    else:
+        structure_instruction = (
+            "The reference lyrics do not contain explicit section headers. Infer a sensible compact song structure from lyrical, "
+            "emotional, and narrative changes. Do not add an Intro or Outro unless the supplied material clearly supports one."
+        )
     instruction = (
         "You are a music video story arc generator.\n\n"
         "Your job is to take song lyrics and turn them into a simple, short story arc for a music video.\n\n"
@@ -1291,36 +1413,15 @@ def _build_story_layer_arc(payload):
         "* Character descriptions\n"
         "* Location descriptions\n\n"
         "All inputs are optional. If something is missing, make a strong creative choice and continue.\n\n"
-        "Your output should be short, clean, and easy to use.\n"
-        "Always break the idea down by song structure.\n\n"
-        "Use this format:\n\n"
-        "Intro:\n"
-        "Super short visual concept.\n\n"
-        "Verse 1:\n"
-        "Super short story idea.\n\n"
-        "Pre-Chorus:\n"
-        "Super short build-up idea.\n\n"
-        "Chorus:\n"
-        "Super short main emotional or visual payoff.\n\n"
-        "Verse 2:\n"
-        "Super short story development.\n\n"
-        "Pre-Chorus 2:\n"
-        "Super short escalation idea.\n\n"
-        "Chorus 2:\n"
-        "Super short bigger version of the payoff.\n\n"
-        "Bridge:\n"
-        "Super short twist, memory, confrontation, or transformation.\n\n"
-        "Final Chorus:\n"
-        "Super short climax idea.\n\n"
-        "Outro:\n"
-        "Super short ending image.\n\n"
+        "Your output should be clean, complete, and easy to use. Break it down by the actual song structure.\n\n"
+        f"{structure_instruction}\n\n"
+        "Format every section as its heading on one line ending in a colon, followed by one prose paragraph.\n\n"
         "Rules:\n"
-        "* Keep every section brief.\n"
-        "* Do not write a full treatment.\n"
-        "* Do not over-explain.\n"
+        "* Fully summarize the visual story progression of each section in no more than 100 words.\n"
+        "* Use the entire section, not only its first lyric line.\n"
         "* Do not summarize the lyrics line by line.\n"
         "* Turn the lyrics into a simple visual story arc.\n"
-        "* Each section should be a clear concept, not a long scene.\n"
+        "* Each section should be a cohesive visual-story paragraph, not a line-by-line list.\n"
         "* Use cinematic, visual language.\n"
         "* The main character or singer should not default to standing still, standing alone, staring, looking, being framed, or holding a pose.\n"
         "* Unless the character motion level is very low, every section must include a distinct physical action by the singer or main character.\n"
@@ -1329,7 +1430,7 @@ def _build_story_layer_arc(payload):
         "* If Location descriptions are provided, use only those locations as the physical settings for the arc.\n"
         "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
         "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
-        "* If the song does not clearly have every section, infer a natural structure.\n"
+        "* Never force a standard pop-song template over explicit lyric section headers.\n"
         "* If only lyrics are provided, build the arc from the lyrics.\n"
         "* If no lyrics are provided, build the arc from the theme or story idea.\n"
         "* Do not ask follow-up questions unless absolutely necessary.\n"
@@ -1350,7 +1451,8 @@ def _build_story_layer_arc(payload):
         f"Style/theme:\n{style_theme or '[not provided]'}\n\n"
         f"Character descriptions:\n{json.dumps(subjects[:24], ensure_ascii=False, indent=2) if subjects else '[not provided]'}\n\n"
         f"Location descriptions:\n{json.dumps(locations[:40], ensure_ascii=False, indent=2) if locations else '[not provided]'}\n\n"
-        f"Full/pasted lyrics:\n{lyrics or '[not provided]'}\n\n"
+        f"Authoritative lyric source: {lyrics_source}\n"
+        f"Full reference lyrics:\n{lyrics or '[not provided]'}\n\n"
         f"Scene lyric map:\n{json.dumps(compact_scenes, ensure_ascii=False, indent=2) if compact_scenes else '[not provided]'}"
     )
     from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
@@ -1360,15 +1462,17 @@ def _build_story_layer_arc(payload):
         instruction,
         temperature=float(payload.get("temperature") or 0.45),
         top_p=float(payload.get("top_p") or 0.92),
-        max_new_tokens=int(payload.get("max_new_tokens") or 900),
+        max_new_tokens=int(payload.get("max_new_tokens") or 2400),
         label="Storyboard Story Arc Gemma",
         preserve_paragraphs=True,
     )
-    text = _clean_scene_text(text, 5000)
+    text = _clean_scene_text(text, 14000)
     if not text:
         raise ValueError("Gemma returned an empty story arc.")
+    text = _normalize_story_arc_output(text, required_section_labels)
     return {
         "story_arc": text,
+        "lyrics_source": lyrics_source,
         "story_arc_seed": story_arc_seed,
         "runner": run_info.get("runner", "builtin"),
         "used_model": run_info.get("used_model", ""),
@@ -1418,6 +1522,22 @@ def _storyboard_location_drift_terms(text, location_context):
         if re.search(pattern, text_lower, flags=re.IGNORECASE) and not re.search(pattern, location_lower, flags=re.IGNORECASE):
             drift_terms.append(label)
     return drift_terms
+
+
+def _parse_flf_endpoint_json(text):
+    raw = str(text or "").strip()
+    raw = re.sub(
+        r"^\s*[^A-Za-z0-9]*(?:(?:user|assistant|model)\b)?[^A-Za-z0-9]*(?:thought|analysis|reasoning)(?=[A-Z]|[^A-Za-z0-9]|$)[^A-Za-z0-9]*",
+        "",
+        raw,
+        flags=re.I,
+    ).strip()
+    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I | re.S).strip()
+    raw = raw.replace("\u201c", '"').replace("\u201d", '"').replace("\u2018", "'").replace("\u2019", "'")
+    match = re.search(r"\{.*\}", raw, flags=re.S)
+    candidate = match.group(0) if match else raw
+    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+    return json.loads(candidate)
 
 
 def _build_story_layer_scene_beat(payload):
@@ -1487,13 +1607,35 @@ def _build_story_layer_scene_beat(payload):
     )
     flf_fields = {}
     if flf_mode:
-        raw_json = str(text or "").strip()
-        raw_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_json, flags=re.I | re.S).strip()
-        match = re.search(r"\{.*\}", raw_json, flags=re.S)
         try:
-            parsed = json.loads(match.group(0) if match else raw_json)
-        except Exception as exc:
-            raise ValueError(f"Gemma did not return valid FLF endpoint JSON: {exc}") from exc
+            parsed = _parse_flf_endpoint_json(text)
+        except Exception as parse_error:
+            repair_instruction = (
+                "Repair the malformed FLF endpoint response below into valid JSON.\n"
+                "Return JSON only: no thought text, prose, Markdown, or code fences.\n"
+                "Use exactly these five string keys: story_beat, flf_start_state, flf_transformation, flf_end_state, flf_carry_forward.\n"
+                "Preserve the original meaning and wording as closely as possible. Escape quotation marks inside strings and include every comma, colon, quote, and closing brace required by strict JSON.\n"
+                "If a field was cut off or omitted, reconstruct it concisely from the other fields and selected scene context.\n\n"
+                f"MALFORMED RESPONSE:\n{text}\n\n"
+                f"SELECTED SCENE CONTEXT:\n{json.dumps(scene, ensure_ascii=False)}"
+            )
+            repaired_text, repair_info = _run_builder_text_llm(
+                payload,
+                repair_instruction,
+                temperature=0.05,
+                top_p=0.75,
+                max_new_tokens=max(900, int(payload.get("max_new_tokens") or 360)),
+                label="Storyboard FLF Endpoint JSON Repair",
+                preserve_paragraphs=True,
+            )
+            try:
+                parsed = _parse_flf_endpoint_json(repaired_text)
+                run_info = {**run_info, "json_repaired": True, "repair_runner": repair_info.get("runner", "")}
+            except Exception as repair_error:
+                raise ValueError(
+                    f"Gemma returned malformed FLF endpoint JSON and automatic repair failed. "
+                    f"Original parse error: {parse_error}; repair parse error: {repair_error}"
+                ) from repair_error
         flf_fields = {
             key: _clean_scene_text(parsed.get(key) or "", 1800)
             for key in ("flf_start_state", "flf_transformation", "flf_end_state", "flf_carry_forward")

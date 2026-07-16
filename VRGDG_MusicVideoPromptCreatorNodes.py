@@ -1844,6 +1844,8 @@ def _build_whisper_workflow_prompt(payload):
         node(955).setdefault("inputs", {})["text"] = full_lyrics
 
     if "960" in prompt:
+        if _payload_bool(payload.get("legacy_v9_beat_mode", False), False):
+            node(960)["class_type"] = "VRGDG_ManualLyricsExtractor_SRT_Advanced_BeatV9"
         extractor_inputs = node(960).setdefault("inputs", {})
         extractor_inputs["scene_duration_seconds"] = fixed_scene_duration
         extractor_inputs["reference_lyrics"] = full_lyrics
