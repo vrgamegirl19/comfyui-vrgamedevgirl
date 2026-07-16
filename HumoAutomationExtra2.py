@@ -1392,6 +1392,8 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
     - Outputs lyricSegmentN lines for manual cleanup workflows.
     """
 
+    LEGACY_V9_BEAT_ALIGNMENT = False
+
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("all_lyrics_combined",)
     FUNCTION = "extract_lyrics"
@@ -1604,19 +1606,10 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
 
     def _nonvocal_placeholder(self, seg_index: int, asr_text: str = "") -> str:
         clean = self._clean_lyric(str(asr_text or ""))
-        if clean:
-            return clean
-
-        fillers = [
-            "ooohhh",
-            "yeah, yeah",
-            "oohh yeah",
-            "ahh ahh",
-            "la la",
-        ]
-        if seg_index < 0:
-            seg_index = 0
-        return fillers[seg_index % len(fillers)]
+        # An empty/no-signal SRT window is genuinely non-vocal. Inventing filler
+        # here shifts every later strict reference line and can corrupt an
+        # entire timeline after one instrumental gap.
+        return clean
 
     def _align_segments_to_reference(
         self,
@@ -1629,6 +1622,83 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
         if not reference_lines:
             return asr_segments
 
+        if strict_reference_text:
+            # Do not advance the pasted-lyric cursor merely because Whisper
+            # heard meaningful-looking noise in a window.  Align the complete
+            # chronological sequences first so an unmatched/noisy window can
+            # be skipped without shifting every later lyric one scene early.
+            meaningful_indices = [
+                index for index, text in enumerate(asr_segments)
+                if self._is_alignment_meaningful_text(text, alignment_min_words)
+            ]
+            window_texts = [asr_segments[index] for index in meaningful_indices]
+            window_count = len(window_texts)
+            ref_count = len(reference_lines)
+
+            def match_score(window_text, reference_text):
+                window_norm = self._normalize_for_match(window_text)
+                reference_norm = self._normalize_for_match(reference_text)
+                sequence_score = difflib.SequenceMatcher(None, window_norm, reference_norm).ratio()
+                window_tokens = set(self._content_tokens(window_text))
+                reference_tokens = set(self._content_tokens(reference_text))
+                overlap_score = (
+                    len(window_tokens & reference_tokens) / max(1, len(reference_tokens))
+                    if reference_tokens else 0.0
+                )
+                return (sequence_score * 0.65) + (overlap_score * 0.35)
+
+            # Dynamic-programming sequence alignment. Matches must remain in
+            # order; either side may be skipped, with skipping a reference line
+            # intentionally costlier than ignoring one suspicious ASR window.
+            scores = [[float("-inf")] * (ref_count + 1) for _ in range(window_count + 1)]
+            actions = [[None] * (ref_count + 1) for _ in range(window_count + 1)]
+            scores[0][0] = 0.0
+            for window_index in range(window_count + 1):
+                for ref_index in range(ref_count + 1):
+                    current = scores[window_index][ref_index]
+                    if not math.isfinite(current):
+                        continue
+                    if window_index < window_count:
+                        candidate = current - 0.08
+                        if candidate > scores[window_index + 1][ref_index]:
+                            scores[window_index + 1][ref_index] = candidate
+                            actions[window_index + 1][ref_index] = (window_index, ref_index, "skip_window")
+                    if ref_index < ref_count:
+                        candidate = current - 0.60
+                        if candidate > scores[window_index][ref_index + 1]:
+                            scores[window_index][ref_index + 1] = candidate
+                            actions[window_index][ref_index + 1] = (window_index, ref_index, "skip_reference")
+                    if window_index < window_count and ref_index < ref_count:
+                        candidate = current + match_score(window_texts[window_index], reference_lines[ref_index])
+                        if candidate > scores[window_index + 1][ref_index + 1]:
+                            scores[window_index + 1][ref_index + 1] = candidate
+                            actions[window_index + 1][ref_index + 1] = (window_index, ref_index, "match")
+
+            matched = {}
+            window_index, ref_index = window_count, ref_count
+            while window_index or ref_index:
+                action = actions[window_index][ref_index]
+                if action is None:
+                    break
+                previous_window, previous_ref, kind = action
+                if kind == "match":
+                    matched[meaningful_indices[previous_window]] = previous_ref
+                window_index, ref_index = previous_window, previous_ref
+
+            aligned = []
+            for index, asr_text in enumerate(asr_segments):
+                if index in matched:
+                    aligned.append(reference_lines[matched[index]])
+                elif preserve_nonvocal_segments and not self._is_alignment_meaningful_text(asr_text, alignment_min_words):
+                    aligned.append(self._nonvocal_placeholder(index, asr_text))
+                else:
+                    aligned.append("")
+            print(
+                f"[ManualLyricsAdv] Strict sequence alignment: matched={len(matched)}, "
+                f"skipped_windows={window_count - len(matched)}, references={ref_count}"
+            )
+            return aligned
+
         aligned = []
         cursor = 0
         ref_count = len(reference_lines)
@@ -1637,15 +1707,6 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
         for i, asr_text in enumerate(asr_segments):
             if preserve_nonvocal_segments and (not self._is_alignment_meaningful_text(asr_text, alignment_min_words)):
                 aligned.append(self._nonvocal_placeholder(i, asr_text))
-                continue
-
-            # Strict mode: enforce chronological lyric lines for each vocal segment.
-            if strict_reference_text:
-                if cursor < ref_count:
-                    aligned.append(reference_lines[cursor])
-                    cursor += 1
-                else:
-                    aligned.append(reference_lines[-1])
                 continue
 
             asr_norm = self._normalize_for_match(asr_text)
@@ -1857,6 +1918,7 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
                             print(f"[ManualLyricsAdv] Segment {i}/{total_segments} complete")
 
                     # Native align can miss sparse windows; recover blanks from regular ASR timing.
+                    backup_transcriptions = None
                     empty_count = sum(
                         1 for t in all_transcriptions if not self._is_meaningful_text(t, aggressiveness)
                     )
@@ -1889,6 +1951,35 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
                         all_transcriptions,
                         reference_lines,
                     )
+
+                    if strict_reference_text and reference_lines and not self.LEGACY_V9_BEAT_ALIGNMENT:
+                        # Native stable-ts text alignment may put several
+                        # reference lines into one SRT scene window. Use regular
+                        # ASR only to decide which windows contain vocals, then
+                        # assign exactly one chronological pasted line to each
+                        # vocal window. This preserves line boundaries and keeps
+                        # later timeline scenes from becoming displaced.
+                        if backup_transcriptions is None:
+                            print("[ManualLyricsAdv] Strict line mode: detecting vocal scene windows...")
+                            backup_result = model.transcribe(
+                                tmp_wav_path,
+                                language=lang,
+                                word_timestamps=True,
+                                verbose=False,
+                            )
+                            backup_chunks = self._collect_time_text_chunks(backup_result)
+                            backup_transcriptions = [
+                                self._clean_aligned_lyric_text(self._text_for_window(backup_chunks, start_t, end_t))
+                                for start_t, end_t in time_segments
+                            ]
+                        all_transcriptions = self._align_segments_to_reference(
+                            backup_transcriptions,
+                            reference_lines,
+                            strict_reference_text=True,
+                            preserve_nonvocal_segments=bool(preserve_nonvocal_segments),
+                            alignment_min_words=int(alignment_min_words),
+                        )
+                        print("[ManualLyricsAdv] Strict line mode: assigned at most one reference line per vocal scene window.")
             else:
                 print("[ManualLyricsAdv] Running full transcription...")
                 result = model.transcribe(
@@ -1924,6 +2015,74 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
 
 
 
+class VRGDG_ManualLyricsExtractor_SRT_Advanced_BeatV9(VRGDG_ManualLyricsExtractor_SRT_Advanced):
+    """Published V9 alignment retained exclusively for Video Builder beat mode."""
+
+    LEGACY_V9_BEAT_ALIGNMENT = True
+
+    def _nonvocal_placeholder(self, seg_index: int, asr_text: str = "") -> str:
+        clean = self._clean_lyric(str(asr_text or ""))
+        if clean:
+            return clean
+        fillers = ["ooohhh", "yeah, yeah", "oohh yeah", "ahh ahh", "la la"]
+        if seg_index < 0:
+            seg_index = 0
+        return fillers[seg_index % len(fillers)]
+
+    def _align_segments_to_reference(
+        self,
+        asr_segments,
+        reference_lines,
+        strict_reference_text: bool = True,
+        preserve_nonvocal_segments: bool = True,
+        alignment_min_words: int = 2,
+    ):
+        if not reference_lines:
+            return asr_segments
+
+        aligned = []
+        cursor = 0
+        ref_count = len(reference_lines)
+        seg_count = max(1, len(asr_segments))
+        for i, asr_text in enumerate(asr_segments):
+            if preserve_nonvocal_segments and not self._is_alignment_meaningful_text(asr_text, alignment_min_words):
+                aligned.append(self._nonvocal_placeholder(i, asr_text))
+                continue
+
+            if strict_reference_text:
+                if cursor < ref_count:
+                    aligned.append(reference_lines[cursor])
+                    cursor += 1
+                else:
+                    aligned.append(reference_lines[-1])
+                continue
+
+            asr_norm = self._normalize_for_match(asr_text)
+            base = int((i / seg_count) * ref_count)
+            start_idx = max(cursor, base - 3)
+            end_idx = min(ref_count - 1, base + 8)
+            best_idx = None
+            best_score = -1.0
+            if start_idx <= end_idx:
+                for idx in range(start_idx, end_idx + 1):
+                    ref_norm = self._normalize_for_match(reference_lines[idx])
+                    score = difflib.SequenceMatcher(None, asr_norm, ref_norm).ratio()
+                    if score > best_score:
+                        best_score = score
+                        best_idx = idx
+            if best_idx is None:
+                if cursor < ref_count:
+                    best_idx = cursor
+                else:
+                    aligned.append(self._clean_lyric(asr_text))
+                    continue
+            if best_score < 0.22 and cursor < ref_count:
+                best_idx = cursor
+            aligned.append(reference_lines[best_idx])
+            cursor = min(ref_count, best_idx + 1)
+        return aligned
+
+
 class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced):
     """
     Transcribes or aligns full audio and preserves lyric timestamps as JSON.
@@ -1946,7 +2105,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                 "model_name": ("STRING", {"default": "large-v3"}),
                 "language": language_input,
                 "segment_mode": (
-                    ["whisper_chunks", "reference_lines", "reference_stanzas"],
+                    ["whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas"],
                     {"default": "whisper_chunks"}
                 ),
                 "include_instrumental_gaps": ("BOOLEAN", {"default": True}),
@@ -2143,6 +2302,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         min_scene_seconds=1.0,
         max_scene_seconds=8.0,
         vocal_tail_padding_seconds=0.6,
+        exact_reference_lines=False,
     ):
         word_items = self._word_items_from_segments(stable_segments)
         aligned_by_unit = {}
@@ -2163,6 +2323,8 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         label = self._clean_lyric(instrumental_text) or "[instrumental]"
 
         def split_instrumental_segment(segment):
+            if exact_reference_lines:
+                return [segment]
             start = float(segment.get("start", 0.0))
             end = float(segment.get("end", start))
             duration = max(0.0, end - start)
@@ -2189,6 +2351,8 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
             return splits
 
         def split_vocal_segment(segment):
+            if exact_reference_lines:
+                return [segment]
             start = float(segment.get("start", 0.0))
             end = float(segment.get("end", start))
             duration = max(0.0, end - start)
@@ -2329,10 +2493,10 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                             "timing_warning": "Inserted to close a timeline gap.",
                         }):
                             output.append(gap_piece)
-                    else:
+                    elif not exact_reference_lines:
                         previous["end"] = round(piece_start, 3)
                         previous["duration"] = round(max(0.0, piece_start - float(previous.get("start", 0.0))), 3)
-                elif previous_end - piece_start > 0.001:
+                elif previous_end - piece_start > 0.001 and not exact_reference_lines:
                     piece = dict(piece)
                     piece["start"] = round(previous_end, 3)
                     piece["duration"] = round(max(0.0, float(piece.get("end", previous_end)) - previous_end), 3)
@@ -2348,7 +2512,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                         "timing_warning": "Inserted before the first timed segment.",
                     }):
                         output.append(gap_piece)
-                else:
+                elif not exact_reference_lines:
                     piece = dict(piece)
                     piece["start"] = 0.0
                     piece["duration"] = round(max(0.0, float(piece.get("end", 0.0))), 3)
@@ -2376,9 +2540,12 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                         if next_seg is not None:
                             next_start = float(next_seg["start"])
                             break
-                    end = next_start if next_start is not None and next_start > prev_end else min(float(total_duration), prev_end + max(min_scene, min_gap, 1.0))
+                    end = next_start if next_start is not None and next_start > prev_end else (
+                        float(total_duration) if exact_reference_lines
+                        else min(float(total_duration), prev_end + max(min_scene, min_gap, 1.0))
+                    )
                     start = prev_end
-                    if end - start > max_scene:
+                    if not exact_reference_lines and end - start > max_scene:
                         vocal_start = max(start, end - max_scene)
                         if include_instrumental_gaps and vocal_start - start >= min_gap:
                             append_timed_segment({
@@ -2543,7 +2710,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
             reference_lines = self._split_reference_lyrics(reference_lyrics) if str(reference_lyrics or "").strip() else []
             cleaned_reference_lyrics = "\n".join(reference_lines)
             segment_mode = str(segment_mode or "whisper_chunks")
-            if segment_mode not in {"whisper_chunks", "reference_lines", "reference_stanzas"}:
+            if segment_mode not in {"whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas"}:
                 segment_mode = "whisper_chunks"
             reference_units = self._reference_units(reference_lyrics, segment_mode, instrumental_text) if segment_mode != "whisper_chunks" else []
             alignable_reference_text = "\n".join(
@@ -2586,6 +2753,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                     min_scene_seconds,
                     max_scene_seconds,
                     vocal_tail_padding_seconds,
+                    exact_reference_lines=segment_mode == "exact_reference_lines",
                 )
             else:
                 segments = stable_segments
@@ -2641,6 +2809,7 @@ NODE_CLASS_MAPPINGS = {
      "VRGDG_SmartSplitTextTwo":VRGDG_SmartSplitTextTwo,
      "VRGDG_ManualLyricsExtractor_SRT": VRGDG_ManualLyricsExtractor_SRT,
      "VRGDG_ManualLyricsExtractor_SRT_Advanced": VRGDG_ManualLyricsExtractor_SRT_Advanced,
+     "VRGDG_ManualLyricsExtractor_SRT_Advanced_BeatV9": VRGDG_ManualLyricsExtractor_SRT_Advanced_BeatV9,
      "VRGDG_TimestampedLyricsExtractor": VRGDG_TimestampedLyricsExtractor
     
     
@@ -2664,6 +2833,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_SmartSplitTextTwo":"VRGDG_SmartSplitTextTwo",
     "VRGDG_ManualLyricsExtractor_SRT": "Manual Lyrics Extractor (SRT Segments)",
     "VRGDG_ManualLyricsExtractor_SRT_Advanced": "Manual Lyrics Extractor (SRT Advanced - stable-ts)",
+    "VRGDG_ManualLyricsExtractor_SRT_Advanced_BeatV9": "Manual Lyrics Extractor (Beat Mode - Published V9)",
     "VRGDG_TimestampedLyricsExtractor": "Timestamped Lyrics Extractor (stable-ts)"
     
     
