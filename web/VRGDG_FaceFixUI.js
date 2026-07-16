@@ -234,12 +234,22 @@ export function createFaceFixTool(options = {}) {
       anchorInterval.append(option);
     });
     anchorInterval.value = "16";
+    const customDistanceThresholdField = describedField(
+      "Custom distance threshold (%)",
+      customDistanceThreshold,
+      "Repair is full two percentage points below this value and fades to unchanged at this value.",
+    );
+    const syncCustomDistanceThreshold = () => {
+      customDistanceThresholdField.style.display = repairDistance.value === "custom" ? "flex" : "none";
+    };
+    repairDistance.addEventListener("change", syncCustomDistanceThreshold);
+    syncCustomDistanceThreshold();
     settings.append(
       field("Detection confidence", confidence), field("Crop padding", padding),
       describedField("Minimum face pixels", minimumFacePixels, "Lower this for very distant faces. Raise it to reject tiny false detections. Recommended starting value: 20."),
       describedField("Rotation assist", rotationAssist, "Light scans ±15° for tilted faces. Strong also scans ±30° for difficult overhead angles but takes longer. Detection only; video frames are never rotated."),
       describedField("Repair distance", repairDistance, "Far fully repairs faces below 7% of frame width, fades from 7–9%, and leaves faces at 9% or larger unchanged. Close faces are excluded from anchor selection."),
-      describedField("Custom distance threshold (%)", customDistanceThreshold, "Used only when Repair distance is Custom. Repair is full two percentage points below this value and fades to unchanged at this value."),
+      customDistanceThresholdField,
       field("Feather pixels", feather),
       field("Color match", colorMatch),
       describedField("Z-Image anchor enhance amount", enhanceAmount, "Lower values add more facial detail but can reduce character identity. Higher values preserve character identity more strongly but add less detail. Recommended starting range: 8–10."),
