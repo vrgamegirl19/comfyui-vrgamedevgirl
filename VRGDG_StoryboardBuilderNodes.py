@@ -490,6 +490,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     image_prompt = _clean_scene_text(scene.get("image_prompt") or scene.get("t2i_prompt") or scene.get("prompt") or "", 12000)
     video_prompt = _clean_scene_text(scene.get("video_prompt") or scene.get("i2v_prompt") or scene.get("t2v_prompt") or "", 12000)
     image_path = _clean_scene_text(scene.get("image_path") or scene.get("approved_image_path") or scene.get("image") or "", 2000)
+    image_data = str(scene.get("image_data") or scene.get("image_reference_data") or "").strip()
+    image_name = _clean_scene_text(scene.get("image_name") or scene.get("image_reference_name") or "", 260)
     motion_summary = _clean_scene_text(scene.get("motion_summary") or scene.get("video_notes") or scene.get("i2v_notes") or "", 3000)
     prompt_summary = _clean_scene_text(scene.get("prompt_summary") or scene.get("summary") or image_prompt[:260], 1000)
     subjects = _normalize_tags(scene.get("subjects") or scene.get("singers") or scene.get("mapped_subjects"))
@@ -517,7 +519,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
             "lyrics": lyrics,
             "performance_mode": performance_mode,
         })
-    status = _clean_scene_text(scene.get("status") or ("image_ready" if image_path else "draft"), 80)
+    status = _clean_scene_text(scene.get("status") or ("image_ready" if image_path or image_data else "draft"), 80)
     return {
         "id": _clean_scene_text(scene.get("id") or f"storyboard_scene_{number}", 160),
         "scene_number": number,
@@ -548,6 +550,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "image_prompt": image_prompt,
         "video_prompt": video_prompt,
         "image_path": image_path,
+        "image_data": image_data,
+        "image_name": image_name,
         "notes": _clean_scene_text(scene.get("notes") or "", 4000),
         "id_lora_character_id": _clean_scene_text(scene.get("id_lora_character_id") or scene.get("character_id") or scene.get("subject_id") or "", 180),
         "id_lora_location_id": _clean_scene_text(scene.get("id_lora_location_id") or scene.get("location_id") or "", 180),
@@ -564,7 +568,7 @@ def _default_storyboard(payload):
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
-        "mode": "image_to_video_prep" if any(scene.get("image_path") for scene in normalized) else "storyboard_prompts",
+        "mode": "image_to_video_prep" if any(scene.get("image_path") or scene.get("image_data") for scene in normalized) else "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(payload.get("performance_mode") or payload.get("performanceMode") or payload.get("video_type") or payload.get("videoType")),
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
         "image_shot_flow": _clean_scene_text(payload.get("image_shot_flow") or "intimate", 80),

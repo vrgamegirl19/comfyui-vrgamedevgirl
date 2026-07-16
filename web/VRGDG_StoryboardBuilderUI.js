@@ -1303,7 +1303,7 @@ function mergeReferenceBuilderCatalog(base = {}, incoming = {}) {
 }
 
 function statusMeta(scene) {
-  const hasImage = Boolean(String(scene.image_path || "").trim());
+  const hasImage = Boolean(String(scene.image_path || "").trim() || String(scene.image_data || scene.image_reference_data || "").trim());
   const hasImagePrompt = Boolean(String(scene.image_prompt || "").trim());
   const hasVideoPrompt = Boolean(String(scene.video_prompt || "").trim());
   if (hasImage && hasVideoPrompt) return { label: "Ready for Video", color: "#22c55e" };
@@ -3473,6 +3473,66 @@ function openStoryboardBuilder(payload = {}) {
     const imagePrompt = makeTextarea(scene.image_prompt, "Full text-to-image prompt...", 7);
     const videoPrompt = makeTextarea(scene.video_prompt, "Full video prompt...", 7);
     const imagePath = makeInput(scene.image_path, "Image path");
+    imagePath.type = "hidden";
+    let sceneImageData = String(scene.image_data || scene.image_reference_data || "").trim();
+    let sceneImageName = String(scene.image_name || scene.image_reference_name || "").trim();
+    const startingImageControl = document.createElement("div");
+    startingImageControl.dataset.vrgdgFileDropZone = "true";
+    startingImageControl.style.cssText = "display:grid;grid-template-columns:112px 1fr;gap:12px;align-items:center;border:1px dashed #155e75;border-radius:9px;background:#07111f;padding:10px;cursor:pointer;";
+    const startingImagePreview = document.createElement("div");
+    startingImagePreview.style.cssText = "width:112px;height:82px;border:1px solid #334155;border-radius:7px;background:#020617 center/contain no-repeat;display:grid;place-items:center;color:#64748b;font-size:11px;text-align:center;overflow:hidden;";
+    const startingImageDetails = document.createElement("div");
+    startingImageDetails.style.cssText = "display:flex;flex-direction:column;gap:7px;min-width:0;";
+    const startingImageButton = makeButton("Upload Image", "primary");
+    startingImageButton.type = "button";
+    const startingImageStatus = document.createElement("div");
+    startingImageStatus.style.cssText = "font-size:11px;color:#94a3b8;overflow-wrap:anywhere;";
+    const startingImageNote = document.createElement("div");
+    startingImageNote.style.cssText = "font-size:11px;line-height:1.4;color:#cbd5e1;";
+    startingImageNote.textContent = "This is the finished starting frame for this I2V scene. Storyboard Builder analyzes it when writing the video prompt so the motion matches what is actually visible.";
+    startingImageDetails.append(startingImageButton, startingImageStatus, startingImageNote);
+    startingImageControl.append(startingImagePreview, startingImageDetails, imagePath);
+    const refreshStartingImage = () => {
+      const source = sceneImageData
+        ? (sceneImageData.startsWith("data:") ? sceneImageData : `data:image/png;base64,${sceneImageData}`)
+        : (imagePath.value.trim() ? makeStoryboardImageUrl(imagePath.value.trim()) : "");
+      startingImagePreview.style.backgroundImage = source ? `url("${source.replace(/"/g, "%22")}")` : "none";
+      startingImagePreview.textContent = source ? "" : "Drop image here";
+      startingImageStatus.textContent = source
+        ? `Selected: ${sceneImageName || imagePath.value.trim().split(/[\\/]/).pop() || "uploaded image"}`
+        : "No starting image selected. Drop a PNG, JPG, or WEBP here, or click Upload Image.";
+    };
+    const useStartingImageFile = async (file) => {
+      if (!file) return;
+      sceneImageData = await readStoryboardImageFile(file);
+      sceneImageName = file.name || "starting_frame.png";
+      imagePath.value = "";
+      refreshStartingImage();
+    };
+    startingImageButton.onclick = async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await useStartingImageFile(await chooseStoryboardImageFile());
+    };
+    startingImageControl.onclick = async (event) => {
+      if (event.target === startingImageButton) return;
+      await useStartingImageFile(await chooseStoryboardImageFile());
+    };
+    startingImageControl.addEventListener("dragover", (event) => {
+      if (!event.dataTransfer?.files?.length && !Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      startingImageControl.style.borderColor = "#22d3ee";
+    });
+    startingImageControl.addEventListener("dragleave", () => { startingImageControl.style.borderColor = "#155e75"; });
+    startingImageControl.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      startingImageControl.style.borderColor = "#155e75";
+      await useStartingImageFile(Array.from(event.dataTransfer?.files || []).find((file) => String(file.type || "").startsWith("image/")) || null);
+    });
+    refreshStartingImage();
     const triggerPhrase = makeInput(scene.trigger_phrase || "", "Optional scene trigger phrase");
     const triggerPosition = makeSelect([
       { value: "start", label: "Add trigger to start" },
@@ -3554,7 +3614,7 @@ function openStoryboardBuilder(payload = {}) {
     const performanceStyleField = field("Performance / song style", performanceStyle);
     const facialPerformanceField = field("Facial performance", facialPerformance);
     const facialPerformanceCustomField = field("Custom facial performance", facialPerformanceCustom);
-    const imagePathField = field("Image path", imagePath);
+    const imagePathField = field("Starting image", startingImageControl);
     const motionField = field("Motion / video summary", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
     if (isVideoPrepMode) {
@@ -3870,7 +3930,11 @@ function openStoryboardBuilder(payload = {}) {
       scene.trigger_position = triggerPosition.value === "end" ? "end" : "start";
       scene.image_prompt = imagePrompt.value.trim();
       if (isVideoPrepMode) scene.video_prompt = videoPrompt.value.trim();
-      if (isVideoPrepMode) scene.image_path = imagePath.value.trim();
+      if (isVideoPrepMode) {
+        scene.image_path = imagePath.value.trim();
+        scene.image_data = sceneImageData;
+        scene.image_name = sceneImageName;
+      }
       scene.notes = notes.value.trim();
     };
     cancel.onclick = () => editorBackdrop.remove();
@@ -3942,8 +4006,9 @@ function openStoryboardBuilder(payload = {}) {
       const tr = document.createElement("tr");
       tr.style.borderBottom = "1px solid #1e293b";
       tr.style.background = "#0b1220";
-      const imageCell = scene.image_path
-        ? `<div style="width:170px;height:78px;border-radius:6px;background:#0f172a url('${escapeHtml(makeStoryboardImageUrl(scene.image_path))}') center/cover no-repeat;"></div>`
+      const sceneImageSource = storyboardReferenceImageSrc({ path: scene.image_path, data: scene.image_data || scene.image_reference_data });
+      const imageCell = sceneImageSource
+        ? `<div style="width:170px;height:78px;border-radius:6px;background:#0f172a url('${escapeHtml(sceneImageSource)}') center/cover no-repeat;"></div>`
         : `<div style="width:170px;height:78px;border:1px dashed #334155;border-radius:6px;display:grid;place-items:center;color:#94a3b8;font-size:12px;text-align:center;background:#07111f;">No image in storyboard<br>Optional reference</div>`;
       const sceneActionStyle = "border:1px solid #155e75;border-radius:6px;background:#0f172a;color:#a5f3fc;padding:8px 10px;font-weight:800;cursor:pointer;";
       const sceneGptStyle = "border:1px solid #06b6d4;border-radius:6px;background:#0e7490;color:#f8fafc;padding:8px 10px;font-weight:900;cursor:pointer;";
