@@ -174,17 +174,42 @@ def _interval(value):
     return int(str(value).split()[0])
 
 
+def _distance_repair_strength(face_width_percent, preset, custom_threshold):
+    ranges = {
+        "Very far faces only": (4.0, 6.0),
+        "Far faces (recommended)": (7.0, 9.0),
+        "Far and medium faces": (10.0, 12.0),
+    }
+    if preset == "All detected faces":
+        return 1.0
+    if preset == "Custom":
+        fade_end = max(0.1, float(custom_threshold))
+        full_end = max(0.0, fade_end - 2.0)
+    else:
+        full_end, fade_end = ranges.get(str(preset), (7.0, 9.0))
+    value = float(face_width_percent)
+    if value <= full_end:
+        return 1.0
+    if value >= fade_end:
+        return 0.0
+    return (fade_end - value) / max(0.001, fade_end - full_end)
+
+
 class VRGDGFaceFixPrepare:
     @classmethod
     def INPUT_TYPES(cls):
         presets = ["8 frames", "16 frames (recommended)", "24 frames", "32 frames",
                    "48 frames", "64 frames", "96 frames", "120 frames"]
+        distance_presets = ["All detected faces", "Very far faces only", "Far faces (recommended)",
+                            "Far and medium faces", "Custom"]
         return {"required": {
             "video_frames": ("IMAGE", {"tooltip": "Connect the IMAGE output from VHS Load Video. The complete batch is scanned for one primary face and retained for final full-resolution compositing."}),
             "detection_confidence": ("FLOAT", {"default": 0.70, "min": 0.10, "max": 0.99, "step": 0.01, "tooltip": "Minimum confidence accepted from the face detector. Higher values reduce false detections but may miss small, blurry, profile, or motion-blurred faces. Lower cautiously for distant faces. Recommended starting value: 0.70."}),
             "crop_padding": ("FLOAT", {"default": 0.10, "min": 0.0, "max": 1.5, "step": 0.01, "tooltip": "Extra area around the detected face, measured as a fraction of face size on every side. Lower values crop closer to facial features; higher values include more hair, neck, and background. Recommended starting range: 0.10–0.25."}),
             "minimum_face_pixels": ("INT", {"default": 20, "min": 4, "max": 1024, "tooltip": "Reject detections whose width or height is smaller than this many source pixels. Raising this filters tiny false positives; lowering it permits very distant faces but increases false-detection risk. Recommended starting value: 20."}),
             "rotation_assist": (["Off (fastest)", "Light: ±15°", "Strong: ±15° and ±30°"], {"default": "Light: ±15°", "tooltip": "Also scans rotated copies of each frame, then maps detections back to the original coordinates. Light helps mildly tilted/overhead faces at roughly 3× detection work. Strong adds ±30° for difficult angles at roughly 5× detection work. It affects detection only; output frames are never rotated."}),
+            "repair_distance": (distance_presets, {"default": "Far faces (recommended)", "tooltip": "Controls which face sizes are repaired. Very Far fully repairs below 4% of frame width and fades out by 6%. Far fully repairs below 7% and fades out by 9%. Far and Medium fully repairs below 10% and fades out by 12%. All disables distance filtering. Close faces above the fade limit remain unchanged and are not selected as Z-Image anchors."}),
+            "custom_distance_threshold": ("FLOAT", {"default": 9.0, "min": 0.1, "max": 50.0, "step": 0.1, "tooltip": "Used only when Repair Distance is Custom. Faces at or above this percentage of frame width remain unchanged. Repair fades in across the 2 percentage points below this value. Example: 9% gives full repair at 7% or smaller, fading to no repair at 9%."}),
             "anchor_interval": (presets, {"default": "16 frames (recommended)", "tooltip": "Approximate spacing between Z-Image identity/detail anchors. Smaller intervals create more anchors and stronger consistency but take longer. Larger intervals are faster but give LTX less identity guidance. The nearest valid detected face is used, and boundary anchors are included automatically."}),
             "short_gap_tracking": ("INT", {"default": 2, "min": 0, "max": 8, "tooltip": "How many consecutive missed detections may reuse the last known face position. Strength fades across the gap. Use 0 to repair only freshly detected frames. The default 2 bridges brief blur without pasting a face into long no-face sections."}),
         }}
@@ -203,7 +228,8 @@ class VRGDGFaceFixPrepare:
     DESCRIPTION = "Detects and tracks one primary face through a loaded video, makes a 512×512 face sequence, selects safe Z-Image anchors, and preserves the crop mapping needed to paste repaired faces back into the original frames."
 
     def prepare(self, video_frames, detection_confidence, crop_padding, minimum_face_pixels,
-                rotation_assist, anchor_interval, short_gap_tracking):
+                rotation_assist, repair_distance, custom_distance_threshold,
+                anchor_interval, short_gap_tracking):
         import cv2
         if video_frames.ndim != 4 or video_frames.shape[0] < 1:
             raise ValueError("Face Fix Prepare requires a non-empty IMAGE batch from a video loader.")
@@ -212,12 +238,12 @@ class VRGDGFaceFixPrepare:
         _log(
             f"Prepare started: {count} frame(s), {width}x{height}, confidence={detection_confidence:.2f}, "
             f"minimum_face_pixels={minimum_face_pixels}, padding={crop_padding:.2f}, "
-            f"rotation={rotation_assist}, anchor_interval={anchor_interval}."
+            f"rotation={rotation_assist}, repair_distance={repair_distance}, anchor_interval={anchor_interval}."
         )
         entries, crops = [], []
         previous = None
         misses = 0
-        fresh_count = tracked_count = missing_count = 0
+        fresh_count = tracked_count = missing_count = close_skipped_count = 0
         for index in range(count):
             rgb = (video_frames[index, ..., :3].detach().cpu().clamp(0, 1).numpy() * 255).round().astype("uint8")
             bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
@@ -230,23 +256,35 @@ class VRGDGFaceFixPrepare:
                 current = chosen[:4]
                 previous = current if previous is None else tuple(previous[i] * 0.35 + current[i] * 0.65 for i in range(4))
                 misses = 0
-                strength = 1.0
+                tracking_strength = 1.0
             else:
                 misses += 1
                 if previous is None or misses > int(short_gap_tracking):
                     previous = None
-                    strength = 0.0
+                    tracking_strength = 0.0
                     missing_count += 1
                 else:
-                    strength = 0.65 if misses == 1 else 0.30
+                    tracking_strength = 0.65 if misses == 1 else 0.30
                     tracked_count += 1
+            face_width_percent = (float(previous[2]) / float(width) * 100.0) if previous is not None else 0.0
+            distance_strength = (
+                _distance_repair_strength(face_width_percent, repair_distance, custom_distance_threshold)
+                if previous is not None else 0.0
+            )
+            strength = tracking_strength * distance_strength
+            if fresh and distance_strength <= 0.0:
+                close_skipped_count += 1
             box = _crop_box(previous, width, height, float(crop_padding)) if previous is not None else None
             crop = None
             if box:
                 left, top, right, bottom = box
                 item = video_frames[index:index + 1, top:bottom, left:right, :3].permute(0, 3, 1, 2)
                 crop = F.interpolate(item, size=(512, 512), mode="bicubic", align_corners=False).permute(0, 2, 3, 1)[0].clamp(0, 1)
-            entries.append({"index": index, "box": box, "fresh": fresh, "strength": strength})
+            entries.append({
+                "index": index, "box": box, "fresh": fresh, "strength": strength,
+                "tracking_strength": tracking_strength, "distance_strength": distance_strength,
+                "face_width_percent": face_width_percent,
+            })
             crops.append(crop)
             _progress(index, count, "Detecting/tracking faces")
         valid = [i for i, crop in enumerate(crops) if crop is not None]
@@ -263,7 +301,12 @@ class VRGDGFaceFixPrepare:
         desired = list(range(0, count, step))
         if desired[-1] != count - 1:
             desired.append(count - 1)
-        fresh_indices = [entry["index"] for entry in entries if entry["fresh"]]
+        fresh_indices = [entry["index"] for entry in entries if entry["fresh"] and entry["strength"] > 0.0]
+        if not fresh_indices:
+            raise ValueError(
+                "Faces were detected, but none are small enough for the selected Repair Distance preset. "
+                "Choose a broader preset or All detected faces."
+            )
         anchors = []
         for target in desired:
             nearest = min(fresh_indices, key=lambda value: abs(value - target))
@@ -272,7 +315,8 @@ class VRGDGFaceFixPrepare:
         anchors.sort()
         _log(
             f"Detection complete: {fresh_count} fresh detection(s), {tracked_count} short-gap tracked frame(s), "
-            f"{missing_count} confirmed no-face frame(s), {len(anchors)} anchor(s) at [{','.join(str(v) for v in anchors)}]."
+            f"{missing_count} confirmed no-face frame(s), {close_skipped_count} close-face frame(s) excluded, "
+            f"{len(anchors)} anchor(s) at [{','.join(str(v) for v in anchors)}]."
         )
         context = {
             "version": 1, "job_id": f"standalone_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}",
