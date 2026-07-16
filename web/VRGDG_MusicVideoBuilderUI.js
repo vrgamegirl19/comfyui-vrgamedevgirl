@@ -1893,6 +1893,17 @@ function openBuilder(node) {
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Download Models");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
+  const updateV10Button = makeButton("Switch to Latest V10");
+  updateV10Button.style.background = "#9a3412";
+  updateV10Button.style.borderColor = "#ea580c";
+  updateV10Button.style.color = "#fff7ed";
+  updateV10Button.style.fontWeight = "800";
+  updateV10Button.title = "Fetch, switch to, and pull the V10 development branch.";
+  const updateV10HintButton = makeButton("?");
+  updateV10HintButton.title = "What does the V10 updater do?";
+  updateV10HintButton.style.cssText += "flex:0 0 36px;width:36px;text-align:center;justify-content:center;background:#431407;border-color:#c2410c;color:#ffedd5;font-weight:900;";
+  const updateV10Row = document.createElement("div");
+  updateV10Row.style.cssText = "display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid #3f3f46;";
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
@@ -1910,6 +1921,10 @@ function openBuilder(node) {
   }
   autoSaveControl.wrapper.style.marginTop = "4px";
   menuDropdown.append(autoSaveControl.wrapper);
+  styleMenuItem(updateV10Button);
+  updateV10Button.style.flex = "1 1 auto";
+  updateV10Row.append(updateV10Button, updateV10HintButton);
+  menuDropdown.append(updateV10Row);
   const projectActions = document.createElement("div");
   projectActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
   projectActions.append(menuButton, videoTypeField, saveButton);
@@ -38975,6 +38990,47 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   menuButton.onclick = (event) => {
     event.stopPropagation();
     menuDropdown.style.display = menuDropdown.style.display === "flex" ? "none" : "flex";
+  };
+  updateV10HintButton.onclick = () => {
+    window.alert(
+      "What Switch to Latest V10 does:\n\n" +
+      "1. Finds this custom node's installed folder automatically.\n" +
+      "2. Runs: git fetch origin\n" +
+      "3. Runs: git switch dev/music-video-builder-ui-test-v10\n" +
+      "4. Runs: git pull --ff-only\n\n" +
+      "This switches your installed custom nodes from V9 to V10. It does not run git reset or git clean and does not delete files you created. Git stops with an error if local changes would be overwritten. Nothing outside the comfyui-vrgamedevgirl folder is touched."
+    );
+  };
+  updateV10Button.onclick = async () => {
+    const confirmed = window.confirm(
+      "Switch these custom nodes from V9 to the latest V10 development branch now?\n\n" +
+      "Git will stop if your local code changes conflict. Files you created are not deleted.\n\nContinue?"
+    );
+    if (!confirmed) return;
+
+    const originalText = updateV10Button.textContent;
+    updateV10Button.disabled = true;
+    updateV10Button.textContent = "Switching to V10...";
+    try {
+      const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST" });
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (_) {
+        payload = {};
+      }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `Update failed (HTTP ${response.status}).`);
+      }
+      window.alert(
+        "V10 installed successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the V10 Python and JavaScript files load."
+      );
+    } catch (error) {
+      window.alert(`V10 switch did not complete:\n\n${error?.message || error}`);
+    } finally {
+      updateV10Button.disabled = false;
+      updateV10Button.textContent = originalText;
+    }
   };
   menuDropdown.addEventListener("click", (event) => {
     if (event.target === autoSaveControl.input || autoSaveControl.wrapper.contains(event.target)) return;
