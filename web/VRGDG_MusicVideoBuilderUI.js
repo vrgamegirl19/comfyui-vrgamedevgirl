@@ -13,6 +13,7 @@ import {
 import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260701-i2v-mode";
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
+import { createFaceFixTool } from "./VRGDG_FaceFixUI.js?v=20260716-1";
 import {
   BROWSER_IMAGE_PROVIDERS,
   buildBrowserImagePrompt,
@@ -1683,10 +1684,26 @@ function audioUrl(path) {
   return `/vrgdg/music_builder/audio?path=${encodeURIComponent(path)}&v=${Date.now()}`;
 }
 
+  const issuedSegmentIds = new Set();
+  let fallbackSegmentIdSequence = 0;
+
+  function createUniqueSegmentId() {
+    let id = "";
+    do {
+      if (globalThis.crypto?.randomUUID) {
+        id = `seg_${globalThis.crypto.randomUUID()}`;
+      } else {
+        fallbackSegmentIdSequence += 1;
+        id = `seg_${Date.now()}_${fallbackSegmentIdSequence}_${Math.floor(Math.random() * 0x100000000).toString(16)}`;
+      }
+    } while (issuedSegmentIds.has(id));
+    issuedSegmentIds.add(id);
+    return id;
+  }
+
   function newSegment(start = 0, end = 4) {
-    const now = Date.now();
     return {
-    id: `seg_${now}_${Math.floor(Math.random() * 10000)}`,
+    id: createUniqueSegmentId(),
     track: "base",
     start,
     end,
@@ -1855,6 +1872,8 @@ function openBuilder(node) {
   const newProjectButton = makeButton("New Project");
   const saveProjectAsButton = makeButton("Save Project As");
   const branchProjectButton = makeButton("Branch Project...");
+  const exportProjectButton = makeButton("Export Shareable Project ZIP");
+  const importProjectButton = makeButton("Import Project ZIP");
   const saveButton = makeButton("Quick Save", "primary");
   const videoTypeSelect = makeVideoTypeSelect("singing");
   const videoTypeField = makeField("Video Type", videoTypeSelect);
@@ -1889,10 +1908,22 @@ function openBuilder(node) {
   const zEnhanceAllToolButton = makeButton("Enhance All");
   const importImageFolderButton = makeButton("Fill Timeline Images From Folder", "primary");
   const fullBuildButton = makeButton("Build Full Video");
+  const fullFLFBuildButton = makeButton("Build Full FLF Video");
   const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Download Models");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
+  const updateV9Button = makeButton("Update to Latest V9");
+  updateV9Button.style.background = "#9a3412";
+  updateV9Button.style.borderColor = "#ea580c";
+  updateV9Button.style.color = "#fff7ed";
+  updateV9Button.style.fontWeight = "800";
+  updateV9Button.title = "Run the documented Git fetch, switch, and pull commands for the V9 branch.";
+  const updateV9HintButton = makeButton("?");
+  updateV9HintButton.title = "What does the V9 updater do?";
+  updateV9HintButton.style.cssText += "flex:0 0 36px;width:36px;text-align:center;justify-content:center;background:#431407;border-color:#c2410c;color:#ffedd5;font-weight:900;";
+  const updateV9Row = document.createElement("div");
+  updateV9Row.style.cssText = "display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid #3f3f46;";
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
@@ -1904,12 +1935,16 @@ function openBuilder(node) {
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, fullFLFBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
   autoSaveControl.wrapper.style.marginTop = "4px";
   menuDropdown.append(autoSaveControl.wrapper);
+  styleMenuItem(updateV9Button);
+  updateV9Button.style.flex = "1 1 auto";
+  updateV9Row.append(updateV9Button, updateV9HintButton);
+  menuDropdown.append(updateV9Row);
   const projectActions = document.createElement("div");
   projectActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
   projectActions.append(menuButton, videoTypeField, saveButton);
@@ -2044,6 +2079,174 @@ function openBuilder(node) {
   customImageFileInput.accept = "image/png,image/jpeg,image/webp";
   customImageFileInput.style.display = "none";
   shell.append(customImageFileInput);
+  const faceFixTool = createFaceFixTool({
+    toast,
+    getVideoPath: () => String(previewVideo.dataset.path || selectedSegmentVideoPath(activeSegment()) || ""),
+    getProjectFolder: () => String(projectInput.value || ""),
+    getPlayheadContext: () => {
+      const previewSegmentId = String(previewVideo.dataset.segmentId || "");
+      const segment = allEditableSegments().find((item) => String(item?.id || "") === previewSegmentId) || activeSegment();
+      return {
+        time: Number(previewVideo.currentTime || 0),
+        videoPath: String(previewVideo.dataset.path || selectedSegmentVideoPath(segment) || ""),
+        segmentId: String(segment?.id || ""),
+        sceneLabel: segment ? sceneDisplayName(segment, segmentIndexInfo(segment).index) : "scene",
+      };
+    },
+    captureCurrentFrame: () => captureVideoFrameDataUrl(previewVideo),
+    generateFacePrompt: async ({ referenceImage }) => {
+      const modelFile = referenceDescriptionVisionModel();
+      const mmprojFile = referenceDescriptionMmproj();
+      if (!["lm_studio", "llm_api"].includes(state.textGemmaRunner) && (!modelFile || !mmprojFile)) {
+        throw new Error("Choose a vision model and Vision mmproj in LLM Runner first.");
+      }
+      const data = await postJson("/vrgdg/music_builder/describe_reference_image", {
+        ...textGemmaRunnerPayload(),
+        model_file: modelFile,
+        mmproj_file: mmprojFile,
+        reference_type: "face",
+        image_data: referenceImage,
+        unload_after: true,
+        clear_before_load: false,
+        temperature: 0.15,
+        top_p: 0.85,
+        max_new_tokens: 180,
+      }, 4 * 60 * 1000);
+      const description = String(data.description || "").trim();
+      if (!description) throw new Error("The selected LLM Runner returned an empty face description.");
+      return description;
+    },
+    calculateAnchors: async (payload) => postJson("/vrgdg/face_fix/estimate_anchors", payload, 120000),
+    startJob: async (payload, mode, onStatus) => {
+      onStatus?.(mode === "frame" ? "Detecting and preparing the playhead face..." : "Extracting frames and tracking the face across the selected range...");
+      const prepared = await postJson("/vrgdg/face_fix/prepare", { ...payload, mode }, 30 * 60 * 1000);
+      const anchors = Array.isArray(prepared.anchors) ? prepared.anchors : [];
+      if (!anchors.length) throw new Error("Face Fix prepared no anchors for enhancement.");
+      const baseSettings = saveZEnhanceSettingsFromPanel();
+      const settings = {
+        ...baseSettings,
+        width: 512,
+        height: 512,
+        seed: Number.isFinite(Number(payload.seed)) ? Number(payload.seed) : 42,
+        seed_mode: "fixed",
+        enhance_amount: Number(payload.enhance_amount || 8),
+      };
+      let enhancedCount = 0;
+      let firstEnhancedPreview = "";
+      for (let index = 0; index < anchors.length; index += 1) {
+        const anchor = anchors[index];
+        const label = `Face Fix anchor ${index + 1}/${anchors.length}`;
+        let cleanupFinished = false;
+        try {
+          onStatus?.(`${label}: building hidden Z-Enhance workflow...\nVideo index ${anchor.index}, source frame ${anchor.frame_number}`);
+          const enhancePayload = zEnhancePayloadFromSettings(
+            settings,
+            payload.prompt,
+            { path: anchor.source_path, name: `face_fix_anchor_${String(anchor.index).padStart(6, "0")}.png` },
+          );
+          const built = await postJson("/vrgdg/workflow_runner/build_z_upscale_enhance_prompt", enhancePayload, 120000);
+          onStatus?.(`${label}: queueing 512×512 face enhancement...`);
+          const queued = await queueWorkflowPrompt(built.prompt, {
+            onStatus: (message) => onStatus?.(`${label}: ${message}`),
+          });
+          const promptId = queued?.prompt_id;
+          if (!promptId) throw new Error(`${label}: ComfyUI did not return a prompt ID.`);
+          const images = await waitForImages(promptId, (message) => {
+            onStatus?.(`${label}: ${message}\nPrompt ID: ${promptId}`);
+          });
+          const image = images[images.length - 1];
+          if (!image) throw new Error(`${label}: Z-Enhance returned no image.`);
+          const accepted = await postJson("/vrgdg/face_fix/accept_enhanced_anchor", {
+            manifest_path: prepared.manifest_path,
+            run_index: anchor.run_index,
+            order: anchor.order,
+            image,
+          }, 120000);
+          if (!firstEnhancedPreview) {
+            firstEnhancedPreview = accepted?.enhanced_preview_data || makeImageViewUrl(image);
+          }
+          enhancedCount += 1;
+          onStatus?.(`${label}: enhanced face saved.\nClearing RAM/VRAM before the next crop...`);
+          await runImageMemoryCleanupQuiet({ set: (message) => onStatus?.(`${label}: ${message}`) }, label, 95);
+          cleanupFinished = true;
+        } finally {
+          if (!cleanupFinished) {
+            onStatus?.(`${label}: cleaning memory after an interrupted or failed enhancement...`);
+            await runImageMemoryCleanupQuiet({ set: (message) => onStatus?.(`${label}: ${message}`) }, `${label} recovery`, 100).catch(() => "");
+          }
+        }
+      }
+      onStatus?.(`Enhanced ${enhancedCount}/${anchors.length} anchors. Building the hidden LTX 2.3 face-video workflow...`);
+      const runs = Array.isArray(prepared.runs) ? prepared.runs : [];
+      let totalLtxFrames = 0;
+      let firstLtxPreview = "";
+      for (let runIndex = 0; runIndex < runs.length; runIndex += 1) {
+        const run = runs[runIndex];
+        const runLabel = `LTX face run ${runIndex + 1}/${runs.length}`;
+        let ltxCleanupFinished = false;
+        try {
+          const builtLtx = await postJson("/vrgdg/face_fix/build_ltx_prompt", {
+            manifest_path: prepared.manifest_path,
+            run_index: run.run_index,
+          }, 120000);
+          onStatus?.(`${runLabel}: queueing...\nFrames: ${builtLtx.frame_count}\nAnchors: ${builtLtx.anchor_indices_text}`);
+          const queuedLtx = await queueWorkflowPrompt(builtLtx.prompt, {
+            onStatus: (message) => onStatus?.(`${runLabel}: ${message}`),
+          });
+          const ltxPromptId = queuedLtx?.prompt_id;
+          if (!ltxPromptId) throw new Error(`${runLabel}: ComfyUI did not return a prompt ID.`);
+          const ltxImages = await waitForImages(ltxPromptId, (message) => {
+            onStatus?.(`${runLabel}: ${message}\nPrompt ID: ${ltxPromptId}`);
+          });
+          onStatus?.(`${runLabel}: returned ${ltxImages.length} frame(s). Validating the Preview Image batch...`);
+          const acceptedLtx = await postJson("/vrgdg/face_fix/accept_ltx_frames", {
+            manifest_path: prepared.manifest_path,
+            run_index: run.run_index,
+            images: ltxImages,
+          }, 10 * 60 * 1000);
+          totalLtxFrames += Number(acceptedLtx.ltx_frame_count || 0);
+          if (!firstLtxPreview) firstLtxPreview = acceptedLtx.ltx_preview_data || "";
+          onStatus?.(`${runLabel}: validated ${acceptedLtx.ltx_frame_count}/${acceptedLtx.frame_count} frames.\nClearing RAM/VRAM...`);
+          await runImageMemoryCleanupQuiet({ set: (message) => onStatus?.(`${runLabel} cleanup: ${message}`) }, runLabel, 98);
+          ltxCleanupFinished = true;
+        } finally {
+          if (!ltxCleanupFinished) {
+            onStatus?.(`${runLabel}: cleaning memory after an interrupted or failed pass...`);
+            await runImageMemoryCleanupQuiet({ set: (message) => onStatus?.(`${runLabel} recovery: ${message}`) }, `${runLabel} recovery`, 100).catch(() => "");
+          }
+        }
+      }
+      let finalized = {};
+      if (mode === "range") {
+        onStatus?.(`All ${totalLtxFrames} LTX face frames are validated.\nSafely feathering visible faces into the source frames and rebuilding the scene...`);
+        finalized = await postJson("/vrgdg/face_fix/finalize", {
+          manifest_path: prepared.manifest_path,
+          feather: payload.feather,
+          color_match: payload.color_match,
+        }, 30 * 60 * 1000);
+        const segment = allEditableSegments().find((item) => String(item?.id || "") === String(payload.segment_id || ""));
+        if (segment && finalized?.output_video_path) {
+          pushHistory();
+          addSegmentVideoHistoryPath(segment, finalized.output_video_path);
+          segment.preview_mode = "video";
+          segment.video_status = "done";
+          setActiveSegment(segment);
+          syncPreview(segment);
+          render();
+          await autoSaveSessionQuiet("LTX Face Fix repaired scene video");
+        }
+      }
+      return {
+        ...prepared,
+        ...finalized,
+        execution_stage: mode === "range" ? "complete" : "ltx_frames_ready",
+        enhanced_count: enhancedCount,
+        ltx_frame_count: totalLtxFrames,
+        enhanced_preview_data: firstLtxPreview || firstEnhancedPreview,
+      };
+    },
+  });
+  toolsPane.append(makeToolRow(faceFixTool.button, "Repair blurry distant faces with Z-Enhanced anchors and temporally consistent LTX face-video processing."));
   const imageFolderFileInput = document.createElement("input");
   imageFolderFileInput.type = "file";
   imageFolderFileInput.accept = "image/png,image/jpeg,image/webp";
@@ -2546,7 +2749,7 @@ function openBuilder(node) {
     else if (option.value === "try_other_provider") option.textContent = "Try other provider first";
     else if (option.value === "stop") option.textContent = "Stop";
   }
-  const flowGptAskPreviousImage = makeCheckbox("Ask to send previous scene image", false);
+  const flowGptAskPreviousImage = makeCheckbox("Send previous scene's FLF end frame as context", false);
   const flowGptPrompt = document.createElement("textarea");
   flowGptPrompt.placeholder = "Browser AI image prompt...";
   flowGptPrompt.style.cssText = "width:100%;box-sizing:border-box;min-height:92px;resize:vertical;border:1px solid #27272a;border-radius:6px;background:#18181b;color:#d4d4d8;padding:8px;font-size:11px;line-height:1.35;";
@@ -3118,18 +3321,41 @@ function openBuilder(node) {
     { value: "previous_image", label: "Previous scene's assigned end image" },
   ], "rendered_frame");
   const flfPreGeneratePromptsFromSceneImages = makeCheckbox("Global: pre-generate prompts from scene images", false);
+  const flfMatchPreviousClipColor = makeCheckbox("Global: match previous clip color at the start", false);
+  const flfColorMatchStrengthInput = makeInput("0.85", "number");
+  flfColorMatchStrengthInput.min = "0";
+  flfColorMatchStrengthInput.max = "1";
+  flfColorMatchStrengthInput.step = "0.05";
+  const flfColorMatchFadeInput = makeInput("1.0", "number");
+  flfColorMatchFadeInput.min = "0.05";
+  flfColorMatchFadeInput.max = "30";
+  flfColorMatchFadeInput.step = "0.05";
+  const flfColorMatchGrid = document.createElement("div");
+  flfColorMatchGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+  flfColorMatchGrid.append(makeField("Color-match strength", flfColorMatchStrengthInput), makeField("Fade out (seconds)", flfColorMatchFadeInput));
   const flfGlobalTransitionTypeSelect = makeSelect([
     { value: "auto", label: "Auto: Gemma decides" },
     { value: "smooth", label: "Smooth Transition" },
     { value: "morph", label: "Surreal Morph" },
   ], "auto");
+  const flfGemmaContextModeSelect = makeSelect([
+    { value: "images_story", label: "Images + story beat (recommended)" },
+    { value: "images_only", label: "Images only" },
+    { value: "full", label: "Full scene context" },
+  ], "images_story");
+  const flfGemmaContextNote = document.createElement("div");
+  flfGemmaContextNote.textContent = "Controls only how Gemma designs the visual transition. Images always remain endpoint truth. The exact lyric/speaking line and selected facial-performance direction are added afterward, even in Images only mode.";
+  flfGemmaContextNote.style.cssText = flfGuideSettingsNote.style.cssText;
   const flfChainNote = document.createElement("div");
   flfChainNote.textContent = "Scene 1 always uses its own selected image. For Scene 2 onward, choose whether the actual video workflow starts from the prior rendered video's extracted final frame or the prior scene's assigned end image.";
   flfChainNote.style.cssText = flfGuideSettingsNote.style.cssText;
   const flfPreGenerateNote = document.createElement("div");
   flfPreGenerateNote.textContent = "Prompt-only shortcut: when all scene/end images already exist, Gemma uses the previous scene's assigned end image as a provisional start reference and can prepare every prompt before rendering. This does not choose the workflow's actual render input; the Actual chained render start selector above controls whether rendering uses the extracted video frame or the previous assigned image. If no provisional image exists, prompt generation automatically waits for the rendered frame.";
   flfPreGenerateNote.style.cssText = flfGuideSettingsNote.style.cssText;
-  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("Global transition type", flfGlobalTransitionTypeSelect), flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainPreviousEndFrame.wrapper, makeField("Global actual chained render start", flfRenderChainSourceSelect), flfChainNote, flfPreGeneratePromptsFromSceneImages.wrapper, flfPreGenerateNote]);
+  const flfColorMatchNote = document.createElement("div");
+  flfColorMatchNote.textContent = "Optional post-process for chained FLF clips. It samples the previous video's actual final frame, color-matches the beginning of the new clip, and smoothly fades the correction away. It does not use the extracted frame as an LTX guide or alter the previous video. Best paired with Previous scene's assigned end image above.";
+  flfColorMatchNote.style.cssText = flfGuideSettingsNote.style.cssText;
+  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("Global transition type", flfGlobalTransitionTypeSelect), makeField("Gemma visual context", flfGemmaContextModeSelect), flfGemmaContextNote, flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainPreviousEndFrame.wrapper, makeField("Global actual chained render start", flfRenderChainSourceSelect), flfChainNote, flfPreGeneratePromptsFromSceneImages.wrapper, flfPreGenerateNote, flfMatchPreviousClipColor.wrapper, flfColorMatchGrid, flfColorMatchNote]);
   flfGuideSettingsSection.style.display = "none";
   const i2vPass1SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
   const i2vPass1SigmasInput = makeInput(DEFAULT_I2V_PASS1_SIGMAS);
@@ -3821,6 +4047,7 @@ function openBuilder(node) {
   const setOutButton = makeButton("Set Out");
   const clearRangeButton = makeButton("Clear Range");
   const closeTimelineGapsButton = makeButton("Close Gaps");
+  const splitSceneButton = makeButton("✂");
   const idLoraTrimModeButton = makeButton("Trim Mode");
   const overlayTrackToggleButton = makeButton("Overlay Track: Off");
   const overlayTrackHintButton = makeButton("?");
@@ -3845,6 +4072,7 @@ function openBuilder(node) {
   setOutButton.title = "Set the selected timeline range end at the playhead.";
   clearRangeButton.title = "Clear the selected timeline range.";
   closeTimelineGapsButton.title = "Shift later base scenes left to remove empty gaps in the timeline.";
+  splitSceneButton.title = "Split the selected base scene at the playhead. The left and right scene timings stay exactly where they are; later clips do not move and are only renumbered. Vocal text stays on the left half, while instrumental text is kept on both halves. Scenes with rendered video must be cleared before splitting.";
   idLoraTrimModeButton.title = "ID-LoRA only: quiet scrub mode for finding trim points without autoplay.";
   overlayTrackToggleButton.title = "Turn the advanced overlay timeline on or off.";
   overlayTrackHintButton.title = "How does the overlay timeline work?";
@@ -3875,7 +4103,7 @@ function openBuilder(node) {
   deleteSegmentButton.style.color = "#fecaca";
   deleteAllSegmentsButton.style.borderColor = "#7f1d1d";
   deleteAllSegmentsButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
@@ -3895,7 +4123,7 @@ function openBuilder(node) {
   overlayTrackToggleButton.style.width = "max-content";
   overlayTrackHintButton.style.width = "34px";
   deleteAllSegmentsButton.style.width = "max-content";
-  for (const button of [undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
+  for (const button of [splitSceneButton, undoButton, redoButton, playButton, stopButton, deleteSegmentButton, zoomOutButton, zoomInButton]) {
     button.style.width = "34px";
   }
   const waveformModeSelect = makeSelect(Object.keys(WAVEFORM_MODES), "medium");
@@ -3949,7 +4177,13 @@ function openBuilder(node) {
   deleteSelectedMediaButton.style.padding = "6px 10px";
   deleteSelectedMediaButton.style.borderColor = "#7f1d1d";
   deleteSelectedMediaButton.style.color = "#fecaca";
-  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton);
+  const deleteAllTimelineImagesButton = makeButton("Delete ALL Images");
+  deleteAllTimelineImagesButton.style.padding = "6px 10px";
+  deleteAllTimelineImagesButton.style.borderColor = "#dc2626";
+  deleteAllTimelineImagesButton.style.background = "#450a0a";
+  deleteAllTimelineImagesButton.style.color = "#fee2e2";
+  deleteAllTimelineImagesButton.title = "Delete every timeline image from every scene, including FLF first frames, last frames, and extracted chained start frames, and remove those files from the project folder.";
+  selectedMediaTools.append(selectedMediaLabel, useFrameAsImageButton, deleteSelectedMediaButton, deleteAllTimelineImagesButton);
   const zoomWrap = document.createElement("div");
   zoomWrap.style.cssText = "display:flex;gap:4px;align-items:center;";
   zoomWrap.append(zoomOutButton, zoomInButton);
@@ -3967,7 +4201,7 @@ function openBuilder(node) {
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -4225,7 +4459,11 @@ function openBuilder(node) {
       flf_chain_previous_end_frame: true,
       flf_render_chain_start_source: "rendered_frame",
       flf_pregenerate_prompts_from_scene_images: false,
+      flf_match_previous_clip_color: false,
+      flf_color_match_strength: 0.85,
+      flf_color_match_fade_seconds: 1.0,
       flf_global_transition_type: "auto",
+      flf_gemma_context_mode: "images_story",
       msr_lora_name: REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: 1,
       msr_second_pass_strength: 0,
@@ -4288,11 +4526,17 @@ function openBuilder(node) {
   function normalizeBuilderStoryLayer(value = {}) {
     const source = value && typeof value === "object" ? value : {};
     const lyricStoryStrength = Math.max(0, Math.min(10, Number(source.lyric_story_strength ?? source.lyricStoryStrength ?? 7)));
+    const imageWorldStyle = ["natural", "surreal_subject", "balanced_surreal", "full_surreal", "abstract", "custom"].includes(String(source.image_world_style || source.imageWorldStyle || "natural"))
+      ? String(source.image_world_style || source.imageWorldStyle || "natural")
+      : "natural";
     return {
       enabled: source.enabled !== false,
+      overall_story_idea: String(source.overall_story_idea || source.overallStoryIdea || source.story_idea || source.storyIdea || ""),
       user_story_arc: String(source.user_story_arc || source.userStoryArc || ""),
       song_story_brief: String(source.song_story_brief || source.songStoryBrief || ""),
       lyric_story_strength: Number.isFinite(lyricStoryStrength) ? lyricStoryStrength : 7,
+      image_world_style: imageWorldStyle,
+      image_custom_style_direction: String(source.image_custom_style_direction || source.imageCustomStyleDirection || ""),
     };
   }
 
@@ -7029,7 +7273,7 @@ function openBuilder(node) {
     if (segment.timeline_note == null) segment.timeline_note = "";
     if (segment.i2v_notes == null) segment.i2v_notes = "";
     if (!["global", "auto", "smooth", "morph"].includes(String(segment.flf_transition_type || ""))) segment.flf_transition_type = "global";
-    if (segment.id == null || !String(segment.id).trim()) segment.id = `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    if (segment.id == null || !String(segment.id).trim()) segment.id = createUniqueSegmentId();
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
     const approvedImagePath = String(segment.approved_image_path || "");
     segment.image_history = segment.image_history.filter((item, index, list) => {
@@ -7130,6 +7374,38 @@ function openBuilder(node) {
         segment.track = "overlay";
         return ensureSegmentRuntimeFields(segment);
       });
+    const seenIds = new Set();
+    const repairedIds = [];
+    for (const segment of [...state.segments, ...state.overlaySegments]) {
+      const originalId = String(segment.id || "").trim();
+      if (!originalId || seenIds.has(originalId)) {
+        const replacementId = createUniqueSegmentId();
+        segment.id = replacementId;
+        repairedIds.push({ originalId, replacementId, label: String(segment.label || "Scene") });
+      } else {
+        segment.id = originalId;
+        issuedSegmentIds.add(originalId);
+      }
+      seenIds.add(segment.id);
+    }
+    if (repairedIds.length) {
+      state.repairedSegmentIdCount = Number(state.repairedSegmentIdCount || 0) + repairedIds.length;
+      const refs = state.fluxReferenceBuilder;
+      const mapKeys = ["subject_scene_map", "scene_map", "scene_trigger_map", "ingredients_scene_map"];
+      if (refs && typeof refs === "object") {
+        for (const { originalId, replacementId } of repairedIds) {
+          if (!originalId) continue;
+          for (const key of mapKeys) {
+            const map = refs[key];
+            if (map && typeof map === "object" && Object.prototype.hasOwnProperty.call(map, originalId)) {
+              const value = map[originalId];
+              map[replacementId] = Array.isArray(value) ? [...value] : value && typeof value === "object" ? { ...value } : value;
+            }
+          }
+        }
+      }
+      console.warn("[VRGDG Music Builder] Repaired duplicate or missing timeline scene IDs:", repairedIds);
+    }
     assignOverlaySlotNumbers();
     sortSegments(state.overlaySegments);
   }
@@ -7997,9 +8273,43 @@ function openBuilder(node) {
     return applyTriggerPhrase(prompt, imageTriggerPhraseForSegment(segment, imageMode), options);
   }
 
+  function unwrapStructuredImagePrompt(value) {
+    const original = String(value || "").trim();
+    if (!original) return original;
+    const fenced = original.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    if (!/^[\[{]/.test(fenced)) return original;
+    let parsed;
+    try {
+      parsed = JSON.parse(fenced);
+    } catch (_) {
+      return original;
+    }
+    const promptKeys = ["image_prompt", "t2i_prompt", "text_to_image_prompt", "prompt", "flux_prompt", "nb_prompt", "nano_banana_prompt", "ernie_prompt"];
+    const walk = (item) => {
+      if (Array.isArray(item)) {
+        for (const child of item) {
+          const found = walk(child);
+          if (found) return found;
+        }
+        return "";
+      }
+      if (!item || typeof item !== "object") return "";
+      for (const key of promptKeys) {
+        const text = typeof item[key] === "string" ? item[key].trim() : "";
+        if (text) return text;
+      }
+      for (const child of Object.values(item)) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return "";
+    };
+    return walk(parsed) || original;
+  }
+
   function syncSegmentT2IPrompt(segment, prompt) {
     if (!segment) return "";
-    const cleanPrompt = String(prompt || "").trim();
+    const cleanPrompt = unwrapStructuredImagePrompt(prompt);
     segment.t2i_prompt = cleanPrompt;
     segment.flux_prompt = cleanPrompt;
     segment.nb_prompt = cleanPrompt;
@@ -8019,7 +8329,7 @@ function openBuilder(node) {
 
   function syncSegmentFlowGptPrompt(segment, prompt, options = {}) {
     if (!segment) return "";
-    const cleanPrompt = options.preserveTypingWhitespace ? String(prompt || "") : String(prompt || "").trim();
+    const cleanPrompt = options.preserveTypingWhitespace ? String(prompt || "") : unwrapStructuredImagePrompt(prompt);
     segment.flow_gpt_prompt = cleanPrompt;
     segment.t2i_prompt = cleanPrompt;
     segment.flux_prompt = cleanPrompt;
@@ -10905,6 +11215,21 @@ function openBuilder(node) {
     return explicitEnd;
   }
 
+  function promoteChainedFLFSceneImageToEndFrame(segment = activeSegment()) {
+    if (!segment || currentVideoMode() !== "flf" || hasFirstLastFrameEndImage(segment)) return false;
+    const inheritedStart = firstLastFrameStartImageSource(segment) || {};
+    if (!inheritedStart.chained_from_scene_id && !inheritedStart.chained_from_rendered_video) return false;
+    const ownImage = segmentImageSource(segment) || {};
+    if (!ownImage.path && !ownImage.data) return false;
+    const inheritedKey = String(inheritedStart.path || inheritedStart.data || "");
+    const ownKey = String(ownImage.path || ownImage.data || "");
+    if (!ownKey || ownKey === inheritedKey) return false;
+    segment.first_last_frame_end_image_path = ownImage.path || "";
+    segment.first_last_frame_end_image_data = ownImage.path ? "" : (ownImage.data || "");
+    segment.first_last_frame_end_image_name = ownImage.name || String(ownImage.path || "").split(/[\\/]/).pop() || "last_frame.png";
+    return true;
+  }
+
   async function loadFirstLastFrameEndFile(file, segment = activeSegment()) {
     if (!file || !segment) return;
     const isImage = String(file.type || "").startsWith("image/") || /\.(?:png|jpe?g|webp)$/i.test(String(file.name || ""));
@@ -11029,6 +11354,30 @@ function openBuilder(node) {
       return "First Last Frame transition type: SURREAL MORPH. Describe a creative, continuous, visually legible transformation from every important element of the first frame into the last frame. Use organic shape changes, material transformations, match-motion, and cinematic surrealism while arriving exactly at the last image.";
     }
     return "First Last Frame transition type: AUTO. Inspect both images. If they show the same subject or setting from different framing, angles, poses, or camera distances, create a smooth cinematic continuity transition. If they are substantially different, create a seamless surreal morph from the first visual state into the last. Choose the approach that best fits the images and describe continuous motion rather than listing them.";
+  }
+
+  function flfGemmaContextMode(segment = activeSegment()) {
+    const settings = i2vVideoSettingsForSegment(segment) || state.i2vVideoSettings || {};
+    const mode = String(settings.flf_gemma_context_mode || "images_story").trim();
+    return ["images_only", "images_story", "full"].includes(mode) ? mode : "images_story";
+  }
+
+  function flfGemmaVisualNotes(segment) {
+    const mode = flfGemmaContextMode(segment);
+    const transition = flfTransitionPromptDirection(segment);
+    if (mode === "images_only") return transition;
+    if (mode === "images_story") {
+      const storyBeat = String(segment?.story_beat || "").trim();
+      return [transition, storyBeat ? `Scene story beat (bridge guidance only; images override conflicts):\n${storyBeat}` : ""].filter(Boolean).join("\n\n");
+    }
+    return [videoGemmaNotesForSegment(segment), transition, flfStoryboardVideoDirection(segment), storyboardVideoExtraNotesForSegment(segment)].filter(Boolean).join("\n\n");
+  }
+
+  function flfGemmaSceneConcept(segment) {
+    const mode = flfGemmaContextMode(segment);
+    if (mode === "images_only") return "Create one continuous physical transition that begins at the visible LEFT image and completes at the visible RIGHT image.";
+    if (mode === "images_story") return String(segment?.story_beat || "").trim() || "Create one continuous physical transition between the visible endpoints.";
+    return sceneVideoConceptPromptText(segment);
   }
 
   function rtvSceneImageAnchorPayload(segment = activeSegment()) {
@@ -11662,8 +12011,9 @@ function openBuilder(node) {
     return [
       `First / Last Frame storyboard target: ${target === "end" ? "END FRAME" : "START FRAME"} still image.`,
       endpoint ? `Required visible endpoint state:\n${endpoint}` : "",
-      transformation ? `Transformation context (use only to choose the correct frozen endpoint):\n${transformation}` : "",
-      carryForward ? `Continuity constraints:\n${carryForward}` : "",
+      target === "end" && transformation ? `Transformation context (use only to choose the correct frozen endpoint):\n${transformation}` : "",
+      target === "end" && carryForward ? `Continuity constraints:\n${carryForward}` : "",
+      target === "start" ? "This is strictly the untouched opening condition before the scene action begins. Do not include, foreshadow, partially show, or imply anything from the later transformation or destination state." : "",
       "Create one frozen still image matching the required endpoint. Do not describe animation, morphing over time, or workflow terminology in the final prompt.",
     ].filter(Boolean).join("\n\n");
   }
@@ -11791,7 +12141,11 @@ function openBuilder(node) {
     flfChainPreviousEndFrame.input.checked = state.i2vVideoSettings?.flf_chain_previous_end_frame !== false;
     flfRenderChainSourceSelect.value = state.i2vVideoSettings?.flf_render_chain_start_source === "previous_image" ? "previous_image" : "rendered_frame";
     flfPreGeneratePromptsFromSceneImages.input.checked = state.i2vVideoSettings?.flf_pregenerate_prompts_from_scene_images === true;
+    flfMatchPreviousClipColor.input.checked = state.i2vVideoSettings?.flf_match_previous_clip_color === true;
+    flfColorMatchStrengthInput.value = Number(state.i2vVideoSettings?.flf_color_match_strength ?? 0.85);
+    flfColorMatchFadeInput.value = Number(state.i2vVideoSettings?.flf_color_match_fade_seconds ?? 1.0);
     flfGlobalTransitionTypeSelect.value = ["smooth", "morph"].includes(settings.flf_global_transition_type) ? settings.flf_global_transition_type : "auto";
+    flfGemmaContextModeSelect.value = ["images_only", "images_story", "full"].includes(settings.flf_gemma_context_mode) ? settings.flf_gemma_context_mode : "images_story";
     ltxMsrLoraPicker.input.value = settings.msr_lora_name || REQUIRED_LTX_MSR_LORA;
     ltxMsrFirstPassStrength.value = Number(settings.msr_first_pass_strength ?? 1);
     ltxMsrSecondPassStrength.value = 0;
@@ -11886,7 +12240,11 @@ function openBuilder(node) {
       flf_chain_previous_end_frame: isFLFMode ? Boolean(flfChainPreviousEndFrame.input.checked) : previous.flf_chain_previous_end_frame !== false,
       flf_render_chain_start_source: isFLFMode ? (flfRenderChainSourceSelect.value === "previous_image" ? "previous_image" : "rendered_frame") : (previous.flf_render_chain_start_source || "rendered_frame"),
       flf_pregenerate_prompts_from_scene_images: isFLFMode ? Boolean(flfPreGeneratePromptsFromSceneImages.input.checked) : previous.flf_pregenerate_prompts_from_scene_images === true,
+      flf_match_previous_clip_color: isFLFMode ? Boolean(flfMatchPreviousClipColor.input.checked) : previous.flf_match_previous_clip_color === true,
+      flf_color_match_strength: isFLFMode ? Math.max(0, Math.min(1, Number(flfColorMatchStrengthInput.value || 0))) : Number(previous.flf_color_match_strength ?? 0.85),
+      flf_color_match_fade_seconds: isFLFMode ? Math.max(0.05, Math.min(30, Number(flfColorMatchFadeInput.value || 1))) : Number(previous.flf_color_match_fade_seconds ?? 1.0),
       flf_global_transition_type: isFLFMode && ["smooth", "morph"].includes(flfGlobalTransitionTypeSelect.value) ? flfGlobalTransitionTypeSelect.value : isFLFMode ? "auto" : (previous.flf_global_transition_type || "auto"),
+      flf_gemma_context_mode: isFLFMode && ["images_only", "images_story", "full"].includes(flfGemmaContextModeSelect.value) ? flfGemmaContextModeSelect.value : (previous.flf_gemma_context_mode || "images_story"),
       video_trigger_phrase: videoTriggerInput.value || "",
       msr_lora_name: ltxMsrLoraPicker.input.value || REQUIRED_LTX_MSR_LORA,
       msr_first_pass_strength: Number(ltxMsrFirstPassStrength.value || 1),
@@ -11985,6 +12343,7 @@ function openBuilder(node) {
     const segment = activeSegment();
     const isRTV = currentVideoMode() === "rtv";
     const isFLF = currentVideoMode() === "flf";
+    if (isFLF && segment) promoteChainedFLFSceneImageToEndFrame(segment);
     const image = segment ? (isFLF ? firstLastFrameStartImageSource(segment) : segmentImageSource(segment)) : null;
     const hasImage = Boolean(image?.path || image?.data);
     const behavior = rtvReferenceBehaviorGlobalValue();
@@ -15180,6 +15539,33 @@ function openBuilder(node) {
     return result;
   }
 
+  function assertNoBundledReferenceLyrics(lyricValues, referenceLyrics = "") {
+    const normalize = (value) => cleanTimestampedLyricText(value)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const referenceLines = Array.from(new Set(
+      String(referenceLyrics || "")
+        .replace(/\r\n?/g, "\n")
+        .split("\n")
+        .map(normalize)
+        .filter((line) => line.length >= 4)
+    ));
+    if (referenceLines.length < 2) return;
+    for (let index = 0; index < lyricValues.length; index += 1) {
+      const value = normalize(lyricValues[index]);
+      if (!value || referenceLines.includes(value)) continue;
+      const containedLines = referenceLines.filter((line) => value.includes(line));
+      if (containedLines.length >= 2) {
+        throw new Error(
+          `Transcription safety check stopped the update: Scene ${index + 1} received ${containedLines.length} pasted lyric lines in one result. `
+          + "The existing timeline lyrics were left unchanged. Restart ComfyUI to load the corrected strict line-alignment node, then run Transcribe Lines again."
+        );
+      }
+    }
+  }
+
   function parseSrtTimestampToSeconds(value) {
     const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})$/);
     if (!match) return null;
@@ -15703,6 +16089,7 @@ function openBuilder(node) {
         <div><strong style="color:#cffafe;">Segment mode</strong><br>
           <code>whisper_chunks</code>: uses the natural chunks detected by stable-ts. Good when you do not have lyrics.<br>
           <code>reference_lines</code>: each non-empty pasted lyric line becomes one scene. This gives the user direct control over scene chunks.<br>
+          <code>exact_reference_lines</code>: each non-empty pasted line becomes exactly one vocal scene with the exact pasted text. Vocal and instrumental scenes are not split or merged by duration settings; use the timeline scissors afterward when you want a manual split.<br>
           <code>reference_stanzas</code>: blank-line-separated lyric blocks become scenes. Good for fewer, longer scenes.<br>
           <code>beat_scenes</code>: creates beat-timed scenes with the same Prompt Creator Whisper/SRT timing workflow, then attaches the transcribed lyrics afterward.
         </div>
@@ -15773,11 +16160,15 @@ function openBuilder(node) {
       lyrics.placeholder = "Optional reference lyrics/dialogue. Put each desired scene chunk on its own line. Use [instrumental] / [break] / [outro] for no-vocal sections.";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:230px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
-      const segmentMode = makeSelect(["whisper_chunks", "reference_lines", "reference_stanzas", "beat_scenes"], "reference_lines");
+      const segmentMode = makeSelect(["whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas", "beat_scenes"], "reference_lines");
       segmentMode.options[0].textContent = "Whisper chunks";
       segmentMode.options[1].textContent = "One scene per lyric line";
-      segmentMode.options[2].textContent = "One scene per stanza";
-      segmentMode.options[3].textContent = "Beat mode";
+      segmentMode.options[2].textContent = "Exact reference lyric lines (no duration limits)";
+      segmentMode.options[3].textContent = "One scene per stanza";
+      segmentMode.options[4].textContent = "Beat mode";
+      const exactModeNote = document.createElement("div");
+      exactModeNote.style.cssText = "display:none;border:1px solid #0e7490;border-radius:7px;background:#083344;color:#cffafe;padding:10px;font-size:12px;line-height:1.5;";
+      exactModeNote.innerHTML = "<strong>Exact Reference Lyric Lines:</strong> every non-empty pasted lyric line becomes exactly one vocal scene using that exact text. Vocal lines are never split, merged, stretched, or constrained by scene minimum/maximum duration. Detected instrumental gaps can still be included, but each gap stays whole so you can split it manually later with the scissors button above the timeline. Min gap only decides whether a silence is large enough to become an instrumental scene; it never changes lyric timing.";
       const includeGaps = makeCheckbox("Include instrumental gaps", true);
       const instrumentalText = makeInput("[instrumental]");
       const minGap = makeInput("2.0");
@@ -15802,13 +16193,12 @@ function openBuilder(node) {
       };
       const grid = document.createElement("div");
       grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
-      const timestampFields = [
-        makeField("Instrumental text", instrumentalText),
-        makeField("Min gap seconds", minGap),
-        makeField("Min scene seconds", minScene),
-        makeField("Max scene seconds", maxScene),
-        makeField("Vocal tail padding", vocalTail),
-      ];
+      const instrumentalTextField = makeField("Instrumental text", instrumentalText);
+      const minGapField = makeField("Min gap seconds", minGap);
+      const minSceneField = makeField("Min scene seconds", minScene);
+      const maxSceneField = makeField("Max scene seconds", maxScene);
+      const vocalTailField = makeField("Vocal tail padding", vocalTail);
+      const timestampFields = [instrumentalTextField, minGapField, minSceneField, maxSceneField, vocalTailField];
       grid.append(
         makeField("Language", language),
         makeField("Segment mode", segmentMode),
@@ -15831,11 +16221,16 @@ function openBuilder(node) {
       );
       const updateModeUi = () => {
         const isBeatMode = segmentMode.value === "beat_scenes";
+        const isExactMode = segmentMode.value === "exact_reference_lines";
         const usingBeatSrt = Boolean(beatUseSrtDurations.input.checked);
         beatGrid.style.display = isBeatMode ? "grid" : "none";
         timestampFields.forEach((field) => {
           field.style.display = isBeatMode ? "none" : "";
         });
+        minSceneField.style.display = isBeatMode || isExactMode ? "none" : "";
+        maxSceneField.style.display = isBeatMode || isExactMode ? "none" : "";
+        vocalTailField.style.display = isBeatMode || isExactMode ? "none" : "";
+        exactModeNote.style.display = isExactMode ? "block" : "none";
         gapRow.style.display = isBeatMode ? "none" : "flex";
         beatSrtFields.forEach((field) => {
           field.style.display = usingBeatSrt ? "" : "none";
@@ -15853,7 +16248,7 @@ function openBuilder(node) {
       const cancel = makeButton("Cancel");
       const run = makeButton("Create Timeline Scenes", "primary");
       actions.append(cancel, run);
-      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), grid, beatGrid, gapRow, actions);
+      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), exactModeNote, grid, beatGrid, gapRow, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -15916,6 +16311,13 @@ function openBuilder(node) {
   }
 
   function normalizeTimestampedSceneDurations(segments = [], options = {}, payload = {}) {
+    const segmentMode = String(options.segmentMode || payload?.segment_mode || payload?.segmentMode || "");
+    if (segmentMode === "exact_reference_lines") {
+      return (Array.isArray(segments) ? segments : [])
+        .filter(Boolean)
+        .map((segment) => ensureSegmentRuntimeFields(segment))
+        .sort((a, b) => Number(a.start || 0) - Number(b.start || 0) || Number(a.end || 0) - Number(b.end || 0));
+    }
     const minSceneSeconds = Math.max(1, Number(options.minSceneSeconds ?? payload?.min_scene_seconds ?? payload?.minSceneSeconds ?? 1) || 1);
     const maxSceneSeconds = Math.max(minSceneSeconds, Number(options.maxSceneSeconds ?? payload?.max_scene_seconds ?? payload?.maxSceneSeconds ?? 8) || 8);
     const softMaxSceneSeconds = maxSceneSeconds + 2;
@@ -16197,6 +16599,7 @@ function openBuilder(node) {
           empty_segment_text: options.beatEmptySegmentText || options.instrumentalText || "Instrumental section.",
           whisper_language: options.language || "english",
           full_lyrics: options.referenceLyrics || "",
+          legacy_v9_beat_mode: true,
         }, 60000);
         progress.set("Queueing Prompt Creator beat/SRT workflow...", 16);
         const queued = await queueWorkflowPrompt(built.prompt, {
@@ -16255,6 +16658,13 @@ function openBuilder(node) {
         modeLabel = payload.segment_mode || options.segmentMode || "reference_lines";
       }
       if (!created.length) throw new Error("Timestamped lines did not produce any usable scene segments.");
+      // Published V9 Beat Mode intentionally allows the Prompt Creator
+      // transcription to return multiple pasted lyric lines in one beat-timed
+      // scene. The newer strict-line safety check applies only to non-beat
+      // timestamped modes.
+      if (options.segmentMode !== "beat_scenes") {
+        assertNoBundledReferenceLyrics(created.map((segment) => segment.lyric_text || ""), options.referenceLyrics || "");
+      }
       applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
       pushHistory();
       state.segments = created;
@@ -16328,6 +16738,7 @@ function openBuilder(node) {
       if (!lyricValues.length) {
         throw new Error("Scene-window transcription finished, but no lyricSegment lines were found.");
       }
+      assertNoBundledReferenceLyrics(lyricValues, options.referenceLyrics || "");
       pushHistory();
       const segments = allEditableSegments();
       let applied = 0;
@@ -19973,8 +20384,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       return { zModel, zClip, zVae, kreaModel, kreaClip, kreaVae, seed, seedMode, firstWidth, firstHeight, width, height, readZImage, readKrea2 };
     }
 
-    function applyGeneratedReferencePromptToDescription(referenceType, target, prompt = "") {
-      const description = String(prompt || "").trim();
+    function applyReferenceDescription(referenceType, target, description = "") {
+      description = String(description || "").trim();
       if (!description || !target || typeof target !== "object") return;
       target.description = description;
       if (referenceType === "subject") {
@@ -19986,6 +20397,20 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           subjectDescription.value = description;
         }
       }
+    }
+
+    async function describeGeneratedReference(referenceType, target, prompt = "") {
+      if (referenceType === "subject") {
+        setInlineProgress(`Vision Gemma describing the generated subject image...\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 91);
+        const description = await describeReferenceImageWithGemma(target, "subject", {
+          unloadAfter: true,
+          clearBeforeLoad: false,
+        });
+        applyReferenceDescription("subject", target, description);
+        return description;
+      }
+      applyReferenceDescription(referenceType, target, prompt);
+      return String(prompt || "").trim();
     }
 
     async function persistGeneratedReferenceImage(referenceType, target) {
@@ -20059,7 +20484,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.path = saved.saved_path || "";
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
-        applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
+        await describeGeneratedReference(referenceType, target, promptData.prompt);
         await persistGeneratedReferenceImage(referenceType, target);
         advanceZImageSeedAfterRun(zSettings);
         syncZImageSettingsPanel();
@@ -20142,7 +20567,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.path = saved.saved_path || "";
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
-        applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
+        await describeGeneratedReference(referenceType, target, promptData.prompt);
         await persistGeneratedReferenceImage(referenceType, target);
         renderAll();
         setInlineProgress("Reference image ready.", 100);
@@ -20255,7 +20680,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           location.image.path = saved.saved_path || "";
           location.image.data = "";
           location.image.name = `${location.name || `location_${index + 1}`}.png`;
-          applyGeneratedReferencePromptToDescription("location", location, prompt);
+          await describeGeneratedReference("location", location, prompt);
           await persistGeneratedReferenceImage("location", location);
           if (!useFlowGpt && !useKrea2) {
             advanceZImageSeedAfterRun(zSettings);
@@ -20393,7 +20818,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
           subject.image.path = saved.saved_path || "";
           subject.image.data = "";
           subject.image.name = `${subject.name || `subject_${index + 1}`}.png`;
-          applyGeneratedReferencePromptToDescription("subject", subject, prompt);
+          await describeGeneratedReference("subject", subject, prompt);
           await persistGeneratedReferenceImage("subject", subject);
           if (refs.subject_count === 1 && refs.subjects[0]?.id === subject.id) {
             refs.subject.image = subject.image;
@@ -20538,7 +20963,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
         target.image.path = saved.saved_path || "";
         target.image.data = "";
         target.image.name = `${name || referenceType}.png`;
-        applyGeneratedReferencePromptToDescription(referenceType, target, promptData.prompt);
+        await describeGeneratedReference(referenceType, target, promptData.prompt);
         await persistGeneratedReferenceImage(referenceType, target);
         renderAll();
         setInlineProgress("Cleaning memory after Krea2 reference...", 94);
@@ -25255,6 +25680,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
+      if (options.throwOnError) throw error;
       return { updated, error: String(error?.message || error) };
     }
   }
@@ -27053,11 +27479,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         project_folder: folder,
       });
       const session = data.session || {};
+      faceFixTool.reset?.();
       pushHistory();
       state.segments = Array.isArray(session.segments) ? session.segments : [];
       state.overlaySegments = Array.isArray(session.overlay_segments) ? session.overlay_segments : [];
       state.overlaySegments.forEach(normalizeOverlayClip);
       state.overlayTrack = normalizeOverlayTrackState(session.overlay_track || {});
+      state.repairedSegmentIdCount = 0;
+      // Load scene-keyed mappings before ID repair so a repaired duplicate keeps
+      // the same subject, location, trigger, and ingredients assignments.
+      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(session.flux_reference_builder || {});
       ensureAllSegmentRuntimeFields();
       state.projectFolder = data.project_folder || folder;
       state.sessionPath = data.session_path || "";
@@ -27143,7 +27574,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.krea2TwoPassSettings = scrubGlobalImageToImageSourceForProject(cloneKrea2TwoPassSettings(session.krea2_2pass_settings || state.krea2TwoPassSettings), state.projectFolder);
       state.useFluxGlobalImageIngredients = Boolean(session.use_flux_global_image_ingredients);
       state.fluxGlobalImageIngredients = Array.isArray(session.flux_global_image_ingredients) ? session.flux_global_image_ingredients : [];
-      state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(session.flux_reference_builder);
       state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(session.id_lora_reference_builder || session.idLoraReferenceBuilder);
       state.lyricMapper = normalizeLyricMapper(session.lyric_mapper);
       state.zEnhanceSettings = session.z_enhance_settings || state.zEnhanceSettings;
@@ -27213,7 +27643,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncVideoModePanel();
       syncInspector();
       render();
-      toast(`Loaded builder session.\n${state.sessionPath}`);
+      const repairedSegmentIdCount = Number(state.repairedSegmentIdCount || 0);
+      if (repairedSegmentIdCount) {
+        await saveSession({ quiet: true, throwOnError: true });
+        state.repairedSegmentIdCount = 0;
+      }
+      toast(repairedSegmentIdCount
+        ? `Loaded builder session and repaired ${repairedSegmentIdCount} duplicate scene ID${repairedSegmentIdCount === 1 ? "" : "s"}.\n${state.sessionPath}`
+        : `Loaded builder session.\n${state.sessionPath}`);
       return true;
     } catch (error) {
       toast(String(error?.message || error), true);
@@ -27292,7 +27729,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.image_history.push(data.saved_path);
         segment.image_history_index = segment.image_history.length - 1;
       }
-      if (data.saved_path) segment.preview_mode = "image";
+      if (data.saved_path) {
+        segment.image_assignment_cleared = false;
+        segment.preview_mode = "image";
+        promoteChainedFLFSceneImageToEndFrame(segment);
+      }
       return data.saved_path || null;
     } catch (error) {
       console.warn("[VRGDG Music Builder] Failed to archive preview image:", error);
@@ -27310,6 +27751,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       segment.image_history.push(imagePath);
       segment.image_history_index = segment.image_history.length - 1;
     }
+    segment.image_assignment_cleared = false;
     segment.preview_mode = "image";
   }
 
@@ -27574,6 +28016,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const imageMode = options.imageMode || state.imageModelMode || "zimage";
     const flfImageTarget = state.videoModelMode === "flf" ? String(options.flfImageTarget || "start").trim().toLowerCase() : "";
     const storyboardState = wizardStoryboardState(scenes, { promptMode: "image", imageMode });
+    const imageStyle = normalizeBuilderStoryLayer(state.builderStoryLayer);
     progress?.set(`${label}: sending storyboard scene card to ${promptRunnerActionName()}...\nConcept prompt is included as the scene story beat.`, percent);
     const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", {
       ...textGemmaRunnerPayload(),
@@ -27582,6 +28025,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       project_folder: activeProjectFolderForSave(),
       scene_id: segment.id || "",
       builder_instruction_key: builderImageInstructionKey(imageMode),
+      flf_image_target: flfImageTarget,
+      image_world_style: imageStyle.image_world_style,
+      image_custom_style_direction: imageStyle.image_custom_style_direction,
       unload_after: options.unloadAfter !== false,
       seed: options.seed,
       temperature: options.temperature ?? 0.35,
@@ -27602,7 +28048,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return generateStoryboardT2IPromptForSegment(segment, progress, percent, label, options);
   }
 
-  async function createZImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "ZImage") {
+  async function createZImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "ZImage", options = {}) {
     state.activeId = segment.id;
     syncInspector();
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "zimage", segment.notes || "");
@@ -27625,7 +28071,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       use_custom_loras: useLoras,
       lora_count: useLoras ? zSettings.lora_count : 0,
       ltx_two_pass_mode: false,
-      use_image_to_image: Boolean(zSettings.use_image_to_image),
+      use_image_to_image: options.bypassImageToImage === true ? false : Boolean(zSettings.use_image_to_image),
       image_to_image_start_at_step: zSettings.image_to_image_start_at_step || 5,
       image_to_image_path: zSettings.image_to_image_path || "",
       image_to_image_data: zSettings.image_to_image_data || "",
@@ -27700,7 +28146,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
-  async function createErnieImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Ernie") {
+  async function createErnieImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Ernie", options = {}) {
     state.activeId = segment.id;
     syncInspector();
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "ernie_image", segment.notes || "");
@@ -27720,7 +28166,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       batch_size: settings.batch_size || 1,
       use_custom_loras: useLoras,
       lora_count: useLoras ? settings.lora_count : 0,
-      use_image_to_image: Boolean(settings.use_image_to_image),
+      use_image_to_image: options.bypassImageToImage === true ? false : Boolean(settings.use_image_to_image),
       image_to_image_start_at_step: settings.image_to_image_start_at_step || 5,
       image_to_image_path: settings.image_to_image_path || "",
       image_to_image_data: settings.image_to_image_data || "",
@@ -27796,7 +28242,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
-  async function createKrea2TwoPassImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Krea 2") {
+  async function createKrea2TwoPassImageForSegment(segment, progress = null, percentBase = 45, percentSpan = 35, label = "Krea 2", options = {}) {
     state.activeId = segment.id;
     syncInspector();
     const prompt = ensureSegmentT2IPromptHasTrigger(segment, "krea2_2pass", segment.notes || "");
@@ -27818,7 +28264,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       seed: settings.seed,
       seed_mode: settings.seed_mode || "fixed",
       batch_size: settings.batch_size || 1,
-      use_image_to_image: Boolean(settings.use_image_to_image),
+      use_image_to_image: options.bypassImageToImage === true ? false : Boolean(settings.use_image_to_image),
       image_to_image_creativity: Math.max(0, Math.min(10, Number(settings.image_to_image_creativity ?? 5))),
       image_to_image_path: settings.image_to_image_path || "",
       image_to_image_data: settings.image_to_image_data || "",
@@ -28081,9 +28527,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function previousSceneImageIngredient(segment) {
-    const previous = previousBaseSceneWithImage(segment);
+    const previous = currentVideoMode() === "flf"
+      ? previousAutoChainSourceSegment(segment)
+      : previousBaseSceneWithImage(segment);
     if (!previous) return null;
-    const image = segmentImageSource(previous);
+    const image = currentVideoMode() === "flf"
+      ? firstLastFrameEndImageSource(previous)
+      : segmentImageSource(previous);
     if (!image?.path && !image?.data) return null;
     const previousInfo = segmentIndexInfo(previous);
     return {
@@ -28114,15 +28564,26 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     if ((!next.ask_previous_scene_image && !state.imageContinuityEnabled) || options.includePreviousSceneImage === false) return next;
     const previousImage = previousSceneImageIngredient(segment);
-    if (!previousImage) return next;
-    const shouldAsk = options.includePreviousSceneImage !== true && !state.imageContinuityEnabled;
-    const include = shouldAsk
-      ? window.confirm(
-        `Send the previous scene image as a reference for this Browser AI generation?\n\n`
-        + `${previousImage.source_scene_label || "Previous scene"} will be uploaded with the prompt so ${browserImageProviderLabel(next.provider)} can see what happened last.`
-      )
-      : true;
-    if (!include) return next;
+    if (!previousImage) {
+      if (currentVideoMode() === "flf" && (next.ask_previous_scene_image || options.includePreviousSceneImage === true) && previousAutoChainSourceSegment(segment)) {
+        throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: previous-scene continuity is enabled, but the immediately previous scene has no assigned FLF last-frame image.`);
+      }
+      return next;
+    }
+    if (currentVideoMode() === "flf") {
+      const previous = previousAutoChainSourceSegment(segment);
+      const previousStart = segmentImageSource(previous) || {};
+      const previousEnd = firstLastFrameEndImageSource(previous) || {};
+      const endpointKeys = new Set([
+        previousStart.path, previousStart.data,
+        previousEnd.path, previousEnd.data,
+      ].map((value) => String(value || "")).filter(Boolean));
+      next.image_ingredients = next.image_ingredients.filter((item) => {
+        const role = String(item?.role || item?.first_last_frame_role || "").toLowerCase();
+        if (role === "first_frame" || role === "last_frame" || role === "first" || role === "last") return false;
+        return ![item?.path, item?.data].some((value) => endpointKeys.has(String(value || "")));
+      });
+    }
     addUniqueBrowserImageIngredient(next.image_ingredients, previousImage);
     next.previous_scene_image_attached = true;
     next.previous_scene_image_label = previousImage.source_scene_label || "";
@@ -28162,14 +28623,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const savedPrompt = syncSegmentFlowGptPrompt(segment, settings.prompt || "");
     if (!savedPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Flow/GPT prompt is missing.`);
     const prompt = browserImageReferencePrompt(savedPrompt, settings);
+    const priorAttempt = Math.max(0, Number(segment.flow_gpt_generation_attempt || 0));
+    const generationAttempt = priorAttempt + 1;
+    segment.flow_gpt_generation_attempt = generationAttempt;
+    const configuredTimeout = Math.max(60, Math.min(2400, Number(settings.timeout_seconds || 600)));
+    const cacheBustTimeout = configuredTimeout >= 2400
+      ? configuredTimeout - (generationAttempt % 2)
+      : configuredTimeout + (generationAttempt % 2);
     progress?.set(`${label}: building hidden browser image workflow${settings.previous_scene_image_attached ? ` with previous scene reference (${settings.previous_scene_image_label})` : ""}...`, percentBase + percentSpan * 0.25);
     const built = await buildBrowserImagePrompt({
       provider: settings.provider,
       prompt,
       aspect_ratio: settings.aspect_ratio || "16:9",
       image_ingredients: settings.image_ingredients || [],
-      timeout_seconds: settings.timeout_seconds || 600,
+      timeout_seconds: cacheBustTimeout,
+      reuse_open_project: options.reuseOpenProject === true,
     });
+    if (settings.previous_scene_image_attached && Number(built.image_count || 0) < 1) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: previous-scene continuity was requested, but Browser AI received zero reference images.`);
+    }
     progress?.set(`${label}: queueing ${built.provider_label || "browser image"} workflow...`, percentBase + percentSpan * 0.45);
     const queued = await queueWorkflowPrompt(built.prompt);
     const promptId = queued?.prompt_id;
@@ -28209,7 +28681,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress = createProgressWindow(`Creating ${browserImageProviderLabel(settings.provider)} image`);
       progress.set("Autosaving session/SRT before Flow/GPT image...", 8);
       await autoSaveSessionQuiet("Flow/GPT image");
-      await createFlowGptImageForSegment(segment, progress, 15, 75, "Flow/GPT image");
+      await createFlowGptImageForSegment(segment, progress, 15, 75, "Flow/GPT image", {
+        includePreviousSceneImage: Boolean(settings.ask_previous_scene_image),
+      });
       await autoSaveSessionQuiet("Flow/GPT image complete");
       progress.set("Flow/GPT image ready.", 100);
       progress.close(900);
@@ -28284,6 +28758,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     render();
     const imageMode = options.imageMode || state.imageModelMode || "nano_banana";
     const isFlowGpt = imageMode === "flow_gpt";
+    const flfImageTarget = state.videoModelMode === "flf" ? String(options.flfImageTarget || "").trim().toLowerCase() : "";
     let settings = nbImageSettingsForSegment(segment);
     let userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
     ({ settings, userNotes } = applyImageContinuityToPromptSettings(segment, settings, userNotes));
@@ -28918,6 +29393,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isFLF = videoMode === "flf";
     const isIngredients = videoMode === "ingredients";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
+    if (isFLF && flfGemmaContextMode(segment) !== "full") return base;
     const lyricText = quoteOrderedLyricCues(String(segment?.lyric_text || "").trim()).trim();
     const noVocal = Boolean(segmentUsesNoLipSyncPerformance(segment) || isInstrumentalLyricText(lyricText));
     const singers = Array.isArray(segment?.lyric_singers) ? segment.lyric_singers.map((value) => String(value || "").trim()).filter(Boolean) : [];
@@ -28929,8 +29405,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       draft_prompt: base,
       mode_label: modeLabel,
       performance_mode: effectiveVideoPerformanceModeForSegment(segment),
-      t2i_prompt: sceneVideoConceptPromptText(segment),
-      user_notes: [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim(), isFLF ? flfTransitionPromptDirection(segment) : "", isFLF ? flfStoryboardVideoDirection(segment) : ""].filter(Boolean).join("\n\n"),
+      t2i_prompt: isFLF ? flfGemmaSceneConcept(segment) : sceneVideoConceptPromptText(segment),
+      user_notes: isFLF ? flfGemmaVisualNotes(segment) : [facialPerformanceNoteForSegment(segment), String(segment?.i2v_notes || "").trim()].filter(Boolean).join("\n\n"),
       lyric_text: noVocal ? "" : lyricText.replace(/^["'“”‘’]+|["'“”‘’]+$/g, ""),
       singers: segment?.no_character_present ? [] : singers,
       no_vocal: noVocal,
@@ -28992,7 +29468,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
     const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
     const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
-    const t2iText = sceneVideoConceptPromptText(segment);
+    const t2iText = isFLF ? flfGemmaSceneConcept(segment) : sceneVideoConceptPromptText(segment);
     if (useFirstLastFrameVision && firstLastFrameReferences.length < 2) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: First Last Frame prompt needs both a first frame image and an end frame image.`);
     }
@@ -29008,9 +29484,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     const baseNotes = videoGemmaNotesForSegment(segment);
     const modeNotes = isIdLora ? idLoraGemmaNotesForSegment(segment, baseNotes) : isFLF
-      ? [baseNotes, flfTransitionPromptDirection(segment), flfStoryboardVideoDirection(segment)].filter(Boolean).join("\n\n")
+      ? flfGemmaVisualNotes(segment)
       : baseNotes;
-    const storyboardNotes = String(options.skipStoryboardExtraNotes ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
+    const storyboardNotes = String(options.skipStoryboardExtraNotes || (isFLF && flfGemmaContextMode(segment) !== "full") ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
     const extraNotes = [storyboardNotes, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
     return {
       endpoint: isT2V || textScriptMode ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v",
@@ -29029,6 +29505,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_reference_data: imageReference.data,
         image_references: firstLastFrameReferences,
         first_last_frame_mode: useFirstLastFrameVision,
+        flf_context_mode: isFLF ? flfGemmaContextMode(segment) : "full",
         transition_lora_active: isFLF && flfTransitionLoraActive(segment),
         flf_start_state: isFLF ? String(segment.flf_start_state || "").trim() : "",
         flf_transformation: isFLF ? String(segment.flf_transformation || "").trim() : "",
@@ -29036,8 +29513,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
-        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
-        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
+        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
+        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
         theme_style_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
@@ -29427,7 +29904,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
     const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false;
     const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
-    const conceptPrompt = sceneVideoConceptPromptText(segment);
+    const conceptPrompt = isFLF ? flfGemmaSceneConcept(segment) : sceneVideoConceptPromptText(segment);
     const idLoraContext = isIdLora ? idLoraSceneContext(segment) : null;
     if (useFirstLastFrameVision && firstLastFrameReferences.length < 2) {
       toast("First Last Frame needs a resolved start and end image before Gemma can write the transition prompt. With prompt pre-generation enabled, later scenes may use their assigned timeline images.", true);
@@ -29473,15 +29950,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         image_reference_data: imageReference.data,
         image_references: firstLastFrameReferences,
         first_last_frame_mode: useFirstLastFrameVision,
+        flf_context_mode: isFLF ? flfGemmaContextMode(segment) : "full",
         transition_lora_active: isFLF && flfTransitionLoraActive(segment),
         flf_start_state: isFLF ? String(segment.flf_start_state || "").trim() : "",
         flf_transformation: isFLF ? String(segment.flf_transformation || "").trim() : "",
         flf_end_state: isFLF ? String(segment.flf_end_state || "").trim() : "",
         flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
-        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? [videoGemmaNotesForSegment(segment), flfTransitionPromptDirection(segment), flfStoryboardVideoDirection(segment), storyboardVideoExtraNotesForSegment(segment)].filter(Boolean).join("\n\n") : videoGemmaNotesForSegment(segment),
-        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
-        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
+        user_notes: isIdLora ? idLoraGemmaNotesForSegment(segment) : isFLF ? flfGemmaVisualNotes(segment) : videoGemmaNotesForSegment(segment),
+        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
+        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
         no_character_present: Boolean(segment.no_character_present),
         theme_style_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
@@ -29553,6 +30031,34 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
     return data;
+  }
+
+  async function generateI2VPromptForSegmentWithFLFRetry(segment, progress = null, percent = 50, label = "Gemma FLF", options = {}) {
+    const maxAttempts = Math.max(1, Math.min(5, Number(options.maxFLFAttempts || 3)));
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      assertBatchNotStopped();
+      try {
+        const attemptLabel = attempt === 1 ? label : `${label} — retry ${attempt}/${maxAttempts}`;
+        return await generateI2VPromptForSegment(segment, progress, percent, attemptLabel, options);
+      } catch (error) {
+        lastError = error;
+        const message = String(error?.message || error || "");
+        const incompleteObservation = /FLF Gemma vision observation was incomplete|both START and END descriptions are required/i.test(message);
+        if (!incompleteObservation || attempt >= maxAttempts) throw error;
+        progress?.set(
+          `${label}: Gemma returned an incomplete START/END observation.\nRetrying this same scene from scratch (${attempt + 1}/${maxAttempts})...`,
+          percent,
+        );
+        try {
+          await runClearMemoryWorkflowQuiet(progress, `${label} incomplete observation attempt ${attempt}`, percent);
+        } catch (cleanupError) {
+          console.warn("[VRGDG Music Builder] FLF observation retry cleanup failed:", cleanupError);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+    }
+    throw lastError || new Error(`${label}: FLF vision prompt failed after ${maxAttempts} attempts.`);
   }
 
   async function i2vAllScenes(options = {}) {
@@ -29642,7 +30148,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const useImageReference = requestedUseImageReference && !forceTextForContinuity;
         const displayIndex = segmentIndexInfo(segment).index;
         progress.set(`${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}: ${sceneDisplayName(segment, displayIndex)}\nScope: ${batchScopeLabel(sceneScope)}\nBatch mode: ${firstLastFrameVision ? "first/last vision" : forceVision ? "vision" : forceTextOnly || forceTextForContinuity ? "text only" : "scene checkbox"}\n${firstLastFrameVision ? "Using first frame + end frame images plus scene/pacing notes." : useImageReference ? "Using image reference plus T2I prompt/motion notes." : forceTextForContinuity ? "Using T2I prompt text only; continuity will create this scene image during Render All." : "Using T2I prompt text only."}`, base);
-        await generateI2VPromptForSegment(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, { unloadAfter: false, forceTextOnly: forceTextOnly || forceTextForContinuity, forceVision, deferEnhancement });
+        const generatePrompt = firstLastFrameVision
+          ? generateI2VPromptForSegmentWithFLFRetry
+          : generateI2VPromptForSegment;
+        await generatePrompt(segment, progress, Math.min(deferEnhancement ? 70 : 98, base + 30), `${runnerName} ${modeLabel} All ${index + 1}/${scenes.length}`, {
+          unloadAfter: false,
+          forceTextOnly: forceTextOnly || forceTextForContinuity,
+          forceVision,
+          deferEnhancement,
+          maxFLFAttempts: 3,
+        });
         await autoSaveSessionQuiet(`${runnerName} ${modeLabel} All ${sceneDisplayName(segment, displayIndex)}`);
       }
       if (deferEnhancement) {
@@ -30681,6 +31196,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     window.VRGDGStoryboardBuilder.open({
       projectFolder: projectInput.value || state.projectFolder || "",
+      lineMappingLyrics: String(state.lyricMapper?.source_text || ""),
       imageMode: state.imageModelMode || "zimage",
       imageModeLabel: imageModeDisplayLabel(state.imageModelMode || "zimage"),
       videoPromptType: currentVideoMode(),
@@ -31044,23 +31560,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return missing;
   }
 
-  async function createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase, percentSpan, label) {
+  async function createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase, percentSpan, label, options = {}) {
     if (imageMode === "ernie_image") {
-      await createErnieImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Ernie image`);
+      await createErnieImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Ernie image`, options);
     } else if (imageMode === "krea2_2pass") {
-      await createKrea2TwoPassImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Krea 2 image`);
+      await createKrea2TwoPassImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Krea 2 image`, options);
     } else if (imageMode === "flux_klein") {
       await createFluxKleinImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Flux/Klein image`);
     } else if (imageMode === "nano_banana") {
       await createNBImageForSegmentWithRetry(segment, progress, percentBase, percentSpan, `${label}: NanoBanana image`, { maxRetries: 10 });
     } else if (imageMode === "flow_gpt") {
-      await createFlowGptImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Flow/GPT image`);
+      await createFlowGptImageForSegment(segment, progress, percentBase, percentSpan, `${label}: Flow/GPT image`, options);
     } else {
-      await createZImageForSegment(segment, progress, percentBase, percentSpan, `${label}: ZImage`);
+      await createZImageForSegment(segment, progress, percentBase, percentSpan, `${label}: ZImage`, options);
     }
   }
 
-  async function prepareFLFRenderedFrameNextScene(previousSegment, nextSegment, progress = null, percent = 50, label = "FLF Render Chain") {
+  async function prepareFLFRenderedFrameNextScene(previousSegment, nextSegment, progress = null, percent = 50, label = "FLF Render Chain", options = {}) {
     if (!previousSegment || !nextSegment) return null;
     const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
     const previousVideoPath = String(selectedSegmentVideoPath(previousSegment) || "").trim();
@@ -31079,15 +31595,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     nextSegment.flf_rendered_start_frame_data = "";
     nextSegment.flf_rendered_start_frame_name = String(framePath).split(/[\\/]/).pop() || "rendered_previous_end.png";
     nextSegment.flf_rendered_source_video_path = previousVideoPath;
-    progress?.set(`${label}: Gemma is viewing the extracted video frame and this scene's target end frame...`, Math.min(98, percent + 3));
-    await generateI2VPromptForSegment(nextSegment, progress, Math.min(98, percent + 5), `${label}: Gemma FLF`, { unloadAfter: true, forceVision: true });
+    const shouldRefreshPrompt = options.refreshPrompt === true || !String(nextSegment.i2v_prompt || "").trim();
+    if (shouldRefreshPrompt) {
+      progress?.set(`${label}: the video prompt is missing, so Gemma is viewing the extracted frame and target end frame...`, Math.min(98, percent + 3));
+      await generateI2VPromptForSegment(nextSegment, progress, Math.min(98, percent + 5), `${label}: Gemma FLF`, { unloadAfter: true, forceVision: true });
+    } else {
+      progress?.set(`${label}: extracted final frame assigned. Keeping the existing saved FLF video prompt.`, Math.min(98, percent + 5));
+    }
     if (nextSegment.id === state.activeId) {
       i2vPrompt.value = nextSegment.i2v_prompt || "";
       syncRTVSceneImageAnchorPanel();
     }
     render();
     await autoSaveSessionQuiet("FLF rendered-frame chain prepared");
-    return { framePath, prompt: nextSegment.i2v_prompt || "" };
+    return { framePath, prompt: nextSegment.i2v_prompt || "", prompt_refreshed: shouldRefreshPrompt };
   }
 
   function snapshotSceneImagePromptState(segment) {
@@ -31191,6 +31712,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const name = firstFrame.name || "first_frame.png";
     if (imageMode === "zimage") {
       const settings = activeZImageSettings();
+      if (!settings.use_image_to_image) return () => {};
       const previous = {
         use_image_to_image: Boolean(settings.use_image_to_image),
         image_to_image_path: settings.image_to_image_path || "",
@@ -31211,6 +31733,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const settings = activeSegment()?.use_scene_ernie_image_settings
         ? (activeSegment().ernie_image_settings || cloneErnieImageSettings(state.ernieImageSettings))
         : (state.ernieImageSettings || defaultErnieImageSettings());
+      if (!settings.use_image_to_image) return () => {};
       const previous = {
         use_image_to_image: Boolean(settings.use_image_to_image),
         image_to_image_path: settings.image_to_image_path || "",
@@ -31234,6 +31757,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const settings = activeSegment()?.use_scene_krea2_2pass_settings
       ? (activeSegment().krea2_2pass_settings || cloneKrea2TwoPassSettings(state.krea2TwoPassSettings))
       : (state.krea2TwoPassSettings || defaultKrea2TwoPassSettings());
+    if (!settings.use_image_to_image) return () => {};
     const previous = {
       use_image_to_image: Boolean(settings.use_image_to_image),
       image_to_image_path: settings.image_to_image_path || "",
@@ -31255,9 +31779,70 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
-  async function createEndFrameForSegment(segment, imageMode, progress = null, percentBase = 20, percentSpan = 70, label = "Create End Frame") {
+  function temporarilyDisableImageToImageForOpeningFrame(imageMode = state.imageModelMode || "zimage") {
+    if (imageMode === "zimage") {
+      const settings = activeZImageSettings();
+      const previous = Boolean(settings.use_image_to_image);
+      settings.use_image_to_image = false;
+      syncZImageSettingsPanel();
+      return () => {
+        settings.use_image_to_image = previous;
+        syncZImageSettingsPanel();
+      };
+    }
+    if (imageMode === "ernie_image") {
+      const segment = activeSegment();
+      const useSceneSettings = Boolean(segment?.use_scene_ernie_image_settings);
+      const settings = useSceneSettings
+        ? (segment.ernie_image_settings || cloneErnieImageSettings(state.ernieImageSettings))
+        : (state.ernieImageSettings || defaultErnieImageSettings());
+      const previous = Boolean(settings.use_image_to_image);
+      settings.use_image_to_image = false;
+      if (useSceneSettings) segment.ernie_image_settings = settings;
+      else state.ernieImageSettings = settings;
+      syncErnieImagePanel();
+      return () => {
+        settings.use_image_to_image = previous;
+        if (useSceneSettings) segment.ernie_image_settings = settings;
+        else state.ernieImageSettings = settings;
+        syncErnieImagePanel();
+      };
+    }
+    if (imageMode === "krea2_2pass") {
+      const segment = activeSegment();
+      const useSceneSettings = Boolean(segment?.use_scene_krea2_2pass_settings);
+      const settings = useSceneSettings
+        ? (segment.krea2_2pass_settings || cloneKrea2TwoPassSettings(state.krea2TwoPassSettings))
+        : (state.krea2TwoPassSettings || defaultKrea2TwoPassSettings());
+      const previous = Boolean(settings.use_image_to_image);
+      settings.use_image_to_image = false;
+      if (useSceneSettings) segment.krea2_2pass_settings = settings;
+      else state.krea2TwoPassSettings = settings;
+      syncKrea2TwoPassPanel();
+      return () => {
+        settings.use_image_to_image = previous;
+        if (useSceneSettings) segment.krea2_2pass_settings = settings;
+        else state.krea2TwoPassSettings = settings;
+        syncKrea2TwoPassPanel();
+      };
+    }
+    return () => {};
+  }
+
+  function savedImagePromptForMode(segment, imageMode = state.imageModelMode || "zimage") {
+    if (!segment) return "";
+    if (imageMode === "flow_gpt") return String(segment.flow_gpt_prompt || segment.nb_prompt || segment.t2i_prompt || segment.flux_prompt || "").trim();
+    if (imageMode === "nano_banana") return String(segment.nb_prompt || segment.t2i_prompt || segment.flux_prompt || "").trim();
+    if (imageMode === "flux_klein") return String(segment.flux_prompt || segment.t2i_prompt || segment.nb_prompt || "").trim();
+    return String(segment.t2i_prompt || segment.flux_prompt || segment.nb_prompt || segment.flow_gpt_prompt || "").trim();
+  }
+
+  async function createEndFrameForSegment(segment, imageMode, progress = null, percentBase = 20, percentSpan = 70, label = "Create End Frame", options = {}) {
     if (!segment) throw new Error("Scene is missing.");
-    const firstFrame = firstLastFrameStartImageSource(segment);
+    const suppliedFirstFrame = options.firstFrame || null;
+    const firstFrame = suppliedFirstFrame?.path || suppliedFirstFrame?.data
+      ? suppliedFirstFrame
+      : firstLastFrameStartImageSource(segment);
     if (!firstFrame?.path && !firstFrame?.data) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: first-frame image is missing${flfChainingEnabled(segment) && previousAutoChainSourceSegment(segment) ? "; the previous scene needs an end frame" : ""}.`);
     }
@@ -31276,25 +31861,41 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       use_vision_reference: segment.use_vision_reference,
     };
     try {
-      const endDirection = firstLastFrameEndPromptForSegment(segment, firstFrame, imageMode);
-      segment.notes = endDirection;
-      segment.flux_notes = endDirection;
-      segment.nb_notes = endDirection;
-      segment.ref_image_path = firstFrame.path || "";
-      segment.ref_image_data = firstFrame.data || "";
-      segment.ref_image_name = firstFrame.name || "first_frame.png";
-      segment.use_vision_reference = true;
-      progress?.set(`${label}: Gemma Vision is inspecting the first frame and writing the endpoint prompt...`, percentBase);
-      if (imageMode === "flux_klein") {
-        await generateFluxKleinPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Flux/Klein`, { unloadAfter: true });
-      } else if (imageMode === "nano_banana" || imageMode === "flow_gpt") {
-        await generateNBPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma ${imageMode === "flow_gpt" ? "Browser AI" : "NanoBanana"}`, { imageMode, unloadAfter: true });
-        if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
+      if (options.useExistingPrompt === true) {
+        const existingPrompt = savedImagePromptForMode(segment, imageMode);
+        if (!existingPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: saved image prompt is missing.`);
+        syncSegmentT2IPrompt(segment, existingPrompt);
+        if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, existingPrompt);
+        progress?.set(`${label}: using the existing saved image prompt; Gemma is not needed.`, percentBase);
       } else {
-        await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true, flfImageTarget: "end" });
+        const endDirection = firstLastFrameEndPromptForSegment(segment, firstFrame, imageMode);
+        segment.notes = endDirection;
+        segment.flux_notes = endDirection;
+        segment.nb_notes = endDirection;
+        segment.ref_image_path = firstFrame.path || "";
+        segment.ref_image_data = firstFrame.data || "";
+        segment.ref_image_name = firstFrame.name || "first_frame.png";
+        segment.use_vision_reference = true;
+        progress?.set(`${label}: Gemma Vision is inspecting the first frame and writing the endpoint prompt...`, percentBase);
+        if (imageMode === "flux_klein") {
+          await generateFluxKleinPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Flux/Klein`, { unloadAfter: true });
+        } else if (imageMode === "nano_banana" || imageMode === "flow_gpt") {
+          await generateNBPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma ${imageMode === "flow_gpt" ? "Browser AI" : "NanoBanana"}`, { imageMode, unloadAfter: true, flfImageTarget: "end" });
+          if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
+        } else {
+          await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true, flfImageTarget: "end" });
+        }
       }
       progress?.set(`${label}: creating end-frame image with ${imageModeDisplayLabel(imageMode)}...`, percentBase + percentSpan * 0.3);
-      await createImageForSegmentInCurrentMode(segment, imageMode, progress, percentBase + percentSpan * 0.38, percentSpan * 0.5, label);
+      await createImageForSegmentInCurrentMode(
+        segment,
+        imageMode,
+        progress,
+        percentBase + percentSpan * 0.38,
+        percentSpan * 0.5,
+        label,
+        { includePreviousSceneImage: false },
+      );
       const generated = segmentImageSource(segment);
       if (!generated?.path && !generated?.data) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: end frame image did not return a saved image.`);
       segment.first_last_frame_end_image_path = generated.path || "";
@@ -32103,12 +32704,32 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       scene_number: slotNumber,
       existing_action: options.existingVideoAction || "overwrite",
     }, 120000);
+    let colorMatched = {
+      video_path: collected.video_path || videoPath,
+      thumbnail_path: collected.thumbnail_path || "",
+      applied: false,
+    };
+    const globalFLFSettings = state.i2vVideoSettings || videoSettingsForScene;
+    if (videoMode === "flf" && globalFLFSettings.flf_match_previous_clip_color === true) {
+      const previousSegment = previousAutoChainSourceSegment(segment);
+      const previousVideoPath = String(previousSegment ? selectedSegmentVideoPath(previousSegment) || "" : "").trim();
+      if (previousVideoPath) {
+        progress?.setHtml(sceneVideoDetailsHtml(segment, sceneIndex, srtPath, collected.video_folder || collectedSceneVideoFolder(), `${batchLabel}Matching the new clip's opening color to the previous clip...`, workflowDetails), pct(93));
+        colorMatched = await postJson("/vrgdg/workflow_runner/match_scene_video_start_color", {
+          project_folder: projectInput.value,
+          video_path: collected.video_path || videoPath,
+          reference_video_path: previousVideoPath,
+          strength: Math.max(0, Math.min(1, Number(globalFLFSettings.flf_color_match_strength ?? 0.85))),
+          fade_seconds: Math.max(0.05, Math.min(30, Number(globalFLFSettings.flf_color_match_fade_seconds ?? 1.0))),
+        }, 180000);
+      }
+    }
     pushHistory();
     const lutResult = await applySceneLutToRenderedVideo(
       segment,
       sceneIndex,
-      collected.video_path || videoPath,
-      collected.thumbnail_path || "",
+      colorMatched.video_path || collected.video_path || videoPath,
+      colorMatched.thumbnail_path || collected.thumbnail_path || "",
       progress,
       pct,
       batchLabel,
@@ -32650,6 +33271,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
+      if (options.throwOnError) throw error;
     } finally {
       renderAllButton.disabled = false;
       renderAllButton.textContent = "Render All";
@@ -33447,13 +34069,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await runClearMemoryWorkflowQuiet(progress, "Image All prompt pass", 42);
       }
       const browserSettings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
-      let includePreviousSceneImage = false;
-      if (browserSettings.ask_previous_scene_image && scenes.some(({ segment }) => previousSceneImageIngredient(segment))) {
-        includePreviousSceneImage = window.confirm(
-          `Send each available previous scene image as a reference during this Browser AI batch?\n\n`
-          + `${browserImageProviderLabel(browserSettings.provider)} will receive the prior scene image when it exists, so it can better continue the visual story.`
-        );
-      }
+      const includePreviousSceneImage = Boolean(browserSettings.ask_previous_scene_image);
       progress.set(`Image All: creating ${scenes.length} Flow/GPT image${scenes.length === 1 ? "" : "s"} from saved prompts...`, 45);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
@@ -33576,6 +34192,153 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function generateFLFStartImageForSegment(segment, imageMode, progress, percentBase, percentSpan, label, options = {}) {
+    const savedPrompts = {
+      t2i_prompt: segment.t2i_prompt || "",
+      flux_prompt: segment.flux_prompt || "",
+      nb_prompt: segment.nb_prompt || "",
+      flow_gpt_prompt: segment.flow_gpt_prompt || "",
+      enhance_prompt: segment.enhance_prompt || "",
+    };
+    state.activeId = segment.id;
+    syncInspector();
+    render();
+    if (options.useExistingPrompt === true) {
+      const existingPrompt = savedImagePromptForMode(segment, imageMode);
+      if (!existingPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: saved image prompt is missing.`);
+      syncSegmentT2IPrompt(segment, existingPrompt);
+      if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, existingPrompt);
+      progress?.set(`${label}: using the existing saved image prompt; Gemma is not needed.`, percentBase);
+    } else {
+      progress?.set(`${label}: creating the opening-image prompt...`, percentBase);
+      if (imageMode === "flux_klein") {
+        await generateFluxKleinPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Flux/Klein`, { unloadAfter: true });
+      } else if (imageMode === "nano_banana" || imageMode === "flow_gpt") {
+        await generateNBPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma ${imageMode === "flow_gpt" ? "Browser AI" : "NanoBanana"}`, { imageMode, unloadAfter: true, flfImageTarget: "start" });
+        if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
+      } else {
+        await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma start frame`, { unloadAfter: true, flfImageTarget: "start" });
+      }
+    }
+    progress?.set(`${label}: generating the opening image with ${imageModeDisplayLabel(imageMode, true)}...`, percentBase + percentSpan * 0.32);
+    await createImageForSegmentInCurrentMode(
+      segment,
+      imageMode,
+      progress,
+      percentBase + percentSpan * 0.38,
+      percentSpan * 0.55,
+      label,
+      { bypassImageToImage: true }
+    );
+    const generated = segmentImageSource(segment);
+    if (!generated?.path && !generated?.data) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: opening image did not return a saved image.`);
+    Object.assign(segment, savedPrompts);
+    if (segment.id === activeSegment()?.id) syncInspector();
+    return generated;
+  }
+
+  async function createFLFImageChain(options = {}) {
+    updateActiveFromInputs();
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const redoImages = options.redoImages === true;
+    const useExistingPrompts = options.useExistingPrompts === true;
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const scenes = batchTargetItems(sceneScope, { baseOnly: true }).slice().sort((a, b) => Number(a.segment?.start || 0) - Number(b.segment?.start || 0));
+    const progress = createProgressWindow("Create FLF Image Chain");
+    const originalRenderChainSource = state.i2vVideoSettings?.flf_render_chain_start_source || "rendered_frame";
+    const missing = [];
+    if (currentVideoMode() !== "flf") missing.push("Video mode must be First Last Frame.");
+    if (!scenes.length) missing.push(batchEmptyMessage(sceneScope));
+    if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+    scenes.forEach(({ segment, index }) => {
+      if (!String(segment.flf_end_state || segment.story_beat || segment.lyric_text || segment.notes || "").trim()) {
+        missing.push(`${sceneDisplayName(segment, index)}: endpoint beat, story beat, lyrics, or scene notes are missing.`);
+      }
+    });
+    if (missing.length) {
+      progress.set(`Create FLF Image Chain cannot start yet:\n\n${missing.map((item) => `- ${item}`).join("\n")}`, 100);
+      toast("FLF image chain needs endpoint planning and a saved project first.", true);
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "FLF Chain...";
+      state.i2vVideoSettings = {
+        ...(state.i2vVideoSettings || defaultI2VVideoSettings()),
+        flf_chain_previous_end_frame: true,
+        // Image generation must use the previous generated destination. The
+        // user's rendered-frame choice is restored before video rendering.
+        flf_render_chain_start_source: "previous_image",
+      };
+      progress.set(`Preparing ${scenes.length} FLF scene${scenes.length === 1 ? "" : "s"} (${batchScopeLabel(sceneScope)})...\nImage-chain start source: previous generated destination.\nVideo render-chain preference will remain: ${originalRenderChainSource === "previous_image" ? "previous assigned image" : "extracted rendered frame"}.`, 3);
+      await saveSessionForSceneVideo();
+
+      const first = scenes[0];
+      const firstHasPreviousChainScene = Boolean(previousAutoChainSourceSegment(first.segment));
+      if (!firstLastFrameStartImageSource(first.segment) || (redoImages && !firstHasPreviousChainScene)) {
+        await generateFLFStartImageForSegment(first.segment, imageMode, progress, 5, 20, `${sceneDisplayName(first.segment, first.index)} start frame`, { useExistingPrompt: useExistingPrompts });
+        await autoSaveSessionQuiet(`FLF image chain opening image ${sceneDisplayName(first.segment, first.index)}`);
+      }
+
+      let chainedDestination = null;
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 25 + Math.floor((index / Math.max(1, scenes.length)) * 68);
+        const span = Math.max(4, Math.floor(62 / Math.max(1, scenes.length)));
+        if (!redoImages && hasFirstLastFrameEndImage(segment)) {
+          chainedDestination = firstLastFrameEndImageSource(segment);
+          progress.set(`FLF image chain ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping existing destination image.`, base);
+          continue;
+        }
+        const chainedStart = index > 0 && (chainedDestination?.path || chainedDestination?.data)
+          ? chainedDestination
+          : firstLastFrameStartImageSource(segment);
+        if (!chainedStart?.path && !chainedStart?.data) {
+          throw new Error(`${sceneLabel}: chained start image could not be resolved from the previous scene's destination.`);
+        }
+        progress.set(`FLF image chain ${index + 1}/${scenes.length}: ${sceneLabel}\nGenerating only this scene's destination image.`, base);
+        chainedDestination = await createEndFrameForSegment(
+          segment,
+          imageMode,
+          progress,
+          base + 1,
+          span,
+          `FLF Chain ${index + 1}/${scenes.length}: ${sceneLabel}`,
+          { useExistingPrompt: useExistingPrompts, firstFrame: chainedStart }
+        );
+        if (!chainedDestination?.path && !chainedDestination?.data) {
+          throw new Error(`${sceneLabel}: destination image generation finished without saving an FLF end image.`);
+        }
+        await autoSaveSessionQuiet(`FLF image chain destination ${sceneLabel}`);
+      }
+      state.i2vVideoSettings.flf_render_chain_start_source = originalRenderChainSource;
+      await autoSaveSessionQuiet("FLF image chain complete");
+      progress.set(`FLF image chain complete for ${scenes.length} scene${scenes.length === 1 ? "" : "s"}.\n\n${redoImages ? "Regenerated" : "Created or kept"} one opening image for the first target scene and one destination image per scene. Saved image prompts were preserved. No unused later start images were generated.\n\nVideo render-chain preference restored to: ${originalRenderChainSource === "previous_image" ? "previous assigned image" : "extracted rendered frame"}.\n\nThis window will remain open so you can verify the result.`, 100);
+      toast("FLF image chain complete.");
+    } catch (error) {
+      const message = String(error?.message || error);
+      const stopped = /stopped by user/i.test(message);
+      progress.set(`${stopped ? "Stopped" : "Error"}:\n${message}`, 100);
+      toast(message, !stopped);
+      if (options.throwOnError) throw error;
+    } finally {
+      state.i2vVideoSettings = {
+        ...(state.i2vVideoSettings || defaultI2VVideoSettings()),
+        flf_chain_previous_end_frame: true,
+        flf_render_chain_start_source: originalRenderChainSource,
+      };
+      await autoSaveSessionQuiet("FLF image chain render-source preference restored").catch(() => null);
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
+      state.batchCancelled = false;
+      syncInspector();
+      render();
+    }
+  }
+
   async function createNBImageForSegmentWithRetry(segment, progress, percentBase, percentSpan, label, options = {}) {
     const maxRetries = Math.max(1, Number(options.maxRetries || 10));
     let lastError = null;
@@ -33615,6 +34378,119 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       console.warn("[VRGDG Music Builder] Final cleanup after NanoBanana retry failure failed:", cleanupError);
     }
     throw new Error(`${label}: NanoBanana failed after ${maxRetries} attempts.\nLast error:\n${String(lastError?.message || lastError || "Unknown error")}`);
+  }
+
+  async function ensureFLFEndpointBeatsForBuild(progress, sceneScope = "all") {
+    const targets = batchTargetItems(sceneScope, { baseOnly: true });
+    const allScenes = storyboardScenePayload();
+    const missingTargets = targets.filter(({ segment }) =>
+      [segment.flf_start_state, segment.flf_transformation, segment.flf_end_state, segment.flf_carry_forward]
+        .some((value) => !String(value || "").trim())
+    );
+    if (!missingTargets.length) return 0;
+    const storyLayer = normalizeBuilderStoryLayer(state.builderStoryLayer);
+    for (let index = 0; index < missingTargets.length; index += 1) {
+      assertBatchNotStopped();
+      const { segment, index: sceneIndex } = missingTargets[index];
+      const scene = allScenes.find((item) => item.id === segment.id)
+        || allScenes.find((item) => Number(item.scene_number) === Number(sceneIndex + 1));
+      if (!scene) throw new Error(`${sceneDisplayName(segment, sceneIndex)}: storyboard scene payload is missing.`);
+      const previous = sceneIndex > 0 ? state.segments[sceneIndex - 1] : null;
+      const next = sceneIndex >= 0 && sceneIndex < state.segments.length - 1 ? state.segments[sceneIndex + 1] : null;
+      const pct = 3 + Math.floor(((index + 1) / Math.max(1, missingTargets.length)) * 12);
+      progress?.set(`Stage 1/4: creating FLF endpoint beat ${index + 1}/${missingTargets.length}\n${sceneDisplayName(segment, sceneIndex)}`, pct);
+      const storyboardState = wizardStoryboardState(allScenes, { promptMode: "video", imageMode: state.imageModelMode || "zimage" });
+      const data = await postJson("/vrgdg/storyboard/scene_story_beat", {
+        ...textGemmaRunnerPayload(),
+        model_file: i2vTextGemmaModelSelect.value || t2iTextGemmaModelSelect.value || "",
+        story_layer: storyLayer,
+        storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+        previous_beat: String(previous?.story_beat || ""),
+        previous_lyrics: String(previous?.lyric_text || ""),
+        previous_end_state: String(previous?.flf_end_state || ""),
+        previous_carry_forward: String(previous?.flf_carry_forward || ""),
+        current_lyrics: String(segment.lyric_text || ""),
+        next_lyrics: String(next?.lyric_text || ""),
+        flf_mode: true,
+        unload_after: index === missingTargets.length - 1,
+        max_new_tokens: 700,
+        temperature: 0.35,
+        top_p: 0.9,
+      }, 240000);
+      segment.story_beat = String(data.story_beat || segment.story_beat || "").trim();
+      segment.flf_start_state = sceneIndex > 0 && previous?.flf_end_state
+        ? String(previous.flf_end_state).trim()
+        : String(data.flf_start_state || "").trim();
+      segment.flf_transformation = String(data.flf_transformation || "").trim();
+      segment.flf_end_state = String(data.flf_end_state || "").trim();
+      segment.flf_carry_forward = String(data.flf_carry_forward || "").trim();
+      if (!segment.flf_start_state || !segment.flf_transformation || !segment.flf_end_state || !segment.flf_carry_forward) {
+        throw new Error(`${sceneDisplayName(segment, sceneIndex)}: Gemma returned an incomplete FLF endpoint beat.`);
+      }
+      if (next && segment.flf_end_state) next.flf_start_state = segment.flf_end_state;
+      await autoSaveSessionQuiet(`Build Full FLF endpoint beat scene ${sceneIndex + 1}`);
+    }
+    return missingTargets.length;
+  }
+
+  async function buildFullFLFVideoPipeline(options = {}) {
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const redoImages = options.redoImages === true;
+    const redoVideos = options.redoVideos === true;
+    let redoImagesThisAttempt = redoImages;
+    let redoVideosThisAttempt = redoVideos;
+    const maxAttempts = Math.max(1, Math.min(4, Number(options.maxAttempts || 3)));
+    let attempt = 0;
+    fullFLFBuildButton.disabled = true;
+    fullFLFBuildButton.textContent = "Building FLF...";
+    try {
+      if (currentVideoMode() !== "flf") throw new Error("Build Full FLF Video requires First Last Frame video mode.");
+      if (!(await ensureAudioOrOfferSilentTimeline({ sceneScope }))) return;
+      while (attempt < maxAttempts) {
+        attempt += 1;
+        const progress = createProgressWindow(`Build Full FLF Video${attempt > 1 ? ` — retry ${attempt}/${maxAttempts}` : ""}`);
+        try {
+          state.batchCancelled = false;
+          progress.set("Stage 1/4: checking storyboard endpoint beats...", 2);
+          await ensureFLFEndpointBeatsForBuild(progress, sceneScope);
+          progress.set("Stage 2/4: creating the FLF image chain...", 18);
+          progress.close(250);
+          await createFLFImageChain({
+            imageMode: state.imageModelMode || "zimage",
+            sceneScope,
+            redoImages: redoImagesThisAttempt,
+            throwOnError: true,
+          });
+          const renderProgress = createProgressWindow("Build Full FLF Video — video prompts, renders, and stitch");
+          renderProgress.set("Stage 3/4: Render All will create each missing vision prompt immediately before its scene render.\nStage 4/4: extracting each final frame and stitching the completed clips.", 55);
+          renderProgress.close(1800);
+          await renderAllScenes({
+            sceneScope,
+            forceVideos: redoVideosThisAttempt,
+            randomizeVideoSeed: redoVideosThisAttempt,
+            skipFinalStitch: sceneScope === "selected",
+            throwOnError: true,
+          });
+          toast("Build Full FLF Video complete.");
+          return;
+        } catch (error) {
+          const message = String(error?.message || error);
+          progress.set(`Build Full FLF Video failed on attempt ${attempt}/${maxAttempts}:\n${message}`, 100);
+          if (state.batchCancelled || attempt >= maxAttempts) throw error;
+          await runClearMemoryWorkflowQuiet(progress, `Build Full FLF retry ${attempt}/${maxAttempts}`, 100).catch(() => null);
+          redoImagesThisAttempt = false;
+          redoVideosThisAttempt = false;
+          progress.set(`Retrying in safe-resume mode. Completed beats, images, prompts, and videos will be kept.`, 100);
+          progress.close(2500);
+        }
+      }
+    } catch (error) {
+      toast(`Build Full FLF Video stopped:\n${String(error?.message || error)}`, true);
+    } finally {
+      fullFLFBuildButton.disabled = false;
+      fullFLFBuildButton.textContent = "Build Full FLF Video";
+      state.batchCancelled = false;
+    }
   }
 
   async function buildFullVideoPipeline(options = {}) {
@@ -33981,6 +34857,88 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     await syncPromptJsonFromSegments("segment added");
     await syncI2VMotionJsonFromSegments("segment added");
     autoSaveSessionQuiet("segment added");
+  }
+
+  async function splitActiveSceneAtPlayhead() {
+    const segment = activeSegment();
+    if (!segment) {
+      toast("Select a base timeline scene to split first.", true);
+      return;
+    }
+    if (segmentTrack(segment) === "overlay") {
+      toast("The scissors currently split base timeline scenes only.", true);
+      return;
+    }
+    if (String(selectedSegmentVideoPath(segment) || "").trim() || (Array.isArray(segment.video_history) && segment.video_history.length)) {
+      toast("This scene has rendered video versions. Clear its selected video/history before changing its timing.", true);
+      return;
+    }
+    const index = state.segments.indexOf(segment);
+    if (index < 0) {
+      toast("The selected scene could not be found in the base timeline.", true);
+      return;
+    }
+    const start = Number(segment.start || 0);
+    const end = Number(segment.end || start);
+    const splitTime = Math.max(start, Math.min(end, Number(currentGlobalTime() || 0)));
+    if (splitTime - start < 0.05 || end - splitTime < 0.05) {
+      toast("Move the playhead inside the selected scene, away from its edges, then click ✂ again.", true);
+      return;
+    }
+
+    pushHistory();
+    const originalLabel = String(segment.label || `Scene ${index + 1}`);
+    const originalLyric = String(segment.lyric_text || "");
+    const right = typeof structuredClone === "function"
+      ? structuredClone(segment)
+      : JSON.parse(JSON.stringify(segment));
+    right.id = createUniqueSegmentId();
+    right.start = Number(splitTime.toFixed(3));
+    right.end = end;
+    segment.end = Number(splitTime.toFixed(3));
+
+    if (segment.custom_audio_path) {
+      const originalAudioStart = Number(segment.custom_audio_timeline_start ?? start);
+      const originalSourceStart = Number(segment.custom_audio_source_start || 0);
+      const leftDuration = Math.max(0, splitTime - originalAudioStart);
+      const rightDuration = Math.max(0, Number(segment.custom_audio_duration || end - start) - leftDuration);
+      segment.custom_audio_duration = leftDuration;
+      right.custom_audio_timeline_start = splitTime;
+      right.custom_audio_source_start = originalSourceStart + leftDuration;
+      right.custom_audio_duration = rightDuration;
+    }
+
+    if (!isInstrumentalLyricText(originalLyric)) {
+      right.lyric_text = "";
+      right.lyric_no_lip_sync = false;
+      right.timeline_note = [
+        String(right.timeline_note || "").trim(),
+        `Split from ${originalLabel} at ${formatTime(splitTime)}. Add the lyric/dialogue for this new right-hand scene.`,
+      ].filter(Boolean).join("\n");
+    }
+
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    for (const key of ["subject_scene_map", "scene_map", "scene_trigger_map", "ingredients_scene_map"]) {
+      const map = refs[key];
+      if (map && typeof map === "object" && Object.prototype.hasOwnProperty.call(map, segment.id)) {
+        const value = map[segment.id];
+        map[right.id] = Array.isArray(value) ? [...value] : value && typeof value === "object" ? { ...value } : value;
+      }
+    }
+    state.fluxReferenceBuilder = refs;
+    state.segments.splice(index + 1, 0, ensureSegmentRuntimeFields(right));
+    state.segments.forEach((item, itemIndex) => {
+      if (/^scene\s+\d+$/i.test(String(item.label || "").trim())) item.label = `Scene ${itemIndex + 1}`;
+    });
+    state.activeId = right.id;
+    state.activeTrack = "base";
+    state.duration = timelineDuration();
+    syncInspector();
+    render();
+    await syncPromptJsonFromSegments("scene split at playhead");
+    await syncI2VMotionJsonFromSegments("scene split at playhead");
+    await autoSaveSessionQuiet("scene split at playhead");
+    toast(`Split ${originalLabel} at ${formatTime(splitTime)}. Later scene timing did not move.`);
   }
 
   function setTimelineRangePoint(which) {
@@ -34461,14 +35419,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         normalizeSegmentVideoHistory(media.segment);
         media.segment.preview_mode = media.segment.image_history?.length ? "image" : "video";
       } else {
-        media.segment.image_history = (media.segment.image_history || []).filter((item) => item !== media.path);
-        media.segment.image_history_index = Math.min(Math.max(0, Number(media.segment.image_history_index || 0)), media.segment.image_history.length - 1);
-        if (media.segment.image_history_index < 0) media.segment.image_history_index = -1;
-        if (media.segment.approved_image_path === media.path) media.segment.approved_image_path = media.segment.image_history[media.segment.image_history_index] || "";
-        if (media.segment.custom_image_path === media.path) media.segment.custom_image_path = "";
+        media.segment.image_history = (media.segment.image_history || [])
+          .filter((item) => mediaPathKey(item) !== mediaPathKey(media.path));
+        media.segment.image_history_index = media.segment.image_history.length - 1;
+        if (mediaPathKey(media.segment.approved_image_path) === mediaPathKey(media.path)) media.segment.approved_image_path = "";
+        if (mediaPathKey(media.segment.custom_image_path) === mediaPathKey(media.path)) {
+          media.segment.custom_image_path = "";
+          media.segment.custom_image_data = "";
+          media.segment.custom_image_name = "";
+        }
+        media.segment.image_assignment_cleared = !segmentImageSource(media.segment);
+        if (media.segment.image_assignment_cleared) media.segment.image = null;
         media.segment.preview_mode = "image";
       }
+      ensureSegmentRuntimeFields(media.segment);
       syncPreview(media.segment);
+      syncInspector();
+      renderList();
       render();
       await autoSaveSessionQuiet(`${media.type} deleted`);
       toast(`Deleted ${media.type} from project.`);
@@ -34502,6 +35469,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function resetProjectState(projectFolder, sessionPath = "", srtPath = "") {
+    faceFixTool.reset?.();
     pauseAllAudio();
     audio.removeAttribute("src");
     sceneAudio.removeAttribute("src");
@@ -34804,6 +35772,72 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } catch (error) {
       toast(String(error?.message || error), true);
     }
+  }
+
+  async function exportShareableProject() {
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!projectFolder) {
+      toast("Create or load a project before exporting it.", true);
+      return;
+    }
+    try {
+      exportProjectButton.disabled = true;
+      exportProjectButton.textContent = "Preparing Project ZIP...";
+      await saveSession({ quiet: true, throwOnError: true });
+      const link = document.createElement("a");
+      link.href = `/vrgdg/music_builder/export_project?project_folder=${encodeURIComponent(projectFolder)}`;
+      link.download = "";
+      link.style.display = "none";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      toast("Project ZIP export started. Keep ComfyUI running until the browser download finishes.");
+    } catch (error) {
+      toast(`Could not export project:\n${String(error?.message || error)}`, true);
+    } finally {
+      exportProjectButton.disabled = false;
+      exportProjectButton.textContent = "Export Shareable Project ZIP";
+    }
+  }
+
+  async function importShareableProject() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".zip,.vrgdg.zip,application/zip";
+    input.style.display = "none";
+    document.body.append(input);
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      input.remove();
+      if (!file) return;
+      const progress = createProgressWindow("Importing Video Builder Project");
+      try {
+        importProjectButton.disabled = true;
+        importProjectButton.textContent = "Importing Project...";
+        progress.set(`Uploading and extracting ${file.name}...\nLarge video projects can take several minutes.`, 20);
+        const form = new FormData();
+        form.append("project_zip", file, file.name);
+        const response = await api.fetchApi("/vrgdg/music_builder/import_project", {
+          method: "POST",
+          body: form,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) throw new Error(String(data?.error || `Import failed (${response.status})`));
+        progress.set("Project extracted. Loading and rebasing project media paths...", 82);
+        await loadSessionFromProject(data.project_folder);
+        progress.set("Project imported and loaded.", 100);
+        progress.close(1200);
+        toast(`Imported portable project.\n${data.project_folder}`);
+      } catch (error) {
+        progress.set(`Import failed:\n${String(error?.message || error)}`, 100);
+        toast(`Could not import project:\n${String(error?.message || error)}`, true);
+      } finally {
+        importProjectButton.disabled = false;
+        importProjectButton.textContent = "Import Project ZIP";
+      }
+    };
+    input.oncancel = () => input.remove();
+    input.click();
   }
 
   function showRemakeModeComingSoon() {
@@ -37266,6 +38300,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       returnAll: true,
       choices: [
         ...(firstLastFrameMode ? [{
+          value: "create_flf_image_chain",
+          label: "Resume FLF Image Chain",
+          description: "Recommended for a fresh FLF project. Generate one opening image for the first scene, then only one destination image per scene. Each destination becomes the next scene's start; no unused later start images are created.",
+        }, {
+          value: "redo_flf_image_chain_keep_prompts",
+          label: "Redo FLF Image Chain — keep prompts",
+          description: "Use the existing saved image prompts directly—no Gemma/LLM call—and regenerate the target scenes' destination images. When starting later in the timeline, reuse the prior scene's endpoint as the chain start.",
+        }, {
           value: "create_end_frames",
           label: "Create End Frames",
           description: "First Last Frame mode only. Keep current scene images as first frames and generate missing end-frame images.",
@@ -37308,6 +38350,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
     state.fluxKleinSettings.enabled = selectedImageMode === "flux_klein";
     syncFluxKleinPanel();
+    if (["create_flf_image_chain", "redo_flf_image_chain_keep_prompts"].includes(action.mode)) {
+      await createFLFImageChain({
+        imageMode: selectedImageMode,
+        sceneScope,
+        redoImages: action.mode === "redo_flf_image_chain_keep_prompts",
+        useExistingPrompts: action.mode === "redo_flf_image_chain_keep_prompts",
+      });
+      return;
+    }
     if (action.mode === "create_end_frames") {
       await createEndFramesAllScenes({ imageMode: selectedImageMode, sceneScope, endFrameRunMode: "resume_missing" });
       return;
@@ -37466,6 +38517,76 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast(`New project copy created and opened.\nYour original project was not changed.\n${state.projectFolder}`);
     } catch (error) {
       toast(String(error?.message || error), true);
+    }
+  }
+
+  async function deleteAllTimelineImages() {
+    const segments = allEditableSegments();
+    const imagePaths = [...new Set(segments.flatMap((segment) => [
+      ...(Array.isArray(segment.image_history) ? segment.image_history : []),
+      segment.approved_image_path || "",
+      segment.custom_image_path || "",
+      segment.first_last_frame_end_image_path || "",
+      segment.flf_rendered_start_frame_path || "",
+    ]).map((item) => String(item || "").trim()).filter(Boolean))];
+    const assignedCount = segments.filter((segment) => Boolean(
+      segmentImageSource(segment)
+      || hasFirstLastFrameEndImage(segment)
+      || segment.flf_rendered_start_frame_path
+      || segment.flf_rendered_start_frame_data
+    )).length;
+    if (!assignedCount && !imagePaths.length) {
+      toast("There are no regular timeline images to delete.");
+      return;
+    }
+    const ok = window.confirm(
+      `Delete ALL timeline images?\n\nThis will clear every first frame, last frame, regular scene image, and extracted chained start frame from ${assignedCount} scene${assignedCount === 1 ? "" : "s"}, and delete ${imagePaths.length} image file${imagePaths.length === 1 ? "" : "s"} from the current project folder.\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      deleteAllTimelineImagesButton.disabled = true;
+      deleteAllTimelineImagesButton.textContent = "Deleting ALL...";
+      for (const path of imagePaths) {
+        await postJson("/vrgdg/music_builder/delete_project_media", {
+          project_folder: projectInput.value,
+          path,
+        }).catch(() => null);
+      }
+      pushHistory();
+      for (const segment of segments) {
+        segment.image = null;
+        segment.image_history = [];
+        segment.image_history_index = -1;
+        segment.approved_image_path = "";
+        segment.custom_image_path = "";
+        segment.custom_image_data = "";
+        segment.custom_image_name = "";
+        segment.first_last_frame_end_image_path = "";
+        segment.first_last_frame_end_image_data = "";
+        segment.first_last_frame_end_image_name = "";
+        segment.flf_rendered_start_frame_path = "";
+        segment.flf_rendered_start_frame_data = "";
+        segment.flf_rendered_start_frame_name = "";
+        segment.flf_rendered_source_video_path = "";
+        segment.image_assignment_cleared = true;
+        segment.preview_mode = "image";
+        ensureSegmentRuntimeFields(segment);
+      }
+      previewImage.removeAttribute("src");
+      segmentLayer.textContent = "";
+      sceneListPane.textContent = "";
+      syncInspector();
+      syncPreview(activeSegment());
+      renderList();
+      render();
+      await autoSaveSessionQuiet("all timeline images deleted");
+      updateSelectedMediaTools();
+      toast(`Deleted all timeline images, including first and last frames, from ${assignedCount} scene${assignedCount === 1 ? "" : "s"}.`);
+    } catch (error) {
+      toast(String(error?.message || error), true);
+    } finally {
+      deleteAllTimelineImagesButton.disabled = false;
+      deleteAllTimelineImagesButton.textContent = "Delete ALL Images";
     }
   }
 
@@ -38910,7 +40031,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Set Reference Behavior to First Last Frame first.", true);
       return;
     }
-    const firstFrame = segmentImageSource(segment);
+    const firstFrame = currentVideoMode() === "flf"
+      ? firstLastFrameStartImageSource(segment)
+      : segmentImageSource(segment);
     if (!firstFrame?.path && !firstFrame?.data) {
       toast("This scene needs a first-frame image before creating the end frame.", true);
       return;
@@ -38976,6 +40099,47 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     event.stopPropagation();
     menuDropdown.style.display = menuDropdown.style.display === "flex" ? "none" : "flex";
   };
+  updateV9HintButton.onclick = () => {
+    window.alert(
+      "What Update to Latest V9 does:\n\n" +
+      "1. Finds this custom node's installed folder automatically.\n" +
+      "2. Runs: git fetch origin\n" +
+      "3. Runs: git switch dev/music-video-builder-ui-test-v9\n" +
+      "4. Runs: git pull\n\n" +
+      "This is the same as the documented manual update. It does not run git reset or git clean, and it does not delete files you created. Git will stop and show an error if switching or pulling would overwrite conflicting work. Nothing outside the comfyui-vrgamedevgirl folder is touched."
+    );
+  };
+  updateV9Button.onclick = async () => {
+    const confirmed = window.confirm(
+      "Update these custom nodes to the latest V9 branch now?\n\n" +
+      "This runs the same Git fetch, switch, and pull commands as the manual instructions. Git will stop if your code changes conflict. Files you created are not deleted.\n\nContinue?"
+    );
+    if (!confirmed) return;
+
+    const originalText = updateV9Button.textContent;
+    updateV9Button.disabled = true;
+    updateV9Button.textContent = "Updating V9...";
+    try {
+      const response = await api.fetchApi("/vrgdg/update/v9", { method: "POST" });
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (_) {
+        payload = {};
+      }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `Update failed (HTTP ${response.status}).`);
+      }
+      window.alert(
+        "V9 updated successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load."
+      );
+    } catch (error) {
+      window.alert(`V9 update did not complete:\n\n${error?.message || error}`);
+    } finally {
+      updateV9Button.disabled = false;
+      updateV9Button.textContent = originalText;
+    }
+  };
   menuDropdown.addEventListener("click", (event) => {
     if (event.target === autoSaveControl.input || autoSaveControl.wrapper.contains(event.target)) return;
     menuDropdown.style.display = "none";
@@ -39004,6 +40168,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   };
   saveProjectAsButton.onclick = saveProjectAs;
   branchProjectButton.onclick = branchProject;
+  exportProjectButton.onclick = exportShareableProject;
+  importProjectButton.onclick = importShareableProject;
   autoSaveControl.input.addEventListener("change", () => {
     state.autoSaveEnabled = Boolean(autoSaveControl.input.checked);
     if (state.projectFolder) {
@@ -39014,6 +40180,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   redoButton.onclick = redo;
   overlayTrackToggleButton.onclick = toggleOverlayTrack;
   overlayTrackHintButton.onclick = showOverlayTrackHelp;
+  splitSceneButton.onclick = splitActiveSceneAtPlayhead;
   loadSrtButton.onclick = loadSrt;
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
@@ -39039,6 +40206,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   zEnhanceAllToolButton.onclick = confirmAndRunZEnhanceAll;
   editI2VPromptButton.onclick = editCurrentVideoPromptWithGemma;
   fullBuildButton.onclick = confirmAndRunFullBuild;
+  fullFLFBuildButton.onclick = confirmAndRunFullFLFBuild;
   remakeModeButton.onclick = showRemakeModeComingSoon;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
   downloadModelsButton.onclick = showModelDownloadModal;
@@ -39453,6 +40621,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   deleteAllSegmentsButton.onclick = deleteAllSegments;
   useFrameAsImageButton.onclick = captureSelectedVideoFrameAsImage;
   deleteSelectedMediaButton.onclick = deleteSelectedMedia;
+  deleteAllTimelineImagesButton.onclick = deleteAllTimelineImages;
   globalAudioMuteButton.onclick = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -39799,6 +40968,50 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!ltxIdLoraPicker.input.value) ltxIdLoraPicker.input.value = REQUIRED_LTX_ID_LORA;
   }
 
+  async function confirmAndRunFullFLFBuild() {
+    if (currentVideoMode() !== "flf") {
+      toast("Choose Video → First Last Frame before using Build Full FLF Video.", true);
+      return;
+    }
+    const scopeChoices = batchScopeChoices();
+    const action = await chooseBatchModeAction({
+      title: "Build Full FLF Video?",
+      intro: "Runs the complete FLF dependency chain without further prompts: fills missing endpoint beats, creates the optimized image chain, creates each vision video prompt at the correct render step, renders every scene, extracts rendered final frames for chaining, and stitches the final video.",
+      confirmLabel: "Build Full FLF Video",
+      returnAll: true,
+      choices: [
+        {
+          value: "resume_missing",
+          label: "Resume missing (recommended)",
+          description: "Keep completed beats, images, prompts, and videos. Create only what is missing, then stitch the final video.",
+        },
+        {
+          value: "redo_images_videos",
+          label: "Redo images and videos",
+          description: "Keep storyboard planning and saved image prompts, but regenerate the FLF image chain and all scene videos.",
+        },
+        {
+          value: "redo_videos",
+          label: "Redo videos only",
+          description: "Keep endpoint beats and images, then create new video versions and stitch them.",
+        },
+      ],
+      extraGroups: scopeChoices.length ? [{
+        key: "sceneScope",
+        label: "Scenes to build",
+        description: "All scenes produces and stitches the full project. Selected-scenes mode does not stitch.",
+        choices: scopeChoices,
+      }] : [],
+    });
+    if (!action?.mode) return;
+    await buildFullFLFVideoPipeline({
+      sceneScope: normalizeBatchScope(action.sceneScope),
+      redoImages: action.mode === "redo_images_videos",
+      redoVideos: action.mode === "redo_images_videos" || action.mode === "redo_videos",
+      maxAttempts: 3,
+    });
+  }
+
   async function refreshModelChoices() {
     const data = await getJson("/vrgdg/workflow_runner/i2v_choices");
     const setOptions = (picker, options, preferred = []) => {
@@ -40066,6 +41279,23 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.i2vVideoSettings.flf_pregenerate_prompts_from_scene_images = Boolean(flfPreGeneratePromptsFromSceneImages.input.checked);
     await autoSaveSessionQuiet("FLF prompt pre-generation mode changed");
   });
+  flfMatchPreviousClipColor.input.addEventListener("change", async () => {
+    state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
+    state.i2vVideoSettings.flf_match_previous_clip_color = Boolean(flfMatchPreviousClipColor.input.checked);
+    await autoSaveSessionQuiet("FLF opening color match changed");
+  });
+  for (const control of [flfColorMatchStrengthInput, flfColorMatchFadeInput]) {
+    const saveGlobalColorMatch = () => {
+      state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
+      state.i2vVideoSettings.flf_color_match_strength = Math.max(0, Math.min(1, Number(flfColorMatchStrengthInput.value || 0)));
+      state.i2vVideoSettings.flf_color_match_fade_seconds = Math.max(0.05, Math.min(30, Number(flfColorMatchFadeInput.value || 1)));
+    };
+    control.addEventListener("input", saveGlobalColorMatch);
+    control.addEventListener("change", async () => {
+      saveGlobalColorMatch();
+      await autoSaveSessionQuiet("FLF opening color match settings changed");
+    });
+  }
   flfRenderChainSourceSelect.addEventListener("change", async () => {
     state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
     state.i2vVideoSettings.flf_render_chain_start_source = flfRenderChainSourceSelect.value === "previous_image" ? "previous_image" : "rendered_frame";
@@ -40077,7 +41307,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     saveI2VVideoSettingsFromPanel();
     await autoSaveSessionQuiet("Global First Last Frame transition type changed");
   });
+  flfGemmaContextModeSelect.addEventListener("change", async () => {
+    saveI2VVideoSettingsFromPanel();
+    await autoSaveSessionQuiet("FLF Gemma visual context changed");
+    toast(`FLF Gemma visual context: ${flfGemmaContextModeSelect.options[flfGemmaContextModeSelect.selectedIndex]?.textContent || flfGemmaContextModeSelect.value}`);
+  });
   flfRestoreWorkflowDefaultsButton.addEventListener("click", async () => {
+    flfGemmaContextModeSelect.value = "images_story";
     flfFirstGuideStrengthInput.value = "0.7";
     flfLastGuideStrengthInput.value = "0.7";
     flfFirstGuideFrameIndexInput.value = "0";

@@ -13,6 +13,8 @@ import array
 import gc
 import urllib.error
 import urllib.request
+import tempfile
+import zipfile
 
 import folder_paths
 from aiohttp import web
@@ -30,6 +32,7 @@ from .VRGDG_VideoEditorNodes import (
 )
 from .VRGDG_WorkflowRunnerNodes import _resolve_comfy_image_path
 from .VRGDG_LUTVideoTools import register_lut_routes
+from .VRGDG_FaceFix import register_face_fix_routes
 from .VRGDG_GemmaPromptSanitizer import extract_prompt_text_from_gemma_output
 from .VRGDG_StoryboardBuilderNodes import _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
 
@@ -1561,6 +1564,22 @@ def _backup_session_file(project_folder):
 
 def _rehydrate_builder_session(project_folder, session):
     old_project_folder = str(session.get("project_folder", "") or "")
+    project_folder = os.path.abspath(project_folder)
+
+    # Portable imports can contain paths in deeply nested reference-builder,
+    # FLF, history, LUT, grain, and adjustment structures. Rebase every path
+    # owned by the exported project before the field-specific recovery below.
+    def rebase_nested_project_paths(value):
+        if isinstance(value, dict):
+            return {key: rebase_nested_project_paths(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [rebase_nested_project_paths(item) for item in value]
+        if not isinstance(value, str) or not old_project_folder or not os.path.isabs(value):
+            return value
+        rebased = _project_rebased_path(project_folder, old_project_folder, value)
+        return rebased if rebased and os.path.exists(rebased) else value
+
+    session = rebase_nested_project_paths(session)
     session["project_folder"] = project_folder
     session["audio_path"] = _resolve_project_asset_path(project_folder, old_project_folder, session.get("audio_path", ""))
     for key in ("prompt_json_path", "theme_style_path", "story_idea_path", "subject_scene_path"):
@@ -1662,7 +1681,8 @@ def _rehydrate_builder_session(project_folder, session):
                     index,
                 )
         approved = _resolve_project_asset_path(project_folder, old_project_folder, segment.get("approved_image_path", ""), index)
-        if not approved:
+        image_assignment_cleared = bool(segment.get("image_assignment_cleared", False))
+        if not approved and not image_assignment_cleared:
             for ext in (".png", ".jpg", ".jpeg", ".webp"):
                 candidate = _scene_image_path(project_folder, index, ext)
                 if os.path.isfile(candidate):
@@ -1674,9 +1694,10 @@ def _rehydrate_builder_session(project_folder, session):
                 item for item in segment["image_history"]
                 if item != approved and not _is_internal_approved_image_path(item)
             ]
-        for preview_path in _scene_preview_paths(project_folder, index):
-            if preview_path not in segment["image_history"]:
-                segment["image_history"].append(preview_path)
+        if not image_assignment_cleared:
+            for preview_path in _scene_preview_paths(project_folder, index):
+                if preview_path not in segment["image_history"]:
+                    segment["image_history"].append(preview_path)
         if segment["image_history"] and not isinstance(segment.get("image_history_index"), int):
             segment["image_history_index"] = len(segment["image_history"]) - 1
         video_path = os.path.join(project_folder, "rendered_scene_videos", f"video_{index:04d}-audio.mp4")
@@ -4895,6 +4916,9 @@ def _generate_builder_t2v_prompt(payload):
             vision_images.append(Image.open(image_path).convert("RGB"))
     first_last_frame_mode = bool(payload.get("first_last_frame_mode") or payload.get("firstLastFrameMode"))
     transition_lora_active = bool(payload.get("transition_lora_active") or payload.get("transitionLoraActive"))
+    flf_context_mode = str(payload.get("flf_context_mode") or "images_story").strip().lower()
+    if flf_context_mode not in {"images_only", "images_story", "full"}:
+        flf_context_mode = "images_story"
     flf_start_state = str(payload.get("flf_start_state") or "").strip()[:1800]
     flf_transformation = str(payload.get("flf_transformation") or "").strip()[:2400]
     flf_end_state = str(payload.get("flf_end_state") or "").strip()[:1800]
@@ -4973,7 +4997,8 @@ def _generate_builder_t2v_prompt(payload):
         image_guidance = (
             "First Last Frame guidance:\n"
             "- You receive one side-by-side image: the LEFT half is the opening visual state and the RIGHT half is the ending visual state.\n"
-            "- Use both halves as the visual truth for subject identity, wardrobe, setting, lighting, composition, pose, and camera endpoint.\n"
+            "- Use both halves as the absolute visual truth for subject identity, wardrobe, setting, lighting, composition, body pose, subject position, camera endpoint, visible objects, and visible creatures. Lyrics, storyboard beats, transformation notes, and user text may explain how to travel between the endpoints, but they must never override, omit, or contradict what is visibly present in either half.\n"
+            "- The final paragraph must explicitly account for every major endpoint difference: standing/sitting/lying posture, front/back/profile orientation, hand placement, subject location in frame, wardrobe state, foreground/background objects, creature type and color, and camera distance/crop. Do not substitute a related object or creature (for example moths for butterflies, birds for moths, or skin for a mirror) unless that exact change is visibly supported by the endpoints.\n"
             "- Write ONE compact, flowing paragraph in this exact motion structure; do not use headings, bullets, timestamps, numbered phases, or separate staged blocks.\n"
             "- Sentence 1 establishes the actual LEFT composition, subject, setting, and starting condition without inventing a wider establishing shot.\n"
             "- Sentence 2 begins with an explicit natural physical action by the subject (for example shoulders lift, the body rises, the head turns, or the subject steps/moves as supported by the endpoints) and joins all material/anatomical changes into ONE continuous progressive transformation. Do not merely change textures on a motionless subject. Describe a few precise visible changes with coordinated verbs such as softens, closes, separates, lengthens, opens, or forms. Do not schedule them as disconnected events.\n"
@@ -4994,7 +5019,7 @@ def _generate_builder_t2v_prompt(payload):
             "- Preserve any supplied singing, lyric, dialogue, emotional-performance, and selected facial-performance direction; integrate it naturally without disrupting the continuous visual motion.\n"
             "- Preserve the normal one-paragraph video prompt structure from the instructions. Do not mention images, frames, references, inputs, MSR, or LoRA in the final prompt.\n\n"
         )
-        if any((flf_start_state, flf_transformation, flf_end_state, flf_carry_forward)):
+        if flf_context_mode == "full" and any((flf_start_state, flf_transformation, flf_end_state, flf_carry_forward)):
             image_guidance += (
                 "Storyboard FLF motion contract:\n"
                 f"- Opening state: {flf_start_state or '[derive exactly from the LEFT image]'}\n"
@@ -5005,6 +5030,21 @@ def _generate_builder_t2v_prompt(payload):
                 "- Begin the planned action and camera travel immediately, keep them continuous, and finish at the exact RIGHT destination.\n"
                 "- Preserve all supplied singing, lyric, emotional-performance, and selected facial-performance directions while carrying out this transformation.\n"
                 "- Do not output these labels or quote this contract in the final paragraph.\n\n"
+            )
+        elif flf_context_mode == "images_only":
+            image_guidance += (
+                "Gemma context mode: IMAGES ONLY.\n"
+                "- Design the visual transition only from the locked LEFT and RIGHT observations.\n"
+                "- Ignore lyrics, story arc, storyboard endpoint prose, mapped descriptions, scene notes, and camera presets when deciding visible action or camera travel.\n"
+                "- The application adds any required exact vocal line and facial-performance direction after this visual prompt is returned.\n\n"
+            )
+        elif flf_context_mode == "images_story":
+            image_guidance += (
+                "Gemma context mode: IMAGES + STORY BEAT.\n"
+                "- Use the locked LEFT and RIGHT observations as absolute endpoint truth.\n"
+                "- Use only the supplied short scene story beat to choose a meaningful continuous bridge. Discard any beat detail that conflicts with either image.\n"
+                "- Ignore lyrics, story arc, mapped descriptions, detailed endpoint prose, other scene notes, and camera presets when deciding visible action or camera travel.\n"
+                "- The application adds any required exact vocal line and facial-performance direction after this visual prompt is returned.\n\n"
             )
     elif has_image_reference and instruction_key == "id_lora":
         image_guidance = (
@@ -5083,17 +5123,32 @@ def _generate_builder_t2v_prompt(payload):
                 observation_prompt = (
                     "Inspect the side-by-side visual carefully. The LEFT half is START and the RIGHT half is END. "
                     "Do visual observation only; do not write a video prompt, story, transition, or camera direction. "
-                    "Return exactly two compact labeled lines. START: describe the visible subject, material, pose, setting, and crop. "
-                    "END: literally describe the visible subject, exact crop, and every unusual destination feature, prioritizing openings, cavities, "
-                    "translucent anatomy, internal structures, distinctive colors, materials, and which body regions are out of frame. "
-                    "Do not normalize an unusual feature into generic anatomy and do not infer what ought to be present. State only what is visibly present."
+                    "Return exactly two dense labeled lines. Each line must literally inventory: subject identity; full-body posture (standing, sitting, kneeling, lying, leaning); front/back/profile orientation; head, torso, arm, and hand placement; location and scale within the frame; clothing and hair; all major props and surfaces; setting; lighting; exact crop; and every visible creature/object with its type and dominant color. "
+                    "START: state all visible opening facts. END: state all visible destination facts and every major difference from START, including where the subject moved and which opening objects disappeared or remained. "
+                    "Prioritize unusual anatomy, openings, cavities, translucent structures, distinctive materials, and which body regions are out of frame when present. "
+                    "Do not merge the two halves, infer a story, rename one creature as another, or describe what ought to be present. State only what is visibly present."
                 )
                 locked_observation, _ = run_vision_instruction(observation_prompt, 900)
                 locked_observation = _clean_gemma_prompt_text(locked_observation)
+                has_start_observation = bool(re.search(r"(?im)^\s*START\s*:", locked_observation))
+                has_end_observation = bool(re.search(r"(?im)^\s*END\s*:", locked_observation))
+                if not (has_start_observation and has_end_observation):
+                    retry_observation_prompt = (
+                        observation_prompt
+                        + "\n\nYour prior response omitted one endpoint. Try again. You MUST output both labeled lines, START: and END:. "
+                        "Do not stop after START. Keep each line compact enough to fit."
+                    )
+                    locked_observation, _ = run_vision_instruction(retry_observation_prompt, 1200)
+                    locked_observation = _clean_gemma_prompt_text(locked_observation)
+                    has_start_observation = bool(re.search(r"(?im)^\s*START\s*:", locked_observation))
+                    has_end_observation = bool(re.search(r"(?im)^\s*END\s*:", locked_observation))
+                if not (has_start_observation and has_end_observation):
+                    raise ValueError("FLF Gemma vision observation was incomplete: both START and END descriptions are required.")
                 prompt += (
                     "\n\nLOCKED VISUAL OBSERVATION FROM THE REQUIRED FIRST PASS:\n"
                     f"{locked_observation}\n\n"
                     "Use these locked facts as literal visual truth. The final prompt must reach every distinctive END fact without replacing it with generic wording."
+                    " If any lyric, storyboard transformation, motion note, or scene concept conflicts with the locked facts, discard the conflicting detail and write a continuous physical bridge that reaches the visible END instead."
                 )
             text, run_info = run_vision_instruction(prompt, max_new_tokens)
         else:
@@ -5919,13 +5974,24 @@ def _generate_builder_reference_description(payload):
     if subject_label.lower().startswith("the "):
         subject_label = subject_label.lower()
     object_reference_types = {"prop", "object", "vehicle", "creature", "animal", "outfit", "style", "environment", "other"}
-    if reference_type not in {"subject", "character", "location", *object_reference_types}:
+    if reference_type not in {"subject", "character", "face", "location", *object_reference_types}:
         reference_type = "subject"
     if text_runner not in {"lm_studio", "llm_api"} and not model_file:
         raise ValueError("Choose a Gemma vision model first.")
     image = _image_from_prompt_payload(payload.get("image_path", ""), payload.get("image_data", ""), "Reference image")
 
-    if reference_type in {"subject", "character"}:
+    if reference_type == "face":
+        instruction = (
+            "Study the visible person's face and write one precise face-identity description for an image enhancement prompt.\n"
+            "Return only one plain-text paragraph. It must begin exactly with: a photo of\n"
+            "Describe stable facial identity details only: apparent age range, face shape, eyes, eyebrows, nose, lips, jawline, cheeks, distinctive facial features, hair color, hairline, and face-framing hair.\n"
+            "Include makeup or facial accessories only when clearly visible and useful for preserving identity.\n"
+            "Do not mention the background, location, clothing, body, pose, camera angle, action, mood, or facial expression.\n"
+            "Do not describe smiling, frowning, an open mouth, gaze direction, or head direction.\n"
+            "Do not add markdown, a label, quotation marks, instructions, or commentary.\n"
+            "Do not invent details that are not visible. Keep it under 100 words."
+        )
+    elif reference_type in {"subject", "character"}:
         instruction = (
             "Look at the image and write one concise character appearance description.\n"
             "Output only the description, one paragraph, no markdown, no label, no bullet points.\n"
@@ -5995,7 +6061,25 @@ def _generate_builder_reference_description(payload):
         def clean_reference_description(raw_text):
             text = _clean_visual_gemma_text(raw_text)
             text = re.sub(r"^\s*(character|subject|location|description)\s*:\s*", "", text, flags=re.I).strip()
-            if reference_type in {"subject", "character"}:
+            if reference_type == "face":
+                text = text.strip().strip('"').strip("'").strip()
+                # Vision models occasionally leak a short thought and then emit the
+                # requested prompt, e.g. "a photo of me thoughta photo of a woman...".
+                # The final occurrence is the actual answer, even when the leaked
+                # text omitted whitespace before it.
+                markers = list(re.finditer(r"a\s+photo\s+of", text, flags=re.I))
+                if markers:
+                    text = text[markers[-1].start():]
+                else:
+                    text = re.sub(r"^\s*(?:face prompt|prompt|face description)\s*:\s*", "", text, flags=re.I)
+                    text = f"a photo of {text.lstrip(' ,.-')}"
+                text = re.sub(r"^a\s+photo\s+of\b", "a photo of", text, count=1, flags=re.I)
+                text = re.sub(r"\s+", " ", text).strip()
+                if len(re.findall(r"a\s+photo\s+of", text, flags=re.I)) != 1:
+                    raise ValueError("The face description repeated its required opening phrase.")
+                if re.search(r"\b(?:assistant|analysis|reasoning|let me|i think|i thought|my thought)\b", text, flags=re.I):
+                    raise ValueError("The face description leaked model reasoning.")
+            elif reference_type in {"subject", "character"}:
                 if subject_label:
                     text = re.sub(r"\bthe character\b", subject_label, text, flags=re.I)
                     text = re.sub(r"\bthe subject\b", subject_label, text, flags=re.I)
@@ -7432,6 +7516,163 @@ def _save_builder_session(payload):
     }
 
 
+def _prepare_builder_project_export(project_folder):
+    project_folder = os.path.abspath(str(project_folder or "").strip().strip('"'))
+    session_path = _session_path(project_folder)
+    if not os.path.isdir(project_folder) or not os.path.isfile(session_path):
+        raise FileNotFoundError("The Builder project or its session file was not found.")
+    with open(session_path, "r", encoding="utf-8") as handle:
+        session = json.load(handle)
+    if not isinstance(session, dict):
+        raise ValueError("The Builder project session is invalid.")
+
+    # Pull any still-external scene assets into the project before packaging it.
+    old_project_folder = str(session.get("project_folder", "") or project_folder)
+    session = _copy_session_assets_to_project(project_folder, session)
+    portable_folder = os.path.join(project_folder, "portable_assets")
+    portable_extensions = {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp",
+        ".mp4", ".mov", ".mkv", ".webm", ".avi",
+        ".wav", ".mp3", ".m4a", ".flac", ".ogg",
+        ".srt", ".txt", ".json", ".csv",
+    }
+    copied_external_paths = {}
+
+    def localize_external_assets(value, key_path="asset"):
+        if isinstance(value, dict):
+            return {key: localize_external_assets(item, f"{key_path}_{key}") for key, item in value.items()}
+        if isinstance(value, list):
+            return [localize_external_assets(item, f"{key_path}_{index + 1}") for index, item in enumerate(value)]
+        if not isinstance(value, str):
+            return value
+        source = value.strip().strip('"')
+        if not os.path.isabs(source) or not os.path.isfile(source):
+            return value
+        try:
+            if os.path.commonpath([project_folder, os.path.abspath(source)]) == project_folder:
+                return os.path.abspath(source)
+        except ValueError:
+            pass
+        extension = os.path.splitext(source)[1].lower()
+        if extension not in portable_extensions:
+            return value
+        source_key = os.path.normcase(os.path.abspath(source))
+        if source_key in copied_external_paths:
+            return copied_external_paths[source_key]
+        safe_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", key_path).strip("._")[-80:] or "asset"
+        safe_base = re.sub(r"[^A-Za-z0-9_.-]+", "_", os.path.basename(source)).strip("._") or f"file{extension}"
+        destination = os.path.join(portable_folder, f"{len(copied_external_paths) + 1:04d}_{safe_key}_{safe_base}")
+        copied = _copy_file_if_exists(source, destination)
+        if copied:
+            copied_external_paths[source_key] = copied
+            return copied
+        return value
+
+    session = localize_external_assets(session, "session")
+    session = _rebase_project_owned_paths(project_folder, old_project_folder, session)
+    session["project_folder"] = project_folder
+    session["updated"] = time.time()
+    with open(session_path, "w", encoding="utf-8") as handle:
+        json.dump(session, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+
+    project_name = _safe_project_name(os.path.basename(project_folder))
+    temp_handle = tempfile.NamedTemporaryFile(prefix="vrgdg_builder_export_", suffix=".zip", delete=False)
+    zip_path = temp_handle.name
+    temp_handle.close()
+    try:
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as archive:
+            archive.writestr("vrgdg_project_package.json", json.dumps({
+                "format": "vrgdg_builder_project",
+                "version": 1,
+                "project_name": project_name,
+                "created": time.time(),
+            }, indent=2))
+            for root, folders, files in os.walk(project_folder):
+                folders[:] = [name for name in folders if name not in {"__pycache__"}]
+                for filename in files:
+                    source = os.path.join(root, filename)
+                    relative = os.path.relpath(source, project_folder).replace(os.sep, "/")
+                    already_compressed = os.path.splitext(filename)[1].lower() in {
+                        ".mp4", ".mov", ".mkv", ".webm", ".avi", ".mp3", ".m4a", ".flac", ".ogg",
+                        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip",
+                    }
+                    archive.write(source, relative, compress_type=zipfile.ZIP_STORED if already_compressed else zipfile.ZIP_DEFLATED)
+        return zip_path, f"{project_name}.vrgdg.zip"
+    except Exception:
+        try:
+            os.remove(zip_path)
+        except OSError:
+            pass
+        raise
+
+
+def _safe_builder_zip_members(archive):
+    members = archive.infolist()
+    if not members:
+        raise ValueError("The selected ZIP file is empty.")
+    total_size = 0
+    for member in members:
+        normalized = member.filename.replace("\\", "/")
+        parts = [part for part in normalized.split("/") if part not in {"", "."}]
+        if normalized.startswith("/") or re.match(r"^[A-Za-z]:", normalized) or any(part == ".." for part in parts):
+            raise ValueError(f"Unsafe path in project ZIP: {member.filename}")
+        unix_mode = (member.external_attr >> 16) & 0o170000
+        if unix_mode == 0o120000:
+            raise ValueError(f"Symbolic links are not allowed in project ZIPs: {member.filename}")
+        total_size += max(0, int(member.file_size or 0))
+        if member.file_size > 1024 * 1024 * 1024 and member.compress_size and member.file_size > member.compress_size * 1000:
+            raise ValueError(f"Suspicious compression ratio in project ZIP: {member.filename}")
+    if total_size > 500 * 1024 * 1024 * 1024:
+        raise ValueError("The uncompressed project is larger than the 500 GB safety limit.")
+    names = {member.filename.replace("\\", "/").strip("/") for member in members}
+    if "vrgdg_builder_session.json" not in names:
+        raise ValueError("This ZIP is not a portable Video Builder project (vrgdg_builder_session.json is missing).")
+    return members
+
+
+def _import_builder_project_zip(zip_path, requested_name=""):
+    with zipfile.ZipFile(zip_path, "r") as archive:
+        members = _safe_builder_zip_members(archive)
+        manifest = {}
+        try:
+            manifest = json.loads(archive.read("vrgdg_project_package.json").decode("utf-8"))
+        except (KeyError, ValueError, UnicodeDecodeError):
+            manifest = {}
+        default_name = manifest.get("project_name") or os.path.basename(zip_path).replace(".vrgdg.zip", "").replace(".zip", "")
+        project_name = _safe_project_name(requested_name or default_name)
+        target = _unique_folder_path(os.path.join(folder_paths.get_output_directory(), project_name))
+        os.makedirs(target, exist_ok=False)
+        try:
+            target_real = os.path.realpath(target)
+            for member in members:
+                name = member.filename.replace("\\", "/").strip("/")
+                if not name or name == "vrgdg_project_package.json":
+                    continue
+                destination = os.path.realpath(os.path.join(target, *name.split("/")))
+                if os.path.commonpath([target_real, destination]) != target_real:
+                    raise ValueError(f"Unsafe path in project ZIP: {member.filename}")
+                if member.is_dir():
+                    os.makedirs(destination, exist_ok=True)
+                    continue
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                with archive.open(member, "r") as source, open(destination, "wb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+            result = _load_builder_session(target)
+            imported_session = result.get("session")
+            if isinstance(imported_session, dict):
+                imported_session["project_folder"] = target
+                imported_session["updated"] = time.time()
+                with open(_session_path(target), "w", encoding="utf-8") as handle:
+                    json.dump(imported_session, handle, indent=2, ensure_ascii=False)
+                    handle.write("\n")
+            result["imported_project_name"] = project_name
+            return result
+        except Exception:
+            shutil.rmtree(target, ignore_errors=True)
+            raise
+
+
 def _save_wizard_draft(payload):
     project_folder = os.path.abspath(str(payload.get("project_folder", "") or "").strip().strip('"'))
     if not project_folder:
@@ -8521,6 +8762,7 @@ def _ensure_music_builder_routes():
     if server_instance is None:
         return
     register_lut_routes(server_instance)
+    register_face_fix_routes(server_instance)
 
     @server_instance.routes.post("/vrgdg/music_builder/analyze_audio")
     async def vrgdg_music_builder_analyze_audio(request):
@@ -8591,6 +8833,79 @@ def _ensure_music_builder_routes():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.get("/vrgdg/music_builder/export_project")
+    async def vrgdg_music_builder_export_project(request):
+        zip_path = ""
+        response = None
+        try:
+            zip_path, download_name = await asyncio.to_thread(
+                _prepare_builder_project_export,
+                request.query.get("project_folder", ""),
+            )
+            response = web.StreamResponse(status=200, headers={
+                "Content-Type": "application/zip",
+                "Content-Disposition": f'attachment; filename="{download_name}"',
+                "Content-Length": str(os.path.getsize(zip_path)),
+                "Cache-Control": "no-store",
+            })
+            await response.prepare(request)
+            with open(zip_path, "rb") as handle:
+                while True:
+                    chunk = await asyncio.to_thread(handle.read, 1024 * 1024)
+                    if not chunk:
+                        break
+                    await response.write(chunk)
+            await response.write_eof()
+            return response
+        except Exception as exc:
+            if response is not None and response.prepared:
+                raise
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        finally:
+            if zip_path:
+                try:
+                    os.remove(zip_path)
+                except OSError:
+                    pass
+
+    @server_instance.routes.post("/vrgdg/music_builder/import_project")
+    async def vrgdg_music_builder_import_project(request):
+        temp_path = ""
+        try:
+            reader = await request.multipart()
+            requested_name = ""
+            upload = None
+            async for part in reader:
+                if part.name == "project_name":
+                    requested_name = (await part.text()).strip()
+                elif part.name == "project_zip":
+                    suffix = os.path.splitext(part.filename or "project.zip")[1] or ".zip"
+                    temp_handle = tempfile.NamedTemporaryFile(prefix="vrgdg_builder_import_", suffix=suffix, delete=False)
+                    temp_path = temp_handle.name
+                    upload = temp_handle
+                    try:
+                        while True:
+                            chunk = await part.read_chunk(size=1024 * 1024)
+                            if not chunk:
+                                break
+                            upload.write(chunk)
+                    finally:
+                        upload.close()
+            if not temp_path or not os.path.isfile(temp_path):
+                raise ValueError("Choose a .vrgdg.zip project package to import.")
+            if not zipfile.is_zipfile(temp_path):
+                raise ValueError("The selected file is not a valid ZIP project package.")
+            result = await asyncio.to_thread(_import_builder_project_zip, temp_path, requested_name)
+            return web.json_response({"ok": True, **result})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        finally:
+            if temp_path:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
 
     @server_instance.routes.post("/vrgdg/music_builder/save_scene_image")
     async def vrgdg_music_builder_save_scene_image(request):
