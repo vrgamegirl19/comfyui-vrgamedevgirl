@@ -73,22 +73,39 @@ def _detect(net, frame, confidence, regions):
         region_h, region_w = region.shape[:2]
         if region_w < 8 or region_h < 8:
             continue
-        blob = cv2.dnn.blobFromImage(
-            cv2.resize(region, (300, 300)), 1.0, (300, 300),
-            (104.0, 177.0, 123.0), swapRB=False, crop=False,
-        )
-        net.setInput(blob)
-        output = net.forward()
-        for detection in output[0, 0]:
-            score = float(detection[2])
-            if score < confidence:
-                continue
-            x = max(left, left + int(round(float(detection[3]) * region_w)))
-            y = max(top, top + int(round(float(detection[4]) * region_h)))
-            x2 = min(right, left + int(round(float(detection[5]) * region_w)))
-            y2 = min(bottom, top + int(round(float(detection[6]) * region_h)))
-            if x2 > x and y2 > y:
-                found.append((float(x), float(y), float(x2 - x), float(y2 - y), score))
+        if net.get("kind") == "yunet":
+            detector = net["net"]
+            detector.setInputSize((region_w, region_h))
+            result = detector.detect(region)
+            faces = result[1] if isinstance(result, tuple) and len(result) > 1 else result
+            for detection in (() if faces is None else faces):
+                score = float(detection[-1])
+                if score < confidence:
+                    continue
+                x = max(left, left + int(round(float(detection[0]))))
+                y = max(top, top + int(round(float(detection[1]))))
+                x2 = min(right, x + int(round(float(detection[2]))))
+                y2 = min(bottom, y + int(round(float(detection[3]))))
+                if x2 > x and y2 > y:
+                    found.append((float(x), float(y), float(x2 - x), float(y2 - y), score))
+        else:
+            detector = net["net"]
+            blob = cv2.dnn.blobFromImage(
+                cv2.resize(region, (300, 300)), 1.0, (300, 300),
+                (104.0, 177.0, 123.0), swapRB=False, crop=False,
+            )
+            detector.setInput(blob)
+            output = detector.forward()
+            for detection in output[0, 0]:
+                score = float(detection[2])
+                if score < confidence:
+                    continue
+                x = max(left, left + int(round(float(detection[3]) * region_w)))
+                y = max(top, top + int(round(float(detection[4]) * region_h)))
+                x2 = min(right, left + int(round(float(detection[5]) * region_w)))
+                y2 = min(bottom, top + int(round(float(detection[6]) * region_h)))
+                if x2 > x and y2 > y:
+                    found.append((float(x), float(y), float(x2 - x), float(y2 - y), score))
     kept = []
     for item in sorted(found, key=lambda value: value[4], reverse=True):
         if not any(_iou(item[:4], other[:4]) > 0.35 for other in kept):
@@ -336,18 +353,35 @@ def prepare_face_fix(payload):
     assets = os.path.join(os.path.dirname(__file__), "assets")
     config_path = os.path.join(assets, "opencv_face_deploy.prototxt")
     model_path = os.path.join(assets, "opencv_face_res10_fp16.caffemodel")
-    if not os.path.isfile(config_path) or not os.path.isfile(model_path):
+    yunet_path = os.path.join(assets, "face_detection_yunet_2023mar.onnx")
+    detector = None
+    caffe_error = None
+    if os.path.isfile(config_path) and os.path.isfile(model_path):
+        try:
+            caffe_loader = getattr(cv2.dnn, "readNetFromCaffe", None)
+            if callable(caffe_loader):
+                detector = {"kind": "caffe", "net": caffe_loader(config_path, model_path)}
+            else:
+                generic_loader = getattr(cv2.dnn, "readNet", None)
+                if callable(generic_loader):
+                    detector = {"kind": "caffe", "net": generic_loader(model_path, config_path)}
+        except Exception as exc:
+            caffe_error = exc
+    if detector is None and os.path.isfile(yunet_path):
+        face_detector_yn = getattr(cv2, "FaceDetectorYN", None)
+        yunet_loader = getattr(face_detector_yn, "create", None) if face_detector_yn is not None else None
+        if not callable(yunet_loader):
+            yunet_loader = getattr(cv2, "FaceDetectorYN_create", None)
+        if callable(yunet_loader):
+            try:
+                detector = {"kind": "yunet", "net": yunet_loader(yunet_path, "", (320, 320), 0.1, 0.3, 5000)}
+            except Exception as exc:
+                capture.release()
+                raise RuntimeError(f"OpenCV could not load the YuNet ONNX face detector: {exc}") from exc
+    if detector is None:
         capture.release()
-        raise RuntimeError("Face detector model files are missing from the custom node assets folder.")
-    caffe_loader = getattr(cv2.dnn, "readNetFromCaffe", None)
-    if callable(caffe_loader):
-        detector = caffe_loader(config_path, model_path)
-    else:
-        generic_loader = getattr(cv2.dnn, "readNet", None)
-        if not callable(generic_loader):
-            capture.release()
-            raise RuntimeError("This OpenCV build does not provide a compatible DNN network loader.")
-        detector = generic_loader(model_path, config_path)
+        detail = f" Caffe loader error: {caffe_error}" if caffe_error else ""
+        raise RuntimeError(f"Face Fix could not load a compatible OpenCV face detector.{detail}")
 
     capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     entries = []
