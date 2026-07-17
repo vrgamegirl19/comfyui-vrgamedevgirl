@@ -56,7 +56,13 @@ def _detector():
     model = os.path.join(assets, "opencv_face_res10_fp16.caffemodel")
     if not os.path.isfile(config) or not os.path.isfile(model):
         raise RuntimeError("VRGDG OpenCV face-detector assets are missing.")
-    return cv2.dnn.readNetFromCaffe(config, model)
+    caffe_loader = getattr(cv2.dnn, "readNetFromCaffe", None)
+    if callable(caffe_loader):
+        return caffe_loader(config, model)
+    generic_loader = getattr(cv2.dnn, "readNet", None)
+    if callable(generic_loader):
+        return generic_loader(model, config)
+    raise RuntimeError("This OpenCV build does not provide a compatible DNN network loader.")
 
 
 def _iou(a, b):
