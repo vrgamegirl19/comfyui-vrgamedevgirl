@@ -339,7 +339,15 @@ def prepare_face_fix(payload):
     if not os.path.isfile(config_path) or not os.path.isfile(model_path):
         capture.release()
         raise RuntimeError("Face detector model files are missing from the custom node assets folder.")
-    detector = cv2.dnn.readNetFromCaffe(config_path, model_path)
+    caffe_loader = getattr(cv2.dnn, "readNetFromCaffe", None)
+    if callable(caffe_loader):
+        detector = caffe_loader(config_path, model_path)
+    else:
+        generic_loader = getattr(cv2.dnn, "readNet", None)
+        if not callable(generic_loader):
+            capture.release()
+            raise RuntimeError("This OpenCV build does not provide a compatible DNN network loader.")
+        detector = generic_loader(model_path, config_path)
 
     capture.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     entries = []
