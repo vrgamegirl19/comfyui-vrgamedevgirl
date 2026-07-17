@@ -21,6 +21,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_VoxCPM2Node",
     ".VRGDG_StandaloneFaceFixNodes",
     ".VRGDG_LTXICIngredientsGrid",
+    ".VRGDG_TryV9Dev",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (
