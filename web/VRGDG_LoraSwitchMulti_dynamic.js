@@ -2,8 +2,10 @@ import { app } from "../../../scripts/app.js";
 
 const NODE_NAMES = new Set([
   "VRGDG_OptionalMultiLoraModelOnly",
+  "VRGDG_OptionalMultiLoraTwoPassStrengths",
 ]);
 const OPTIONAL_MODEL_ONLY_NODE = "VRGDG_OptionalMultiLoraModelOnly";
+const OPTIONAL_TWO_PASS_STRENGTHS_NODE = "VRGDG_OptionalMultiLoraTwoPassStrengths";
 const MAX_LORA_SLOTS = 20;
 const OPTIONAL_OUTPUTS = [
   ["first_pass_model", "MODEL"],
@@ -48,8 +50,16 @@ function isOptionalModelOnlyNode(node) {
   return node?.comfyClass === OPTIONAL_MODEL_ONLY_NODE || node?.type === OPTIONAL_MODEL_ONLY_NODE;
 }
 
+function isOptionalTwoPassStrengthsNode(node) {
+  return node?.comfyClass === OPTIONAL_TWO_PASS_STRENGTHS_NODE || node?.type === OPTIONAL_TWO_PASS_STRENGTHS_NODE;
+}
+
+function isOptionalLoraNode(node) {
+  return isOptionalModelOnlyNode(node) || isOptionalTwoPassStrengthsNode(node);
+}
+
 function normalizeOptionalOutputs(node) {
-  if (!isOptionalModelOnlyNode(node) || !Array.isArray(node.outputs)) return;
+  if (!isOptionalLoraNode(node) || !Array.isArray(node.outputs)) return;
 
   while (node.outputs.length > OPTIONAL_OUTPUTS.length) {
     if (typeof node.removeOutput === "function") {
@@ -78,7 +88,8 @@ function refreshWidgets(node) {
 
   normalizeOptionalOutputs(node);
 
-  const isOptionalNode = isOptionalModelOnlyNode(node);
+  const isOptionalNode = isOptionalLoraNode(node);
+  const isTwoPassStrengthsNode = isOptionalTwoPassStrengthsNode(node);
   const useCustomWidget = getWidget(node, "use_custom_loras");
   const useCustom = !isOptionalNode || asBoolean(useCustomWidget?.value);
   const minCount = isOptionalNode ? 0 : 1;
@@ -93,7 +104,12 @@ function refreshWidgets(node) {
   for (let i = 1; i <= MAX_LORA_SLOTS; i++) {
     const visible = useCustom && i <= count;
     setWidgetVisible(getWidget(node, `lora_${i}`), visible);
-    setWidgetVisible(getWidget(node, `strength_${i}`), visible);
+    if (isTwoPassStrengthsNode) {
+      setWidgetVisible(getWidget(node, `first_pass_strength_${i}`), visible);
+      setWidgetVisible(getWidget(node, `second_pass_strength_${i}`), visible);
+    } else {
+      setWidgetVisible(getWidget(node, `strength_${i}`), visible);
+    }
   }
 
   node.setSize([node.size[0], node.computeSize()[1]]);

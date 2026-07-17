@@ -1841,6 +1841,109 @@ class VRGDG_OptionalMultiLoraModelOnly:
         return (first_pass_model, second_pass_model, lora_names)
 
 
+class VRGDG_OptionalMultiLoraTwoPassStrengths(VRGDG_OptionalMultiLoraModelOnly):
+    @classmethod
+    def INPUT_TYPES(cls):
+        lora_choices = cls._lora_choices()
+        required = {
+            "model": ("MODEL",),
+            "use_custom_loras": (
+                "BOOLEAN",
+                {
+                    "default": False,
+                    "tooltip": "Off passes the model through unchanged and ignores all LoRA slots.",
+                },
+            ),
+            "lora_count": (
+                "INT",
+                {
+                    "default": 0,
+                    "min": 0,
+                    "max": cls.MAX_LORA_SLOTS,
+                    "step": 1,
+                    "tooltip": "How many LoRA slots to show and apply. Zero applies none.",
+                },
+            ),
+        }
+
+        for i in range(1, cls.MAX_LORA_SLOTS + 1):
+            required[f"lora_{i}"] = (
+                lora_choices,
+                {
+                    "default": cls.NONE_LORA,
+                    "tooltip": "Choose [none] to leave this slot unused.",
+                },
+            )
+            required[f"first_pass_strength_{i}"] = (
+                "FLOAT",
+                {
+                    "default": 0.5,
+                    "min": -100.0,
+                    "max": 100.0,
+                    "step": 0.01,
+                    "tooltip": "LoRA model strength for the first-pass model output.",
+                },
+            )
+            required[f"second_pass_strength_{i}"] = (
+                "FLOAT",
+                {
+                    "default": 1.0,
+                    "min": -100.0,
+                    "max": 100.0,
+                    "step": 0.01,
+                    "tooltip": "LoRA model strength for the second-pass model output.",
+                },
+            )
+
+        return {"required": required}
+
+    DESCRIPTION = "Safely applies optional model-only LoRAs with separate first-pass and second-pass strengths for each LoRA."
+
+    def _collect_two_pass_lora_specs(self, lora_count, kwargs):
+        try:
+            count = int(lora_count)
+        except Exception:
+            count = 0
+        count = max(0, min(self.MAX_LORA_SLOTS, count))
+
+        specs = []
+        for slot in range(1, count + 1):
+            lora_name = kwargs.get(f"lora_{slot}", self.NONE_LORA)
+            if self._is_none_lora(lora_name):
+                continue
+
+            try:
+                first_strength = float(kwargs.get(f"first_pass_strength_{slot}", 0.5))
+            except Exception:
+                first_strength = 0.5
+
+            try:
+                second_strength = float(kwargs.get(f"second_pass_strength_{slot}", 1.0))
+            except Exception:
+                second_strength = 1.0
+
+            if first_strength == 0 and second_strength == 0:
+                continue
+
+            specs.append((str(lora_name), first_strength, second_strength))
+        return specs
+
+    def apply_loras(self, model, use_custom_loras=False, lora_count=0, **kwargs):
+        if not self._as_bool(use_custom_loras):
+            return (model, model, "")
+
+        specs = self._collect_two_pass_lora_specs(lora_count, kwargs)
+        if not specs:
+            return (model, model, "")
+
+        first_pass_specs = [(name, first_strength) for name, first_strength, _ in specs]
+        second_pass_specs = [(name, second_strength) for name, _, second_strength in specs]
+        first_pass_model = self._apply_specs(model, first_pass_specs, 1.0)
+        second_pass_model = self._apply_specs(model, second_pass_specs, 1.0)
+        lora_names = ", ".join(self._lora_stem(name) for name, _, _ in specs)
+        return (first_pass_model, second_pass_model, lora_names)
+
+
 class VRGDG_NoteBox:
     RETURN_TYPES = ()
     FUNCTION = "run"
@@ -3507,6 +3610,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_IntToFloat": VRGDG_IntToFloat,
     "VRGDG_ImageIndex0HUMOEDIT": VRGDG_ImageIndex0HUMOEDIT,
     "VRGDG_OptionalMultiLoraModelOnly": VRGDG_OptionalMultiLoraModelOnly,
+    "VRGDG_OptionalMultiLoraTwoPassStrengths": VRGDG_OptionalMultiLoraTwoPassStrengths,
     "VRGDG_NoteBox": VRGDG_NoteBox,
     "VRGDG_SetMuteStateMulti": VRGDG_SetMuteStateMulti,
     "VRGDG_SetGroupStateMulti": VRGDG_SetGroupStateMulti,
@@ -3540,6 +3644,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_IntToFloat": "VRGDG_IntToFloat",
     "VRGDG_ImageIndex0HUMOEDIT": "VRGDG_ImageIndex0HUMOEDIT",
     "VRGDG_OptionalMultiLoraModelOnly": "VRGDG Optional Multi LoRA Model Only",
+    "VRGDG_OptionalMultiLoraTwoPassStrengths": "VRGDG Optional Multi LoRA Two Pass Strengths",
     "VRGDG_NoteBox": "VRGDG_NoteBox",
     "VRGDG_SetMuteStateMulti": "VRGDG_SetMuteStateMulti",
     "VRGDG_SetGroupStateMulti": "VRGDG_SetGroupStateMulti",
