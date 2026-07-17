@@ -1913,17 +1913,17 @@ function openBuilder(node) {
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Download Models");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
-  const updateV9Button = makeButton("Update to Latest V9");
-  updateV9Button.style.background = "#9a3412";
-  updateV9Button.style.borderColor = "#ea580c";
-  updateV9Button.style.color = "#fff7ed";
-  updateV9Button.style.fontWeight = "800";
-  updateV9Button.title = "Run the documented Git fetch, switch, and pull commands for the V9 branch.";
-  const updateV9HintButton = makeButton("?");
-  updateV9HintButton.title = "What does the V9 updater do?";
-  updateV9HintButton.style.cssText += "flex:0 0 36px;width:36px;text-align:center;justify-content:center;background:#431407;border-color:#c2410c;color:#ffedd5;font-weight:900;";
-  const updateV9Row = document.createElement("div");
-  updateV9Row.style.cssText = "display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid #3f3f46;";
+  const updateV10Button = makeButton("Update to Latest V10");
+  updateV10Button.style.background = "#9a3412";
+  updateV10Button.style.borderColor = "#ea580c";
+  updateV10Button.style.color = "#fff7ed";
+  updateV10Button.style.fontWeight = "800";
+  updateV10Button.title = "Fetch and fast-forward this installation to the latest V10 development branch.";
+  const updateV10HintButton = makeButton("?");
+  updateV10HintButton.title = "What does the V10 updater do?";
+  updateV10HintButton.style.cssText += "flex:0 0 36px;width:36px;text-align:center;justify-content:center;background:#431407;border-color:#c2410c;color:#ffedd5;font-weight:900;";
+  const updateV10Row = document.createElement("div");
+  updateV10Row.style.cssText = "display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid #3f3f46;";
   stopWorkflowButton.style.background = "#b91c1c";
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
@@ -1941,10 +1941,10 @@ function openBuilder(node) {
   }
   autoSaveControl.wrapper.style.marginTop = "4px";
   menuDropdown.append(autoSaveControl.wrapper);
-  styleMenuItem(updateV9Button);
-  updateV9Button.style.flex = "1 1 auto";
-  updateV9Row.append(updateV9Button, updateV9HintButton);
-  menuDropdown.append(updateV9Row);
+  styleMenuItem(updateV10Button);
+  updateV10Button.style.flex = "1 1 auto";
+  updateV10Row.append(updateV10Button, updateV10HintButton);
+  menuDropdown.append(updateV10Row);
   const projectActions = document.createElement("div");
   projectActions.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:max-content;";
   projectActions.append(menuButton, videoTypeField, saveButton);
@@ -40099,28 +40099,28 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     event.stopPropagation();
     menuDropdown.style.display = menuDropdown.style.display === "flex" ? "none" : "flex";
   };
-  updateV9HintButton.onclick = () => {
+  updateV10HintButton.onclick = () => {
     window.alert(
-      "What Update to Latest V9 does:\n\n" +
+      "What Update to Latest V10 does:\n\n" +
       "1. Finds this custom node's installed folder automatically.\n" +
       "2. Runs: git fetch origin\n" +
-      "3. Runs: git switch dev/music-video-builder-ui-test-v9\n" +
-      "4. Runs: git pull\n\n" +
-      "This is the same as the documented manual update. It does not run git reset or git clean, and it does not delete files you created. Git will stop and show an error if switching or pulling would overwrite conflicting work. Nothing outside the comfyui-vrgamedevgirl folder is touched."
+      "3. Runs: git switch dev/music-video-builder-ui-test-v10\n" +
+      "4. Runs: git pull --ff-only\n\n" +
+      "It does not run git reset or git clean, and it does not delete files you created. Git will stop and show an error if switching or pulling would overwrite conflicting work. Nothing outside the comfyui-vrgamedevgirl folder is touched."
     );
   };
-  updateV9Button.onclick = async () => {
+  updateV10Button.onclick = async () => {
     const confirmed = window.confirm(
-      "Update these custom nodes to the latest V9 branch now?\n\n" +
-      "This runs the same Git fetch, switch, and pull commands as the manual instructions. Git will stop if your code changes conflict. Files you created are not deleted.\n\nContinue?"
+      "Update these custom nodes to the latest V10 development branch now?\n\n" +
+      "Git will stop if your code changes conflict. Files you created are not deleted.\n\nContinue?"
     );
     if (!confirmed) return;
 
-    const originalText = updateV9Button.textContent;
-    updateV9Button.disabled = true;
-    updateV9Button.textContent = "Updating V9...";
+    const originalText = updateV10Button.textContent;
+    updateV10Button.disabled = true;
+    updateV10Button.textContent = "Updating V10...";
     try {
-      const response = await api.fetchApi("/vrgdg/update/v9", { method: "POST" });
+      const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST" });
       let payload = {};
       try {
         payload = await response.json();
@@ -40131,13 +40131,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         throw new Error(payload.error || `Update failed (HTTP ${response.status}).`);
       }
       window.alert(
-        "V9 updated successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load."
+        "V10 updated successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load."
       );
     } catch (error) {
-      window.alert(`V9 update did not complete:\n\n${error?.message || error}`);
+      window.alert(`V10 update did not complete:\n\n${error?.message || error}`);
     } finally {
-      updateV9Button.disabled = false;
-      updateV9Button.textContent = originalText;
+      updateV10Button.disabled = false;
+      updateV10Button.textContent = originalText;
     }
   };
   menuDropdown.addEventListener("click", (event) => {

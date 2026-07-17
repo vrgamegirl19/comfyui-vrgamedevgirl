@@ -36,6 +36,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_FlowBrowserNodes",
     ".VRGDG_BrowserImageRoutes",
     ".VRGDG_SilentAudioRoutes",
+    ".VRGDG_UpdateRoutes",
     ".VRGDG_VideoBuilderNodeUI",
 )
 
