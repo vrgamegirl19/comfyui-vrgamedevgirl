@@ -54,15 +54,33 @@ def _detector():
     assets = os.path.join(os.path.dirname(__file__), "assets")
     config = os.path.join(assets, "opencv_face_deploy.prototxt")
     model = os.path.join(assets, "opencv_face_res10_fp16.caffemodel")
-    if not os.path.isfile(config) or not os.path.isfile(model):
-        raise RuntimeError("VRGDG OpenCV face-detector assets are missing.")
-    caffe_loader = getattr(cv2.dnn, "readNetFromCaffe", None)
-    if callable(caffe_loader):
-        return caffe_loader(config, model)
-    generic_loader = getattr(cv2.dnn, "readNet", None)
-    if callable(generic_loader):
-        return generic_loader(model, config)
-    raise RuntimeError("This OpenCV build does not provide a compatible DNN network loader.")
+    yunet_model = os.path.join(assets, "face_detection_yunet_2023mar.onnx")
+    caffe_error = None
+    if os.path.isfile(config) and os.path.isfile(model):
+        try:
+            caffe_loader = getattr(cv2.dnn, "readNetFromCaffe", None)
+            if callable(caffe_loader):
+                return {"kind": "caffe", "net": caffe_loader(config, model)}
+            generic_loader = getattr(cv2.dnn, "readNet", None)
+            if callable(generic_loader):
+                return {"kind": "caffe", "net": generic_loader(model, config)}
+        except Exception as exc:
+            caffe_error = exc
+
+    if os.path.isfile(yunet_model):
+        face_detector_yn = getattr(cv2, "FaceDetectorYN", None)
+        yunet_loader = getattr(face_detector_yn, "create", None) if face_detector_yn is not None else None
+        if not callable(yunet_loader):
+            yunet_loader = getattr(cv2, "FaceDetectorYN_create", None)
+        if callable(yunet_loader):
+            try:
+                detector = yunet_loader(yunet_model, "", (320, 320), 0.1, 0.3, 5000)
+                return {"kind": "yunet", "net": detector}
+            except Exception as exc:
+                raise RuntimeError(f"OpenCV could not load the YuNet ONNX face detector: {exc}") from exc
+
+    detail = f" Caffe loader error: {caffe_error}" if caffe_error else ""
+    raise RuntimeError(f"VRGDG could not load a compatible OpenCV face detector.{detail}")
 
 
 def _iou(a, b):
@@ -85,20 +103,38 @@ def _detect(net, bgr, confidence, minimum_pixels):
     for left, top, right, bottom in regions:
         region = bgr[top:bottom, left:right]
         rh, rw = region.shape[:2]
-        blob = cv2.dnn.blobFromImage(cv2.resize(region, (300, 300)), 1.0, (300, 300),
-                                     (104.0, 177.0, 123.0), swapRB=False, crop=False)
-        net.setInput(blob)
-        for item in net.forward()[0, 0]:
-            score = float(item[2])
-            if score < confidence:
-                continue
-            x1 = max(left, left + int(float(item[3]) * rw))
-            y1 = max(top, top + int(float(item[4]) * rh))
-            x2 = min(right, left + int(float(item[5]) * rw))
-            y2 = min(bottom, top + int(float(item[6]) * rh))
-            w, h = x2 - x1, y2 - y1
-            if min(w, h) >= minimum_pixels:
-                found.append((float(x1), float(y1), float(w), float(h), score))
+        if net.get("kind") == "yunet":
+            detector = net["net"]
+            detector.setInputSize((rw, rh))
+            result = detector.detect(region)
+            faces = result[1] if isinstance(result, tuple) and len(result) > 1 else result
+            for item in (() if faces is None else faces):
+                score = float(item[-1])
+                if score < confidence:
+                    continue
+                x1 = max(left, left + int(round(float(item[0]))))
+                y1 = max(top, top + int(round(float(item[1]))))
+                x2 = min(right, x1 + int(round(float(item[2]))))
+                y2 = min(bottom, y1 + int(round(float(item[3]))))
+                w, h = x2 - x1, y2 - y1
+                if min(w, h) >= minimum_pixels:
+                    found.append((float(x1), float(y1), float(w), float(h), score))
+        else:
+            detector = net["net"]
+            blob = cv2.dnn.blobFromImage(cv2.resize(region, (300, 300)), 1.0, (300, 300),
+                                         (104.0, 177.0, 123.0), swapRB=False, crop=False)
+            detector.setInput(blob)
+            for item in detector.forward()[0, 0]:
+                score = float(item[2])
+                if score < confidence:
+                    continue
+                x1 = max(left, left + int(float(item[3]) * rw))
+                y1 = max(top, top + int(float(item[4]) * rh))
+                x2 = min(right, left + int(float(item[5]) * rw))
+                y2 = min(bottom, top + int(float(item[6]) * rh))
+                w, h = x2 - x1, y2 - y1
+                if min(w, h) >= minimum_pixels:
+                    found.append((float(x1), float(y1), float(w), float(h), score))
     kept = []
     for item in sorted(found, key=lambda value: value[4], reverse=True):
         if not any(_iou(item[:4], other[:4]) > 0.35 for other in kept):
