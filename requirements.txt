@@ -1,6 +1,7 @@
 kornia
 librosa
 imageio
+opencv-python
 torchcodec
 google-generativeai
 av
