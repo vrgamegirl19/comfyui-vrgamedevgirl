@@ -40227,7 +40227,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       "1. Finds this custom node's installed folder automatically.\n" +
       "2. Runs: git fetch origin\n" +
       "3. Runs: git switch dev/music-video-builder-ui-test-v10\n" +
-      "4. Runs: git pull --ff-only\n\n" +
+      "4. Runs: git pull --ff-only origin dev/music-video-builder-ui-test-v10\n\n" +
       "It does not run git reset or git clean, and it does not delete files you created. Git will stop and show an error if switching or pulling would overwrite conflicting work. Nothing outside the comfyui-vrgamedevgirl folder is touched."
     );
   };

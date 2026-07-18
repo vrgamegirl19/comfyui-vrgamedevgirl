@@ -34,7 +34,11 @@ def _update_to_v10():
         raise RuntimeError("This installation is not a Git checkout, so the normal Git update commands cannot run.")
 
     logs = []
-    for args in (("fetch", "origin"), ("switch", V10_BRANCH), ("pull", "--ff-only")):
+    for args in (
+        ("fetch", "origin"),
+        ("switch", V10_BRANCH),
+        ("pull", "--ff-only", "origin", V10_BRANCH),
+    ):
         output = _run_git(*args)
         logs.append({"command": "git " + " ".join(args), "output": output})
 
