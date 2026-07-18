@@ -207,10 +207,14 @@ Important project options:
 | `Load Project` | You want to open an existing project folder |
 | `Load Last Project` | You want to return to the most recent project |
 | `Save Project As` | You want to duplicate the current project into a new folder |
+| `Export Shareable Project ZIP` | You want to package the complete project and its project media for another computer |
+| `Import Project ZIP` | You want to extract, rebase, and immediately load a shared Builder project |
 | `Quick Save` | You want to save the current project state |
 | `Auto save` | You want the builder to save changes while you work |
 
 Projects are saved under the ComfyUI output folder. A builder project contains the session JSON, SRT, generated images, scene videos, prompt files, reference images, and copied audio assets.
+
+Portable exports use the `.vrgdg.zip` filename suffix. Import creates a uniquely named project under the receiving ComfyUI output folder, so it never overwrites an existing project. Generated media and external media referenced by the session are packaged; installed models, LoRAs, custom nodes, and API credentials are not included and must be installed separately if the receiver wants to generate new media.
 
 ![Menu Dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Menu%20Dropdown.png)
 
@@ -294,6 +298,7 @@ Timeline controls:
 | `+ Lyric Note` / `Hide Lyric Notes` | Show or hide the timeline lyric notes lane |
 | `Set In` / `Set Out` | Mark a selected range using the playhead |
 | `Clear Range` | Remove the selected range |
+| `✂` | Split the selected base scene at the playhead without moving any surrounding scene timing; later standard Scene labels are only renumbered |
 | `+ Timeline Note` | Add a timeline marker or note |
 | `+ Segment` | Add a normal scene |
 | `+ Insert` | Add an insert/overlay segment without changing the base timeline |
@@ -318,6 +323,8 @@ Timeline lanes:
 | Waveform | Visual display of the audio |
 
 Use `Video Notes` when you want to describe what should happen in motion. Use `Director Notes` or image notes for the still image idea. Use `Lyric Notes` for the exact lyric or vocal line.
+
+The timestamped-line workflow also offers `Exact reference lyric lines (no duration limits)`. In this mode every non-empty pasted line remains one exact vocal scene and bypasses automatic scene-duration splitting or merging. Instrumental gaps remain whole; use `✂` afterward if you want to divide one manually. A vocal split keeps the existing lyric on the left and leaves the new right-hand lyric blank for correction. Scenes with rendered video must have that video cleared before their timing can be split.
 
 ![Timeline Controls](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder/images/Timeline%20Controls.png)
 

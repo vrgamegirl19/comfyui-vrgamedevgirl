@@ -2147,6 +2147,10 @@ function openStoryboardBuilder(payload = {}) {
   clearPromptsButton.title = "Clear Storyboard scene-card prompt summaries, generated prompts, and extra notes without changing subjects, locations, camera, motion, or lyrics.";
   clearPromptsButton.style.borderColor = "#991b1b";
   clearPromptsButton.style.background = "#3f0808";
+  const clearStoryBeatsButton = makeButton("Clear All Story Beats");
+  clearStoryBeatsButton.title = "Clear the story beat from every Storyboard scene without changing lyrics, prompts, images, subjects, locations, or shot settings.";
+  clearStoryBeatsButton.style.borderColor = "#991b1b";
+  clearStoryBeatsButton.style.background = "#3f0808";
   const keepGemmaLoadedLabel = document.createElement("label");
   keepGemmaLoadedLabel.style.cssText = "display:flex;align-items:center;gap:6px;color:#cbd5e1;font-size:12px;font-weight:800;white-space:nowrap;";
   const keepGemmaLoadedInput = document.createElement("input");
@@ -2156,7 +2160,7 @@ function openStoryboardBuilder(payload = {}) {
   keepGemmaLoadedLabel.title = "When checked, local Gemma keeps the text model loaded until the batch finishes. This has no effect on API runners.";
   const add = makeButton("+ Add Scene", "purple");
   const close = makeButton("Close");
-  headerActions.append(gptButton, importImagePromptsButton, gemmaAllButton, clearPromptsButton, keepGemmaLoadedLabel, search, add, close);
+  headerActions.append(gptButton, importImagePromptsButton, gemmaAllButton, clearPromptsButton, clearStoryBeatsButton, keepGemmaLoadedLabel, search, add, close);
   header.append(titleBlock, steps, headerActions);
 
   const note = document.createElement("div");
@@ -3229,6 +3233,65 @@ function openStoryboardBuilder(payload = {}) {
     if (type === "t2v") return "T2V";
     if (type === "rtv") return "RTV";
     return "I2V";
+  };
+
+  const confirmClearAllStoryBeats = () => new Promise((resolve) => {
+    const confirmBackdrop = document.createElement("div");
+    confirmBackdrop.style.cssText = "position:fixed;inset:0;z-index:100040;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:22px;";
+    const panel = document.createElement("div");
+    panel.style.cssText = "width:min(620px,calc(100vw - 44px));border:1px solid #991b1b;border-radius:9px;background:#0f172a;color:#e5e7eb;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden;";
+    const confirmHeader = document.createElement("div");
+    confirmHeader.style.cssText = "padding:14px 16px;background:#3f0808;border-bottom:1px solid #991b1b;font-weight:900;color:#fecaca;";
+    confirmHeader.textContent = "Clear all Storyboard story beats?";
+    const body = document.createElement("div");
+    body.style.cssText = "padding:16px;line-height:1.45;color:#e2e8f0;font-size:13px;";
+    body.textContent = "This clears only the Scene Story Beat field in every scene. Lyrics, generated prompts, notes, images, subjects, locations, references, camera settings, and motion settings will remain unchanged.";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px;";
+    const cancel = makeButton("Cancel");
+    const clear = makeButton("Yes, clear story beats", "primary");
+    clear.style.borderColor = "#991b1b";
+    clear.style.background = "#991b1b";
+    const finish = (value) => { confirmBackdrop.remove(); resolve(value); };
+    cancel.onclick = () => finish(false);
+    clear.onclick = () => finish(true);
+    confirmBackdrop.addEventListener("pointerdown", (event) => { if (event.target === confirmBackdrop) finish(false); });
+    actions.append(cancel, clear);
+    panel.append(confirmHeader, body, actions);
+    confirmBackdrop.append(panel);
+    document.body.append(confirmBackdrop);
+  });
+
+  const clearAllStoryboardStoryBeats = async () => {
+    if (!await confirmClearAllStoryBeats()) return;
+    let changed = 0;
+    for (const scene of state.scenes) {
+      if (String(scene.story_beat || "").trim()) changed += 1;
+      scene.story_beat = "";
+    }
+    renderTable();
+    if (state.onStoryLayerChanged) {
+      state.onStoryLayerChanged({
+        scenes: state.scenes.map((scene) => ({
+          id: scene.id,
+          scene_number: scene.scene_number,
+          story_beat: "",
+        })),
+      });
+    }
+    if (state.projectFolder) {
+      try {
+        await postJson("/vrgdg/storyboard/save", {
+          project_folder: state.projectFolder,
+          storyboard: slimStoryboardForRequest(state),
+        });
+        createToast(`Cleared story beats in ${changed} scene${changed === 1 ? "" : "s"} and saved Storyboard.`);
+      } catch (error) {
+        createToast(`Cleared story beats in this session, but could not save Storyboard:\n${String(error?.message || error)}`, true);
+      }
+    } else {
+      createToast(`Cleared story beats in ${changed} scene${changed === 1 ? "" : "s"}. Save the project to keep this change.`);
+    }
   };
 
   const videoPromptTypeHint = (type) => {
@@ -4715,6 +4778,7 @@ function openStoryboardBuilder(payload = {}) {
   importImagePromptsButton.onclick = openImportImagePromptsFromGptModal;
   gemmaAllButton.onclick = createAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
+  clearStoryBeatsButton.onclick = clearAllStoryboardStoryBeats;
   storyLayerEnabledInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
   imageWorldStyleSelect.addEventListener("change", () => {
     refreshImageWorldStyleInfo();

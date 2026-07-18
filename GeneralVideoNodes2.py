@@ -1657,7 +1657,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     # "VRGDG_CreateFinalVideo_SRT":"VRGDG_CreateFinalVideo_SRT",
     "VRGDG_RunStateLogger_SRT": "VRGDG_RunStateLogger_SRT",
     "SRTLyricsMerger": "SRTLyricsMerger",
-    "VRGDG_StoryBoardCreator":"VRGDG_StoryBoardCreator"
+    "VRGDG_StoryBoardCreator":"VRGDG Legacy Storyboard Prompt Queue"
 
 
 }

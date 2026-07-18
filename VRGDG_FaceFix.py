@@ -226,6 +226,31 @@ def _square_crop_box(face_box, width, height, padding):
     return (max(0, left), max(0, top), min(width, right), min(height, bottom))
 
 
+def _is_forbidden_ltx_conditioning_index(index):
+    return int(index) % 8 == 1
+
+
+def _safe_ltx_conditioning_indices(indices, frame_count):
+    """Move LTX guide-image indices away from forbidden 8n+1 positions."""
+    count = max(0, int(frame_count or 0))
+    if count <= 0:
+        return []
+    safe = []
+    used = set()
+    for raw in indices or []:
+        original = max(0, min(count - 1, int(raw)))
+        candidates = sorted(
+            (index for index in range(count) if not _is_forbidden_ltx_conditioning_index(index) and index not in used),
+            key=lambda index: (abs(index - original), index),
+        )
+        if not candidates:
+            continue
+        selected = candidates[0]
+        safe.append(selected)
+        used.add(selected)
+    return safe
+
+
 def _anchor_indices(frame_count, interval):
     count = max(0, int(frame_count or 0))
     if count <= 0:
@@ -234,7 +259,7 @@ def _anchor_indices(frame_count, interval):
     indices = list(range(0, count, step))
     if indices[-1] != count - 1:
         indices.append(count - 1)
-    return indices
+    return _safe_ltx_conditioning_indices(indices, count)
 
 
 def _encode_crop_video(crops_folder, output_path, fps, start_frame, frame_count):
@@ -489,6 +514,9 @@ def prepare_face_fix(payload):
             index for index, entry in enumerate(run_entries)
             if entry.get("detected") and float(entry.get("composite_strength") or 0.0) > 0.0
         ]
+        safe_detected_indices = [index for index in detected_indices if not _is_forbidden_ltx_conditioning_index(index)]
+        if safe_detected_indices:
+            detected_indices = safe_detected_indices
         selected_indices = []
         for desired in desired_indices:
             if not detected_indices:
@@ -746,7 +774,12 @@ def build_ltx_face_fix_prompt(payload):
     prompt["4880"]["inputs"]["guiding_strength"] = float(settings.get("guiding_strength", 0.20))
     prompt["4880"]["inputs"]["temporal_overlap_cond_strength"] = float(settings.get("temporal_overlap_cond_strength", 0.50))
     prompt["4880"]["inputs"]["cond_image_strength"] = float(settings.get("cond_image_strength", 0.50))
-    prompt["4880"]["inputs"]["optional_cond_image_indices"] = str(run.get("anchor_indices_text") or "")
+    original_indices = [int(anchor.get("index", 0)) for anchor in anchors]
+    safe_indices = _safe_ltx_conditioning_indices(original_indices, int(run.get("frame_count") or 0))
+    if len(safe_indices) != len(anchors):
+        raise ValueError("Face Fix could not assign a valid LTX conditioning index to every enhanced anchor.")
+    safe_indices_text = ",".join(str(index) for index in safe_indices)
+    prompt["4880"]["inputs"]["optional_cond_image_indices"] = safe_indices_text
     prompt["4638"]["inputs"]["noise_seed"] = int(settings.get("seed", 42))
     prompt["4637"]["inputs"]["sampler_name"] = str(settings.get("sampler") or "euler_ancestral")
     prompt["4896"]["inputs"]["sigmas"] = str(settings.get("sigmas") or "0.909375, 0.725, 0.421875, 0.0")
@@ -756,7 +789,7 @@ def build_ltx_face_fix_prompt(payload):
         "run_index": run_index,
         "frame_count": int(run.get("frame_count") or 0),
         "anchor_count": len(anchors),
-        "anchor_indices_text": run.get("anchor_indices_text"),
+        "anchor_indices_text": safe_indices_text,
     }
 
 

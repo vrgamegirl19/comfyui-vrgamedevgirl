@@ -671,6 +671,10 @@ function settingHints() {
     fp8_scaled: "Dynamic scaled fp8 weights. Required when fp8_base is on.",
     timestep_sampling: "Krea 2 docs recommend shift.",
     discrete_flow_shift: "Flow shift value used when timestep_sampling is shift. 2.5 is the current default.",
+    ai_toolkit_root: "Folder containing Ostris AI Toolkit run.py and its isolated venv.",
+    ai_toolkit_model: "Krea 2 Raw Hugging Face model id or local Diffusers model path used by AI Toolkit.",
+    edit_quantize: "Quantizes the Krea 2 base model to lower training VRAM use.",
+    edit_low_vram: "Uses AI Toolkit's lower-VRAM model loading path.",
     aspect_ratio: "Aspect ratio used by the hidden Krea 2 sample workflow. Both resolution selector nodes are patched to this same value.",
   };
 }
@@ -777,6 +781,7 @@ class Krea2Studio {
     this.defaults = null;
     this.project = null;
     this.currentPreset = "Fast";
+    this.trainingType = "standard";
     this.settings = {};
     this.status = "Ready.";
     this.advancedOpen = false;
@@ -810,6 +815,7 @@ class Krea2Studio {
     const response = await api.fetchApi("/vrgdg/krea2_studio/defaults");
     this.defaults = await response.json();
     this.currentPreset = "Fast";
+    this.trainingType = "standard";
     this.settings = cloneData(this.defaults.presets.Fast);
     this.captionRunner = this.defaults.caption_runner || "builtin";
     this.lmStudioBaseUrl = this.defaults.lmstudio_base_url || this.lmStudioBaseUrl;
@@ -868,6 +874,8 @@ class Krea2Studio {
     const target = Number(this.project?.total_target_steps || this.settings.total_target_steps || 0);
     const progressPercent = target > 0 ? Math.max(0, Math.min(100, Math.round((completed / target) * 100))) : 0;
     const importedImages = (this.project?.imported_files || []).filter((item) => item.type === "image");
+    const isEdit = this.trainingType === "edit";
+    const datasetItems = (this.project?.imported_files || []).filter((item) => item.type === "image" || item.type === "edit_pair");
 
     this.overlay.innerHTML = `
       <div class="vrgdg-krea2-shell" style="grid-template-rows:1fr;">
@@ -919,7 +927,15 @@ class Krea2Studio {
             <div class="vrgdg-krea2-content">
               <section class="vrgdg-krea2-panel">
                 <div class="vrgdg-krea2-step">
-                  <h3>1. Preset</h3>
+                  <h3>1. Training Type</h3>
+                  <div class="vrgdg-krea2-field">
+                    <select data-bind="training_type">
+                      <option value="standard" ${!isEdit ? "selected" : ""}>Standard Krea 2 LoRA · Musubi</option>
+                      <option value="edit" ${isEdit ? "selected" : ""}>Experimental Krea 2 Edit LoRA · AI Toolkit</option>
+                    </select>
+                  </div>
+                  <div class="vrgdg-krea2-hint" style="margin-bottom:12px;">${isEdit ? "Train an instruction-based edit LoRA from matching control → target pairs. Requires the VRGDG AI Toolkit installer node." : "Train a normal style, character, or object LoRA from image-caption pairs."}</div>
+                  <h3>2. Preset</h3>
                   <div class="vrgdg-krea2-segment">
                     ${["Fast", "Medium", "Long"].map((name) => `<button class="vrgdg-krea2-btn ${this.currentPreset === name ? "active" : ""}" data-preset="${name}">${name}</button>`).join("")}
                   </div>
@@ -942,7 +958,7 @@ class Krea2Studio {
                   </details>
                 </div>
                 <div class="vrgdg-krea2-step" data-section="krea-models">
-                  <h3>2. Krea Models</h3>
+                  <h3>3. Krea Models</h3>
                   <div class="vrgdg-krea2-hint" style="margin-bottom:10px;">Sample image workflow models. These do not change training checkpoints.</div>
                   <div class="vrgdg-krea2-field">
                     <label>Sample diffusion model</label>
@@ -958,8 +974,15 @@ class Krea2Studio {
                   </div>
                 </div>
                 <div class="vrgdg-krea2-step">
-                  <h3>3. Dataset</h3>
-                  <div class="vrgdg-krea2-drop" data-dropzone>
+                  <h3>4. Dataset</h3>
+                  ${isEdit ? `
+                  <div class="vrgdg-krea2-hint" style="margin-bottom:10px;">Matching stems form a pair: <b>control/image_001.png</b> → <b>target/image_001.png</b> with <b>target/image_001.txt</b> containing the edit instruction.</div>
+                  <div class="vrgdg-krea2-row">
+                    <div class="vrgdg-krea2-drop" style="min-height:125px;"><div><strong>Control / Source</strong><button class="vrgdg-krea2-btn" data-action="browseEditControl">Browse Control Images</button><input data-edit-control type="file" multiple accept="image/*" style="display:none;"></div></div>
+                    <div class="vrgdg-krea2-drop" style="min-height:125px;"><div><strong>Edited Target + .txt</strong><button class="vrgdg-krea2-btn" data-action="browseEditTarget">Browse Targets + Instructions</button><input data-edit-target type="file" multiple accept="image/*,.txt" style="display:none;"></div></div>
+                  </div>
+                  <div class="vrgdg-krea2-hint" style="margin-top:10px;color:${(this.project?.dataset_sync?.problems || []).length ? "#fca5a5" : "#86efac"};">${esc((this.project?.dataset_sync?.problems || []).join(" · ") || `${this.project?.dataset_sync?.pair_count || 0} complete edit pair(s)`)}</div>
+                  ` : `<div class="vrgdg-krea2-drop" data-dropzone>
                     <div>
                       <strong>Drop images and .txt captions here</strong>
                       <div>or click to browse</div>
@@ -967,11 +990,11 @@ class Krea2Studio {
                       <button class="vrgdg-krea2-btn" data-action="browseFiles" style="margin-top:12px;">Browse Files</button>
                       <input data-file-input type="file" multiple accept="image/*,.txt,.caption" style="display:none;">
                     </div>
-                  </div>
+                  </div>`}
                   ${this.renderImportList()}
                 </div>
-                <div class="vrgdg-krea2-step">
-                  <h3>4. Captioning</h3>
+                <div class="vrgdg-krea2-step" style="display:${isEdit ? "none" : "block"};">
+                  <h3>5. Captioning</h3>
                   ${this.renderCaptionRunner()}
                   <div class="vrgdg-krea2-actions" style="margin-top:10px;">
                     <button class="vrgdg-krea2-btn primary" data-action="captionPlaceholder">Generate Missing Captions</button>
@@ -993,7 +1016,7 @@ class Krea2Studio {
                   </div>
                 </div>
                 <div class="vrgdg-krea2-step">
-                  <h3>5. Train</h3>
+                  <h3>${isEdit ? "5" : "6"}. Train</h3>
                   <button class="vrgdg-krea2-btn hot vrgdg-krea2-full-button" data-action="trainChunk">${this.autoContinue ? "Start Training + Samples" : "Train One Chunk + Sample"}</button>
                   ${this.isTraining ? `<button class="vrgdg-krea2-btn vrgdg-krea2-full-button" data-action="stopTraining" style="margin-top:8px;">Stop After Current Chunk</button>` : ""}
                   <label class="vrgdg-krea2-check" style="margin-top:12px;" title="When enabled, Studio keeps training the next chunk after each sample is saved until total_target_steps is reached. Turn this off to review each LoRA before continuing.">
@@ -1005,7 +1028,7 @@ class Krea2Studio {
               <section class="vrgdg-krea2-stack">
                 <div class="vrgdg-krea2-card">
                   <h3>Dataset</h3>
-                  ${importedImages.length ? `<div class="vrgdg-krea2-gallery">${importedImages.slice(-12).map((item) => `<div class="vrgdg-krea2-sample"><img src="${esc(imageUrl(item.path))}"><div><span>${esc(item.name)}</span><span>dataset</span></div></div>`).join("")}</div>` : `<div class="vrgdg-krea2-empty"><div><div class="vrgdg-krea2-empty-icon">[]</div><div class="vrgdg-krea2-project-title">No dataset selected</div><div class="vrgdg-krea2-hint" style="margin-top:8px;">Add your training images and captions to get started.</div></div></div>`}
+                  ${datasetItems.length ? `<div class="vrgdg-krea2-gallery">${datasetItems.slice(-12).map((item) => `<div class="vrgdg-krea2-sample"><img src="${esc(imageUrl(item.path))}"><div><span>${esc(item.name)}</span><span>${item.type === "edit_pair" ? "target pair" : "dataset"}</span></div></div>`).join("")}</div>` : `<div class="vrgdg-krea2-empty"><div><div class="vrgdg-krea2-empty-icon">[]</div><div class="vrgdg-krea2-project-title">No dataset selected</div><div class="vrgdg-krea2-hint" style="margin-top:8px;">Add your training images and captions to get started.</div></div></div>`}
                 </div>
                 <div class="vrgdg-krea2-card">
                   <h3>Sample Prompt</h3>
@@ -1032,6 +1055,10 @@ class Krea2Studio {
     const hints = settingHints();
     return Object.entries(this.settings).map(([key, value]) => {
       if (key === "image_guidance" || key === "resolution_width" || key === "resolution_height") return "";
+      const editOnly = new Set(["ai_toolkit_root", "ai_toolkit_model", "edit_quantize", "edit_low_vram"]);
+      const standardOnly = new Set(["musubi_root", "krea2_raw_dit", "vae", "text_encoder", "fp8_base", "fp8_scaled", "timestep_sampling", "discrete_flow_shift", "cache_strategy", "clear_memory_before_text_encoder", "create_captions", "caption_text", "add_trigger_word", "trigger_text"]);
+      if (this.trainingType === "edit" && standardOnly.has(key)) return "";
+      if (this.trainingType !== "edit" && editOnly.has(key)) return "";
       const hint = hints[key] || "";
       if (typeof value === "boolean") {
         return `<div class="vrgdg-krea2-field">${settingLabelHtml(key, hint)}<select data-setting="${esc(key)}"><option value="true" ${value ? "selected" : ""}>true</option><option value="false" ${!value ? "selected" : ""}>false</option></select></div>`;
@@ -1280,6 +1307,10 @@ class Krea2Studio {
     this.overlay.querySelector('[data-action="browseFiles"]')?.addEventListener("click", () => {
       this.overlay.querySelector("[data-file-input]")?.click();
     });
+    this.overlay.querySelector('[data-action="browseEditControl"]')?.addEventListener("click", () => this.overlay.querySelector("[data-edit-control]")?.click());
+    this.overlay.querySelector('[data-action="browseEditTarget"]')?.addEventListener("click", () => this.overlay.querySelector("[data-edit-target]")?.click());
+    this.overlay.querySelector("[data-edit-control]")?.addEventListener("change", (event) => { this.importEditFiles(event.target.files || [], "control"); event.target.value = ""; });
+    this.overlay.querySelector("[data-edit-target]")?.addEventListener("change", (event) => { this.importEditFiles(event.target.files || [], "target"); event.target.value = ""; });
     this.overlay.querySelector('[data-action="loadLmStudioModels"]')?.addEventListener("click", () => this.loadLmStudioModels());
     this.overlay.querySelector("[data-file-input]")?.addEventListener("change", (event) => {
       this.importFiles(event.target.files || []);
@@ -1335,7 +1366,12 @@ class Krea2Studio {
       });
       input.addEventListener("change", () => {
         this.collectForm();
-        if (input.dataset.bind === "caption_runner" || input.dataset.bind === "llm_api_provider") this.render();
+        if (input.dataset.bind === "training_type") {
+          this.trainingType = input.value;
+          if (this.project) this.project.training_type = this.trainingType;
+          this.status = this.trainingType === "edit" ? "Experimental Krea 2 Edit mode selected. Import matching control and target pairs." : "Standard Krea 2 LoRA mode selected.";
+        }
+        if (["training_type", "caption_runner", "llm_api_provider"].includes(input.dataset.bind)) this.render();
       });
     }
 
@@ -1376,6 +1412,7 @@ class Krea2Studio {
     this.samplePrompt = samplePrompt;
     this.sampleModelSettings = sampleModelSettings;
     this.captionInstructions = captionInstructions;
+    this.trainingType = this.overlay?.querySelector('[data-bind="training_type"]')?.value || this.trainingType || "standard";
     this.captionUserNotes = captionUserNotes;
     this.captionRunner = this.overlay?.querySelector('[data-bind="caption_runner"]')?.value || this.captionRunner || "builtin";
     this.captionOverwrite = Boolean(this.overlay?.querySelector('[data-bind="caption_overwrite"]')?.checked);
@@ -1390,6 +1427,7 @@ class Krea2Studio {
     return {
       project_root: this.overlay?.querySelector('[data-bind="project_root"]')?.value || getWidget(this.node, "project_root")?.value || this.defaults?.project_root || "",
       project_name: this.overlay?.querySelector('[data-bind="project_name"]')?.value || getWidget(this.node, "project_name")?.value || this.defaults?.project_name || "",
+      training_type: this.trainingType,
       aspect_ratio: aspectRatio,
       sample_prompt: samplePrompt,
       sample_model_settings: sampleModelSettings,
@@ -1414,6 +1452,7 @@ class Krea2Studio {
       const data = await jsonFetch("/vrgdg/krea2_studio/create_project", {
         project_root: form.project_root,
         project_name: form.project_name,
+        training_type: form.training_type,
         preset_name: this.currentPreset,
         settings: this.settings,
         aspect_ratio: form.aspect_ratio,
@@ -1439,6 +1478,7 @@ class Krea2Studio {
     const form = this.collectForm();
     const data = await jsonFetch("/vrgdg/krea2_studio/save_project", {
       project_dir: this.project.project_dir,
+      training_type: form.training_type,
       preset_name: this.currentPreset,
       settings: this.settings,
       aspect_ratio: form.aspect_ratio,
@@ -1496,6 +1536,7 @@ class Krea2Studio {
     const data = await jsonFetch("/vrgdg/krea2_studio/load_project", { project_dir: projectDir });
     this.project = data.project;
     this.currentPreset = this.project.preset_name || this.currentPreset || "Fast";
+    this.trainingType = this.project.training_type || "standard";
     this.settings = cloneData(this.project.settings || this.defaults.presets[this.currentPreset] || this.defaults.presets.Fast);
     this.aspectRatio = this.project.aspect_ratio || "3:4 (Portrait Standard)";
     this.samplePrompt = this.project.sample_prompt || this.defaults.sample_prompt || "";
@@ -1638,6 +1679,29 @@ class Krea2Studio {
     } catch (error) {
       this.status = `Import error: ${error.message || error}`;
       this.render();
+    }
+  }
+
+  async importEditFiles(fileList, role) {
+    try {
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+      if (!this.project?.project_dir) await this.createProject();
+      if (!this.project?.project_dir) return;
+      this.status = `Importing ${files.length} ${role} file(s)...`; this.render();
+      const form = new FormData();
+      form.append("project_dir", this.project.project_dir);
+      form.append("role", role);
+      for (const file of files) form.append("files", file, file.name);
+      const response = await api.fetchApi("/vrgdg/krea2_studio/import_edit_files", { method: "POST", body: form });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+      this.project = data.project; this.trainingType = "edit";
+      const problems = data.dataset_sync?.problems || [];
+      this.status = problems.length ? `Imported ${role} files. Pair check: ${problems.join(" · ")}` : `${data.dataset_sync?.pair_count || 0} complete Krea 2 Edit pair(s) ready.`;
+      this.render();
+    } catch (error) {
+      this.status = `Edit dataset import failed: ${error.message || error}`; this.render();
     }
   }
 
@@ -1822,9 +1886,8 @@ class Krea2Studio {
         if (target > 0 && completed >= target) {
           this.status = `Training complete at ${completed}/${target} steps.`;
           this.render();
-          progress.set(`Training already complete at ${completed}/${target} steps. Creating XYZ plot...`);
-          await this.createXyz(true);
-          progress.done(`Training complete at ${completed}/${target} steps.\nXYZ plot is ready.`, "Training Complete");
+          if (this.trainingType !== "edit") await this.createXyz(true);
+          progress.done(`Training complete at ${completed}/${target} steps.${this.trainingType === "edit" ? "\nThe latest edit LoRA checkpoint is ready." : "\nXYZ plot is ready."}`, "Training Complete");
           break;
         }
 
@@ -1844,13 +1907,19 @@ class Krea2Studio {
           stopProgressPolling();
         }
         this.project = data.project;
-        this.status = `Chunk finished at step ${data.result.completed_steps}. Sampling...`;
-        progress.set(`Chunk finished at step ${data.result.completed_steps}/${data.result.total_target_steps}.\nGenerating sample image...`);
-        this.render();
-        try {
-          await this.sampleLatest(data.result.latest_lora_path, data.result.completed_steps, progress);
-        } finally {
-          await this.cleanupMemoryAfterSample(progress);
+        if (this.trainingType === "edit") {
+          this.status = `Krea 2 Edit chunk finished at step ${data.result.completed_steps}.`;
+          progress.set(`Krea 2 Edit chunk finished at step ${data.result.completed_steps}/${data.result.total_target_steps}.\nCheckpoint: ${data.result.latest_lora_path}\n\nEdit sampling requires the Ostris Krea 2 Edit conditioning nodes, so Studio does not run the standard text-to-image sampler.`);
+          this.render();
+        } else {
+          this.status = `Chunk finished at step ${data.result.completed_steps}. Sampling...`;
+          progress.set(`Chunk finished at step ${data.result.completed_steps}/${data.result.total_target_steps}.\nGenerating sample image...`);
+          this.render();
+          try {
+            await this.sampleLatest(data.result.latest_lora_path, data.result.completed_steps, progress);
+          } finally {
+            await this.cleanupMemoryAfterSample(progress);
+          }
         }
 
         const newCompleted = Number(this.project?.completed_steps || data.result.completed_steps || 0);
@@ -1858,20 +1927,19 @@ class Krea2Studio {
         if (newTarget > 0 && newCompleted >= newTarget) {
           this.status = `Training complete at ${newCompleted}/${newTarget} steps.`;
           this.render();
-          progress.set(`Training complete at ${newCompleted}/${newTarget} steps.\nCreating XYZ plot...`);
-          await this.createXyz(true);
-          progress.done(`Training complete at ${newCompleted}/${newTarget} steps.\nXYZ plot is ready.`, "Training Complete");
+          if (this.trainingType !== "edit") await this.createXyz(true);
+          progress.done(`Training complete at ${newCompleted}/${newTarget} steps.${this.trainingType === "edit" ? "\nThe latest edit LoRA checkpoint is ready." : "\nXYZ plot is ready."}`, "Training Complete");
           break;
         }
         if (this.stopRequested) {
           this.status = `Stopped after step ${newCompleted}.`;
-          progress.done(`Stopped after step ${newCompleted}.\nThe current sample has been saved.`, "Stopped");
+          progress.done(`Stopped after step ${newCompleted}.${this.trainingType === "edit" ? "\nThe current edit checkpoint has been saved." : "\nThe current sample has been saved."}`, "Stopped");
           this.render();
           break;
         }
         if (!this.autoContinue) {
-          this.status = `Sample saved for step ${newCompleted}. Auto-continue is off so you can review the LoRA.`;
-          progress.done(`Sample saved for step ${newCompleted}.\nAuto-continue is off so you can review the LoRA.`, "Chunk Complete");
+          this.status = `${this.trainingType === "edit" ? "Edit checkpoint" : "Sample"} saved for step ${newCompleted}. Auto-continue is off so you can review the LoRA.`;
+          progress.done(`${this.trainingType === "edit" ? "Edit checkpoint" : "Sample"} saved for step ${newCompleted}.\nAuto-continue is off so you can review the LoRA.`, "Chunk Complete");
           this.render();
           break;
         }

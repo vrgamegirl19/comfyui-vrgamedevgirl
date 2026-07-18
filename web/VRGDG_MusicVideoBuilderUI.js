@@ -2085,10 +2085,12 @@ function openBuilder(node) {
     getProjectFolder: () => String(projectInput.value || ""),
     getPlayheadContext: () => {
       const previewSegmentId = String(previewVideo.dataset.segmentId || "");
-      const segment = allEditableSegments().find((item) => String(item?.id || "") === previewSegmentId) || activeSegment();
+      const selected = activeSegment();
+      const previewMatchesSelection = Boolean(selected && previewSegmentId && String(selected.id || "") === previewSegmentId);
+      const segment = selected || allEditableSegments().find((item) => String(item?.id || "") === previewSegmentId);
       return {
-        time: Number(previewVideo.currentTime || 0),
-        videoPath: String(previewVideo.dataset.path || selectedSegmentVideoPath(segment) || ""),
+        time: previewMatchesSelection ? Number(previewVideo.currentTime || 0) : 0,
+        videoPath: String(selectedSegmentVideoPath(segment) || (previewMatchesSelection ? previewVideo.dataset.path : "") || ""),
         segmentId: String(segment?.id || ""),
         sceneLabel: segment ? sceneDisplayName(segment, segmentIndexInfo(segment).index) : "scene",
       };
@@ -14227,6 +14229,91 @@ function openBuilder(node) {
     ].some((value) => String(value || "").trim());
     const createScenesFromImages = scenes.length === 0 || placeholderScene;
     if (currentVideoMode() === "flf") {
+      const pairedStarts = new Map();
+      const pairedEnds = new Map();
+      for (const file of images) {
+        const name = String(file.name || "");
+        let match = name.match(/^scene_(\d+)_end\.(?:png|jpe?g|webp)$/i);
+        if (match) {
+          pairedEnds.set(Number(match[1]), file);
+          continue;
+        }
+        match = name.match(/^scene_(\d+)\.(?:png|jpe?g|webp)$/i);
+        if (match) pairedStarts.set(Number(match[1]), file);
+      }
+      const pairedNumbers = Array.from(new Set([...pairedStarts.keys(), ...pairedEnds.keys()])).sort((a, b) => a - b);
+      const isStoryboardPairFolder = pairedNumbers.length > 0 && pairedNumbers.some((number) => pairedStarts.has(number) && pairedEnds.has(number));
+      if (isStoryboardPairFolder) {
+        const pairSceneCount = createScenesFromImages ? Math.max(...pairedNumbers) : scenes.length;
+        const completePairs = pairedNumbers.filter((number) => pairedStarts.has(number) && pairedEnds.has(number) && number <= pairSceneCount).length;
+        const missingStarts = Array.from({ length: pairSceneCount }, (_, index) => index + 1).filter((number) => !pairedStarts.has(number));
+        const missingEnds = Array.from({ length: pairSceneCount }, (_, index) => index + 1).filter((number) => !pairedEnds.has(number));
+        const confirmed = window.confirm(
+          `Import independent Start Image Storyboard pairs for ${pairSceneCount} scene${pairSceneCount === 1 ? "" : "s"}?\n\n`
+          + `${completePairs} complete start/end pair${completePairs === 1 ? "" : "s"} found.\n`
+          + "scene_0001.png → Scene 1 start frame\n"
+          + "scene_0001_end.png → Scene 1 end frame\n\n"
+          + "Previous-end-to-next-start chaining will be turned OFF. Each scene will use its own start and end frame.\n"
+          + (missingStarts.length ? `Missing start frames: ${missingStarts.slice(0, 12).join(", ")}${missingStarts.length > 12 ? "…" : ""}\n` : "")
+          + (missingEnds.length ? `Missing end frames: ${missingEnds.slice(0, 12).join(", ")}${missingEnds.length > 12 ? "…" : ""}\n` : "")
+          + "Existing frame images in matching scene slots will be replaced."
+        );
+        if (!confirmed) return;
+        pushHistory();
+        state.i2vVideoSettings = { ...(state.i2vVideoSettings || defaultI2VVideoSettings()), flf_chain_previous_end_frame: false };
+        if (createScenesFromImages) {
+          const duration = hasProjectAudio && projectAudioDuration > 0 ? projectAudioDuration : pairSceneCount * 4;
+          const sceneDuration = duration / pairSceneCount;
+          scenes = Array.from({ length: pairSceneCount }, (_, index) => newSegment(index * sceneDuration, index === pairSceneCount - 1 ? duration : (index + 1) * sceneDuration));
+          state.segments = scenes; state.duration = duration; state.activeId = scenes[0]?.id || "";
+          if (!hasProjectAudio) {
+            globalAudioModeSelect.value = "silent";
+            silentAudioDurationInput.value = String(Math.max(4, duration));
+            syncGlobalAudioModeControls();
+          }
+        }
+        const progress = createProgressWindow("Import Storyboard Start + End Frames");
+        try {
+          importImageFolderButton.disabled = true; importImageFolderButton.textContent = "Importing pairs...";
+          let startCount = 0;
+          let endCount = 0;
+          for (let index = 0; index < scenes.length; index += 1) {
+            const sceneNumber = index + 1;
+            const segment = scenes[index];
+            segment.flf_rendered_start_frame_path = "";
+            segment.flf_rendered_start_frame_data = "";
+            segment.flf_rendered_start_frame_name = "";
+            segment.flf_rendered_source_video_path = "";
+            if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) segment.i2v_video_settings.flf_chain_previous_end_frame = false;
+            const startFile = pairedStarts.get(sceneNumber);
+            if (startFile) {
+              progress.set(`Importing Scene ${sceneNumber} start frame\n${startFile.webkitRelativePath || startFile.name}`, 5 + Math.round((index / Math.max(1, scenes.length)) * 88));
+              const startData = await readFileAsDataUrl(startFile);
+              await applyCustomImageDataToSegment(segment, startData, startFile.name || `scene_${sceneNumber}_start.png`, { activate: false });
+              startCount += 1;
+            }
+            const endFile = pairedEnds.get(sceneNumber);
+            if (endFile) {
+              progress.set(`Importing Scene ${sceneNumber} end frame\n${endFile.webkitRelativePath || endFile.name}`, 8 + Math.round((index / Math.max(1, scenes.length)) * 88));
+              const endData = await readFileAsDataUrl(endFile);
+              const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+              const saved = projectFolder ? await postJson("/vrgdg/music_builder/archive_scene_image", { image_data: endData, project_folder: projectFolder, scene_number: sceneSlotNumber(segment), image_role: "end_frame" }) : { saved_path: "" };
+              segment.first_last_frame_end_image_path = saved.saved_path || "";
+              segment.first_last_frame_end_image_data = saved.saved_path ? "" : endData;
+              segment.first_last_frame_end_image_name = endFile.name || `scene_${sceneNumber}_end.png`;
+              endCount += 1;
+            }
+          }
+          setActiveSegment(scenes[0]); render(); await autoSaveSessionQuiet("Storyboard start end frame folder import");
+          progress.set(`Imported ${startCount} start frame${startCount === 1 ? "" : "s"} and ${endCount} end frame${endCount === 1 ? "" : "s"}.`, 100); progress.close(1800);
+          toast("Storyboard start/end frame pairs imported. FLF chaining is off.");
+        } catch (error) {
+          progress.set(`Import failed:\n${String(error?.message || error)}`, 100); toast(String(error?.message || error), true);
+        } finally {
+          importImageFolderButton.disabled = false; importImageFolderButton.textContent = "Fill Timeline Images From Folder";
+        }
+        return;
+      }
       if (images.length < 2) {
         toast("First Last Frame folder fill needs at least two images: Scene 1 first frame, then Scene 1 end frame.", true);
         return;
@@ -15832,7 +15919,7 @@ function openBuilder(node) {
     return parts;
   }
 
-  function applyMappedTriggerPhrases(prompt, segment) {
+  function applyMappedTriggerPhrases(prompt, segment, options = {}) {
     let text = cleanGeneratedPromptText(prompt);
     const parts = mappedTriggerPartsForSegment(segment);
     const starts = parts.start.filter(Boolean);
@@ -15863,7 +15950,23 @@ function openBuilder(node) {
       const suffix = ends.join(", ");
       if (!text.toLowerCase().endsWith(suffix.toLowerCase())) text = text ? `${text}, ${suffix}` : suffix;
     }
-    return text;
+    return options.ensureTransitionLast ? ensureTransitionLoraTriggerIsLast(text, segment) : text;
+  }
+
+  function ensureTransitionLoraTriggerIsLast(prompt, segment) {
+    let text = cleanGeneratedPromptText(prompt);
+    if (!segment || !flfTransitionLoraActive(segment)) return text;
+    const trigger = String(state.autoChainTransitionTrigger || "zhuanchang").trim().replace(/\s+/g, " ");
+    if (!trigger) return text;
+    const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    text = text
+      .replace(new RegExp(`(^|[\\s,;:.!?])${escaped}(?=$|[\\s,;:.!?])`, "gi"), "$1")
+      .replace(/\s+([,;:.!?])/g, "$1")
+      .replace(/([,;])\s*([,;])+/g, "$1")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .replace(/[\s,;:.!?]+$/, "");
+    return text ? `${text}, ${trigger}` : trigger;
   }
 
   function formatSubjectSegmentText(subjects = null) {
@@ -16312,7 +16415,11 @@ function openBuilder(node) {
 
   function normalizeTimestampedSceneDurations(segments = [], options = {}, payload = {}) {
     const segmentMode = String(options.segmentMode || payload?.segment_mode || payload?.segmentMode || "");
-    if (segmentMode === "exact_reference_lines") {
+    const preservesReferenceUnits = ["reference_lines", "exact_reference_lines", "reference_stanzas"].includes(segmentMode);
+    if (preservesReferenceUnits) {
+      // The timestamp extractor already applies the requested duration rules to
+      // reference-defined units. Merging short units here can combine multiple
+      // pasted lyric lines/stanzas and then trip the strict transcription guard.
       return (Array.isArray(segments) ? segments : [])
         .filter(Boolean)
         .map((segment) => ensureSegmentRuntimeFields(segment))
@@ -16387,6 +16494,8 @@ function openBuilder(node) {
 
   function createSegmentsFromTimestampedLyricsPayload(payload, options = {}) {
     const sourceSegments = Array.isArray(payload?.segments) ? payload.segments : [];
+    const segmentMode = String(options.segmentMode || payload?.segment_mode || payload?.segmentMode || "");
+    const preservesReferenceUnits = ["reference_lines", "exact_reference_lines", "reference_stanzas"].includes(segmentMode);
     const orderedSource = sourceSegments
       .map((item) => ({
         item,
@@ -16405,7 +16514,10 @@ function openBuilder(node) {
     const ordered = [];
     for (const source of orderedSource) {
       const duration = source.end - source.start;
-      if (duration <= softMaxScene + epsilon) {
+      // Reference modes define scene boundaries in the pasted text. Their Python
+      // extractor has already handled timing, and exact mode explicitly promises
+      // that a reference line will never be split by duration limits.
+      if (preservesReferenceUnits || duration <= softMaxScene + epsilon) {
         ordered.push(source);
         continue;
       }
@@ -16658,11 +16770,10 @@ function openBuilder(node) {
         modeLabel = payload.segment_mode || options.segmentMode || "reference_lines";
       }
       if (!created.length) throw new Error("Timestamped lines did not produce any usable scene segments.");
-      // Published V9 Beat Mode intentionally allows the Prompt Creator
-      // transcription to return multiple pasted lyric lines in one beat-timed
-      // scene. The newer strict-line safety check applies only to non-beat
-      // timestamped modes.
-      if (options.segmentMode !== "beat_scenes") {
+      // Only the two line modes promise one pasted reference line per scene.
+      // Stanza and beat modes intentionally allow several pasted lines in a
+      // scene, while Whisper mode does not define scenes from reference lines.
+      if (["reference_lines", "exact_reference_lines"].includes(options.segmentMode)) {
         assertNoBundledReferenceLyrics(created.map((segment) => segment.lyric_text || ""), options.referenceLyrics || "");
       }
       applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
@@ -29441,7 +29552,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const directiveOptions = { suppressPrefix: Boolean(options.suppressVocalPrefix) };
     const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment, directiveOptions);
     const enhanced = await enhanceVideoPromptForSegment(segment, draft, progress, percent, label, options);
-    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment, directiveOptions), segment);
+    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(enhanced, videoTriggerPhraseForSegment(segment)), segment, directiveOptions), segment, { ensureTransitionLast: true });
   }
 
   function finalizeVideoPromptDraftOnly(segment, rawPrompt) {
@@ -29449,7 +29560,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return normalizeIdLoraScriptPrompt(segment, rawPrompt);
     }
     const draft = applyVocalDirectiveToVideoPrompt(rawPrompt, segment);
-    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(draft, videoTriggerPhraseForSegment(segment)), segment), segment);
+    return applyMappedTriggerPhrases(applyVocalDirectiveToVideoPrompt(applyTriggerPhrase(draft, videoTriggerPhraseForSegment(segment)), segment), segment, { ensureTransitionLast: true });
   }
 
   function buildI2VPromptRequestForSegment(segment, options = {}) {
@@ -30913,7 +31024,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
         const videoType = String(scene.video_prompt_type || "").trim();
         segment.lyric_section = String(scene.lyric_section || scene.section || scene.song_section || segment.lyric_section || "").trim();
-        const nextStoryBeat = String(scene.story_beat || scene.scene_story_beat || scene.narrative_beat || segment.story_beat || "").trim();
+        const hasIncomingStoryBeat = Object.prototype.hasOwnProperty.call(scene, "story_beat")
+          || Object.prototype.hasOwnProperty.call(scene, "scene_story_beat")
+          || Object.prototype.hasOwnProperty.call(scene, "narrative_beat");
+        const incomingStoryBeat = Object.prototype.hasOwnProperty.call(scene, "story_beat")
+          ? scene.story_beat
+          : Object.prototype.hasOwnProperty.call(scene, "scene_story_beat")
+            ? scene.scene_story_beat
+            : scene.narrative_beat;
+        const nextStoryBeat = hasIncomingStoryBeat
+          ? String(incomingStoryBeat || "").trim()
+          : String(segment.story_beat || "").trim();
         if (segment.story_beat !== nextStoryBeat) beatChanged = true;
         segment.story_beat = nextStoryBeat;
         segment.flf_start_state = String(scene.flf_start_state || segment.flf_start_state || "").trim();
@@ -32584,7 +32705,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment,
         { suppressPrefix: true }
       ),
-      segment
+      segment,
+      { ensureTransitionLast: true }
     );
     const renderPromptForPayload = isIdLoraMode
       ? buildIdLoraPromptForScene(videoPromptForRender, segment)

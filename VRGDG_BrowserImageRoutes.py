@@ -318,7 +318,12 @@ def _run_manual_bridge(payload, action):
 
     port = _coerce_int(payload.get("debug_port"), config["debug_port"], 1, 65535)
     timeout_seconds = _coerce_int(payload.get("timeout_seconds"), config["timeout_seconds"], 15, 2400)
-    output_dir = os.path.join(flow_dir, "manual_downloads", provider)
+    # Keep browser downloads where the user expects them. Import Latest already
+    # scans both this normal Downloads folder and the legacy provider capture
+    # folders, so changing the CDP download target does not break importing.
+    user_profile = str(os.environ.get("USERPROFILE", "") or "").strip()
+    normal_downloads = os.path.join(user_profile, "Downloads") if user_profile else os.path.join(os.path.expanduser("~"), "Downloads")
+    output_dir = normal_downloads if os.path.isdir(normal_downloads) else os.path.join(flow_dir, "manual_downloads", provider)
     os.makedirs(output_dir, exist_ok=True)
     _start_debug_chrome(flow_dir, port, config["url"], profile_name=config["profile_name"])
 
@@ -347,14 +352,26 @@ def _run_manual_bridge(payload, action):
 
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
-    process = subprocess.run(
-        command,
-        cwd=flow_dir,
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds + 20,
-        env=env,
-    )
+    try:
+        process = subprocess.run(
+            command,
+            cwd=flow_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds + 20,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        if action == "upload":
+            raise RuntimeError(
+                f"{config['label']} did not finish attaching the reference image(s) and prompt within "
+                f"{timeout_seconds + 20} seconds. The browser may still be open; check whether the attachments "
+                "appeared, then retry the send if needed. No downloaded images were searched or imported."
+            ) from exc
+        raise RuntimeError(
+            f"Timed out waiting for a completed {config['label']} image download after "
+            f"{timeout_seconds + 20} seconds."
+        ) from exc
     stdout = process.stdout or ""
     stderr = process.stderr or ""
     if process.returncode != 0:

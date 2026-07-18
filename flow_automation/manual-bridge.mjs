@@ -27,9 +27,9 @@ const page = await getOrCreateProviderPage(context, provider);
 page.setDefaultTimeout(30000);
 
 await ensureProviderPage(page, provider, url);
-await allowDownloadsForAttachedChrome(context, page, outputDir);
 
 if (action === "upload") {
+  await restoreNormalDownloadsForAttachedChrome(context, page);
   if (!imagePaths.length) throw new Error("No image paths were provided for upload.");
   for (let index = 0; index < imagePaths.length; index += 1) {
     const imagePath = imagePaths[index];
@@ -48,11 +48,16 @@ if (action === "upload") {
   }
   console.log(`Uploaded ${imagePaths.length} image(s).`);
 } else if (action === "wait-download") {
+  // Download capture is opt-in. Upload/send actions must never change Chrome's
+  // normal download directory; storyboard images are imported only when the
+  // user explicitly requests it.
+  await allowDownloadsForAttachedChrome(context, page, outputDir);
   console.log(`Waiting for next ${providerLabel(provider)} browser download...`);
   const startedAt = Date.now();
   const savedPath = await waitForDownloadOrNewFile(context, outputDir, timeout, startedAt);
   console.log(`Saved: ${savedPath}`);
 } else if (action === "open") {
+  await restoreNormalDownloadsForAttachedChrome(context, page);
   console.log(`${providerLabel(provider)} browser ready: ${page.url()}`);
 } else {
   throw new Error(`Unknown manual bridge action: ${action}`);
@@ -157,6 +162,13 @@ async function allowDownloadsForAttachedChrome(context, page, downloadPath) {
   try {
     const session = await context.newCDPSession(page);
     await session.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath });
+  } catch {}
+}
+
+async function restoreNormalDownloadsForAttachedChrome(context, page) {
+  try {
+    const session = await context.newCDPSession(page);
+    await session.send("Browser.setDownloadBehavior", { behavior: "default" });
   } catch {}
 }
 

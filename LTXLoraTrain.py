@@ -46,6 +46,8 @@ _VRGDG_MUSUBI_INSTALL_JOB = None
 _VRGDG_KREA2_INSTALL_ROUTE_REGISTERED = False
 _VRGDG_KREA2_INSTALL_LOCK = threading.Lock()
 _VRGDG_KREA2_INSTALL_JOB = None
+_VRGDG_AI_TOOLKIT_INSTALL_ROUTE_REGISTERED = False
+_VRGDG_AI_TOOLKIT_INSTALL_LOCK = threading.Lock()
 _VRGDG_KREA2_STUDIO_ROUTE_REGISTERED = False
 _VRGDG_KREA2_STUDIO_TRAIN_LOCK = threading.Lock()
 _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED = False
@@ -1112,6 +1114,124 @@ print("[VRGDG] Krea 2 model download complete")
     _VRGDG_KREA2_INSTALL_ROUTE_REGISTERED = True
 
 
+def _ensure_ai_toolkit_install_route_registered():
+    global _VRGDG_AI_TOOLKIT_INSTALL_ROUTE_REGISTERED
+    if _VRGDG_AI_TOOLKIT_INSTALL_ROUTE_REGISTERED:
+        return
+    server_instance = getattr(PromptServer, "instance", None)
+    if server_instance is None:
+        return
+
+    def emit(lines, message):
+        message = str(message)
+        print(message)
+        lines.append(message)
+
+    def run_command(command, cwd, lines):
+        emit(lines, "$ " + " ".join(command))
+        env = os.environ.copy()
+        env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+        process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   text=True, encoding="utf-8", errors="replace", env=env)
+        for line in process.stdout or []:
+            emit(lines, line.rstrip())
+        code = process.wait()
+        if code:
+            raise RuntimeError(f"Command failed with exit code {code}: {' '.join(command)}")
+
+    def supported_python():
+        launcher = shutil.which("py")
+        if launcher:
+            for minor in (12, 11, 10):
+                command = [launcher, f"-3.{minor}"]
+                try:
+                    subprocess.run(command + ["--version"], check=True, capture_output=True, timeout=15)
+                    return command
+                except Exception:
+                    pass
+        if sys.version_info.major == 3 and 10 <= sys.version_info.minor <= 12:
+            return [sys.executable]
+        raise RuntimeError("AI Toolkit requires Python 3.10, 3.11, or 3.12.")
+
+    def locate(root):
+        root = os.path.abspath(os.path.normpath(root))
+        candidates = [root, os.path.join(root, "VRGDG_AI_Toolkit"), os.path.join(root, "ai-toolkit")]
+        for path in candidates:
+            if os.path.isfile(os.path.join(path, "run.py")) and os.path.isfile(os.path.join(path, "venv", "Scripts", "python.exe")):
+                return path
+        return ""
+
+    def install(root, branch, lines):
+        root = os.path.abspath(os.path.normpath(root))
+        os.makedirs(root, exist_ok=True)
+        existing = locate(root)
+        if existing:
+            emit(lines, f"[VRGDG] Reusing AI Toolkit: {existing}")
+            return existing
+        destination = os.path.join(root, "VRGDG_AI_Toolkit")
+        if os.path.exists(destination):
+            raise RuntimeError(f"Install destination exists but is incomplete: {destination}")
+        temp_root = tempfile.mkdtemp(prefix="vrgdg_ai_toolkit_")
+        try:
+            archive_path = os.path.join(temp_root, "ai-toolkit.zip")
+            url = f"https://github.com/ostris/ai-toolkit/archive/refs/heads/{branch}.zip"
+            emit(lines, f"[VRGDG] Downloading {url}")
+            request = urllib.request.Request(url, headers={"User-Agent": "VRGDG-AI-Toolkit-Installer/1.0"})
+            with urllib.request.urlopen(request, timeout=180) as response, open(archive_path, "wb") as output:
+                shutil.copyfileobj(response, output)
+            extract_root = os.path.join(temp_root, "extract")
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(extract_root)
+            sources = [entry.path for entry in os.scandir(extract_root) if entry.is_dir()]
+            if not sources:
+                raise RuntimeError("AI Toolkit archive contained no source directory.")
+            shutil.move(sources[0], destination)
+        finally:
+            shutil.rmtree(temp_root, ignore_errors=True)
+        python_command = supported_python()
+        run_command(python_command + ["-m", "venv", "venv"], destination, lines)
+        venv_python = os.path.join(destination, "venv", "Scripts", "python.exe")
+        run_command([venv_python, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], destination, lines)
+        run_command([venv_python, "-m", "pip", "install", "-r", "requirements.txt"], destination, lines)
+        return destination
+
+    def verify(path, lines):
+        python_path = os.path.join(path, "venv", "Scripts", "python.exe")
+        checks = {
+            "run.py": os.path.isfile(os.path.join(path, "run.py")),
+            "venv python": os.path.isfile(python_path),
+            "Krea 2 source": any("krea" in name.lower() for name in os.listdir(os.path.join(path, "toolkit", "models"))) if os.path.isdir(os.path.join(path, "toolkit", "models")) else False,
+        }
+        if not all(checks.values()):
+            raise RuntimeError("AI Toolkit verification failed: " + ", ".join(f"{k}={v}" for k, v in checks.items()))
+        run_command([python_path, "-c", "import torch, yaml; print('torch', torch.__version__); print('AI Toolkit dependencies ready')"], path, lines)
+        return checks
+
+    @server_instance.routes.post("/vrgdg/ai_toolkit/install")
+    async def vrgdg_install_ai_toolkit(request):
+        acquired = _VRGDG_AI_TOOLKIT_INSTALL_LOCK.acquire(blocking=False)
+        if not acquired:
+            return web.json_response({"ok": False, "error": "An AI Toolkit installation is already running."}, status=409)
+        lines = []
+        try:
+            payload = await request.json()
+            target_root = str(payload.get("target_root") or "").strip()
+            if not target_root:
+                raise ValueError("target_root is required.")
+            path = await asyncio.to_thread(install, target_root, str(payload.get("branch") or "main"), lines)
+            checks = await asyncio.to_thread(verify, path, lines)
+            report = os.path.join(path, "vrgdg_ai_toolkit_install_report.txt")
+            with open(report, "w", encoding="utf-8") as handle:
+                handle.write("VRGDG AI Toolkit Installation Report\n" + "\n".join(lines[-300:]) + "\n")
+            return web.json_response({"ok": True, "install_path": os.path.normpath(path), "python_path": os.path.normpath(os.path.join(path, "venv", "Scripts", "python.exe")), "checks": checks, "messages": lines, "report_path": os.path.normpath(report), "status": "AI Toolkit installed and verified for experimental Krea 2 Edit training."})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc), "messages": lines}, status=500)
+        finally:
+            _VRGDG_AI_TOOLKIT_INSTALL_LOCK.release()
+
+    _VRGDG_AI_TOOLKIT_INSTALL_ROUTE_REGISTERED = True
+
+
 def _ensure_krea2_lora_studio_route_registered():
     global _VRGDG_KREA2_STUDIO_ROUTE_REGISTERED
     global _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED
@@ -1163,6 +1283,10 @@ def _ensure_krea2_lora_studio_route_registered():
             "fp8_scaled": True,
             "timestep_sampling": "shift",
             "discrete_flow_shift": 2.5,
+            "ai_toolkit_root": "A:/MUSUBI/VRGDG_AI_Toolkit",
+            "ai_toolkit_model": "krea/Krea-2-Raw",
+            "edit_quantize": True,
+            "edit_low_vram": False,
         }
 
     def _preset_settings(name):
@@ -1227,6 +1351,8 @@ def _ensure_krea2_lora_studio_route_registered():
             "import_manifest": os.path.join(project_dir, "import_manifest.json"),
             "dataset_dir": os.path.join(project_dir, "dataset"),
             "images_dir": os.path.join(project_dir, "dataset", "images"),
+            "control_dir": os.path.join(project_dir, "dataset", "control"),
+            "target_dir": os.path.join(project_dir, "dataset", "target"),
             "workspace_dir": os.path.join(project_dir, "workspace"),
             "samples_dir": os.path.join(project_dir, "samples"),
             "xyz_dir": os.path.join(project_dir, "xyz"),
@@ -1245,7 +1371,7 @@ def _ensure_krea2_lora_studio_route_registered():
 
     def _write_project(project):
         paths = _project_paths(project.get("project_dir", ""))
-        for key in ("project_dir", "dataset_dir", "images_dir", "workspace_dir", "samples_dir", "xyz_dir"):
+        for key in ("project_dir", "dataset_dir", "images_dir", "control_dir", "target_dir", "workspace_dir", "samples_dir", "xyz_dir"):
             os.makedirs(paths[key], exist_ok=True)
         project["project_dir"] = paths["project_dir"]
         project["updated_at"] = datetime.now().isoformat(timespec="seconds")
@@ -1533,6 +1659,135 @@ def _ensure_krea2_lora_studio_route_registered():
             raise RuntimeError(f"Could not write XYZ plot: {destination}")
         return os.path.normpath(destination)
 
+    def _sync_edit_dataset(project):
+        paths = _project_paths(project.get("project_dir", ""))
+        for key in ("control_dir", "target_dir"):
+            os.makedirs(paths[key], exist_ok=True)
+        controls = {os.path.splitext(name)[0].lower(): name for name in os.listdir(paths["control_dir"]) if os.path.splitext(name)[1].lower() in image_exts}
+        targets = {os.path.splitext(name)[0].lower(): name for name in os.listdir(paths["target_dir"]) if os.path.splitext(name)[1].lower() in image_exts}
+        records, problems, signature_parts = [], [], []
+        for stem in sorted(set(controls) | set(targets)):
+            control_name, target_name = controls.get(stem), targets.get(stem)
+            caption_path = os.path.join(paths["target_dir"], stem + ".txt")
+            if not control_name: problems.append(f"{stem}: missing control image")
+            if not target_name: problems.append(f"{stem}: missing target image")
+            if control_name and target_name and control_name.lower() != target_name.lower(): problems.append(f"{stem}: control and target filenames/extensions must match exactly")
+            if not os.path.isfile(caption_path): problems.append(f"{stem}: missing target instruction .txt")
+            if control_name and target_name:
+                control_path = os.path.join(paths["control_dir"], control_name)
+                target_path = os.path.join(paths["target_dir"], target_name)
+                try:
+                    from PIL import Image
+                    with Image.open(control_path) as image: control_size = image.size
+                    with Image.open(target_path) as image: target_size = image.size
+                    if control_size != target_size: problems.append(f"{stem}: control {control_size} and target {target_size} dimensions differ")
+                except Exception as exc:
+                    problems.append(f"{stem}: could not validate image dimensions ({exc})")
+                caption = ""
+                if os.path.isfile(caption_path):
+                    with open(caption_path, "r", encoding="utf-8", errors="replace") as handle: caption = handle.read().strip()
+                records.append({"name": target_name, "path": os.path.normpath(target_path), "control_path": os.path.normpath(control_path), "caption": caption, "type": "edit_pair", "paired": bool(caption)})
+                signature_parts.append(f"{stem}\0{os.path.getmtime(control_path)}\0{os.path.getmtime(target_path)}\0{caption}")
+        signature = hashlib.sha256("\n".join(signature_parts).encode("utf-8")).hexdigest()
+        previous = str((project.get("dataset_sync") or {}).get("signature") or "")
+        project["imported_files"] = records
+        project["dataset_sync"] = {"signature": signature, "pair_count": sum(1 for item in records if item["paired"]), "problems": problems, "changed": signature != previous, "source": paths["dataset_dir"], "updated_at": datetime.now().isoformat(timespec="seconds")}
+        return project, signature != previous
+
+    def _write_ai_toolkit_edit_config(project, settings, max_steps):
+        paths = _project_paths(project["project_dir"])
+        toolkit_root = os.path.abspath(_norm_path(settings.get("ai_toolkit_root", "")))
+        if not os.path.isfile(os.path.join(toolkit_root, "run.py")):
+            raise FileNotFoundError("AI Toolkit run.py was not found. Install it with the VRGDG Krea 2 AI Toolkit Installer node, then set ai_toolkit_root.")
+        pair_count = int((project.get("dataset_sync") or {}).get("pair_count") or 0)
+        problems = (project.get("dataset_sync") or {}).get("problems") or []
+        if pair_count < 1 or problems:
+            raise ValueError("Krea 2 Edit dataset is incomplete: " + ("; ".join(problems[:12]) if problems else "no valid pairs"))
+        config_dir = os.path.join(paths["workspace_dir"], "config")
+        output_dir = os.path.join(paths["workspace_dir"], "ai_toolkit_output")
+        os.makedirs(config_dir, exist_ok=True); os.makedirs(output_dir, exist_ok=True)
+        name = _safe_name(project.get("project_name"), "Krea2Edit")
+        q = lambda value: json.dumps(os.path.normpath(str(value)).replace("\\", "/"))
+        config_path = os.path.join(config_dir, "krea2_edit_ai_toolkit.yaml")
+        content = f'''---
+job: extension
+config:
+  name: {json.dumps(name)}
+  process:
+    - type: sd_trainer
+      training_folder: {q(output_dir)}
+      device: cuda:0
+      network:
+        type: lora
+        linear: {int(settings.get("network_dim", 32))}
+        linear_alpha: {int(settings.get("network_alpha", 32))}
+      save:
+        dtype: float16
+        save_every: {int(settings.get("steps_per_run", 250))}
+        max_step_saves_to_keep: 4
+      datasets:
+        - folder_path: {q(paths["target_dir"])}
+          control_path: {q(paths["control_dir"])}
+          caption_ext: txt
+          caption_dropout_rate: 0.0
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: [{int(settings.get("resolution_width", 1024))}, {int(settings.get("resolution_height", 1024))}]
+      train:
+        batch_size: 1
+        steps: {int(max_steps)}
+        gradient_accumulation_steps: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: flowmatch
+        optimizer: adamw8bit
+        lr: {float(settings.get("learning_rate", 0.0001))}
+        timestep_type: weighted
+        dtype: bf16
+        disable_sampling: true
+      model:
+        name_or_path: {json.dumps(str(settings.get("ai_toolkit_model") or "krea/Krea-2-Raw"))}
+        arch: krea2
+        quantize: {str(bool(settings.get("edit_quantize", True))).lower()}
+        low_vram: {str(bool(settings.get("edit_low_vram", False))).lower()}
+        model_kwargs:
+          edit: true
+meta:
+  name: {json.dumps(name)}
+  version: '1.0'
+'''
+        with open(config_path, "w", encoding="utf-8", newline="\n") as handle: handle.write(content)
+        return toolkit_root, config_path, output_dir, name
+
+    def _run_ai_toolkit_edit(project, settings):
+        completed = int(project.get("completed_steps") or 0)
+        total = int(settings.get("total_target_steps", 500))
+        next_steps = min(total, completed + int(settings.get("steps_per_run", 250)))
+        toolkit_root, config_path, output_dir, name = _write_ai_toolkit_edit_config(project, settings, next_steps)
+        python_path = os.path.join(toolkit_root, "venv", "Scripts", "python.exe")
+        if not os.path.isfile(python_path): raise FileNotFoundError(f"AI Toolkit virtual environment was not found: {python_path}")
+        logs_dir = os.path.join(_project_paths(project["project_dir"])["workspace_dir"], "logs"); os.makedirs(logs_dir, exist_ok=True)
+        log_path = os.path.join(logs_dir, f"krea2_edit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        env = os.environ.copy(); env.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+        with open(log_path, "w", encoding="utf-8") as log:
+            process = subprocess.Popen([python_path, "run.py", config_path], cwd=toolkit_root, stdout=log, stderr=subprocess.STDOUT, text=True, env=env)
+            code = process.wait()
+        if code: raise RuntimeError(f"AI Toolkit exited with code {code}. See {log_path}")
+        candidates = []
+        for root, _dirs, files in os.walk(output_dir):
+            for filename in files:
+                if filename.lower().endswith(".safetensors"): candidates.append(os.path.join(root, filename))
+        if not candidates: raise RuntimeError("AI Toolkit finished but no LoRA safetensors file was found.")
+        latest = max(candidates, key=os.path.getmtime)
+        if bool(settings.get("copy_latest_to_comfy_loras", False)):
+            lora_dirs = folder_paths.get_folder_paths("loras")
+            if lora_dirs:
+                exported = os.path.join(lora_dirs[0], f"{name}_edit_latest.safetensors")
+                os.makedirs(os.path.dirname(exported), exist_ok=True)
+                shutil.copy2(latest, exported)
+        return os.path.normpath(latest), "", os.path.normpath(log_path), name, next_steps, total
+
     def _read_krea2_training_progress(project_dir):
         paths = _project_paths(project_dir)
         logs_dir = os.path.join(paths["workspace_dir"], "logs")
@@ -1700,6 +1955,7 @@ def _ensure_krea2_lora_studio_route_registered():
                 "created_at": datetime.now().isoformat(timespec="seconds"),
             }
             project["project_name"] = project_name
+            project["training_type"] = str(payload.get("training_type") or project.get("training_type") or "standard")
             project["preset_name"] = preset_name
             project["settings"] = settings
             project["sample_prompt"] = str(payload.get("sample_prompt", "") or project.get("sample_prompt", ""))
@@ -1765,10 +2021,13 @@ def _ensure_krea2_lora_studio_route_registered():
         try:
             payload = await request.json()
             project = _read_project(payload.get("project_dir", ""))
-            for key in ("preset_name", "settings", "sample_prompt", "aspect_ratio", "sample_model_settings", "custom_presets", "caption_instructions", "caption_user_notes", "caption_final_instructions", "caption_llm_settings"):
+            for key in ("training_type", "preset_name", "settings", "sample_prompt", "aspect_ratio", "sample_model_settings", "custom_presets", "caption_instructions", "caption_user_notes", "caption_final_instructions", "caption_llm_settings"):
                 if key in payload:
                     project[key] = payload[key]
-            project, dataset_changed = _sync_project_dataset_from_folder(project)
+            if str(project.get("training_type") or "standard") == "edit":
+                project, dataset_changed = _sync_edit_dataset(project)
+            else:
+                project, dataset_changed = _sync_project_dataset_from_folder(project)
             if dataset_changed:
                 project["dataset_sync"]["pending_cache_rebuild"] = True
                 project["dataset_sync"]["cache_reason"] = "Dataset images or caption sidecars changed when the project was saved."
@@ -1892,6 +2151,34 @@ def _ensure_krea2_lora_studio_route_registered():
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
 
+    @server_instance.routes.post("/vrgdg/krea2_studio/import_edit_files")
+    async def vrgdg_krea2_studio_import_edit_files(request):
+        try:
+            reader = await request.multipart()
+            project_dir, role, uploads = "", "", []
+            async for part in reader:
+                if part.name == "project_dir": project_dir = _norm_path(await part.text()); continue
+                if part.name == "role": role = str(await part.text()).strip().lower(); continue
+                if not part.filename: continue
+                name = _safe_name(part.filename, "file")
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in image_exts and not (role == "target" and ext in caption_exts): continue
+                uploads.append((name, ext, await part.read(decode=False)))
+            if role not in {"control", "target"}: raise ValueError("role must be control or target.")
+            if not project_dir: raise ValueError("project_dir is required.")
+            paths = _project_paths(project_dir); destination = paths[f"{role}_dir"]; os.makedirs(destination, exist_ok=True)
+            saved = []
+            for name, ext, data in uploads:
+                stem = _safe_name(os.path.splitext(name)[0], "image")
+                target = os.path.join(destination, stem + (".txt" if ext in caption_exts else ext))
+                _copy_file_like(data, target)
+                saved.append({"name": os.path.basename(target), "path": os.path.normpath(target), "role": role})
+            project = _read_project(project_dir); project["training_type"] = "edit"
+            project, _changed = _sync_edit_dataset(project); project = _write_project(project)
+            return web.json_response({"ok": True, "saved": saved, "project": project, "dataset_sync": project.get("dataset_sync")})
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+
     @server_instance.routes.post("/vrgdg/krea2_studio/generate_captions_placeholder")
     async def vrgdg_krea2_studio_generate_captions_placeholder(request):
         global _VRGDG_KREA2_CAPTION_CANCEL_REQUESTED
@@ -1953,7 +2240,10 @@ def _ensure_krea2_lora_studio_route_registered():
                 project["sample_prompt"] = payload["sample_prompt"]
             if "aspect_ratio" in payload:
                 project["aspect_ratio"] = payload["aspect_ratio"]
-            project, dataset_changed = _sync_project_dataset_from_folder(project)
+            if str(project.get("training_type") or "standard") == "edit":
+                project, dataset_changed = _sync_edit_dataset(project)
+            else:
+                project, dataset_changed = _sync_project_dataset_from_folder(project)
             dataset_changed = dataset_changed or bool((project.get("dataset_sync") or {}).get("pending_cache_rebuild"))
             project = _write_project(project)
             settings = project.get("settings") or _preset_settings(project.get("preset_name", "Fast"))
@@ -1969,9 +2259,12 @@ def _ensure_krea2_lora_studio_route_registered():
             if not acquired:
                 return web.json_response({"ok": False, "error": "A Krea 2 Studio training chunk is already running."}, status=409)
             try:
-                trainer = VRGDG_Krea2LoraTrainChunk()
-                result = await asyncio.to_thread(
-                    trainer.run,
+                if str(project.get("training_type") or "standard") == "edit":
+                    result = await asyncio.to_thread(_run_ai_toolkit_edit, project, settings)
+                else:
+                    trainer = VRGDG_Krea2LoraTrainChunk()
+                    result = await asyncio.to_thread(
+                        trainer.run,
                     paths["images_dir"],
                     paths["workspace_dir"],
                     run_name,
@@ -2000,8 +2293,8 @@ def _ensure_krea2_lora_studio_route_registered():
                     bool(settings.get("fp8_base", True)),
                     bool(settings.get("fp8_scaled", True)),
                     str(settings.get("timestep_sampling", "shift")),
-                    float(settings.get("discrete_flow_shift", 2.5)),
-                )
+                        float(settings.get("discrete_flow_shift", 2.5)),
+                    )
             finally:
                 if acquired:
                     _VRGDG_KREA2_STUDIO_TRAIN_LOCK.release()
@@ -8214,6 +8507,37 @@ class VRGDG_Krea2LoraStudio:
         return (self._norm(project_root), str(project_name or "").strip() or "Krea2Studio")
 
 
+class VRGDG_Krea2AIToolkitInstaller:
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("install_root", "python_path", "status", "report_path")
+    FUNCTION = "run"
+    CATEGORY = "VRGDG/Training"
+    DESCRIPTION = "Installs Ostris AI Toolkit in an isolated virtual environment for experimental paired Krea 2 Edit LoRA training."
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "target_root": ("STRING", {"default": "A:/MUSUBI", "multiline": False}),
+            },
+            "hidden": {
+                "install_root": ("STRING", {"default": "", "multiline": False}),
+                "python_path": ("STRING", {"default": "", "multiline": False}),
+                "status_text": ("STRING", {"default": "", "multiline": False}),
+                "report_path": ("STRING", {"default": "", "multiline": False}),
+            },
+        }
+
+    def run(self, target_root, install_root="", python_path="", status_text="", report_path=""):
+        root = os.path.normpath(str(target_root or "").strip())
+        return (
+            os.path.normpath(str(install_root or "").strip()) if str(install_root or "").strip() else root,
+            os.path.normpath(str(python_path or "").strip()) if str(python_path or "").strip() else "",
+            str(status_text or "").strip() or "Use the node button to install AI Toolkit for Krea 2 Edit LoRA training.",
+            os.path.normpath(str(report_path or "").strip()) if str(report_path or "").strip() else "",
+        )
+
+
 NODE_CLASS_MAPPINGS = {
     "VRGDG_LTXLoraTrainChunk": VRGDG_LTXLoraTrainChunk,
     "VRGDG_LTXAudioVideoLoraTrainChunk": VRGDG_LTXAudioVideoLoraTrainChunk,
@@ -8226,6 +8550,7 @@ NODE_CLASS_MAPPINGS = {
     "VRGDG_VideoFolderGridPlot": VRGDG_VideoFolderGridPlot,
     "VRGDG_MusubiTunerInstaller": VRGDG_MusubiTunerInstaller,
     "VRGDG_Krea2MusubiInstaller": VRGDG_Krea2MusubiInstaller,
+    "VRGDG_Krea2AIToolkitInstaller": VRGDG_Krea2AIToolkitInstaller,
     "VRGDG_Krea2LoraStudio": VRGDG_Krea2LoraStudio,
 }
 
@@ -8241,6 +8566,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VRGDG_VideoFolderGridPlot": "VRGDG Video Folder Grid Plot",
     "VRGDG_MusubiTunerInstaller": "VRGDG Musubi-Tuner Installer",
     "VRGDG_Krea2MusubiInstaller": "VRGDG Krea 2 Musubi Installer",
+    "VRGDG_Krea2AIToolkitInstaller": "VRGDG Krea 2 AI Toolkit Installer",
     "VRGDG_Krea2LoraStudio": "VRGDG Krea 2 LoRA Studio",
 }
 
@@ -8258,6 +8584,11 @@ try:
     _ensure_krea2_install_route_registered()
 except Exception as exc:
     print(f"[VRGDG] Failed to register Krea 2 installer route: {exc}")
+
+try:
+    _ensure_ai_toolkit_install_route_registered()
+except Exception as exc:
+    print(f"[VRGDG] Failed to register AI Toolkit installer route: {exc}")
 
 try:
     _ensure_krea2_lora_studio_route_registered()

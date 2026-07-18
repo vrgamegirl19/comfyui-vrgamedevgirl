@@ -129,6 +129,28 @@ export function createFaceFixTool(options = {}) {
     const setOut = button("Set OUT");
     const lockedSourceDisplay = input("text", "Not set");
     lockedSourceDisplay.readOnly = true;
+    const useSelectedScene = button("Use Currently Selected Scene");
+    const adoptCurrentScene = (resetRange = true) => {
+      const context = currentContext();
+      if (!context.videoPath) throw new Error("The selected scene has no rendered video.");
+      state.videoPath = context.videoPath;
+      state.segmentId = context.segmentId;
+      state.sceneLabel = context.sceneLabel;
+      lockedSourceDisplay.value = `${context.sceneLabel}: ${context.videoPath}`;
+      if (resetRange) {
+        state.inTime = null;
+        state.outTime = null;
+        inDisplay.value = "Not set";
+        outDisplay.value = "Not set";
+      }
+      return context;
+    };
+    useSelectedScene.onclick = () => {
+      try {
+        adoptCurrentScene(true);
+        notify(`Face Fix now targets ${state.sceneLabel}. Set Fix IN/OUT or process the entire scene.`);
+      } catch (error) { notify(String(error?.message || error), true); }
+    };
     setIn.onclick = () => {
       try {
         const context = currentContext();
@@ -314,14 +336,19 @@ export function createFaceFixTool(options = {}) {
     wholeSceneWrap.append(wholeScene, wholeSceneText);
     wholeScene.addEventListener("change", () => {
       state.wholeScene = Boolean(wholeScene.checked);
-      if (!state.wholeScene) return;
+      if (!state.wholeScene) {
+        try {
+          adoptCurrentScene(true);
+        } catch (error) {
+          state.videoPath = "";
+          state.segmentId = "";
+          state.sceneLabel = "";
+          lockedSourceDisplay.value = "Not set";
+        }
+        return;
+      }
       try {
-        const context = currentContext();
-        if (!context.videoPath) throw new Error("The visible preview scene has no rendered video.");
-        state.videoPath = context.videoPath;
-        state.segmentId = context.segmentId;
-        state.sceneLabel = context.sceneLabel;
-        lockedSourceDisplay.value = `${context.sceneLabel}: ${context.videoPath}`;
+        adoptCurrentScene(true);
       } catch (error) {
         wholeScene.checked = false;
         state.wholeScene = false;
@@ -467,7 +494,10 @@ export function createFaceFixTool(options = {}) {
     previewSelected.onclick = () => run("selected_frame");
     start.onclick = () => run("range");
     actions.append(preview, previewSelected, start);
-    body.append(intro, field("Locked repair scene/video", lockedSourceDisplay), rangeGrid, wholeSceneWrap, referenceRow, generatePrompt, field("Editable face description", prompt), settings, anchorEstimateRow, advancedSummary, advancedGrid, comparison, status, actions);
+    const lockedSourceRow = document.createElement("div");
+    lockedSourceRow.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;";
+    lockedSourceRow.append(field("Locked repair scene/video", lockedSourceDisplay), useSelectedScene);
+    body.append(intro, lockedSourceRow, rangeGrid, wholeSceneWrap, referenceRow, generatePrompt, field("Editable face description", prompt), settings, anchorEstimateRow, advancedSummary, advancedGrid, comparison, status, actions);
     panel.append(header, body);
     document.body.append(panel);
   }

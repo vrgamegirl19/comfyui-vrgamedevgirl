@@ -27,17 +27,23 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_WorkflowRunnerNodes",
     ".VRGDG_MusicVideoBuilderNodes",
     ".VRGDG_StoryboardBuilderNodes",
+    ".VRGDG_StartImageStoryboard",
     ".VRGDG_MusicVideoPromptCreatorNodes",
     ".VRGDG_ImageCompareNode",
+    ".VRGDG_ImagePasteBack",
     ".VRGDG_StandaloneFaceFixNodes",
+    ".VRGDG_VideoEnhanceNodes",
     ".vrgdg_ltx_msr_reference_builder",
     ".VRGDG_LTXICIngredientsGrid",
     ".VRGDG_LTXFirstLastGuide",
+    ".VRGDG_LTXLoopingSampler",
+    ".CustomLTXNodes",
     ".VRGDG_FlowBrowserNodes",
     ".VRGDG_BrowserImageRoutes",
     ".VRGDG_SilentAudioRoutes",
     ".VRGDG_UpdateRoutes",
     ".VRGDG_VideoBuilderNodeUI",
+    ".VRGDG_LoraDatasetCreatorNodes",
 )
 
 _VRGDG_OPTIONAL_SUBMODULES = (
