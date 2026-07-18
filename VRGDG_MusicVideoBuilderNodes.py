@@ -4873,6 +4873,56 @@ def _generate_builder_chained_i2v_prompt(payload):
             _clear_vrgdg_llm_caches(clear_cuda_cache=True, clear_hf_pipeline_cache=False)
 
 
+def _normalize_flf_vision_observation(text):
+    """Return canonical START/END lines without discarding paragraph breaks."""
+    cleaned = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
+    cleaned = re.sub(r"^```(?:json|text|markdown)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    cleaned = re.sub(
+        r"^(?:Assistant|Answer|Final answer|Final response|Observation)\s*:\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    descriptions = {}
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        for key, value in parsed.items():
+            normalized_key = re.sub(r"[^a-z]", "", str(key or "").lower())
+            if normalized_key.startswith("start") and str(value or "").strip():
+                descriptions.setdefault("START", str(value).strip())
+            elif normalized_key.startswith("end") and str(value or "").strip():
+                descriptions.setdefault("END", str(value).strip())
+
+    if len(descriptions) < 2:
+        label_pattern = re.compile(
+            r"(?im)^[ \t]*(?:[-+]\s+|\d+[.)]\s+|#{1,6}[ \t]+)?"
+            r"[*_]{0,2}[ \t]*(START|END)\b"
+            r"(?:[ \t]+(?:FRAME|IMAGE|DESCRIPTION|OBSERVATION|STATE))?"
+            r"[ \t]*(?::|-)?[ \t]*[*_]{0,2}[ \t]*(?::|-)?[ \t]*"
+        )
+        matches = list(label_pattern.finditer(cleaned))
+        for index, match in enumerate(matches):
+            label = match.group(1).upper()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
+            body = re.sub(r"\s+", " ", cleaned[match.end():end]).strip(" \t\n-*_:;")
+            if body:
+                descriptions.setdefault(label, body)
+
+    missing = [label for label in ("START", "END") if not descriptions.get(label)]
+    normalized = "\n".join(
+        f"{label}: {descriptions[label]}"
+        for label in ("START", "END")
+        if descriptions.get(label)
+    )
+    return normalized, missing
+
+
 def _generate_builder_t2v_prompt(payload):
     from .LLM import VRGDG_SuperGemmaGGUFChat, _clear_vrgdg_llm_caches
 
@@ -4923,6 +4973,11 @@ def _generate_builder_t2v_prompt(payload):
     flf_transformation = str(payload.get("flf_transformation") or "").strip()[:2400]
     flf_end_state = str(payload.get("flf_end_state") or "").strip()[:1800]
     flf_carry_forward = str(payload.get("flf_carry_forward") or "").strip()[:1800]
+    if first_last_frame_mode and len(vision_images) < 2:
+        raise ValueError(
+            "First Last Frame Gemma requires two resolved image references, "
+            f"but the backend received {len(vision_images)}. Reassign the scene's start and end images and try again."
+        )
     if first_last_frame_mode and len(vision_images) >= 2:
         first_image, last_image = vision_images[0], vision_images[1]
         total_width = max(1, first_image.width + last_image.width)
@@ -5129,21 +5184,23 @@ def _generate_builder_t2v_prompt(payload):
                     "Do not merge the two halves, infer a story, rename one creature as another, or describe what ought to be present. State only what is visibly present."
                 )
                 locked_observation, _ = run_vision_instruction(observation_prompt, 900)
-                locked_observation = _clean_gemma_prompt_text(locked_observation)
-                has_start_observation = bool(re.search(r"(?im)^\s*START\s*:", locked_observation))
-                has_end_observation = bool(re.search(r"(?im)^\s*END\s*:", locked_observation))
-                if not (has_start_observation and has_end_observation):
+                locked_observation, missing_observations = _normalize_flf_vision_observation(locked_observation)
+                if missing_observations:
                     retry_observation_prompt = (
                         observation_prompt
-                        + "\n\nYour prior response omitted one endpoint. Try again. You MUST output both labeled lines, START: and END:. "
+                        + "\n\nYour prior response did not provide two readable endpoint descriptions. Try again. "
+                        "You MUST output both labeled lines, START: and END:. "
                         "Do not stop after START. Keep each line compact enough to fit."
                     )
                     locked_observation, _ = run_vision_instruction(retry_observation_prompt, 1200)
-                    locked_observation = _clean_gemma_prompt_text(locked_observation)
-                    has_start_observation = bool(re.search(r"(?im)^\s*START\s*:", locked_observation))
-                    has_end_observation = bool(re.search(r"(?im)^\s*END\s*:", locked_observation))
-                if not (has_start_observation and has_end_observation):
-                    raise ValueError("FLF Gemma vision observation was incomplete: both START and END descriptions are required.")
+                    locked_observation, missing_observations = _normalize_flf_vision_observation(locked_observation)
+                if missing_observations:
+                    raise ValueError(
+                        "FLF Gemma vision observation was incomplete after retry. "
+                        "Missing readable description(s): "
+                        + ", ".join(missing_observations)
+                        + ". Both START and END descriptions are required."
+                    )
                 prompt += (
                     "\n\nLOCKED VISUAL OBSERVATION FROM THE REQUIRED FIRST PASS:\n"
                     f"{locked_observation}\n\n"
