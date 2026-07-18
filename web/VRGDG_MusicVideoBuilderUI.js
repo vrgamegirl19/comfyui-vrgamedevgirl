@@ -1713,6 +1713,12 @@ function audioUrl(path) {
     lyric_text: "",
     lyric_section: "",
     story_beat: "",
+    flf_endpoint_mode: "auto",
+    flf_custom_end_direction: "",
+    flf_motion_plan: "",
+    flf_end_frame_prompt: "",
+    flf_end_frame_stale: false,
+    flf_final_prompt_ready: false,
     lyric_singers: [],
     facial_performance: "",
     facial_performance_custom: "",
@@ -3184,6 +3190,10 @@ function openBuilder(node) {
   firstLastFrameStatus.style.cssText = "font-size:11px;line-height:1.35;color:#bae6fd;overflow-wrap:anywhere;";
   const createSceneEndFrameButton = makeMiniButton("Create End Frame");
   createSceneEndFrameButton.title = "Generate or replace the active scene's First Last Frame end image using the current image model.";
+  const planSceneEndMotionButton = makeMiniButton("Create Motion Plan");
+  planSceneEndMotionButton.title = "Inspect this scene's start image and create the provisional I2V motion plan that will be used to design its end frame.";
+  const finalizeSceneFLFPromptButton = makeMiniButton("Create Final FLF Prompt");
+  finalizeSceneFLFPromptButton.title = "Inspect the actual start and end images and rewrite the saved video prompt so it connects those exact endpoints.";
   const clearSceneEndFrameButton = makeMiniButton("Clear End Frame");
   const loadSceneEndFrameButton = makeMiniButton("Load End Frame");
   loadSceneEndFrameButton.title = "Load an existing image as this scene's end frame. No image provider is required.";
@@ -3192,10 +3202,43 @@ function openBuilder(node) {
   sceneEndFrameFileInput.accept = "image/png,image/jpeg,image/webp";
   sceneEndFrameFileInput.style.display = "none";
   clearSceneEndFrameButton.title = "Remove the active scene's stored First Last Frame end image.";
+  const flfEndpointModeSelect = makeSelect([
+    { value: "auto", label: "Auto — derive the ending from the motion prompt" },
+    { value: "custom", label: "Custom — follow my ending direction" },
+  ], "auto");
+  const flfCustomEndDirection = document.createElement("textarea");
+  flfCustomEndDirection.placeholder = "Optional custom ending, e.g. Pull back to a full-body view as she reaches the rainy window.";
+  flfCustomEndDirection.style.cssText = "width:100%;box-sizing:border-box;min-height:74px;resize:vertical;border:1px solid #334155;border-radius:6px;background:#020617;color:#e2e8f0;padding:8px;font-size:11px;line-height:1.4;";
+  ["keydown", "keypress", "keyup"].forEach((eventName) => flfCustomEndDirection.addEventListener(eventName, (event) => event.stopPropagation()));
+  const flfPerScenePlanner = document.createElement("div");
+  flfPerScenePlanner.style.cssText = "display:none;border:1px solid #164e63;border-radius:7px;background:#06151d;padding:9px;gap:8px;flex-direction:column;";
+  const flfPerScenePlannerTitle = document.createElement("div");
+  flfPerScenePlannerTitle.innerHTML = '<strong style="color:#cffafe;">Independent-pair endpoint planner</strong><div style="margin-top:3px;color:#94a3b8;font-size:11px;line-height:1.4;">Auto reads the start image and scene context to write a provisional motion plan. Custom adds your required ending to that plan. The end image is generated afterward; the final FLF prompt is created only after both real images exist.</div>';
+  const flfMotionPlanDetails = document.createElement("details");
+  const flfMotionPlanSummary = document.createElement("summary");
+  flfMotionPlanSummary.textContent = "Saved provisional motion plan";
+  flfMotionPlanSummary.style.cssText = "cursor:pointer;color:#bae6fd;font-weight:800;font-size:11px;";
+  const flfMotionPlanPreview = document.createElement("pre");
+  flfMotionPlanPreview.style.cssText = "margin:7px 0 0;max-height:180px;overflow:auto;white-space:pre-wrap;border:1px solid #1e3a5f;border-radius:5px;background:#020617;color:#cbd5e1;padding:8px;font-size:10px;line-height:1.4;";
+  flfMotionPlanDetails.append(flfMotionPlanSummary, flfMotionPlanPreview);
+  const flfEndpointPromptDetails = document.createElement("details");
+  const flfEndpointPromptSummary = document.createElement("summary");
+  flfEndpointPromptSummary.textContent = "Saved end-frame image prompt";
+  flfEndpointPromptSummary.style.cssText = flfMotionPlanSummary.style.cssText;
+  const flfEndpointPromptPreview = document.createElement("pre");
+  flfEndpointPromptPreview.style.cssText = flfMotionPlanPreview.style.cssText;
+  flfEndpointPromptDetails.append(flfEndpointPromptSummary, flfEndpointPromptPreview);
+  flfPerScenePlanner.append(
+    flfPerScenePlannerTitle,
+    makeField("Endpoint planning", flfEndpointModeSelect),
+    makeField("Custom ending direction", flfCustomEndDirection),
+    flfMotionPlanDetails,
+    flfEndpointPromptDetails,
+  );
   const firstLastFrameActions = document.createElement("div");
   firstLastFrameActions.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
-  firstLastFrameActions.append(loadSceneEndFrameButton, createSceneEndFrameButton, clearSceneEndFrameButton, sceneEndFrameFileInput);
-  firstLastFramePreviewPanel.append(firstLastFramePreviewGrid, firstLastFrameStatus, firstLastFrameActions);
+  firstLastFrameActions.append(loadSceneEndFrameButton, planSceneEndMotionButton, createSceneEndFrameButton, finalizeSceneFLFPromptButton, clearSceneEndFrameButton, sceneEndFrameFileInput);
+  firstLastFramePreviewPanel.append(firstLastFramePreviewGrid, firstLastFrameStatus, flfPerScenePlanner, firstLastFrameActions);
   const rtvSceneImageAnchorSection = makeSettingsSection("Reference Behavior", [
     rtvReferenceBehaviorField,
     rtvReferenceBehaviorNote,
@@ -3317,6 +3360,10 @@ function openBuilder(node) {
   const flfDurationGuidanceNote = document.createElement("div");
   flfDurationGuidanceNote.textContent = "Duration guidance: similar endpoints or simple camera changes may work in 4–5 seconds. If the images differ substantially in anatomy, identity, material, framing, style, or scene content, use at least 8 seconds so LTX has enough time to complete and stabilize the transition. Keep 24 FPS; increasing FPS does not add transition time.";
   flfDurationGuidanceNote.style.cssText = "border:1px solid #0e7490;border-radius:7px;background:#083344;color:#cffafe;padding:8px 10px;font-size:11px;line-height:1.45;";
+  const flfStructureModeSelect = makeSelect([
+    { value: "chained", label: "Chained — previous end becomes next start" },
+    { value: "independent", label: "Independent pairs — every scene owns a start + end" },
+  ], "chained");
   const flfChainPreviousEndFrame = makeCheckbox("Global: reuse previous scene's end frame as the next first frame", true);
   const flfRenderChainSourceSelect = makeSelect([
     { value: "rendered_frame", label: "Previous video's extracted final frame" },
@@ -3357,7 +3404,32 @@ function openBuilder(node) {
   const flfColorMatchNote = document.createElement("div");
   flfColorMatchNote.textContent = "Optional post-process for chained FLF clips. It samples the previous video's actual final frame, color-matches the beginning of the new clip, and smoothly fades the correction away. It does not use the extracted frame as an LTX guide or alter the previous video. Best paired with Previous scene's assigned end image above.";
   flfColorMatchNote.style.cssText = flfGuideSettingsNote.style.cssText;
-  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("Global transition type", flfGlobalTransitionTypeSelect), makeField("Gemma visual context", flfGemmaContextModeSelect), flfGemmaContextNote, flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainPreviousEndFrame.wrapper, makeField("Global actual chained render start", flfRenderChainSourceSelect), flfChainNote, flfPreGeneratePromptsFromSceneImages.wrapper, flfPreGenerateNote, flfMatchPreviousClipColor.wrapper, flfColorMatchGrid, flfColorMatchNote]);
+  const flfWorkflowHint = document.createElement("details");
+  flfWorkflowHint.open = true;
+  flfWorkflowHint.style.cssText = "border:1px solid #0891b2;border-radius:8px;background:#06202a;color:#e0f2fe;padding:10px;font-size:11px;line-height:1.48;";
+  const flfWorkflowHintSummary = document.createElement("summary");
+  flfWorkflowHintSummary.textContent = "How Chained and Independent First/Last Frame workflows work";
+  flfWorkflowHintSummary.style.cssText = "cursor:pointer;font-weight:900;color:#cffafe;font-size:12px;";
+  const flfWorkflowHintBody = document.createElement("div");
+  flfWorkflowHintBody.innerHTML = `
+    <div style="margin-top:10px;border:1px solid #155e75;border-radius:6px;background:#04151d;padding:8px;"><strong>Where to run it:</strong> choose the FLF structure here, then click <strong>Image All</strong>. Choose <strong>Build Independent Start + End Pairs</strong> for a safe resume, one of the independent redo choices to replace work, or <strong>Resume FLF Image Chain</strong> for the shared-endpoint workflow. Image All prepares images and prompts only; use Render All afterward.</div>
+    <div style="margin-top:10px;"><strong style="color:#fef3c7;">Chained</strong></div>
+    <div>Creates one opening image for the first scene and one destination image per scene. Scene 1 end becomes Scene 2 start, Scene 2 end becomes Scene 3 start, and so on. During rendering you can start the next clip from the previous assigned end image or from the previous video's extracted final frame. Use this when you want continuous visual handoffs between scenes.</div>
+    <div style="margin-top:10px;"><strong style="color:#bbf7d0;">Independent pairs</strong></div>
+    <div>Every scene owns two separate images. The batch builder always finishes <em>all start images first</em>, then makes provisional I2V motion plans for all scenes, then returns to Scene 1 and creates every end image, then inspects each real start/end pair to create the final FLF render prompts. No image is shared with another scene.</div>
+    <ol style="margin:8px 0 0 20px;padding:0;">
+      <li><strong>Pass 1 — starts:</strong> normal Image All logic creates or keeps one start image for every target scene.</li>
+      <li><strong>Pass 2 — motion plans:</strong> Gemma views each completed start image and writes how the shot moves and exactly where it finishes. A custom per-scene ending direction is followed when supplied.</li>
+      <li><strong>Pass 3 — ends:</strong> the selected image model creates each end frame from the start image, motion plan, mapped character/location descriptions, and supported reference sheets.</li>
+      <li><strong>Pass 4 — final prompts:</strong> Gemma views the actual start and actual end together and writes the final FLF prompt that connects those real images.</li>
+    </ol>
+    <div style="margin-top:9px;"><strong>Reference behavior:</strong> Flux/Klein, NanoBanana, and Browser AI modes can receive the start image alongside their configured reference ingredients. ZImage, Ernie, and Krea use their supported image-to-image path when enabled and always receive mapped character/clothing and location descriptions in the endpoint instructions. If an endpoint reveals clothing that was outside the start image, make the Reference Builder description explicit.</div>
+    <div style="margin-top:9px;"><strong>Resume safety:</strong> “Build Independent Start + End Pairs” keeps completed starts, motion plans, ends, and final prompts. It resumes only missing stages. The redo option keeps starts but rebuilds the motion plans, end images, and final prompts.</div>`;
+  flfWorkflowHint.append(flfWorkflowHintSummary, flfWorkflowHintBody);
+  const flfChainedSettingsPanel = document.createElement("div");
+  flfChainedSettingsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;border:1px solid #334155;border-radius:7px;background:#0b1220;padding:9px;";
+  flfChainedSettingsPanel.append(makeField("Actual chained render start", flfRenderChainSourceSelect), flfChainNote, flfPreGeneratePromptsFromSceneImages.wrapper, flfPreGenerateNote, flfMatchPreviousClipColor.wrapper, flfColorMatchGrid, flfColorMatchNote);
+  const flfGuideSettingsSection = makeSettingsSection("First / Last Frame Settings", [makeField("FLF structure", flfStructureModeSelect), flfWorkflowHint, makeField("Global transition type", flfGlobalTransitionTypeSelect), makeField("Gemma visual context", flfGemmaContextModeSelect), flfGemmaContextNote, flfDurationGuidanceNote, flfGuideSettingsGrid, flfGuideSettingsNote, flfRestoreWorkflowDefaultsButton, flfAdvancedDetails, flfChainedSettingsPanel]);
   flfGuideSettingsSection.style.display = "none";
   const i2vPass1SamplerSelect = makeSelect(I2V_SAMPLER_OPTIONS, "euler_ancestral");
   const i2vPass1SigmasInput = makeInput(DEFAULT_I2V_PASS1_SIGMAS);
@@ -7267,6 +7339,12 @@ function openBuilder(node) {
     if (segment.flf_transformation == null) segment.flf_transformation = "";
     if (segment.flf_end_state == null) segment.flf_end_state = "";
     if (segment.flf_carry_forward == null) segment.flf_carry_forward = "";
+    segment.flf_endpoint_mode = String(segment.flf_endpoint_mode || "").trim().toLowerCase() === "custom" ? "custom" : "auto";
+    if (segment.flf_custom_end_direction == null) segment.flf_custom_end_direction = "";
+    if (segment.flf_motion_plan == null) segment.flf_motion_plan = "";
+    if (segment.flf_end_frame_prompt == null) segment.flf_end_frame_prompt = "";
+    segment.flf_end_frame_stale = Boolean(segment.flf_end_frame_stale);
+    segment.flf_final_prompt_ready = Boolean(segment.flf_final_prompt_ready);
     if (!Array.isArray(segment.lyric_singers)) segment.lyric_singers = [];
     if (segment.facial_performance == null) segment.facial_performance = "";
     if (segment.facial_performance_custom == null) segment.facial_performance_custom = "";
@@ -11252,6 +11330,9 @@ function openBuilder(node) {
     segment.first_last_frame_end_image_path = saved.saved_path || "";
     segment.first_last_frame_end_image_data = saved.saved_path ? "" : data;
     segment.first_last_frame_end_image_name = file.name || "end_frame.png";
+    segment.flf_end_frame_prompt = "";
+    segment.flf_end_frame_stale = false;
+    segment.flf_final_prompt_ready = false;
     syncRTVSceneImageAnchorPanel();
     renderList();
     if (projectFolder) await autoSaveSessionQuiet("First Last Frame end image loaded");
@@ -12140,7 +12221,10 @@ function openBuilder(node) {
     flfLastGuideCrop.value = settings.flf_last_guide_crop || "center";
     flfFirstAttentionStrength.value = Number(settings.flf_first_attention_strength ?? 0.9);
     flfLastAttentionStrength.value = Number(settings.flf_last_attention_strength ?? 1);
-    flfChainPreviousEndFrame.input.checked = state.i2vVideoSettings?.flf_chain_previous_end_frame !== false;
+    const flfUsesChain = state.i2vVideoSettings?.flf_chain_previous_end_frame !== false;
+    flfChainPreviousEndFrame.input.checked = flfUsesChain;
+    flfStructureModeSelect.value = flfUsesChain ? "chained" : "independent";
+    flfChainedSettingsPanel.style.display = flfUsesChain ? "flex" : "none";
     flfRenderChainSourceSelect.value = state.i2vVideoSettings?.flf_render_chain_start_source === "previous_image" ? "previous_image" : "rendered_frame";
     flfPreGeneratePromptsFromSceneImages.input.checked = state.i2vVideoSettings?.flf_pregenerate_prompts_from_scene_images === true;
     flfMatchPreviousClipColor.input.checked = state.i2vVideoSettings?.flf_match_previous_clip_color === true;
@@ -12351,6 +12435,13 @@ function openBuilder(node) {
     const behavior = rtvReferenceBehaviorGlobalValue();
     const lastImage = segment ? firstLastFrameEndImageSource(segment) : null;
     const hasLastImage = Boolean(lastImage?.path || lastImage?.data);
+    const independentFLF = isFLF && !flfChainingEnabled(segment);
+    flfPerScenePlanner.style.display = independentFLF ? "flex" : "none";
+    flfEndpointModeSelect.value = segment?.flf_endpoint_mode === "custom" ? "custom" : "auto";
+    flfCustomEndDirection.value = String(segment?.flf_custom_end_direction || "");
+    flfCustomEndDirection.parentElement.style.display = independentFLF && flfEndpointModeSelect.value === "custom" ? "flex" : "none";
+    flfMotionPlanPreview.textContent = String(segment?.flf_motion_plan || "").trim() || "No provisional motion plan has been created yet.";
+    flfEndpointPromptPreview.textContent = String(segment?.flf_end_frame_prompt || "").trim() || "No saved end-frame image prompt yet.";
     rtvSceneImageAnchorSection.style.display = isRTV || isFLF ? "" : "none";
     if (rtvSceneImageAnchorSection.firstElementChild) rtvSceneImageAnchorSection.firstElementChild.textContent = isFLF ? "First / End Frames" : "Reference Behavior";
     rtvReferenceBehaviorField.style.display = isFLF ? "none" : "flex";
@@ -12401,7 +12492,13 @@ function openBuilder(node) {
       firstLastFrameStatus.textContent = !segment
         ? "Select a scene to inspect its First Last Frame refs."
         : hasImage && hasLastImage
-          ? (isFLF ? "Ready: this scene will guide the video from its first frame to its last frame." : "Ready: this scene will send the first frame and end frame as the two references.")
+          ? (isFLF
+            ? independentFLF && segment.flf_end_frame_stale
+              ? "The ending direction or motion plan changed. Recreate this end frame before rendering."
+              : independentFLF && !segment.flf_final_prompt_ready
+              ? "Start and end images are ready. Create the final FLF prompt to finish this independent pair."
+              : "Ready: this scene will guide the video from its first frame to its last frame."
+            : "Ready: this scene will send the first frame and end frame as the two references.")
           : hasImage
             ? `Missing end frame: create one before generating ${isFLF ? "First Last Frame" : "reference-video"} prompts or rendering.`
             : "Missing first frame: run normal Image All first, then create the end frame.";
@@ -12409,6 +12506,12 @@ function openBuilder(node) {
     }
     createSceneEndFrameButton.textContent = hasLastImage ? "Replace End Frame" : "Create End Frame";
     createSceneEndFrameButton.disabled = !(isFLF || (isRTV && behavior === "first_last_frame")) || !segment || !hasImage;
+    planSceneEndMotionButton.style.display = independentFLF ? "" : "none";
+    finalizeSceneFLFPromptButton.style.display = independentFLF ? "" : "none";
+    planSceneEndMotionButton.disabled = !independentFLF || !segment || !hasImage;
+    finalizeSceneFLFPromptButton.disabled = !independentFLF || !segment || !hasImage || !hasLastImage;
+    planSceneEndMotionButton.style.opacity = planSceneEndMotionButton.disabled ? ".55" : "1";
+    finalizeSceneFLFPromptButton.style.opacity = finalizeSceneFLFPromptButton.disabled ? ".55" : "1";
     clearSceneEndFrameButton.disabled = !(isFLF || (isRTV && behavior === "first_last_frame")) || !segment || !hasLastImage;
     createSceneEndFrameButton.style.opacity = createSceneEndFrameButton.disabled ? ".55" : "1";
     clearSceneEndFrameButton.style.opacity = clearSceneEndFrameButton.disabled ? ".55" : "1";
@@ -14284,6 +14387,10 @@ function openBuilder(node) {
             segment.flf_rendered_start_frame_data = "";
             segment.flf_rendered_start_frame_name = "";
             segment.flf_rendered_source_video_path = "";
+            segment.flf_motion_plan = "";
+            segment.flf_end_frame_prompt = "";
+            segment.flf_end_frame_stale = false;
+            segment.flf_final_prompt_ready = false;
             if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) segment.i2v_video_settings.flf_chain_previous_end_frame = false;
             const startFile = pairedStarts.get(sceneNumber);
             if (startFile) {
@@ -14366,6 +14473,10 @@ function openBuilder(node) {
           scenes[index].first_last_frame_end_image_path = saved.saved_path || "";
           scenes[index].first_last_frame_end_image_data = saved.saved_path ? "" : data;
           scenes[index].first_last_frame_end_image_name = file.name || `scene_${index + 1}_end.png`;
+          scenes[index].flf_motion_plan = "";
+          scenes[index].flf_end_frame_prompt = "";
+          scenes[index].flf_end_frame_stale = false;
+          scenes[index].flf_final_prompt_ready = false;
         }
         setActiveSegment(scenes[0]); render(); await autoSaveSessionQuiet("First Last Frame folder fill");
         progress.set(`First Last Frame folder fill complete: Scene 1 first frame plus ${endCount} end frame${endCount === 1 ? "" : "s"}.`, 100); progress.close(1800);
@@ -21009,7 +21120,8 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       const progress = createProgressWindow(referenceType === "location" ? "Describing location" : "Describing reference", { zIndex: 100008 });
       try {
         progress.set(`Vision Gemma describing ${effectiveType} image...\n${label || target?.name || effectiveType}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
-        await describeReferenceImageWithGemma(target, referenceType, { unloadAfter: true, clearBeforeLoad: false });
+        const description = await describeReferenceImageWithGemma(target, referenceType, { unloadAfter: true, clearBeforeLoad: false });
+        applyReferenceDescription(referenceType, target, description);
         renderAll();
         await autoSaveSessionQuiet(`Gemma described ${effectiveType}`);
         progress.set("Description updated.", 100);
@@ -22222,12 +22334,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       subjectsList.style.display = "flex";
       subjectsList.style.maxHeight = "min(62vh, 720px)";
       if (!multi) {
-        refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
-        refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
-        refs.subjects[0].reference_type = refs.subject.reference_type;
-        refs.subject.description = subjectDescription.value;
-        refs.subjects[0].description = refs.subject.description;
-        refs.subjects[0].image = hasReferenceImage(refs.subject.image || {}) ? refs.subject.image : (refs.subjects[0].image || { path: "", data: "", name: "" });
+        syncSingleSubjectInputsFromFirstSubject();
         updateSubjectDrop();
         return;
       }
@@ -22988,12 +23095,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     function renderAll() {
       if (refs.subjects.length || Number(refs.subject_count || 0) > 0) ensureSubjectCount();
       else refs.subject_count = 0;
-      if (refs.subject_count === 1) {
-        refs.subject.description = subjectDescription.value;
-        refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
-        if (refs.subjects[0]) refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
-        if (refs.subjects[0]) refs.subjects[0].reference_type = refs.subject.reference_type;
-      }
+      if (refs.subject_count === 1 && refs.subjects[0]) syncSingleSubjectInputsFromFirstSubject();
       renderSubjects();
       renderLocations();
       renderMapping();
@@ -23010,14 +23112,12 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     createSubjectZImage.onclick = () => createFluxReferenceWithZImage("subject", refs.subject, refs.subject.description || subjectDescription.value || "", "subject_reference");
     describeSubjectImage.onclick = async () => {
       ensureSubjectCount();
-      refs.subject.description = subjectDescription.value || refs.subject.description || "";
+      const primarySubject = refs.subjects[0] || refs.subject;
       const progress = createProgressWindow("Describing character", { zIndex: 100008 });
       try {
         progress.set(`Vision Gemma describing character image...\n${subjectNameInput.value || refs.subjects[0]?.name || "Subject"}\n${gemmaRunnerLine({ vision: true, forceBuiltin: true })}`, 18);
-        const description = await describeReferenceImageWithGemma(refs.subject, "subject", { unloadAfter: true });
-        subjectDescription.value = description;
-        refs.subject.description = description;
-        if (refs.subjects[0]) refs.subjects[0].description = description;
+        const description = await describeReferenceImageWithGemma(primarySubject, "subject", { unloadAfter: true });
+        applyReferenceDescription("subject", primarySubject, description);
         renderAll();
         await autoSaveSessionQuiet("Gemma described subject");
         progress.set("Description updated.", 100);
@@ -23030,12 +23130,10 @@ Chrome vault corridor: A sealed industrial passage...</pre>
     };
     describeMissingSubjects.onclick = () => {
       ensureSubjectCount();
-      const subjectItems = refs.subject_count === 1
-        ? [{ target: refs.subject, label: subjectNameInput.value || refs.subjects[0]?.name || "Subject" }]
-        : refs.subjects.map((subject, index) => ({
-            target: subject,
-            label: subject.name || `Character ${index + 1}`,
-          }));
+      const subjectItems = refs.subjects.map((subject, index) => ({
+        target: subject,
+        label: subject.name || `Character ${index + 1}`,
+      }));
       describeReferenceItemsWithGemma(subjectItems, "subject", { keepLoaded: true, clearBeforeLoad: false });
     };
     createAllMissingSubjectImages.onclick = openMissingSubjectImageGeneratorDialog;
@@ -23218,12 +23316,15 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       refs.subject_count = refs.subjects.length;
       subjectCountInput.value = String(refs.subject_count || 0);
       if (refs.subject_count === 1 && refs.subjects[0]) {
-        refs.subject.description = subjectDescription.value;
-        refs.subject.reference_type = subjectTypeSelect.value || refs.subject.reference_type || "character";
-        refs.subjects[0].name = subjectNameInput.value || refs.subjects[0].name || "Character 1";
-        refs.subjects[0].description = refs.subject.description;
-        refs.subjects[0].reference_type = refs.subject.reference_type;
-        refs.subjects[0].image = hasReferenceImage(refs.subject.image || {}) ? refs.subject.image : (refs.subjects[0].image || { path: "", data: "", name: "" });
+        const primarySubject = refs.subjects[0];
+        refs.subject = {
+          name: primarySubject.name || "Character 1",
+          description: primarySubject.description || "",
+          reference_type: primarySubject.reference_type || "character",
+          reference_generation_draft: primarySubject.reference_generation_draft || refs.subject.reference_generation_draft || {},
+          image: { ...(primarySubject.image || { path: "", data: "", name: "" }) },
+        };
+        syncSingleSubjectInputsFromFirstSubject();
       } else if (refs.subjects[0]) {
         refs.subject = {
           name: refs.subjects[0].name || "Character 1",
@@ -29572,13 +29673,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const isIngredients = videoMode === "ingredients";
     const isIdLora = videoMode === "id_lora";
     const modeLabel = videoModeDisplayLabel(videoMode, true);
+    const provisionalMotionPlan = Boolean(options.provisionalMotionPlan);
     const forceTextOnly = Boolean(options.forceTextOnly);
     const forceVision = Boolean(options.forceVision);
     const textScriptMode = isRTV || isFLF || isIngredients || isIdLora;
-    const useFirstLastFrameVision = isFLF || (isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame");
+    const useFirstLastFrameVision = !provisionalMotionPlan && (isFLF || (isRTV && rtvReferenceBehaviorForSegment(segment) === "first_last_frame"));
     const firstLastFrameReferences = useFirstLastFrameVision ? firstLastFramePromptReferences(segment) : [];
-    const useImageReference = useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
-    const imageReference = useFirstLastFrameVision ? (firstLastFrameReferences[0] || { path: "", data: "" }) : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
+    const useImageReference = provisionalMotionPlan ? true : useFirstLastFrameVision ? true : isIdLora ? true : textScriptMode ? false : forceVision ? true : forceTextOnly ? false : (isT2V ? Boolean(segment.use_t2v_vision_reference) : segment.use_i2v_vision_reference !== false);
+    const imageReference = provisionalMotionPlan
+      ? (segmentImageSource(segment) || { path: "", data: "" })
+      : useFirstLastFrameVision
+        ? (firstLastFrameReferences[0] || { path: "", data: "" })
+        : useImageReference ? getI2VImageReference(segment) : { path: "", data: "" };
     const t2iText = isFLF ? flfGemmaSceneConcept(segment) : sceneVideoConceptPromptText(segment);
     if (useFirstLastFrameVision && firstLastFrameReferences.length < 2) {
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: First Last Frame prompt needs both a first frame image and an end frame image.`);
@@ -29598,16 +29704,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? flfGemmaVisualNotes(segment)
       : baseNotes;
     const storyboardNotes = String(options.skipStoryboardExtraNotes || (isFLF && flfGemmaContextMode(segment) !== "full") ? "" : storyboardVideoExtraNotesForSegment(segment, options.storyboardScene)).trim();
-    const extraNotes = [storyboardNotes, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
+    const provisionalInstructions = provisionalMotionPlan ? [
+      "INDEPENDENT FIRST/LAST FRAME MOTION PLAN:",
+      "Study the supplied start image and write a complete I2V motion plan for this scene.",
+      "Describe continuous camera motion, subject action, environment motion, and a visually precise final moment.",
+      "The final sentence must clearly state what should be visible in the final frozen frame, including shot scale, camera angle, subject pose/action endpoint, expression, visible wardrobe, important props, and environment.",
+      "Use shot-aware planning: for a close-up, consider a modest pullback, arc, pan, tilt, expression change, or upper-body reveal; for a medium shot, consider a push toward the face, hands, or a story-relevant prop; for a wide shot, consider pushing toward the subject, upper body, face, or an important environment detail.",
+      "Do not choose an arbitrary hand, foot, or body-detail endpoint unless the lyric, story beat, action, or user direction makes that detail meaningful.",
+      "Do not mention an end-frame image because it has not been created yet. Do not reuse another scene's ending.",
+      segment.flf_endpoint_mode === "custom" && String(segment.flf_custom_end_direction || "").trim()
+        ? `REQUIRED USER ENDING DIRECTION:\n${String(segment.flf_custom_end_direction || "").trim()}`
+        : "Choose an ending that follows naturally from the story beat and start image. Avoid revealing unseen wardrobe or anatomy unless the supplied character description specifies those details.",
+    ].filter(Boolean).join("\n") : "";
+    const extraNotes = [storyboardNotes, provisionalInstructions, String(options.extraUserNotes || "").trim()].filter(Boolean).join("\n\n");
+    const mappedSubjectContext = segment.no_character_present ? "" : segmentMappedSubjectText(segment);
+    const mappedLocationContext = segmentMappedLocationText(segment);
     return {
-      endpoint: isT2V || textScriptMode ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v",
-      modeLabel,
+      endpoint: provisionalMotionPlan ? "/vrgdg/music_builder/generate_i2v" : isT2V || textScriptMode ? "/vrgdg/music_builder/generate_t2v" : "/vrgdg/music_builder/generate_i2v",
+      modeLabel: provisionalMotionPlan ? "independent FLF motion-plan" : modeLabel,
       useImageReference,
       payload: {
         ...textGemmaRunnerPayload(),
         project_folder: activeProjectFolderForSave(),
         scene_id: segment.id || "",
-        builder_instruction_key: isIdLora ? "id_lora" : isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
+        builder_instruction_key: provisionalMotionPlan ? "i2v" : isIdLora ? "id_lora" : isIngredients ? "ingredients" : isRTV ? "rtv" : isT2V ? "t2v" : "i2v",
         model_file: useImageReference ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
         mmproj_file: useImageReference ? i2vMmprojSelect.value : "",
         t2i_prompt: isIdLora ? [t2iText, idLoraContext?.contextText || ""].filter(Boolean).join("\n\n") : isT2V || textScriptMode ? t2iText : useImageReference ? "" : t2iText,
@@ -29624,8 +29744,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         flf_carry_forward: isFLF ? String(segment.flf_carry_forward || "").trim() : "",
         repair_model_file: i2vTextGemmaModelSelect.value,
         user_notes: [modeNotes, extraNotes].filter(Boolean).join("\n\n"),
-        subject_context: isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? segmentMappedSubjectText(segment) : ""),
-        location_context: isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : isT2V || textScriptMode || !useImageReference ? segmentMappedLocationText(segment) : "",
+        subject_context: provisionalMotionPlan ? mappedSubjectContext : isIdLora ? [idLoraContext?.characterName || "", String(idLoraContext?.character?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : segment.no_character_present ? "" : (isT2V || textScriptMode || !useImageReference ? mappedSubjectContext : ""),
+        location_context: provisionalMotionPlan ? mappedLocationContext : isIdLora ? [idLoraContext?.locationName || "", String(idLoraContext?.location?.description || "").trim()].filter(Boolean).join("\n") : isFLF && flfGemmaContextMode(segment) !== "full" ? "" : isT2V || textScriptMode || !useImageReference ? mappedLocationContext : "",
         no_character_present: Boolean(segment.no_character_present),
         theme_style_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.themeStylePath || "" : "",
         story_idea_path: useImageReference && !isT2V && !textScriptMode ? "" : state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
@@ -30170,6 +30290,61 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
     }
     throw lastError || new Error(`${label}: FLF vision prompt failed after ${maxAttempts} attempts.`);
+  }
+
+  async function generateIndependentFLFMotionPlanForSegment(segment, progress = null, percent = 50, label = "Independent FLF Motion Plan") {
+    if (!segment) throw new Error("Scene is missing.");
+    const startImage = segmentImageSource(segment);
+    if (!startImage?.path && !startImage?.data) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: a start image is required before creating its motion plan.`);
+    }
+    const previousVideoPrompt = String(segment.i2v_prompt || "");
+    try {
+      await generateI2VPromptForSegment(segment, progress, percent, label, {
+        provisionalMotionPlan: true,
+        forceVision: true,
+        deferEnhancement: true,
+        unloadAfter: true,
+      });
+      const plan = String(segment.i2v_prompt || "").trim();
+      if (!plan) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty motion plan.`);
+      segment.flf_motion_plan = plan;
+      segment.flf_end_frame_stale = hasFirstLastFrameEndImage(segment);
+      segment.flf_final_prompt_ready = false;
+      return plan;
+    } finally {
+      segment.i2v_prompt = previousVideoPrompt;
+      if (segment.id === state.activeId) i2vPrompt.value = previousVideoPrompt;
+      syncRTVSceneImageAnchorPanel();
+      render();
+    }
+  }
+
+  async function generateFinalIndependentFLFPromptForSegment(segment, progress = null, percent = 82, label = "Final Independent FLF Prompt") {
+    if (!segment) throw new Error("Scene is missing.");
+    const refs = firstLastFramePromptReferences(segment);
+    if (refs.length < 2) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: both the scene's own start image and end image are required before creating the final FLF prompt.`);
+    }
+    if (segment.flf_end_frame_stale) {
+      throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: the ending direction or motion plan changed after this end image was created. Recreate the end frame before creating the final FLF prompt.`);
+    }
+    const motionPlan = String(segment.flf_motion_plan || "").trim();
+    const customDirection = segment.flf_endpoint_mode === "custom" ? String(segment.flf_custom_end_direction || "").trim() : "";
+    await generateI2VPromptForSegmentWithFLFRetry(segment, progress, percent, label, {
+      unloadAfter: true,
+      forceVision: true,
+      maxFLFAttempts: 3,
+      extraUserNotes: [
+        motionPlan ? `ORIGINAL PROVISIONAL MOTION PLAN — preserve its intended action and camera path while adapting it to the two actual images:\n${motionPlan}` : "",
+        customDirection ? `REQUIRED USER ENDING DIRECTION:\n${customDirection}` : "",
+      ].filter(Boolean).join("\n\n"),
+    });
+    segment.flf_final_prompt_ready = true;
+    if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt || "";
+    syncRTVSceneImageAnchorPanel();
+    render();
+    return String(segment.i2v_prompt || "").trim();
   }
 
   async function i2vAllScenes(options = {}) {
@@ -31794,6 +31969,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const transformation = String(segment.flf_transformation || "").trim();
     const endState = String(segment.flf_end_state || "").trim();
     const carryForward = String(segment.flf_carry_forward || "").trim();
+    const motionPlan = String(segment.flf_motion_plan || segment.i2v_prompt || "").trim();
+    const customDirection = segment.flf_endpoint_mode === "custom" ? String(segment.flf_custom_end_direction || "").trim() : "";
+    const subjectContinuity = segment.no_character_present ? "" : String(segmentMappedSubjectText(segment) || "").trim();
+    const locationContinuity = String(segmentMappedLocationText(segment) || "").trim();
     return [
       `${modeHint} Create the LAST FRAME for a First Last Frame video shot.`,
       `Scene: ${sceneName}`,
@@ -31804,8 +31983,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       transformation ? `Required continuous transformation:\n${transformation}` : "",
       endState ? `REQUIRED ENDPOINT — make the generated image visibly match this destination:\n${endState}` : "",
       carryForward ? `Continuity details that must remain usable by the following scene:\n${carryForward}` : "",
+      customDirection ? `REQUIRED USER ENDING DIRECTION — this overrides an automatically inferred endpoint:\n${customDirection}` : "",
+      motionPlan ? `PROVISIONAL I2V MOTION PLAN — freeze the generated image at the final visual moment described here:\n${motionPlan}` : "",
+      subjectContinuity ? `CHARACTER AND WARDROBE CONTINUITY — preserve these mapped Reference Builder details, including details revealed outside the starting crop:\n${subjectContinuity}` : "",
+      locationContinuity ? `LOCATION CONTINUITY:\n${locationContinuity}` : "",
       motion ? `Scene motion/story direction:\n${motion}` : "Scene motion/story direction:\nCreate a clear cinematic endpoint with meaningful visual change from the first frame.",
-      endState ? "Treat the required endpoint as authoritative. Do not substitute a generic pose or invent a different destination." : "",
+      endState || customDirection ? "Treat the required endpoint as authoritative. Do not substitute a generic pose or invent a different destination." : "",
       "Final answer should be only the image prompt for the end frame. Do not mention files, inputs, first frame, last frame, references, MSR, LoRA, or workflow nodes.",
     ].filter(Boolean).join("\n\n");
   }
@@ -31981,9 +32164,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ref_image_name: segment.ref_image_name || "",
       use_vision_reference: segment.use_vision_reference,
     };
+    let generatedEndpointPrompt = "";
     try {
       if (options.useExistingPrompt === true) {
-        const existingPrompt = savedImagePromptForMode(segment, imageMode);
+        const existingPrompt = String(segment.flf_end_frame_prompt || "").trim() || savedImagePromptForMode(segment, imageMode);
         if (!existingPrompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: saved image prompt is missing.`);
         syncSegmentT2IPrompt(segment, existingPrompt);
         if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, existingPrompt);
@@ -32007,6 +32191,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true, flfImageTarget: "end" });
         }
       }
+      generatedEndpointPrompt = savedImagePromptForMode(segment, imageMode);
       progress?.set(`${label}: creating end-frame image with ${imageModeDisplayLabel(imageMode)}...`, percentBase + percentSpan * 0.3);
       await createImageForSegmentInCurrentMode(
         segment,
@@ -32022,12 +32207,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       segment.first_last_frame_end_image_path = generated.path || "";
       segment.first_last_frame_end_image_data = generated.data || "";
       segment.first_last_frame_end_image_name = generated.name || "last_frame.png";
+      segment.flf_end_frame_stale = false;
+      segment.flf_final_prompt_ready = false;
     } finally {
       Object.assign(segment, originalPromptContext);
       restoreI2I();
       restoreIngredient();
       restoreSceneImagePromptState(segment, snapshot);
     }
+    if (generatedEndpointPrompt) segment.flf_end_frame_prompt = generatedEndpointPrompt;
     render();
     return firstLastFrameEndImageSource(segment);
   }
@@ -34314,6 +34502,163 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  async function buildIndependentFLFPairs(options = {}) {
+    updateActiveFromInputs();
+    const imageMode = options.imageMode || state.imageModelMode || "zimage";
+    const sceneScope = normalizeBatchScope(options.sceneScope);
+    const runMode = ["resume_missing", "redo_endpoints", "redo_all"].includes(options.runMode) ? options.runMode : "resume_missing";
+    const redoStarts = runMode === "redo_all";
+    const redoMotionAndEnds = runMode !== "resume_missing";
+    const scenes = batchTargetItems(sceneScope, { baseOnly: true }).slice().sort((a, b) => Number(a.segment?.start || 0) - Number(b.segment?.start || 0));
+    const progress = createProgressWindow("Build Independent Start + End Pairs");
+    const missing = [];
+    if (currentVideoMode() !== "flf") missing.push("Video mode must be First Last Frame.");
+    if (!scenes.length) missing.push(batchEmptyMessage(sceneScope));
+    if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+    if (missing.length) {
+      progress.set(`Build Independent Start + End Pairs cannot start yet:\n\n${missing.map((item) => `- ${item}`).join("\n")}`, 100);
+      toast("Independent FLF pairs need First Last Frame mode and a saved project.", true);
+      return;
+    }
+    try {
+      state.batchCancelled = false;
+      zImageAllButton.disabled = true;
+      zImageAllButton.textContent = "Independent FLF...";
+      state.i2vVideoSettings = {
+        ...(state.i2vVideoSettings || defaultI2VVideoSettings()),
+        flf_chain_previous_end_frame: false,
+      };
+      flfChainPreviousEndFrame.input.checked = false;
+      flfStructureModeSelect.value = "independent";
+      flfChainedSettingsPanel.style.display = "none";
+      state.segments.forEach((segment) => {
+        if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) {
+          segment.i2v_video_settings.flf_chain_previous_end_frame = false;
+        }
+      });
+      scenes.forEach(({ segment }) => {
+        segment.flf_rendered_start_frame_path = "";
+        segment.flf_rendered_start_frame_data = "";
+        segment.flf_rendered_start_frame_name = "";
+        segment.flf_rendered_source_video_path = "";
+        if (redoMotionAndEnds) {
+          segment.flf_motion_plan = "";
+          segment.flf_end_frame_prompt = "";
+          segment.flf_final_prompt_ready = false;
+        }
+        if (redoStarts) segment.flf_final_prompt_ready = false;
+      });
+      progress.set(`Preparing ${scenes.length} independent FLF pair${scenes.length === 1 ? "" : "s"} (${batchScopeLabel(sceneScope)}).\n\nPass order is locked: ALL starts → ALL motion plans → ALL ends → ALL final FLF prompts.`, 2);
+      await saveSessionForSceneVideo();
+
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const existing = segmentImageSource(segment);
+        const base = 4 + Math.floor((index / Math.max(1, scenes.length)) * 25);
+        if (!redoStarts && (existing?.path || existing?.data)) {
+          progress.set(`PASS 1/4 — START FRAMES ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping this scene's existing start image. No end frames will be created until every start is ready.`, base);
+          continue;
+        }
+        progress.set(`PASS 1/4 — START FRAMES ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating this scene's normal Image All start image.`, base);
+        await generateFLFStartImageForSegment(
+          segment,
+          imageMode,
+          progress,
+          base,
+          Math.max(2, Math.floor(23 / Math.max(1, scenes.length))),
+          `Independent start ${index + 1}/${scenes.length}: ${sceneLabel}`,
+          {
+            useExistingPrompt: !redoStarts && Boolean(savedImagePromptForMode(segment, imageMode)),
+            preserveSavedPrompts: false,
+          },
+        );
+        segment.flf_motion_plan = "";
+        segment.flf_end_frame_stale = hasFirstLastFrameEndImage(segment);
+        segment.flf_final_prompt_ready = false;
+        await autoSaveSessionQuiet(`Independent FLF start image ${sceneLabel}`);
+      }
+      progress.set("PASS 1/4 COMPLETE — Every target scene now has its own start image.\n\nClearing prompt/image memory before motion planning...", 30);
+      await runClearMemoryWorkflowQuiet(progress, "independent FLF start-frame pass", 31);
+
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 32 + Math.floor((index / Math.max(1, scenes.length)) * 18);
+        if (!redoMotionAndEnds && String(segment.flf_motion_plan || "").trim()) {
+          progress.set(`PASS 2/4 — MOTION PLANS ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping the saved provisional motion plan.`, base);
+          continue;
+        }
+        if (!redoMotionAndEnds && hasFirstLastFrameEndImage(segment) && !segment.flf_end_frame_stale) {
+          progress.set(`PASS 2/4 — MOTION PLANS ${index + 1}/${scenes.length}: ${sceneLabel}\nA manually loaded or imported end image already exists, so it remains endpoint truth. Skipping the start-only provisional plan; Pass 4 will create the final motion prompt directly from the actual pair.`, base);
+          continue;
+        }
+        progress.set(`PASS 2/4 — MOTION PLANS ${index + 1}/${scenes.length}: ${sceneLabel}\nGemma is viewing the completed start image and defining the shot's motion and final visual moment.`, base);
+        await generateIndependentFLFMotionPlanForSegment(segment, progress, base, `Independent motion ${index + 1}/${scenes.length}: ${sceneLabel}`);
+        await autoSaveSessionQuiet(`Independent FLF motion plan ${sceneLabel}`);
+      }
+      progress.set("PASS 2/4 COMPLETE — Every target scene has either a provisional motion plan or an existing user-supplied endpoint.\n\nReturning to the first target scene to create missing end images...", 51);
+      await runClearMemoryWorkflowQuiet(progress, "independent FLF motion-plan pass", 52);
+
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 53 + Math.floor((index / Math.max(1, scenes.length)) * 27);
+        if (!redoMotionAndEnds && hasFirstLastFrameEndImage(segment) && !segment.flf_end_frame_stale) {
+          progress.set(`PASS 3/4 — END FRAMES ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping this scene's existing independent end image.`, base);
+          continue;
+        }
+        progress.set(`PASS 3/4 — END FRAMES ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating the end image from this scene's own start, motion plan, mapped descriptions, and supported references.`, base);
+        await createEndFrameForSegment(
+          segment,
+          imageMode,
+          progress,
+          base,
+          Math.max(3, Math.floor(24 / Math.max(1, scenes.length))),
+          `Independent end ${index + 1}/${scenes.length}: ${sceneLabel}`,
+        );
+        await autoSaveSessionQuiet(`Independent FLF end image ${sceneLabel}`);
+      }
+      progress.set("PASS 3/4 COMPLETE — Every target scene now owns a start/end pair.\n\nClearing image memory before final two-image prompt generation...", 81);
+      await runClearMemoryWorkflowQuiet(progress, "independent FLF end-frame pass", 82);
+
+      for (let index = 0; index < scenes.length; index += 1) {
+        assertBatchNotStopped();
+        const { segment, index: sceneIndex } = scenes[index];
+        const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const base = 83 + Math.floor((index / Math.max(1, scenes.length)) * 14);
+        if (!redoMotionAndEnds && segment.flf_final_prompt_ready && String(segment.i2v_prompt || "").trim()) {
+          progress.set(`PASS 4/4 — FINAL FLF PROMPTS ${index + 1}/${scenes.length}: ${sceneLabel}\nKeeping the saved final prompt.`, base);
+          continue;
+        }
+        progress.set(`PASS 4/4 — FINAL FLF PROMPTS ${index + 1}/${scenes.length}: ${sceneLabel}\nGemma is inspecting this scene's actual start and end images and adapting the motion plan to those exact endpoints.`, base);
+        await generateFinalIndependentFLFPromptForSegment(segment, progress, base, `Final independent FLF ${index + 1}/${scenes.length}: ${sceneLabel}`);
+        await autoSaveSessionQuiet(`Independent FLF final prompt ${sceneLabel}`);
+      }
+      await runClearMemoryWorkflowQuiet(progress, "independent FLF final-prompt pass", 98);
+      await autoSaveSessionQuiet("Build Independent Start + End Pairs complete");
+      progress.set(`Build Independent Start + End Pairs complete for ${scenes.length} scene${scenes.length === 1 ? "" : "s"}.\n\n✓ All start images\n✓ All provisional motion plans\n✓ All independent end images\n✓ All final two-image FLF prompts\n\nNo end image was reused as another scene's start. Use Render All when you are ready to create the videos.`, 100);
+      toast("Independent start/end pairs are ready for Render All.");
+    } catch (error) {
+      const message = String(error?.message || error);
+      const stopped = /stopped by user/i.test(message);
+      progress.set(`${stopped ? "Stopped" : "Error"}:\n${message}\n\nCompleted stages were autosaved. Run Resume Independent Pairs to continue missing work.`, 100);
+      toast(message, !stopped);
+      if (options.throwOnError) throw error;
+    } finally {
+      zImageAllButton.disabled = false;
+      zImageAllButton.textContent = "Image All";
+      state.batchCancelled = false;
+      syncI2VVideoSettingsPanel();
+      syncRTVSceneImageAnchorPanel();
+      syncInspector();
+      render();
+    }
+  }
+
   async function generateFLFStartImageForSegment(segment, imageMode, progress, percentBase, percentSpan, label, options = {}) {
     const savedPrompts = {
       t2i_prompt: segment.t2i_prompt || "",
@@ -34350,11 +34695,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       percentBase + percentSpan * 0.38,
       percentSpan * 0.55,
       label,
-      { bypassImageToImage: true }
+      { bypassImageToImage: true, includePreviousSceneImage: false }
     );
     const generated = segmentImageSource(segment);
     if (!generated?.path && !generated?.data) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: opening image did not return a saved image.`);
-    Object.assign(segment, savedPrompts);
+    if (options.preserveSavedPrompts !== false) Object.assign(segment, savedPrompts);
     if (segment.id === activeSegment()?.id) syncInspector();
     return generated;
   }
@@ -34393,6 +34738,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         // user's rendered-frame choice is restored before video rendering.
         flf_render_chain_start_source: "previous_image",
       };
+      state.segments.forEach((segment) => {
+        if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) {
+          segment.i2v_video_settings.flf_chain_previous_end_frame = true;
+        }
+      });
       progress.set(`Preparing ${scenes.length} FLF scene${scenes.length === 1 ? "" : "s"} (${batchScopeLabel(sceneScope)})...\nImage-chain start source: previous generated destination.\nVideo render-chain preference will remain: ${originalRenderChainSource === "previous_image" ? "previous assigned image" : "extracted rendered frame"}.`, 3);
       await saveSessionForSceneVideo();
 
@@ -34452,6 +34802,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         flf_chain_previous_end_frame: true,
         flf_render_chain_start_source: originalRenderChainSource,
       };
+      state.segments.forEach((segment) => {
+        if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) {
+          segment.i2v_video_settings.flf_chain_previous_end_frame = true;
+        }
+      });
       await autoSaveSessionQuiet("FLF image chain render-source preference restored").catch(() => null);
       zImageAllButton.disabled = false;
       zImageAllButton.textContent = "Image All";
@@ -38413,14 +38768,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     ];
     const scopeChoices = batchScopeChoices();
     const firstLastFrameMode = rtvReferenceBehaviorGlobalValue() === "first_last_frame";
+    const nativeFLFMode = currentVideoMode() === "flf";
     const action = await chooseBatchModeAction({
       title: "Run Image All?",
-      intro: firstLastFrameMode
-        ? `Image All only works on the image stage. Current image model: ${modelLabel}. First Last Frame mode is active, so you can also create end frames from the existing scene images.`
+      intro: nativeFLFMode
+        ? `Current image model: ${modelLabel}. First Last Frame mode is active. Normal choices only create images; Build Independent Start + End Pairs also creates the provisional motion plans and final two-image FLF prompts required by that image workflow. It never renders or stitches videos.`
+        : firstLastFrameMode
+        ? `Image All only works on the image stage. Current image model: ${modelLabel}. First Last Frame reference behavior is active, so you can also create end frames from the existing scene images.`
         : `Image All only works on the image stage. It does not create I2V prompts, render videos, or stitch the final video. Current image model: ${modelLabel}. Flux ingredients, model selections, LoRAs, notes, and project paths are not reset.`,
       confirmLabel: "Run Image All",
       returnAll: true,
       choices: [
+        ...(nativeFLFMode ? [{
+          value: "build_independent_pairs",
+          label: "Build Independent Start + End Pairs",
+          description: "Recommended independent workflow. Pass 1 finishes ALL scene start images. Pass 2 creates ALL provisional motion plans from those starts. Pass 3 returns to the first target scene and creates ALL end images. Pass 4 inspects each real pair and creates the final FLF prompts. Keeps completed work and resumes only missing stages.",
+        }, {
+          value: "redo_independent_endpoints",
+          label: "Redo Independent Motion Plans + Ends",
+          description: "Keep every current start image. Recreate all target motion plans, end-frame prompts, end images, and final two-image FLF prompts. Previous-end chaining is turned off.",
+        }, {
+          value: "redo_independent_all",
+          label: "Redo ALL Independent Starts + Ends",
+          description: "Rebuild all four passes for the target scenes: new start images first, then motion plans, end images, and final FLF prompts. This replaces the selected start/end results while preserving normal image history where supported.",
+        }] : []),
         ...(firstLastFrameMode ? [{
           value: "create_flf_image_chain",
           label: "Resume FLF Image Chain",
@@ -38472,6 +38843,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.fluxKleinSettings.image_model_mode = selectedImageMode;
     state.fluxKleinSettings.enabled = selectedImageMode === "flux_klein";
     syncFluxKleinPanel();
+    if (["build_independent_pairs", "redo_independent_endpoints", "redo_independent_all"].includes(action.mode)) {
+      await buildIndependentFLFPairs({
+        imageMode: selectedImageMode,
+        sceneScope,
+        runMode: action.mode === "redo_independent_all" ? "redo_all" : action.mode === "redo_independent_endpoints" ? "redo_endpoints" : "resume_missing",
+      });
+      return;
+    }
     if (["create_flf_image_chain", "redo_flf_image_chain_keep_prompts"].includes(action.mode)) {
       await createFLFImageChain({
         imageMode: selectedImageMode,
@@ -38686,6 +39065,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.first_last_frame_end_image_path = "";
         segment.first_last_frame_end_image_data = "";
         segment.first_last_frame_end_image_name = "";
+        segment.flf_motion_plan = "";
+        segment.flf_end_frame_prompt = "";
+        segment.flf_end_frame_stale = false;
+        segment.flf_final_prompt_ready = false;
         segment.flf_rendered_start_frame_path = "";
         segment.flf_rendered_start_frame_data = "";
         segment.flf_rendered_start_frame_name = "";
@@ -40142,6 +40525,77 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     render();
     autoSaveSessionQuiet("RTV reference behavior changed globally").catch(() => null);
   });
+  flfEndpointModeSelect.addEventListener("change", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    pushHistory();
+    segment.flf_endpoint_mode = flfEndpointModeSelect.value === "custom" ? "custom" : "auto";
+    segment.flf_motion_plan = "";
+    segment.flf_end_frame_prompt = "";
+    segment.flf_end_frame_stale = hasFirstLastFrameEndImage(segment);
+    segment.flf_final_prompt_ready = false;
+    flfCustomEndDirection.parentElement.style.display = segment.flf_endpoint_mode === "custom" ? "flex" : "none";
+    syncRTVSceneImageAnchorPanel();
+    autoSaveSessionQuiet("Independent FLF endpoint mode changed").catch(() => null);
+  });
+  flfCustomEndDirection.addEventListener("input", () => {
+    const segment = activeSegment();
+    if (!segment) return;
+    segment.flf_custom_end_direction = flfCustomEndDirection.value || "";
+    segment.flf_motion_plan = "";
+    segment.flf_end_frame_prompt = "";
+    segment.flf_end_frame_stale = hasFirstLastFrameEndImage(segment);
+    segment.flf_final_prompt_ready = false;
+  });
+  flfCustomEndDirection.addEventListener("change", () => {
+    autoSaveSessionQuiet("Independent FLF custom ending changed").catch(() => null);
+  });
+  planSceneEndMotionButton.addEventListener("click", async () => {
+    updateActiveFromInputs();
+    const segment = activeSegment();
+    if (!segment) return;
+    const progress = createProgressWindow("Create Independent FLF Motion Plan");
+    try {
+      planSceneEndMotionButton.disabled = true;
+      progress.set("Gemma is inspecting this scene's start image and planning its camera motion, subject action, and final visual moment...", 12);
+      await generateIndependentFLFMotionPlanForSegment(segment, progress, 30, `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} motion plan`);
+      await autoSaveSessionQuiet("Independent FLF scene motion plan created");
+      progress.set("Motion plan saved. Review it in the scene panel, then create the end frame.", 100);
+      progress.close(2200);
+      toast("Independent FLF motion plan created.");
+    } catch (error) {
+      const message = String(error?.message || error);
+      progress.set(`Error:\n${message}`, 100);
+      toast(message, true);
+    } finally {
+      syncRTVSceneImageAnchorPanel();
+      syncInspector();
+      render();
+    }
+  });
+  finalizeSceneFLFPromptButton.addEventListener("click", async () => {
+    updateActiveFromInputs();
+    const segment = activeSegment();
+    if (!segment) return;
+    const progress = createProgressWindow("Create Final Independent FLF Prompt");
+    try {
+      finalizeSceneFLFPromptButton.disabled = true;
+      progress.set("Gemma is inspecting this scene's actual start and end images and adapting the saved motion plan to those exact endpoints...", 12);
+      await generateFinalIndependentFLFPromptForSegment(segment, progress, 35, `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} final FLF prompt`);
+      await autoSaveSessionQuiet("Independent FLF final scene prompt created");
+      progress.set("Final FLF prompt saved. This scene is ready to render.", 100);
+      progress.close(2200);
+      toast("Final independent FLF prompt created.");
+    } catch (error) {
+      const message = String(error?.message || error);
+      progress.set(`Error:\n${message}`, 100);
+      toast(message, true);
+    } finally {
+      syncRTVSceneImageAnchorPanel();
+      syncInspector();
+      render();
+    }
+  });
   createSceneEndFrameButton.addEventListener("click", async () => {
     updateActiveFromInputs();
     const segment = activeSegment();
@@ -40169,16 +40623,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress.set("Autosaving before creating the scene end frame...", 4);
       await saveSessionForSceneVideo();
       const imageMode = state.imageModelMode || "zimage";
+      const independentFLF = currentVideoMode() === "flf" && !flfChainingEnabled(segment);
+      if (independentFLF && !String(segment.flf_motion_plan || "").trim()) {
+        progress.set("No saved motion plan exists, so Gemma is creating it from this scene's start image first...", 10);
+        await generateIndependentFLFMotionPlanForSegment(segment, progress, 18, `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} motion plan`);
+      }
       await createEndFrameForSegment(
         segment,
         imageMode,
         progress,
-        12,
-        76,
+        independentFLF ? 38 : 12,
+        independentFLF ? 42 : 76,
         `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} end frame`
       );
+      if (independentFLF) {
+        progress.set("End image created. Gemma is now viewing the actual start/end pair and writing the final FLF prompt...", 82);
+        await generateFinalIndependentFLFPromptForSegment(segment, progress, 86, `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} final FLF prompt`);
+      }
       await autoSaveSessionQuiet("First Last Frame end frame created");
-      progress.set("Scene end frame created. This scene is ready for First Last Frame video.", 100);
+      progress.set(independentFLF
+        ? "Scene end frame and final two-image FLF prompt created. This independent pair is ready to render."
+        : "Scene end frame created. This scene is ready for First Last Frame video.", 100);
       progress.close(2200);
       toast("Scene end frame created.");
     } catch (error) {
@@ -40203,6 +40668,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     segment.first_last_frame_end_image_path = "";
     segment.first_last_frame_end_image_data = "";
     segment.first_last_frame_end_image_name = "";
+    segment.flf_end_frame_prompt = "";
+    segment.flf_end_frame_stale = false;
+    segment.flf_final_prompt_ready = false;
     syncRTVSceneImageAnchorPanel();
     syncInspector();
     render();
@@ -41392,9 +41860,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   flfChainPreviousEndFrame.input.addEventListener("change", () => {
     state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
     state.i2vVideoSettings.flf_chain_previous_end_frame = Boolean(flfChainPreviousEndFrame.input.checked);
+    flfStructureModeSelect.value = flfChainPreviousEndFrame.input.checked ? "chained" : "independent";
+    flfChainedSettingsPanel.style.display = flfChainPreviousEndFrame.input.checked ? "flex" : "none";
     syncRTVSceneImageAnchorPanel();
     renderList();
     autoSaveSessionQuiet("Global FLF chaining changed");
+  });
+  flfStructureModeSelect.addEventListener("change", async () => {
+    const chained = flfStructureModeSelect.value !== "independent";
+    state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
+    state.i2vVideoSettings.flf_chain_previous_end_frame = chained;
+    flfChainPreviousEndFrame.input.checked = chained;
+    flfChainedSettingsPanel.style.display = chained ? "flex" : "none";
+    state.segments.forEach((segment) => {
+      if (segment.use_scene_i2v_video_settings && segment.i2v_video_settings) {
+        segment.i2v_video_settings.flf_chain_previous_end_frame = chained;
+      }
+      if (!chained) {
+        segment.flf_rendered_start_frame_path = "";
+        segment.flf_rendered_start_frame_data = "";
+        segment.flf_rendered_start_frame_name = "";
+        segment.flf_rendered_source_video_path = "";
+      }
+    });
+    syncRTVSceneImageAnchorPanel();
+    render();
+    await autoSaveSessionQuiet(`FLF structure changed to ${chained ? "chained" : "independent pairs"}`);
+    toast(chained
+      ? "FLF Chained mode: each scene can inherit the previous scene's end."
+      : "FLF Independent pairs: every scene will use its own start and end image.");
   });
   flfPreGeneratePromptsFromSceneImages.input.addEventListener("change", async () => {
     state.i2vVideoSettings = cloneI2VVideoSettings(state.i2vVideoSettings || defaultI2VVideoSettings());
