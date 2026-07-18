@@ -2679,14 +2679,21 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const lyricsForStoryBrief = () => {
-    return state.scenes
-      .map((scene, index) => {
-        const normalized = normalizeScene(scene, index);
-        const section = String(normalized.lyric_section || "").trim();
-        const lyric = String(normalized.lyrics || "").trim();
-        if (!section && !lyric) return "";
-        return `${section ? `[${section}]\n` : ""}${lyric}`;
-      })
+    const blocks = [];
+    state.scenes.forEach((scene, index) => {
+      const normalized = normalizeScene(scene, index);
+      const section = String(normalized.lyric_section || "").trim();
+      const lyric = String(normalized.lyrics || "").trim();
+      if (!section && !lyric) return;
+      const previous = blocks[blocks.length - 1];
+      if (section && previous?.section?.toLowerCase() === section.toLowerCase()) {
+        if (lyric) previous.lyrics.push(lyric);
+        return;
+      }
+      blocks.push({ section, lyrics: lyric ? [lyric] : [] });
+    });
+    return blocks
+      .map(({ section, lyrics }) => `${section ? `[${section}]\n` : ""}${lyrics.join("\n")}`.trim())
       .filter(Boolean)
       .join("\n\n");
   };

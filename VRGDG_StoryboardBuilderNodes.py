@@ -1232,9 +1232,21 @@ def _parse_story_arc_lyric_sections(lyrics):
     if not sections:
         return []
 
+    # Timeline/storyboard payloads repeat the scene's section header before every
+    # lyric chunk.  Treat adjacent copies as one real song section while keeping
+    # later recurrences (for example, a chorus after Verse 2) as separate blocks.
+    collapsed = []
+    for label, body in sections:
+        if collapsed and collapsed[-1][0].casefold() == label.casefold():
+            previous_label, previous_body = collapsed[-1]
+            merged_body = "\n".join(part for part in (previous_body, body) if part).strip()
+            collapsed[-1] = (previous_label, merged_body)
+        else:
+            collapsed.append((label, body))
+
     counts = {}
     numbered = []
-    for label, body in sections:
+    for label, body in collapsed:
         key = label.casefold()
         counts[key] = counts.get(key, 0) + 1
         occurrence = counts[key]
@@ -1254,8 +1266,19 @@ def _cap_story_arc_words(text, maximum=100):
     return clipped.rstrip(" ,;:") + "…"
 
 
-def _normalize_story_arc_output(text, required_labels):
-    """Enforce the detected headings and the 100-word per-section contract."""
+def _story_arc_section_word_limit(section_count):
+    """Keep long song structures within the fixed Story Arc output budget."""
+    try:
+        count = max(0, int(section_count))
+    except (TypeError, ValueError):
+        count = 0
+    if count <= 0:
+        return 100
+    return max(30, min(100, 1500 // count))
+
+
+def _normalize_story_arc_output(text, required_labels, maximum_words=100):
+    """Enforce the detected headings and configured per-section word limit."""
     raw = str(text or "").strip()
     heading_pattern = re.compile(r"(?m)^\s*([^\n:]{1,80}):\s*(?:\n|$)")
     matches = list(heading_pattern.finditer(raw))
@@ -1272,12 +1295,32 @@ def _normalize_story_arc_output(text, required_labels):
         returned = [label.casefold() for label, _body in blocks]
         required = [label.casefold() for label in required_labels]
         if returned != required:
-            raise ValueError(
-                "Gemma changed the lyric structure. Expected: "
-                + ", ".join(required_labels)
-                + ". Please rerun Story Arc."
+            mismatch_index = next(
+                (index for index, (expected, actual) in enumerate(zip(required, returned)) if expected != actual),
+                min(len(required), len(returned)),
             )
-    return "\n\n".join(f"{label}:\n{_cap_story_arc_words(body, 100)}" for label, body in blocks if body)
+            expected_label = required_labels[mismatch_index] if mismatch_index < len(required_labels) else "[none]"
+            returned_label = blocks[mismatch_index][0] if mismatch_index < len(blocks) else "[missing]"
+            missing = [label for label in required_labels if label.casefold() not in returned]
+            extra = [label for label, _body in blocks if label.casefold() not in required]
+            details = [
+                f"Expected {len(required_labels)} headings but Gemma returned {len(blocks)}.",
+                f"First mismatch at section {mismatch_index + 1}: expected '{expected_label}', received '{returned_label}'.",
+            ]
+            if missing:
+                details.append("Missing: " + ", ".join(missing[:8]) + ("…" if len(missing) > 8 else "") + ".")
+            if extra:
+                details.append("Extra: " + ", ".join(extra[:8]) + ("…" if len(extra) > 8 else "") + ".")
+            raise ValueError(
+                "Gemma changed the lyric structure. "
+                + " ".join(details)
+                + " Please rerun Story Arc."
+            )
+    return "\n\n".join(
+        f"{label}:\n{_cap_story_arc_words(body, maximum_words)}"
+        for label, body in blocks
+        if body
+    )
 
 
 def _build_story_layer_arc(payload):
@@ -1299,6 +1342,7 @@ def _build_story_layer_arc(payload):
     lyrics_source = "Prompt Creator reference lyrics" if prompt_creator_lyrics else ("Line Mapping reference lyrics" if line_mapping_lyrics else "timeline scene lyrics")
     lyric_sections = _parse_story_arc_lyric_sections(lyrics)
     required_section_labels = [item[0] for item in lyric_sections]
+    section_word_limit = _story_arc_section_word_limit(len(required_section_labels))
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or storyboard.get("story_layer") or {})
     story_idea = _clean_scene_text(payload.get("story_idea") or payload.get("storyIdea") or story_layer.get("overall_story_idea") or "", 4000)
     story_arc_seed = _clean_scene_text(payload.get("story_arc_seed") or payload.get("storyArcSeed") or payload.get("seed") or "", 80)
@@ -1421,7 +1465,7 @@ def _build_story_layer_arc(payload):
         f"{structure_instruction}\n\n"
         "Format every section as its heading on one line ending in a colon, followed by one prose paragraph.\n\n"
         "Rules:\n"
-        "* Fully summarize the visual story progression of each section in no more than 100 words.\n"
+        f"* Fully summarize the visual story progression of each section in no more than {section_word_limit} words.\n"
         "* Use the entire section, not only its first lyric line.\n"
         "* Do not summarize the lyrics line by line.\n"
         "* Turn the lyrics into a simple visual story arc.\n"
@@ -1473,7 +1517,7 @@ def _build_story_layer_arc(payload):
     text = _clean_scene_text(text, 14000)
     if not text:
         raise ValueError("Gemma returned an empty story arc.")
-    text = _normalize_story_arc_output(text, required_section_labels)
+    text = _normalize_story_arc_output(text, required_section_labels, section_word_limit)
     return {
         "story_arc": text,
         "lyrics_source": lyrics_source,
