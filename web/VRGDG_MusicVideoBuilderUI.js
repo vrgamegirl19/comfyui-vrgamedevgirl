@@ -13155,7 +13155,11 @@ function openBuilder(node) {
       block.innerHTML = `<span style="position:relative;z-index:2;display:block;font-weight:900;">${escapeHtml(segment.label || (isOverlay ? "Insert" : "Scene"))}</span><span style="position:relative;z-index:2;display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
       const left = segment.start * state.pxPerSecond;
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
-      const showFirstLastFrameThumb = !isOverlay && rtvReferenceBehaviorForSegment(segment) === "first_last_frame";
+      const videoMode = currentVideoMode();
+      const showFirstLastFrameThumb = !isOverlay && (
+        videoMode === "flf"
+        || (videoMode === "rtv" && rtvReferenceBehaviorForSegment(segment) === "first_last_frame")
+      );
       const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
       const thumb = !showFirstLastFrameThumb && previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
       const hasVideoPreview = Boolean(selectedSegmentVideoPath(segment));
@@ -15999,6 +16003,37 @@ function openBuilder(node) {
     const description = String(location.description || "").trim();
     if (name && description) return `${name}: ${description}`;
     return name || description;
+  }
+
+  function segmentMappedLocationReference(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    if (!segment) return null;
+    const indexKey = String(segmentIndexInfo(segment).index + 1);
+    const locId = String(sceneReferenceMapValue(refs.scene_map, segment, Number(indexKey) - 1) || "").trim();
+    if (!locId) return null;
+    const location = refs.locations.find((item) => String(item?.id || "").trim() === locId) || null;
+    return location ? { ...location, id: locId } : null;
+  }
+
+  function segmentsShareMappedLocation(firstSegment, secondSegment) {
+    const firstLocation = segmentMappedLocationReference(firstSegment);
+    const secondLocation = segmentMappedLocationReference(secondSegment);
+    return Boolean(firstLocation?.id && secondLocation?.id && String(firstLocation.id) === String(secondLocation.id));
+  }
+
+  function flfSameLocationCameraDiversityDirection(segment, target = "start") {
+    if (currentVideoMode() !== "flf" || !segment) return "";
+    const previous = previousAutoChainSourceSegment(segment);
+    if (!previous || !segmentsShareMappedLocation(previous, segment)) return "";
+    const location = segmentMappedLocationReference(segment);
+    const targetLabel = String(target || "start").toLowerCase() === "end" ? "destination/end frame" : "start frame";
+    return [
+      `REQUIRED SAME-LOCATION CAMERA CHANGE: The immediately previous scene and this scene both use the mapped location \"${String(location?.name || "the same location").trim()}\".`,
+      `For this scene's ${targetLabel}, preserve the location's identity but move to a genuinely different part of its navigable three-dimensional space. Do not reuse the previous scene's exact area, camera placement, viewing direction, framing, or subject blocking.`,
+      "Change several composition variables together: camera position and height, viewing direction, shot size or lens, character placement, and foreground/background arrangement. Reveal different architecture, furniture, landmarks, depth layers, or environmental details whenever the location allows it.",
+      "Treat the previous scene image only as environment and character continuity evidence plus a negative composition reference. Do not recreate it, closely imitate it, or merely make a small crop/zoom adjustment.",
+      "Place the character physically inside the location with correct perspective, scale, floor contact, depth, contact shadows, reflections, environmental color spill, and natural occlusion. Never paste, composite, cut out, green-screen, or layer the character over the location reference.",
+    ].join("\n");
   }
 
   function mappedTriggerPartsForSegment(segment) {
@@ -28235,13 +28270,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (!scene) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: storyboard scene card could not be built.`);
     const imageMode = options.imageMode || state.imageModelMode || "zimage";
     const flfImageTarget = state.videoModelMode === "flf" ? String(options.flfImageTarget || "start").trim().toLowerCase() : "";
+    const diversityDirection = flfImageTarget === "start" ? flfSameLocationCameraDiversityDirection(segment, "start") : "";
+    const promptScene = diversityDirection ? {
+      ...scene,
+      notes: [String(scene.notes || "").trim(), diversityDirection].filter(Boolean).join("\n\n"),
+      prompt_summary: [String(scene.prompt_summary || "").trim(), diversityDirection].filter(Boolean).join("\n\n"),
+    } : scene;
     const storyboardState = wizardStoryboardState(scenes, { promptMode: "image", imageMode });
     const imageStyle = normalizeBuilderStoryLayer(state.builderStoryLayer);
     progress?.set(`${label}: sending storyboard scene card to ${promptRunnerActionName()}...\nConcept prompt is included as the scene story beat.`, percent);
     const data = await postJson("/vrgdg/storyboard/gemma_image_prompt", {
       ...textGemmaRunnerPayload(),
       model_file: t2iTextGemmaModelSelect.value || i2vTextGemmaModelSelect.value || "",
-      storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+      storyboard_payload: storyboardGptPayload(storyboardState, [promptScene]),
       project_folder: activeProjectFolderForSave(),
       scene_id: segment.id || "",
       builder_instruction_key: builderImageInstructionKey(imageMode),
@@ -28764,6 +28805,20 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
   }
 
+  function previousSceneStartImageIngredient(segment) {
+    const previous = previousAutoChainSourceSegment(segment);
+    if (!previous) return null;
+    const image = segmentImageSource(previous);
+    if (!image?.path && !image?.data) return null;
+    const previousInfo = segmentIndexInfo(previous);
+    return {
+      path: String(image.path || ""),
+      data: String(image.data || ""),
+      name: `previous_scene_${previousInfo.index + 1}_start.png`,
+      source_scene_label: sceneDisplayName(previous, previousInfo.index),
+    };
+  }
+
   function addUniqueBrowserImageIngredient(ingredients, item) {
     if (!Array.isArray(ingredients) || !item) return ingredients;
     const path = String(item.path || "");
@@ -28782,8 +28837,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ...settings,
       image_ingredients: Array.isArray(settings.image_ingredients) ? settings.image_ingredients.map((item) => ({ ...item })) : [],
     };
-    if ((!next.ask_previous_scene_image && !state.imageContinuityEnabled) || options.includePreviousSceneImage === false) return next;
-    const previousImage = previousSceneImageIngredient(segment);
+    const shouldInclude = options.includePreviousSceneImage === true || next.ask_previous_scene_image || state.imageContinuityEnabled;
+    if (!shouldInclude || options.includePreviousSceneImage === false) return next;
+    const suppliedPreviousImage = options.previousSceneImageIngredient && typeof options.previousSceneImageIngredient === "object"
+      ? options.previousSceneImageIngredient
+      : null;
+    const previousImage = suppliedPreviousImage || previousSceneImageIngredient(segment);
     if (!previousImage) {
       if (currentVideoMode() === "flf" && (next.ask_previous_scene_image || options.includePreviousSceneImage === true) && previousAutoChainSourceSegment(segment)) {
         throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: previous-scene continuity is enabled, but the immediately previous scene has no assigned FLF last-frame image.`);
@@ -28807,6 +28866,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     addUniqueBrowserImageIngredient(next.image_ingredients, previousImage);
     next.previous_scene_image_attached = true;
     next.previous_scene_image_label = previousImage.source_scene_label || "";
+    next.previous_scene_image_purpose = String(options.previousSceneImagePurpose || "continuity");
     return next;
   }
 
@@ -28828,7 +28888,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ? `${labels[0]} and ${labels[1]}`
         : `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
     const continuity = settings.previous_scene_image_attached
-      ? " Treat the last scene image as continuity context for what happened immediately before this scene; continue the story without simply copying the previous image unless requested."
+      ? settings.previous_scene_image_purpose === "same_location_composition_diversity"
+        ? " Treat the previous scene image as identity/environment continuity evidence and as a negative composition reference. The mapped location is a navigable 3D space: move the camera and character into a clearly different sub-area, change the viewing direction, shot size, subject placement, and foreground/background arrangement, and do not recreate or closely imitate the previous composition. Preserve realistic perspective, scale, floor contact, depth, shadows, reflections, color spill, and occlusion so the character is physically inside the environment rather than pasted onto it."
+        : " Treat the last scene image as continuity context for what happened immediately before this scene; continue the story without simply copying the previous image unless requested."
       : "";
     const instruction = `Using the provided ${joined} as visual context, create the requested scene image.${continuity}`;
     if (text.toLowerCase().startsWith(instruction.toLowerCase())) return text;
@@ -28982,6 +29044,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     let settings = nbImageSettingsForSegment(segment);
     let userNotes = imagePromptNotesWithDirector(segment, settings.notes || segment.notes || "", settings.use_director_notes);
     ({ settings, userNotes } = applyImageContinuityToPromptSettings(segment, settings, userNotes));
+    const diversityDirection = flfImageTarget === "start" ? flfSameLocationCameraDiversityDirection(segment, "start") : "";
+    if (diversityDirection) userNotes = [userNotes, diversityDirection].filter(Boolean).join("\n\n");
     if (settings.use_text_only_gemma_prompt || !Array.isArray(settings.image_ingredients) || !settings.image_ingredients.length) {
       return await generateTextOnlyImagePromptFallbackForSegment(segment, progress, percent, `${label}: text-only Gemma`, { imageMode, userNotes });
     }
@@ -31981,6 +32045,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const customDirection = segment.flf_endpoint_mode === "custom" ? String(segment.flf_custom_end_direction || "").trim() : "";
     const subjectContinuity = segment.no_character_present ? "" : String(segmentMappedSubjectText(segment) || "").trim();
     const locationContinuity = String(segmentMappedLocationText(segment) || "").trim();
+    const sameLocationDiversity = flfSameLocationCameraDiversityDirection(segment, "end");
     return [
       `${modeHint} Create the LAST FRAME for a First Last Frame video shot.`,
       `Scene: ${sceneName}`,
@@ -31995,6 +32060,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       motionPlan ? `PROVISIONAL I2V MOTION PLAN — freeze the generated image at the final visual moment described here:\n${motionPlan}` : "",
       subjectContinuity ? `CHARACTER AND WARDROBE CONTINUITY — preserve these mapped Reference Builder details, including details revealed outside the starting crop:\n${subjectContinuity}` : "",
       locationContinuity ? `LOCATION CONTINUITY:\n${locationContinuity}` : "",
+      sameLocationDiversity,
       motion ? `Scene motion/story direction:\n${motion}` : "Scene motion/story direction:\nCreate a clear cinematic endpoint with meaningful visual change from the first frame.",
       endState || customDirection ? "Treat the required endpoint as authoritative. Do not substitute a generic pose or invent a different destination." : "",
       "Final answer should be only the image prompt for the end frame. Do not mention files, inputs, first frame, last frame, references, MSR, LoRA, or workflow nodes.",
@@ -32197,6 +32263,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, segment.nb_prompt || segment.t2i_prompt || "");
         } else {
           await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma Vision`, { unloadAfter: true, forceVision: true, flfImageTarget: "end" });
+        }
+      }
+      const sameLocationDiversity = flfSameLocationCameraDiversityDirection(segment, "end");
+      if (sameLocationDiversity) {
+        const endpointPrompt = savedImagePromptForMode(segment, imageMode);
+        if (endpointPrompt && !endpointPrompt.includes("REQUIRED SAME-LOCATION CAMERA CHANGE:")) {
+          const strengthenedPrompt = `${endpointPrompt}\n\n${sameLocationDiversity}`.trim();
+          if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, strengthenedPrompt);
+          else syncSegmentT2IPrompt(segment, strengthenedPrompt);
         }
       }
       generatedEndpointPrompt = savedImagePromptForMode(segment, imageMode);
@@ -34396,6 +34471,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const base = 45 + Math.floor((index / scenes.length) * 45);
         const span = Math.max(1, Math.floor(40 / scenes.length));
         try {
+          const sameLocationDiversity = currentVideoMode() === "flf" ? flfSameLocationCameraDiversityDirection(segment, "start") : "";
+          const previousStartIngredient = sameLocationDiversity ? previousSceneStartImageIngredient(segment) : null;
           progress.set(`Flow/GPT image pass ${index + 1}/${scenes.length}: ${sceneLabel}\nCreating image from saved browser prompt...`, base);
           await createFlowGptImageForSegment(
             segment,
@@ -34403,7 +34480,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             base + span * 0.35,
             span * 0.45,
             `Flow/GPT All ${index + 1}/${scenes.length}: ${sceneLabel}`,
-            { includePreviousSceneImage },
+            {
+              includePreviousSceneImage: Boolean(previousStartIngredient) || includePreviousSceneImage,
+              previousSceneImageIngredient: previousStartIngredient,
+              previousSceneImagePurpose: previousStartIngredient ? "same_location_composition_diversity" : "continuity",
+            },
           );
           assertBatchNotStopped();
           await autoSaveSessionQuiet(`Flow/GPT Image All scene ${sceneIndex + 1}`);
@@ -34695,6 +34776,18 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await generateT2IPromptForSegment(segment, progress, percentBase + percentSpan * 0.12, `${label}: Gemma start frame`, { unloadAfter: true, flfImageTarget: "start" });
       }
     }
+    const sameLocationDiversity = flfSameLocationCameraDiversityDirection(segment, "start");
+    if (sameLocationDiversity) {
+      const generatedPrompt = savedImagePromptForMode(segment, imageMode);
+      if (generatedPrompt && !generatedPrompt.includes("REQUIRED SAME-LOCATION CAMERA CHANGE:")) {
+        const strengthenedPrompt = `${generatedPrompt}\n\n${sameLocationDiversity}`.trim();
+        if (imageMode === "flow_gpt") syncSegmentFlowGptPrompt(segment, strengthenedPrompt);
+        else syncSegmentT2IPrompt(segment, strengthenedPrompt);
+      }
+    }
+    const previousStartIngredient = imageMode === "flow_gpt" && sameLocationDiversity
+      ? previousSceneStartImageIngredient(segment)
+      : null;
     progress?.set(`${label}: generating the opening image with ${imageModeDisplayLabel(imageMode, true)}...`, percentBase + percentSpan * 0.32);
     await createImageForSegmentInCurrentMode(
       segment,
@@ -34703,7 +34796,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       percentBase + percentSpan * 0.38,
       percentSpan * 0.55,
       label,
-      { bypassImageToImage: true, includePreviousSceneImage: false }
+      {
+        bypassImageToImage: true,
+        includePreviousSceneImage: Boolean(previousStartIngredient),
+        previousSceneImageIngredient: previousStartIngredient,
+        previousSceneImagePurpose: previousStartIngredient ? "same_location_composition_diversity" : "",
+      }
     );
     const generated = segmentImageSource(segment);
     if (!generated?.path && !generated?.data) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: opening image did not return a saved image.`);
@@ -38790,7 +38888,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ...(nativeFLFMode ? [{
           value: "build_independent_pairs",
           label: "Build Independent Start + End Pairs",
-          description: "Recommended independent workflow. Pass 1 finishes ALL scene start images. Pass 2 creates ALL provisional motion plans from those starts. Pass 3 returns to the first target scene and creates ALL end images. Pass 4 inspects each real pair and creates the final FLF prompts. Keeps completed work and resumes only missing stages.",
+          description: "Recommended independent workflow. Pass 1 finishes ALL scene start images. When adjacent scenes share a mapped location, the later start uses the previous start as a do-not-copy composition reference and must move to a different camera position and area inside that 3D location. Pass 2 creates ALL provisional motion plans. Pass 3 returns to the first target scene and creates ALL end images. Pass 4 inspects each real pair and creates the final FLF prompts. Keeps completed work and resumes only missing stages.",
         }, {
           value: "redo_independent_endpoints",
           label: "Redo Independent Motion Plans + Ends",
@@ -38803,7 +38901,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         ...(firstLastFrameMode ? [{
           value: "create_flf_image_chain",
           label: "Resume FLF Image Chain",
-          description: "Recommended for a fresh FLF project. Generate one opening image for the first scene, then only one destination image per scene. Each destination becomes the next scene's start; no unused later start images are created.",
+          description: "Recommended for a fresh FLF project. Generate one opening image for the first scene, then only one destination image per scene. Each destination becomes the next scene's start. If adjacent scenes share a mapped location, the next destination must travel to a clearly different area and camera composition inside that location; no unused later start images are created.",
         }, {
           value: "redo_flf_image_chain_keep_prompts",
           label: "Redo FLF Image Chain — keep prompts",
@@ -40989,30 +41087,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.videoModelMode = "i2v";
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+    renderSegments();
   };
   idLoraVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "id_lora";
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+    renderSegments();
   };
   textToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "t2v";
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+    renderSegments();
   };
   referenceToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "rtv";
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+    renderSegments();
   };
   ingredientsToVideoCard.onclick = () => {
     pushHistory();
     state.videoModelMode = "ingredients";
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+    renderSegments();
   };
   firstLastFrameVideoCard.onclick = () => {
     pushHistory();
@@ -41020,6 +41123,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     applyRTVReferenceBehaviorToAll("first_last_frame");
     syncVideoModePanel();
     syncI2VVideoSettingsPanel();
+    renderSegments();
   };
   importCustomVideoCard.onclick = () => {
     toast("Import Custom Video is coming soon.", true);

@@ -773,6 +773,8 @@ class VRGDG_ChatGPTImagesBrowser:
             output_dir,
             "--connect-cdp",
             f"http://127.0.0.1:{debug_port}",
+            "--timeout",
+            str(max(30_000, (timeout_seconds - 30) * 1000)),
         ]
         if reuse_open_project:
             command.append("--no-navigate")

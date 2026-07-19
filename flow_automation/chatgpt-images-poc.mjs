@@ -72,13 +72,8 @@ if (!submitted) await page.keyboard.press("Enter");
 
 console.log("Waiting for generated image...");
 const image = await waitForNewImage(page, beforeKeys, timeout);
-console.log("Waiting for ChatGPT completion marker...");
-await waitForThoughtComplete(page, Math.min(timeout, 180000)).catch((error) => {
-  console.log(`Completion marker was not found before timeout: ${error.message}`);
-});
-
-console.log("Trying viewer download button...");
-const downloaded = await retryOpenViewerAndDownload(page, image, outputDir, prompt, 5, 10000);
+console.log("Generated image is visible; trying to save it immediately...");
+const downloaded = await retryOpenViewerAndDownload(page, image, outputDir, prompt, 5, 5000);
 if (downloaded) {
   console.log(`Saved: ${downloaded}`);
 } else {
@@ -319,25 +314,8 @@ async function waitForNewImage(page, beforeKeys, maxMs) {
   throw new Error("Timed out waiting for a generated ChatGPT image.");
 }
 
-async function waitForThoughtComplete(page, maxMs) {
-  const started = Date.now();
-  while (Date.now() - started < maxMs) {
-    const ready = await page.evaluate(() => {
-      const text = document.body?.innerText || "";
-      return /Thought\s+for\s+\d+\s*(s|sec|secs|second|seconds)\b/i.test(text);
-    }).catch(() => false);
-    if (ready) {
-      console.log("Detected Thought-for completion marker.");
-      await page.waitForTimeout(5000);
-      return true;
-    }
-    await page.waitForTimeout(3000);
-  }
-  throw new Error("Timed out waiting for Thought-for completion marker.");
-}
-
 async function downloadFromViewer(page, outputDir, promptText) {
-  const downloadPromise = page.waitForEvent("download", { timeout: 15000 }).catch(() => null);
+  const downloadPromise = page.waitForEvent("download", { timeout: 5000 }).catch(() => null);
   const clicked = await clickDownloadButton(page);
   if (!clicked) return null;
 
