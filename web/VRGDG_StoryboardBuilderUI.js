@@ -115,20 +115,20 @@ function makeMultiSelect(options, values = []) {
 
 function makeCollapsiblePanel(title, summary = "", content = null, { open = false } = {}) {
   const panel = document.createElement("div");
-  panel.style.cssText = "margin:8px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;overflow:hidden;";
+  panel.style.cssText = "margin:8px 24px 0;border:1px solid #334155;border-radius:8px;background:#0f172a;overflow:hidden;min-width:0;max-width:100%;box-sizing:border-box;";
   const header = document.createElement("button");
   header.type = "button";
-  header.style.cssText = "width:100%;border:0;background:#0f172a;color:#e5e7eb;padding:9px 12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;cursor:pointer;";
+  header.style.cssText = "width:100%;min-width:0;box-sizing:border-box;border:0;background:#0f172a;color:#e5e7eb;padding:9px 12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;cursor:pointer;";
   const caret = document.createElement("span");
   caret.style.cssText = "color:#67e8f9;font-size:13px;";
   const label = document.createElement("span");
   label.style.cssText = "font-weight:900;color:#cffafe;font-size:13px;white-space:nowrap;";
   label.textContent = title;
   const summaryNode = document.createElement("span");
-  summaryNode.style.cssText = "color:#94a3b8;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  summaryNode.style.cssText = "min-width:0;max-width:100%;color:#94a3b8;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
   summaryNode.textContent = summary;
   const body = document.createElement("div");
-  body.style.cssText = "border-top:1px solid #1f3347;padding:10px 12px;";
+  body.style.cssText = "min-width:0;max-width:100%;box-sizing:border-box;border-top:1px solid #1f3347;padding:10px 12px;";
   if (content) body.append(content);
   let expanded = Boolean(open);
   const sync = () => {
@@ -2110,33 +2110,60 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const backdrop = document.createElement("div");
-  backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.62);display:flex;align-items:stretch;justify-content:center;padding:18px;";
+  backdrop.style.cssText = "position:fixed;inset:0;z-index:100010;background:rgba(0,0,0,.62);display:flex;align-items:stretch;justify-content:center;padding:18px;box-sizing:border-box;";
   const shell = document.createElement("div");
-  shell.style.cssText = "width:min(1820px,calc(100vw - 36px));height:calc(100vh - 36px);border:1px solid #155e75;border-radius:10px;background:#111827;color:#e5e7eb;box-shadow:0 28px 90px rgba(0,0,0,.62);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
+  shell.className = "vrgdg-storyboard-shell";
+  shell.style.cssText = "width:min(1820px,calc(100vw - 36px));max-width:100%;min-width:0;height:calc(100vh - 36px);box-sizing:border-box;border:1px solid #155e75;border-radius:10px;background:#111827;color:#e5e7eb;box-shadow:0 28px 90px rgba(0,0,0,.62);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;";
+
+  if (!document.getElementById("vrgdg-storyboard-responsive-styles")) {
+    const responsiveStyles = document.createElement("style");
+    responsiveStyles.id = "vrgdg-storyboard-responsive-styles";
+    responsiveStyles.textContent = `
+      @media (max-width: 1100px) {
+        .vrgdg-storyboard-header {
+          grid-template-columns:minmax(0,1fr) !important;
+          grid-template-areas:"title" "steps" "actions" !important;
+        }
+        .vrgdg-storyboard-defaults-grid,
+        .vrgdg-storyboard-story-grid {
+          grid-template-columns:minmax(0,1fr) !important;
+        }
+      }
+      @media (max-width: 700px) {
+        .vrgdg-storyboard-header { padding:14px !important; }
+        .vrgdg-storyboard-panel { margin-left:8px !important; margin-right:8px !important; }
+        .vrgdg-storyboard-note { margin-left:8px !important; margin-right:8px !important; }
+        .vrgdg-storyboard-footer { padding:12px !important; }
+      }
+    `;
+    document.head.append(responsiveStyles);
+  }
 
   const header = document.createElement("div");
-  header.style.cssText = "display:grid;grid-template-columns:minmax(280px,1fr) auto auto;gap:22px;align-items:center;padding:24px;border-bottom:1px solid #1f3b46;background:linear-gradient(180deg,#083344,#111827);";
+  header.className = "vrgdg-storyboard-header";
+  header.style.cssText = "display:grid;grid-template-columns:minmax(280px,.8fr) minmax(0,2.2fr);grid-template-areas:'title steps' 'title actions';gap:14px 22px;align-items:center;padding:20px 24px;border-bottom:1px solid #1f3b46;background:linear-gradient(180deg,#083344,#111827);min-width:0;";
   const titleBlock = document.createElement("div");
+  titleBlock.style.cssText = "grid-area:title;min-width:0;overflow-wrap:anywhere;";
   titleBlock.innerHTML = `
-    <div style="display:flex;gap:14px;align-items:center;">
+    <div style="display:flex;gap:14px;align-items:center;min-width:0;">
       <div style="width:52px;height:52px;border-radius:12px;background:#164e63;color:#67e8f9;display:grid;place-items:center;font-size:28px;">▣</div>
-      <div>
+      <div style="min-width:0;">
         <div style="font-size:26px;font-weight:900;color:#cffafe;">Storyboard Builder <span id="vrgdg-storyboard-mode-pill" style="font-size:13px;border-radius:999px;background:#164e63;color:#a5f3fc;padding:5px 9px;vertical-align:middle;">Planning</span></div>
         <div id="vrgdg-storyboard-subtitle" style="color:#cbd5e1;font-size:14px;margin-top:3px;">Write scene cards, image prompts, and video prompts before sending them to the Video Creator.</div>
       </div>
     </div>
   `;
   const steps = document.createElement("div");
-  steps.style.cssText = "display:flex;gap:14px;align-items:center;min-width:520px;";
+  steps.style.cssText = "grid-area:steps;display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0;width:100%;";
   const stepPrompts = makeButton("Image Prep", "purple");
   const stepPrep = makeButton("Video Prep");
-  stepPrompts.style.minWidth = "220px";
-  stepPrep.style.minWidth = "190px";
+  stepPrompts.style.cssText += "flex:1 1 180px;min-width:0;";
+  stepPrep.style.cssText += "flex:1 1 160px;min-width:0;";
   steps.append(stepPrompts, stepPrep);
   const headerActions = document.createElement("div");
-  headerActions.style.cssText = "display:flex;gap:10px;align-items:center;justify-content:flex-end;";
+  headerActions.style.cssText = "grid-area:actions;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;min-width:0;width:100%;";
   const search = makeInput("", "Search scenes...");
-  search.style.width = "260px";
+  search.style.cssText += "flex:1 1 190px;width:auto;min-width:160px;max-width:260px;";
   const gptButton = makeButton("GPT All", "purple");
   gptButton.title = "Copy all Storyboard scene-card inputs as JSON for your custom GPT.";
   const importImagePromptsButton = makeButton("Import prompts from GPT", "purple");
@@ -2161,15 +2188,21 @@ function openStoryboardBuilder(payload = {}) {
   const add = makeButton("+ Add Scene", "purple");
   const close = makeButton("Close");
   headerActions.append(gptButton, importImagePromptsButton, gemmaAllButton, clearPromptsButton, clearStoryBeatsButton, keepGemmaLoadedLabel, search, add, close);
+  for (const control of headerActions.children) {
+    control.style.maxWidth = "100%";
+    if (control.tagName === "BUTTON") control.style.whiteSpace = "normal";
+  }
   header.append(titleBlock, steps, headerActions);
 
   const note = document.createElement("div");
-  note.style.cssText = "margin:18px 24px 0;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;";
+  note.className = "vrgdg-storyboard-note";
+  note.style.cssText = "margin:18px 24px 0;min-width:0;max-width:100%;box-sizing:border-box;border:1px solid #155e75;border-radius:8px;background:#0f172a;color:#cbd5e1;padding:12px 14px;font-size:13px;overflow-wrap:anywhere;";
   const middleContent = document.createElement("div");
-  middleContent.style.cssText = "min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:18px;scrollbar-width:thin;";
+  middleContent.style.cssText = "min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:18px;scrollbar-width:thin;";
 
   const cameraFlowBar = document.createElement("div");
-  cameraFlowBar.style.cssText = "display:grid;grid-template-columns:auto minmax(280px,1fr);gap:8px 12px;align-items:center;color:#cbd5e1;font-size:12px;";
+  cameraFlowBar.className = "vrgdg-storyboard-defaults-grid";
+  cameraFlowBar.style.cssText = "display:grid;grid-template-columns:minmax(420px,700px) minmax(0,1fr);gap:8px 12px;align-items:center;width:100%;min-width:0;max-width:100%;box-sizing:border-box;color:#cbd5e1;font-size:12px;";
   const imageShotControls = document.createElement("div");
   imageShotControls.style.cssText = "display:flex;gap:8px;align-items:center;white-space:nowrap;";
   const imageShotLabel = document.createElement("div");
@@ -2336,18 +2369,78 @@ function openStoryboardBuilder(payload = {}) {
   imageCustomStyleControls.append(imageCustomStyleLabel, imageCustomStyleInput);
   const imageCustomStyleInfo = document.createElement("div");
   imageCustomStyleInfo.style.cssText = "color:#94a3b8;line-height:1.35;";
+  const responsiveDefaultRows = [
+    imageShotControls,
+    imageAestheticControls,
+    imageWorldStyleControls,
+    imageCustomStyleControls,
+    consistencyControls,
+    cameraFlowControls,
+    cameraSpeedControls,
+    performanceControls,
+    characterSpeedControls,
+    facialControls,
+    facialCustomControls,
+  ];
+  for (const row of responsiveDefaultRows) {
+    row.style.flexWrap = "wrap";
+    row.style.whiteSpace = "normal";
+    row.style.minWidth = "0";
+    row.style.maxWidth = "100%";
+  }
+  const responsiveDefaultInputs = [
+    imageShotSelect,
+    imageAestheticSelect,
+    imageWorldStyleSelect,
+    imageCustomStyleInput,
+    consistencyInput,
+    cameraFlowSelect,
+    cameraSpeedInput,
+    performanceSelect,
+    characterSpeedInput,
+    facialSelect,
+    facialCustomInput,
+  ];
+  for (const control of responsiveDefaultInputs) {
+    control.style.minWidth = "0";
+    control.style.maxWidth = "100%";
+  }
+  for (const control of [imageCustomStyleInput, consistencyInput, cameraSpeedInput, characterSpeedInput, facialCustomInput]) {
+    control.style.flex = "1 1 280px";
+    control.style.width = "100%";
+  }
+  const responsiveDefaultInfo = [
+    imageShotInfo,
+    imageAestheticInfo,
+    imageWorldStyleInfo,
+    imageCustomStyleInfo,
+    consistencyInfo,
+    cameraFlowInfo,
+    cameraSpeedInfo,
+    performanceInfo,
+    characterSpeedInfo,
+    facialInfo,
+    facialCustomInfo,
+  ];
+  for (const info of responsiveDefaultInfo) {
+    info.style.minWidth = "0";
+    info.style.maxWidth = "100%";
+    info.style.overflowWrap = "anywhere";
+  }
   cameraFlowBar.append(imageShotControls, imageShotInfo, imageAestheticControls, imageAestheticInfo, imageWorldStyleControls, imageWorldStyleInfo, imageCustomStyleControls, imageCustomStyleInfo, consistencyControls, consistencyInfo, cameraFlowControls, cameraFlowInfo, cameraSpeedControls, cameraSpeedInfo, performanceControls, performanceInfo, characterSpeedControls, characterSpeedInfo, facialControls, facialInfo, facialCustomControls, facialCustomInfo);
 
   const storyLayerBar = document.createElement("div");
-  storyLayerBar.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:12px;color:#cbd5e1;font-size:12px;";
+  storyLayerBar.className = "vrgdg-storyboard-story-grid";
+  storyLayerBar.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;min-width:0;max-width:100%;color:#cbd5e1;font-size:12px;";
   const storyLayerHeader = document.createElement("div");
-  storyLayerHeader.style.cssText = "grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;";
+  storyLayerHeader.style.cssText = "grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;min-width:0;max-width:100%;";
   const storyLayerTitle = document.createElement("div");
+  storyLayerTitle.style.cssText = "flex:1 1 420px;min-width:0;max-width:100%;overflow-wrap:anywhere;";
   storyLayerTitle.innerHTML = isIdLoraMode
     ? `<div style="font-weight:900;color:#cffafe;font-size:15px;">Short Film Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Dialogue-first planning for ID-LoRA scenes, characters, and locations.</div>`
     : `<div style="font-weight:900;color:#cffafe;font-size:15px;">Story Layer</div><div style="color:#94a3b8;margin-top:2px;">Optional narrative context for connecting lyrics, sections, subjects, and locations across scenes.</div>`;
   const storyLayerEnabledLabel = document.createElement("label");
-  storyLayerEnabledLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;white-space:nowrap;";
+  storyLayerEnabledLabel.style.cssText = "display:flex;align-items:center;gap:7px;font-weight:800;color:#cbd5e1;white-space:normal;max-width:100%;";
   const storyLayerEnabledInput = document.createElement("input");
   storyLayerEnabledInput.type = "checkbox";
   storyLayerEnabledInput.checked = state.storyLayer.enabled !== false;
@@ -2446,18 +2539,21 @@ function openStoryboardBuilder(payload = {}) {
   );
 
   const sceneDefaultsPanel = makeCollapsiblePanel("Scene Defaults", "", cameraFlowBar, { open: false });
+  sceneDefaultsPanel.classList.add("vrgdg-storyboard-panel");
   const hasStoryLayerContent = Boolean(String(state.storyLayer.overall_story_idea || "").trim() || String(state.storyLayer.user_story_arc || "").trim() || String(state.storyLayer.song_story_brief || "").trim());
   const storyLayerPanel = makeCollapsiblePanel("Story Layer", "", storyLayerBar, { open: hasStoryLayerContent });
+  storyLayerPanel.classList.add("vrgdg-storyboard-panel");
 
   const tableWrap = document.createElement("div");
   tableWrap.style.cssText = "margin:10px 24px 18px;overflow:auto;border:1px solid #334155;border-radius:10px;background:#0b1220;min-height:0;";
 
   const footer = document.createElement("div");
-  footer.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 24px;border-top:1px solid #334155;background:#111827;";
+  footer.className = "vrgdg-storyboard-footer";
+  footer.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;padding:16px 24px;border-top:1px solid #334155;background:#111827;min-width:0;";
   const stats = document.createElement("div");
-  stats.style.cssText = "color:#cbd5e1;font-size:13px;";
+  stats.style.cssText = "flex:1 1 260px;min-width:0;color:#cbd5e1;font-size:13px;overflow-wrap:anywhere;";
   const footerActions = document.createElement("div");
-  footerActions.style.cssText = "display:flex;gap:10px;align-items:center;";
+  footerActions.style.cssText = "display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;min-width:0;max-width:100%;";
   const save = makeButton("Save Storyboard");
   const exportPrompts = makeButton("Export Prompt Files", "purple");
   exportPrompts.title = "Export text prompt files plus clean JSON files keyed by scene number.";
@@ -2623,9 +2719,10 @@ function openStoryboardBuilder(payload = {}) {
 
   const refreshPerformanceInfo = () => {
     const preset = performancePresetForMode(state.performanceStyle);
+    const presetDescription = preset.description || preset.direction || preset.label || "Performance guidance";
     performanceInfo.textContent = state.performanceStyle
-      ? `${preset.description} Used by Gemma/GPT for scenes without a per-scene ${isIdLoraMode ? "acting" : "performance"} style.`
-      : `${preset.description} Pick a style here to use it as the default for blank scenes.`;
+      ? `${presetDescription} Used by Gemma/GPT for scenes without a per-scene ${isIdLoraMode ? "acting" : "performance"} style.`
+      : `${presetDescription} Pick a style here to use it as the default for blank scenes.`;
     refreshSetupPanelSummaries();
   };
 
