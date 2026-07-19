@@ -35,6 +35,7 @@ import {
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
+const V10_STATUS_DISMISS_KEY = "vrgdg:v10-update-status-dismissed";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors";
@@ -1837,7 +1838,7 @@ function openBuilder(node) {
     width: min(1800px, calc(100vw - 24px));
     height: min(920px, calc(100vh - 24px));
     display: grid;
-    grid-template-rows: auto minmax(0,1fr) minmax(230px, 34vh);
+    grid-template-rows: auto auto minmax(0,1fr) minmax(230px, 34vh);
     background: #18181b;
     color: #fafafa;
     border: 1px solid #3f3f46;
@@ -1849,7 +1850,7 @@ function openBuilder(node) {
     width: 100vw;
     height: 100vh;
     display: grid;
-    grid-template-rows: auto minmax(0,1fr) minmax(230px, 34vh);
+    grid-template-rows: auto auto minmax(0,1fr) minmax(230px, 34vh);
     background: #18181b;
     color: #fafafa;
     border: 0;
@@ -1859,6 +1860,99 @@ function openBuilder(node) {
   `;
   shell.style.cssText = normalShellStyle;
   let builderFullscreen = false;
+
+  const updateStatusBanner = document.createElement("div");
+  updateStatusBanner.style.cssText = "display:flex;align-items:center;gap:10px;min-height:34px;box-sizing:border-box;padding:5px 10px 5px 12px;border-bottom:1px solid #52525b;background:#27272a;color:#f4f4f5;font-size:12px;font-weight:700;line-height:1.25;";
+  const updateStatusDot = document.createElement("span");
+  updateStatusDot.style.cssText = "width:9px;height:9px;flex:0 0 9px;border-radius:999px;background:#a1a1aa;box-shadow:0 0 0 3px rgba(161,161,170,.16);";
+  const updateStatusText = document.createElement("span");
+  updateStatusText.style.cssText = "min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  updateStatusText.textContent = "V10 — Checking for updates…";
+  const updateStatusAction = makeButton("Update");
+  updateStatusAction.style.cssText += "display:none;padding:4px 10px;min-height:24px;background:#7f1d1d;border-color:#f87171;color:#fff;font-size:11px;font-weight:900;";
+  const updateStatusClose = document.createElement("button");
+  updateStatusClose.type = "button";
+  updateStatusClose.textContent = "×";
+  updateStatusClose.title = "Dismiss this version status";
+  updateStatusClose.setAttribute("aria-label", "Dismiss V10 version status");
+  updateStatusClose.style.cssText = "width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid rgba(255,255,255,.32);border-radius:5px;background:rgba(0,0,0,.18);color:inherit;font:700 18px/1 sans-serif;cursor:pointer;";
+  updateStatusBanner.append(updateStatusDot, updateStatusText, updateStatusAction, updateStatusClose);
+
+  let updateStatusDismissToken = "";
+  const setUpdateStatusAppearance = (kind, text, detail = "") => {
+    const styles = {
+      current: { background: "#14532d", border: "#22c55e", dot: "#86efac", shadow: "rgba(134,239,172,.22)" },
+      outdated: { background: "#7f1d1d", border: "#ef4444", dot: "#fecaca", shadow: "rgba(254,202,202,.24)" },
+      unavailable: { background: "#713f12", border: "#eab308", dot: "#fde047", shadow: "rgba(253,224,71,.22)" },
+      checking: { background: "#27272a", border: "#52525b", dot: "#a1a1aa", shadow: "rgba(161,161,170,.16)" },
+    };
+    const style = styles[kind] || styles.checking;
+    updateStatusBanner.style.background = style.background;
+    updateStatusBanner.style.borderBottomColor = style.border;
+    updateStatusDot.style.background = style.dot;
+    updateStatusDot.style.boxShadow = `0 0 0 3px ${style.shadow}`;
+    updateStatusText.textContent = text;
+    updateStatusBanner.title = detail || text;
+    updateStatusAction.style.display = kind === "outdated" ? "inline-flex" : "none";
+  };
+
+  updateStatusClose.onclick = () => {
+    updateStatusBanner.style.display = "none";
+    if (updateStatusDismissToken) {
+      try { localStorage.setItem(V10_STATUS_DISMISS_KEY, updateStatusDismissToken); } catch (_) { /* Storage may be disabled. */ }
+    }
+  };
+
+  const refreshV10UpdateStatus = async () => {
+    setUpdateStatusAppearance("checking", "V10 — Checking for updates…");
+    try {
+      const response = await api.fetchApi("/vrgdg/update/v10/status");
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || `Status check failed (HTTP ${response.status}).`);
+      }
+
+      const installed = String(payload.installed_commit || "").slice(0, 7) || "unknown";
+      const latest = String(payload.latest_commit || "").slice(0, 7) || "unknown";
+      const behind = Math.max(0, Number(payload.behind || 0));
+      const wrongBranch = Boolean(payload.expected_branch) && payload.branch !== payload.expected_branch;
+      const isOutdated = Boolean(payload.outdated) || behind > 0 || wrongBranch;
+      updateStatusDismissToken = `${installed}:${latest}:${isOutdated ? "outdated" : "current"}`;
+      let dismissed = "";
+      try { dismissed = localStorage.getItem(V10_STATUS_DISMISS_KEY) || ""; } catch (_) { /* Storage may be disabled. */ }
+      if (dismissed === updateStatusDismissToken) {
+        updateStatusBanner.style.display = "none";
+        return;
+      }
+
+      if (isOutdated) {
+        const countText = `${behind} commit${behind === 1 ? "" : "s"} behind`;
+        const reason = wrongBranch
+          ? `currently on ${payload.branch || "a detached checkout"}`
+          : countText;
+        setUpdateStatusAppearance(
+          "outdated",
+          `V10 build ${installed} — Update available (${reason}; latest ${latest})`,
+          `This installation is not at the latest V10 branch (${reason}). Click Update to run the existing safe V10 updater.`
+        );
+      } else {
+        const localNote = Number(payload.ahead || 0) > 0
+          ? " · local build ahead"
+          : payload.tracked_changes ? " · modified locally" : "";
+        setUpdateStatusAppearance(
+          "current",
+          `V10 build ${installed} — Up to date${localNote}`,
+          `Installed V10 commit: ${payload.installed_commit}`
+        );
+      }
+    } catch (error) {
+      setUpdateStatusAppearance(
+        "unavailable",
+        "V10 — Could not check for updates",
+        String(error?.message || error)
+      );
+    }
+  };
 
   const topbar = document.createElement("div");
   topbar.style.cssText = "position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;border-bottom:1px solid #27272a;background:#202024;min-width:0;";
@@ -4222,7 +4316,7 @@ function openBuilder(node) {
   const globalScrubWrap = document.createElement("label");
   globalScrubWrap.style.cssText = "display:grid;grid-template-columns:auto auto minmax(160px,1fr) auto;align-items:center;gap:8px;color:#d4d4d8;font-size:12px;font-weight:800;background:#18181b;border-top:1px solid #27272a;padding:8px 10px;";
   const globalScrubLabel = document.createElement("span");
-  globalScrubLabel.textContent = "Global video scrub";
+  globalScrubLabel.textContent = "Global audio scrub";
   globalScrubLabel.style.cssText = "white-space:nowrap;";
   const globalAudioMuteButton = makeButton("🔊");
   globalAudioMuteButton.type = "button";
@@ -4296,9 +4390,10 @@ function openBuilder(node) {
   sceneAudio.preload = "metadata";
   updateGlobalAudioMuteButton();
 
-  shell.append(topbar, main, timeline);
+  shell.append(updateStatusBanner, topbar, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
+  refreshV10UpdateStatus();
   installFileDropNavigationGuard(shell);
   window.VRGDG_UIThemes?.registerRoot?.(overlay);
 
@@ -4651,6 +4746,7 @@ function openBuilder(node) {
 
   const state = {
     duration: 0,
+    audioDuration: 0,
     peaks: [],
     beats: [],
     segments: [],
@@ -7022,7 +7118,60 @@ function openBuilder(node) {
     const markerEnd = normalizeTimelineMarkers(state.timelineMarkers).reduce((max, marker) => Math.max(max, Number(marker.end ?? marker.start ?? 0)), 0);
     const range = normalizeTimelineRange(state.selectedTimelineRange);
     const rangeEnd = Number.isFinite(Number(range.out)) ? Number(range.out) : 0;
-    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, markerEnd, rangeEnd, Number(state.duration || 0), Number(audio.duration || 0));
+    const audioEnd = loadedGlobalAudioDuration();
+    if (audioEnd > 0) return audioEnd;
+    return Math.max(segmentEnd, overlayEnd, sceneAudioEnd, markerEnd, rangeEnd, Number(state.duration || 0));
+  }
+
+  function loadedGlobalAudioDuration() {
+    const analyzedDuration = Number(state.audioDuration);
+    if (Number.isFinite(analyzedDuration) && analyzedDuration > 0) return analyzedDuration;
+    const mediaDuration = Number(audio.duration);
+    return Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
+  }
+
+  function playbackDuration() {
+    if (!usingSceneAudioMode() && !usingRenderedSceneAudioMode() && currentProjectAudioPath()) {
+      const audioEnd = loadedGlobalAudioDuration();
+      if (audioEnd > 0) return audioEnd;
+    }
+    return timelineDuration();
+  }
+
+  function enforceAudioTimelineEnd() {
+    const audioEnd = loadedGlobalAudioDuration();
+    if (!(audioEnd > 0)) return { trimmed: 0, removed: 0 };
+    let trimmed = 0;
+    let removed = 0;
+    const clampTrack = (segments) => {
+      const kept = [];
+      for (const segment of segments) {
+        const start = Math.max(0, Number(segment.start || 0));
+        if (start >= audioEnd - 0.001) {
+          removed += 1;
+          continue;
+        }
+        const originalEnd = Math.max(start, Number(segment.end || start));
+        const end = Math.min(originalEnd, audioEnd);
+        if (end <= start + 0.001) {
+          removed += 1;
+          continue;
+        }
+        if (end < originalEnd - 0.001) trimmed += 1;
+        segment.start = start;
+        segment.end = end;
+        kept.push(segment);
+      }
+      return kept;
+    };
+    state.segments = clampTrack(state.segments);
+    state.overlaySegments = clampTrack(state.overlaySegments);
+    state.duration = audioEnd;
+    if (!state.segments.some((segment) => segment.id === state.activeId) && !state.overlaySegments.some((segment) => segment.id === state.activeId)) {
+      state.activeId = state.segments[state.segments.length - 1]?.id || state.overlaySegments[state.overlaySegments.length - 1]?.id || "";
+      state.activeTrack = state.segments.some((segment) => segment.id === state.activeId) ? "base" : "overlay";
+    }
+    return { trimmed, removed };
   }
 
   function normalizeTimelineRange(range) {
@@ -7184,7 +7333,7 @@ function openBuilder(node) {
       const chunkDuration = Number(segment.custom_audio_duration);
       return Number.isFinite(chunkDuration) && chunkDuration > 0 ? chunkDuration : 0;
     }
-    const loadedDuration = Number(state.duration || audio.duration || 0);
+    const loadedDuration = loadedGlobalAudioDuration();
     return Number.isFinite(loadedDuration) && loadedDuration > 0 ? loadedDuration : 0;
   }
 
@@ -8150,6 +8299,8 @@ function openBuilder(node) {
       audioInput.value = data.audio_path || audioInput.value;
       setWidgetValue(node, "audio_path", audioInput.value);
       state.duration = Math.max(Number(state.duration || 0), Number(data.duration || 0));
+      state.audioDuration = Number(data.duration || 0);
+      enforceAudioTimelineEnd();
       state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
       state.beats = Array.isArray(data.beats) ? data.beats : [];
       setBeatMarkersVisible(Boolean(state.beats.length));
@@ -10603,7 +10754,7 @@ function openBuilder(node) {
 
   function updateAudioScrubbers() {
     const current = currentGlobalTime();
-    const maxTime = timelineDuration();
+    const maxTime = playbackDuration();
     const followPlayback = Boolean((audio.src && !audio.paused) || (sceneAudio.src && !sceneAudio.paused) || state.isScrubbing);
     if (followPlayback) {
       const playbackSegment = playbackSegmentAtTime(current);
@@ -10623,7 +10774,7 @@ function openBuilder(node) {
   }
 
   function seekGlobalTimelineFromEvent(event) {
-    const maxTime = timelineDuration();
+    const maxTime = playbackDuration();
     if (maxTime <= 0) return;
     const rect = timelineCanvas.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
@@ -10632,7 +10783,7 @@ function openBuilder(node) {
   }
 
   function setGlobalPlaybackTime(value) {
-    const maxTime = timelineDuration();
+    const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
     if (usingSceneAudioMode() || usingRenderedSceneAudioMode()) {
@@ -16857,7 +17008,6 @@ function openBuilder(node) {
           empty_segment_text: options.beatEmptySegmentText || options.instrumentalText || "Instrumental section.",
           whisper_language: options.language || "english",
           full_lyrics: options.referenceLyrics || "",
-          legacy_v9_beat_mode: true,
         }, 60000);
         progress.set("Queueing Prompt Creator beat/SRT workflow...", 16);
         const queued = await queueWorkflowPrompt(built.prompt, {
@@ -26301,6 +26451,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function render() {
+    enforceAudioTimelineEnd();
     syncOverlayTrackControls();
     drawWaveform();
     renderSegments();
@@ -26310,7 +26461,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     updateSelectedMediaTools();
     updateMultiSelectButton();
-    timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} overlay${state.overlaySegments.length === 1 ? "" : "s"} | ${formatTime(state.duration)}`;
+    const timelineEnd = timelineDuration();
+    const audioEnd = loadedGlobalAudioDuration();
+    timelineInfo.textContent = `${state.segments.length} base / ${state.overlaySegments.length} overlay${state.overlaySegments.length === 1 ? "" : "s"} | Timeline ${formatTime(timelineEnd)}${audioEnd > 0 ? ` | Audio ${formatTime(audioEnd)}` : ""}`;
     const rangeInfo = selectedTimelineRangeInfo();
     timelineRangeInfo.textContent = rangeInfo
       ? `Range: ${formatTime(rangeInfo.start)} -> ${formatTime(rangeInfo.end)}  ${rangeInfo.duration.toFixed(2)}s`
@@ -26336,6 +26489,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audioInput.value = data.audio_path || audioInput.value;
       state.audioPath = audioInput.value;
       state.duration = Number(data.duration || 0);
+      state.audioDuration = Number(data.duration || 0);
+      enforceAudioTimelineEnd();
       state.peaks = data.peaks || [];
       state.beats = data.beats || [];
       showBeatMarkersIfAvailable();
@@ -26345,7 +26500,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       globalScrub.max = String(Math.max(0, state.duration));
       setWidgetValue(node, "audio_path", data.audio_path || audioInput.value);
       if (!state.segments.length) {
-        state.segments.push(newSegment(0, Math.min(4, Math.max(1, state.duration || 4))));
+        state.segments.push(newSegment(0, Math.min(4, Math.max(0.05, state.duration || 4))));
         state.activeId = state.segments[0].id;
       }
       syncInspector();
@@ -26426,6 +26581,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audioInput.value = data.saved_path || "";
           state.audioPath = audioInput.value;
           state.duration = Number(data.duration || 0);
+          state.audioDuration = Number(data.duration || 0);
+          enforceAudioTimelineEnd();
           state.peaks = data.peaks || [];
           state.beats = data.beats || [];
           state.sceneAudioGlobalTime = 0;
@@ -26475,6 +26632,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audioInput.value = data.audio_path || data.saved_path || "";
       state.audioPath = audioInput.value;
       state.duration = Number(data.duration || targetDuration);
+      state.audioDuration = Number(data.duration || targetDuration);
+      enforceAudioTimelineEnd();
       state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
       state.beats = Array.isArray(data.beats) ? data.beats : [];
       state.sceneAudioGlobalTime = 0;
@@ -26484,7 +26643,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       globalScrub.max = String(Math.max(0, state.duration));
       setWidgetValue(node, "audio_path", audioInput.value);
       if (!state.segments.length) {
-        state.segments.push(newSegment(0, Math.min(4, Math.max(1, state.duration || 4))));
+        state.segments.push(newSegment(0, Math.min(4, Math.max(0.05, state.duration || 4))));
         state.activeId = state.segments[0].id;
       }
       syncInspector();
@@ -27190,6 +27349,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function currentSessionData() {
+    enforceAudioTimelineEnd();
     return {
       segments: sanitizedSessionSegments(state.segments, "base"),
       overlay_segments: sanitizedSessionSegments(state.overlaySegments, "overlay"),
@@ -27236,6 +27396,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       selected_timeline_range: normalizeTimelineRange(state.selectedTimelineRange),
       timeline_markers: normalizeTimelineMarkers(state.timelineMarkers),
       active_timeline_marker_id: state.activeTimelineMarkerId || "",
+      audio_duration: loadedGlobalAudioDuration(),
       audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
       beat_markers: Array.isArray(state.beats) ? state.beats : [],
       left_panel_width: state.leftPanelWidth,
@@ -27799,6 +27960,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.selectedTimelineRange = normalizeTimelineRange(session.selected_timeline_range || {});
       state.timelineMarkers = normalizeTimelineMarkers(session.timeline_markers || []);
       state.activeTimelineMarkerId = session.active_timeline_marker_id || "";
+      state.audioDuration = Math.max(0, Number(session.audio_duration || 0));
+      if (state.audioDuration > 0) enforceAudioTimelineEnd();
       state.peaks = Array.isArray(session.audio_peaks) ? session.audio_peaks : state.peaks;
       state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
@@ -27847,6 +28010,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audioInput.value = audioData.audio_path || session.audio_path;
           setWidgetValue(node, "audio_path", audioInput.value);
           state.duration = Number(audioData.duration || 0);
+          state.audioDuration = Number(audioData.duration || 0);
+          enforceAudioTimelineEnd();
           state.peaks = Array.isArray(audioData.peaks) && audioData.peaks.length ? audioData.peaks : state.peaks;
           state.beats = Array.isArray(audioData.beats) && audioData.beats.length ? audioData.beats : state.beats;
           showBeatMarkersIfAvailable();
@@ -32846,6 +33011,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio.src = audioUrl(data.audio_path);
       audio.load();
       state.duration = Math.max(state.duration || 0, Number(data.duration || 0));
+      state.audioDuration = Number(data.duration || 0);
+      enforceAudioTimelineEnd();
       state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
       state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
       showBeatMarkersIfAvailable();
@@ -35406,9 +35573,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function addSegment() {
     const active = activeSegment();
-    const duration = 4;
+    let duration = 4;
     let insertIndex = state.segments.length;
     let start = state.segments[state.segments.length - 1]?.end || 0;
+    let shiftFromIndex = null;
     if (active) {
       const activeIndex = state.segments.findIndex((segment) => segment.id === active.id);
       if (activeIndex >= 0) {
@@ -35417,24 +35585,34 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         if (choice === "before") {
           insertIndex = Math.max(0, activeIndex);
           start = active.start;
-          for (let index = activeIndex; index < state.segments.length; index += 1) {
-            shiftSegmentTiming(state.segments[index], duration);
-          }
+          shiftFromIndex = activeIndex;
         } else {
           insertIndex = activeIndex + 1;
           start = active.end;
-          for (let index = activeIndex + 1; index < state.segments.length; index += 1) {
-            shiftSegmentTiming(state.segments[index], duration);
-          }
+          if (activeIndex + 1 < state.segments.length) shiftFromIndex = activeIndex + 1;
         }
+      }
+    }
+    const audioEnd = loadedGlobalAudioDuration();
+    if (audioEnd > 0) {
+      duration = Math.min(duration, Math.max(0, audioEnd - Number(start || 0)));
+      if (duration <= 0.001) {
+        toast(`The base timeline already ends with the audio at ${formatTime(audioEnd)}.`, true);
+        return;
+      }
+    }
+    pushHistory();
+    if (shiftFromIndex != null) {
+      for (let index = shiftFromIndex; index < state.segments.length; index += 1) {
+        shiftSegmentTiming(state.segments[index], duration);
       }
     }
     const end = start + duration;
     const segment = newSegment(start, end);
     segment.source = state.srtMode ? "inserted" : "manual";
-    pushHistory();
     state.segments.splice(insertIndex, 0, segment);
     state.duration = Math.max(Number(state.duration || 0), end, ...state.segments.map((item) => Number(item.end || 0)));
+    enforceAudioTimelineEnd();
     sortSegments(state.segments);
     setActiveSegment(segment);
     await syncPromptJsonFromSegments("segment added");
@@ -36064,6 +36242,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return `${folder}${separator}project_context${separator}${filename}`;
     };
     state.duration = 0;
+    state.audioDuration = 0;
     state.peaks = [];
     state.beats = [];
     setBeatMarkersVisible(false);
@@ -40836,6 +41015,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateV10Button.textContent = originalText;
     }
   };
+  updateStatusAction.onclick = () => updateV10Button.click();
   menuDropdown.addEventListener("click", (event) => {
     if (event.target === autoSaveControl.input || autoSaveControl.wrapper.contains(event.target)) return;
     menuDropdown.style.display = "none";
@@ -41432,7 +41612,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.snapToBeats = Boolean(snapToBeatsControl.input.checked);
   };
   audio.addEventListener("timeupdate", updateAudioScrubbers);
-  audio.addEventListener("loadedmetadata", updateAudioScrubbers);
+  audio.addEventListener("loadedmetadata", () => {
+    const mediaDuration = Number(audio.duration);
+    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+      state.audioDuration = mediaDuration;
+      const result = enforceAudioTimelineEnd();
+      if (result.trimmed || result.removed) render();
+    }
+    updateAudioScrubbers();
+  });
   audio.addEventListener("play", updatePlayPauseButton);
   audio.addEventListener("pause", () => {
     updatePlayPauseButton();

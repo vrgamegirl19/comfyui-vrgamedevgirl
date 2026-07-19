@@ -1601,7 +1601,18 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
             "yeah", "yah", "ya", "uh", "um", "hmm", "mm", "la", "na",
             "woah", "whoa", "ok", "okay", "hey", "yo",
         }
-        meaningful = [t for t in tokens if t not in filler_tokens]
+        def is_filler_vocalization(token):
+            if token in filler_tokens:
+                return True
+            # _clean_lyric intentionally caps long repeated characters, so an
+            # audible "ahhhhh" may arrive here as "ahhh". Recognize spelling
+            # variants by shape instead of requiring one exact transcription.
+            return bool(re.fullmatch(
+                r"(?:a+h+|o+h+|u+h+|h*m+|la+|na+|ya+h*|wo+a+h+)",
+                token,
+            ))
+
+        meaningful = [t for t in tokens if not is_filler_vocalization(t)]
         return len(meaningful) >= max(1, int(min_words))
 
     def _nonvocal_placeholder(self, seg_index: int, asr_text: str = "") -> str:
