@@ -19247,7 +19247,7 @@ function openBuilder(node) {
     mapSubjectsFromSceneNotes.title = "Read SceneNotes.json and assign character references when scene notes mention saved character names.";
     exportGptSceneContext.title = "Copy subjects, locations, lyric lines, and current scene mappings as JSON, then open the Scene Mapping Assistant GPT.";
     importGptSceneMap.title = "Paste GPT scene mapping JSON to assign saved subjects and locations back to scenes.";
-    assignScenes.title = "Bulk-assign saved characters and locations using random, rotating, or character-block patterns.";
+    assignScenes.title = "Bulk-assign saved characters and locations using random, rotating, or repeating block patterns.";
     openAdvancedLineMapping.title = "Open the existing Review Lines + Map Performers window for audio, timing, transcription, and detailed performer review.";
     const mappingActions = document.createElement("div");
     mappingActions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;";
@@ -19308,10 +19308,13 @@ function openBuilder(node) {
       characterMode.options[3].textContent = "Leave characters unchanged";
       const blockSize = makeInput("10", "number");
       blockSize.min = "1";
-      const locationMode = makeSelect(["random", "rotate", "unchanged"], locations.length ? "random" : "unchanged");
+      const locationMode = makeSelect(["random", "rotate", "blocks", "unchanged"], locations.length ? "random" : "unchanged");
       locationMode.options[0].textContent = "Random location each scene";
       locationMode.options[1].textContent = "Rotate locations in order";
-      locationMode.options[2].textContent = "Leave locations unchanged";
+      locationMode.options[2].textContent = "Repeat each location for X scenes";
+      locationMode.options[3].textContent = "Leave locations unchanged";
+      const locationBlockSize = makeInput("4", "number");
+      locationBlockSize.min = "1";
       const replaceExisting = makeCheckbox("Replace existing mappings", false);
       const avoidLocationRepeat = makeCheckbox("Avoid consecutive location repeats", true);
       grid.append(
@@ -19321,6 +19324,7 @@ function openBuilder(node) {
         makeField("Character pattern", characterMode),
         makeField("Scenes per character block", blockSize),
         makeField("Location pattern", locationMode),
+        makeField("Scenes per location block", locationBlockSize),
         replaceExisting.wrapper,
         avoidLocationRepeat.wrapper,
       );
@@ -19354,7 +19358,8 @@ function openBuilder(node) {
             <div><b style="color:#67e8f9;">Scene range start / end</b><br>These fields are used only when Scenes to assign is set to Scene range. Scene numbering starts at 1 and both endpoints are included.</div>
             <div><b style="color:#67e8f9;">Character pattern</b><br><b>Random</b> chooses any saved character for each target scene. <b>Rotate</b> cycles through saved characters in order. <b>Character blocks</b> keeps one character for a group of scenes, then moves to the next character. <b>Leave unchanged</b> does not edit character mappings.</div>
             <div><b style="color:#67e8f9;">Scenes per character block</b><br>Controls the size of each character block. For example, 10 assigns Character 1 to the first 10 target scenes, Character 2 to the next 10, and so on. It is used only with Character blocks.</div>
-            <div><b style="color:#67e8f9;">Location pattern</b><br><b>Random</b> chooses any saved location for each target scene. <b>Rotate</b> cycles through saved locations in order. <b>Leave unchanged</b> does not edit location mappings.</div>
+            <div><b style="color:#67e8f9;">Location pattern</b><br><b>Random</b> chooses any saved location for each target scene. <b>Rotate</b> changes to the next saved location every scene. <b>Repeat each location for X scenes</b> keeps one location for a block of target scenes, then advances to the next saved location. After the last saved location, it loops back to the first. <b>Leave unchanged</b> does not edit location mappings.</div>
+            <div><b style="color:#67e8f9;">Scenes per location block</b><br>Controls how long each location is reused when Repeat each location for X scenes is selected. For example, a value of 4 assigns Location 1 to target scenes 1–4, Location 2 to target scenes 5–8, and so on. Once all saved locations are used, the same ordered cycle starts again. For a range or multi-selection, counting follows only the targeted scenes in timeline order.</div>
             <div><b style="color:#67e8f9;">Replace existing mappings</b><br>Off is the safe default: only empty character or location mappings are filled. Turn it on to overwrite mappings that are already assigned in the target scenes.</div>
             <div><b style="color:#67e8f9;">Avoid consecutive location repeats</b><br>When Random location is selected and at least two locations exist, this prevents two neighboring target scenes from receiving the same location.</div>
             <div><b style="color:#67e8f9;">No character present scenes</b><br>Scenes explicitly marked No character present always keep their character mapping empty. Their location can still be assigned.</div>
@@ -19403,7 +19408,9 @@ function openBuilder(node) {
           if (locationMode.value !== "unchanged" && locations.length) {
             const chosen = locationMode.value === "rotate"
               ? locations[targetIndex % locations.length]
-              : randomItem(locations, previousLocationId, avoidLocationRepeat.input.checked);
+              : locationMode.value === "blocks"
+                ? locations[Math.floor(targetIndex / Math.max(1, Number(locationBlockSize.value) || 1)) % locations.length]
+                : randomItem(locations, previousLocationId, avoidLocationRepeat.input.checked);
             locationId = chosen?.id || "";
             previousLocationId = locationId || previousLocationId;
           }
@@ -19427,10 +19434,11 @@ function openBuilder(node) {
         const isRange = scope.value === "range";
         rangeStart.disabled = rangeEnd.disabled = !isRange;
         blockSize.disabled = characterMode.value !== "blocks";
+        locationBlockSize.disabled = locationMode.value !== "blocks";
         avoidLocationRepeat.input.disabled = locationMode.value !== "random";
         createProposal();
       };
-      for (const control of [scope, rangeStart, rangeEnd, characterMode, blockSize, locationMode, replaceExisting.input, avoidLocationRepeat.input]) {
+      for (const control of [scope, rangeStart, rangeEnd, characterMode, blockSize, locationMode, locationBlockSize, replaceExisting.input, avoidLocationRepeat.input]) {
         control.addEventListener("change", syncOptions);
       }
       shuffle.onclick = createProposal;
