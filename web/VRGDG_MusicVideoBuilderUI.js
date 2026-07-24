@@ -17,11 +17,14 @@ import { createFaceFixTool } from "./VRGDG_FaceFixUI.js?v=20260716-1";
 import {
   BROWSER_IMAGE_PROVIDERS,
   buildBrowserImagePrompt,
+  finishManualBrowserImageSession,
   getBrowserImageStatus,
   importLatestManualBrowserImageDownload,
   openBrowserImageLogin,
   openManualBrowserImageProvider,
   setupBrowserImageAutomation,
+  storeBrowserImageReference,
+  submitManualBrowserImageRequest,
   uploadManualBrowserImageRefs,
 } from "./VRGDG_BrowserImageBridge.js";
 import {
@@ -1985,6 +1988,7 @@ function openBuilder(node) {
   const closeButton = makeButton("Close");
   closeButton.onclick = () => {
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
+    restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
   };
   const promptCreatorButton = makeButton("Prompt Creator");
@@ -2001,6 +2005,7 @@ function openBuilder(node) {
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
   const stitchPreviewButton = makeButton("Stitch Preview");
+  const slideshowPreviewButton = makeButton("Image Slideshow Preview");
   const gemmaT2IAllButton = makeButton("LLM T2I All");
   const gemmaVideoAllButton = makeButton("LLM Video All");
   const zImageAllButton = makeButton("Image All");
@@ -2035,7 +2040,7 @@ function openBuilder(node) {
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, fullBuildButton, fullFLFBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton, remakeModeButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -2072,6 +2077,10 @@ function openBuilder(node) {
   const scenesTabButton = makeButton("Scenes");
   const toolsTabButton = makeButton("Tools");
   const lutsTabButton = makeButton("Post Process");
+  const calibrateFirstBeatButton = makeButton("Beat Calibration...");
+  const snapAllSceneStartsButton = makeButton("Snap Scene 3+ Starts to Beats");
+  calibrateFirstBeatButton.title = "Open three-point beat calibration. Capture the first, middle, and last real beats with the playhead to correct cumulative grid drift.";
+  snapAllSceneStartsButton.title = "Snap Scene 3 and every later base scene start to its nearest beat. The Scene 1-to-2 boundary stays fixed; connected previous scene ends follow later shared boundaries.";
   scenesTabButton.title = "Show the vertical scene list.";
   toolsTabButton.title = "Show project tools and prompt handoff actions.";
   lutsTabButton.title = "Browse post-process effects and apply them to the selected scene.";
@@ -2092,6 +2101,56 @@ function openBuilder(node) {
     row.append(button, note);
     return row;
   };
+  const beatCalibrationToolRow = makeToolRow(calibrateFirstBeatButton, "Capture a first, middle, and last beat with the playhead, then correct both beat-grid offset and cumulative drift. Scene timing stays unchanged.");
+  const beatCalibrationWizard = document.createElement("div");
+  beatCalibrationWizard.style.cssText = "display:none;margin:0 0 10px;border:1px solid #0891b2;border-radius:7px;background:#082f49;padding:9px;gap:8px;flex-direction:column;";
+  const beatCalibrationTitle = document.createElement("div");
+  beatCalibrationTitle.textContent = "Beat Calibration";
+  beatCalibrationTitle.style.cssText = "font-size:13px;font-weight:900;color:#cffafe;";
+  const beatCalibrationGridType = makeSelect([
+    { value: "detected_warp", label: "Warp detected markers" },
+    { value: "even_grid", label: "Even BPM grid (CapCut-style test)" },
+    { value: "auto_bpm", label: "Auto-detect BPM + chosen start" },
+    { value: "capcut_import", label: "Import exact CapCut markers" },
+  ], "detected_warp");
+  const beatCalibrationGridTypeField = document.createElement("label");
+  beatCalibrationGridTypeField.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:10px;color:#bae6fd;";
+  beatCalibrationGridTypeField.append(document.createTextNode("Grid type"), beatCalibrationGridType);
+  const beatCalibrationGridTypeHint = document.createElement("div");
+  beatCalibrationGridTypeHint.style.cssText = "font-size:9px;line-height:1.35;color:#7dd3fc;";
+  const beatCalibrationInstruction = document.createElement("div");
+  beatCalibrationInstruction.style.cssText = "font-size:11px;line-height:1.45;color:#e0f2fe;white-space:pre-line;";
+  const beatCalibrationAnchors = document.createElement("div");
+  beatCalibrationAnchors.style.cssText = "font-size:10px;line-height:1.5;color:#bae6fd;font-variant-numeric:tabular-nums;white-space:pre-line;";
+  const beatCalibrationTimecodeInput = makeInput("");
+  beatCalibrationTimecodeInput.placeholder = "00:00:00:00";
+  beatCalibrationTimecodeInput.title = "CapCut timecode: HH:MM:SS:FF or HH:MM:SS+FF";
+  const beatCalibrationFpsInput = makeInput("24");
+  beatCalibrationFpsInput.type = "number";
+  beatCalibrationFpsInput.min = "1";
+  beatCalibrationFpsInput.max = "120";
+  beatCalibrationFpsInput.step = "0.001";
+  const beatCalibrationTimecodeGrid = document.createElement("div");
+  beatCalibrationTimecodeGrid.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:6px;";
+  const beatCalibrationTimecodeField = document.createElement("label");
+  beatCalibrationTimecodeField.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:10px;color:#bae6fd;";
+  beatCalibrationTimecodeField.append(document.createTextNode("CapCut timecode"), beatCalibrationTimecodeInput);
+  const beatCalibrationFpsField = document.createElement("label");
+  beatCalibrationFpsField.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:10px;color:#bae6fd;";
+  beatCalibrationFpsField.append(document.createTextNode("FPS"), beatCalibrationFpsInput);
+  beatCalibrationTimecodeGrid.append(beatCalibrationTimecodeField, beatCalibrationFpsField);
+  const beatCalibrationTimecodeHint = document.createElement("div");
+  beatCalibrationTimecodeHint.textContent = "Enter HH:MM:SS:FF or HH:MM:SS+FF. If filled, Capture uses this exact timecode and moves the playhead automatically.";
+  beatCalibrationTimecodeHint.style.cssText = "font-size:9px;line-height:1.35;color:#7dd3fc;";
+  const beatCalibrationCaptureButton = makeButton("Capture First Beat");
+  const beatCalibrationCancelButton = makeButton("Cancel");
+  beatCalibrationCaptureButton.style.width = "100%";
+  beatCalibrationCancelButton.style.width = "100%";
+  const beatCalibrationActions = document.createElement("div");
+  beatCalibrationActions.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
+  beatCalibrationActions.append(beatCalibrationCaptureButton, beatCalibrationCancelButton);
+  beatCalibrationWizard.append(beatCalibrationTitle, beatCalibrationGridTypeField, beatCalibrationGridTypeHint, beatCalibrationInstruction, beatCalibrationTimecodeGrid, beatCalibrationTimecodeHint, beatCalibrationAnchors, beatCalibrationActions);
+  let beatCalibrationDraft = null;
   toolsPane.append(
     toolIntro,
     makeToolRow(promptCreatorButton, "Open Prompt Creator to build source text, SRT timing, concept prompts, and context files."),
@@ -2099,6 +2158,9 @@ function openBuilder(node) {
     makeToolRow(autoLoadAllButton, "Import the latest Prompt Creator outputs into this project, including timing and prompt data."),
     makeToolRow(importSceneNotesButton, "Load a scene-notes JSON file and map its notes onto the current scenes."),
     makeToolRow(importImageFolderButton, "Choose a folder of numbered images and fill base timeline scenes in numeric order. Requires project audio and existing scenes."),
+    beatCalibrationToolRow,
+    beatCalibrationWizard,
+    makeToolRow(snapAllSceneStartsButton, "Snap Scene 3 onward to the nearest valid beat. The Scene 1-to-2 intro boundary stays fixed; connected previous scene ends move with later shared cuts."),
     makeToolRow(zEnhanceAllToolButton, "Upscale/enhance every timeline scene that already has an image, using each scene's current T2I/image prompt."),
     makeToolRow(builderAgentButton, "Open Builder Agent for scene help, prompt edits, image references, and project guidance.")
   );
@@ -2881,6 +2943,143 @@ function openBuilder(node) {
   const flowGptManualActions = document.createElement("div");
   flowGptManualActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
   flowGptManualActions.append(flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualImportLatestButton);
+  const browserAiGroupsNote = document.createElement("div");
+  browserAiGroupsNote.style.cssText = "font-size:11px;color:#d4d4d8;line-height:1.45;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:9px;";
+  browserAiGroupsNote.textContent = "Band Sequence mode lets you add the singer, optional extras, the other band members, and every location once. It derives Singer Only, optional Singer + Extras, Other Members Only, and Full Band sets for each location. Requests reuse one provider tab, and you decide when to send each next set after reviewing and downloading. Turn Band Sequence off to use custom groups instead. This is project-wide and is not tied to the active scene.";
+  const browserAiBandSequenceMode = makeCheckbox("Band Sequence mode", false);
+  const browserAiGroupSelect = makeSelect([], "");
+  const browserAiAutoAdvanceGroup = makeCheckbox("Auto-select next group/set after sending", true);
+  const browserAiNewGroupButton = makeButton("New Group");
+  const browserAiDuplicateGroupButton = makeButton("Duplicate");
+  const browserAiRenameGroupButton = makeButton("Rename");
+  const browserAiDeleteGroupButton = makeButton("Delete");
+  const browserAiGroupActions = document.createElement("div");
+  browserAiGroupActions.style.cssText = "display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;";
+  browserAiGroupActions.append(browserAiNewGroupButton, browserAiDuplicateGroupButton, browserAiRenameGroupButton, browserAiDeleteGroupButton);
+  const browserAiGroupDrop = document.createElement("div");
+  browserAiGroupDrop.dataset.vrgdgFileDropZone = "true";
+  browserAiGroupDrop.innerHTML = "<b>Character / band references</b><br><span>Drop any number of images for the selected group.</span>";
+  browserAiGroupDrop.style.cssText = "border:1px dashed #0891b2;border-radius:6px;background:#082f49;color:#cffafe;padding:14px;text-align:center;font-size:11px;line-height:1.45;cursor:pointer;";
+  const browserAiGroupList = document.createElement("div");
+  browserAiGroupList.style.cssText = "display:flex;flex-direction:column;gap:5px;";
+  const browserAiAddGroupImagesButton = makeButton("Add Group Images", "primary");
+  const browserAiClearGroupImagesButton = makeButton("Clear Group Images");
+  const browserAiGroupImageActions = document.createElement("div");
+  browserAiGroupImageActions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px;";
+  browserAiGroupImageActions.append(browserAiAddGroupImagesButton, browserAiClearGroupImagesButton);
+  const browserAiLocationDrop = document.createElement("div");
+  browserAiLocationDrop.dataset.vrgdgFileDropZone = "true";
+  browserAiLocationDrop.innerHTML = "<b>Location reference</b><br><span>Drop one location image. Replace it whenever the location changes.</span>";
+  browserAiLocationDrop.style.cssText = "border:1px dashed #7c3aed;border-radius:6px;background:#2e1065;color:#ede9fe;padding:14px;text-align:center;font-size:11px;line-height:1.45;cursor:pointer;";
+  const browserAiLocationList = document.createElement("div");
+  browserAiLocationList.style.cssText = browserAiGroupList.style.cssText;
+  const browserAiChooseLocationButton = makeButton("Choose Location", "primary");
+  const browserAiClearLocationButton = makeButton("Clear Location");
+  const browserAiLocationActions = document.createElement("div");
+  browserAiLocationActions.style.cssText = browserAiGroupImageActions.style.cssText;
+  browserAiLocationActions.append(browserAiChooseLocationButton, browserAiClearLocationButton);
+  const browserAiSingerDrop = document.createElement("div");
+  browserAiSingerDrop.dataset.vrgdgFileDropZone = "true";
+  browserAiSingerDrop.innerHTML = "<b>Singer references</b><br><span>Drop the singer's reference sheets or images.</span>";
+  browserAiSingerDrop.style.cssText = browserAiGroupDrop.style.cssText;
+  const browserAiSingerList = document.createElement("div");
+  browserAiSingerList.style.cssText = browserAiGroupList.style.cssText;
+  const browserAiAddSingerButton = makeButton("Add Singer References", "primary");
+  const browserAiClearSingerButton = makeButton("Clear Singer");
+  const browserAiSingerActions = document.createElement("div");
+  browserAiSingerActions.style.cssText = browserAiGroupImageActions.style.cssText;
+  browserAiSingerActions.append(browserAiAddSingerButton, browserAiClearSingerButton);
+  const browserAiExtrasDrop = document.createElement("div");
+  browserAiExtrasDrop.dataset.vrgdgFileDropZone = "true";
+  browserAiExtrasDrop.innerHTML = "<b>Extras (optional)</b><br><span>Drop non-band characters who should appear with the singer.</span>";
+  browserAiExtrasDrop.style.cssText = browserAiGroupDrop.style.cssText;
+  const browserAiExtrasList = document.createElement("div");
+  browserAiExtrasList.style.cssText = browserAiGroupList.style.cssText;
+  const browserAiAddExtrasButton = makeButton("Add Extras", "primary");
+  const browserAiClearExtrasButton = makeButton("Clear Extras");
+  const browserAiExtrasActions = document.createElement("div");
+  browserAiExtrasActions.style.cssText = browserAiGroupImageActions.style.cssText;
+  browserAiExtrasActions.append(browserAiAddExtrasButton, browserAiClearExtrasButton);
+  const browserAiSingerPanel = document.createElement("div");
+  browserAiSingerPanel.style.cssText = "display:flex;flex-direction:column;gap:6px;min-width:0;";
+  browserAiSingerPanel.append(browserAiSingerDrop, browserAiSingerActions, browserAiSingerList);
+  const browserAiExtrasPanel = document.createElement("div");
+  browserAiExtrasPanel.style.cssText = browserAiSingerPanel.style.cssText;
+  browserAiExtrasPanel.append(browserAiExtrasDrop, browserAiExtrasActions, browserAiExtrasList);
+  const browserAiSingerExtrasGrid = document.createElement("div");
+  browserAiSingerExtrasGrid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;align-items:start;";
+  browserAiSingerExtrasGrid.append(browserAiSingerPanel, browserAiExtrasPanel);
+  const browserAiMembersDrop = document.createElement("div");
+  browserAiMembersDrop.dataset.vrgdgFileDropZone = "true";
+  browserAiMembersDrop.innerHTML = "<b>Other band member references</b><br><span>Drop everyone except the singer.</span>";
+  browserAiMembersDrop.style.cssText = browserAiGroupDrop.style.cssText;
+  const browserAiMembersList = document.createElement("div");
+  browserAiMembersList.style.cssText = browserAiGroupList.style.cssText;
+  const browserAiAddMembersButton = makeButton("Add Other Members", "primary");
+  const browserAiClearMembersButton = makeButton("Clear Other Members");
+  const browserAiMembersActions = document.createElement("div");
+  browserAiMembersActions.style.cssText = browserAiGroupImageActions.style.cssText;
+  browserAiMembersActions.append(browserAiAddMembersButton, browserAiClearMembersButton);
+  const browserAiLocationsDrop = document.createElement("div");
+  browserAiLocationsDrop.dataset.vrgdgFileDropZone = "true";
+  browserAiLocationsDrop.innerHTML = "<b>All location references</b><br><span>Drop every location once. Each location will run through every available subject set.</span>";
+  browserAiLocationsDrop.style.cssText = browserAiLocationDrop.style.cssText;
+  const browserAiLocationsList = document.createElement("div");
+  browserAiLocationsList.style.cssText = browserAiGroupList.style.cssText;
+  const browserAiAddLocationsButton = makeButton("Add Locations", "primary");
+  const browserAiClearLocationsButton = makeButton("Clear Locations");
+  const browserAiLocationsActions = document.createElement("div");
+  browserAiLocationsActions.style.cssText = browserAiGroupImageActions.style.cssText;
+  browserAiLocationsActions.append(browserAiAddLocationsButton, browserAiClearLocationsButton);
+  const browserAiSequenceLocationSelect = makeSelect([], "");
+  const browserAiSequenceSetSelect = makeSelect([
+    { value: "0", label: "1. Singer only" },
+  ], "0");
+  const browserAiSequenceProgress = document.createElement("div");
+  browserAiSequenceProgress.style.cssText = "font-size:11px;color:#bae6fd;border:1px solid #155e75;border-radius:6px;background:#082f49;padding:8px;line-height:1.4;";
+  const browserAiBandSequencePanel = document.createElement("div");
+  browserAiBandSequencePanel.style.cssText = "display:none;flex-direction:column;gap:8px;";
+  browserAiBandSequencePanel.append(
+    browserAiSingerExtrasGrid,
+    browserAiMembersDrop,
+    browserAiMembersActions,
+    browserAiMembersList,
+    browserAiLocationsDrop,
+    browserAiLocationsActions,
+    browserAiLocationsList,
+    makeField("Current location", browserAiSequenceLocationSelect),
+    makeField("Current subject set", browserAiSequenceSetSelect),
+    browserAiSequenceProgress,
+  );
+  const browserAiCustomGroupsPanel = document.createElement("div");
+  browserAiCustomGroupsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+  browserAiCustomGroupsPanel.append(
+    makeField("Reference group", browserAiGroupSelect),
+    browserAiGroupActions,
+    browserAiGroupDrop,
+    browserAiGroupImageActions,
+    browserAiGroupList,
+    browserAiLocationDrop,
+    browserAiLocationActions,
+    browserAiLocationList,
+  );
+  const browserAiGroupPrompt = document.createElement("textarea");
+  browserAiGroupPrompt.placeholder = "Prompt sent with the selected reference group and location...";
+  browserAiGroupPrompt.style.cssText = flowGptManualChatPrompt.style.cssText;
+  ["keydown", "keypress", "keyup"].forEach((eventName) => {
+    browserAiGroupPrompt.addEventListener(eventName, (event) => event.stopPropagation());
+  });
+  const browserAiSendButton = makeButton("Send Selected Group", "primary");
+  const browserAiFinishButton = makeButton("Finish Session + Restore Downloads");
+  browserAiFinishButton.disabled = true;
+  const browserAiSessionActions = document.createElement("div");
+  browserAiSessionActions.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;";
+  browserAiSessionActions.append(browserAiSendButton, browserAiFinishButton);
+  const browserAiGroupStatus = document.createElement("div");
+  browserAiGroupStatus.style.cssText = "font-size:11px;color:#a1a1aa;white-space:pre-wrap;line-height:1.4;";
+  browserAiGroupStatus.textContent = "Choose a group, add references, and send when ready.";
+  const browserAiDownloadOverrideProviders = new Set();
+  let browserAiLastSendStartedAt = 0;
   const sendNBPromptToEnhanceButton = makeMiniButton("Send to Enhance");
   const fluxImageRefsPanel = document.createElement("div");
   fluxImageRefsPanel.style.cssText = "display:flex;flex-direction:column;gap:8px;";
@@ -4001,6 +4200,20 @@ function openBuilder(node) {
       ]),
     },
     {
+      label: "Groups",
+      value: "groups",
+      content: makeSettingsPanel([
+        browserAiGroupsNote,
+        browserAiBandSequenceMode.wrapper,
+        browserAiAutoAdvanceGroup.wrapper,
+        browserAiBandSequencePanel,
+        browserAiCustomGroupsPanel,
+        makeField("Editable generation prompt", browserAiGroupPrompt),
+        browserAiSessionActions,
+        browserAiGroupStatus,
+      ]),
+    },
+    {
       label: "Manual",
       value: "manual",
       content: makeSettingsPanel([
@@ -4215,6 +4428,7 @@ function openBuilder(node) {
   const setOutButton = makeButton("Set Out");
   const clearRangeButton = makeButton("Clear Range");
   const closeTimelineGapsButton = makeButton("Close Gaps");
+  const snapSceneEdgeButton = makeButton("Snap Scene Edge");
   const splitSceneButton = makeButton("✂");
   const idLoraTrimModeButton = makeButton("Trim Mode");
   const overlayTrackToggleButton = makeButton("Overlay Track: Off");
@@ -4240,6 +4454,7 @@ function openBuilder(node) {
   setOutButton.title = "Set the selected timeline range end at the playhead.";
   clearRangeButton.title = "Clear the selected timeline range.";
   closeTimelineGapsButton.title = "Shift later base scenes left to remove empty gaps in the timeline.";
+  snapSceneEdgeButton.title = "Move the selected scene start or end to its closest beat marker. A connected neighboring scene follows only at that shared boundary. Shortcuts: Ctrl+S snaps the start; Ctrl+E snaps the end.";
   splitSceneButton.title = "Split the selected base scene at the playhead. The left and right scene timings stay exactly where they are; later clips do not move and are only renumbered. Vocal text stays on the left half, while instrumental text is kept on both halves. Scenes with rendered video must be cleared before splitting.";
   idLoraTrimModeButton.title = "ID-LoRA only: quiet scrub mode for finding trim points without autoplay.";
   overlayTrackToggleButton.title = "Turn the advanced overlay timeline on or off.";
@@ -4271,7 +4486,7 @@ function openBuilder(node) {
   deleteSegmentButton.style.color = "#fecaca";
   deleteAllSegmentsButton.style.borderColor = "#7f1d1d";
   deleteAllSegmentsButton.style.color = "#fecaca";
-  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
+  for (const button of [bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, deleteSegmentButton, deleteAllSegmentsButton, zoomOutButton, zoomInButton]) {
     button.style.padding = "7px 10px";
     button.style.minWidth = "0";
     button.style.flex = "0 0 auto";
@@ -4284,6 +4499,7 @@ function openBuilder(node) {
   setOutButton.style.width = "max-content";
   clearRangeButton.style.width = "max-content";
   closeTimelineGapsButton.style.width = "max-content";
+  snapSceneEdgeButton.style.width = "max-content";
   idLoraTrimModeButton.style.width = "max-content";
   addTimelineMarkerButton.style.width = "max-content";
   addSegmentButton.style.width = "max-content";
@@ -4369,7 +4585,7 @@ function openBuilder(node) {
   addSegmentButton.textContent = "+ Segment";
   addOverlaySegmentButton.textContent = "+ Overlay Track";
   timelineToolRail.append(bulkSegmentsButton, sceneNoteButton, videoNoteButton, lyricNoteButton, addTimelineMarkerButton, addSegmentButton, addOverlaySegmentButton);
-  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
+  timelineHeader.append(setInButton, setOutButton, clearRangeButton, closeTimelineGapsButton, snapSceneEdgeButton, splitSceneButton, idLoraTrimModeButton, overlayTrackToggleButton, overlayTrackHintButton, undoButton, redoButton, playButton, stopButton, multiSelectButton, multiSelectHintButton, waveformModeSelect, snapToBeatsControl.wrapper, beatMarkersButton, zoomWrap, timelineInfo, timelineRangeInfo, deleteSegmentButton, deleteAllSegmentsButton, selectedMediaTools);
   const timelineBody = document.createElement("div");
   timelineBody.style.cssText = "display:grid;grid-template-columns:auto minmax(0,1fr);min-height:0;overflow:hidden;";
   const timelineViewport = document.createElement("div");
@@ -4481,7 +4697,20 @@ function openBuilder(node) {
       max_retries: 10,
       failure_mode: "last_successful_image",
       ask_previous_scene_image: false,
-      manual_chat_prompt: "Using the character and location reference images, create 5 new images. Place the character naturally within the location in different areas, poses, and compositions. Vary the camera position and angle for each image. Integrate the character into the environment instead of simply pasting the character onto the scene.",
+      manual_chat_prompt: "Using the character and location reference images, create 5 new images. Place the character naturally within the location in different areas, poses, and compositions. Vary the camera position and angle for each image. Integrate the character into the environment instead of simply pasting the character onto the scene. Make them look like stills from a cinematic music video. 16:9 aspect ratio.",
+      browser_ai_prompt_character_count: 0,
+      browser_ai_prompt_sequence_key: "",
+      auto_advance_reference_group: true,
+      band_sequence_enabled: false,
+      band_sequence_singer_references: [],
+      band_sequence_extra_references: [],
+      band_sequence_member_references: [],
+      band_sequence_location_references: [],
+      band_sequence_location_index: 0,
+      band_sequence_set_index: 0,
+      reference_groups: [{ id: "group_1", name: "Group 1", images: [] }],
+      active_reference_group_id: "group_1",
+      location_reference: null,
       setup_note_collapsed: false,
     };
   }
@@ -4749,6 +4978,8 @@ function openBuilder(node) {
     audioDuration: 0,
     peaks: [],
     beats: [],
+    detectedTempoBpm: 0,
+    beatCalibration: null,
     segments: [],
     overlaySegments: [],
     overlayTrack: normalizeOverlayTrackState(),
@@ -4783,6 +5014,7 @@ function openBuilder(node) {
     sceneAudioMode: false,
     sceneAudioSegmentId: "",
     sceneAudioGlobalTime: 0,
+    sceneSelectionUsesGlobalAudio: false,
     timingFrozen: false,
     srtMode: false,
     promptJsonPath: "",
@@ -6041,6 +6273,7 @@ function openBuilder(node) {
   }
 
   window.addEventListener("beforeunload", () => {
+    restoreBrowserAiDownloadsQuietly().catch(() => null);
     const segments = [
       ...(Array.isArray(state.segments) ? state.segments : []),
       ...(Array.isArray(state.overlaySegments) ? state.overlaySegments : []),
@@ -6843,7 +7076,10 @@ function openBuilder(node) {
 
   function handleSegmentPick(segment) {
     if (state.multiSelectMode) toggleMultiSegmentSelection(segment);
-    else setActiveSegment(segment);
+    else {
+      setActiveSegment(segment);
+      selectSegmentGlobalAudioStart(segment);
+    }
   }
 
   function applyImageSettingsToMultiSelection(kind, settings) {
@@ -7317,7 +7553,7 @@ function openBuilder(node) {
   }
 
   function currentGlobalTime() {
-    if (usingSceneAudioMode() || usingRenderedSceneAudioMode() || (sceneAudio.src && !sceneAudio.paused)) return Number(state.sceneAudioGlobalTime || 0);
+    if (!state.sceneSelectionUsesGlobalAudio && (usingSceneAudioMode() || usingRenderedSceneAudioMode() || (sceneAudio.src && !sceneAudio.paused))) return Number(state.sceneAudioGlobalTime || 0);
     return Number(audio.currentTime || 0);
   }
 
@@ -7397,6 +7633,26 @@ function openBuilder(node) {
     audio.pause();
     sceneAudio.pause();
     updatePlayPauseButton();
+  }
+
+  function selectSegmentGlobalAudioStart(segment) {
+    if (!segment) return false;
+    const start = Math.max(0, Number(segment.start || 0));
+    audio.pause();
+    sceneAudio.pause();
+    sceneAudio.removeAttribute("src");
+    state.sceneAudioSegmentId = "";
+    state.sceneSelectionUsesGlobalAudio = true;
+    state.sceneAudioGlobalTime = start;
+    if (!ensureGlobalTimelineAudioSource(start)) {
+      updatePlayPauseButton();
+      updateAudioScrubbers();
+      return false;
+    }
+    seekAudioWhenReady(start);
+    updatePlayPauseButton();
+    updateAudioScrubbers();
+    return true;
   }
 
   function pauseTimelineForEditing() {
@@ -7787,6 +8043,32 @@ function openBuilder(node) {
   function cloneFlowGptBrowserSettings(settings) {
     const source = settings || {};
     const provider = normalizeFlowGptBrowserProvider(source.provider);
+    const normalizeBrowserReferences = (items) => (Array.isArray(items) ? items : []).map((item) => ({
+      path: String(item?.path || ""),
+      data: String(item?.data || ""),
+      name: String(item?.name || "reference.png"),
+      location_label: String(item?.location_label || ""),
+    })).filter((item) => item.path || item.data);
+    const referenceGroups = (Array.isArray(source.reference_groups) ? source.reference_groups : [])
+      .map((group, index) => ({
+        id: String(group?.id || `group_${index + 1}`),
+        name: String(group?.name || `Group ${index + 1}`),
+        images: normalizeBrowserReferences(group?.images),
+      }));
+    if (!referenceGroups.length) referenceGroups.push({ id: "group_1", name: "Group 1", images: [] });
+    const requestedActiveGroupId = String(source.active_reference_group_id || "");
+    const activeReferenceGroupId = referenceGroups.some((group) => group.id === requestedActiveGroupId)
+      ? requestedActiveGroupId
+      : referenceGroups[0].id;
+    const locationSource = source.location_reference || null;
+    const locationReference = locationSource && (locationSource.path || locationSource.data)
+      ? {
+          path: String(locationSource.path || ""),
+          data: String(locationSource.data || ""),
+          name: String(locationSource.name || "location.png"),
+          location_label: String(locationSource.location_label || ""),
+        }
+      : null;
     return {
       ...defaultFlowGptBrowserSettings(),
       ...source,
@@ -7800,8 +8082,37 @@ function openBuilder(node) {
       failure_mode: ["last_successful_image", "try_other_provider", "stop"].includes(source.failure_mode) ? source.failure_mode : "last_successful_image",
       ask_previous_scene_image: Boolean(source.ask_previous_scene_image || source.askPreviousSceneImage),
       manual_chat_prompt: String(source.manual_chat_prompt || defaultFlowGptBrowserSettings().manual_chat_prompt),
+      auto_advance_reference_group: source.auto_advance_reference_group !== false,
+      band_sequence_enabled: Boolean(source.band_sequence_enabled),
+      band_sequence_singer_references: normalizeBrowserReferences(source.band_sequence_singer_references),
+      band_sequence_extra_references: normalizeBrowserReferences(source.band_sequence_extra_references),
+      band_sequence_member_references: normalizeBrowserReferences(source.band_sequence_member_references),
+      band_sequence_location_references: normalizeBrowserReferences(source.band_sequence_location_references),
+      band_sequence_location_index: Math.max(0, Number(source.band_sequence_location_index || 0)),
+      band_sequence_set_index: Math.max(0, Math.min(3, Number(source.band_sequence_set_index || 0))),
+      reference_groups: referenceGroups,
+      active_reference_group_id: activeReferenceGroupId,
+      location_reference: locationReference,
       setup_note_collapsed: Boolean(source.setup_note_collapsed),
     };
+  }
+
+  function cloneFlowGptBrowserSettingsForLoadedProject(savedSettings) {
+    if (savedSettings) return cloneFlowGptBrowserSettings(savedSettings);
+    const defaults = defaultFlowGptBrowserSettings();
+    return cloneFlowGptBrowserSettings({
+      ...state.flowGptBrowserSettings,
+      reference_groups: defaults.reference_groups,
+      active_reference_group_id: defaults.active_reference_group_id,
+      location_reference: null,
+      band_sequence_enabled: defaults.band_sequence_enabled,
+      band_sequence_singer_references: defaults.band_sequence_singer_references,
+      band_sequence_extra_references: defaults.band_sequence_extra_references,
+      band_sequence_member_references: defaults.band_sequence_member_references,
+      band_sequence_location_references: defaults.band_sequence_location_references,
+      band_sequence_location_index: 0,
+      band_sequence_set_index: 0,
+    });
   }
 
   function cloneFluxKleinSettings(settings) {
@@ -8081,6 +8392,9 @@ function openBuilder(node) {
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
       waveformMode: state.waveformMode,
       snapToBeats: state.snapToBeats,
+      beats: state.beats,
+      detectedTempoBpm: state.detectedTempoBpm,
+      beatCalibration: state.beatCalibration,
       showBeatMarkers: state.showBeatMarkers,
       showTimelineSceneNotes: state.showTimelineSceneNotes,
       showTimelineVideoNotes: state.showTimelineVideoNotes,
@@ -8167,6 +8481,8 @@ function openBuilder(node) {
     state.activeTimelineMarkerId = data.activeTimelineMarkerId || data.active_timeline_marker_id || "";
     state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
     state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
+    state.detectedTempoBpm = Math.max(0, Number(data.detectedTempoBpm ?? data.detected_tempo_bpm ?? state.detectedTempoBpm ?? 0));
+    state.beatCalibration = data.beatCalibration || data.beat_calibration || null;
     setBeatMarkersVisible(data.showBeatMarkers ?? state.showBeatMarkers ?? false);
     state.leftPanelWidth = data.leftPanelWidth || state.leftPanelWidth || 260;
     state.rightPanelWidth = data.rightPanelWidth || state.rightPanelWidth || 360;
@@ -8285,6 +8601,7 @@ function openBuilder(node) {
   }
 
   async function reloadBeatMarkersFromAudio() {
+    closeBeatCalibrationWizard();
     const audioPath = String(audioInput.value || getWidget(node, "audio_path")?.value || "").trim();
     if (!audioPath) {
       toast("No audio path is loaded, so beat markers cannot be analyzed.", true);
@@ -8303,6 +8620,8 @@ function openBuilder(node) {
       enforceAudioTimelineEnd();
       state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
       state.beats = Array.isArray(data.beats) ? data.beats : [];
+      state.detectedTempoBpm = Math.max(0, Number(data.tempo_bpm || 0));
+      state.beatCalibration = null;
       setBeatMarkersVisible(Boolean(state.beats.length));
       if (!state.beats.length) {
         toast("Audio analysis finished, but no beat markers were detected.", true);
@@ -8316,6 +8635,487 @@ function openBuilder(node) {
       toast(`Could not reload beat markers:\n${String(error?.message || error)}`, true);
       return false;
     }
+  }
+
+  async function ensureAutoBpmForCalibration() {
+    const draft = beatCalibrationDraft;
+    if (!draft) return 0;
+    const cachedBpm = Math.max(0, Number(draft.tempoBpm || state.detectedTempoBpm || 0));
+    if (cachedBpm > 0) return cachedBpm;
+    if (draft.tempoLoading) return 0;
+    const audioPath = String(audioInput.value || getWidget(node, "audio_path")?.value || "").trim();
+    if (!audioPath) {
+      toast("Load project audio before using automatic BPM detection.", true);
+      return 0;
+    }
+    draft.tempoLoading = true;
+    renderBeatCalibrationWizard();
+    try {
+      const data = await postJson("/vrgdg/music_builder/analyze_audio", {
+        audio_path: audioPath,
+        project_folder: projectInput.value || state.projectFolder || "",
+        target_peaks: 1800,
+      }, 90000);
+      const bpm = Math.max(0, Number(data.tempo_bpm || 0));
+      if (!(bpm > 0)) {
+        toast("The audio analyzer could not determine a BPM for this song.", true);
+        return 0;
+      }
+      state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
+      state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
+      state.detectedTempoBpm = bpm;
+      draft.sourceBeats = state.beats
+        .map((beat) => Number(beat?.time ?? beat))
+        .filter((beat) => Number.isFinite(beat) && beat >= 0)
+        .sort((a, b) => a - b);
+      draft.tempoBpm = bpm;
+      state.beatCalibration = null;
+      setBeatMarkersVisible(Boolean(state.beats.length));
+      await autoSaveSessionQuiet("detected audio BPM");
+      return bpm;
+    } catch (error) {
+      toast(`Could not analyze BPM:\n${String(error?.message || error)}`, true);
+      return 0;
+    } finally {
+      if (beatCalibrationDraft === draft) {
+        draft.tempoLoading = false;
+        renderBeatCalibrationWizard();
+        render();
+      }
+    }
+  }
+
+  async function ensureCapCutBeatsForCalibration() {
+    const draft = beatCalibrationDraft;
+    if (!draft) return null;
+    if (draft.capCutImport?.beats?.length) return draft.capCutImport;
+    if (draft.capCutLoading) return null;
+    draft.capCutLoading = true;
+    renderBeatCalibrationWizard();
+    try {
+      const data = await postJson("/vrgdg/music_builder/import_capcut_beats", {
+        audio_duration: loadedGlobalAudioDuration(),
+      }, 90000);
+      const beats = Array.isArray(data.beats)
+        ? data.beats.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0).sort((a, b) => a - b)
+        : [];
+      if (beats.length < 2) throw new Error("The matching CapCut project did not contain a usable beat-marker sequence.");
+      draft.capCutImport = { ...data, beats };
+      return draft.capCutImport;
+    } catch (error) {
+      toast(`Could not locate matching CapCut beats:\n${String(error?.message || error)}`, true);
+      return null;
+    } finally {
+      if (beatCalibrationDraft === draft) {
+        draft.capCutLoading = false;
+        renderBeatCalibrationWizard();
+      }
+    }
+  }
+
+  function beatCalibrationProjectedTime(sourceIndex) {
+    const draft = beatCalibrationDraft;
+    const sourceTime = Number(draft?.sourceBeats?.[sourceIndex]);
+    if (!draft || !Number.isFinite(sourceTime) || !draft.anchors.length) return sourceTime;
+    const first = draft.anchors[0];
+    if (draft.anchors.length === 1) return sourceTime + (first.targetTime - first.sourceTime);
+    const middle = draft.anchors[1];
+    const sourceSpan = middle.sourceTime - first.sourceTime;
+    if (sourceSpan <= 0) return sourceTime;
+    const scale = (middle.targetTime - first.targetTime) / sourceSpan;
+    return first.targetTime + (sourceTime - first.sourceTime) * scale;
+  }
+
+  function renderBeatCalibrationWizard() {
+    const anchors = beatCalibrationDraft?.anchors || [];
+    const usesAutoBpm = beatCalibrationGridType.value === "auto_bpm";
+    const usesCapCutImport = beatCalibrationGridType.value === "capcut_import";
+    const labels = usesAutoBpm ? ["Chosen start"] : ["First", "Middle", "Last"];
+    const usesEvenGrid = beatCalibrationGridType.value === "even_grid";
+    const detectedBpm = Math.max(0, Number(beatCalibrationDraft?.tempoBpm || state.detectedTempoBpm || 0));
+    const capCutImport = beatCalibrationDraft?.capCutImport || null;
+    beatCalibrationTimecodeGrid.style.display = usesCapCutImport ? "none" : "grid";
+    beatCalibrationTimecodeHint.style.display = usesCapCutImport ? "none" : "block";
+    beatCalibrationCaptureButton.disabled = Boolean(usesCapCutImport && beatCalibrationDraft?.capCutLoading);
+    beatCalibrationGridTypeHint.textContent = usesCapCutImport
+      ? beatCalibrationDraft?.capCutLoading
+        ? "Searching the local CapCut project index for the newest project matching this audio duration..."
+        : capCutImport
+          ? `Found ${capCutImport.project_name || "CapCut project"}: ${capCutImport.beats.length} markers from ${capCutImport.beat_source === "timeline_markers" ? "CapCut's frame-aligned timeline markers" : "the AI beat cache"}.`
+          : "Imports exact beat timestamps from the newest local CapCut project matching this audio duration. CapCut files remain read-only."
+      : usesAutoBpm
+      ? `${beatCalibrationDraft?.tempoLoading ? "Analyzing audio BPM..." : detectedBpm > 0 ? `Detected BPM: ${detectedBpm.toFixed(3)}.` : "BPM has not been analyzed yet."} Choose one exact starting beat; the grid will be generated evenly from there to the audio end.`
+      : usesEvenGrid
+        ? "Builds one constant-tempo grid from the first through last anchor and rounds every marker to the selected FPS. The middle anchor checks that the same beat count was matched."
+        : "Preserves the detected marker pattern, then warps it separately before and after the middle anchor.";
+    beatCalibrationInstruction.textContent = usesCapCutImport
+      ? capCutImport
+        ? `Audio: ${capCutImport.audio_name || "unknown"}\nFirst: ${formatTime(capCutImport.beats[0])}   Last: ${formatTime(capCutImport.beats[capCutImport.beats.length - 1])}\nCapCut FPS: ${Number(capCutImport.project_fps || 0).toFixed(3)}`
+        : "Select this mode to locate and preview the matching CapCut beat data."
+      : usesAutoBpm
+      ? anchors.length === 0
+        ? "Enter the exact CapCut timecode for the beat where the new grid should begin, or move the playhead there, then capture it."
+        : "The start beat is captured. Apply the automatically detected BPM grid."
+      : anchors.length === 0
+      ? "Enter the first beat's CapCut timecode below, or move the playhead there, then capture it."
+      : anchors.length === 1
+        ? "Enter a clearly identifiable middle beat's CapCut timecode, or move the playhead there, then capture it."
+        : anchors.length === 2
+          ? "Enter the last real beat's CapCut timecode, or move the playhead there, then capture it."
+          : usesEvenGrid
+            ? "All three anchors are captured. Apply calibration to replace the detected pattern with one even, frame-aligned grid."
+            : "All three anchors are captured. Apply calibration to correct offset and cumulative drift.";
+    beatCalibrationAnchors.textContent = usesCapCutImport
+      ? capCutImport?.draft_path ? `Project file: ${capCutImport.draft_path}\nBeat cache: ${capCutImport.beat_cache_path || "not needed"}` : ""
+      : labels.map((label, index) => {
+        const anchor = anchors[index];
+        return `${label}: ${anchor ? `${formatTime(anchor.targetTime)}  (matched marker ${formatTime(anchor.sourceTime)})` : "not captured"}`;
+      }).join("\n");
+    beatCalibrationCaptureButton.textContent = usesCapCutImport
+      ? beatCalibrationDraft?.capCutLoading ? "Finding CapCut Markers..." : "Import CapCut Markers"
+      : usesAutoBpm
+      ? anchors.length === 0 ? "Capture Grid Start" : "Apply Auto BPM Grid"
+      : anchors.length === 0
+      ? "Capture First Beat"
+      : anchors.length === 1
+        ? "Capture Middle Beat"
+        : anchors.length === 2
+          ? "Capture Last Beat"
+          : "Apply Calibration";
+  }
+
+  async function openBeatCalibrationWizard() {
+    if (!Array.isArray(state.beats) || !state.beats.length) {
+      const loaded = await reloadBeatMarkersFromAudio();
+      if (!loaded) return false;
+    }
+    const sourceBeats = state.beats
+      .map((beat) => Number(beat?.time ?? beat))
+      .filter((beat) => Number.isFinite(beat) && beat >= 0)
+      .sort((a, b) => a - b);
+    if (sourceBeats.length < 3) {
+      toast("At least three beat markers are required for three-point calibration.", true);
+      return false;
+    }
+    beatCalibrationDraft = {
+      sourceBeats,
+      anchors: [],
+      tempoBpm: Math.max(0, Number(state.detectedTempoBpm || 0)),
+      tempoLoading: false,
+      capCutLoading: false,
+      capCutImport: null,
+    };
+    const projectFps = Number(state.i2vVideoSettings?.fps || 24);
+    beatCalibrationFpsInput.value = String(Number.isFinite(projectFps) && projectFps > 0 ? projectFps : 24);
+    beatCalibrationTimecodeInput.value = "";
+    beatCalibrationWizard.style.display = "flex";
+    setBeatMarkersVisible(true);
+    renderBeatCalibrationWizard();
+    render();
+    return true;
+  }
+
+  function parseCapCutTimecode(value, fpsValue) {
+    const text = String(value || "").trim();
+    const fps = Number(fpsValue);
+    if (!Number.isFinite(fps) || fps <= 0 || fps > 120) {
+      throw new Error("Enter a valid FPS from 1 through 120.");
+    }
+    const match = text.match(/^(\d+):([0-5]?\d):([0-5]?\d)(?::|\+)(\d+)$/);
+    if (!match) {
+      throw new Error("Use CapCut timecode HH:MM:SS:FF or HH:MM:SS+FF, for example 00:01:31:11.");
+    }
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    const frames = Number(match[4]);
+    const maximumFrame = Math.ceil(fps) - 1;
+    if (frames < 0 || frames > maximumFrame) {
+      throw new Error(`At ${fps} FPS, the frame value must be between 00 and ${String(maximumFrame).padStart(2, "0")}.`);
+    }
+    return hours * 3600 + minutes * 60 + seconds + frames / fps;
+  }
+
+  function captureBeatCalibrationAnchor() {
+    const draft = beatCalibrationDraft;
+    const maximumAnchors = beatCalibrationGridType.value === "auto_bpm" ? 1 : 3;
+    if (!draft || draft.anchors.length >= maximumAnchors) return false;
+    const capCutTimecode = String(beatCalibrationTimecodeInput.value || "").trim();
+    let targetTime = Number(Math.max(0, currentGlobalTime()).toFixed(3));
+    if (capCutTimecode) {
+      try {
+        targetTime = Number(parseCapCutTimecode(capCutTimecode, beatCalibrationFpsInput.value).toFixed(3));
+      } catch (error) {
+        toast(String(error?.message || error), true);
+        return false;
+      }
+      const audioEnd = loadedGlobalAudioDuration();
+      if (audioEnd > 0 && targetTime > audioEnd + 0.0005) {
+        toast(`That timecode is beyond the loaded audio duration of ${formatTime(audioEnd)}.`, true);
+        return false;
+      }
+      state.sceneSelectionUsesGlobalAudio = true;
+      setGlobalPlaybackTime(targetTime);
+    }
+    const previous = draft.anchors[draft.anchors.length - 1] || null;
+    if (previous && targetTime <= previous.targetTime + 0.05) {
+      toast("Move the playhead later than the previously captured beat.", true);
+      return false;
+    }
+    const firstCandidate = previous ? previous.sourceIndex + 1 : 0;
+    let sourceIndex = -1;
+    let bestDelta = Number.POSITIVE_INFINITY;
+    for (let index = firstCandidate; index < draft.sourceBeats.length; index += 1) {
+      const projected = beatCalibrationProjectedTime(index);
+      const delta = Math.abs(projected - targetTime);
+      if (delta < bestDelta) {
+        sourceIndex = index;
+        bestDelta = delta;
+      }
+    }
+    if (sourceIndex < 0) {
+      toast("No later beat marker is available for this calibration point.", true);
+      return false;
+    }
+    draft.anchors.push({
+      sourceIndex,
+      sourceTime: draft.sourceBeats[sourceIndex],
+      targetTime,
+    });
+    beatCalibrationTimecodeInput.value = "";
+    renderBeatCalibrationWizard();
+    return true;
+  }
+
+  async function applyCapCutBeatImport() {
+    const imported = beatCalibrationDraft?.capCutImport || await ensureCapCutBeatsForCalibration();
+    const beats = Array.isArray(imported?.beats) ? imported.beats : [];
+    if (beats.length < 2) return false;
+    const projectFps = Number(imported.project_fps || 0);
+    const builderFps = Number(beatCalibrationFpsInput.value || state.i2vVideoSettings?.fps || 0);
+    const fpsWarning = projectFps > 0 && builderFps > 0 && Math.abs(projectFps - builderFps) > 0.001
+      ? `\nWARNING: CapCut uses ${projectFps.toFixed(3)} FPS while the Builder is set to ${builderFps.toFixed(3)} FPS.\n`
+      : "";
+    const confirmed = window.confirm(
+      `Import exact CapCut beat markers?\n\n` +
+      `Project: ${imported.project_name || "unknown"}\n` +
+      `Audio: ${imported.audio_name || "unknown"}\n` +
+      `Markers: ${beats.length}\n` +
+      `First: ${formatTime(beats[0])}\n` +
+      `Last: ${formatTime(beats[beats.length - 1])}\n` +
+      `Source: ${imported.beat_source === "timeline_markers" ? "frame-aligned CapCut timeline markers" : "CapCut AI beat cache"}\n` +
+      fpsWarning +
+      "\nThe current Builder beat markers will be replaced. Scene timing will not change."
+    );
+    if (!confirmed) return false;
+
+    pauseTimelineForEditing();
+    pushHistory();
+    state.beats = beats.map((value) => Number(Number(value).toFixed(6)));
+    state.beatCalibration = {
+      mode: "capcut_import",
+      project_name: imported.project_name || "",
+      draft_path: imported.draft_path || "",
+      beat_cache_path: imported.beat_cache_path || "",
+      beat_source: imported.beat_source || "",
+      project_fps: projectFps,
+      marker_count: state.beats.length,
+      first_time: state.beats[0],
+      last_time: state.beats[state.beats.length - 1],
+      calibrated_at: new Date().toISOString(),
+    };
+    beatCalibrationDraft = null;
+    beatCalibrationWizard.style.display = "none";
+    setBeatMarkersVisible(true);
+    render();
+    await autoSaveSessionQuiet("imported exact CapCut beat markers");
+    toast(`Imported ${state.beats.length} exact beat markers from CapCut project ${imported.project_name || ""}. Scene timing was not changed.`);
+    return true;
+  }
+
+  async function applyAutoBpmCalibration() {
+    const draft = beatCalibrationDraft;
+    const startAnchor = draft?.anchors?.[0];
+    if (!draft || !startAnchor) return false;
+    const bpm = Math.max(0, Number(draft.tempoBpm || state.detectedTempoBpm || 0));
+    if (!(bpm > 0)) {
+      toast("No automatically detected BPM is available yet.", true);
+      return false;
+    }
+    const fps = Number(beatCalibrationFpsInput.value);
+    if (!Number.isFinite(fps) || fps <= 0 || fps > 120) {
+      toast("Enter a valid FPS from 1 through 120.", true);
+      return false;
+    }
+    const audioEnd = loadedGlobalAudioDuration();
+    if (!(audioEnd > startAnchor.targetTime + 0.05)) {
+      toast("The chosen grid start must be before the end of the loaded audio.", true);
+      return false;
+    }
+    const beatInterval = 60 / bpm;
+    const calibrated = [Number(startAnchor.targetTime.toFixed(3))];
+    for (let offset = 1; ; offset += 1) {
+      const idealTime = startAnchor.targetTime + offset * beatInterval;
+      if (idealTime > audioEnd + 0.0005) break;
+      const rounded = Number((Math.round(idealTime * fps) / fps).toFixed(3));
+      if (rounded > audioEnd + 0.0005) break;
+      if (rounded > calibrated[calibrated.length - 1] + 0.0005) calibrated.push(rounded);
+    }
+    if (calibrated.length < 2) {
+      toast("The detected BPM did not produce a usable grid after the chosen start.", true);
+      return false;
+    }
+    const confirmed = window.confirm(
+      `Apply auto-detected BPM grid?\n\n` +
+      `Detected tempo: ${bpm.toFixed(3)} BPM\n` +
+      `Chosen start: ${formatTime(startAnchor.targetTime)}\n` +
+      `Beat interval: ${beatInterval.toFixed(6)} seconds\n` +
+      `Generated markers: ${calibrated.length}\n` +
+      `Last marker: ${formatTime(calibrated[calibrated.length - 1])}\n\n` +
+      "Markers before the chosen start will be removed. Scene timing will not change."
+    );
+    if (!confirmed) return false;
+
+    pauseTimelineForEditing();
+    pushHistory();
+    state.beats = calibrated;
+    state.beatCalibration = {
+      mode: "auto_bpm",
+      detected_bpm: Number(bpm.toFixed(6)),
+      beat_interval: Number(beatInterval.toFixed(9)),
+      fps: Number(fps.toFixed(6)),
+      start_time: Number(startAnchor.targetTime.toFixed(3)),
+      source_marker_index: startAnchor.sourceIndex,
+      source_marker_time: Number(startAnchor.sourceTime.toFixed(3)),
+      calibrated_at: new Date().toISOString(),
+    };
+    beatCalibrationDraft = null;
+    beatCalibrationWizard.style.display = "none";
+    setBeatMarkersVisible(true);
+    render();
+    await autoSaveSessionQuiet("auto detected BPM beat grid");
+    toast(`Auto BPM grid applied at ${bpm.toFixed(3)} BPM. Scene timing was not changed.`);
+    return true;
+  }
+
+  async function applyThreePointBeatCalibration() {
+    const draft = beatCalibrationDraft;
+    if (!draft || draft.anchors.length !== 3) return false;
+    const [first, middle, last] = draft.anchors;
+    const gridType = beatCalibrationGridType.value === "even_grid" ? "even_grid" : "detected_warp";
+    const firstSourceSpan = middle.sourceTime - first.sourceTime;
+    const secondSourceSpan = last.sourceTime - middle.sourceTime;
+    const firstTargetSpan = middle.targetTime - first.targetTime;
+    const secondTargetSpan = last.targetTime - middle.targetTime;
+    if (firstSourceSpan <= 0 || secondSourceSpan <= 0 || firstTargetSpan <= 0 || secondTargetSpan <= 0) {
+      toast("The calibration points are not in a valid chronological order.", true);
+      return false;
+    }
+    const firstScale = firstTargetSpan / firstSourceSpan;
+    const secondScale = secondTargetSpan / secondSourceSpan;
+    if (firstScale < 0.5 || firstScale > 1.5 || secondScale < 0.5 || secondScale > 1.5) {
+      toast("The selected beats imply an extreme tempo change. Capture the middle and last points again using corresponding beat markers.", true);
+      return false;
+    }
+
+    const calibrated = [];
+    let evenGridDetails = null;
+    if (gridType === "even_grid") {
+      const fps = Number(beatCalibrationFpsInput.value);
+      if (!Number.isFinite(fps) || fps <= 0 || fps > 120) {
+        toast("Enter a valid FPS from 1 through 120.", true);
+        return false;
+      }
+      const totalIntervals = last.sourceIndex - first.sourceIndex;
+      const middleIntervalIndex = middle.sourceIndex - first.sourceIndex;
+      if (totalIntervals < 2 || middleIntervalIndex <= 0 || middleIntervalIndex >= totalIntervals) {
+        toast("The anchors do not identify a usable beat count. Capture three corresponding beats again.", true);
+        return false;
+      }
+      const beatInterval = (last.targetTime - first.targetTime) / totalIntervals;
+      if (!Number.isFinite(beatInterval) || beatInterval <= 0.05) {
+        toast("The selected anchors do not produce a usable even beat interval.", true);
+        return false;
+      }
+      const projectedMiddle = first.targetTime + middleIntervalIndex * beatInterval;
+      const middleErrorSeconds = projectedMiddle - middle.targetTime;
+      const middleErrorFrames = middleErrorSeconds * fps;
+      for (let offset = 0; offset <= totalIntervals; offset += 1) {
+        let markerTime;
+        if (offset === 0) markerTime = first.targetTime;
+        else if (offset === totalIntervals) markerTime = last.targetTime;
+        else markerTime = Math.round((first.targetTime + offset * beatInterval) * fps) / fps;
+        const rounded = Number(markerTime.toFixed(3));
+        if (calibrated.length && rounded <= calibrated[calibrated.length - 1] + 0.0005) {
+          toast("The chosen FPS is too low to represent this beat interval without duplicate markers.", true);
+          return false;
+        }
+        calibrated.push(rounded);
+      }
+      evenGridDetails = {
+        fps,
+        beatInterval,
+        bpm: 60 / beatInterval,
+        middleErrorFrames,
+      };
+    } else {
+      for (let index = first.sourceIndex; index <= last.sourceIndex; index += 1) {
+        const sourceTime = draft.sourceBeats[index];
+        const mapped = sourceTime <= middle.sourceTime
+          ? first.targetTime + (sourceTime - first.sourceTime) * firstScale
+          : middle.targetTime + (sourceTime - middle.sourceTime) * secondScale;
+        const rounded = Number(mapped.toFixed(3));
+        if (!calibrated.length || rounded > calibrated[calibrated.length - 1] + 0.0005) calibrated.push(rounded);
+      }
+    }
+    if (calibrated.length < 3) {
+      toast("Calibration did not produce a usable beat grid.", true);
+      return false;
+    }
+
+    const calibrationDetails = evenGridDetails
+      ? `Grid type: Even BPM grid\nInterval: ${evenGridDetails.beatInterval.toFixed(6)} seconds\nTempo: ${evenGridDetails.bpm.toFixed(3)} BPM\nMiddle check: ${evenGridDetails.middleErrorFrames >= 0 ? "+" : ""}${evenGridDetails.middleErrorFrames.toFixed(2)} frames${Math.abs(evenGridDetails.middleErrorFrames) > 1 ? " (warning only)" : ""}\n\n`
+      : `Grid type: Warp detected markers\nGrid scale before middle: ${firstScale.toFixed(6)}\nGrid scale after middle: ${secondScale.toFixed(6)}\n\n`;
+    const confirmed = window.confirm(
+      `${gridType === "even_grid" ? "Apply even beat grid" : "Apply detected-marker calibration"}?\n\n` +
+      `First: ${formatTime(first.targetTime)}\nMiddle: ${formatTime(middle.targetTime)}\nLast: ${formatTime(last.targetTime)}\n\n` +
+      calibrationDetails +
+      "Markers before the first beat and after the last beat will be removed. Scene timing will not change."
+    );
+    if (!confirmed) return false;
+
+    pauseTimelineForEditing();
+    pushHistory();
+    state.beats = calibrated;
+    state.beatCalibration = {
+      mode: gridType,
+      anchors: draft.anchors.map((anchor) => ({
+        source_index: anchor.sourceIndex,
+        source_time: Number(anchor.sourceTime.toFixed(3)),
+        target_time: Number(anchor.targetTime.toFixed(3)),
+      })),
+      first_scale: Number(firstScale.toFixed(9)),
+      second_scale: Number(secondScale.toFixed(9)),
+      ...(evenGridDetails ? {
+        fps: Number(evenGridDetails.fps.toFixed(6)),
+        beat_interval: Number(evenGridDetails.beatInterval.toFixed(9)),
+        bpm: Number(evenGridDetails.bpm.toFixed(6)),
+        middle_error_frames: Number(evenGridDetails.middleErrorFrames.toFixed(3)),
+      } : {}),
+      calibrated_at: new Date().toISOString(),
+    };
+    beatCalibrationDraft = null;
+    beatCalibrationWizard.style.display = "none";
+    setBeatMarkersVisible(true);
+    render();
+    await autoSaveSessionQuiet(gridType === "even_grid" ? "even beat grid calibration" : "detected beat marker calibration");
+    toast(`${gridType === "even_grid" ? "Even beat grid" : "Detected-marker calibration"} applied. Scene timing was not changed.`);
+    return true;
+  }
+
+  function closeBeatCalibrationWizard() {
+    beatCalibrationDraft = null;
+    beatCalibrationWizard.style.display = "none";
   }
 
   function cleanGeneratedPromptText(prompt) {
@@ -10769,7 +11569,9 @@ function openBuilder(node) {
     globalScrub.max = String(Math.max(0, maxTime));
     if (!state.isScrubbing) globalScrub.value = String(current);
     globalScrubTime.textContent = `${formatTime(current)} / ${formatTime(maxTime)}`;
-    playhead.style.left = `${current * state.pxPerSecond}px`;
+    // Scene blocks are positioned inside segmentLayer, which starts after the
+    // timeline viewport padding. Keep the playhead on that same visual origin.
+    playhead.style.left = `${segmentLayer.offsetLeft + current * state.pxPerSecond}px`;
     syncPreviewPlayback(current);
   }
 
@@ -10786,7 +11588,7 @@ function openBuilder(node) {
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
-    if (usingSceneAudioMode() || usingRenderedSceneAudioMode()) {
+    if (!state.sceneSelectionUsesGlobalAudio && (usingSceneAudioMode() || usingRenderedSceneAudioMode())) {
       const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments[state.segments.length - 1] || null;
       if (segment) state.activeId = segment.id;
       const sourcePath = timelineAudioPathForSegment(segment);
@@ -10813,6 +11615,7 @@ function openBuilder(node) {
   }
 
   function playSceneAudioFrom(time = currentGlobalTime()) {
+    state.sceneSelectionUsesGlobalAudio = false;
     const maxTime = timelineDuration();
     const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments.find((item) => timelineAudioEndForSegment(item) > time && timelineAudioPathForSegment(item)) || state.segments[0] || null;
     if (!segment) return;
@@ -11984,6 +12787,7 @@ function openBuilder(node) {
     flowGptFailureMode.value = settings.failure_mode || "last_successful_image";
     flowGptAskPreviousImage.input.checked = Boolean(settings.ask_previous_scene_image);
     flowGptManualChatPrompt.value = settings.manual_chat_prompt || defaultFlowGptBrowserSettings().manual_chat_prompt;
+    browserAiGroupPrompt.value = settings.manual_chat_prompt || defaultFlowGptBrowserSettings().manual_chat_prompt;
     const segment = activeSegment();
     flowGptPrompt.value = segment?.flow_gpt_prompt || segment?.t2i_prompt || segment?.flux_prompt || segment?.nb_prompt || "";
     flowGptAspectRatioField.style.display = isGpt ? "flex" : "none";
@@ -12000,6 +12804,7 @@ function openBuilder(node) {
       button.style.borderColor = active ? "#0891b2" : "#3f3f46";
       button.style.color = active ? "#082f49" : "#f4f4f5";
     }
+    renderBrowserAiReferenceGroups();
     syncFlowGptManualPanel();
   }
 
@@ -12086,6 +12891,634 @@ function openBuilder(node) {
     autoSaveSessionQuiet(`Browser image provider changed to ${browserImageProviderLabel(normalized)}`).catch(() => null);
   }
 
+  function activeBrowserAiReferenceGroup(settings = state.flowGptBrowserSettings) {
+    const normalized = Array.isArray(settings?.reference_groups) && settings.reference_groups.length
+      ? settings
+      : cloneFlowGptBrowserSettings(settings);
+    return normalized.reference_groups.find((group) => group.id === normalized.active_reference_group_id)
+      || normalized.reference_groups[0];
+  }
+
+  function browserAiBandSequenceSelection(settings = state.flowGptBrowserSettings) {
+    const singerReferences = Array.isArray(settings?.band_sequence_singer_references) ? settings.band_sequence_singer_references : [];
+    const extraReferences = Array.isArray(settings?.band_sequence_extra_references) ? settings.band_sequence_extra_references : [];
+    const memberReferences = Array.isArray(settings?.band_sequence_member_references) ? settings.band_sequence_member_references : [];
+    const locations = Array.isArray(settings?.band_sequence_location_references) ? settings.band_sequence_location_references : [];
+    const locationIndex = locations.length
+      ? Math.max(0, Math.min(locations.length - 1, Number(settings?.band_sequence_location_index || 0)))
+      : 0;
+    const singerCount = singerReferences.length ? 1 : 0;
+    const extraCount = extraReferences.length;
+    const memberCount = memberReferences.length;
+    const definitions = [
+      {
+        key: "singer",
+        label: "Singer only",
+        references: singerReferences,
+        characterCount: singerCount,
+        instruction: "SUBJECT SET: SINGER ONLY. INCLUDE THE SINGER AND DO NOT INCLUDE ANY OTHER BAND MEMBERS.",
+      },
+      ...(extraCount ? [{
+        key: "singer_extras",
+        label: "Singer + Extras",
+        references: [...singerReferences, ...extraReferences],
+        characterCount: singerCount + extraCount,
+        instruction: `SUBJECT SET: SINGER WITH EXTRAS. TREAT THE SINGER AND THE ${extraCount} EXTRA CHARACTER${extraCount === 1 ? "" : "S"} AS ONE GROUP AND INCLUDE THEM TOGETHER IN EVERY IMAGE. DO NOT INCLUDE ANY BAND MEMBERS. DO NOT ADD ANY OTHER PEOPLE.`,
+      }] : []),
+      {
+        key: "members",
+        label: "Other band members only",
+        references: memberReferences,
+        characterCount: memberCount,
+        instruction: `SUBJECT SET: OTHER BAND MEMBERS ONLY. INCLUDE THE ${memberCount} OTHER BAND MEMBER${memberCount === 1 ? "" : "S"} AND DO NOT INCLUDE THE SINGER.`,
+      },
+      {
+        key: "full_band",
+        label: "Full band with singer",
+        references: [...singerReferences, ...memberReferences],
+        characterCount: singerCount + memberCount,
+        instruction: `SUBJECT SET: FULL BAND. INCLUDE THE SINGER AND ALL ${memberCount} OTHER BAND MEMBER${memberCount === 1 ? "" : "S"}.`,
+      },
+    ];
+    const setIndex = Math.max(0, Math.min(definitions.length - 1, Number(settings?.band_sequence_set_index || 0)));
+    if (settings) {
+      settings.band_sequence_location_index = locationIndex;
+      settings.band_sequence_set_index = setIndex;
+    }
+    const definition = definitions[setIndex];
+    return {
+      ...definition,
+      setIndex,
+      locationIndex,
+      location: locations[locationIndex] || null,
+      locationCount: locations.length,
+      setCount: definitions.length,
+      singerCount,
+      extraCount,
+      memberCount,
+    };
+  }
+
+  function browserAiCharacterCountPrompt(characterCount, subjectInstruction = "", includesNamedExtras = false) {
+    const count = Math.max(1, Number(characterCount || 1));
+    const singular = count === 1;
+    const characterLabel = singular ? "character" : "characters";
+    const placementSubject = singular ? "the character" : `all ${count} characters`;
+    const lines = [
+      "Using the character and location reference images, create 5 new images. "
+        + `Place ${placementSubject} naturally within the location in different areas, poses, and compositions. `
+        + "Vary the camera position and angle for each image. "
+        + `Integrate ${placementSubject} into the environment instead of simply pasting ${singular ? "the character" : "the characters"} onto the scene.`,
+      "The images should look like cinematic video movie stills for a music video.",
+      "16:9 aspect ratio.",
+      `I need a close up wide angle image of the ${count} ${characterLabel}.`,
+      "DO NOT SEND A GRID OF IMAGES!!! SEND EACH IMAGE AS ITS OWN IMAGE",
+      includesNamedExtras
+        ? `ONLY INCLUDE THE ${count} ${characterLabel.toUpperCase()}. NO ADDITIONAL CHARACTERS.`
+        : `ONLY INCLUDE THE ${count} ${characterLabel.toUpperCase()}. NO EXTRAS.`,
+    ];
+    if (subjectInstruction) lines.push(subjectInstruction);
+    return lines.join("\n");
+  }
+
+  function updateBrowserAiPromptCharacterCount(settings) {
+    const bandSelection = settings.band_sequence_enabled ? browserAiBandSequenceSelection(settings) : null;
+    const group = bandSelection ? null : activeBrowserAiReferenceGroup(settings);
+    const characterCount = bandSelection ? bandSelection.characterCount : group.images.length;
+    const sequenceKey = bandSelection
+      ? `band:${bandSelection.key}:${characterCount}`
+      : `group:${group.id}:${characterCount}`;
+    const previousCount = Math.max(0, Number(settings.browser_ai_prompt_character_count || 0));
+    const previousSequenceKey = String(settings.browser_ai_prompt_sequence_key || "");
+    if (!characterCount || (previousCount === characterCount && previousSequenceKey === sequenceKey)) return false;
+
+    const legacyDefault = defaultFlowGptBrowserSettings().manual_chat_prompt.trim();
+    const currentPrompt = String(settings.manual_chat_prompt || "").trim();
+    if (!currentPrompt || currentPrompt === legacyDefault) {
+      settings.manual_chat_prompt = browserAiCharacterCountPrompt(
+        characterCount,
+        bandSelection?.instruction || "",
+        bandSelection?.key === "singer_extras",
+      );
+    } else {
+      const singular = characterCount === 1;
+      const characterLabel = singular ? "character" : "characters";
+      const placementSubject = singular ? "the character" : `all ${characterCount} characters`;
+      let nextPrompt = currentPrompt
+        .replace(/Place (?:the character|all \d+ characters) naturally/gi, `Place ${placementSubject} naturally`)
+        .replace(/Integrate (?:the character|all \d+ characters) into/gi, `Integrate ${placementSubject} into`)
+        .replace(/pasting (?:the character|the characters) onto/gi, `pasting ${singular ? "the character" : "the characters"} onto`);
+      const closeUpLine = `I need a close up wide angle image of the ${characterCount} ${characterLabel}.`;
+      const exactCountLine = bandSelection?.key === "singer_extras"
+        ? `ONLY INCLUDE THE ${characterCount} ${characterLabel.toUpperCase()}. NO ADDITIONAL CHARACTERS.`
+        : `ONLY INCLUDE THE ${characterCount} ${characterLabel.toUpperCase()}. NO EXTRAS.`;
+      if (/I need a close up wide angle image of the \d+ characters?\.?/i.test(nextPrompt)) {
+        nextPrompt = nextPrompt.replace(/I need a close up wide angle image of the \d+ characters?\.?/gi, closeUpLine);
+      } else {
+        nextPrompt += `\n${closeUpLine}`;
+      }
+      if (!/DO NOT SEND A GRID OF IMAGES/i.test(nextPrompt)) {
+        nextPrompt += "\nDO NOT SEND A GRID OF IMAGES!!! SEND EACH IMAGE AS ITS OWN IMAGE";
+      }
+      if (/ONLY INCLUDE THE \d+ CHARACTERS?(?:\. (?:NO EXTRAS|NO ADDITIONAL CHARACTERS)\.| (?:NO EXTRAS|NO ADDITIONAL CHARACTERS))?/i.test(nextPrompt)) {
+        nextPrompt = nextPrompt.replace(/ONLY INCLUDE THE \d+ CHARACTERS?(?:\. (?:NO EXTRAS|NO ADDITIONAL CHARACTERS)\.| (?:NO EXTRAS|NO ADDITIONAL CHARACTERS))?/gi, exactCountLine);
+      } else {
+        nextPrompt += `\n${exactCountLine}`;
+      }
+      nextPrompt = nextPrompt.replace(/\n?SUBJECT SET:[^\n]*/gi, "").trim();
+      if (bandSelection?.instruction) nextPrompt += `\n${bandSelection.instruction}`;
+      settings.manual_chat_prompt = nextPrompt;
+    }
+    settings.browser_ai_prompt_character_count = characterCount;
+    settings.browser_ai_prompt_sequence_key = sequenceKey;
+    return true;
+  }
+
+  function browserAiReferenceRow(item, onRemove) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:7px;align-items:center;border:1px solid #3f3f46;border-radius:6px;background:#18181b;padding:5px;";
+    const image = document.createElement("img");
+    image.alt = item?.name || "Reference";
+    image.src = item?.path ? makeEditorImageUrl(item.path) : String(item?.data || "");
+    image.style.cssText = "width:42px;height:42px;object-fit:cover;border-radius:4px;background:#09090b;";
+    const label = document.createElement("div");
+    label.textContent = item?.name || String(item?.path || "reference image").split(/[\\/]/).pop();
+    label.title = item?.path || item?.name || "";
+    label.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#e4e4e7;";
+    const remove = makeButton("Remove");
+    remove.style.padding = "5px 7px";
+    remove.onclick = onRemove;
+    row.append(image, label, remove);
+    return row;
+  }
+
+  function browserAiLocationDisplayName(item, index = 0) {
+    const customLabel = String(item?.location_label || "").trim();
+    if (customLabel) return customLabel;
+    const filename = String(item?.name || item?.path || "").split(/[\\/]/).pop();
+    const filenameWithoutExtension = filename.replace(/\.(?:png|jpe?g|webp)$/i, "").trim();
+    return filenameWithoutExtension || `Location ${index + 1}`;
+  }
+
+  function browserAiLocationReferenceRow(item, index, onRemove, onLabelChange) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:7px;align-items:center;border:1px solid #7c3aed;border-radius:6px;background:#18181b;padding:5px;";
+    const image = document.createElement("img");
+    image.alt = browserAiLocationDisplayName(item, index);
+    image.src = item?.path ? makeEditorImageUrl(item.path) : String(item?.data || "");
+    image.style.cssText = "width:42px;height:42px;object-fit:cover;border-radius:4px;background:#09090b;";
+    const details = document.createElement("div");
+    details.style.cssText = "display:flex;flex-direction:column;gap:3px;min-width:0;";
+    const locationName = makeInput(String(item?.location_label || ""));
+    locationName.placeholder = `Type location name, e.g. ${index === 0 ? "Water" : `Location ${index + 1}`}`;
+    locationName.maxLength = 90;
+    locationName.title = "This name is used in the location selector and as the Browser AI download folder.";
+    ["keydown", "keypress", "keyup"].forEach((eventName) => {
+      locationName.addEventListener(eventName, (event) => event.stopPropagation());
+    });
+    locationName.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") locationName.blur();
+    });
+    locationName.addEventListener("change", () => onLabelChange(String(locationName.value || "").trim()));
+    const filename = document.createElement("div");
+    filename.textContent = item?.name || String(item?.path || "location image").split(/[\\/]/).pop();
+    filename.title = item?.path || item?.name || "";
+    filename.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#71717a;";
+    details.append(locationName, filename);
+    const remove = makeButton("Remove");
+    remove.style.padding = "5px 7px";
+    remove.onclick = onRemove;
+    row.append(image, details, remove);
+    return row;
+  }
+
+  function renderBrowserAiReferenceGroups() {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    updateBrowserAiPromptCharacterCount(settings);
+    state.flowGptBrowserSettings = settings;
+    const group = activeBrowserAiReferenceGroup(settings);
+    browserAiGroupSelect.innerHTML = "";
+    settings.reference_groups.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = `${item.name} (${item.images.length})`;
+      browserAiGroupSelect.append(option);
+    });
+    browserAiGroupSelect.value = group.id;
+    browserAiGroupList.innerHTML = "";
+    if (!group.images.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No character or band references in this group yet.";
+      empty.style.cssText = "font-size:10px;color:#71717a;padding:2px 1px;";
+      browserAiGroupList.append(empty);
+    } else {
+      group.images.forEach((item, index) => {
+        browserAiGroupList.append(browserAiReferenceRow(item, () => {
+          const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+          const currentGroup = activeBrowserAiReferenceGroup(current);
+          currentGroup.images.splice(index, 1);
+          state.flowGptBrowserSettings = current;
+          renderBrowserAiReferenceGroups();
+          autoSaveSessionQuiet("Browser AI group reference removed").catch(() => null);
+        }));
+      });
+    }
+    browserAiLocationList.innerHTML = "";
+    if (settings.location_reference) {
+      browserAiLocationList.append(browserAiLocationReferenceRow(
+        settings.location_reference,
+        0,
+        () => {
+          const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+          current.location_reference = null;
+          state.flowGptBrowserSettings = current;
+          renderBrowserAiReferenceGroups();
+          autoSaveSessionQuiet("Browser AI location cleared").catch(() => null);
+        },
+        (locationLabel) => {
+          const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+          if (!current.location_reference) return;
+          current.location_reference.location_label = locationLabel;
+          state.flowGptBrowserSettings = current;
+          renderBrowserAiReferenceGroups();
+          autoSaveSessionQuiet("Browser AI location named").catch(() => null);
+        },
+      ));
+    } else {
+      const empty = document.createElement("div");
+      empty.textContent = "No location selected. A group can still be sent without one.";
+      empty.style.cssText = "font-size:10px;color:#71717a;padding:2px 1px;";
+      browserAiLocationList.append(empty);
+    }
+    const renderSequenceReferences = (container, items, settingKey, emptyText, saveReason) => {
+      container.innerHTML = "";
+      if (!items.length) {
+        const empty = document.createElement("div");
+        empty.textContent = emptyText;
+        empty.style.cssText = "font-size:10px;color:#71717a;padding:2px 1px;";
+        container.append(empty);
+        return;
+      }
+      items.forEach((item, index) => {
+        container.append(browserAiReferenceRow(item, () => {
+          const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+          current[settingKey].splice(index, 1);
+          if (settingKey === "band_sequence_location_references") {
+            current.band_sequence_location_index = Math.max(0, Math.min(
+              current.band_sequence_location_index,
+              current.band_sequence_location_references.length - 1,
+            ));
+          }
+          state.flowGptBrowserSettings = current;
+          renderBrowserAiReferenceGroups();
+          autoSaveSessionQuiet(saveReason).catch(() => null);
+        }));
+      });
+    };
+    renderSequenceReferences(
+      browserAiSingerList,
+      settings.band_sequence_singer_references,
+      "band_sequence_singer_references",
+      "No singer references added yet.",
+      "Browser AI singer reference removed",
+    );
+    renderSequenceReferences(
+      browserAiExtrasList,
+      settings.band_sequence_extra_references,
+      "band_sequence_extra_references",
+      "No optional extras added.",
+      "Browser AI extra reference removed",
+    );
+    renderSequenceReferences(
+      browserAiMembersList,
+      settings.band_sequence_member_references,
+      "band_sequence_member_references",
+      "No other band member references added yet.",
+      "Browser AI band member reference removed",
+    );
+    browserAiLocationsList.innerHTML = "";
+    if (!settings.band_sequence_location_references.length) {
+      const empty = document.createElement("div");
+      empty.textContent = "No sequence locations added yet.";
+      empty.style.cssText = "font-size:10px;color:#71717a;padding:2px 1px;";
+      browserAiLocationsList.append(empty);
+    } else {
+      settings.band_sequence_location_references.forEach((item, index) => {
+        browserAiLocationsList.append(browserAiLocationReferenceRow(
+          item,
+          index,
+          () => {
+            const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+            current.band_sequence_location_references.splice(index, 1);
+            current.band_sequence_location_index = Math.max(0, Math.min(
+              current.band_sequence_location_index,
+              current.band_sequence_location_references.length - 1,
+            ));
+            state.flowGptBrowserSettings = current;
+            renderBrowserAiReferenceGroups();
+            autoSaveSessionQuiet("Browser AI sequence location removed").catch(() => null);
+          },
+          (locationLabel) => {
+            const current = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+            const location = current.band_sequence_location_references[index];
+            if (!location) return;
+            location.location_label = locationLabel;
+            state.flowGptBrowserSettings = current;
+            renderBrowserAiReferenceGroups();
+            autoSaveSessionQuiet("Browser AI sequence location named").catch(() => null);
+          },
+        ));
+      });
+    }
+    browserAiSequenceLocationSelect.innerHTML = "";
+    settings.band_sequence_location_references.forEach((item, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = `${index + 1}. ${String(item.location_label || "").trim() || "[Type a location name below]"}`;
+      browserAiSequenceLocationSelect.append(option);
+    });
+    if (!settings.band_sequence_location_references.length) {
+      const option = document.createElement("option");
+      option.value = "0";
+      option.textContent = "Add at least one location";
+      browserAiSequenceLocationSelect.append(option);
+    }
+    const sequenceSelection = browserAiBandSequenceSelection(settings);
+    browserAiSequenceSetSelect.innerHTML = "";
+    const sequenceDefinitions = [
+      "Singer only",
+      ...(settings.band_sequence_extra_references.length ? ["Singer + Extras"] : []),
+      "Other band members only",
+      "Full band with singer",
+    ];
+    sequenceDefinitions.forEach((label, index) => {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = `${index + 1}. ${label}`;
+      browserAiSequenceSetSelect.append(option);
+    });
+    browserAiSequenceLocationSelect.value = String(sequenceSelection.locationIndex);
+    browserAiSequenceSetSelect.value = String(sequenceSelection.setIndex);
+    browserAiSequenceProgress.textContent = sequenceSelection.location
+      ? `Location ${sequenceSelection.locationIndex + 1} of ${sequenceSelection.locationCount}: ${browserAiLocationDisplayName(sequenceSelection.location, sequenceSelection.locationIndex)} | Set ${sequenceSelection.setIndex + 1} of ${sequenceSelection.setCount}: ${sequenceSelection.label}`
+      : "Add singer references, optional extras, other band members, and all locations to begin.";
+    browserAiBandSequenceMode.input.checked = Boolean(settings.band_sequence_enabled);
+    browserAiBandSequencePanel.style.display = settings.band_sequence_enabled ? "flex" : "none";
+    browserAiCustomGroupsPanel.style.display = settings.band_sequence_enabled ? "none" : "flex";
+    browserAiDeleteGroupButton.disabled = settings.reference_groups.length <= 1;
+    browserAiAutoAdvanceGroup.input.checked = settings.auto_advance_reference_group !== false;
+    browserAiSendButton.textContent = settings.band_sequence_enabled ? "Send Selected Set" : "Send Selected Group";
+    browserAiGroupPrompt.value = settings.manual_chat_prompt || defaultFlowGptBrowserSettings().manual_chat_prompt;
+    flowGptManualChatPrompt.value = browserAiGroupPrompt.value;
+    browserAiFinishButton.disabled = browserAiDownloadOverrideProviders.size === 0;
+  }
+
+  async function storeBrowserAiReferenceFile(file, referenceType, groupName) {
+    const isImage = file && (/^image\//i.test(file.type || "") || /\.(png|jpe?g|webp)$/i.test(file.name || ""));
+    if (!isImage) throw new Error("Use a PNG, JPG, JPEG, or WEBP reference image.");
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!projectFolder) throw new Error("Create or load a project before adding Browser AI references.");
+    const imageData = await readFileAsDataUrl(file);
+    const saved = await storeBrowserImageReference({
+      project_folder: projectFolder,
+      group_name: groupName,
+      reference_type: referenceType,
+      image_data: imageData,
+      name: file.name || "reference.png",
+      timeoutMs: 120000,
+    });
+    return { path: saved.saved_path || "", data: "", name: file.name || saved.name || "reference.png" };
+  }
+
+  async function addBrowserAiGroupFiles(files) {
+    const imageFiles = Array.from(files || []).filter((file) => /^image\//i.test(file.type || "") || /\.(png|jpe?g|webp)$/i.test(file.name || ""));
+    if (!imageFiles.length) return;
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const group = activeBrowserAiReferenceGroup(settings);
+    const remaining = Math.max(0, 50 - group.images.length - (settings.location_reference ? 1 : 0));
+    if (!remaining) throw new Error("Browser AI supports up to 50 reference images per request.");
+    const accepted = imageFiles.slice(0, remaining);
+    browserAiGroupStatus.textContent = `Saving ${accepted.length} reference image${accepted.length === 1 ? "" : "s"} into the project...`;
+    for (const file of accepted) {
+      group.images.push(await storeBrowserAiReferenceFile(file, "group", group.name));
+    }
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    await autoSaveSessionQuiet("Browser AI group references added");
+    browserAiGroupStatus.textContent = `${group.name} now contains ${group.images.length} reference image${group.images.length === 1 ? "" : "s"}.`;
+  }
+
+  async function addBrowserAiBandSequenceFiles(files, settingKey, referenceType, folderName, label) {
+    const imageFiles = Array.from(files || []).filter((file) => /^image\//i.test(file.type || "") || /\.(png|jpe?g|webp)$/i.test(file.name || ""));
+    if (!imageFiles.length) return;
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const target = settings[settingKey];
+    const isLocationList = settingKey === "band_sequence_location_references";
+    const subjectReferenceCount = settings.band_sequence_singer_references.length
+      + settings.band_sequence_extra_references.length
+      + settings.band_sequence_member_references.length;
+    const remaining = isLocationList ? Math.max(0, 200 - target.length) : Math.max(0, 49 - subjectReferenceCount);
+    if (!remaining) {
+      throw new Error(isLocationList
+        ? "Band Sequence supports up to 200 saved locations."
+        : "Singer, extra, and other-member references can use up to 49 images so one location can be included in each request.");
+    }
+    const accepted = imageFiles.slice(0, remaining);
+    browserAiGroupStatus.textContent = `Saving ${accepted.length} ${label.toLowerCase()} image${accepted.length === 1 ? "" : "s"} into the project...`;
+    for (const file of accepted) {
+      target.push(await storeBrowserAiReferenceFile(file, referenceType, folderName));
+    }
+    if (settingKey === "band_sequence_extra_references") {
+      settings.band_sequence_set_index = 0;
+      settings.browser_ai_prompt_sequence_key = "";
+    }
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    await autoSaveSessionQuiet(`Browser AI ${label.toLowerCase()} added`);
+    browserAiGroupStatus.textContent = `${label}: ${target.length} saved image${target.length === 1 ? "" : "s"}.`;
+  }
+
+  function clearBrowserAiBandSequenceFiles(settingKey, label) {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    if (settings[settingKey].length && !window.confirm(`Remove all ${label.toLowerCase()} from Band Sequence? Stored image files will be kept.`)) return;
+    settings[settingKey] = [];
+    if (settingKey === "band_sequence_location_references") {
+      settings.band_sequence_location_index = 0;
+      settings.band_sequence_set_index = 0;
+    } else if (settingKey === "band_sequence_extra_references") {
+      settings.band_sequence_set_index = 0;
+    }
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    browserAiGroupStatus.textContent = `${label} cleared. Stored files were not deleted.`;
+    autoSaveSessionQuiet(`Browser AI ${label.toLowerCase()} cleared`).catch(() => null);
+  }
+
+  async function setBrowserAiLocationFile(file) {
+    if (!file) return;
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const group = activeBrowserAiReferenceGroup(settings);
+    if (group.images.length >= 50 && !settings.location_reference) {
+      throw new Error("Remove one group image before adding a location; Browser AI supports 50 references per request.");
+    }
+    browserAiGroupStatus.textContent = "Saving the location reference into the project...";
+    settings.location_reference = await storeBrowserAiReferenceFile(file, "location", group.name);
+    if (settings.auto_advance_reference_group !== false && settings.reference_groups.length) {
+      settings.active_reference_group_id = settings.reference_groups[0].id;
+    }
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    await autoSaveSessionQuiet("Browser AI location reference changed");
+    const selectedGroup = activeBrowserAiReferenceGroup(state.flowGptBrowserSettings);
+    browserAiGroupStatus.textContent = `Location ready: ${browserAiLocationDisplayName(settings.location_reference)}. Type a location name above if the filename is not descriptive. Starting group: ${selectedGroup.name}.`;
+  }
+
+  function chooseBrowserAiImageFiles({ multiple = false, onFiles }) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp";
+    input.multiple = multiple;
+    input.style.display = "none";
+    document.body.append(input);
+    input.onchange = () => {
+      const files = Array.from(input.files || []);
+      input.remove();
+      Promise.resolve(onFiles(files)).catch((error) => {
+        browserAiGroupStatus.textContent = String(error?.message || error);
+        toast(String(error?.message || error), true);
+      });
+    };
+    input.click();
+  }
+
+  function advanceBrowserAiSelectionAfterSubmit(completed) {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    if (settings.auto_advance_reference_group === false) {
+      return { nextLabel: "", cycleComplete: false };
+    }
+    if (completed.mode === "band_sequence") {
+      const locations = settings.band_sequence_location_references;
+      const setCount = browserAiBandSequenceSelection(settings).setCount;
+      if (completed.setIndex < setCount - 1) {
+        settings.band_sequence_location_index = completed.locationIndex;
+        settings.band_sequence_set_index = completed.setIndex + 1;
+      } else if (completed.locationIndex < locations.length - 1) {
+        settings.band_sequence_location_index = completed.locationIndex + 1;
+        settings.band_sequence_set_index = 0;
+      } else {
+        return { nextLabel: "", cycleComplete: true };
+      }
+      state.flowGptBrowserSettings = settings;
+      renderBrowserAiReferenceGroups();
+      const next = browserAiBandSequenceSelection(state.flowGptBrowserSettings);
+      return {
+        nextLabel: `${next.label} at ${browserAiLocationDisplayName(next.location, next.locationIndex)}`,
+        cycleComplete: false,
+      };
+    }
+    const completedIndex = settings.reference_groups.findIndex((item) => item.id === completed.groupId);
+    if (completedIndex < 0 || completedIndex >= settings.reference_groups.length - 1) {
+      return { nextLabel: "", cycleComplete: completedIndex >= 0 };
+    }
+    const nextGroup = settings.reference_groups[completedIndex + 1];
+    settings.active_reference_group_id = nextGroup.id;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    return { nextLabel: activeBrowserAiReferenceGroup(state.flowGptBrowserSettings).name, cycleComplete: false };
+  }
+
+  async function sendBrowserAiReferenceGroup() {
+    const settings = saveFlowGptBrowserSettingsFromPanel();
+    const bandSelection = settings.band_sequence_enabled ? browserAiBandSequenceSelection(settings) : null;
+    const group = bandSelection
+      ? { id: `band_sequence_${bandSelection.locationIndex}_${bandSelection.setIndex}`, name: bandSelection.label, images: bandSelection.references }
+      : activeBrowserAiReferenceGroup(settings);
+    const location = bandSelection ? bandSelection.location : settings.location_reference;
+    const references = [...group.images, ...(location ? [location] : [])];
+    const prompt = String(browserAiGroupPrompt.value || settings.manual_chat_prompt || "").trim();
+    if (bandSelection) {
+      if (!settings.band_sequence_singer_references.length) throw new Error("Add at least one singer reference before using Band Sequence.");
+      if (!settings.band_sequence_member_references.length) throw new Error("Add the other band member references before using Band Sequence.");
+      if (!location) throw new Error("Add at least one location before using Band Sequence.");
+      if (!group.images.length) throw new Error(`${bandSelection.label} does not have any subject references.`);
+    } else if (!references.length) {
+      throw new Error("Add at least one group or location reference image before sending.");
+    }
+    if (!prompt) throw new Error("Enter the Browser AI generation prompt before sending.");
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    const existingProjectDownloadSession = browserAiDownloadOverrideProviders.has(settings.provider);
+    const redirectDownloads = existingProjectDownloadSession || (Boolean(projectFolder) && window.confirm(
+      `Save manual downloads from this Browser AI session into the project?\n\n${projectFolder}\\Browser AI Images\n\nChoose Cancel to keep the controlled browser's normal Downloads folder.`
+    ));
+    const providerLabel = browserImageProviderShortLabel(settings.provider);
+    const locationName = location
+      ? browserAiLocationDisplayName(location, bandSelection?.locationIndex || 0)
+      : "No Location";
+    const selectionName = bandSelection
+      ? `${bandSelection.label} at ${locationName}`
+      : group.name;
+    browserAiGroupStatus.textContent = `Preparing ${providerLabel}, sending ${selectionName} with ${group.images.length} subject reference${group.images.length === 1 ? "" : "s"}${location ? " plus the location" : ""}, entering the prompt, and submitting it...`;
+    const data = await submitManualBrowserImageRequest(settings.provider, {
+        provider: settings.provider,
+        debug_port: browserImageProviderDebugPort(settings.provider),
+        timeout_seconds: browserImageProviderTimeout(settings),
+        image_ingredients: references,
+        prompt,
+        project_folder: projectFolder,
+        group_name: group.name,
+        download_location_name: locationName,
+        download_set_name: bandSelection?.label || group.name,
+        redirect_downloads_to_project: redirectDownloads,
+        open_new_tab: false,
+        fresh_request: true,
+        timeoutMs: Math.max(300000, (browserImageProviderTimeout(settings) + 30) * 1000),
+    });
+    if (data.redirect_downloads_to_project) browserAiDownloadOverrideProviders.add(settings.provider);
+    else browserAiDownloadOverrideProviders.delete(settings.provider);
+    browserAiFinishButton.disabled = browserAiDownloadOverrideProviders.size === 0;
+    const completed = bandSelection
+      ? { mode: "band_sequence", locationIndex: bandSelection.locationIndex, setIndex: bandSelection.setIndex }
+      : { mode: "custom_group", groupId: group.id };
+    const { nextLabel, cycleComplete } = advanceBrowserAiSelectionAfterSubmit(completed);
+    const submissionLocation = `Submitted ${selectionName} in the existing ${data.provider_label || providerLabel} tab.`;
+    const sequenceStatus = nextLabel
+      ? ` Next selection ready: ${nextLabel}. Download the current results, then click ${settings.band_sequence_enabled ? "Send Selected Set" : "Send Selected Group"} whenever you are ready.`
+      : cycleComplete
+        ? " Sequence complete. The last selection remains active."
+        : " The current selection remains active.";
+    browserAiGroupStatus.textContent = data.redirect_downloads_to_project
+      ? `${submissionLocation}${sequenceStatus}\nDownloads from this controlled browser are temporarily going to:\n${data.download_path}\n\nClick Finish Session + Restore Downloads when you are done.`
+      : `${submissionLocation}${sequenceStatus}\nReview and download the images manually using the browser's normal Downloads folder.`;
+    toast(`${selectionName} submitted to ${data.provider_label || providerLabel}.`);
+    void autoSaveSessionQuiet("Browser AI reference selection submitted");
+  }
+
+  async function finishBrowserAiDownloadSession({ quiet = false } = {}) {
+    const providers = [...browserAiDownloadOverrideProviders];
+    if (!providers.length) return;
+    for (const provider of providers) {
+      await finishManualBrowserImageSession(provider, {
+        debug_port: browserImageProviderDebugPort(provider),
+        timeout_seconds: 60,
+        timeoutMs: 60000,
+      });
+      browserAiDownloadOverrideProviders.delete(provider);
+    }
+    browserAiFinishButton.disabled = true;
+    if (!quiet) {
+      browserAiGroupStatus.textContent = "Browser AI session finished. Downloads were restored to the browser default.";
+      toast("Browser downloads restored to the normal folder.");
+    }
+  }
+
+  async function restoreBrowserAiDownloadsQuietly() {
+    try {
+      await finishBrowserAiDownloadSession({ quiet: true });
+    } catch (error) {
+      console.warn("[VRGDG Music Builder] Could not restore Browser AI downloads while closing:", error);
+    }
+  }
+
   function syncFlowGptManualPanel() {
     const enabled = Boolean(flowGptManualMode.input.checked);
     for (const control of [flowGptManualAutoAdvance.input, flowGptManualOpenButton, flowGptManualExportRefsButton, flowGptManualImportLatestButton]) {
@@ -12139,6 +13572,8 @@ function openBuilder(node) {
       ...manualFlowGptPayload(),
       timeoutMs: 60000,
     });
+    browserAiDownloadOverrideProviders.delete(settings.provider);
+    browserAiFinishButton.disabled = browserAiDownloadOverrideProviders.size === 0;
     flowGptManualStatus.textContent = `${data.provider_label || providerLabel} manual browser opened.\nDownload import target: selected scene when you arm it.`;
     toast(`${data.provider_label || providerLabel} manual browser opened.`);
   }
@@ -12163,6 +13598,8 @@ function openBuilder(node) {
         prompt: settings.manual_chat_prompt,
         timeoutMs: 300000,
       });
+      browserAiDownloadOverrideProviders.delete(settings.provider);
+      browserAiFinishButton.disabled = browserAiDownloadOverrideProviders.size === 0;
       flowGptManualStatus.textContent = `Exported ${refs.length} reference image${refs.length === 1 ? "" : "s"} and copied the editable prompt to ${providerLabel}.`;
       toast(`Exported refs and copied the prompt to ${providerLabel}.`);
     } finally {
@@ -13303,7 +14740,7 @@ function openBuilder(node) {
       const blockHeight = isOverlay ? TIMELINE_OVERLAY_HEIGHT : TIMELINE_SEGMENT_HEIGHT;
       const block = document.createElement("button");
       block.type = "button";
-      block.innerHTML = `<span style="position:relative;z-index:2;display:block;font-weight:900;">${escapeHtml(segment.label || (isOverlay ? "Insert" : "Scene"))}</span><span style="position:relative;z-index:2;display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
+      block.innerHTML = `<span style="position:relative;z-index:2;display:block;font-weight:900;">${escapeHtml(timelineSegmentLabel(segment))}</span><span style="position:relative;z-index:2;display:block;margin-top:3px;font-size:10px;color:#d4d4d8;">${formatTime(segment.start)} - ${formatTime(segment.end)} | ${formatDurationSeconds(segment.start, segment.end)}s</span>`;
       const left = segment.start * state.pxPerSecond;
       const width = Math.max(24, (segment.end - segment.start) * state.pxPerSecond);
       const videoMode = currentVideoMode();
@@ -13914,6 +15351,233 @@ function openBuilder(node) {
     toast(`Closed ${removed.toFixed(2)}s of timeline gap.`);
   }
 
+  async function snapSceneEdgeToNearestBeat(segment, side) {
+    if (!segment || segmentTrack(segment) === "overlay") {
+      toast("Select a base scene before snapping a scene edge.", true);
+      return false;
+    }
+    if (state.timingFrozen) {
+      toast("Scene timing is frozen. Unfreeze timing before snapping a scene edge.", true);
+      return false;
+    }
+    if (hasLockedVideo(segment)) {
+      toast("Clear this scene's rendered video before changing its timing.", true);
+      return false;
+    }
+    if (!Array.isArray(state.beats) || !state.beats.length) {
+      const loaded = await reloadBeatMarkersFromAudio();
+      if (!loaded) return false;
+    }
+
+    const sorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    const index = sorted.findIndex((item) => item.id === segment.id);
+    if (index < 0) {
+      toast("The selected scene is no longer on the base timeline.", true);
+      return false;
+    }
+
+    const minDuration = 0.1;
+    const connectedTolerance = 0.03;
+    const previous = sorted[index - 1] || null;
+    const next = sorted[index + 1] || null;
+    const current = side === "start" ? Number(segment.start || 0) : Number(segment.end || 0);
+    const previousIsConnected = Boolean(previous && Math.abs(Number(previous.end || 0) - Number(segment.start || 0)) <= connectedTolerance);
+    const nextIsConnected = Boolean(next && Math.abs(Number(next.start || 0) - Number(segment.end || 0)) <= connectedTolerance);
+    const connectedNeighbor = side === "start" && previousIsConnected
+      ? previous
+      : side === "end" && nextIsConnected
+        ? next
+        : null;
+
+    if (connectedNeighbor && hasLockedVideo(connectedNeighbor)) {
+      const neighborIndex = sorted.findIndex((item) => item.id === connectedNeighbor.id);
+      toast(`Clear ${sceneDisplayName(connectedNeighbor, neighborIndex)}'s rendered video before moving their shared boundary.`, true);
+      return false;
+    }
+
+    let minimum;
+    let maximum;
+    if (side === "start") {
+      minimum = previous
+        ? previousIsConnected
+          ? Number(previous.start || 0) + minDuration
+          : Number(previous.end || 0)
+        : 0;
+      maximum = Number(segment.end || 0) - minDuration;
+    } else {
+      minimum = Number(segment.start || 0) + minDuration;
+      maximum = next
+        ? nextIsConnected
+          ? Number(next.end || 0) - minDuration
+          : Number(next.start || 0)
+        : Number.POSITIVE_INFINITY;
+      const audioEnd = loadedGlobalAudioDuration();
+      if (audioEnd > 0) maximum = Math.min(maximum, audioEnd);
+    }
+
+    const beats = state.beats
+      .map((beat) => Number(beat?.time ?? beat))
+      .filter((beat) => Number.isFinite(beat) && beat >= minimum - 0.0001 && beat <= maximum + 0.0001)
+      .sort((a, b) => a - b);
+    if (!beats.length) {
+      toast(`No beat marker can fit this scene's ${side} without overlapping another scene or making a clip shorter than ${minDuration.toFixed(1)}s.`, true);
+      return false;
+    }
+
+    const target = beats.reduce((closest, beat) => (
+      Math.abs(beat - current) < Math.abs(closest - current) ? beat : closest
+    ), beats[0]);
+    if (Math.abs(target - current) <= 0.0001) {
+      setBeatMarkersVisible(true);
+      render();
+      toast(`The selected scene ${side} is already on its closest beat marker.`);
+      return true;
+    }
+
+    pauseTimelineForEditing();
+    pushHistory();
+    if (side === "start") {
+      segment.start = target;
+      if (previousIsConnected) previous.end = target;
+    } else {
+      segment.end = target;
+      if (nextIsConnected) next.start = target;
+    }
+    sortSegments(state.segments);
+    setBeatMarkersVisible(true);
+    state.sceneSelectionUsesGlobalAudio = true;
+    setGlobalPlaybackTime(target);
+    syncInspector();
+    render();
+    await autoSaveSessionQuiet(`scene ${side} snapped to beat`);
+
+    const neighborText = connectedNeighbor
+      ? ` ${sceneDisplayName(connectedNeighbor, sorted.findIndex((item) => item.id === connectedNeighbor.id))}'s connected ${side === "start" ? "end" : "start"} moved with it; its other edge stayed fixed.`
+      : " No other scene timing changed.";
+    toast(`Snapped ${sceneDisplayName(segment, index)} ${side} from ${formatTime(current)} to ${formatTime(target)}.${neighborText}`);
+    return true;
+  }
+
+  async function snapAllSceneStartsToNearestBeats() {
+    if (state.timingFrozen) {
+      toast("Scene timing is frozen. Unfreeze timing before snapping scene starts.", true);
+      return false;
+    }
+    const sorted = [...state.segments].sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    if (sorted.length < 3) {
+      toast("At least three base scenes are required to snap scene starts beginning with Scene 3.", true);
+      return false;
+    }
+    if (!Array.isArray(state.beats) || !state.beats.length) {
+      const loaded = await reloadBeatMarkersFromAudio();
+      if (!loaded) return false;
+    }
+    const beats = state.beats
+      .map((beat) => Number(beat?.time ?? beat))
+      .filter((beat) => Number.isFinite(beat) && beat >= 0)
+      .sort((a, b) => a - b);
+    if (!beats.length) {
+      toast("No beat-marker grid is available for scene snapping.", true);
+      return false;
+    }
+
+    const minimumDuration = 0.1;
+    const connectedTolerance = 0.03;
+    const simulated = sorted.map((segment) => ({
+      segment,
+      start: Number(segment.start || 0),
+      end: Number(segment.end || 0),
+    }));
+    const changes = [];
+    for (let index = 2; index < simulated.length; index += 1) {
+      const previous = simulated[index - 1];
+      const current = simulated[index];
+      const connected = Math.abs(previous.end - current.start) <= connectedTolerance;
+      const minimum = connected ? previous.start + minimumDuration : previous.end;
+      const maximum = current.end - minimumDuration;
+      const validBeats = beats.filter((beat) => beat >= minimum - 0.0001 && beat <= maximum + 0.0001);
+      if (!validBeats.length) {
+        toast(`Could not snap ${sceneDisplayName(current.segment, index)} because no beat fits between its neighboring scene boundaries. No timing was changed.`, true);
+        return false;
+      }
+      const target = validBeats.reduce((nearest, beat) => (
+        Math.abs(beat - current.start) < Math.abs(nearest - current.start) ? beat : nearest
+      ), validBeats[0]);
+      if (Math.abs(target - current.start) <= 0.0001) continue;
+      const affected = [current.segment];
+      if (connected) affected.push(previous.segment);
+      const locked = affected.find((segment) => hasLockedVideo(segment));
+      if (locked) {
+        const lockedIndex = sorted.findIndex((segment) => segment.id === locked.id);
+        toast(`Clear ${sceneDisplayName(locked, lockedIndex)}'s rendered video before moving its shared scene boundary. No timing was changed.`, true);
+        return false;
+      }
+      changes.push({ index, from: current.start, to: target, connected });
+      current.start = target;
+      if (connected) previous.end = target;
+    }
+
+    if (!changes.length) {
+      setBeatMarkersVisible(true);
+      render();
+      toast("Every scene start from Scene 3 onward is already on its nearest valid beat marker.");
+      return true;
+    }
+
+    const connectedCount = changes.filter((change) => change.connected).length;
+    const confirmed = window.confirm(
+      `Snap ${changes.length} scene start${changes.length === 1 ? "" : "s"} to their nearest beat markers?\n\n` +
+      "The Scene 1-to-2 boundary will stay fixed. " +
+      `${connectedCount} connected previous scene end${connectedCount === 1 ? "" : "s"} will move with the shared cuts. ` +
+      "The final scene's end will stay fixed.\n\nNo images or videos will be removed."
+    );
+    if (!confirmed) return false;
+
+    pauseTimelineForEditing();
+    pushHistory();
+    for (const item of simulated) {
+      item.segment.start = Number(item.start.toFixed(3));
+      item.segment.end = Number(item.end.toFixed(3));
+    }
+    sortSegments(state.segments);
+    setBeatMarkersVisible(true);
+    syncInspector();
+    render();
+    await autoSaveSessionQuiet("scene 3 and later starts snapped to beats");
+    toast(`Snapped ${changes.length} scene start${changes.length === 1 ? "" : "s"} to their nearest beat markers.`);
+    return true;
+  }
+
+  async function openSnapSceneEdgeMenu() {
+    const segment = activeSegment();
+    if (!segment || segmentTrack(segment) === "overlay") {
+      toast("Select a base scene before snapping a scene edge.", true);
+      return;
+    }
+    const index = [...state.segments]
+      .sort((a, b) => Number(a.start || 0) - Number(b.start || 0))
+      .findIndex((item) => item.id === segment.id);
+    const side = await chooseBatchModeAction({
+      title: "Snap Scene Edge to Beat",
+      intro: `Choose which edge of ${sceneDisplayName(segment, index)} should move to its closest beat marker. Only a directly connected neighbor's shared edge will follow.`,
+      confirmLabel: "Snap to Closest Beat",
+      choices: [
+        {
+          value: "start",
+          label: "Start of scene",
+          description: "Move this scene's start. If the previous scene touches it, only that previous scene's end moves with the cut.",
+        },
+        {
+          value: "end",
+          label: "End of scene",
+          description: "Move this scene's end. If the next scene touches it, only that next scene's start moves with the cut.",
+        },
+      ],
+    });
+    if (!side) return;
+    await snapSceneEdgeToNearestBeat(segment, side);
+  }
+
   async function trimIdLoraSceneVideoAtPlayhead(segment, side, trimTimeOverride = null) {
     const videoPath = String(selectedSegmentVideoPath(segment) || "").trim();
     if (currentVideoMode() !== "id_lora") {
@@ -14184,8 +15848,13 @@ function openBuilder(node) {
     }, 0);
   }
 
+  let activeSegmentDragCleanup = null;
+
   function makeDragHandle(element, segment, mode) {
+    element.style.touchAction = "none";
+    element.style.userSelect = "none";
     element.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || event.isPrimary === false) return;
       const isOverlay = segmentTrack(segment) === "overlay";
       if (isOverlay && segment.overlay_locked !== false) {
         toast("Unlock this overlay clip before moving or trimming it.", true);
@@ -14199,18 +15868,55 @@ function openBuilder(node) {
         toast("This scene already has a generated video, so its timing is locked.", true);
         return;
       }
+      event.preventDefault();
       event.stopPropagation();
-      element.setPointerCapture?.(event.pointerId);
+      activeSegmentDragCleanup?.();
+      const pointerId = event.pointerId;
+      try {
+        // The scene blocks are recreated during render(), so capture on the
+        // persistent viewport instead of the handle that is about to vanish.
+        timelineViewport.setPointerCapture?.(pointerId);
+      } catch {
+        // Window listeners below still keep the drag usable without capture.
+      }
       const startX = event.clientX;
       const start = segment.start;
       const end = segment.end;
       let historySaved = false;
+      let dragStarted = false;
+      let dragging = true;
+      const cleanup = () => {
+        if (!dragging) return;
+        dragging = false;
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", finish);
+        window.removeEventListener("pointercancel", finish);
+        window.removeEventListener("blur", cleanup);
+        timelineViewport.removeEventListener("lostpointercapture", cleanup);
+        try {
+          if (timelineViewport.hasPointerCapture?.(pointerId)) timelineViewport.releasePointerCapture(pointerId);
+        } catch {
+          // Capture may already have been released by the browser.
+        }
+        if (activeSegmentDragCleanup === cleanup) activeSegmentDragCleanup = null;
+      };
       const move = (moveEvent) => {
+        if (!dragging || moveEvent.pointerId !== pointerId) return;
+        // If pointerup was lost, a mouse move with no left button held must
+        // terminate the drag rather than continuing to edit scene timing.
+        if (moveEvent.pointerType === "mouse" && (moveEvent.buttons & 1) === 0) {
+          cleanup();
+          return;
+        }
+        const pixelDelta = moveEvent.clientX - startX;
+        if (!dragStarted && Math.abs(pixelDelta) < 3) return;
+        dragStarted = true;
+        moveEvent.preventDefault();
         if (!historySaved) {
           pushHistory();
           historySaved = true;
         }
-        const delta = (moveEvent.clientX - startX) / state.pxPerSecond;
+        const delta = pixelDelta / state.pxPerSecond;
         if (mode === "start") {
           segment.start = Math.max(0, Math.min(end - 0.1, snapTimeToBeat(start + delta)));
         } else if (mode === "end") {
@@ -14231,12 +15937,18 @@ function openBuilder(node) {
         syncInspector();
         render();
       };
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
+      const finish = (finishEvent) => {
+        if (finishEvent?.pointerId != null && finishEvent.pointerId !== pointerId) return;
+        const shouldSelectScene = finishEvent?.type === "pointerup" && mode === "move" && !dragStarted;
+        cleanup();
+        if (shouldSelectScene) handleSegmentPick(segment);
       };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
+      activeSegmentDragCleanup = cleanup;
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", finish);
+      window.addEventListener("pointercancel", finish);
+      window.addEventListener("blur", cleanup);
+      timelineViewport.addEventListener("lostpointercapture", cleanup);
     });
   }
 
@@ -26493,6 +28205,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       enforceAudioTimelineEnd();
       state.peaks = data.peaks || [];
       state.beats = data.beats || [];
+      state.detectedTempoBpm = Math.max(0, Number(data.tempo_bpm || 0));
+      state.beatCalibration = null;
       showBeatMarkersIfAvailable();
       audio.dataset.path = data.audio_path || audioInput.value;
       audio.src = audioUrl(audio.dataset.path);
@@ -26585,6 +28299,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           enforceAudioTimelineEnd();
           state.peaks = data.peaks || [];
           state.beats = data.beats || [];
+          state.detectedTempoBpm = Math.max(0, Number(data.tempo_bpm || 0));
+          state.beatCalibration = null;
           state.sceneAudioGlobalTime = 0;
           audio.dataset.path = audioInput.value;
           audio.src = audioUrl(audioInput.value);
@@ -26636,6 +28352,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       enforceAudioTimelineEnd();
       state.peaks = Array.isArray(data.peaks) ? data.peaks : [];
       state.beats = Array.isArray(data.beats) ? data.beats : [];
+      state.detectedTempoBpm = Math.max(0, Number(data.tempo_bpm || 0));
+      state.beatCalibration = null;
       state.sceneAudioGlobalTime = 0;
       audio.dataset.path = audioInput.value;
       audio.src = audioUrl(audioInput.value);
@@ -27399,6 +29117,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio_duration: loadedGlobalAudioDuration(),
       audio_peaks: Array.isArray(state.peaks) ? state.peaks : [],
       beat_markers: Array.isArray(state.beats) ? state.beats : [],
+      detected_tempo_bpm: Math.max(0, Number(state.detectedTempoBpm || 0)),
+      beat_calibration: state.beatCalibration,
       left_panel_width: state.leftPanelWidth,
       left_panel_tab: state.leftPanelTab === "tools" || state.leftPanelTab === "luts" ? state.leftPanelTab : "scenes",
       right_panel_width: state.rightPanelWidth,
@@ -27647,6 +29367,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.activeTimelineMarkerId = data.session.active_timeline_marker_id || state.activeTimelineMarkerId || "";
         state.peaks = Array.isArray(data.session.audio_peaks) ? data.session.audio_peaks : state.peaks;
         state.beats = Array.isArray(data.session.beat_markers) ? data.session.beat_markers : state.beats;
+        state.detectedTempoBpm = Math.max(0, Number(data.session.detected_tempo_bpm ?? state.detectedTempoBpm ?? 0));
+        state.beatCalibration = data.session.beat_calibration || null;
         setBeatMarkersVisible(data.session.show_beat_markers ?? state.showBeatMarkers);
         state.leftPanelWidth = data.session.left_panel_width || state.leftPanelWidth;
         state.leftPanelTab = data.session.left_panel_tab === "tools" || data.session.left_panel_tab === "luts" ? data.session.left_panel_tab : "scenes";
@@ -27886,6 +29608,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function loadSessionFromProject(projectFolder) {
     try {
+      await restoreBrowserAiDownloadsQuietly();
+      closeBeatCalibrationWizard();
       const folder = String(projectFolder || "").trim();
       if (!folder) {
         toast("Choose a project folder that contains vrgdg_builder_session.json.", true);
@@ -27964,6 +29688,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (state.audioDuration > 0) enforceAudioTimelineEnd();
       state.peaks = Array.isArray(session.audio_peaks) ? session.audio_peaks : state.peaks;
       state.beats = Array.isArray(session.beat_markers) ? session.beat_markers : state.beats;
+      state.detectedTempoBpm = Math.max(0, Number(session.detected_tempo_bpm ?? state.detectedTempoBpm ?? 0));
+      state.beatCalibration = session.beat_calibration || null;
       setBeatMarkersVisible(session.show_beat_markers ?? state.showBeatMarkers ?? false);
       state.leftPanelWidth = session.left_panel_width || state.leftPanelWidth || 260;
       state.leftPanelTab = session.left_panel_tab === "tools" || session.left_panel_tab === "luts" ? session.left_panel_tab : "scenes";
@@ -27986,7 +29712,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(session.zimage_settings || state.zimageSettings), state.projectFolder);
       state.referenceKrea2Settings = cloneKrea2ReferenceSettings(session.reference_krea2_settings || state.referenceKrea2Settings);
       state.fluxKleinSettings = session.flux_klein_settings || state.fluxKleinSettings;
-      state.flowGptBrowserSettings = cloneFlowGptBrowserSettings(session.flow_gpt_browser_settings || state.flowGptBrowserSettings);
+      state.flowGptBrowserSettings = cloneFlowGptBrowserSettingsForLoadedProject(session.flow_gpt_browser_settings);
       state.nbImageSettings = session.nb_image_settings || state.nbImageSettings;
       state.ernieImageSettings = scrubGlobalImageToImageSourceForProject(cloneErnieImageSettings(session.ernie_image_settings || state.ernieImageSettings), state.projectFolder);
       state.krea2TwoPassSettings = scrubGlobalImageToImageSourceForProject(cloneKrea2TwoPassSettings(session.krea2_2pass_settings || state.krea2TwoPassSettings), state.projectFolder);
@@ -28013,7 +29739,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           state.audioDuration = Number(audioData.duration || 0);
           enforceAudioTimelineEnd();
           state.peaks = Array.isArray(audioData.peaks) && audioData.peaks.length ? audioData.peaks : state.peaks;
-          state.beats = Array.isArray(audioData.beats) && audioData.beats.length ? audioData.beats : state.beats;
+          if (!state.beatCalibration) {
+            state.beats = Array.isArray(audioData.beats) && audioData.beats.length ? audioData.beats : state.beats;
+          }
           showBeatMarkersIfAvailable();
           audio.dataset.path = audioInput.value;
           audio.src = audioUrl(audioInput.value);
@@ -31103,6 +32831,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return `${index + 1}. ${segment?.label || `Scene ${index + 1}`}`;
   }
 
+  function timelineSegmentLabel(segment) {
+    const info = segmentIndexInfo(segment);
+    const rawLabel = String(segment?.label || "").trim();
+    if (info.track === "overlay") return rawLabel || `Insert ${info.index + 1}`;
+    const number = Math.max(1, info.index + 1);
+    if (!rawLabel || /^scene(?:\s+\d+(?:\.\d+)?)?$/i.test(rawLabel)) return `Scene ${number}`;
+    const numberedDescription = rawLabel.match(/^\d+\.\s*(.+)$/);
+    if (numberedDescription) return `${number}. ${numberedDescription[1]}`;
+    return rawLabel;
+  }
+
   function storyboardPromptForSegment(segment) {
     const imageMode = state.imageModelMode || "zimage";
     const candidates = [
@@ -33015,6 +34754,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       enforceAudioTimelineEnd();
       state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
       state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
+      state.beatCalibration = null;
       showBeatMarkersIfAvailable();
     }
     if (data.srt_path) {
@@ -33562,6 +35302,94 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       progress.close(6500);
       toast(`Preview stitch complete:\n${stitched.final_video_path}`);
       showFinalVideoReadyModal(stitched.final_video_path);
+    } catch (error) {
+      progress.set(`Error:\n${String(error?.message || error)}`, 100);
+      toast(String(error?.message || error), true);
+    }
+  }
+
+  async function renderImageSlideshowPreview() {
+    updateActiveFromInputs();
+    enforceAudioTimelineEnd();
+    const scenes = state.segments.slice().sort((a, b) => Number(a.start || 0) - Number(b.start || 0));
+    if (!scenes.length) {
+      toast("Create at least one base scene before rendering an image slideshow preview.", true);
+      return;
+    }
+    const projectFolder = String(projectInput.value || state.projectFolder || "").trim();
+    if (!projectFolder) {
+      toast("Create or load a project before rendering an image slideshow preview.", true);
+      return;
+    }
+    const globalAudioPath = currentProjectAudioPath();
+    if (!globalAudioPath) {
+      toast("Load global audio before rendering an image slideshow preview.", true);
+      return;
+    }
+    const progress = createProgressWindow("Image Slideshow Preview");
+    try {
+      progress.set(`Checking ${scenes.length} scene image${scenes.length === 1 ? "" : "s"}...`, 8);
+      const missing = [];
+      const paths = [];
+      let archivedImageData = false;
+      for (let index = 0; index < scenes.length; index += 1) {
+        const segment = scenes[index];
+        let source = segmentImageSource(segment);
+        if (source?.data && !source.path) {
+          const saved = await postJson("/vrgdg/music_builder/archive_scene_image", {
+            image_data: source.data,
+            project_folder: projectFolder,
+            scene_number: sceneSlotNumber(segment),
+          }, 120000);
+          if (saved.saved_path) {
+            segment.custom_image_path = saved.saved_path;
+            source = { path: saved.saved_path };
+            archivedImageData = true;
+          }
+        }
+        if (!String(source?.path || "").trim()) {
+          missing.push(sceneDisplayName(segment, state.segments.indexOf(segment)));
+        }
+        paths.push(String(source?.path || "").trim());
+      }
+      if (missing.length) {
+        throw new Error(`These scenes need an image before a slideshow can be rendered:\n${missing.join("\n")}`);
+      }
+      if (archivedImageData) await autoSaveSessionQuiet("slideshow source images archived");
+
+      const imageItems = scenes.map((segment, index) => {
+        const start = Number(segment.start || 0);
+        const nextStart = Number(scenes[index + 1]?.start);
+        const end = Number.isFinite(nextStart) && nextStart > start
+          ? nextStart
+          : Math.max(start + 0.05, Number(segment.end || start + 0.05));
+        return { path: paths[index], duration: Math.max(0.05, end - start) };
+      });
+      const firstStart = Math.max(0, Number(scenes[0].start || 0));
+      const settings = state.i2vVideoSettings || {};
+      const mode = currentVideoMode();
+      const width = mode === "ingredients"
+        ? Number(settings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH)
+        : Number(settings.width || 1920);
+      const height = mode === "ingredients"
+        ? Number(settings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT)
+        : Number(settings.height || 1080);
+      progress.set(`Rendering image-only preview with global audio...\nScenes: ${scenes.length}`, 20);
+      const result = await postJson("/vrgdg/workflow_runner/render_image_slideshow", {
+        image_items: imageItems,
+        audio_path: globalAudioPath,
+        audio_start: firstStart,
+        project_folder: projectFolder,
+        width,
+        height,
+        fps: Number(settings.fps || 24),
+        output_prefix: "IMAGE_SLIDESHOW_PREVIEW",
+      }, 20 * 60 * 1000);
+      state.finalVideoPath = result.final_video_path || "";
+      progress.set(`Image slideshow preview complete.\n\nPreview video:\n${state.finalVideoPath}`, 100);
+      progress.close(6500);
+      toast(`Image slideshow preview complete:\n${state.finalVideoPath}`);
+      showFinalVideoReadyModal(state.finalVideoPath);
     } catch (error) {
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -36230,7 +38058,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function resetProjectState(projectFolder, sessionPath = "", srtPath = "") {
+    restoreBrowserAiDownloadsQuietly().catch(() => null);
     faceFixTool.reset?.();
+    closeBeatCalibrationWizard();
     pauseAllAudio();
     audio.removeAttribute("src");
     sceneAudio.removeAttribute("src");
@@ -36245,6 +38075,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.audioDuration = 0;
     state.peaks = [];
     state.beats = [];
+    state.beatCalibration = null;
     setBeatMarkersVisible(false);
     state.srtMode = false;
     state.timingFrozen = false;
@@ -36277,9 +38108,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.sceneAudioMode = false;
     state.sceneAudioSegmentId = "";
     state.sceneAudioGlobalTime = 0;
+    state.sceneSelectionUsesGlobalAudio = false;
     state.zimageSettings = defaultZImageSettings();
     state.referenceKrea2Settings = { ...DEFAULT_KREA2_REFERENCE_SETTINGS };
     state.fluxKleinSettings = defaultFluxKleinSettings();
+    state.flowGptBrowserSettings = defaultFlowGptBrowserSettings();
     state.ernieImageSettings = defaultErnieImageSettings();
     state.krea2TwoPassSettings = defaultKrea2TwoPassSettings();
     state.useFluxGlobalImageIngredients = false;
@@ -37052,14 +38885,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
       const number = agentSceneNumberFromAction(action);
       if (Number.isFinite(number) && number > 0) {
+        // Scene numbers shown in the timeline are positional. Resolve that
+        // visible base-scene slot before consulting labels, which may be stale
+        // after a split/merge or may contain a custom title.
+        const byIndex = state.segments[number - 1] || null;
+        if (byIndex) return byIndex;
         const labelPattern = new RegExp(`(?:^|\\b|\\.)\\s*scene\\s*${number}(?:\\b|\\s|\\.|:|-)`, "i");
         const byLabel = allEditableSegments().find((item) => {
           const info = segmentIndexInfo(item);
           return labelPattern.test(String(item.label || "")) || labelPattern.test(sceneDisplayName(item, info.index));
         });
         if (byLabel) return byLabel;
-        const byIndex = state.segments[number - 1] || null;
-        if (byIndex) return byIndex;
         const byAnyIndex = allEditableSegments()[number - 1] || null;
         if (byAnyIndex) return byAnyIndex;
         return allEditableSegments().find((item) => segmentIndexInfo(item).index + 1 === number || sceneSlotNumber(item) === number) || null;
@@ -37078,8 +38914,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       let changed = false;
       state.segments.forEach((segment, index) => {
         const current = String(segment.label || "").trim();
-        if (!current || /^scene\s+\d+(?:\.\d+)?$/i.test(current)) {
-          const nextLabel = `Scene ${index + 1}`;
+        const numberedDescription = current.match(/^\d+\.\s*(.+)$/);
+        const nextLabel = numberedDescription
+          ? `${index + 1}. ${numberedDescription[1]}`
+          : `Scene ${index + 1}`;
+        if (!current || /^scene(?:\s+\d+(?:\.\d+)?)?$/i.test(current) || numberedDescription) {
           if (segment.label !== nextLabel) {
             segment.label = nextLabel;
             changed = true;
@@ -40601,6 +42440,192 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     toast(flowGptManualMode.input.checked ? "Flow/GPT Manual Mode is on." : "Flow/GPT Manual Mode is off.");
   });
   flowGptManualAutoAdvance.input.addEventListener("change", syncFlowGptManualPanel);
+  browserAiGroupPrompt.addEventListener("input", () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.manual_chat_prompt = browserAiGroupPrompt.value || "";
+    state.flowGptBrowserSettings = settings;
+    flowGptManualChatPrompt.value = browserAiGroupPrompt.value || "";
+  });
+  browserAiGroupPrompt.addEventListener("change", () => autoSaveSessionQuiet("Browser AI group prompt changed").catch(() => null));
+  browserAiBandSequenceMode.input.addEventListener("change", () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.band_sequence_enabled = Boolean(browserAiBandSequenceMode.input.checked);
+    if (settings.band_sequence_enabled) {
+      settings.band_sequence_location_index = 0;
+      settings.band_sequence_set_index = 0;
+    }
+    settings.browser_ai_prompt_sequence_key = "";
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    browserAiGroupStatus.textContent = settings.band_sequence_enabled
+      ? "Band Sequence mode is on. Add singer references, other members, and all locations once."
+      : "Custom Groups mode is on.";
+    autoSaveSessionQuiet("Browser AI Band Sequence mode changed").catch(() => null);
+  });
+  browserAiAutoAdvanceGroup.input.addEventListener("change", () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.auto_advance_reference_group = Boolean(browserAiAutoAdvanceGroup.input.checked);
+    state.flowGptBrowserSettings = settings;
+    browserAiGroupStatus.textContent = settings.auto_advance_reference_group
+      ? "After each submission, the next group or Band Sequence set will be selected. You still decide when to send it."
+      : "Automatic selection is off. The current group or set will remain selected after sending.";
+    autoSaveSessionQuiet("Browser AI group auto-advance changed").catch(() => null);
+  });
+  browserAiSequenceLocationSelect.addEventListener("change", () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.band_sequence_location_index = Math.max(0, Number(browserAiSequenceLocationSelect.value || 0));
+    settings.band_sequence_set_index = 0;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    autoSaveSessionQuiet("Browser AI sequence location selected").catch(() => null);
+  });
+  browserAiSequenceSetSelect.addEventListener("change", () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.band_sequence_set_index = Math.max(0, Math.min(
+      browserAiBandSequenceSelection(settings).setCount - 1,
+      Number(browserAiSequenceSetSelect.value || 0),
+    ));
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    autoSaveSessionQuiet("Browser AI sequence subject set selected").catch(() => null);
+  });
+  browserAiGroupSelect.addEventListener("change", () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.active_reference_group_id = browserAiGroupSelect.value || settings.reference_groups[0].id;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    autoSaveSessionQuiet("Browser AI reference group selected").catch(() => null);
+  });
+  browserAiAddSingerButton.onclick = () => chooseBrowserAiImageFiles({
+    multiple: true,
+    onFiles: (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_singer_references", "group", "Singer", "Singer references"),
+  });
+  browserAiSingerDrop.onclick = () => browserAiAddSingerButton.click();
+  browserAiClearSingerButton.onclick = () => clearBrowserAiBandSequenceFiles("band_sequence_singer_references", "Singer references");
+  browserAiAddExtrasButton.onclick = () => chooseBrowserAiImageFiles({
+    multiple: true,
+    onFiles: (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_extra_references", "group", "Extras", "Extras"),
+  });
+  browserAiExtrasDrop.onclick = () => browserAiAddExtrasButton.click();
+  browserAiClearExtrasButton.onclick = () => clearBrowserAiBandSequenceFiles("band_sequence_extra_references", "Extras");
+  browserAiAddMembersButton.onclick = () => chooseBrowserAiImageFiles({
+    multiple: true,
+    onFiles: (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_member_references", "group", "Other Band Members", "Other band member references"),
+  });
+  browserAiMembersDrop.onclick = () => browserAiAddMembersButton.click();
+  browserAiClearMembersButton.onclick = () => clearBrowserAiBandSequenceFiles("band_sequence_member_references", "Other band member references");
+  browserAiAddLocationsButton.onclick = () => chooseBrowserAiImageFiles({
+    multiple: true,
+    onFiles: (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_location_references", "location", "Locations", "Locations"),
+  });
+  browserAiLocationsDrop.onclick = () => browserAiAddLocationsButton.click();
+  browserAiClearLocationsButton.onclick = () => clearBrowserAiBandSequenceFiles("band_sequence_location_references", "Locations");
+  browserAiNewGroupButton.onclick = () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const id = `group_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const group = { id, name: `Group ${settings.reference_groups.length + 1}`, images: [] };
+    settings.reference_groups.push(group);
+    settings.active_reference_group_id = id;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    browserAiGroupStatus.textContent = `${group.name} created.`;
+    autoSaveSessionQuiet("Browser AI reference group created").catch(() => null);
+  };
+  browserAiDuplicateGroupButton.onclick = () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const source = activeBrowserAiReferenceGroup(settings);
+    const id = `group_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const group = { id, name: `${source.name} Copy`, images: source.images.map((item) => ({ ...item })) };
+    settings.reference_groups.push(group);
+    settings.active_reference_group_id = id;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    browserAiGroupStatus.textContent = `${source.name} duplicated. Swap the location separately whenever you want.`;
+    autoSaveSessionQuiet("Browser AI reference group duplicated").catch(() => null);
+  };
+  browserAiRenameGroupButton.onclick = () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const group = activeBrowserAiReferenceGroup(settings);
+    const name = window.prompt("Reference group name", group.name);
+    if (name == null || !String(name).trim()) return;
+    group.name = String(name).trim().slice(0, 90);
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    browserAiGroupStatus.textContent = `Group renamed to ${group.name}. Existing reference files were left in place.`;
+    autoSaveSessionQuiet("Browser AI reference group renamed").catch(() => null);
+  };
+  browserAiDeleteGroupButton.onclick = () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    if (settings.reference_groups.length <= 1) return;
+    const group = activeBrowserAiReferenceGroup(settings);
+    if (!window.confirm(`Delete ${group.name} from this project? The stored image files will be kept.`)) return;
+    settings.reference_groups = settings.reference_groups.filter((item) => item.id !== group.id);
+    settings.active_reference_group_id = settings.reference_groups[0].id;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    browserAiGroupStatus.textContent = `${group.name} removed. Its image files were not deleted.`;
+    autoSaveSessionQuiet("Browser AI reference group deleted").catch(() => null);
+  };
+  browserAiAddGroupImagesButton.onclick = () => chooseBrowserAiImageFiles({ multiple: true, onFiles: addBrowserAiGroupFiles });
+  browserAiGroupDrop.onclick = () => browserAiAddGroupImagesButton.click();
+  browserAiClearGroupImagesButton.onclick = () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    const group = activeBrowserAiReferenceGroup(settings);
+    if (group.images.length && !window.confirm(`Remove all references from ${group.name}? Stored image files will be kept.`)) return;
+    group.images = [];
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    autoSaveSessionQuiet("Browser AI group references cleared").catch(() => null);
+  };
+  browserAiChooseLocationButton.onclick = () => chooseBrowserAiImageFiles({ multiple: false, onFiles: (files) => setBrowserAiLocationFile(files[0]) });
+  browserAiLocationDrop.onclick = () => browserAiChooseLocationButton.click();
+  browserAiClearLocationButton.onclick = () => {
+    const settings = cloneFlowGptBrowserSettings(state.flowGptBrowserSettings);
+    settings.location_reference = null;
+    state.flowGptBrowserSettings = settings;
+    renderBrowserAiReferenceGroups();
+    autoSaveSessionQuiet("Browser AI location cleared").catch(() => null);
+  };
+  for (const [dropZone, handler] of [
+    [browserAiGroupDrop, (files) => addBrowserAiGroupFiles(files)],
+    [browserAiLocationDrop, (files) => setBrowserAiLocationFile(Array.from(files || [])[0])],
+    [browserAiSingerDrop, (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_singer_references", "group", "Singer", "Singer references")],
+    [browserAiExtrasDrop, (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_extra_references", "group", "Extras", "Extras")],
+    [browserAiMembersDrop, (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_member_references", "group", "Other Band Members", "Other band member references")],
+    [browserAiLocationsDrop, (files) => addBrowserAiBandSequenceFiles(files, "band_sequence_location_references", "location", "Locations", "Locations")],
+  ]) {
+    dropZone.addEventListener("dragover", (event) => {
+      if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    });
+    dropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      Promise.resolve(handler(event.dataTransfer?.files || [])).catch((error) => {
+        browserAiGroupStatus.textContent = String(error?.message || error);
+        toast(String(error?.message || error), true);
+      });
+    });
+  }
+  browserAiSendButton.onclick = () => {
+    const now = Date.now();
+    if (browserAiSendButton.disabled || now - browserAiLastSendStartedAt < 750) return;
+    browserAiLastSendStartedAt = now;
+    browserAiSendButton.disabled = true;
+    browserAiGroupStatus.textContent = "Send received. Starting the Browser AI request...";
+    sendBrowserAiReferenceGroup().catch((error) => {
+      browserAiGroupStatus.textContent = `Browser AI send failed:\n${String(error?.message || error)}`;
+      toast(String(error?.message || error), true);
+    }).finally(() => {
+      browserAiSendButton.disabled = false;
+    });
+  };
+  browserAiFinishButton.onclick = () => finishBrowserAiDownloadSession().catch((error) => {
+    browserAiGroupStatus.textContent = `Could not restore browser downloads:\n${String(error?.message || error)}`;
+    toast(String(error?.message || error), true);
+  });
   flowNanoProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.FLOW_NANO_BANANA);
   gptImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.GPT_IMAGE);
   metaImageProviderButton.onclick = () => setFlowGptProvider(BROWSER_IMAGE_PROVIDERS.META_AI);
@@ -41074,6 +43099,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   clearMemoryButton.onclick = runClearMemoryWorkflow;
   renderAllButton.onclick = confirmAndRunRenderAll;
   stitchPreviewButton.onclick = openStitchPreviewModal;
+  slideshowPreviewButton.onclick = renderImageSlideshowPreview;
   gemmaT2IAllButton.onclick = confirmAndRunGemmaT2IAll;
   gemmaVideoAllButton.onclick = confirmAndRunGemmaVideoAll;
   updatePromptRunnerButtonLabels();
@@ -41140,6 +43166,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   setOutButton.onclick = () => setTimelineRangePoint("out");
   clearRangeButton.onclick = clearSelectedTimelineRange;
   closeTimelineGapsButton.onclick = closeTimelineGapsFromMenu;
+  snapSceneEdgeButton.onclick = openSnapSceneEdgeMenu;
   idLoraTrimModeButton.onclick = () => {
     if (currentVideoMode() !== "id_lora") return;
     state.timelineTrimEditMode = !state.timelineTrimEditMode;
@@ -41519,16 +43546,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
       return;
     }
-    if (usingSceneAudioMode() || usingRenderedSceneAudioMode()) {
+    if (!state.sceneSelectionUsesGlobalAudio && (usingSceneAudioMode() || usingRenderedSceneAudioMode())) {
       audio.pause();
       playSceneAudioFrom(currentGlobalTime());
       updatePlayPauseButton();
       return;
     }
-    if (!ensureGlobalTimelineAudioSource(currentGlobalTime())) {
+    let startTime = currentGlobalTime();
+    if (startTime >= playbackDuration() - 0.025) {
+      startTime = Math.max(0, Number(activeSegment()?.start || 0));
+    }
+    if (!ensureGlobalTimelineAudioSource(startTime)) {
       toast("Load audio first, or add custom audio to scenes.", true);
       return;
     }
+    seekAudioWhenReady(startTime);
     audio.play().then(updatePlayPauseButton).catch((error) => toast(String(error?.message || error), true));
   };
   multiSelectButton.onclick = () => {
@@ -41608,6 +43640,69 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
     render();
   };
+  calibrateFirstBeatButton.onclick = () => {
+    openBeatCalibrationWizard().catch((error) => {
+      toast(`Could not open beat calibration:\n${String(error?.message || error)}`, true);
+    });
+  };
+  beatCalibrationCaptureButton.onclick = async () => {
+    if (beatCalibrationGridType.value === "capcut_import") {
+      const imported = await ensureCapCutBeatsForCalibration();
+      if (!imported) return;
+      applyCapCutBeatImport().catch((error) => {
+        toast(`Could not import CapCut beat markers:\n${String(error?.message || error)}`, true);
+      });
+      return;
+    }
+    if (beatCalibrationGridType.value === "auto_bpm") {
+      const bpm = await ensureAutoBpmForCalibration();
+      if (!(bpm > 0)) return;
+      if (beatCalibrationDraft?.anchors?.length === 1) {
+        applyAutoBpmCalibration().catch((error) => {
+          toast(`Could not apply automatic BPM grid:\n${String(error?.message || error)}`, true);
+        });
+      } else {
+        const captured = captureBeatCalibrationAnchor();
+        if (captured) {
+          applyAutoBpmCalibration().catch((error) => {
+            toast(`Could not apply automatic BPM grid:\n${String(error?.message || error)}`, true);
+          });
+        }
+      }
+      return;
+    }
+    if (beatCalibrationDraft?.anchors?.length === 3) {
+      applyThreePointBeatCalibration().catch((error) => {
+        toast(`Could not apply beat calibration:\n${String(error?.message || error)}`, true);
+      });
+      return;
+    }
+    captureBeatCalibrationAnchor();
+  };
+  beatCalibrationCancelButton.onclick = closeBeatCalibrationWizard;
+  beatCalibrationGridType.onchange = () => {
+    if (beatCalibrationDraft) beatCalibrationDraft.anchors = [];
+    renderBeatCalibrationWizard();
+    if (beatCalibrationGridType.value === "auto_bpm") {
+      ensureAutoBpmForCalibration().catch((error) => {
+        toast(`Could not analyze BPM:\n${String(error?.message || error)}`, true);
+      });
+    } else if (beatCalibrationGridType.value === "capcut_import") {
+      ensureCapCutBeatsForCalibration().catch((error) => {
+        toast(`Could not locate matching CapCut beats:\n${String(error?.message || error)}`, true);
+      });
+    }
+  };
+  beatCalibrationTimecodeInput.onkeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    beatCalibrationCaptureButton.click();
+  };
+  snapAllSceneStartsButton.onclick = () => {
+    snapAllSceneStartsToNearestBeats().catch((error) => {
+      toast(`Could not snap all scene starts:\n${String(error?.message || error)}`, true);
+    });
+  };
   snapToBeatsControl.input.onchange = () => {
     state.snapToBeats = Boolean(snapToBeatsControl.input.checked);
   };
@@ -41661,10 +43756,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const tag = String(event.target?.tagName || "").toLowerCase();
     const isTyping = tag === "input" || tag === "textarea" || tag === "select" || event.target?.isContentEditable;
     if (isTyping) return;
-    if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === "z") {
+    const shortcutKey = event.key.toLowerCase();
+    const snapSide = event.ctrlKey && !event.shiftKey && !event.altKey
+      ? shortcutKey === "s"
+        ? "start"
+        : shortcutKey === "e"
+          ? "end"
+          : ""
+      : "";
+    if (snapSide) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      const segment = activeSegment();
+      if (!segment || segmentTrack(segment) === "overlay") {
+        toast("Select a base scene before using the beat-snap shortcut.", true);
+        return;
+      }
+      snapSceneEdgeToNearestBeat(segment, snapSide).catch((error) => {
+        toast(`Could not snap the scene ${snapSide}:\n${String(error?.message || error)}`, true);
+      });
+    } else if (event.ctrlKey && !event.shiftKey && shortcutKey === "z") {
       event.preventDefault();
       undo();
-    } else if ((event.ctrlKey && event.key.toLowerCase() === "y") || (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "z")) {
+    } else if ((event.ctrlKey && shortcutKey === "y") || (event.ctrlKey && event.shiftKey && shortcutKey === "z")) {
       event.preventDefault();
       redo();
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "ArrowRight") {

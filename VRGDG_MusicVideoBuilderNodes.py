@@ -671,6 +671,11 @@ def _save_builder_project_as(payload):
     os.makedirs(_images_folder(target), exist_ok=True)
     os.makedirs(_prompts_folder(target), exist_ok=True)
     os.makedirs(_context_folder(target), exist_ok=True)
+    if source and os.path.isdir(source):
+        for browser_folder_name in ("Browser AI References", "Browser AI Images"):
+            browser_source = os.path.join(source, browser_folder_name)
+            if os.path.isdir(browser_source):
+                shutil.copytree(browser_source, os.path.join(target, browser_folder_name), dirs_exist_ok=True)
 
     session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
     segments = session.get("segments", [])
@@ -1389,6 +1394,39 @@ def _rebase_project_owned_paths(project_folder, old_project_folder, session):
             rebased = _project_rebased_path(project_folder, old_project_folder, ingredient.get("path", ""))
             if rebased:
                 ingredient["path"] = rebased
+    browser_settings = session.get("flow_gpt_browser_settings")
+    if isinstance(browser_settings, dict):
+        reference_groups = browser_settings.get("reference_groups", [])
+        if isinstance(reference_groups, list):
+            for group in reference_groups:
+                if not isinstance(group, dict) or not isinstance(group.get("images"), list):
+                    continue
+                for image in group["images"]:
+                    if not isinstance(image, dict):
+                        continue
+                    rebased = _project_rebased_path(project_folder, old_project_folder, image.get("path", ""))
+                    if rebased:
+                        image["path"] = rebased
+        location_reference = browser_settings.get("location_reference")
+        if isinstance(location_reference, dict):
+            rebased = _project_rebased_path(project_folder, old_project_folder, location_reference.get("path", ""))
+            if rebased:
+                location_reference["path"] = rebased
+        for reference_list_key in (
+            "band_sequence_singer_references",
+            "band_sequence_extra_references",
+            "band_sequence_member_references",
+            "band_sequence_location_references",
+        ):
+            references = browser_settings.get(reference_list_key, [])
+            if not isinstance(references, list):
+                continue
+            for image in references:
+                if not isinstance(image, dict):
+                    continue
+                rebased = _project_rebased_path(project_folder, old_project_folder, image.get("path", ""))
+                if rebased:
+                    image["path"] = rebased
 
     segments = session.get("segments", [])
     overlay_segments = session.get("overlay_segments", [])
@@ -2644,6 +2682,7 @@ def _estimate_beats_from_peaks(peaks, duration):
     threshold = mean + (std * 0.65)
     min_gap = max(0.22, min(0.55, total_duration / 500))
     beats = []
+    beat_values = []
     last_time = -999.0
     for index in range(1, len(values) - 1):
         value = values[index]
@@ -2653,13 +2692,219 @@ def _estimate_beats_from_peaks(peaks, duration):
             continue
         beat_time = index * step
         if beat_time - last_time < min_gap:
-            if beats and value > values[int(beats[-1] / step)]:
-                beats[-1] = beat_time
+            # Keep the strongest peak in the minimum-gap window. Do not turn a
+            # rounded timestamp back into an array index: floating-point
+            # truncation can select the preceding bin and incorrectly replace
+            # a stronger, correctly timed peak with a later weaker one.
+            if beats and value > beat_values[-1]:
+                beats[-1] = round(beat_time, 3)
+                beat_values[-1] = value
                 last_time = beat_time
             continue
         beats.append(round(beat_time, 3))
+        beat_values.append(value)
         last_time = beat_time
     return beats
+
+
+def _coerce_tempo_bpm(value):
+    try:
+        if hasattr(value, "reshape"):
+            value = value.reshape(-1)[0]
+        elif isinstance(value, (list, tuple)):
+            value = value[0] if value else 0
+        bpm = float(value or 0)
+    except (TypeError, ValueError, IndexError):
+        return 0.0
+    return round(bpm, 6) if math.isfinite(bpm) and bpm > 0 else 0.0
+
+
+def _tempo_from_beat_times(beats):
+    values = sorted(float(value) for value in beats or [] if math.isfinite(float(value)))
+    intervals = [
+        values[index] - values[index - 1]
+        for index in range(1, len(values))
+        if values[index] - values[index - 1] > 0.05
+    ]
+    if not intervals:
+        return 0.0
+    intervals.sort()
+    middle = len(intervals) // 2
+    median = intervals[middle] if len(intervals) % 2 else (intervals[middle - 1] + intervals[middle]) / 2.0
+    return round(60.0 / median, 6) if median > 0 else 0.0
+
+
+def _estimate_beats_from_audio(audio_path, peaks, duration, include_tempo=False):
+    """Return musical beat positions, falling back to RMS peaks when needed."""
+    try:
+        import librosa
+
+        waveform, sample_rate = librosa.load(audio_path, sr=22050, mono=True)
+        if waveform is None or len(waveform) < 2:
+            raise ValueError("Audio contains no samples.")
+        onset_envelope = librosa.onset.onset_strength(y=waveform, sr=sample_rate)
+        if onset_envelope is None or len(onset_envelope) < 2:
+            raise ValueError("Audio contains no detectable onset envelope.")
+        tempo_bpm, beat_frames = librosa.beat.beat_track(
+            onset_envelope=onset_envelope,
+            sr=sample_rate,
+            trim=False,
+        )
+        # Put each grid beat on the transient's leading edge instead of the
+        # later energy maximum, matching what the waveform shows visually.
+        beat_frames = librosa.onset.onset_backtrack(beat_frames, onset_envelope)
+        beat_times = librosa.frames_to_time(beat_frames, sr=sample_rate)
+        maximum = max(0.0, float(duration or (len(waveform) / float(sample_rate or 1))))
+        result = []
+        for value in beat_times:
+            beat_time = round(float(value), 3)
+            if beat_time < 0 or (maximum > 0 and beat_time > maximum + 0.001):
+                continue
+            if not result or beat_time > result[-1]:
+                result.append(beat_time)
+        if result:
+            bpm = _coerce_tempo_bpm(tempo_bpm) or _tempo_from_beat_times(result)
+            return (result, bpm) if include_tempo else result
+    except Exception:
+        # librosa is optional in some ComfyUI installations. The corrected RMS
+        # detector remains available so audio loading never depends on it.
+        pass
+    result = _estimate_beats_from_peaks(peaks, duration)
+    bpm = _tempo_from_beat_times(result)
+    return (result, bpm) if include_tempo else result
+
+
+def _load_json_file(path):
+    with open(path, "r", encoding="utf-8-sig") as handle:
+        return json.load(handle)
+
+
+def _extract_capcut_project_beats(draft, draft_path=""):
+    if not isinstance(draft, dict):
+        return None
+    materials = draft.get("materials") if isinstance(draft.get("materials"), dict) else {}
+    audio_materials = {
+        str(item.get("id") or ""): item
+        for item in materials.get("audios", []) or []
+        if isinstance(item, dict) and str(item.get("id") or "")
+    }
+    audio_segments = []
+    for track in draft.get("tracks", []) or []:
+        if not isinstance(track, dict) or str(track.get("type") or "").lower() != "audio":
+            continue
+        audio_segments.extend(item for item in track.get("segments", []) or [] if isinstance(item, dict))
+    audio_segment = audio_segments[0] if audio_segments else {}
+    audio_material = audio_materials.get(str(audio_segment.get("material_id") or ""), {})
+    referenced_ids = {str(value) for value in audio_segment.get("extra_material_refs", []) or [] if str(value)}
+
+    time_marks = [item for item in materials.get("time_marks", []) or [] if isinstance(item, dict)]
+    linked_time_marks = [item for item in time_marks if str(item.get("id") or "") in referenced_ids]
+    marker_times = []
+    for collection in linked_time_marks or time_marks:
+        for marker in collection.get("mark_items", []) or []:
+            if not isinstance(marker, dict):
+                continue
+            time_range = marker.get("time_range") if isinstance(marker.get("time_range"), dict) else {}
+            try:
+                marker_time = float(time_range.get("start") or 0) / 1_000_000.0
+            except (TypeError, ValueError):
+                continue
+            if marker_time >= 0:
+                marker_times.append(round(marker_time, 6))
+    marker_times = sorted(set(marker_times))
+
+    beat_materials = [item for item in materials.get("beats", []) or [] if isinstance(item, dict)]
+    linked_beats = [item for item in beat_materials if str(item.get("id") or "") in referenced_ids]
+    beat_material = (linked_beats or beat_materials or [{}])[0]
+    ai_beats = beat_material.get("ai_beats") if isinstance(beat_material.get("ai_beats"), dict) else {}
+    beat_cache_path = os.path.normpath(str(ai_beats.get("beats_path") or "").strip())
+    cache_times = []
+    beat_values = []
+    if beat_cache_path and os.path.isfile(beat_cache_path):
+        try:
+            cache_data = _load_json_file(beat_cache_path)
+            if isinstance(cache_data, dict):
+                for value in cache_data.get("time", []) or []:
+                    try:
+                        cache_time = float(value) / 1000.0
+                    except (TypeError, ValueError):
+                        continue
+                    if cache_time >= 0:
+                        cache_times.append(round(cache_time, 6))
+                beat_values = list(cache_data.get("value", []) or [])
+        except Exception:
+            cache_times = []
+            beat_values = []
+
+    # CapCut's visible project markers are frame-aligned. Prefer them when they
+    # correspond one-for-one with the AI cache; otherwise use the raw AI times.
+    if marker_times and (not cache_times or abs(len(marker_times) - len(cache_times)) <= 1):
+        beats = marker_times
+        beat_source = "timeline_markers"
+    else:
+        beats = sorted(set(cache_times))
+        beat_source = "ai_beat_cache"
+    if len(beats) < 2:
+        return None
+    duration = float(draft.get("duration") or 0) / 1_000_000.0
+    return {
+        "project_name": str(draft.get("name") or "").strip() or os.path.basename(os.path.dirname(draft_path)),
+        "draft_path": os.path.abspath(draft_path) if draft_path else "",
+        "project_fps": float(draft.get("fps") or 0),
+        "project_duration": duration,
+        "audio_name": str(audio_material.get("name") or "").strip(),
+        "audio_path": str(audio_material.get("path") or "").strip(),
+        "beat_cache_path": beat_cache_path,
+        "beat_source": beat_source,
+        "beats": beats,
+        "raw_ai_beats": cache_times,
+        "beat_values": beat_values,
+    }
+
+
+def _find_latest_capcut_beats(audio_duration=0):
+    local_app_data = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    index_path = os.path.join(
+        local_app_data,
+        "CapCut",
+        "User Data",
+        "Projects",
+        "com.lveditor.draft",
+        "root_meta_info.json",
+    )
+    if not os.path.isfile(index_path):
+        raise FileNotFoundError(f"CapCut project index was not found: {index_path}")
+    index_data = _load_json_file(index_path)
+    entries = index_data.get("all_draft_store", []) if isinstance(index_data, dict) else []
+    entries = sorted(
+        (item for item in entries if isinstance(item, dict) and not item.get("tm_draft_removed")),
+        key=lambda item: float(item.get("tm_draft_modified") or 0),
+        reverse=True,
+    )
+    requested_duration = max(0.0, float(audio_duration or 0))
+    latest_with_beats = None
+    for entry in entries[:150]:
+        draft_path = os.path.normpath(str(entry.get("draft_json_file") or "").strip())
+        if not draft_path or not os.path.isfile(draft_path):
+            continue
+        try:
+            result = _extract_capcut_project_beats(_load_json_file(draft_path), draft_path)
+        except Exception:
+            continue
+        if not result:
+            continue
+        result["project_name"] = str(entry.get("draft_name") or result.get("project_name") or "").strip()
+        result["project_modified"] = float(entry.get("tm_draft_modified") or 0)
+        latest_with_beats = latest_with_beats or result
+        if requested_duration <= 0 or abs(float(result.get("project_duration") or 0) - requested_duration) <= 0.75:
+            return result
+    if latest_with_beats and requested_duration <= 0:
+        return latest_with_beats
+    if latest_with_beats:
+        raise ValueError(
+            "CapCut projects with beat data were found, but none matched the loaded audio duration within 0.75 seconds."
+        )
+    raise ValueError("No CapCut project containing beat data was found.")
 
 
 def _looks_like_gemma_repeat_failure(text):
@@ -8144,7 +8389,13 @@ def _save_project_audio(payload):
         except Exception:
             pass
     audio_info = _read_audio_peaks(target_path, 1600)
-    return {"saved_path": target_path, "audio_folder": folder, **audio_info}
+    beats, tempo_bpm = _estimate_beats_from_audio(
+        target_path,
+        audio_info.get("peaks", []),
+        audio_info.get("duration", 0),
+        include_tempo=True,
+    )
+    return {"saved_path": target_path, "audio_folder": folder, **audio_info, "beats": beats, "tempo_bpm": tempo_bpm}
 
 
 def _save_project_srt(payload):
@@ -8429,12 +8680,19 @@ def _prepare_scene_audio_mix(payload):
 
     shutil.rmtree(parts_folder, ignore_errors=True)
     audio_info = _read_audio_peaks(mix_path, 1600)
+    beats, tempo_bpm = _estimate_beats_from_audio(
+        mix_path,
+        audio_info.get("peaks", []),
+        audio_info.get("duration", cursor),
+        include_tempo=True,
+    )
     return {
         "audio_path": mix_path,
         "srt_path": srt_path,
         "duration": audio_info.get("duration", cursor),
         "peaks": audio_info.get("peaks", []),
-        "beats": _estimate_beats_from_peaks(audio_info.get("peaks", []), audio_info.get("duration", cursor)),
+        "beats": beats,
+        "tempo_bpm": tempo_bpm,
         "scene_count": len(timeline_items),
         "used_scene_audio": True,
     }
@@ -8833,10 +9091,24 @@ def _ensure_music_builder_routes():
                     os.path.join(project_folder, "project_audio", "project_audio.wav"),
                 )
             result = _read_audio_peaks(audio_path, payload.get("target_peaks", 1600))
-            result["beats"] = _estimate_beats_from_peaks(result.get("peaks", []), result.get("duration", 0))
+            result["beats"], result["tempo_bpm"] = _estimate_beats_from_audio(
+                audio_path,
+                result.get("peaks", []),
+                result.get("duration", 0),
+                include_tempo=True,
+            )
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, "audio_path": audio_path, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/import_capcut_beats")
+    async def vrgdg_music_builder_import_capcut_beats(request):
+        try:
+            payload = await request.json()
+            result = _find_latest_capcut_beats(payload.get("audio_duration", 0))
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
 
     @server_instance.routes.post("/vrgdg/music_builder/save_session")
     async def vrgdg_music_builder_save_session(request):

@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 
 import folder_paths
@@ -19,6 +20,7 @@ from .VRGDG_FlowBrowserNodes import (
     _ensure_portable_node,
     _find_local_node_exe,
     _find_local_npm_cmd,
+    _is_debug_chrome_ready,
     _npm_command,
     _node_command,
     _start_debug_chrome,
@@ -27,6 +29,8 @@ from .VRGDG_WorkflowRunnerNodes import _prepare_load_image_name, _resolve_existi
 
 
 _VRGDG_BROWSER_IMAGE_ROUTES_REGISTERED = False
+_DOWNLOAD_KEEPERS = {}
+_DOWNLOAD_KEEPERS_LOCK = threading.Lock()
 
 _PROVIDERS = {
     "flow_nano_banana": {
@@ -248,7 +252,7 @@ def _safe_manual_ref_name(value, fallback):
     return f"{stem[:90]}{ext}"
 
 
-def _save_manual_data_url(flow_dir, data_url, name):
+def _save_image_data_url(folder, data_url, name):
     text = str(data_url or "").strip()
     if not text:
         return ""
@@ -256,7 +260,6 @@ def _save_manual_data_url(flow_dir, data_url, name):
     if not match:
         raise ValueError("Manual reference image data must be an image data URL.")
     raw = base64.b64decode(match.group(2), validate=False)
-    folder = os.path.join(flow_dir, "manual_refs")
     os.makedirs(folder, exist_ok=True)
     ext = f".{match.group(1).lower().replace('jpeg', 'jpg')}"
     safe_name = _safe_manual_ref_name(name, f"manual_ref_{int(time.time())}{ext}")
@@ -269,6 +272,46 @@ def _save_manual_data_url(flow_dir, data_url, name):
     with open(path, "wb") as handle:
         handle.write(raw)
     return path
+
+
+def _save_manual_data_url(flow_dir, data_url, name):
+    return _save_image_data_url(os.path.join(flow_dir, "manual_refs"), data_url, name)
+
+
+def _safe_browser_group_name(value, fallback="Group"):
+    text = re.sub(r"[^A-Za-z0-9 +_.-]+", "_", str(value or "").strip()).strip(" ._-")
+    return (text or fallback)[:90]
+
+
+def _project_browser_folder(payload, category, include_group=True):
+    project_folder = str(payload.get("project_folder", "") or "").strip()
+    if not project_folder:
+        raise ValueError("Create or load a Video Builder project before using a project Browser AI folder.")
+    project_folder = os.path.abspath(os.path.expanduser(project_folder))
+    folder = os.path.join(project_folder, category)
+    if include_group:
+        folder = os.path.join(folder, _safe_browser_group_name(payload.get("group_name"), "Group"))
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _store_project_browser_reference(payload):
+    data_url = str(payload.get("image_data", "") or "").strip()
+    if not data_url:
+        raise ValueError("Browser AI reference image data is missing.")
+    reference_type = str(payload.get("reference_type", "group") or "group").strip().lower()
+    if reference_type == "location":
+        folder = _project_browser_folder(payload, "Browser AI References", include_group=False)
+        folder = os.path.join(folder, "Locations")
+        os.makedirs(folder, exist_ok=True)
+    else:
+        folder = _project_browser_folder(payload, os.path.join("Browser AI References", "Groups"))
+    saved_path = _save_image_data_url(folder, data_url, payload.get("name") or "reference.png")
+    return {
+        "saved_path": saved_path,
+        "name": os.path.basename(saved_path),
+        "reference_type": reference_type,
+    }
 
 
 def _manual_image_paths(payload):
@@ -305,6 +348,119 @@ def _extract_manual_saved_path(stdout):
     return ""
 
 
+def _manual_output_dir(payload, provider, action):
+    redirect_downloads = action == "submit" and _coerce_bool(payload.get("redirect_downloads_to_project"), False)
+    if redirect_downloads:
+        folder = _project_browser_folder(payload, "Browser AI Images", include_group=False)
+        set_name = payload.get("download_set_name") or payload.get("group_name")
+        folder = os.path.join(folder, _safe_browser_group_name(set_name, "Group"))
+        location_name = os.path.splitext(os.path.basename(str(payload.get("download_location_name", "") or "")))[0]
+        folder = os.path.join(folder, _safe_browser_group_name(location_name, "No Location"))
+        os.makedirs(folder, exist_ok=True)
+        return folder, True
+    user_profile = str(os.environ.get("USERPROFILE", "") or "").strip()
+    normal_downloads = os.path.join(user_profile, "Downloads") if user_profile else os.path.join(os.path.expanduser("~"), "Downloads")
+    output_dir = normal_downloads if os.path.isdir(normal_downloads) else os.path.join(DEFAULT_FLOW_DIR, "manual_downloads", provider)
+    os.makedirs(output_dir, exist_ok=True)
+    return output_dir, False
+
+
+def _stop_download_keeper_locked(port):
+    keeper = _DOWNLOAD_KEEPERS.pop(port, None)
+    if not keeper:
+        return ""
+    process = keeper["process"]
+    if process.poll() is not None:
+        return ""
+    try:
+        process.stdin.write("stop\n")
+        process.stdin.flush()
+        stdout, _ = process.communicate(timeout=15)
+        return (stdout or "").strip()
+    except (BrokenPipeError, OSError):
+        return ""
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        return ""
+
+
+def _stop_download_keeper(port):
+    with _DOWNLOAD_KEEPERS_LOCK:
+        return _stop_download_keeper_locked(port)
+
+
+def _start_download_keeper(flow_dir, script_path, provider, config, port, output_dir, env):
+    normalized_output_dir = os.path.normcase(os.path.abspath(output_dir))
+    with _DOWNLOAD_KEEPERS_LOCK:
+        existing = _DOWNLOAD_KEEPERS.get(port)
+        if existing and existing["process"].poll() is None:
+            if existing["output_dir"] == normalized_output_dir:
+                return
+            _stop_download_keeper_locked(port)
+        elif existing:
+            _DOWNLOAD_KEEPERS.pop(port, None)
+
+        command = [
+            _node_command(flow_dir),
+            script_path,
+            "--provider",
+            provider,
+            "--action",
+            "hold-downloads",
+            "--url",
+            config["url"],
+            "--out",
+            output_dir,
+            "--connect-cdp",
+            f"http://127.0.0.1:{port}",
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=flow_dir,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+        )
+        ready = threading.Event()
+        output = []
+
+        def read_until_ready():
+            try:
+                for line in process.stdout:
+                    output.append(line)
+                    if line.strip().startswith("DOWNLOAD_OVERRIDE_READY:"):
+                        ready.set()
+                        return
+            finally:
+                ready.set()
+
+        reader = threading.Thread(target=read_until_ready, daemon=True)
+        reader.start()
+        if not ready.wait(timeout=30) or process.poll() is not None or not any(
+            line.strip().startswith("DOWNLOAD_OVERRIDE_READY:") for line in output
+        ):
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            detail = "".join(output).strip()
+            raise RuntimeError(detail or f"Could not keep browser downloads redirected to {output_dir}.")
+        _DOWNLOAD_KEEPERS[port] = {
+            "process": process,
+            "output_dir": normalized_output_dir,
+        }
+
+
 def _run_manual_bridge(payload, action):
     provider = _normalize_provider(payload.get("provider"))
     config = _PROVIDERS[provider]
@@ -318,14 +474,29 @@ def _run_manual_bridge(payload, action):
 
     port = _coerce_int(payload.get("debug_port"), config["debug_port"], 1, 65535)
     timeout_seconds = _coerce_int(payload.get("timeout_seconds"), config["timeout_seconds"], 15, 2400)
-    # Keep browser downloads where the user expects them. Import Latest already
-    # scans both this normal Downloads folder and the legacy provider capture
-    # folders, so changing the CDP download target does not break importing.
-    user_profile = str(os.environ.get("USERPROFILE", "") or "").strip()
-    normal_downloads = os.path.join(user_profile, "Downloads") if user_profile else os.path.join(os.path.expanduser("~"), "Downloads")
-    output_dir = normal_downloads if os.path.isdir(normal_downloads) else os.path.join(flow_dir, "manual_downloads", provider)
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir, redirect_downloads = _manual_output_dir(payload, provider, action)
+    if action == "finish":
+        _stop_download_keeper(port)
+    if action == "finish" and not _is_debug_chrome_ready(port):
+        return {
+            "provider": provider,
+            "provider_label": config["label"],
+            "debug_port": port,
+            "stdout": "Browser was already closed; its temporary download override is no longer active.",
+            "stderr": "",
+            "saved_path": "",
+            "download_path": "",
+            "redirect_downloads_to_project": False,
+        }
+    browser_was_ready = _is_debug_chrome_ready(port)
     _start_debug_chrome(flow_dir, port, config["url"], profile_name=config["profile_name"])
+
+    # Starting the controlled browser already creates its first provider tab.
+    # Callers can explicitly request another tab, but the Builder's group
+    # sequence reuses one tab so providers never receive parallel requests.
+    requested_new_tab = action == "submit" and _coerce_bool(payload.get("open_new_tab"), False)
+    open_new_tab = requested_new_tab and browser_was_ready
+    fresh_request = action == "submit" and _coerce_bool(payload.get("fresh_request"), False)
 
     command = [
         _node_command(flow_dir),
@@ -343,15 +514,24 @@ def _run_manual_bridge(payload, action):
         "--connect-cdp",
         f"http://127.0.0.1:{port}",
     ]
-    if action == "upload":
+    if action in {"upload", "submit"}:
         for image_path in _manual_image_paths(payload):
             command.extend(["--image", image_path])
         prompt = str(payload.get("prompt", "") or "").strip()
         if prompt:
             command.extend(["--prompt", prompt])
+    if action == "submit":
+        command.extend(["--redirect-downloads", "true" if redirect_downloads else "false"])
+        command.extend(["--new-tab", "true" if open_new_tab else "false"])
+        command.extend(["--fresh-request", "true" if fresh_request else "false"])
 
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
+    if action == "submit":
+        if redirect_downloads:
+            _start_download_keeper(flow_dir, script_path, provider, config, port, output_dir, env)
+        else:
+            _stop_download_keeper(port)
     try:
         process = subprocess.run(
             command,
@@ -362,7 +542,7 @@ def _run_manual_bridge(payload, action):
             env=env,
         )
     except subprocess.TimeoutExpired as exc:
-        if action == "upload":
+        if action in {"upload", "submit"}:
             raise RuntimeError(
                 f"{config['label']} did not finish attaching the reference image(s) and prompt within "
                 f"{timeout_seconds + 20} seconds. The browser may still be open; check whether the attachments "
@@ -383,6 +563,10 @@ def _run_manual_bridge(payload, action):
         "stdout": stdout.strip(),
         "stderr": stderr.strip(),
         "saved_path": _extract_manual_saved_path(stdout),
+        "download_path": output_dir if redirect_downloads else "",
+        "redirect_downloads_to_project": redirect_downloads,
+        "opened_new_tab": open_new_tab,
+        "reused_provider_tab": action == "submit" and not open_new_tab,
     }
 
 
@@ -601,6 +785,42 @@ def _ensure_browser_image_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = await asyncio.to_thread(_run_manual_bridge, payload, "upload")
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/browser_image/manual_submit")
+    async def vrgdg_browser_image_manual_submit(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = await asyncio.to_thread(_run_manual_bridge, payload, "submit")
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/browser_image/manual_finish")
+    async def vrgdg_browser_image_manual_finish(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = await asyncio.to_thread(_run_manual_bridge, payload, "finish")
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/browser_image/store_reference")
+    async def vrgdg_browser_image_store_reference(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = await asyncio.to_thread(_store_project_browser_reference, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

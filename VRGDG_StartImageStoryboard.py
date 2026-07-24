@@ -300,6 +300,137 @@ def _frame_stem(scene_number, frame):
     return f"scene_{int(scene_number):04d}{suffix}"
 
 
+def _current_project_start_frame(project_folder, segment):
+    """Return the start image currently selected by the Video Builder UI."""
+    if not isinstance(segment, dict) or bool(segment.get("image_assignment_cleared")):
+        return {}
+
+    history = segment.get("image_history") if isinstance(segment.get("image_history"), list) else []
+    history = [str(item or "").strip().strip('"') for item in history if str(item or "").strip()]
+    candidates = []
+    if history:
+        try:
+            history_index = int(segment.get("image_history_index", len(history) - 1))
+        except (TypeError, ValueError):
+            history_index = len(history) - 1
+        history_index = max(0, min(len(history) - 1, history_index))
+        candidates.append((history[history_index], "selected image history"))
+    candidates.extend([
+        (segment.get("approved_image_path"), "approved image"),
+        (segment.get("custom_image_path"), "custom image"),
+    ])
+    for raw_path, source in candidates:
+        path = _project_image_path(project_folder, raw_path)
+        if path and os.path.isfile(path):
+            return {"path": path, "source": source}
+
+    data_url = str(segment.get("custom_image_data") or "").strip()
+    if re.match(r"^data:image/[A-Za-z0-9.+-]+;base64,", data_url, flags=re.I):
+        return {
+            "data": data_url,
+            "name": str(segment.get("custom_image_name") or "custom_image.png").strip(),
+            "source": "custom image data",
+        }
+    return {}
+
+
+def _imported_frame_extension(source):
+    path = str(source.get("path") or source.get("name") or "").strip()
+    ext = os.path.splitext(path)[1].lower()
+    if ext in {".png", ".jpg", ".jpeg", ".webp"}:
+        return ext
+    data_match = re.match(r"^data:image/([A-Za-z0-9.+-]+);base64,", str(source.get("data") or ""), flags=re.I)
+    if data_match:
+        subtype = data_match.group(1).lower()
+        return ".jpg" if subtype in {"jpeg", "jpg"} else ".webp" if subtype == "webp" else ".png"
+    return ".png"
+
+
+def _store_imported_project_frame(project_folder, scene_number, source):
+    images = _images_folder(project_folder)
+    os.makedirs(images, exist_ok=True)
+    stem = _frame_stem(scene_number, "start")
+    target = os.path.join(images, f"{stem}{_imported_frame_extension(source)}")
+    temp_target = target + f".import_{int(time.time() * 1000)}.tmp"
+
+    if source.get("path"):
+        shutil.copy2(source["path"], temp_target)
+    else:
+        match = re.match(r"^data:image/[A-Za-z0-9.+-]+;base64,(.+)$", str(source.get("data") or ""), flags=re.I | re.S)
+        if not match:
+            raise ValueError("The current Video Builder frame did not contain valid image data.")
+        with open(temp_target, "wb") as handle:
+            handle.write(base64.b64decode(match.group(1)))
+
+    attempts = os.path.join(images, "attempts", stem)
+    os.makedirs(attempts, exist_ok=True)
+    archive_stamp = int(time.time() * 1000)
+    archive_index = 0
+    try:
+        for name in os.listdir(images):
+            existing = os.path.join(images, name)
+            if not os.path.isfile(existing) or not name.startswith(f"{stem}.") or existing == temp_target:
+                continue
+            archive_index += 1
+            old_ext = os.path.splitext(existing)[1]
+            archive = os.path.join(attempts, f"attempt_{archive_stamp}_{archive_index:02d}{old_ext}")
+            shutil.copy2(existing, archive)
+            os.remove(existing)
+        os.replace(temp_target, target)
+    finally:
+        if os.path.isfile(temp_target):
+            os.remove(temp_target)
+    return target
+
+
+def _import_project_start_frames(project_folder, overwrite=False):
+    board = _load_board(project_folder)
+    session = _read_json(_builder_session_path(project_folder))
+    project_scenes = _segment_list(session)
+    project_scenes_by_id = {
+        str(scene.get("id") or "").strip(): scene
+        for scene in project_scenes
+        if isinstance(scene, dict) and str(scene.get("id") or "").strip()
+    }
+    imported = 0
+    skipped_existing = 0
+    missing = 0
+    failures = []
+
+    for index, scene in enumerate(board.get("scenes") or []):
+        if not isinstance(scene, dict):
+            continue
+        existing = _project_image_path(project_folder, scene.get("image_path"))
+        if existing and os.path.isfile(existing) and not overwrite:
+            skipped_existing += 1
+            continue
+        scene_id = str(scene.get("project_scene_id") or scene.get("id") or "").strip()
+        project_scene = project_scenes_by_id.get(scene_id)
+        if not isinstance(project_scene, dict):
+            project_scene = project_scenes[index] if index < len(project_scenes) and isinstance(project_scenes[index], dict) else {}
+        source = _current_project_start_frame(project_folder, project_scene)
+        if not source:
+            missing += 1
+            continue
+        try:
+            scene["image_path"] = _store_imported_project_frame(project_folder, index + 1, source)
+            imported += 1
+        except Exception as exc:
+            failures.append({"scene_number": index + 1, "error": str(exc)})
+
+    if imported:
+        board["last_project_frame_import_at"] = int(time.time())
+        _save_board(project_folder, board)
+    return {
+        "storyboard": _load_board(project_folder),
+        "imported": imported,
+        "skipped_existing": skipped_existing,
+        "missing": missing,
+        "failed": len(failures),
+        "failures": failures,
+    }
+
+
 def _import_latest(project_folder, provider, scene_number, frame="start"):
     provider = _normalize_provider(provider)
     source = _newest_manual_download(provider)
@@ -456,6 +587,17 @@ async def import_latest_start_storyboard(request):
         payload = await request.json()
         folder = _project_folder(payload.get("project_folder"))
         result = _import_latest(folder, payload.get("provider"), payload.get("scene_number"), payload.get("frame"))
+        return web.json_response({"ok": True, **result})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/vrgdg/start_storyboard/import_project_start_frames")
+async def import_project_start_frames(request):
+    try:
+        payload = await request.json()
+        folder = _project_folder(payload.get("project_folder"))
+        result = _import_project_start_frames(folder, bool(payload.get("overwrite")))
         return web.json_response({"ok": True, **result})
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)

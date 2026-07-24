@@ -79,10 +79,11 @@ function openStoryboardCreator() {
   };
 
   const header = el("div", "height:68px;box-sizing:border-box;display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid #334155;background:#0f172a;");
-  const title = el("div", "font-size:20px;font-weight:950;color:#cffafe;white-space:nowrap;", "Start Image Storyboard · v1.13");
+  const title = el("div", "font-size:20px;font-weight:950;color:#cffafe;white-space:nowrap;", "Start Image Storyboard · v1.14");
   const project = field(state.projectFolder, "Paste an existing Video Builder project folder...");
   const load = button("Load Video Builder Project", true);
   const reimport = button("Refresh Project Mappings");
+  const importProjectFrames = button("Import Current Start Frames", true);
   const save = button("Save");
   const settings = button("LLM Settings");
   const close = button("Close");
@@ -107,7 +108,7 @@ function openStoryboardCreator() {
   const useEndFramesLabel = el("label", "display:flex;align-items:center;gap:7px;color:#fde68a;font-size:12px;font-weight:900;cursor:pointer;");
   useEndFramesLabel.append(useEndFrames, el("span", "", "Start + End Frames"));
   const refNote = el("div", "margin-left:auto;color:#64748b;font-size:11px;", "Per-scene references override the global reference.");
-  refBar.append(globalRefPreview, uploadGlobalRef, useGlobalLabel, useEndFramesLabel, batchBrief, refNote);
+  refBar.append(globalRefPreview, uploadGlobalRef, importProjectFrames, useGlobalLabel, useEndFramesLabel, batchBrief, refNote);
   const status = el("div", "padding:7px 16px;background:#172033;border-bottom:1px solid #334155;color:#94a3b8;font-size:12px;", "Choose a current Video Builder project to import its lyric segments.");
   const cards = el("div", "height:calc(100vh - 220px);overflow:auto;padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px;align-content:start;");
   overlay.append(header, globalBar, refBar, status, cards);
@@ -160,6 +161,47 @@ function openStoryboardCreator() {
     modal.box.append(instruction, actions);
     setTimeout(() => instruction.focus(), 0);
   });
+
+  const openProjectFrameImport = () => {
+    if (!project.value.trim() || !state.board.scenes?.length) return busy("Load a Video Builder project before importing its start frames.", true);
+    const existingCount = state.board.scenes.filter((scene) => scene?.image_path).length;
+    const modal = modalShell(
+      "Import Current Start Frames",
+      "Copy each scene's currently selected Video Builder image into this Storyboard Creator. The copies are independent, so editing or replacing them here will not overwrite the Video Builder originals.",
+    );
+    const summary = el("div", "border:1px solid #334155;border-radius:8px;background:#0f172a;padding:11px;color:#cbd5e1;font-size:12px;line-height:1.5;",
+      `${state.board.scenes.length} storyboard scenes · ${existingCount} already have a storyboard start frame.`);
+    const note = el("div", "color:#94a3b8;font-size:11px;line-height:1.45;",
+      "Import Missing Only preserves every start frame already in this creator. Replace All refreshes them from the current Video Builder selections; replaced creator frames are kept in the storyboard attempts folders.");
+    const actions = el("div", "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;");
+    const cancel = button("Cancel");
+    const missingOnly = button("Import Missing Only", true);
+    const replaceAll = button("Replace All Start Frames");
+    const runImport = async (overwrite) => {
+      try {
+        modal.closeModal();
+        busy(`Importing current Video Builder start frames${overwrite ? " and replacing existing creator frames" : " into empty creator scenes"}...`);
+        const data = await post("/vrgdg/start_storyboard/import_project_start_frames", {
+          project_folder: project.value.trim(),
+          overwrite,
+        }, 120000);
+        state.board = data.storyboard;
+        render();
+        const details = [
+          `${Number(data.imported || 0)} imported`,
+          data.skipped_existing ? `${data.skipped_existing} existing preserved` : "",
+          data.missing ? `${data.missing} scenes had no current Video Builder start frame` : "",
+          data.failed ? `${data.failed} failed` : "",
+        ].filter(Boolean).join(" · ");
+        busy(`Current start-frame import complete: ${details}.`, Boolean(data.failed));
+      } catch (error) { busy(String(error.message || error), true); }
+    };
+    cancel.onclick = modal.closeModal;
+    missingOnly.onclick = () => runImport(false);
+    replaceAll.onclick = () => runImport(true);
+    actions.append(cancel, missingOnly, replaceAll);
+    modal.box.append(summary, note, actions);
+  };
 
   const openBatchAgentBrief = () => {
     if (!state.board.scenes?.length) return busy("Load a storyboard before creating a batch brief.", true);
@@ -878,6 +920,7 @@ function openStoryboardCreator() {
   };
 
   settings.onclick = openLlmSettings;
+  importProjectFrames.onclick = openProjectFrameImport;
   provider.onchange = () => { state.provider = provider.value; };
   uploadGlobalRef.onclick = () => uploadReference(null).catch((error) => busy(String(error.message || error), true));
   batchBrief.onclick = openBatchAgentBrief;

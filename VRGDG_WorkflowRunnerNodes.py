@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 import folder_paths
@@ -3414,6 +3415,108 @@ def _stitch_scene_videos(payload):
     }
 
 
+def _render_image_slideshow(payload):
+    raw_items = payload.get("image_items", [])
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("No scene images were provided for the slideshow preview.")
+    project_folder, target_dir = _safe_project_subfolder(payload.get("project_folder", ""), "slideshow_previews")
+    audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"Global audio file was not found: {audio_path}")
+    audio_start = max(0.0, float(payload.get("audio_start", 0) or 0))
+    target_width = _int_payload(payload, "width", 1920, 64, 8192)
+    target_height = _int_payload(payload, "height", 1080, 64, 8192)
+    fps = _int_payload(payload, "fps", 24, 1, 120)
+
+    items = []
+    for index, item in enumerate(raw_items, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Scene {index} slideshow item is invalid.")
+        path = os.path.abspath(str(item.get("path", "") or "").strip().strip('"'))
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Scene {index} image was not found: {path}")
+        if os.path.splitext(path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}:
+            raise ValueError(f"Scene {index} media is not a supported slideshow image: {path}")
+        duration = max(0.05, float(item.get("duration", 0) or 0))
+        items.append({"path": path, "duration": duration})
+
+    total_duration = sum(item["duration"] for item in items)
+    ffmpeg_path = _find_ffmpeg_path()
+    scratch = tempfile.mkdtemp(prefix="_slideshow_", dir=target_dir)
+    concat_file = os.path.join(scratch, "images.txt")
+    video_only = os.path.join(scratch, "video.mp4")
+    final_output = _unique_final_video_path(project_folder, payload.get("output_prefix", "IMAGE_SLIDESHOW_PREVIEW"))
+    try:
+        # The concat demuxer does not safely handle still images whose stream
+        # properties change mid-list.  In particular, FFmpeg's fps filter can
+        # discard the image immediately before a resolution change while the
+        # filter graph is reinitialized.  Normalize every source to one common
+        # RGB frame first so a mixed-resolution project cannot lose a scene.
+        normalized_items = []
+        normalize_filter = (
+            f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,"
+            f"pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+            "setsar=1,format=rgb24"
+        )
+        for index, item in enumerate(items, start=1):
+            normalized_path = os.path.join(scratch, f"image_{index:06d}.png")
+            normalize_cmd = [
+                ffmpeg_path, "-y", "-i", item["path"],
+                "-vf", normalize_filter,
+                "-frames:v", "1", normalized_path,
+            ]
+            try:
+                subprocess.run(normalize_cmd, capture_output=True, text=True, errors="replace", check=True)
+            except subprocess.CalledProcessError as exc:
+                detail = exc.stderr or exc.stdout or str(exc)
+                raise RuntimeError(f"Could not normalize slideshow Scene {index}:\n{detail}") from exc
+            normalized_items.append({"path": normalized_path, "duration": item["duration"]})
+
+        with open(concat_file, "w", encoding="utf-8") as handle:
+            for item in normalized_items:
+                handle.write(f"file '{_concat_file_path(item['path'])}'\n")
+                handle.write(f"duration {item['duration']:.6f}\n")
+            # The concat demuxer only applies the final duration when its last
+            # still is repeated once.
+            handle.write(f"file '{_concat_file_path(normalized_items[-1]['path'])}'\n")
+
+        filter_graph = f"fps={fps},format=yuv420p"
+        slideshow_cmd = [
+            ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", concat_file,
+            "-vf", filter_graph,
+            "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-t", f"{total_duration:.6f}", "-movflags", "+faststart", video_only,
+        ]
+        subprocess.run(slideshow_cmd, capture_output=True, text=True, errors="replace", check=True)
+
+        mux_cmd = [ffmpeg_path, "-y", "-i", video_only]
+        if audio_start:
+            mux_cmd.extend(["-ss", f"{audio_start:.6f}"])
+        mux_cmd.extend([
+            "-i", audio_path,
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-t", f"{total_duration:.6f}",
+            "-c:v", "copy", "-c:a", "aac", "-shortest", "-movflags", "+faststart",
+            final_output,
+        ])
+        subprocess.run(mux_cmd, capture_output=True, text=True, errors="replace", check=True)
+        if not os.path.isfile(final_output) or os.path.getsize(final_output) <= 0:
+            raise RuntimeError("FFmpeg did not create the slideshow preview video.")
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    return {
+        "final_video_path": final_output,
+        "video_folder": target_dir,
+        "scene_count": len(items),
+        "duration": total_duration,
+        "audio_start": audio_start,
+        "output_width": target_width,
+        "output_height": target_height,
+        "fps": fps,
+    }
+
+
 def _ensure_workflow_runner_routes():
     global _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED
     if _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED:
@@ -3719,6 +3822,21 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _stitch_scene_videos(payload)
+        except subprocess.CalledProcessError as exc:
+            error = exc.stderr or exc.stdout or str(exc)
+            return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/render_image_slideshow")
+    async def vrgdg_workflow_runner_render_image_slideshow(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _render_image_slideshow(payload)
         except subprocess.CalledProcessError as exc:
             error = exc.stderr or exc.stdout or str(exc)
             return web.json_response({"ok": False, "error": f"FFmpeg failed:\n{error}"}, status=400)

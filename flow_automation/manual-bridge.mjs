@@ -12,6 +12,9 @@ const timeout = Number(args.timeout || 600000);
 const cdpUrl = args.cdp || args["connect-cdp"] || "";
 const imagePaths = normalizeList(args.image).map((imagePath) => path.resolve(imagePath));
 const prompt = String(args.prompt || "").trim();
+const redirectDownloads = normalizeBoolean(args["redirect-downloads"] || args.redirect_downloads);
+const openNewTab = action === "submit" && normalizeBoolean(args["new-tab"] || args.new_tab);
+const freshRequest = action === "submit" && normalizeBoolean(args["fresh-request"] || args.fresh_request);
 
 await fs.mkdir(outputDir, { recursive: true });
 
@@ -23,14 +26,26 @@ const browser = await chromium.connectOverCDP(cdpUrl);
 const context = browser.contexts()[0];
 if (!context) throw new Error("Connected to Chrome, but no browser context was available.");
 
-const page = await getOrCreateProviderPage(context, provider);
+const page = openNewTab ? await context.newPage() : await getOrCreateProviderPage(context, provider);
 page.setDefaultTimeout(30000);
 
-await ensureProviderPage(page, provider, url);
+if (freshRequest && !openNewTab) {
+  await page.bringToFront().catch(() => {});
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+} else {
+  await ensureProviderPage(page, provider, url);
+}
+if ((action === "upload" || action === "submit") && provider === "flow_nano_banana") {
+  await ensureFlowProjectPage(page);
+}
+if ((action === "upload" || action === "submit") && provider === "gpt_image") {
+  await ensureChatGptComposerReady(page);
+}
 
-if (action === "upload") {
-  await restoreNormalDownloadsForAttachedChrome(context, page);
-  if (!imagePaths.length) throw new Error("No image paths were provided for upload.");
+if (action === "upload" || action === "submit") {
+  if (action === "upload" && !imagePaths.length) throw new Error("No image paths were provided for upload.");
+  if (action === "submit" && !prompt) throw new Error("No Browser AI prompt was provided for submission.");
   for (let index = 0; index < imagePaths.length; index += 1) {
     const imagePath = imagePaths[index];
     console.log(`Uploading ${index + 1}/${imagePaths.length}: ${imagePath}`);
@@ -43,10 +58,19 @@ if (action === "upload") {
     await page.waitForTimeout(2000);
   }
   if (prompt) {
-    console.log("Copying manual chat prompt into the provider composer...");
+    console.log(`${action === "submit" ? "Entering" : "Copying"} manual chat prompt into the provider composer...`);
     await fillManualChatPrompt(page, prompt);
   }
-  console.log(`Uploaded ${imagePaths.length} image(s).`);
+  if (action === "submit") {
+    console.log("Submitting Browser AI prompt...");
+    await submitManualChatPrompt(page, provider);
+    console.log(`Submitted prompt with ${imagePaths.length} image(s).`);
+    if (openNewTab) console.log("Request opened in a new provider tab.");
+    else if (freshRequest) console.log("Fresh request submitted in the existing provider tab.");
+    console.log(`Download target: ${redirectDownloads ? outputDir : "browser default"}`);
+  } else {
+    console.log(`Uploaded ${imagePaths.length} image(s).`);
+  }
 } else if (action === "wait-download") {
   // Download capture is opt-in. Upload/send actions must never change Chrome's
   // normal download directory; storyboard images are imported only when the
@@ -57,11 +81,31 @@ if (action === "upload") {
   const savedPath = await waitForDownloadOrNewFile(context, outputDir, timeout, startedAt);
   console.log(`Saved: ${savedPath}`);
 } else if (action === "open") {
-  await restoreNormalDownloadsForAttachedChrome(context, page);
   console.log(`${providerLabel(provider)} browser ready: ${page.url()}`);
+} else if (action === "hold-downloads") {
+  await allowDownloadsForAttachedChrome(context, page, outputDir, true);
+  console.log(`DOWNLOAD_OVERRIDE_READY: ${outputDir}`);
+  await new Promise((resolve) => {
+    process.stdin.resume();
+    process.stdin.once("data", resolve);
+    process.stdin.once("end", resolve);
+    process.stdin.once("close", resolve);
+  });
+  await restoreNormalDownloadsForAttachedChrome(context, page, true);
+  console.log(`${providerLabel(provider)} downloads restored to the browser default.`);
+} else if (action === "finish") {
+  await restoreNormalDownloadsForAttachedChrome(context, page, true);
+  console.log(`${providerLabel(provider)} downloads restored to the browser default.`);
 } else {
   throw new Error(`Unknown manual bridge action: ${action}`);
 }
+
+// This is a short-lived bridge attached to a Chrome instance that must remain
+// open for manual review and downloads. Some provider pages keep CDP-related
+// handles alive after generation starts, so explicitly end only this helper
+// process once its requested action is complete. Chrome and its tabs remain.
+await new Promise((resolve) => process.stdout.write("", resolve));
+process.exit(0);
 
 function normalizeProvider(value) {
   const key = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
@@ -84,6 +128,11 @@ function providerUrl(value) {
 function normalizeList(value) {
   if (value === undefined || value === null || value === false) return [];
   return Array.isArray(value) ? value.filter(Boolean) : [value];
+}
+
+function normalizeBoolean(value) {
+  if (typeof value === "boolean") return value;
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
 function parseArgs(raw) {
@@ -134,6 +183,39 @@ async function fillManualChatPrompt(page, promptText) {
   await page.waitForTimeout(500);
 }
 
+async function submitManualChatPrompt(page, providerName) {
+  const locators = providerName === "gpt_image"
+    ? [
+        page.getByRole("button", { name: /^send prompt$/i }),
+        page.locator("button[aria-label*='Send prompt' i]"),
+        page.getByRole("button", { name: /send prompt|send message|send/i }),
+        page.locator("button[aria-label*='Send' i]"),
+        page.locator("button[data-testid*='send' i]"),
+      ]
+    : providerName === "meta_ai"
+      ? [
+          page.getByRole("button", { name: /send|submit|generate|create/i }),
+          page.locator("button[aria-label*='Send' i]"),
+          page.locator("button[aria-label*='Submit' i]"),
+          page.locator("button[aria-label*='Generate' i]"),
+        ]
+      : [
+          page.getByRole("button", { name: /submit|send|create|generate/i }),
+          page.locator("button[aria-label*='Submit' i]"),
+          page.locator("button[aria-label*='Send' i]"),
+          page.locator("button[aria-label*='Create' i]"),
+          page.locator("button[aria-label*='Generate' i]"),
+          page.locator("button:has(i.google-symbols:text-is('arrow_forward'))"),
+          page.locator("[role='button'][aria-label*='Submit' i]"),
+          page.locator("[role='button'][aria-label*='Send' i]"),
+        ];
+  const submitted = await clickFirstVisible(locators, 20000);
+  if (!submitted) {
+    throw new Error(`Prompt and reference images are ready, but the ${providerLabel(providerName)} submit button was not found.`);
+  }
+  await page.waitForTimeout(1200);
+}
+
 async function getOrCreateProviderPage(context, providerName) {
   const pages = context.pages();
   const matcher = providerName === "gpt_image"
@@ -141,7 +223,11 @@ async function getOrCreateProviderPage(context, providerName) {
     : providerName === "meta_ai"
       ? (candidate) => candidate.url().startsWith("https://www.meta.ai/") || candidate.url().startsWith("https://meta.ai/")
       : (candidate) => candidate.url().startsWith("https://labs.google/") && !candidate.url().includes("/signin");
-  return pages.find(matcher) || pages.find((candidate) => candidate.url() !== "about:blank") || pages[0] || await context.newPage();
+  const providerPages = pages.filter(matcher);
+  return providerPages[providerPages.length - 1]
+    || pages.find((candidate) => candidate.url() !== "about:blank")
+    || pages[0]
+    || await context.newPage();
 }
 
 async function ensureProviderPage(page, providerName, targetUrl) {
@@ -154,22 +240,97 @@ async function ensureProviderPage(page, providerName, targetUrl) {
       : currentUrl.startsWith("https://labs.google/");
   if (!valid) {
     await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
   }
 }
 
-async function allowDownloadsForAttachedChrome(context, page, downloadPath) {
+async function allowDownloadsForAttachedChrome(context, page, downloadPath, required = false) {
   try {
     const session = await context.newCDPSession(page);
     await session.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath });
-  } catch {}
+    return true;
+  } catch (error) {
+    if (required) throw new Error(`Could not temporarily redirect browser downloads to ${downloadPath}: ${error?.message || error}`);
+    return false;
+  }
 }
 
-async function restoreNormalDownloadsForAttachedChrome(context, page) {
+async function ensureFlowProjectPage(page) {
+  await page.bringToFront().catch(() => {});
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+  if (await findFlowPromptBox(page)) return;
+  const newProjectClicked = await clickFirstVisible([
+    page.getByRole("button", { name: /(?:new|create) project/i }),
+    page.getByRole("link", { name: /(?:new|create) project/i }),
+    page.getByText(/(?:new|create) project/i),
+    page.locator("button").filter({ hasText: /(?:new|create) project/i }),
+    page.locator("[role='button']").filter({ hasText: /(?:new|create) project/i }),
+  ], 30000);
+  if (!newProjectClicked) throw new Error("Could not find the Create project or New project button in the Flow tab.");
+  await page.waitForTimeout(2500);
+  await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    if (await findFlowPromptBox(page)) return;
+    await page.waitForTimeout(1000);
+  }
+  throw new Error("Flow created a project, but its prompt box did not appear.");
+}
+
+async function ensureChatGptComposerReady(page) {
+  await page.bringToFront().catch(() => {});
+  const deadline = Date.now() + 120000;
+  while (Date.now() < deadline) {
+    if (page.isClosed()) throw new Error("The new ChatGPT Image tab closed before its prompt box became ready.");
+    if (await findChatGptComposer(page)) return;
+    await page.waitForTimeout(1000);
+  }
+  throw new Error("The new ChatGPT Image tab opened, but its prompt box did not become ready. Confirm that the automation profile is signed into ChatGPT Images.");
+}
+
+async function findChatGptComposer(page) {
+  return await findVisibleLocator([
+    page.getByPlaceholder(/describe a new image/i),
+    page.getByPlaceholder(/ask anything/i),
+    page.locator("textarea[placeholder*='Describe' i]"),
+    page.locator("textarea[placeholder*='Ask' i]"),
+    page.locator("[contenteditable='true'][data-placeholder*='Describe' i]"),
+    page.locator("[contenteditable='true'][aria-label*='message' i]"),
+    page.locator("[contenteditable='true']"),
+    page.locator("textarea"),
+  ], 500);
+}
+
+async function findFlowPromptBox(page) {
+  const roots = [page, ...page.frames()];
+  for (const root of roots) {
+    const candidate = await findVisibleLocator([
+      root.getByPlaceholder(/what do you want to create/i),
+      root.getByRole("textbox", { name: /what do you want to create/i }),
+      root.locator("textarea[placeholder*='create' i]"),
+      root.locator("[contenteditable='true'][aria-label*='create' i]"),
+      root.locator("[role='textbox'][aria-label*='create' i]"),
+      root.locator("textarea"),
+      root.locator("[contenteditable='true']"),
+      root.locator("[contenteditable='plaintext-only']"),
+      root.locator("[role='textbox']"),
+      root.locator(".ProseMirror"),
+      root.locator("input[type='text']"),
+    ], 500);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+async function restoreNormalDownloadsForAttachedChrome(context, page, required = false) {
   try {
     const session = await context.newCDPSession(page);
     await session.send("Browser.setDownloadBehavior", { behavior: "default" });
-  } catch {}
+    return true;
+  } catch (error) {
+    if (required) throw new Error(`Could not restore the browser download destination: ${error?.message || error}`);
+    return false;
+  }
 }
 
 async function uploadFlowImageAndAddToPrompt(page, filePath) {
