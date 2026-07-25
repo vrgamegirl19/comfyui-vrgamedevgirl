@@ -373,17 +373,19 @@ def _patch_ltx_video_model_loader(prompt, payload):
     if not diffusion_name:
         diffusion_name = gguf_name
     switch_id = _optional_api_node_id_by_class(prompt, "ComfySwitchNode", "Switch-use GGUF", fallback_ids=("955", "939", "959"))
+    gguf_loader_id = _optional_api_node_id_by_class(prompt, "UnetLoaderGGUF", fallback_ids=("271:215", "969"))
     diffusion_loader_id = _optional_api_node_id_by_class(prompt, "DiffusionModelLoaderKJ", fallback_ids=("956", "938", "958"))
     if switch_id:
         _set_optional_api_input(prompt, switch_id, "switch", use_gguf)
-    _set_optional_api_input(prompt, "271:215", "unet_name", gguf_name)
+    if gguf_loader_id:
+        _set_optional_api_input(prompt, gguf_loader_id, "unet_name", gguf_name)
     if diffusion_loader_id:
         _set_optional_api_input(prompt, diffusion_loader_id, "model_name", diffusion_name)
-    if switch_id and diffusion_loader_id:
+    if switch_id and gguf_loader_id and diffusion_loader_id:
         if use_gguf:
-            _collapse_ltx_video_model_switch(prompt, switch_id, "271:215", diffusion_loader_id)
+            _collapse_ltx_video_model_switch(prompt, switch_id, gguf_loader_id, diffusion_loader_id)
         else:
-            _collapse_ltx_video_model_switch(prompt, switch_id, diffusion_loader_id, "271:215")
+            _collapse_ltx_video_model_switch(prompt, switch_id, diffusion_loader_id, gguf_loader_id)
 
 
 def _load_workflow_template(path=None):

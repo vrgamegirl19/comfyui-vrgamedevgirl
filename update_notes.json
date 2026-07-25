@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "product": "LTX 2.3 Video Builder",
+  "releases": [
+    {
+      "id": "2026-07-25-builder-navigation",
+      "version": "2026.07.25",
+      "date": "2026-07-25",
+      "title": "Builder navigation, update details, and reliability fixes",
+      "commit": "0d9f1c963e37eb7272910e41fd7b19dce7c6d513",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added Review Guide to the Builder menu for direct access to the public LTX 2.3 Video Builder guide.",
+            "Added a clear legacy notice before opening the older Prompt Creator workflow.",
+            "Added an optional What's New window so users can review release details from the status banner or Builder menu."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "New projects now open directly in Video Builder.",
+            "Prompt Creator is labeled as a legacy workflow, with Storyboard Builder recommended for new story planning."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Removed the obsolete Remake Mode menu item.",
+            "Fixed the update-status banner so it no longer stretches the toolbar or reduces the main workspace.",
+            "Fixed update detection for development builds whose changes were squash-merged to main.",
+            "Fixed ID-LoRA GGUF rendering so the unused safetensors loader is removed before ComfyUI validates the prompt."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2026-07-25-guide-visuals",
+      "version": "2026.07.25-guide",
+      "date": "2026-07-25",
+      "title": "Expanded Storyboard and Browser AI guide",
+      "commit": "1554e8c757e8e045fc634c713d0e9e3e84a13e62",
+      "restart_required": false,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "Documentation",
+          "items": [
+            "Added Storyboard Builder screenshots for the main window, Story Layer, Image Prep defaults, and Video Prep defaults.",
+            "Added Browser AI screenshots for provider setup, manual mode, and Band Sequence groups."
+          ]
+        }
+      ]
+    }
+  ]
+}
