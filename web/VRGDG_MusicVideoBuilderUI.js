@@ -1874,14 +1874,14 @@ function openBuilder(node) {
   updateStatusDot.style.cssText = "width:9px;height:9px;flex:0 0 9px;border-radius:999px;background:#a1a1aa;box-shadow:0 0 0 3px rgba(161,161,170,.16);";
   const updateStatusText = document.createElement("span");
   updateStatusText.style.cssText = "min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-  updateStatusText.textContent = "V10 — Checking for updates…";
+  updateStatusText.textContent = "LTX 2.3 Video Builder — Checking for updates…";
   const updateStatusAction = makeButton("Update");
   updateStatusAction.style.cssText += "display:none;padding:4px 10px;min-height:24px;background:#7f1d1d;border-color:#f87171;color:#fff;font-size:11px;font-weight:900;";
   const updateStatusClose = document.createElement("button");
   updateStatusClose.type = "button";
   updateStatusClose.textContent = "×";
   updateStatusClose.title = "Dismiss this version status";
-  updateStatusClose.setAttribute("aria-label", "Dismiss V10 version status");
+  updateStatusClose.setAttribute("aria-label", "Dismiss LTX 2.3 Video Builder version status");
   updateStatusClose.style.cssText = "width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid rgba(255,255,255,.32);border-radius:5px;background:rgba(0,0,0,.18);color:inherit;font:700 18px/1 sans-serif;cursor:pointer;";
   updateStatusBanner.append(updateStatusDot, updateStatusText, updateStatusAction, updateStatusClose);
 
@@ -1911,7 +1911,7 @@ function openBuilder(node) {
   };
 
   const refreshV10UpdateStatus = async () => {
-    setUpdateStatusAppearance("checking", "V10 — Checking for updates…");
+    setUpdateStatusAppearance("checking", "LTX 2.3 Video Builder — Checking for updates…");
     try {
       const response = await api.fetchApi("/vrgdg/update/v10/status");
       const payload = await response.json();
@@ -1939,7 +1939,7 @@ function openBuilder(node) {
           : countText;
         setUpdateStatusAppearance(
           "outdated",
-          `V10 build ${installed} — Update available (${reason}; latest ${latest})`,
+          `LTX 2.3 Video Builder build ${installed} — Update available (${reason}; latest ${latest})`,
           `This installation is not at the latest production version on main (${reason}). Click Update to run the safe updater.`
         );
       } else {
@@ -1948,14 +1948,14 @@ function openBuilder(node) {
           : payload.tracked_changes ? " · modified locally" : "";
         setUpdateStatusAppearance(
           "current",
-          `V10 build ${installed} — Up to date${localNote}`,
-          `Installed V10 commit: ${payload.installed_commit}`
+          `LTX 2.3 Video Builder build ${installed} — Up to date${localNote}`,
+          `Installed LTX 2.3 Video Builder commit: ${payload.installed_commit}`
         );
       }
     } catch (error) {
       setUpdateStatusAppearance(
         "unavailable",
-        "V10 — Could not check for updates",
+        "LTX 2.3 Video Builder — Could not check for updates",
         String(error?.message || error)
       );
     }
