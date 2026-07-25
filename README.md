@@ -10,9 +10,9 @@ Includes HUMO-based multi-scene workflows, audio splitting, video combining, and
 
 ---
 
-## V9 Video Builder Guide
+## LTX 2.3 Video Builder Guide
 
-New to the V9 builder? Start here: [V9 Video Builder Guide](docs/V9_VIDEO_BUILDER_GUIDE.md)
+New to the Builder? Start here: [LTX 2.3 Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md)
 
 ---
 

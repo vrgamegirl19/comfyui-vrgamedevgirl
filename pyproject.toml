@@ -27,7 +27,7 @@ classifiers = [
 [project.urls]
 Repository = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl"
 "Bug Tracker" = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/issues"
-Documentation = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/tree/dev/music-video-builder-ui-test-v9/Workflows/LTX-2_Workflows/Video_Builder"
+Documentation = "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md"
 
 [tool.comfy]
 PublisherId = "vrgamedevgirl"
