@@ -42,7 +42,6 @@ import {
 
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
-const V10_STATUS_DISMISS_KEY = "vrgdg:v10-update-status-dismissed";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors";
@@ -1845,7 +1844,7 @@ function openBuilder(node) {
     width: min(1800px, calc(100vw - 24px));
     height: min(920px, calc(100vh - 24px));
     display: grid;
-    grid-template-rows: auto auto minmax(0,1fr) minmax(230px, 34vh);
+    grid-template-rows: auto minmax(0,1fr) minmax(230px, 34vh);
     background: #18181b;
     color: #fafafa;
     border: 1px solid #3f3f46;
@@ -1857,7 +1856,7 @@ function openBuilder(node) {
     width: 100vw;
     height: 100vh;
     display: grid;
-    grid-template-rows: auto auto minmax(0,1fr) minmax(230px, 34vh);
+    grid-template-rows: auto minmax(0,1fr) minmax(230px, 34vh);
     background: #18181b;
     color: #fafafa;
     border: 0;
@@ -1885,7 +1884,6 @@ function openBuilder(node) {
   updateStatusClose.style.cssText = "width:24px;height:24px;flex:0 0 24px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid rgba(255,255,255,.32);border-radius:5px;background:rgba(0,0,0,.18);color:inherit;font:700 18px/1 sans-serif;cursor:pointer;";
   updateStatusBanner.append(updateStatusDot, updateStatusText, updateStatusAction, updateStatusClose);
 
-  let updateStatusDismissToken = "";
   const setUpdateStatusAppearance = (kind, text, detail = "") => {
     const styles = {
       current: { background: "#14532d", border: "#22c55e", dot: "#86efac", shadow: "rgba(134,239,172,.22)" },
@@ -1905,9 +1903,6 @@ function openBuilder(node) {
 
   updateStatusClose.onclick = () => {
     updateStatusBanner.style.display = "none";
-    if (updateStatusDismissToken) {
-      try { localStorage.setItem(V10_STATUS_DISMISS_KEY, updateStatusDismissToken); } catch (_) { /* Storage may be disabled. */ }
-    }
   };
 
   const refreshV10UpdateStatus = async () => {
@@ -1924,14 +1919,6 @@ function openBuilder(node) {
       const behind = Math.max(0, Number(payload.behind || 0));
       const wrongBranch = Boolean(payload.expected_branch) && payload.branch !== payload.expected_branch;
       const isOutdated = Boolean(payload.outdated) || behind > 0 || wrongBranch;
-      updateStatusDismissToken = `${installed}:${latest}:${isOutdated ? "outdated" : "current"}`;
-      let dismissed = "";
-      try { dismissed = localStorage.getItem(V10_STATUS_DISMISS_KEY) || ""; } catch (_) { /* Storage may be disabled. */ }
-      if (dismissed === updateStatusDismissToken) {
-        updateStatusBanner.style.display = "none";
-        return;
-      }
-
       if (isOutdated) {
         const countText = `${behind} commit${behind === 1 ? "" : "s"} behind`;
         const reason = wrongBranch
@@ -1971,6 +1958,8 @@ function openBuilder(node) {
   pickAudioButton.textContent = "Choose Audio";
   pickSrtButton.textContent = "Choose SRT";
   const settingsButton = makeButton("Settings");
+  const reviewGuideButton = makeButton("Review Guide");
+  reviewGuideButton.title = "Open the LTX 2.3 Video Builder guide on GitHub.";
   const loadButton = makeButton("Load Audio", "primary");
   const loadSrtButton = makeButton("Load SRT", "primary");
   const menuButton = makeButton("Menu");
@@ -1995,7 +1984,7 @@ function openBuilder(node) {
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
   };
-  const promptCreatorButton = makeButton("Prompt Creator");
+  const promptCreatorButton = makeButton("Prompt Creator (Legacy)");
   const autoLoadAllButton = makeButton("Import Data From Prompt Creator");
   const importSceneNotesButton = makeButton("Import Scene Notes JSON");
   const wizardButton = makeButton("Wizard", "primary");
@@ -2018,7 +2007,6 @@ function openBuilder(node) {
   const importImageFolderButton = makeButton("Fill Timeline Images From Folder", "primary");
   const fullBuildButton = makeButton("Build Full Video");
   const fullFLFBuildButton = makeButton("Build Full FLF Video");
-  const remakeModeButton = makeButton("Remake Mode");
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Download Models");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
@@ -2044,7 +2032,7 @@ function openBuilder(node) {
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton, remakeModeButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -2157,7 +2145,7 @@ function openBuilder(node) {
   let beatCalibrationDraft = null;
   toolsPane.append(
     toolIntro,
-    makeToolRow(promptCreatorButton, "Open Prompt Creator to build source text, SRT timing, concept prompts, and context files."),
+    makeToolRow(promptCreatorButton, "Legacy workflow. Storyboard Builder is the newer, recommended way to plan story beats, references, defaults, and scene prompts."),
     makeToolRow(sendToPromptCreatorButton, "Send this Video Builder timeline back into Prompt Creator as an editable draft."),
     makeToolRow(autoLoadAllButton, "Import the latest Prompt Creator outputs into this project, including timing and prompt data."),
     makeToolRow(importSceneNotesButton, "Load a scene-notes JSON file and map its notes onto the current scenes."),
@@ -4610,7 +4598,10 @@ function openBuilder(node) {
   sceneAudio.preload = "metadata";
   updateGlobalAudioMuteButton();
 
-  shell.append(updateStatusBanner, topbar, main, timeline);
+  const shellHeader = document.createElement("div");
+  shellHeader.style.cssText = "display:flex;flex-direction:column;min-width:0;min-height:0;";
+  shellHeader.append(updateStatusBanner, topbar);
+  shell.append(shellHeader, main, timeline);
   overlay.append(shell);
   document.body.append(overlay);
   refreshV10UpdateStatus();
@@ -29827,11 +29818,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const choice = await showWelcomeProjectModal([], projectsLoader);
     if (!choice) return false;
     if (choice.action === "new") {
-      const mode = await window.VRGDGMusicVideoPromptCreator?.chooseNewProjectMode?.();
-      if (!mode) return false;
-      const created = await newProject();
-      if (created && mode === "prompt_creator") openPromptCreatorPanel();
-      return Boolean(created);
+      return Boolean(await newProject());
     }
     if (choice.action === "load" && choice.project_folder) {
       return await loadSessionFromProject(choice.project_folder);
@@ -38439,24 +38426,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     input.click();
   }
 
-  function showRemakeModeComingSoon() {
-    const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;";
-    const box = document.createElement("div");
-    box.style.cssText = "width:min(420px,calc(100vw - 40px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
-    const title = document.createElement("div");
-    title.textContent = "Remake Mode";
-    title.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
-    const body = document.createElement("div");
-    body.textContent = "Coming soon. This will let you select scenes and remake images, videos, or both.";
-    body.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
-    const close = makeButton("Close");
-    close.onclick = () => backdrop.remove();
-    box.append(title, body, close);
-    backdrop.append(box);
-    document.body.append(backdrop);
-  }
-
   function confirmLongBatchAction({ title, lines = [], confirmLabel = "Continue" } = {}) {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
@@ -42700,6 +42669,52 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
     });
   }
+
+  function showLegacyPromptCreatorNotice() {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;";
+      const box = document.createElement("div");
+      box.style.cssText = "width:min(620px,calc(100vw - 40px));border:1px solid #b45309;border-radius:10px;background:#111827;color:#f8fafc;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:18px;display:flex;flex-direction:column;gap:13px;";
+      const heading = document.createElement("div");
+      heading.textContent = "Prompt Creator (Legacy)";
+      heading.style.cssText = "font-size:19px;font-weight:900;color:#fde68a;";
+      const note = document.createElement("div");
+      note.innerHTML = [
+        "<strong>Prompt Creator is the older planning workflow.</strong>",
+        "For new projects, use Storyboard Builder. It is the newer workflow for keeping story direction, scene beats, references, image defaults, motion defaults, and prompts together in the same project.",
+        "Continue only if you need an older Prompt Creator project or its file-based prompt workflow.",
+      ].map((line) => `<div style="margin-top:7px;">${line}</div>`).join("");
+      note.style.cssText = "font-size:13px;color:#e5e7eb;line-height:1.5;";
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:3px;";
+      const continueLegacy = makeButton("Continue to Prompt Creator");
+      const continueBuilder = makeButton("Continue to Video Builder", "primary");
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      continueLegacy.onclick = () => finish("prompt_creator");
+      continueBuilder.onclick = () => finish("video_builder");
+      backdrop.addEventListener("click", (event) => {
+        if (event.target === backdrop) finish("video_builder");
+      });
+      backdrop.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") finish("video_builder");
+      });
+      actions.append(continueLegacy, continueBuilder);
+      box.append(heading, note, actions);
+      backdrop.append(box);
+      document.body.append(backdrop);
+      backdrop.tabIndex = -1;
+      backdrop.focus();
+    });
+  }
+
+  async function confirmOpenLegacyPromptCreator() {
+    const choice = await showLegacyPromptCreatorNotice();
+    if (choice === "prompt_creator") openPromptCreatorPanel();
+  }
   browserAiSendButton.onclick = () => {
     const now = Date.now();
     if (browserAiSendButton.disabled || now - browserAiLastSendStartedAt < 750) return;
@@ -43158,11 +43173,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     loadAudio();
   };
   settingsButton.onclick = openSettingsModal;
+  reviewGuideButton.onclick = () => {
+    menuDropdown.style.display = "none";
+    window.open(
+      "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
   newProjectButton.onclick = async () => {
-    const mode = await window.VRGDGMusicVideoPromptCreator?.chooseNewProjectMode?.();
-    if (!mode) return;
-    const created = await newProject();
-    if (created && mode === "prompt_creator") openPromptCreatorPanel();
+    await newProject();
   };
   saveProjectAsButton.onclick = saveProjectAs;
   branchProjectButton.onclick = branchProject;
@@ -43182,7 +43202,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   loadSrtButton.onclick = loadSrt;
   loadSessionButton.onclick = loadSession;
   loadLastProjectButton.onclick = loadLastProject;
-  promptCreatorButton.onclick = openPromptCreatorPanel;
+  promptCreatorButton.onclick = confirmOpenLegacyPromptCreator;
   wizardButton.onclick = openWizardFromBuilder;
   storyboardBuilderButton.onclick = openStoryboardBuilderFromProject;
   fluxReferenceBuilderButton.onclick = openReferenceBuilderTargetChooser;
@@ -43206,7 +43226,6 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   editI2VPromptButton.onclick = editCurrentVideoPromptWithGemma;
   fullBuildButton.onclick = confirmAndRunFullBuild;
   fullFLFBuildButton.onclick = confirmAndRunFullFLFBuild;
-  remakeModeButton.onclick = showRemakeModeComingSoon;
   stopWorkflowButton.onclick = stopCurrentWorkflow;
   downloadModelsButton.onclick = showModelDownloadModal;
   fullscreenButton.onclick = () => applyBuilderFullscreen(!builderFullscreen);

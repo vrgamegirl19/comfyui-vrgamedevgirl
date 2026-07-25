@@ -40,7 +40,7 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 - [LLM Runner](#llm-runner)
 - [Batch Buttons and Full Builds](#batch-buttons-and-full-builds)
 - [Post Process](#post-process)
-- [Prompt Creator Panel](#prompt-creator-panel)
+- [Prompt Creator (Legacy)](#prompt-creator-legacy)
 - [Prompt Creator Import](#prompt-creator-import)
 - [Settings And Audio Notifications](#settings-and-audio-notifications)
 - [Required Custom Nodes](#required-custom-nodes)
@@ -2068,7 +2068,6 @@ The `Menu` contains batch tools that can work across many scenes.
 | `Image Slideshow Preview` | Builds a preview from the current scene images, their timeline durations, and the matching global-audio range without rendering scene videos |
 | `Build Full Video` | Runs the larger pipeline from prompts/images/videos through final stitch |
 | `Build Full FLF Video` | Runs the First/Last Frame endpoint, image-chain, prompt, render, final-frame extraction, and stitch stages |
-| `Remake Mode` | Helps rerun or rebuild outputs |
 | `Stop` | Stops the current workflow run |
 
 In `Reference to Video` mode, `LLM Video All` can use the Storyboard prompt writer when launched through the Wizard. In `Ingredients to Video` mode, make sure Ingredients sheets are mapped before running the batch prompt step.
@@ -2149,11 +2148,13 @@ To post-process a scene:
 6. Apply the chosen result, verify the correct history item is selected, and save the project.
 7. Test one scene before repeating the same treatment across the project.
 
-## Prompt Creator Panel
+## Prompt Creator (Legacy)
 
-The Prompt Creator is the companion UI for turning a song, lyrics, SRT timing, and user ideas into concept prompts and motion notes.
+Prompt Creator is the older, file-based planning workflow for turning a song, lyrics, SRT timing, and user ideas into concept prompts and motion notes. It remains available for older projects and users who specifically need its saved prompt-package workflow.
 
-Use Prompt Creator when you want the builder to start from a planned prompt package instead of writing every scene manually.
+For new projects, use Storyboard Builder. It is the newer workflow for keeping story direction, scene beats, references, image defaults, motion defaults, and generated prompts together in the same project.
+
+`New Project` now opens Video Builder directly. To use the older workflow, open `Prompt Creator (Legacy)` from the Builder tools. Read the warning and choose either `Continue to Prompt Creator` or `Continue to Video Builder`.
 
 Prompt Creator can create:
 
@@ -2246,7 +2247,7 @@ Useful buttons:
 
 | Button | What it does |
 | --- | --- |
-| `Prompt Creator` | Opens the Prompt Creator panel |
+| `Prompt Creator (Legacy)` | Shows the legacy-workflow warning before opening Prompt Creator |
 | `Import Data From Prompt Creator` | Copies Prompt Creator outputs into the current builder project |
 | `Send To Video Creator` | From Prompt Creator, saves/imports the current prompt creator project into Video Builder |
 | `Send To Prompt Creator` | From Video Builder, sends audio/SRT/lyrics back to Prompt Creator so you can create concept prompts |
@@ -2528,9 +2529,9 @@ Use this when you have a song and want better lip-sync behavior.
 12. Run `Gemma I2V All` or `Build Full Video`.
 13. Stitch or build the final video.
 
-### Prompt Creator Workflow
+### Legacy Prompt Creator Workflow
 
-Use this when Prompt Creator makes your concept prompts and motion notes.
+Use this only for an older Prompt Creator project or when you specifically need its file-based concept prompt and motion-note package.
 
 1. Open Prompt Creator.
 2. Add audio and full lyrics.
@@ -2552,16 +2553,14 @@ Use this when each scene needs a planned visual destination or continuous handof
 6. Use `Render All` after the endpoints are approved, or `Build Full FLF Video` to finish missing FLF dependencies and stitch automatically.
 7. Prefer resume choices until you intentionally want to replace completed work.
 
-### No Prompt Creator Workflow
+### Recommended Video Builder Workflow
 
-Use this when you want to work directly in Video Builder.
+Use this for new projects.
 
 1. Add audio.
-2. Use Lyric Mapping to create or fill scenes.
-3. Add Director Notes for still image direction.
-4. Add Video Notes for motion direction.
-5. Use Reference Builder if you need consistent characters or locations.
-6. Run Gemma prompts and generate media.
+2. Create or import the timeline scenes.
+3. Open Storyboard Builder to review or refine the shared story layer, story beats, references, image defaults, motion defaults, and individual scene cards.
+4. Run the image and video prompt tools, review the results, and generate media.
 
 ## Common Problems
 

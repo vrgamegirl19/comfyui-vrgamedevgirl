@@ -598,37 +598,6 @@ function buildPayload(controls, modelSelect) {
   };
 }
 
-function createModeChoiceModal() {
-  return new Promise((resolve) => {
-    const backdrop = document.createElement("div");
-    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
-    const box = document.createElement("div");
-    box.style.cssText = "width:min(560px,calc(100vw - 40px));border:1px solid #155e75;border-radius:9px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
-    const heading = document.createElement("div");
-    heading.textContent = "Start New Project";
-    heading.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
-    const note = document.createElement("div");
-    note.textContent = "Choose where you want to begin. Prompt Creator builds the SRT, lyric segments, concept prompts, and context files. Video Creation opens the editor directly.";
-    note.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
-    const actions = document.createElement("div");
-    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
-    const promptCreator = makeButton("Start Prompt Creator", "primary");
-    const videoCreator = makeButton("Start Video Creation");
-    const cancel = makeButton("Cancel");
-    const finish = (value) => {
-      backdrop.remove();
-      resolve(value);
-    };
-    promptCreator.onclick = () => finish("prompt_creator");
-    videoCreator.onclick = () => finish("video_creator");
-    cancel.onclick = () => finish("");
-    actions.append(promptCreator, videoCreator);
-    box.append(heading, note, actions, cancel);
-    backdrop.append(box);
-    document.body.append(backdrop);
-  });
-}
-
 function showPromptCreatorDraftProjectModal(projects = []) {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
@@ -734,7 +703,7 @@ function openPromptCreator(options = {}) {
   const topbar = document.createElement("div");
   topbar.style.cssText = "display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #364152;background:#20242a;";
   const title = document.createElement("div");
-  title.textContent = "Prompt Creator";
+  title.textContent = "Prompt Creator (Legacy)";
   title.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;margin-right:auto;";
   const backButton = makeButton("Back To Video Creator");
   const loadDraftButton = makeButton("Load Project Draft");
@@ -2009,5 +1978,4 @@ function openPromptCreator(options = {}) {
 
 window.VRGDGMusicVideoPromptCreator = {
   open: openPromptCreator,
-  chooseNewProjectMode: createModeChoiceModal,
 };
