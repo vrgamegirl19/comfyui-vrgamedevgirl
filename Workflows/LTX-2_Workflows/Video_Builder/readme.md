@@ -75,7 +75,7 @@ The biggest V10 upgrades are:
 
 | V10 feature | What it adds |
 | --- | --- |
-| V10 status banner and updater | Checks the installed V10 commit, reports whether it is current, and offers a safe fast-forward update from the V10 branch |
+| V10 status banner and updater | Checks the installed commit against production `main`, reports whether it is current, and offers a safe fast-forward update |
 | Chained First/Last Frame | Builds one opening image plus a destination image for each scene; each destination can become the next scene's start |
 | Independent First/Last Frame pairs | Gives every scene its own start and end image using four resumable passes: starts, motion plans, ends, and final two-image video prompts |
 | `Build Full FLF Video` | Runs missing endpoint planning, the FLF image chain, per-scene prompts/renders, final-frame extraction, and stitching as one pipeline |
@@ -92,9 +92,9 @@ The biggest V10 upgrades are:
 | Stronger story planning | Preserves character descriptions, handles repeated song sections, supports repeating location blocks, clears story beats without clearing other fields, and improves responsive Storyboard layout |
 | New standalone utilities | Adds Face Fix and Video Enhance node sets, advanced LTX CFG/guide scheduling and looping, feathered crop paste-back, a LoRA Dataset Creator, and expanded Krea 2 training/install tools |
 
-## Installing Or Switching To V10
+## Installing V10 From Main
 
-If you do not have the `comfyui-vrgamedevgirl` custom nodes installed yet, install the V10 branch first.
+V10 is now the production release on the repository's default `main` branch.
 
 ### New Install With ComfyUI Manager
 
@@ -106,17 +106,15 @@ If you do not have the `comfyui-vrgamedevgirl` custom nodes installed yet, insta
 https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
 ```
 
-4. If Manager lets you choose a branch, choose `dev/music-video-builder-ui-test-v10`.
+4. Use the default `main` branch if Manager asks you to choose a branch.
 5. Install, restart ComfyUI, then hard refresh the browser page.
-
-If Manager installs the default branch instead of V10, open a terminal in the installed `ComfyUI/custom_nodes/comfyui-vrgamedevgirl` folder and use the branch-switch commands below.
 
 ### New Install With Git
 
 Open a terminal in your `ComfyUI/custom_nodes` folder and run:
 
 ```bash
-git clone --branch dev/music-video-builder-ui-test-v10 https://github.com/vrgamegirl19/comfyui-vrgamedevgirl.git
+git clone https://github.com/vrgamegirl19/comfyui-vrgamedevgirl.git
 ```
 
 Then restart ComfyUI and hard refresh the browser page.
@@ -129,15 +127,15 @@ Open a terminal in your existing `ComfyUI/custom_nodes/comfyui-vrgamedevgirl` fo
 
 ```bash
 git fetch origin
-git switch dev/music-video-builder-ui-test-v10
-git pull
+git switch main
+git pull --ff-only origin main
 ```
 
 If Git says the branch does not exist locally yet, run:
 
 ```bash
-git fetch origin dev/music-video-builder-ui-test-v10:dev/music-video-builder-ui-test-v10
-git switch dev/music-video-builder-ui-test-v10
+git fetch origin main:main
+git switch main
 ```
 
 To confirm you are on the right branch:
@@ -149,27 +147,27 @@ git branch --show-current
 It should show:
 
 ```bash
-dev/music-video-builder-ui-test-v10
+main
 ```
 
-If you download from GitHub instead of using Git, use the branch dropdown on the repository page, choose `dev/music-video-builder-ui-test-v10`, then download that branch as a ZIP.
+If you download from GitHub instead of using Git, download the default `main` branch as a ZIP.
 
 After installing or switching branches, restart ComfyUI and hard refresh the browser page so the new JavaScript UI files load.
 
 ## V10 Update Status and Self-Updater
 
-V10 shows a version-status banner above the builder. It checks the installed commit against `dev/music-video-builder-ui-test-v10` and reports one of these states:
+V10 shows a version-status banner above the builder. It checks the installed commit against production `main` and reports one of these states:
 
 | Banner state | Meaning |
 | --- | --- |
-| Checking | The builder is checking the local checkout and remote V10 branch |
-| Up to date | The installed V10 commit matches the latest branch commit |
-| Update available | The checkout is behind V10 or is on the wrong branch |
+| Checking | The builder is checking the local checkout and remote `main` branch |
+| Up to date | The installed commit matches the latest production commit |
+| Update available | The checkout is behind production `main` or is on another branch |
 | Could not check | Git, the remote, or the network could not be queried |
 
 You can dismiss the current banner state. If a newer commit becomes available, the new status can appear again.
 
-Use `Menu` -> `Update to Latest V10` to run the built-in updater. It performs a Git fetch, switches to the V10 branch, and runs a fast-forward-only pull. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict.
+Use `Menu` -> `Update to Latest` to run the built-in updater. It fetches `origin/main`, switches to local `main`, and runs a fast-forward-only pull from `origin/main`. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict.
 
 After a successful update, fully stop and restart ComfyUI, then hard refresh the browser so both the Python and JavaScript changes load.
 
@@ -2243,7 +2241,7 @@ Use this when you want to work directly in Video Builder.
 | LM Studio is selected but not used | Vision Gemma still uses built-in GGUF; only text-only passes use LM Studio |
 | Browser AI cannot control the browser | Run Install/Check Browser Setup, sign in with `Open Selected Login`, or use the manual export/import path |
 | Face Fix finds no face | Choose a clearer description frame, lower minimum face pixels, adjust confidence/rotation assist, or pick a repair-distance preset that includes the face size |
-| V10 updater stops | Local edits or a non-fast-forward branch can block the safe updater; save/back up your work and use the manual Git commands to inspect the conflict |
+| Updater stops | Local edits or a non-fast-forward branch can block the safe updater; save/back up your work and use the manual Git commands to inspect the conflict |
 | Project ZIP import fails | Keep ComfyUI running, confirm the archive came from `Export Shareable Project ZIP`, and check the terminal for extraction/path validation errors |
 | Audio notification does not play | Click inside the browser once and check notification settings |
 | Model path is wrong on Linux | Use forward slashes and make sure the model picker shows the exact model name |

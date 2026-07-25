@@ -1936,7 +1936,7 @@ function openBuilder(node) {
         setUpdateStatusAppearance(
           "outdated",
           `V10 build ${installed} — Update available (${reason}; latest ${latest})`,
-          `This installation is not at the latest V10 branch (${reason}). Click Update to run the existing safe V10 updater.`
+          `This installation is not at the latest production version on main (${reason}). Click Update to run the safe updater.`
         );
       } else {
         const localNote = Number(payload.ahead || 0) > 0
@@ -2018,14 +2018,14 @@ function openBuilder(node) {
   const stopWorkflowButton = makeButton("Stop");
   const downloadModelsButton = makeButton("Download Models");
   const buyMeACoffeeButton = makeBuyMeACoffeeButton();
-  const updateV10Button = makeButton("Update to Latest V10");
+  const updateV10Button = makeButton("Update to Latest");
   updateV10Button.style.background = "#9a3412";
   updateV10Button.style.borderColor = "#ea580c";
   updateV10Button.style.color = "#fff7ed";
   updateV10Button.style.fontWeight = "800";
-  updateV10Button.title = "Fetch and fast-forward this installation to the latest V10 development branch.";
+  updateV10Button.title = "Fetch and fast-forward this installation to the latest production version on main.";
   const updateV10HintButton = makeButton("?");
-  updateV10HintButton.title = "What does the V10 updater do?";
+  updateV10HintButton.title = "What does the updater do?";
   updateV10HintButton.style.cssText += "flex:0 0 36px;width:36px;text-align:center;justify-content:center;background:#431407;border-color:#c2410c;color:#ffedd5;font-weight:900;";
   const updateV10Row = document.createElement("div");
   updateV10Row.style.cssText = "display:flex;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid #3f3f46;";
@@ -43001,24 +43001,24 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   };
   updateV10HintButton.onclick = () => {
     window.alert(
-      "What Update to Latest V10 does:\n\n" +
+      "What Update to Latest does:\n\n" +
       "1. Finds this custom node's installed folder automatically.\n" +
-      "2. Runs: git fetch origin\n" +
-      "3. Runs: git switch dev/music-video-builder-ui-test-v10\n" +
-      "4. Runs: git pull --ff-only origin dev/music-video-builder-ui-test-v10\n\n" +
+      "2. Runs: git fetch origin main\n" +
+      "3. Runs: git switch main\n" +
+      "4. Runs: git pull --ff-only origin main\n\n" +
       "It does not run git reset or git clean, and it does not delete files you created. Git will stop and show an error if switching or pulling would overwrite conflicting work. Nothing outside the comfyui-vrgamedevgirl folder is touched."
     );
   };
   updateV10Button.onclick = async () => {
     const confirmed = window.confirm(
-      "Update these custom nodes to the latest V10 development branch now?\n\n" +
+      "Update these custom nodes to the latest production version from main now?\n\n" +
       "Git will stop if your code changes conflict. Files you created are not deleted.\n\nContinue?"
     );
     if (!confirmed) return;
 
     const originalText = updateV10Button.textContent;
     updateV10Button.disabled = true;
-    updateV10Button.textContent = "Updating V10...";
+    updateV10Button.textContent = "Updating...";
     try {
       const response = await api.fetchApi("/vrgdg/update/v10", { method: "POST" });
       let payload = {};
@@ -43031,10 +43031,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         throw new Error(payload.error || `Update failed (HTTP ${response.status}).`);
       }
       window.alert(
-        "V10 updated successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load."
+        "Update completed successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load."
       );
     } catch (error) {
-      window.alert(`V10 update did not complete:\n\n${error?.message || error}`);
+      window.alert(`Update did not complete:\n\n${error?.message || error}`);
     } finally {
       updateV10Button.disabled = false;
       updateV10Button.textContent = originalText;

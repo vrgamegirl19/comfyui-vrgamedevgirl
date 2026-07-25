@@ -6,7 +6,7 @@ from aiohttp import web
 from server import PromptServer
 
 
-V10_BRANCH = "dev/music-video-builder-ui-test-v10"
+UPDATE_BRANCH = "main"
 _NODE_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROUTES_REGISTERED = False
 
@@ -29,33 +29,33 @@ def _run_git(*args, timeout=300):
     return output
 
 
-def _update_to_v10():
+def _update_to_main():
     if not os.path.isdir(os.path.join(_NODE_DIR, ".git")):
         raise RuntimeError("This installation is not a Git checkout, so the normal Git update commands cannot run.")
 
     logs = []
     for args in (
-        ("fetch", "origin"),
-        ("switch", V10_BRANCH),
-        ("pull", "--ff-only", "origin", V10_BRANCH),
+        ("fetch", "origin", UPDATE_BRANCH),
+        ("switch", UPDATE_BRANCH),
+        ("pull", "--ff-only", "origin", UPDATE_BRANCH),
     ):
         output = _run_git(*args)
         logs.append({"command": "git " + " ".join(args), "output": output})
 
     branch = _run_git("branch", "--show-current").strip()
-    if branch != V10_BRANCH:
-        raise RuntimeError(f"Git finished on '{branch or '(detached HEAD)'}' instead of '{V10_BRANCH}'.")
+    if branch != UPDATE_BRANCH:
+        raise RuntimeError(f"Git finished on '{branch or '(detached HEAD)'}' instead of '{UPDATE_BRANCH}'.")
     return {"branch": branch, "directory": _NODE_DIR, "logs": logs}
 
 
-def _v10_status():
-    """Compare the installed checkout with the latest V10 branch without changing files."""
+def _main_status():
+    """Compare the installed checkout with the production main branch without changing files."""
     if not os.path.isdir(os.path.join(_NODE_DIR, ".git")):
-        raise RuntimeError("This installation is not a Git checkout, so its V10 update status cannot be checked.")
+        raise RuntimeError("This installation is not a Git checkout, so its update status cannot be checked.")
 
-    _run_git("fetch", "origin", timeout=20)
+    _run_git("fetch", "origin", UPDATE_BRANCH, timeout=20)
     local_commit = _run_git("rev-parse", "HEAD").strip()
-    remote_ref = f"origin/{V10_BRANCH}"
+    remote_ref = f"origin/{UPDATE_BRANCH}"
     latest_commit = _run_git("rev-parse", remote_ref).strip()
     branch = _run_git("branch", "--show-current").strip()
     behind = int(_run_git("rev-list", "--count", f"HEAD..{remote_ref}").strip() or "0")
@@ -64,12 +64,12 @@ def _v10_status():
 
     return {
         "branch": branch,
-        "expected_branch": V10_BRANCH,
+        "expected_branch": UPDATE_BRANCH,
         "installed_commit": local_commit,
         "latest_commit": latest_commit,
         "behind": behind,
         "ahead": ahead,
-        "outdated": behind > 0 or branch != V10_BRANCH,
+        "outdated": behind > 0 or branch != UPDATE_BRANCH,
         "tracked_changes": tracked_changes,
     }
 
@@ -82,7 +82,7 @@ def _register_routes():
     @PromptServer.instance.routes.get("/vrgdg/update/v10/status")
     async def vrgdg_update_v10_status(request):
         try:
-            result = await asyncio.to_thread(_v10_status)
+            result = await asyncio.to_thread(_main_status)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)})
         return web.json_response({"ok": True, **result})
@@ -90,7 +90,7 @@ def _register_routes():
     @PromptServer.instance.routes.post("/vrgdg/update/v10")
     async def vrgdg_update_v10(request):
         try:
-            result = await asyncio.to_thread(_update_to_v10)
+            result = await asyncio.to_thread(_update_to_main)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
