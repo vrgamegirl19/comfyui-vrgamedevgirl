@@ -167,9 +167,9 @@ V10 shows a version-status banner above the builder. It checks the installed com
 
 You can dismiss the current banner state. If a newer commit becomes available, the new status can appear again.
 
-Use `Menu` -> `Update to Latest` to run the built-in updater. It fetches `origin/main`, switches to local `main`, and runs a fast-forward-only pull from `origin/main`. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict.
+Use `Menu` -> `Update to Latest` to run the built-in updater. It fetches `origin/main`, switches to local `main`, and runs a fast-forward-only pull from `origin/main`. If `requirements.txt` changed between the installed and updated commits, the updater installs it with the same Python executable running ComfyUI; otherwise dependency installation is skipped. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict.
 
-After a successful update, fully stop and restart ComfyUI, then hard refresh the browser so both the Python and JavaScript changes load.
+After every completed update, fully stop and restart ComfyUI, then hard refresh the browser so the updated Python, JavaScript, and any newly installed dependencies load.
 
 ## Opening the Builder
 

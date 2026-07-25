@@ -43005,14 +43005,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       "1. Finds this custom node's installed folder automatically.\n" +
       "2. Runs: git fetch origin main\n" +
       "3. Runs: git switch main\n" +
-      "4. Runs: git pull --ff-only origin main\n\n" +
+      "4. Runs: git pull --ff-only origin main\n" +
+      "5. If requirements.txt changed, installs it with the Python running ComfyUI.\n\n" +
       "It does not run git reset or git clean, and it does not delete files you created. Git will stop and show an error if switching or pulling would overwrite conflicting work. Nothing outside the comfyui-vrgamedevgirl folder is touched."
     );
   };
   updateV10Button.onclick = async () => {
     const confirmed = window.confirm(
       "Update these custom nodes to the latest production version from main now?\n\n" +
-      "Git will stop if your code changes conflict. Files you created are not deleted.\n\nContinue?"
+      "Git will stop if your code changes conflict. Files you created are not deleted. If requirements.txt changed, its packages will be installed with ComfyUI's Python.\n\nContinue?"
     );
     if (!confirmed) return;
 
@@ -43030,8 +43031,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error || `Update failed (HTTP ${response.status}).`);
       }
+      const requirementsNote = payload.requirements_error
+        ? `The code update completed, but updated Python requirements could not be installed automatically:\n\n${payload.requirements_error}`
+        : payload.requirements_changed
+          ? "Updated Python requirements were installed successfully."
+          : "No requirements.txt changes were detected, so dependency installation was skipped.";
       window.alert(
-        "Update completed successfully.\n\nFully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load."
+        `${requirementsNote}\n\nRESTART REQUIRED: Fully stop and restart ComfyUI, then hard-refresh the browser page so the new Python and JavaScript files load.`
       );
     } catch (error) {
       window.alert(`Update did not complete:\n\n${error?.message || error}`);
