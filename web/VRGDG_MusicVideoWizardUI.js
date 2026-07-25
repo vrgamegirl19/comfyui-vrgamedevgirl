@@ -694,13 +694,15 @@ When I do what I came to do`;
 export function openMusicVideoWizard(api = {}) {
   injectWizardStyles();
 
-  const initialSceneDefaults = (() => {
+  const initialSnapshot = (() => {
     try {
-      return api.snapshot?.()?.sceneDefaults || {};
+      return api.snapshot?.() || {};
     } catch {
       return {};
     }
   })();
+  const initialSceneDefaults = initialSnapshot.sceneDefaults || {};
+  const initialStoryLayer = initialSnapshot.storyLayer || {};
   const steps = [
     { id: "settings", title: "Settings", caption: "Models and render setup" },
     { id: "audio", title: "Audio", caption: "Load the song file" },
@@ -718,18 +720,23 @@ export function openMusicVideoWizard(api = {}) {
     segmentMode: "reference_lines",
     minSceneSeconds: "1.0",
     maxSceneSeconds: "8.0",
-    cameraFlow: "balanced",
+    cameraFlow: String(initialSceneDefaults.cameraFlow || "balanced"),
     imageShotFlow: String(initialSceneDefaults.imageShotFlow || "intimate"),
     imageAesthetic: String(initialSceneDefaults.imageAesthetic || ""),
-    performanceStyle: "",
-    facialPerformance: "",
-    facialPerformanceCustom: "",
-    storyCharacterMotion: 7,
+    globalConsistencyPhrase: String(initialSceneDefaults.globalConsistencyPhrase || ""),
+    cameraMotionSpeed: Math.max(0, Math.min(10, Number(initialSceneDefaults.cameraMotionSpeed ?? 4))),
+    characterMotionSpeed: Math.max(0, Math.min(10, Number(initialSceneDefaults.characterMotionSpeed ?? 4))),
+    performanceStyle: String(initialSceneDefaults.performanceStyle || ""),
+    facialPerformance: String(initialSceneDefaults.facialPerformance || ""),
+    facialPerformanceCustom: String(initialSceneDefaults.facialPerformanceCustom || ""),
     storyLayer: {
-      enabled: true,
-      user_story_arc: "",
-      song_story_brief: "",
-      lyric_story_strength: 7,
+      enabled: initialStoryLayer.enabled !== false,
+      overall_story_idea: String(initialStoryLayer.overall_story_idea || initialStoryLayer.overallStoryIdea || ""),
+      user_story_arc: String(initialStoryLayer.user_story_arc || initialStoryLayer.userStoryArc || ""),
+      song_story_brief: String(initialStoryLayer.song_story_brief || initialStoryLayer.songStoryBrief || ""),
+      lyric_story_strength: lyricStoryStrengthValue(initialStoryLayer.lyric_story_strength ?? initialStoryLayer.lyricStoryStrength),
+      image_world_style: String(initialStoryLayer.image_world_style || initialStoryLayer.imageWorldStyle || "natural"),
+      image_custom_style_direction: String(initialStoryLayer.image_custom_style_direction || initialStoryLayer.imageCustomStyleDirection || ""),
     },
   };
 
@@ -877,16 +884,21 @@ export function openMusicVideoWizard(api = {}) {
       cameraFlow: String(sourceState.cameraFlow || "balanced"),
       imageShotFlow: sourceState.imageShotFlow == null ? wizardState.imageShotFlow : String(sourceState.imageShotFlow || "intimate"),
       imageAesthetic: sourceState.imageAesthetic == null ? wizardState.imageAesthetic : String(sourceState.imageAesthetic || ""),
+      globalConsistencyPhrase: sourceState.globalConsistencyPhrase == null ? wizardState.globalConsistencyPhrase : String(sourceState.globalConsistencyPhrase || ""),
+      cameraMotionSpeed: Math.max(0, Math.min(10, Number(sourceState.cameraMotionSpeed ?? sourceState.camera_motion_speed ?? wizardState.cameraMotionSpeed ?? 4))),
+      characterMotionSpeed: Math.max(0, Math.min(10, Number(sourceState.characterMotionSpeed ?? sourceState.character_motion_speed ?? sourceState.storyCharacterMotion ?? sourceState.story_character_motion ?? wizardState.characterMotionSpeed ?? 4))),
       performanceStyle: String(sourceState.performanceStyle || ""),
       facialPerformance: String(sourceState.facialPerformance || ""),
       facialPerformanceCustom: String(sourceState.facialPerformanceCustom || ""),
-      storyCharacterMotion: Math.max(0, Math.min(10, Number(sourceState.storyCharacterMotion ?? sourceState.story_character_motion ?? wizardState.storyCharacterMotion ?? 7))),
       storyLayer: sourceState.storyLayer && typeof sourceState.storyLayer === "object"
         ? {
             enabled: sourceState.storyLayer.enabled !== false,
+            overall_story_idea: String(sourceState.storyLayer.overall_story_idea || sourceState.storyLayer.overallStoryIdea || ""),
             user_story_arc: String(sourceState.storyLayer.user_story_arc || ""),
             song_story_brief: String(sourceState.storyLayer.song_story_brief || ""),
             lyric_story_strength: lyricStoryStrengthValue(sourceState.storyLayer.lyric_story_strength ?? sourceState.storyLayer.lyricStoryStrength),
+            image_world_style: String(sourceState.storyLayer.image_world_style || sourceState.storyLayer.imageWorldStyle || "natural"),
+            image_custom_style_direction: String(sourceState.storyLayer.image_custom_style_direction || sourceState.storyLayer.imageCustomStyleDirection || ""),
           }
         : wizardState.storyLayer,
       });
@@ -1673,12 +1685,40 @@ export function openMusicVideoWizard(api = {}) {
     };
     lyric.append(openLyrics);
     const defaultsData = data.sceneDefaults || {};
+    wizardState.cameraFlow = String(defaultsData.cameraFlow ?? wizardState.cameraFlow ?? "balanced");
+    wizardState.imageShotFlow = String(defaultsData.imageShotFlow ?? wizardState.imageShotFlow ?? "intimate");
+    wizardState.imageAesthetic = String(defaultsData.imageAesthetic ?? wizardState.imageAesthetic ?? "");
+    wizardState.globalConsistencyPhrase = String(defaultsData.globalConsistencyPhrase ?? wizardState.globalConsistencyPhrase ?? "");
+    wizardState.cameraMotionSpeed = Math.max(0, Math.min(10, Number(defaultsData.cameraMotionSpeed ?? wizardState.cameraMotionSpeed ?? 4)));
+    wizardState.characterMotionSpeed = Math.max(0, Math.min(10, Number(defaultsData.characterMotionSpeed ?? wizardState.characterMotionSpeed ?? 4)));
+    wizardState.performanceStyle = String(defaultsData.performanceStyle ?? wizardState.performanceStyle ?? "");
+    wizardState.facialPerformance = String(defaultsData.facialPerformance ?? wizardState.facialPerformance ?? "");
+    wizardState.facialPerformanceCustom = String(defaultsData.facialPerformanceCustom ?? wizardState.facialPerformanceCustom ?? "");
+    const sharedStoryLayer = data.storyLayer && typeof data.storyLayer === "object" ? data.storyLayer : {};
+    wizardState.storyLayer.image_world_style = String(sharedStoryLayer.image_world_style ?? sharedStoryLayer.imageWorldStyle ?? wizardState.storyLayer.image_world_style ?? "natural");
+    wizardState.storyLayer.image_custom_style_direction = String(sharedStoryLayer.image_custom_style_direction ?? sharedStoryLayer.imageCustomStyleDirection ?? wizardState.storyLayer.image_custom_style_direction ?? "");
     const cameraOptions = Array.isArray(defaultsData.cameraFlowOptions) ? defaultsData.cameraFlowOptions : [];
     const imageShotOptions = Array.isArray(defaultsData.imageShotFlowOptions) ? defaultsData.imageShotFlowOptions : [];
     const imageAestheticOptions = Array.isArray(defaultsData.imageAestheticOptions) ? defaultsData.imageAestheticOptions : [];
     const performanceOptions = Array.isArray(defaultsData.performanceStyleOptions) ? defaultsData.performanceStyleOptions : [];
     const facialOptions = Array.isArray(defaultsData.facialPerformanceOptions) ? defaultsData.facialPerformanceOptions : [];
     const defaults = card("3. Scene Defaults", "Set the same image and video defaults available in Storyboard Builder without leaving the Wizard.");
+    const sceneSettingsPayload = () => ({
+      cameraFlow: wizardState.cameraFlow || "balanced",
+      imageShotFlow: wizardState.imageShotFlow || "intimate",
+      imageAesthetic: wizardState.imageAesthetic || "",
+      globalConsistencyPhrase: wizardState.globalConsistencyPhrase || "",
+      cameraMotionSpeed: Math.max(0, Math.min(10, Number(wizardState.cameraMotionSpeed ?? 4))),
+      characterMotionSpeed: Math.max(0, Math.min(10, Number(wizardState.characterMotionSpeed ?? 4))),
+      performanceStyle: wizardState.performanceStyle || "",
+      facialPerformance: wizardState.facialPerformance || "",
+      facialPerformanceCustom: wizardState.facialPerformanceCustom || "",
+      storyLayer: { ...wizardState.storyLayer },
+    });
+    const persistSceneSettings = (label = "wizard scene settings") => {
+      queueWizardDraftSave();
+      return api.updateSceneDefaultSettings?.(sceneSettingsPayload(), label);
+    };
     const imageShotSelect = select(imageShotOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.imageShotFlow || defaultsData.imageShotFlow || "intimate");
     const imageShotInfo = el("div", "vrgdg-wizard-copy", "");
     const refreshImageShotInfo = () => {
@@ -1694,7 +1734,8 @@ export function openMusicVideoWizard(api = {}) {
       imageShotFill.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           imageShotFlow: wizardState.imageShotFlow || imageShotSelect.value || "intimate",
           applyImageShotFlow: true,
           overwriteImageShotFlow: false,
@@ -1709,7 +1750,8 @@ export function openMusicVideoWizard(api = {}) {
       imageShotReplace.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           imageShotFlow: wizardState.imageShotFlow || imageShotSelect.value || "intimate",
           applyImageShotFlow: true,
           overwriteImageShotFlow: true,
@@ -1734,7 +1776,8 @@ export function openMusicVideoWizard(api = {}) {
       imageAestheticFill.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           imageAesthetic: wizardState.imageAesthetic ?? imageAestheticSelect.value ?? "",
           applyImageAesthetic: true,
           overwriteImageAesthetic: false,
@@ -1749,7 +1792,8 @@ export function openMusicVideoWizard(api = {}) {
       imageAestheticReplace.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           imageAesthetic: wizardState.imageAesthetic ?? imageAestheticSelect.value ?? "",
           applyImageAesthetic: true,
           overwriteImageAesthetic: true,
@@ -1761,6 +1805,24 @@ export function openMusicVideoWizard(api = {}) {
       }
     };
     imageAestheticRow.append(imageAestheticSelect, imageAestheticFill, imageAestheticReplace);
+    const imageWorldOptions = [
+      { value: "natural", label: "Natural / realistic world" },
+      { value: "surreal_subject", label: "Realistic world + surreal subject" },
+      { value: "balanced_surreal", label: "Balanced surrealism" },
+      { value: "full_surreal", label: "Fully surreal world" },
+      { value: "abstract", label: "Abstract / nonliteral world" },
+      { value: "custom", label: "Fully custom" },
+    ];
+    const imageWorldSelect = select(imageWorldOptions, wizardState.storyLayer.image_world_style || "natural");
+    const imageWorldInfo = el("div", "vrgdg-wizard-copy", "Controls whether image prompts keep the world realistic, introduce surreal subjects, or make the whole world nonliteral.");
+    const imageCustomStyle = textarea(
+      wizardState.storyLayer.image_custom_style_direction || "",
+      "Describe the visual world: environment, architecture, materials, lighting, color, perspective, subject styling, and anything to avoid...",
+    );
+    imageCustomStyle.style.minHeight = "80px";
+    const imageCustomInfo = el("div", "vrgdg-wizard-copy", "Used most strongly with Fully custom, but it can add specific visual-world direction to any selection.");
+    const consistencyInput = input(wizardState.globalConsistencyPhrase || "", "e.g. soft glittery eye makeup, wet-look hair, chrome jewelry");
+    const consistencyInfo = el("div", "vrgdg-wizard-copy", "A repeating visual phrase woven into image prompts to keep styling consistent across scenes.");
     const cameraSelect = select(cameraOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.cameraFlow || defaultsData.cameraFlow || "balanced");
     const cameraInfo = el("div", "vrgdg-wizard-copy", "");
     const refreshCameraInfo = () => {
@@ -1776,10 +1838,10 @@ export function openMusicVideoWizard(api = {}) {
       cameraFill.disabled = true;
       try {
         await api.applySceneDefaults?.({
+          ...sceneSettingsPayload(),
           cameraFlow: wizardState.cameraFlow || cameraSelect.value || "balanced",
-          performanceStyle: "",
+          applyCamera: true,
           overwriteCamera: false,
-          overwritePerformance: false,
         });
         await saveWizardProgress("wizard camera defaults");
         render();
@@ -1791,10 +1853,10 @@ export function openMusicVideoWizard(api = {}) {
       cameraReplace.disabled = true;
       try {
         await api.applySceneDefaults?.({
+          ...sceneSettingsPayload(),
           cameraFlow: wizardState.cameraFlow || cameraSelect.value || "balanced",
-          performanceStyle: "",
+          applyCamera: true,
           overwriteCamera: true,
-          overwritePerformance: false,
         });
         await saveWizardProgress("wizard camera defaults replace");
         render();
@@ -1803,6 +1865,55 @@ export function openMusicVideoWizard(api = {}) {
       }
     };
     cameraRow.append(cameraSelect, cameraFill, cameraReplace);
+    const motionSpeedGuidance = (value, kind) => {
+      const speed = Math.max(0, Math.min(10, Number(value ?? 4)));
+      if (kind === "camera") {
+        if (speed <= 0) return "0 / static camera — locked off with no camera movement.";
+        if (speed <= 3) return `${speed} / subtle — slow, gentle camera motion with one simple move at most.`;
+        if (speed <= 6) return `${speed} / active — controlled cinematic tracking, pan, dolly, crane, or orbit.`;
+        if (speed <= 8) return `${speed} / energetic — stronger tracking, orbit, whip pan, rise, reveal, or compound movement.`;
+        return `${speed} / fast action — multiple coordinated camera actions when readable, without static hold endings.`;
+      }
+      if (speed <= 0) return "0 / still subject — the subject holds a pose.";
+      if (speed <= 3) return `${speed} / subtle — gestures, turns, swaying, reaching, or small steps.`;
+      if (speed <= 6) return `${speed} / active — walking, dancing, interacting with objects, or using the set.`;
+      if (speed <= 8) return `${speed} / energetic — running, hard dancing, climbing, struggling, spinning, or crossing the space.`;
+      return `${speed} / fast action — rapid direction changes and intense physical performance while remaining readable.`;
+    };
+    const cameraSpeed = input(String(wizardState.cameraMotionSpeed ?? defaultsData.cameraMotionSpeed ?? 4), "range");
+    cameraSpeed.min = "0";
+    cameraSpeed.max = "10";
+    cameraSpeed.step = "1";
+    cameraSpeed.style.accentColor = "#22d3ee";
+    const cameraSpeedValue = el("div", "vrgdg-wizard-copy");
+    cameraSpeedValue.style.fontWeight = "900";
+    cameraSpeedValue.style.color = "#cffafe";
+    const cameraSpeedHint = button("Hint");
+    const cameraSpeedRow = el("div", "vrgdg-wizard-settings-fields two");
+    cameraSpeedRow.style.gridTemplateColumns = "minmax(0,1fr) auto auto";
+    cameraSpeedRow.style.alignItems = "end";
+    cameraSpeedRow.append(field("Camera motion speed", cameraSpeed), cameraSpeedValue, cameraSpeedHint);
+    const refreshCameraSpeed = () => {
+      wizardState.cameraMotionSpeed = Math.max(0, Math.min(10, Number(cameraSpeed.value || 0)));
+      cameraSpeedValue.textContent = motionSpeedGuidance(wizardState.cameraMotionSpeed, "camera");
+    };
+    const characterSpeed = input(String(wizardState.characterMotionSpeed ?? defaultsData.characterMotionSpeed ?? 4), "range");
+    characterSpeed.min = "0";
+    characterSpeed.max = "10";
+    characterSpeed.step = "1";
+    characterSpeed.style.accentColor = "#22d3ee";
+    const characterSpeedValue = el("div", "vrgdg-wizard-copy");
+    characterSpeedValue.style.fontWeight = "900";
+    characterSpeedValue.style.color = "#cffafe";
+    const characterSpeedHint = button("Hint");
+    const characterSpeedRow = el("div", "vrgdg-wizard-settings-fields two");
+    characterSpeedRow.style.gridTemplateColumns = "minmax(0,1fr) auto auto";
+    characterSpeedRow.style.alignItems = "end";
+    characterSpeedRow.append(field("Character motion speed", characterSpeed), characterSpeedValue, characterSpeedHint);
+    const refreshCharacterSpeed = () => {
+      wizardState.characterMotionSpeed = Math.max(0, Math.min(10, Number(characterSpeed.value || 0)));
+      characterSpeedValue.textContent = motionSpeedGuidance(wizardState.characterMotionSpeed, "character");
+    };
     const performanceSelect = select(performanceOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.performanceStyle ?? defaultsData.performanceStyle ?? "");
     const performanceInfo = el("div", "vrgdg-wizard-copy", "");
     const refreshPerformanceInfo = () => {
@@ -1818,7 +1929,8 @@ export function openMusicVideoWizard(api = {}) {
       performanceFill.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           performanceStyle: wizardState.performanceStyle ?? performanceSelect.value ?? "",
           applyPerformance: true,
           overwriteCamera: false,
@@ -1834,7 +1946,8 @@ export function openMusicVideoWizard(api = {}) {
       performanceReplace.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           performanceStyle: wizardState.performanceStyle ?? performanceSelect.value ?? "",
           applyPerformance: true,
           overwriteCamera: false,
@@ -1864,7 +1977,8 @@ export function openMusicVideoWizard(api = {}) {
       facialFill.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           facialPerformance: wizardState.facialPerformance ?? facialSelect.value ?? "",
           facialPerformanceCustom: wizardState.facialPerformanceCustom ?? facialCustom.value ?? "",
           applyFacialPerformance: true,
@@ -1881,7 +1995,8 @@ export function openMusicVideoWizard(api = {}) {
       facialReplace.disabled = true;
       try {
         await api.applySceneDefaults?.({
-          cameraFlow: "off",
+          ...sceneSettingsPayload(),
+          applyCamera: false,
           facialPerformance: wizardState.facialPerformance ?? facialSelect.value ?? "",
           facialPerformanceCustom: wizardState.facialPerformanceCustom ?? facialCustom.value ?? "",
           applyFacialPerformance: true,
@@ -1897,33 +2012,74 @@ export function openMusicVideoWizard(api = {}) {
     facialRow.append(facialSelect, facialFill, facialReplace);
     imageShotSelect.onchange = () => {
       wizardState.imageShotFlow = imageShotSelect.value || "intimate";
-      queueWizardDraftSave();
       refreshImageShotInfo();
+      persistSceneSettings("wizard image shot flow changed")?.catch(() => null);
     };
     imageAestheticSelect.onchange = () => {
       wizardState.imageAesthetic = imageAestheticSelect.value || "";
-      queueWizardDraftSave();
       refreshImageAestheticInfo();
+      persistSceneSettings("wizard image aesthetic changed")?.catch(() => null);
+    };
+    imageWorldSelect.onchange = () => {
+      wizardState.storyLayer.image_world_style = imageWorldSelect.value || "natural";
+      persistSceneSettings("wizard image world style changed")?.catch(() => null);
+    };
+    imageCustomStyle.oninput = () => {
+      wizardState.storyLayer.image_custom_style_direction = imageCustomStyle.value || "";
+      queueWizardDraftSave();
+    };
+    imageCustomStyle.onchange = () => {
+      persistSceneSettings("wizard custom world direction changed")?.catch(() => null);
+    };
+    consistencyInput.oninput = () => {
+      wizardState.globalConsistencyPhrase = consistencyInput.value || "";
+      queueWizardDraftSave();
+    };
+    consistencyInput.onchange = () => {
+      persistSceneSettings("wizard consistency phrase changed")?.catch(() => null);
     };
     cameraSelect.onchange = () => {
       wizardState.cameraFlow = cameraSelect.value || "balanced";
-      queueWizardDraftSave();
       refreshCameraInfo();
+      persistSceneSettings("wizard camera flow changed")?.catch(() => null);
+    };
+    cameraSpeed.addEventListener("input", () => {
+      refreshCameraSpeed();
+      queueWizardDraftSave();
+    });
+    cameraSpeed.addEventListener("change", () => {
+      persistSceneSettings("wizard camera motion speed changed")?.catch(() => null);
+    });
+    characterSpeed.addEventListener("input", () => {
+      refreshCharacterSpeed();
+      queueWizardDraftSave();
+    });
+    characterSpeed.addEventListener("change", () => {
+      persistSceneSettings("wizard character motion speed changed")?.catch(() => null);
+    });
+    cameraSpeedHint.onclick = () => {
+      window.alert("Camera motion speed is a global 0–10 Storyboard default. It guides how much and how quickly the camera moves in generated video prompts.");
+    };
+    characterSpeedHint.onclick = () => {
+      window.alert("Character motion speed is a global 0–10 Storyboard default. It guides how physically active subjects should be in generated video prompts.");
     };
     performanceSelect.onchange = () => {
       wizardState.performanceStyle = performanceSelect.value || "";
-      queueWizardDraftSave();
       refreshPerformanceInfo();
+      persistSceneSettings("wizard performance style changed")?.catch(() => null);
     };
     facialSelect.onchange = () => {
       wizardState.facialPerformance = facialSelect.value || "";
-      queueWizardDraftSave();
       refreshFacialInfo();
+      persistSceneSettings("wizard facial performance changed")?.catch(() => null);
     };
     facialCustom.oninput = () => {
       wizardState.facialPerformanceCustom = facialCustom.value || "";
       queueWizardDraftSave();
       refreshFacialInfo();
+    };
+    facialCustom.onchange = () => {
+      persistSceneSettings("wizard custom facial text changed")?.catch(() => null);
     };
     defaults.append(
       el("div", "vrgdg-wizard-card-title", "Image shot / composition flow"),
@@ -1932,12 +2088,23 @@ export function openMusicVideoWizard(api = {}) {
       el("div", "vrgdg-wizard-card-title", "Image aesthetic"),
       imageAestheticRow,
       imageAestheticInfo,
+      el("div", "vrgdg-wizard-card-title", "Image world style"),
+      imageWorldSelect,
+      imageWorldInfo,
+      el("div", "vrgdg-wizard-card-title", "Custom world direction"),
+      imageCustomStyle,
+      imageCustomInfo,
+      el("div", "vrgdg-wizard-card-title", "Global consistency phrase"),
+      consistencyInput,
+      consistencyInfo,
       el("div", "vrgdg-wizard-card-title", "Video camera flow"),
       cameraRow,
       cameraInfo,
+      cameraSpeedRow,
       el("div", "vrgdg-wizard-card-title", "Global performance style"),
       performanceRow,
       performanceInfo,
+      characterSpeedRow,
       el("div", "vrgdg-wizard-card-title", "Global facial performance"),
       facialRow,
       facialCustom,
@@ -1946,6 +2113,8 @@ export function openMusicVideoWizard(api = {}) {
     refreshImageShotInfo();
     refreshImageAestheticInfo();
     refreshCameraInfo();
+    refreshCameraSpeed();
+    refreshCharacterSpeed();
     refreshPerformanceInfo();
     refreshFacialInfo();
     const status = card("Current Mapping", `Mode: ${data.videoModeLabel || videoMode} | Subjects: ${Number(data.subjectCount || 0)} | Locations: ${Number(data.locationCount || 0)} | Scenes: ${Number(data.sceneCount || 0)}`);
@@ -1957,13 +2126,20 @@ export function openMusicVideoWizard(api = {}) {
     const incomingLayer = data.storyLayer && typeof data.storyLayer === "object" ? data.storyLayer : {};
     wizardState.storyLayer = {
       enabled: incomingLayer.enabled !== false,
-      user_story_arc: wizardState.storyLayer?.user_story_arc || incomingLayer.user_story_arc || "",
-      song_story_brief: wizardState.storyLayer?.song_story_brief || incomingLayer.song_story_brief || "",
-      lyric_story_strength: lyricStoryStrengthValue(wizardState.storyLayer?.lyric_story_strength ?? incomingLayer.lyric_story_strength ?? incomingLayer.lyricStoryStrength),
+      overall_story_idea: String(incomingLayer.overall_story_idea ?? incomingLayer.overallStoryIdea ?? wizardState.storyLayer?.overall_story_idea ?? ""),
+      user_story_arc: String(incomingLayer.user_story_arc ?? incomingLayer.userStoryArc ?? wizardState.storyLayer?.user_story_arc ?? ""),
+      song_story_brief: String(incomingLayer.song_story_brief ?? incomingLayer.songStoryBrief ?? wizardState.storyLayer?.song_story_brief ?? ""),
+      lyric_story_strength: lyricStoryStrengthValue(incomingLayer.lyric_story_strength ?? incomingLayer.lyricStoryStrength ?? wizardState.storyLayer?.lyric_story_strength),
+      image_world_style: String(incomingLayer.image_world_style ?? incomingLayer.imageWorldStyle ?? wizardState.storyLayer?.image_world_style ?? "natural"),
+      image_custom_style_direction: String(incomingLayer.image_custom_style_direction ?? incomingLayer.imageCustomStyleDirection ?? wizardState.storyLayer?.image_custom_style_direction ?? ""),
+    };
+    const persistStoryLayer = (label = "wizard story layer changed") => {
+      queueWizardDraftSave();
+      return api.updateStoryLayer?.({ ...wizardState.storyLayer }, label);
     };
     const note = el("div", "vrgdg-wizard-note", "Use this optional story layer to give Gemma a compact narrative arc. The final video prompts will use this without sending the full lyrics every time.");
     const grid = el("div", "vrgdg-wizard-grid");
-    const arc = card("1. User Story Arc", "Optional direction Gemma should follow more strongly than its own interpretation.");
+    const arc = card("1. Story Layer", "The same shared Story Layer used by Storyboard Builder, including the overall idea, lyric strength, and user story arc.");
     const enabledLabel = el("label", "vrgdg-wizard-check");
     const enabled = document.createElement("input");
     enabled.type = "checkbox";
@@ -2010,61 +2186,47 @@ export function openMusicVideoWizard(api = {}) {
       syncLyricStrength();
       queueWizardDraftSave();
     });
+    lyricStrength.addEventListener("change", () => {
+      persistStoryLayer("wizard lyric story strength changed")?.catch(() => null);
+    });
+    const overallStoryIdea = textarea(
+      wizardState.storyLayer.overall_story_idea || "",
+      "Optional short premise, e.g. A woman navigates a surreal dream world.",
+    );
+    overallStoryIdea.style.minHeight = "90px";
+    overallStoryIdea.addEventListener("input", () => {
+      wizardState.storyLayer.overall_story_idea = overallStoryIdea.value;
+      queueWizardDraftSave();
+    });
+    overallStoryIdea.addEventListener("change", () => {
+      persistStoryLayer("wizard overall story idea changed")?.catch(() => null);
+    });
     const arcText = textarea(wizardState.storyLayer.user_story_arc || "", "Verse 1: ...\nChorus 1: ...\nVerse 2: ...");
     arcText.style.minHeight = "190px";
     arcText.addEventListener("input", () => {
       wizardState.storyLayer.user_story_arc = arcText.value;
       queueWizardDraftSave();
     });
-    const motionSlider = input(String(Math.max(0, Math.min(10, Number(wizardState.storyCharacterMotion ?? 7)))), "range");
-    motionSlider.min = "0";
-    motionSlider.max = "10";
-    motionSlider.step = "1";
-    motionSlider.style.accentColor = "#22d3ee";
-    const motionNumber = input(String(Math.max(0, Math.min(10, Number(wizardState.storyCharacterMotion ?? 7)))), "number");
-    motionNumber.min = "0";
-    motionNumber.max = "10";
-    motionNumber.step = "1";
-    const motionHint = el("div", "vrgdg-wizard-copy");
-    const syncMotionLabel = () => {
-      const value = Math.max(0, Math.min(10, Number(motionNumber.value || motionSlider.value || 7)));
-      motionSlider.value = String(value);
-      motionNumber.value = String(value);
-      wizardState.storyCharacterMotion = value;
-      motionHint.textContent = value <= 2
-        ? "Mostly still: subtle gestures and restrained performance."
-        : value <= 5
-          ? "Moderate motion: turns, hand movement, controlled blocking."
-          : value <= 8
-            ? "Active: walking, moving through the space, touching objects, using the environment."
-            : "Highly active: strong physical beats, dancing/running/climbing/forceful interaction.";
-    };
-    motionSlider.addEventListener("input", () => {
-      motionNumber.value = motionSlider.value;
-      syncMotionLabel();
-      queueWizardDraftSave();
+    arcText.addEventListener("change", () => {
+      persistStoryLayer("wizard user story arc changed")?.catch(() => null);
     });
-    motionNumber.addEventListener("input", () => {
-      syncMotionLabel();
-      queueWizardDraftSave();
-    });
-    syncMotionLabel();
     enabled.addEventListener("change", () => {
       wizardState.storyLayer.enabled = Boolean(enabled.checked);
-      queueWizardDraftSave();
+      persistStoryLayer("wizard story layer enabled changed")?.catch(() => null);
     });
     const arcButton = button("Create User Story Arc", "primary");
     arcButton.onclick = async () => {
       arcButton.disabled = true;
       try {
+        wizardState.storyLayer.overall_story_idea = overallStoryIdea.value;
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.enabled = Boolean(enabled.checked);
         wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
         const updated = await api.createStoryArc?.({
           storyLayer: wizardState.storyLayer,
           userStoryArc: arcText.value,
-          storyIdea: arcText.value,
-          characterMotion: wizardState.storyCharacterMotion,
+          storyIdea: overallStoryIdea.value,
+          characterMotion: wizardState.characterMotionSpeed,
         });
         if (updated) {
           wizardState.storyLayer = { ...wizardState.storyLayer, ...updated };
@@ -2076,9 +2238,13 @@ export function openMusicVideoWizard(api = {}) {
         arcButton.disabled = false;
       }
     };
-    const motionRow = el("div", "vrgdg-wizard-settings-fields two");
-    motionRow.append(field("Character motion", motionSlider, "0 = still/posed, 10 = very active and interactive"), field("Motion value", motionNumber));
-    arc.append(enabledLabel, lyricStrengthRow, arcText, motionRow, motionHint, arcButton);
+    arc.append(
+      enabledLabel,
+      lyricStrengthRow,
+      field("Overall Story Idea (optional)", overallStoryIdea, "Sets the premise, world, or theme. Leave blank for a lyric-led idea."),
+      field("User Story Arc", arcText),
+      arcButton,
+    );
     const brief = card("2. Song Story Brief", "A compact Gemma summary of the song's premise, emotional arc, motifs, and scene guidance.");
     const briefText = textarea(wizardState.storyLayer.song_story_brief || "", "Create or edit the song story brief...");
     briefText.style.minHeight = "190px";
@@ -2086,10 +2252,14 @@ export function openMusicVideoWizard(api = {}) {
       wizardState.storyLayer.song_story_brief = briefText.value;
       queueWizardDraftSave();
     });
+    briefText.addEventListener("change", () => {
+      persistStoryLayer("wizard song story brief changed")?.catch(() => null);
+    });
     const briefButton = button("Create Story Brief", "primary");
     briefButton.onclick = async () => {
       briefButton.disabled = true;
       try {
+        wizardState.storyLayer.overall_story_idea = overallStoryIdea.value;
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.enabled = Boolean(enabled.checked);
         wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
@@ -2126,6 +2296,7 @@ export function openMusicVideoWizard(api = {}) {
     missing.onclick = async () => {
       missing.disabled = true;
       try {
+        wizardState.storyLayer.overall_story_idea = overallStoryIdea.value;
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.song_story_brief = briefText.value;
         wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);
@@ -2140,6 +2311,7 @@ export function openMusicVideoWizard(api = {}) {
     replace.onclick = async () => {
       replace.disabled = true;
       try {
+        wizardState.storyLayer.overall_story_idea = overallStoryIdea.value;
         wizardState.storyLayer.user_story_arc = arcText.value;
         wizardState.storyLayer.song_story_brief = briefText.value;
         wizardState.storyLayer.lyric_story_strength = lyricStoryStrengthValue(lyricStrength.value);

@@ -1697,8 +1697,8 @@ Use the Wizard when you want the builder to walk through:
 | Lyrics and scenes | Paste reference lyrics and create timeline scenes |
 | References | Open the correct Reference Builder mode for the selected video mode |
 | Lyric review | Open lyric timing, singer, B-roll, instrumental, location, and Ingredients mapping tools |
-| Scene defaults | Fill image shot/composition flow, image aesthetic, video camera flow, performance style, and facial performance across scenes |
-| Story layer | Create a story brief, story arc, lyric sections, and per-scene story beats |
+| Scene defaults | Set image shot flow, aesthetic, image-world direction, consistency phrase, video camera flow, camera/character motion speeds, performance style, and facial performance |
+| Story layer | Set the same enabled state, lyric strength, overall story idea, user story arc, and song story brief used by Storyboard Builder; create lyric sections and per-scene story beats |
 | Prompts/build | Run LLM image prompts, Storyboard/LLM video prompts, and Build Full Video |
 
 The Wizard saves draft progress into the project when possible, so you can close it and continue later.
@@ -1713,8 +1713,8 @@ Recommended Wizard workflow:
 4. Load global audio and paste/import the lyrics.
 5. Create scenes, then open lyric review to correct timing, singers, instrumental/B-roll flags, and locations.
 6. Add and map references for modes that require them.
-7. Apply image defaults for shot/composition flow and aesthetic, then apply video camera flow, performance, and facial direction as needed. `Fill Missing` preserves scene-level work; `Replace All` intentionally rewrites that category across every scene.
-8. Build the story brief/arc and missing scene beats if the project needs a continuous narrative.
+7. Set the image-world, consistency, camera speed, character speed, performance, and facial defaults under Scene Defaults. Apply image shot/aesthetic and video camera flow as needed. `Fill Missing` preserves scene-level work; `Replace All` intentionally rewrites that category across every scene.
+8. Under Story Direction, set the overall idea and lyric strength, then build the user story arc, story brief, and missing scene beats if the project needs a continuous narrative. These are the same shared fields shown in Storyboard Builder.
 9. Run image prompts and review images before running video prompts.
 10. Use the Wizard's full-build action only after a few representative scenes work correctly.
 

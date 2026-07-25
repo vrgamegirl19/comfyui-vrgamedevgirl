@@ -41772,6 +41772,40 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         return { mapped: 0, error: String(error?.message || error) };
       }
     };
+    const applyWizardSceneDefaultSettingsToState = (settings = {}) => {
+      const cameraSpeed = Math.max(0, Math.min(10, Number(settings.cameraMotionSpeed ?? settings.camera_motion_speed ?? state.builderStoryboardDefaults?.camera_motion_speed ?? 4)));
+      const characterSpeed = Math.max(0, Math.min(10, Number(settings.characterMotionSpeed ?? settings.character_motion_speed ?? state.builderStoryboardDefaults?.character_motion_speed ?? 4)));
+      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
+        ...state.builderStoryboardDefaults,
+        camera_flow: settings.cameraFlow ?? settings.camera_flow ?? state.builderStoryboardDefaults?.camera_flow,
+        image_shot_flow: settings.imageShotFlow ?? settings.image_shot_flow ?? state.builderStoryboardDefaults?.image_shot_flow,
+        image_aesthetic: settings.imageAesthetic ?? settings.image_aesthetic ?? state.builderStoryboardDefaults?.image_aesthetic,
+        global_consistency_phrase: settings.globalConsistencyPhrase ?? settings.global_consistency_phrase ?? state.builderStoryboardDefaults?.global_consistency_phrase,
+        performance_style: settings.performanceStyle ?? settings.performance_style ?? state.builderStoryboardDefaults?.performance_style,
+        camera_motion_speed: cameraSpeed,
+        character_motion_speed: characterSpeed,
+        camera_guidance: builderMotionSpeedGuidance(cameraSpeed, "camera"),
+        character_guidance: builderMotionSpeedGuidance(characterSpeed, "character"),
+      });
+      if (Object.prototype.hasOwnProperty.call(settings, "facialPerformance") || Object.prototype.hasOwnProperty.call(settings, "facial_performance")) {
+        state.defaultFacialPerformance = String(settings.facialPerformance ?? settings.facial_performance ?? "");
+      }
+      if (Object.prototype.hasOwnProperty.call(settings, "facialPerformanceCustom") || Object.prototype.hasOwnProperty.call(settings, "facial_performance_custom")) {
+        state.defaultFacialPerformanceCustom = String(settings.facialPerformanceCustom ?? settings.facial_performance_custom ?? "");
+      }
+      if (settings.storyLayer || settings.story_layer) {
+        state.builderStoryLayer = normalizeBuilderStoryLayer(settings.storyLayer || settings.story_layer);
+      }
+      return {
+        sceneDefaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
+        storyLayer: normalizeBuilderStoryLayer(state.builderStoryLayer),
+      };
+    };
+    const updateWizardSceneDefaultSettings = async (settings = {}, label = "wizard scene settings") => {
+      const updated = applyWizardSceneDefaultSettingsToState(settings);
+      await autoSaveSessionQuiet(label);
+      return updated;
+    };
     const applyWizardSceneDefaults = async (settings = {}) => {
       const cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[settings.cameraFlow] ? settings.cameraFlow : "balanced";
       const imageShotFlow = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[settings.imageShotFlow] ? settings.imageShotFlow : "intimate";
@@ -41784,7 +41818,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const shouldApplyImageShot = Boolean(settings.applyImageShotFlow);
       const shouldApplyImageAesthetic = Boolean(settings.applyImageAesthetic);
       const shouldApplyPerformance = Boolean(settings.applyPerformance);
-      const shouldApplyFacial = Boolean(settings.applyFacialPerformance || facialPerformance || facialPerformanceCustom);
+      const shouldApplyFacial = Boolean(settings.applyFacialPerformance);
       const shouldApplyCamera = settings.applyCamera == null
         ? !shouldApplyImageShot && !shouldApplyImageAesthetic && !shouldApplyPerformance && !settings.applyFacialPerformance
         : Boolean(settings.applyCamera);
@@ -41801,6 +41835,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       let facialChanged = 0;
       const scenes = allEditableSegments();
       pushHistory();
+      applyWizardSceneDefaultSettingsToState(settings);
       const nextStoryboardDefaults = {
         ...state.builderStoryboardDefaults,
       };
@@ -42408,6 +42443,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await autoSaveSessionQuiet("wizard story layer updated");
         return normalizeBuilderStoryLayer(state.builderStoryLayer);
       },
+      updateSceneDefaultSettings: updateWizardSceneDefaultSettings,
       applySceneDefaults: applyWizardSceneDefaults,
       saveWizardDraft: async (draft = {}) => {
         const projectFolder = activeProjectFolderForSave();
