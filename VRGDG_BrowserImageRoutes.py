@@ -528,10 +528,10 @@ def _run_manual_bridge(payload, action):
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
     if action == "submit":
-        if redirect_downloads:
-            _start_download_keeper(flow_dir, script_path, provider, config, port, output_dir, env)
-        else:
-            _stop_download_keeper(port)
+        # A short-lived Playwright/CDP submission connection can reset Chrome's
+        # download behavior when it disconnects. Stop the previous keeper now,
+        # then apply the new destination only after that helper has fully exited.
+        _stop_download_keeper(port)
     try:
         process = subprocess.run(
             command,
@@ -556,6 +556,8 @@ def _run_manual_bridge(payload, action):
     stderr = process.stderr or ""
     if process.returncode != 0:
         raise RuntimeError((stderr or stdout or f"Manual browser bridge failed with exit code {process.returncode}.").strip())
+    if action == "submit" and redirect_downloads:
+        _start_download_keeper(flow_dir, script_path, provider, config, port, output_dir, env)
     return {
         "provider": provider,
         "provider_label": config["label"],
