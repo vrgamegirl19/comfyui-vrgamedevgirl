@@ -274,6 +274,21 @@ The Builder provides three different ways to protect or move a project:
 
 Large ZIP exports and imports can take several minutes. Keep ComfyUI running until the browser download or import progress window finishes. Imported projects are opened as their own project folder; they do not overwrite the currently loaded source project.
 
+To branch a project:
+
+1. Quick Save the current source project.
+2. Choose `Menu` -> `Branch Project...`.
+3. Enter a descriptive branch name and create it.
+4. Confirm the Builder opens/identifies the new branch before changing prompts or models.
+
+To move a project:
+
+1. Quick Save, then choose `Export Shareable Project ZIP`.
+2. Wait for the archive to finish and keep it intact.
+3. On the destination ComfyUI, choose `Import Project ZIP` and select that archive.
+4. Wait while the Builder extracts the project and rewrites saved media paths.
+5. Confirm the audio, scene images, references, and videos open before continuing.
+
 ## Adding Audio and SRT Timing
 
 There are two audio styles:
@@ -442,6 +457,17 @@ Main fields:
 
 Use this tab first when a scene needs better direction before image or video generation.
 
+How to use it:
+
+1. Select a scene in the left scene list or timeline.
+2. Give it a useful `Scene label`.
+3. Check `Start` and `End`; enable `Freeze SRT timing` before later timing imports if those times must not move.
+4. Type or import the scene's concept/director notes. Use the JSON path fields when Prompt Creator or another tool produced saved prompt files.
+5. Enable the VRGDG context files you want Gemma to read, and confirm the global theme, story, and subject files point to the correct project material.
+6. Save the project, then continue to `Image` for the still image and `Video` for motion.
+
+Changing Scene-tab context does not automatically replace an existing generated prompt. Run the appropriate Gemma prompt button again, or edit the saved prompt manually, when you want the change reflected in new media.
+
 ![Scene Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Scene%20Tab.png)
 
 ## Image Tab
@@ -498,6 +524,16 @@ Common ZImage controls:
 | `Gemma T2I` | Generates the text-to-image prompt |
 | `Create Z-Image` | Runs the ZImage image workflow |
 
+To create a ZImage:
+
+1. Select the scene and choose `Image` -> `ZImage`.
+2. In `Models`, choose the diffusion model, CLIP, VAE, and Gemma files. Enable and configure LoRAs only if needed.
+3. In `Image Settings`, choose the size, seed, batch count, and any image-to-image/reference source.
+4. In `LLM Prompting`, write the desired subject, location, composition, lighting, and style in the notes.
+5. Click `Gemma T2I`, review the generated prompt, and edit it if necessary.
+6. Click `Create Z-Image`.
+7. Review the result and its image history; select the version you want the Video tab to use.
+
 ### Flux/Klein
 
 `Flux Klein` supports image ingredients and Reference Builder images.
@@ -523,6 +559,17 @@ Common Flux/Klein controls:
 
 If Reference Builder is enabled, Flux/Klein can automatically include the mapped subject and location images for each scene.
 
+To create a Flux/Klein image:
+
+1. Save the project and map reusable subjects/locations in `Reference Builder`, or prepare scene-specific image ingredients.
+2. Select the scene and choose `Image` -> `Flux Klein`.
+3. Pick the Flux/Klein models and set the output size and seed.
+4. Enable global ingredients when every scene should receive the same references.
+5. Drop scene-only character, location, prop, or style images into `Image ingredients`.
+6. Write image direction and an optional trigger phrase.
+7. Click `Gemma Flux Prompt` and verify that the prompt assigns the correct role to every reference.
+8. Click `Create with Flux/Klein`, then choose the preferred result from image history.
+
 ### Nano B
 
 `Nano B` is the NanoBanana image mode. It uses an API key and can use reference images. It can also receive Reference Builder subject/location references.
@@ -542,11 +589,32 @@ Nano B prompts do not need strict section headers. If Gemma creates a normal usa
 
 Nano B works best when its prompt clearly says the reference images are identity/location references, not images to paste into the output. If the output looks like a character was dropped into the reference location, rewrite the prompt with stronger camera language such as `close-up`, `upper body`, `low angle`, `profile`, or `new camera position`.
 
+To create a Nano B image:
+
+1. Choose `Image` -> `Nano B`.
+2. In `Models`, enter the API key and choose the NanoBanana model.
+3. Set image size/seed and decide whether global references should be included.
+4. Drop scene-specific references into the NanoBanana reference area, or use saved Reference Builder mappings.
+5. Add clear scene and camera direction in `LLM Prompting`.
+6. Click `Gemma NB Prompt` and confirm that identities and locations are described as references rather than pasted compositions.
+7. Click `Create with NanoBanana`.
+8. If the composition copies the reference too closely, change the camera/framing instruction and generate again.
+
 ### Ernie
 
 `Ernie` is another image-generation mode. It works similarly to ZImage from the UI side: choose models, set image settings, optionally use Gemma, then create the image.
 
 Use Ernie when you want to compare a scene image against ZImage, Flux/Klein, or Nano B.
+
+To create an Ernie image:
+
+1. Select a scene and choose `Image` -> `Ernie`.
+2. Choose the Ernie model files and output settings.
+3. Optionally click `Load I2I Image` for image-to-image generation or `Load Reference Image` for vision-guided prompt writing.
+4. Add scene direction in Ernie's `LLM Prompting` area.
+5. Click `Gemma T2I`, then review or edit the Ernie prompt.
+6. Click `Create with Ernie`.
+7. Compare the new result with the scene's other image-history versions and select the one to keep.
 
 ### Krea 2
 
@@ -571,11 +639,32 @@ Common Krea 2 controls:
 | `Gemma T2I` | Creates a Krea 2 image prompt |
 | `Create with Krea 2` | Runs the Krea 2 image workflow |
 
+To create a Krea 2 image:
+
+1. Choose `Image` -> `Krea 2`.
+2. Select the Krea model files and configure the two generation passes.
+3. Enable LoRAs if needed and set separate pass 1/pass 2 strengths.
+4. Optionally enable the selected scene's custom Krea settings or load an I2I source image.
+5. Write the scene direction, click `Gemma T2I`, and review the prompt.
+6. Click `Create with Krea 2`.
+7. Review the result before enabling scene-specific overrides elsewhere; an override affects only the selected scene.
+
 ### Enhance
 
 `Enhance` works on an existing selected image. Use it to upscale, enhance, or perform image-to-image improvement.
 
 The LLM Prompting tab in Enhance can use the selected/custom image as context to create a better enhancement prompt.
+
+To enhance an image:
+
+1. Select a scene that already has an image, and make sure the desired version is selected in image history.
+2. Choose `Image` -> `Enhance`.
+3. Set the enhancement/upscale model and the desired output settings.
+4. Add instructions describing what should improve and what must remain unchanged.
+5. Click `Gemma Enhance Prompt`, review the dedicated Enhance prompt, and click `Upscale / Enhance Image`.
+6. Compare the result with the source. The original remains available in image history, so select it again if the enhancement is worse.
+
+Use `Send to Enhance` beside another image mode's prompt when you want that prompt copied into the Enhance workflow. Use `Enhance All` only after testing the settings successfully on one representative scene.
 
 ### Load Custom
 
@@ -589,6 +678,13 @@ Use this for:
 - manually curated scene images
 
 The loaded image becomes the selected scene image, so video generation can use it the same way it uses generated images.
+
+To use a custom image:
+
+1. Select the destination scene.
+2. Choose `Image` -> `+ Custom` / `Load Custom`.
+3. Select the PNG, JPEG, or WebP image and wait for it to appear in the preview/history.
+4. Confirm it is the selected image before creating an I2V or FLF video.
 
 ## Browser AI Image Mode
 
@@ -681,11 +777,15 @@ When Gemma creates a T2I prompt for a scene, the builder can copy that prompt in
 
 You can still edit each model's prompt after it is copied.
 
+Generate the prompt in your preferred image mode, switch to a second image mode, and review its populated prompt before rendering. Changes made afterward to only one model's prompt remain model-specific, so copy/regenerate again when every backend should receive the revision.
+
 ### Image Trigger Phrase
 
 The image trigger phrase is added at the start of image prompts when it is filled in.
 
 Use it for model-specific trigger words, LoRA trigger phrases, or a short global style phrase. Leave it blank if the model does not need one.
+
+Fill the trigger phrase before running the model's Gemma prompt action. Confirm it appears once at the beginning of the final prompt. It is not a replacement for mapped Reference Builder trigger phrases, and changing it does not rewrite already generated prompts until you regenerate or edit them.
 
 ### Per-Scene Image Settings
 
@@ -694,6 +794,14 @@ The Builder lets a single scene override the global settings for each supported 
 Use the `Use custom ... settings for this scene` toggles when one scene needs a different model, seed, LoRA, image-to-image source, reference setup, resolution, or trigger phrase. Multi-select can apply many of these model/settings changes to several selected scenes at once.
 
 If the toggle is off, the scene follows the global settings for that image mode again.
+
+To make a scene override:
+
+1. Select the scene and image mode.
+2. Enable `Use custom ... settings for this scene`.
+3. Change only that scene's model, seed, LoRA, resolution, I2I, trigger, or reference fields.
+4. Generate the scene and compare it with a global-settings scene.
+5. Disable the toggle when you want that scene to inherit global settings again.
 
 ![Image Tab Model Chooser](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Image%20Tab%20Model%20Chooser.png)
 
@@ -779,6 +887,15 @@ For T2V, Gemma uses the concept/image prompt, video notes, lyric notes, singer m
 
 Use T2V when image generation is not needed, or when you want the video model to invent the first frame from text.
 
+To create a T2V scene:
+
+1. Select the scene and choose `Video` -> `Text to Video`.
+2. Set the video model, resolution, FPS, seed, and optional LoRAs.
+3. Write the subject, action, camera movement, setting, and timing in the video notes.
+4. Click the T2V/Gemma prompt button, or type the complete video prompt yourself.
+5. Check that the prompt does not depend on an image that T2V will not receive.
+6. Click `Create Scene Video`, review the clip, and select the desired video-history version.
+
 ### Reference To Video
 
 `Reference to Video` is the LTX/MSR reference-video mode. It is useful when the scene should be driven by a mapped subject reference rather than only a generated scene image.
@@ -800,6 +917,17 @@ Important controls:
 | `Reference Builder` | Opens the MSR reference/mapping setup when this mode is active |
 
 Reference-to-Video works best after saving lyric/singer mapping and Reference Builder subject mapping.
+
+To create a Reference-to-Video scene:
+
+1. Save the project, then open `Reference Builder`.
+2. Add subject references and descriptions, map the correct subject to the scene, and save.
+3. Save lyric/singer mapping when the subject sings or speaks.
+4. Choose `Video` -> `Reference to Video`.
+5. Confirm the required MSR LoRA/model and strength, and verify the selected scene shows the expected mapped reference.
+6. Add motion/performance notes or prepare the scene in Storyboard Builder.
+7. Click `Gemma Reference Video`, review the prompt and trigger phrasing, then click `Create Scene Video`.
+8. If the wrong identity appears, correct the scene mapping rather than compensating only in prompt text.
 
 ### Ingredients To Video
 
@@ -823,6 +951,17 @@ Important controls:
 
 The Ingredients LoRA was trained around `768x448`. Other sizes can work, but unusual aspect ratios may reduce composition quality.
 
+To create an Ingredients-to-Video scene:
+
+1. Prepare a complete Ingredients sheet for each character/look you need.
+2. Open `Ingredients Reference Builder`, upload and describe the sheets, map them to scenes, and save.
+3. Choose `Video` -> `Ingredients to Video`.
+4. Confirm the required Ingredients LoRA is present and set its first-pass strength.
+5. Keep the recommended `768x448` resolution for the first test.
+6. Add scene motion notes and click `Gemma Ingredients Video`.
+7. Check that the correct sheet is shown for the scene, then click `Create Scene Video`.
+8. If a batch uses the wrong sheet, fix the scene mapping before running `LLM Video All` or `Render All` again.
+
 ## ID-LoRA Image-to-Video
 
 `ID-LoRA I2V` is for identity-driven LTX video. The required ID-LoRA occupies the first LoRA slot, while optional video LoRAs are added after it.
@@ -837,6 +976,17 @@ Use `ID-LoRA Ref Builder` inside Reference Builder to:
 The Video tab provides required ID-LoRA pass strengths, identity scale, a fallback voice sample, and ID-LoRA-specific Gemma instructions. The fallback voice is used only when the selected character does not have its own mapped voice sample.
 
 `Trim Mode` above the timeline is an ID-LoRA helper for quietly scrubbing and finding trim points without automatic playback.
+
+To create an ID-LoRA scene:
+
+1. Choose `Video` -> `ID-LoRA I2V`.
+2. Open `ID-LoRA Ref Builder`, add each character's identity reference and description, and optionally attach a clean voice sample.
+3. Map the correct character to each scene and save.
+4. Confirm the required ID-LoRA occupies the required first slot; add optional style/video LoRAs after it.
+5. Set identity scale, pass strengths, and the fallback voice only if some mapped characters have no voice sample.
+6. Create/select the scene's starting image, add motion and performance notes, and run the ID-LoRA Gemma prompt.
+7. Review the prompt and create the scene video.
+8. Use `Trim Mode` when selecting quiet trim points, then select the preferred result from video history.
 
 ## First Last Frame Video
 
@@ -957,6 +1107,15 @@ Turn on custom scene settings when a specific scene needs different:
 
 Use this for one-off scenes, special LoRA tests, or different video resolutions.
 
+To override one scene safely:
+
+1. Select the scene and note the current global values.
+2. Enable the scene-specific/custom video settings toggle.
+3. Change only the fields that must differ.
+4. Use a new seed for a different variation or keep the old seed to compare one setting change.
+5. Render only that scene first.
+6. Turn the override off if the scene should return to global settings; changing global settings does not necessarily replace an enabled scene override.
+
 ### Video LoRAs
 
 Video LoRAs can use separate strengths for pass 1 and pass 2 when the hidden workflow supports it.
@@ -981,6 +1140,8 @@ Warm up and cool down frames help the hidden video workflow create smoother scen
 
 If a scene starts too stiffly, check that warm up frames are enabled and set to a useful number.
 
+Start with the hidden workflow defaults. Increase warm-up frames when the usable action begins too abruptly, and increase cool-down frames when motion is cut off at the end. Re-render one scene after each change because these extra frames increase processing time and may affect the final trim.
+
 ![Video Mode Chooser](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Mode%20Chooser.png)
 
 ![Video Prompting](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Video%20Prompting.png)
@@ -997,6 +1158,25 @@ Sections:
 | `Timeline Audio` | Add or manage the global project audio |
 
 Use `Scene Audio` for scene-specific dialogue or clips. Use `Timeline Audio` for music-video timing.
+
+To use global timeline audio:
+
+1. Open `Audio` -> `Timeline Audio`.
+2. Choose the global/timeline audio source and drop or load the song.
+3. Wait for the duration/waveform to update.
+4. Create or import scenes/SRT within that audio duration.
+5. Use the global scrubber to preview timing; use its speaker button to mute timeline audio when previewing a finished video that already contains sound.
+6. Save the project so the copied audio path and timeline state persist.
+
+To use per-scene audio:
+
+1. Select the scene and open `Audio` -> `Scene Audio`.
+2. Click `Open Scene Audio Options`.
+3. Load the dialogue, narration, or short scene clip and choose the applicable scene-audio behavior.
+4. Preview that scene and confirm the audio length fits its timeline range.
+5. Repeat only for scenes that require their own audio.
+
+Do not mix global music and scene audio accidentally. Pick the source style that matches the project, and use silent-audio duration when intentionally building without an audio file.
 
 ![Audio Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Audio%20Tab%20Timeline%20Audio.png)
 
@@ -1525,6 +1705,21 @@ The Wizard saves draft progress into the project when possible, so you can close
 
 For `Reference to Video`, the Wizard can run the same Storyboard prompt writer used by Storyboard Builder. `Ingredients to Video` remains available from the main UI and Ingredients Reference Builder.
 
+Recommended Wizard workflow:
+
+1. Create or load and save a project before opening `Wizard`.
+2. Choose the video mode and image backend first; this determines which model/reference steps appear.
+3. Review the model defaults. Apply them to the Builder only after the required files appear in the selectors.
+4. Load global audio and paste/import the lyrics.
+5. Create scenes, then open lyric review to correct timing, singers, instrumental/B-roll flags, and locations.
+6. Add and map references for modes that require them.
+7. Apply scene defaults for camera flow, performance, and facial direction.
+8. Build the story brief/arc and missing scene beats if the project needs a continuous narrative.
+9. Run image prompts and review images before running video prompts.
+10. Use the Wizard's full-build action only after a few representative scenes work correctly.
+
+If you close the Wizard, reopen it and continue from the saved project. The Wizard is an ordered launcher; every result is still visible and editable in the main Builder.
+
 ## Storyboard Builder
 
 `Storyboard Builder` is a planning workspace for scene cards before or during image/video generation.
@@ -1552,6 +1747,23 @@ The current Storyboard Builder includes several planning and safety improvements
 - bulk scene assignment can rotate locations or `Repeat each location for X scenes`
 - `Clear All Story Beats` clears only the per-scene story-beat field, preserving lyrics, prompts, references, images, locations, and shot settings
 - scene cards and controls reflow more cleanly on smaller or resized Storyboard windows
+
+Recommended Storyboard Builder workflow:
+
+1. Save the Video Builder project with scenes, lyric mapping, and any Reference Builder subjects/locations.
+2. Open `Storyboard Builder`.
+3. Choose `Image Prep` when planning still-image prompts or `Video Prep` when planning motion/video prompts from existing scene images.
+4. Click `Detect Lyric Sections`, review the verse/chorus/bridge labels, and correct scene cards when needed.
+5. Enter the story direction and click `Create Story Brief`.
+6. Click `Create User Story Arc`; review every song section before using it to make scene beats.
+7. Click `Create Missing Scene Beats` to preserve existing beats, or `Replace All Scene Beats` only when intentionally rebuilding them.
+8. Choose the shot/still aesthetic in Image Prep, or camera flow, motion speed, performance style, character speed, and facial performance in Video Prep.
+9. Use `Fill Missing` to protect manual scene choices. Use `Replace All` only when the selected preset should overwrite every scene.
+10. Open individual scene cards to correct the lyric section, story beat, references, shot/camera direction, motion, performance, or notes.
+11. Click the all-scenes Gemma button to generate prompts, then inspect several scene cards for identity, location, singing, and motion accuracy.
+12. Click `Save Storyboard`. Use `Export Prompt Files` when another tool needs the generated files.
+
+`Clear Prompts` removes generated prompt fields but keeps planning choices. `Clear All Story Beats` removes only story beats. When a generated story arc invents a different setting, correct the mapped `location_ref`; the mapped location is the required physical set.
 
 ## Start Image Storyboard Creator
 
@@ -1588,6 +1800,23 @@ The Browser AI integration supports Flow, GPT Image, and Meta AI. The location p
 The creator saves previous attempts when frames are replaced. `Import Current Start Frames` offers `Import Missing Only` or `Replace All Start Frames`, and replacement preserves the old creator frames in the storyboard attempts folders.
 
 When `Start + End Frames` is enabled, exported files use paired names such as `scene_0001.png` and `scene_0001_end.png`. `Fill Timeline Images From Folder` recognizes that convention and imports the folder into Video Builder as independent FLF pairs.
+
+Recommended Start Image Storyboard workflow:
+
+1. Save the main Video Builder project after completing scene timing, lyric mapping, and Reference Builder mappings.
+2. Add `VRGDG Storyboard Creator with Browser AI — Open This` and click `Open Storyboard Creator`.
+3. Paste/browse to the saved project folder and click `Load Video Builder Project`.
+4. Choose the Browser AI provider and use `LLM Settings` to select Gemma Local, LM Studio, or an API runner.
+5. Add a global story/style idea and a global character sheet; keep `Use global reference for every scene` enabled unless scenes need separate identities.
+6. Use `Refresh Project Mappings` whenever the main Builder's lyrics or references change.
+7. For each scene, confirm the mapped location, optionally name a different location sub-area, choose a shot preset, and create/edit the prompt.
+8. Use `Send Character + Location + Prompt` or `Create 5 Start Options`, download the chosen result, and click `Import Latest as Start`.
+9. For FLF projects, enable `Start + End Frames`, choose an end transition/add an ending note, click `Create End from Start`, and import the result as the end frame.
+10. Use `Batch Agent Brief` for consecutive scenes that need shared identity, wardrobe, style, and shot progression.
+11. Click `Save`.
+12. Back in Video Builder, use `Fill Timeline Images From Folder` to import the numbered start/end files as independent FLF pairs.
+
+Use `Import Current Start Frames` in the opposite direction when the main Builder already has approved starts that the standalone creator should continue from.
 
 ## Face Fix
 
@@ -1792,6 +2021,14 @@ If LM Studio does not list models:
 4. Start the server.
 5. Return to the builder and click `Load LM Studio Models`.
 
+To choose a runner:
+
+1. Click `LLM Runner`.
+2. Choose `builtin`, `lm_studio`, or `llm_api`.
+3. Fill the fields for that runner and use its test action.
+4. Save the runner settings.
+5. Run one text-only scene prompt and confirm the progress window names the expected runner before starting a batch.
+
 ![Gemma Runner Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20Window.png)
 
 ![Gemma Runner with LM Studio model dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Gemma%20Runner%20with%20LM%20Studio%20model%20dropdown.png)
@@ -1845,6 +2082,17 @@ In `First Last Frame` mode, `Image All` also offers the dedicated chained and in
 
 When the finished video is stitched, the builder shows a `Final Video Ready` popup. Use `Open Video` to preview it.
 
+Safe batch workflow:
+
+1. Save the project and test one representative scene from prompt through video.
+2. Use `LLM T2I All` and inspect several prompts.
+3. Use `Image All`, then review/select scene images.
+4. Use `LLM Video All` and inspect singing, no-lip-sync, identity, and motion instructions.
+5. Use `Render All` to create only missing videos.
+6. Use `Stitch Preview` for a quick check, then `Build Full Video`/final stitch when the sequence is ready.
+7. Choose `Resume missing only` after interruptions. Use redo options only when you intend to replace completed outputs.
+8. If something is wrong, click `Stop`; completed scene outputs remain available, and a later resume can continue the missing work.
+
 ![Final Video Ready Popup](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Final%20Video%20Ready%20Popup.png)
 
 ## Post Process
@@ -1870,6 +2118,16 @@ LUT tips:
 - The included LUT examples live under the repo's `LUTS/examples` folder.
 
 Post-process changes are scene-level choices. Save the project after choosing looks so the builder can keep those selections with the session.
+
+To post-process a scene:
+
+1. Select a scene with an image or rendered video.
+2. Open the left `Post Process` tab.
+3. For a LUT, choose an installed `.cube` file and preview it before applying; use `Refresh` after adding LUT files.
+4. For grain or FX, start with a low strength and preview the result.
+5. Use the compare view to check the processed result against the unprocessed source.
+6. Apply the chosen result, verify the correct history item is selected, and save the project.
+7. Test one scene before repeating the same treatment across the project.
 
 ## Prompt Creator Panel
 
@@ -2041,6 +2299,15 @@ Use them for:
 
 Browsers may block sound until you have clicked somewhere in the page at least once.
 
+To save settings:
+
+1. Open `Menu` -> `Settings`.
+2. Change only the options you need.
+3. For a custom model root, enter the folder that contains the normal ComfyUI model subfolders.
+4. For notifications, enable the desired events, set a low test volume, and optionally choose success/error audio files.
+5. Save/close Settings.
+6. Refresh or restart ComfyUI when model paths changed; click once inside the browser before testing notification sounds.
+
 ![Settings window with custom model root and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Settings%20window%20with%20custom%20model%20root%20and%20audio%20notifications.png)
 
 Short snippet:
@@ -2160,24 +2427,24 @@ ComfyUI/
 
 ## Additional Nodes and Utilities
 
-The repository also includes standalone nodes and UIs that can be used outside the Video Builder:
+The repository also includes standalone nodes and UIs that can be used outside the Video Builder. These do not appear as Builder panels; add them to a normal ComfyUI workflow.
 
-| Node or utility | What it adds |
-| --- | --- |
-| `VRGDG Storyboard Creator with Browser AI — Open This` | The project-aware start/end storyboard workspace described above |
-| `VRGDG LoRA Dataset Creator UI` | Builds image/caption datasets for art styles, consistent characters, or experimental LTX 2.3 IC edit pairs with generated concepts, trigger text, LLM captions, pause/stop, and previews |
-| `Face Fix - ...` node set | Detects/tracks a face, prepares Z-Image anchors and an LTX crop video, validates both branches, and composites repaired frames back into the source |
-| `Video Enhance - ...` node set | Creates full-frame enhancement anchors, feeds them through Meta Batch and LTX, then restores the exact original resolution/frame count with optional source blending |
-| `VRGDG Modern Face Crop (DNN)` | OpenCV DNN/YuNet face crop with confidence filtering and long-range tiled scanning |
-| `VRGDG Image Paste Back (Feathered)` | Pastes a processed crop back through compatible crop metadata with edge padding and feathering |
-| `VRGDG LTXV Looping Sampler Advanced` | Extends the official looping sampler with per-temporal-tile image, latent, and overlap-conditioning schedules without modifying the official node |
-| `VRGDG LTX First / Last Temporal Guide` and `Endpoint Guide` | Builds temporal first/last-frame guidance and explicit endpoint guidance for advanced LTX workflows |
-| `VRGDG LTX IC Ingredients Grid` | Composes up to 24 connected images into LTX IC-LoRA reference-sheet layouts with grid, strip, story, and aspect-aware options |
-| `VRGDG Optional Multi LoRA Two Pass Strengths` | Applies optional model-only LoRAs with independent first-pass and second-pass strengths |
-| LTX CFG/Sigma nodes | Adds scheduled CFG, CFG/APG/STG/variance-rescale guidance, and sigma-aware image/video guide release controls |
-| `VRGDG Krea 2 Musubi Installer` | Installs a native Krea 2-ready Musubi-Tuner and can download the Krea 2 model assets |
-| `VRGDG Krea 2 LoRA Studio` | Provides preset-based Krea 2 chunk training, sampling, and comparison grids |
-| `VRGDG Krea 2 AI Toolkit Installer` | Installs an isolated AI Toolkit environment for experimental paired Krea 2 Edit LoRA training |
+| Node or utility | What it adds | Quick start |
+| --- | --- | --- |
+| `VRGDG Storyboard Creator with Browser AI — Open This` | The project-aware start/end storyboard workspace described above | Add the node, click `Open Storyboard Creator`, load a saved Builder project, and follow the Start Image Storyboard workflow above |
+| `VRGDG LoRA Dataset Creator UI` | Builds image/caption datasets for art styles, consistent characters, or experimental LTX 2.3 IC edit pairs | Add/open the UI, choose the dataset type/output folder, configure the concept and generator, test one item, then run the batch; review images and captions before training |
+| `Face Fix - ...` node set | Detects/tracks a face, prepares Z-Image anchors and an LTX crop video, validates both branches, and composites repaired frames back into the source | Start from the supplied Face Fix workflow, load the source video, set the face/range/detection options, run prepare and anchors, process the crop through LTX, validate, then composite it back |
+| `Video Enhance - ...` node set | Creates full-frame enhancement anchors, feeds them through Meta Batch and LTX, then restores the exact original resolution/frame count | Start from the supplied Enhance workflow, load the video, create anchors, run the LTX/Meta Batch path, restore the original dimensions/frame count, and adjust source blend if the result is too strong |
+| `VRGDG Modern Face Crop (DNN)` | OpenCV DNN/YuNet face crop with confidence filtering and long-range tiled scanning | Connect an image, choose detector/confidence/minimum-face settings, run it, and pass both the crop and returned crop metadata to a compatible paste-back node |
+| `VRGDG Image Paste Back (Feathered)` | Pastes a processed crop back through compatible crop metadata with edge padding and feathering | Connect the original image, processed crop, and matching crop metadata; tune padding/feathering, then compare the composite with the original |
+| `VRGDG LTXV Looping Sampler Advanced` | Adds per-temporal-tile image, latent, and overlap-conditioning schedules | Replace the official looping sampler in an advanced LTX workflow, reconnect the same model/conditioning/latent inputs, set temporal-tile and overlap schedules, and test a short clip before a long render |
+| `VRGDG LTX First / Last Temporal Guide` and `Endpoint Guide` | Builds temporal first/last-frame guidance and explicit endpoint guidance | Connect the start/end images or latents and the target frame count, set the guide frame positions/strengths, then feed the returned guides into the matching LTX conditioning/sampler path |
+| `VRGDG LTX IC Ingredients Grid` | Composes up to 24 images into LTX IC-LoRA reference-sheet layouts | Connect the required ingredient images, choose grid/strip/story/aspect-aware layout, run the node, and use the resulting sheet as the IC/Ingredients reference image |
+| `VRGDG Optional Multi LoRA Two Pass Strengths` | Applies optional model-only LoRAs with independent first/second-pass strengths | Connect the base model, select each optional LoRA, set pass 1 and pass 2 strengths, and connect the two model outputs to their matching workflow passes |
+| LTX CFG/Sigma nodes | Adds scheduled CFG, APG/STG/variance-rescale guidance, and sigma-aware guide release | Insert the chosen guidance node in the matching LTX guidance path, start with workflow defaults, then change one schedule/scale at a time while testing a short fixed-seed clip |
+| `VRGDG Krea 2 Musubi Installer` | Installs a native Krea 2-ready Musubi-Tuner and model assets | Add/open the installer, choose an install folder, run dependency installation, optionally download models, and restart ComfyUI after it completes |
+| `VRGDG Krea 2 LoRA Studio` | Provides preset-based Krea 2 chunk training, sampling, and comparison grids | Open the Studio, select the dataset/output/model, choose a preset, run a small sample/chunk first, then start training and compare checkpoint samples |
+| `VRGDG Krea 2 AI Toolkit Installer` | Installs an isolated AI Toolkit environment for experimental paired Krea 2 Edit LoRA training | Choose an isolated install folder, run installation, restart ComfyUI, then point the paired-training workflow at that environment and a validated source/target dataset |
 
 These utilities are optional for the basic Video Builder path. Install their model/tool dependencies only if you plan to use those specific nodes.
 
