@@ -698,6 +698,8 @@ Available providers are:
 | `GPT Image` | ChatGPT image generation and editing |
 | `Meta AI` | Meta AI browser image generation |
 
+![Browser AI provider models and setup](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/BrowserAI/image-browserAI-models.png)
+
 Basic setup:
 
 1. Open `Image` -> `Browser AI`.
@@ -708,6 +710,8 @@ Basic setup:
 6. Click `Create with Browser AI` and wait for the generated download to be imported.
 
 If automated control is unavailable, use `Open Manual Browser`, `Export Scene Refs`, and `Import Latest Download`. The manual path exports the same project references for you, lets you generate in the browser yourself, then imports the newest provider download as the scene image.
+
+![Browser AI manual mode](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/BrowserAI/image-browserAI-manualMode.png)
 
 Browser AI also participates in FLF endpoint generation. In independent mode it can receive a scene start image plus supported character/location ingredients while generating the matching end frame.
 
@@ -757,6 +761,8 @@ For each location, the Builder prepares these subject sets in order:
 The current location and current subject-set selectors let you jump to any combination. The generated prompt updates its exact character count, requests five separate 16:9 music-video stills, prevents unrequested people, and tells the provider not to return a grid. `Auto-select next group/set after sending` advances through the sets and then through the locations, but it never sends the next request until you click `Send Selected Set`.
 
 Band Sequence can retain up to 49 singer/extra/member reference images and up to 200 saved locations. Requests reuse the selected provider tab so you can review and download each result before continuing.
+
+<img src="https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/BrowserAI/image-browserAI-groups.png" alt="Browser AI Band Sequence groups and locations" width="520">
 
 When sending a group or Band Sequence set, the Builder can temporarily route downloads into the current project under `Browser AI Images`, grouped by reference set and location. Click `Finish Session + Restore Downloads` when finished so the controlled browser returns to its normal download folder.
 
@@ -1724,6 +1730,8 @@ If you close the Wizard, reopen it and continue from the saved project. The Wiza
 
 `Storyboard Builder` is a planning workspace for scene cards before or during image/video generation.
 
+![Storyboard Builder main window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/storyboardbuilder/story%20board%20builder%20main%20UI%20window.png)
+
 Use it when you want stronger control over:
 
 | Tool | What it helps with |
@@ -1739,6 +1747,10 @@ Use it when you want stronger control over:
 | Storyboard Gemma All | Write video prompts across scenes using Storyboard context |
 
 Storyboard Builder works especially well with saved lyric mapping and Reference Builder data. For Reference-to-Video projects, it can enforce clearer facial/lip-sync behavior and add reference-aware trigger phrasing before writing video prompts back into the Video Builder scenes.
+
+The collapsible `Story Layer` keeps the overall idea, lyric strength, user story arc, song story brief, lyric sections, and scene-beat creation controls together.
+
+![Storyboard Builder Story Layer](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/storyboardbuilder/storylayer.png)
 
 The current Storyboard Builder includes several planning and safety improvements:
 
@@ -1762,6 +1774,14 @@ Recommended Storyboard Builder workflow:
 10. Open individual scene cards to correct the lyric section, story beat, references, shot/camera direction, motion, performance, or notes.
 11. Click the all-scenes Gemma button to generate prompts, then inspect several scene cards for identity, location, singing, and motion accuracy.
 12. Click `Save Storyboard`. Use `Export Prompt Files` when another tool needs the generated files.
+
+Image Prep scene defaults control still-shot flow, image aesthetic, world style, consistency, performance, and facial direction:
+
+![Storyboard Builder Image Prep scene defaults](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/storyboardbuilder/scenedefaultsimagepred.png)
+
+Video Prep scene defaults control camera flow and speed, character motion, performance style, facial performance, and the consistency phrase used across video prompts:
+
+![Storyboard Builder Video Prep scene defaults](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/storyboardbuilder/scene%20defaults%20video%20prep.png)
 
 `Clear Prompts` removes generated prompt fields but keeps planning choices. `Clear All Story Beats` removes only story beats. When a generated story arc invents a different setting, correct the mapped `location_ref`; the mapped location is the required physical set.
 
