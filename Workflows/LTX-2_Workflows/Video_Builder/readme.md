@@ -82,7 +82,7 @@ The current LTX 2.3 Video Builder feature set includes:
 | FLF continuity controls | Adds assigned-image or extracted-render start sources, visual-context modes, transition types, endpoint guide controls, and optional opening color matching |
 | Start Image Storyboard Creator | Opens a standalone Browser AI storyboard UI with project lyrics, mapped character/location references, start/end frames, batch briefs, and downloadable-result import |
 | Integrated `Face Fix` | Repairs distant blurry faces in a selected rendered scene range with detection/tracking, Z-Enhanced anchors, LTX temporal processing, feathering, and color matching |
-| Browser AI image mode | Sends prompts and references to Flow Nano Banana, GPT Image, or Meta AI through automated or manual browser handoff, then imports results into scenes |
+| Browser AI image mode | Sends prompts and references to Flow Nano Banana, GPT Image, or Meta AI through automated or manual browser handoff, imports results into scenes, and supports reusable reference groups plus project-wide Band Sequence batches |
 | `ID-LoRA I2V` | Adds identity-LoRA video generation, character/voice reference mapping, required-LoRA controls, and quiet timeline trim mode |
 | Portable projects | Adds `Branch Project`, `Export Shareable Project ZIP`, and `Import Project ZIP` with project-path rebasing on import |
 | Safer timeline editing | Adds playhead scene splitting, close-gaps, delete-all-images, audio-length clamping, exact lyric-line timing, and clearer global audio scrubbing |
@@ -615,6 +615,55 @@ Basic setup:
 If automated control is unavailable, use `Open Manual Browser`, `Export Scene Refs`, and `Import Latest Download`. The manual path exports the same project references for you, lets you generate in the browser yourself, then imports the newest provider download as the scene image.
 
 Browser AI also participates in FLF endpoint generation. In independent mode it can receive a scene start image plus supported character/location ingredients while generating the matching end frame.
+
+### Browser AI Setup and Failure Controls
+
+The `Setup`, `LLM Prompting`, `Groups`, and `Manual` tabs separate browser configuration from scene generation.
+
+| Control | What it does |
+| --- | --- |
+| Provider buttons | Switch between Flow Nano Banana, GPT Image, and Meta AI while retaining provider-specific browser profiles |
+| Aspect ratio | Chooses `16:9`, `9:16`, `1:1`, `4:3`, `3:4`, or `21:9`; Flow's own UI must also be set to one image and the desired aspect ratio |
+| Timeout / retries | Controls how long the Builder waits and how many times an automated request may be retried |
+| After final failure | Uses the last successful image, tries another supported provider first, or stops |
+| `Send previous scene's FLF end frame as context` | Adds the prior FLF endpoint as visual continuity guidance |
+| `Edit Browser T2I Instructions` | Edits the instructions used when Gemma writes Browser AI prompts |
+| `Manual Mode` / `Auto-advance after import` | Keeps browser generation under manual control and can move to the next scene after the latest download is imported |
+
+### Reusable Reference Groups
+
+The `Groups` tab is project-wide and is not limited to the currently selected scene. Use custom groups when you want to prepare reusable casts or subject combinations:
+
+1. Turn `Band Sequence mode` off.
+2. Use `New Group`, `Duplicate`, `Rename`, or `Delete` to organize combinations of people or characters.
+3. Drop any number of character/band images into the selected group or use `Add Group Images`.
+4. Add one location with `Choose Location`. A group may also be sent without a location.
+5. Edit the generation prompt and click `Send Selected Group`.
+6. Enable `Auto-select next group/set after sending` to prepare the next group without submitting it automatically.
+
+`Clear Group Images`, `Clear Location`, and group deletion remove the references from the saved group but leave the stored image files intact.
+
+### Band Sequence Mode
+
+`Band Sequence mode` builds a repeatable set of Browser AI requests across every supplied location. Add:
+
+- one or more singer reference images
+- optional non-band `Extras`
+- all `Other Band Members`
+- every location reference that should be used
+
+For each location, the Builder prepares these subject sets in order:
+
+1. `Singer only`
+2. `Singer + Extras`, when extras were added
+3. `Other band members only`
+4. `Full band with singer`
+
+The current location and current subject-set selectors let you jump to any combination. The generated prompt updates its exact character count, requests five separate 16:9 music-video stills, prevents unrequested people, and tells the provider not to return a grid. `Auto-select next group/set after sending` advances through the sets and then through the locations, but it never sends the next request until you click `Send Selected Set`.
+
+Band Sequence can retain up to 49 singer/extra/member reference images and up to 200 saved locations. Requests reuse the selected provider tab so you can review and download each result before continuing.
+
+When sending a group or Band Sequence set, the Builder can temporarily route downloads into the current project under `Browser AI Images`, grouped by reference set and location. Click `Finish Session + Restore Downloads` when finished so the controlled browser returns to its normal download folder.
 
 ### Fill Timeline Images From Folder and Enhance All
 
@@ -1515,17 +1564,29 @@ The creator can:
 | --- | --- |
 | `Load Video Builder Project` | Imports scene order, lyric lines, notes, and saved Reference Builder mappings |
 | `Refresh Project Mappings` | Reloads lyrics and character/location mappings after the main project changes |
+| Global story idea / visual style | Adds project-wide creative direction to every generated scene prompt |
+| Provider and layout selectors | Switches between Flow, GPT Image, and Meta AI, and between `Grid / Tiles` and `List` scene-card layouts |
+| `LLM Settings` | Chooses Gemma Local, LM Studio, or a configured LLM API for prompt creation and editing |
 | Global or per-scene character reference | Keeps identity guidance consistent while allowing a scene-specific override |
 | Mapped location reference | Sends the saved location image and description with the scene prompt |
+| Location sub-area | Names a specific area inside a mapped location or lets Browser AI select a different believable area automatically |
 | `Start + End Frames` | Enables paired storyboard endpoints for FLF projects |
+| Click/drop frame slots | Loads a custom start or end image directly into an individual scene card |
+| Shot and end-transition controls | Selects the opening composition and describes the later pose, action, destination, or camera transition |
 | `LLM Create Prompt` / `LLM Edit Prompt` | Creates or revises a scene prompt with Gemma Local, LM Studio, or a configured LLM API |
+| `Send Prompt` / `Send Image + Prompt` | Opens the selected provider with text only or with the available start/end frame references |
+| `Send Character + Location + Prompt` | Sends the character sheet, mapped physical location, attachment roles, and scene prompt together |
 | `Create 5 Start Options` | Requests five separate composition choices using the character and mapped location references |
 | `Create End from Start` | Sends the chosen start plus ending direction to create the later endpoint |
 | `Batch Agent Brief` | Sends several consecutive scenes as a continuity-focused brief with shot progression and optional previous-scene context |
 | `Import Current Start Frames` | Copies currently selected Video Builder scene images into the creator, either only where missing or by replacing all creator starts while retaining prior attempts |
 | `Import Latest as Start/End` | Imports the newest provider download into the correct storyboard frame slot |
 
-The Browser AI integration supports Flow, GPT Image, and Meta AI. The location prompt treats a saved location as a three-dimensional environment and asks for new camera positions instead of pasting the character over the reference or repeating the same composition.
+`Batch Agent Brief` can target a scene range, use a fallback location where no project location is mapped, add custom direction, and choose a cinematic, character, intensity, reveal, or per-scene shot progression. Its continuity controls can preserve identity, wardrobe, and visual style, vary compositions, and include the previous scene image. It sends the global character sheet plus each mapped location reference with explicit attachment roles.
+
+The Browser AI integration supports Flow, GPT Image, and Meta AI. The location prompt treats a saved location as a three-dimensional environment and asks for new camera positions, believable floor contact, depth, shadows, reflections, color spill, and occlusion instead of pasting the character over the reference or repeating the same composition. Reused locations are told to move to a substantially different sub-area and camera composition.
+
+The creator saves previous attempts when frames are replaced. `Import Current Start Frames` offers `Import Missing Only` or `Replace All Start Frames`, and replacement preserves the old creator frames in the storyboard attempts folders.
 
 When `Start + End Frames` is enabled, exported files use paired names such as `scene_0001.png` and `scene_0001_end.png`. `Fill Timeline Images From Folder` recognizes that convention and imports the folder into Video Builder as independent FLF pairs.
 
