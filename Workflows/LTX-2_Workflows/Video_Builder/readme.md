@@ -49,7 +49,6 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 - [Saving Projects](#saving-projects)
 - [Recommended Beginner Workflow](#recommended-beginner-workflow)
 - [Common Problems](#common-problems)
-- [Screenshot Checklist](#screenshot-checklist)
 
 ## What the LTX 2.3 Video Builder Does
 
@@ -2309,39 +2308,4 @@ Use this when you want to work directly in Video Builder.
 | Project ZIP import fails | Keep ComfyUI running, confirm the archive came from `Export Shareable Project ZIP`, and check the terminal for extraction/path validation errors |
 | Audio notification does not play | Click inside the browser once and check notification settings |
 | Model path is wrong on Linux | Use forward slashes and make sure the model picker shows the exact model name |
-
-## Screenshot Checklist
-
-Already added:
-
-- Full Video Builder window
-- ComfyUI Builder Node
-- Welcome Window
-- Menu Dropdown
-- Load Project Window
-- Left Scene List
-- Timeline Controls
-- Timeline With Scenes
-- Scene Tab
-- Image Tab Model Chooser
-- ZImage Prompting
-- Flux Reference Images
-- Top bar buttons
-- Video Notes lane on the timeline
-- Nano B model settings
-- Nano B image settings
-- Nano B LLM Prompting settings
-- Video Mode Chooser
-- Video Prompting
-- Audio Tab
-- Lyric Mapping Step 1 window
-- Create Scenes From Lyrics window
-- Review Lyrics + Map Singers window
-- Reference Builder with character and location mappings
-- Prompt Options image/video groups
-- Gemma Runner with LM Studio model dropdown
-- Settings window with custom model root and audio notifications
-- Build Full Video Options
-- Final Video Ready Popup
-- Download Models Window
 
