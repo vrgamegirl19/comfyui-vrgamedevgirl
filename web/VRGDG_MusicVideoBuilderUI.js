@@ -5,9 +5,13 @@ import {
   FACIAL_PERFORMANCE_PRESETS,
   PERFORMANCE_STYLE_PRESETS,
   STORYBOARD_CAMERA_FLOW_PRESETS,
+  STORYBOARD_IMAGE_AESTHETIC_PRESETS,
+  STORYBOARD_IMAGE_SHOT_FLOW_PRESETS,
   storyboardFacialPerformancePreset,
   storyboardCameraFlowEntry,
   storyboardGptPayload,
+  storyboardImageAestheticPreset,
+  storyboardImageShotFlowEntry,
   storyboardPerformancePreset,
 } from "./VRGDG_StoryboardBuilderUI.js";
 import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260701-i2v-mode";
@@ -41770,31 +41774,71 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     const applyWizardSceneDefaults = async (settings = {}) => {
       const cameraFlow = STORYBOARD_CAMERA_FLOW_PRESETS[settings.cameraFlow] ? settings.cameraFlow : "balanced";
+      const imageShotFlow = STORYBOARD_IMAGE_SHOT_FLOW_PRESETS[settings.imageShotFlow] ? settings.imageShotFlow : "intimate";
+      const imageAesthetic = STORYBOARD_IMAGE_AESTHETIC_PRESETS.some((preset) => preset.value === settings.imageAesthetic)
+        ? String(settings.imageAesthetic || "")
+        : "";
       const performanceStyle = String(settings.performanceStyle || "");
       const facialPerformance = String(settings.facialPerformance || "");
       const facialPerformanceCustom = String(settings.facialPerformanceCustom || "");
+      const shouldApplyImageShot = Boolean(settings.applyImageShotFlow);
+      const shouldApplyImageAesthetic = Boolean(settings.applyImageAesthetic);
       const shouldApplyPerformance = Boolean(settings.applyPerformance);
       const shouldApplyFacial = Boolean(settings.applyFacialPerformance || facialPerformance || facialPerformanceCustom);
+      const shouldApplyCamera = settings.applyCamera == null
+        ? !shouldApplyImageShot && !shouldApplyImageAesthetic && !shouldApplyPerformance && !settings.applyFacialPerformance
+        : Boolean(settings.applyCamera);
+      const overwriteImageShot = Boolean(settings.overwriteImageShotFlow);
+      const overwriteImageAesthetic = Boolean(settings.overwriteImageAesthetic);
       const overwriteCamera = Boolean(settings.overwriteCamera);
       const overwritePerformance = Boolean(settings.overwritePerformance);
       const overwriteFacial = Boolean(settings.overwriteFacialPerformance);
       let previousMotion = "";
+      let imageShotChanged = 0;
+      let imageAestheticChanged = 0;
       let cameraChanged = 0;
       let performanceChanged = 0;
       let facialChanged = 0;
       const scenes = allEditableSegments();
       pushHistory();
-      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults({
+      const nextStoryboardDefaults = {
         ...state.builderStoryboardDefaults,
-        camera_flow: cameraFlow,
-        performance_style: performanceStyle || state.builderStoryboardDefaults?.performance_style || "",
-      });
+      };
+      if (shouldApplyCamera) nextStoryboardDefaults.camera_flow = cameraFlow;
+      if (shouldApplyImageShot) nextStoryboardDefaults.image_shot_flow = imageShotFlow;
+      if (shouldApplyImageAesthetic) nextStoryboardDefaults.image_aesthetic = imageAesthetic;
+      if (shouldApplyPerformance && performanceStyle) nextStoryboardDefaults.performance_style = performanceStyle;
+      state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(nextStoryboardDefaults);
       if (facialPerformance || facialPerformanceCustom) {
         state.defaultFacialPerformance = facialPerformance;
         state.defaultFacialPerformanceCustom = facialPerformanceCustom;
       }
       scenes.forEach((segment, index) => {
-        const entry = storyboardCameraFlowEntry(cameraFlow, index, previousMotion);
+        if (shouldApplyImageShot && imageShotFlow !== "off") {
+          const shot = storyboardImageShotFlowEntry(imageShotFlow, index);
+          if (shot && (overwriteImageShot || !String(segment.shot_type || "").trim())) {
+            segment.shot_type = shot;
+            imageShotChanged += 1;
+          }
+        }
+        if (shouldApplyImageAesthetic) {
+          const aestheticDescription = String(storyboardImageAestheticPreset(imageAesthetic).description || "").trim();
+          const existing = String(segment.motion_summary || "");
+          const hasAesthetic = existing
+            .split(/\r?\n/)
+            .some((line) => line.trim().toLowerCase().startsWith("image aesthetic:"));
+          if (aestheticDescription && (overwriteImageAesthetic || !hasAesthetic)) {
+            const prefix = "Image aesthetic:";
+            const lines = existing
+              .replace(/\r\n/g, "\n")
+              .split("\n")
+              .filter((line) => !line.trim().toLowerCase().startsWith(prefix.toLowerCase()));
+            lines.push(`${prefix} ${aestheticDescription}.`);
+            segment.motion_summary = lines.map((line) => line.trim()).filter(Boolean).join("\n");
+            imageAestheticChanged += 1;
+          }
+        }
+        const entry = shouldApplyCamera ? storyboardCameraFlowEntry(cameraFlow, index, previousMotion) : null;
         if (entry && cameraFlow !== "off") {
           const hadShot = Boolean(String(segment.shot_type || "").trim());
           const hadCamera = Boolean(String(segment.camera_motion || segment.motion_preset || "").trim());
@@ -41827,8 +41871,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncInspector();
       render();
       await autoSaveSessionQuiet("wizard scene defaults");
-      toast(`Wizard scene defaults applied.\nCamera fields: ${cameraChanged}\nPerformance scenes: ${performanceChanged}\nFacial scenes: ${facialChanged}`);
-      return { cameraChanged, performanceChanged, facialChanged };
+      toast(`Wizard scene defaults applied.\nImage shots: ${imageShotChanged}\nImage aesthetics: ${imageAestheticChanged}\nCamera fields: ${cameraChanged}\nPerformance scenes: ${performanceChanged}\nFacial scenes: ${facialChanged}`);
+      return { imageShotChanged, imageAestheticChanged, cameraChanged, performanceChanged, facialChanged };
     };
     const enforceWizardStoryboardVideoFacialRequirements = (prompt, scene = {}) => {
       let text = String(prompt || "").trim();
@@ -42250,6 +42294,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             label: preset.label || value,
             description: preset.description || "",
             count: Array.isArray(preset.sequence) ? preset.sequence.length : 0,
+          })),
+          imageShotFlowOptions: Object.entries(STORYBOARD_IMAGE_SHOT_FLOW_PRESETS).map(([value, preset]) => ({
+            value,
+            label: preset.label || value,
+            description: preset.description || "",
+            count: Array.isArray(preset.sequence) ? preset.sequence.length : 0,
+          })),
+          imageAestheticOptions: STORYBOARD_IMAGE_AESTHETIC_PRESETS.map((preset) => ({
+            value: preset.value,
+            label: preset.label,
+            description: preset.description || "",
           })),
           performanceStyleOptions: PERFORMANCE_STYLE_PRESETS.map((preset) => ({
             value: preset.value,

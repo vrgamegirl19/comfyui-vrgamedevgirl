@@ -1697,7 +1697,7 @@ Use the Wizard when you want the builder to walk through:
 | Lyrics and scenes | Paste reference lyrics and create timeline scenes |
 | References | Open the correct Reference Builder mode for the selected video mode |
 | Lyric review | Open lyric timing, singer, B-roll, instrumental, location, and Ingredients mapping tools |
-| Scene defaults | Fill camera flow, performance style, and facial performance across scenes |
+| Scene defaults | Fill image shot/composition flow, image aesthetic, video camera flow, performance style, and facial performance across scenes |
 | Story layer | Create a story brief, story arc, lyric sections, and per-scene story beats |
 | Prompts/build | Run LLM image prompts, Storyboard/LLM video prompts, and Build Full Video |
 
@@ -1713,7 +1713,7 @@ Recommended Wizard workflow:
 4. Load global audio and paste/import the lyrics.
 5. Create scenes, then open lyric review to correct timing, singers, instrumental/B-roll flags, and locations.
 6. Add and map references for modes that require them.
-7. Apply scene defaults for camera flow, performance, and facial direction.
+7. Apply image defaults for shot/composition flow and aesthetic, then apply video camera flow, performance, and facial direction as needed. `Fill Missing` preserves scene-level work; `Replace All` intentionally rewrites that category across every scene.
 8. Build the story brief/arc and missing scene beats if the project needs a continuous narrative.
 9. Run image prompts and review images before running video prompts.
 10. Use the Wizard's full-build action only after a few representative scenes work correctly.

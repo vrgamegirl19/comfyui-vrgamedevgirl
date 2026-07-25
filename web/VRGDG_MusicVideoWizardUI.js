@@ -694,6 +694,13 @@ When I do what I came to do`;
 export function openMusicVideoWizard(api = {}) {
   injectWizardStyles();
 
+  const initialSceneDefaults = (() => {
+    try {
+      return api.snapshot?.()?.sceneDefaults || {};
+    } catch {
+      return {};
+    }
+  })();
   const steps = [
     { id: "settings", title: "Settings", caption: "Models and render setup" },
     { id: "audio", title: "Audio", caption: "Load the song file" },
@@ -712,6 +719,8 @@ export function openMusicVideoWizard(api = {}) {
     minSceneSeconds: "1.0",
     maxSceneSeconds: "8.0",
     cameraFlow: "balanced",
+    imageShotFlow: String(initialSceneDefaults.imageShotFlow || "intimate"),
+    imageAesthetic: String(initialSceneDefaults.imageAesthetic || ""),
     performanceStyle: "",
     facialPerformance: "",
     facialPerformanceCustom: "",
@@ -866,6 +875,8 @@ export function openMusicVideoWizard(api = {}) {
       minSceneSeconds: String(sourceState.minSceneSeconds || "1.0"),
       maxSceneSeconds: String(sourceState.maxSceneSeconds || "8.0"),
       cameraFlow: String(sourceState.cameraFlow || "balanced"),
+      imageShotFlow: sourceState.imageShotFlow == null ? wizardState.imageShotFlow : String(sourceState.imageShotFlow || "intimate"),
+      imageAesthetic: sourceState.imageAesthetic == null ? wizardState.imageAesthetic : String(sourceState.imageAesthetic || ""),
       performanceStyle: String(sourceState.performanceStyle || ""),
       facialPerformance: String(sourceState.facialPerformance || ""),
       facialPerformanceCustom: String(sourceState.facialPerformanceCustom || ""),
@@ -1663,9 +1674,93 @@ export function openMusicVideoWizard(api = {}) {
     lyric.append(openLyrics);
     const defaultsData = data.sceneDefaults || {};
     const cameraOptions = Array.isArray(defaultsData.cameraFlowOptions) ? defaultsData.cameraFlowOptions : [];
+    const imageShotOptions = Array.isArray(defaultsData.imageShotFlowOptions) ? defaultsData.imageShotFlowOptions : [];
+    const imageAestheticOptions = Array.isArray(defaultsData.imageAestheticOptions) ? defaultsData.imageAestheticOptions : [];
     const performanceOptions = Array.isArray(defaultsData.performanceStyleOptions) ? defaultsData.performanceStyleOptions : [];
     const facialOptions = Array.isArray(defaultsData.facialPerformanceOptions) ? defaultsData.facialPerformanceOptions : [];
-    const defaults = card("3. Scene Defaults", "Fill shot direction, camera motion, performance style, and facial performance without opening Storyboard Builder.");
+    const defaults = card("3. Scene Defaults", "Set the same image and video defaults available in Storyboard Builder without leaving the Wizard.");
+    const imageShotSelect = select(imageShotOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.imageShotFlow || defaultsData.imageShotFlow || "intimate");
+    const imageShotInfo = el("div", "vrgdg-wizard-copy", "");
+    const refreshImageShotInfo = () => {
+      const selected = imageShotOptions.find((item) => item.value === imageShotSelect.value) || imageShotOptions[0] || {};
+      imageShotInfo.textContent = selected.value === "off"
+        ? (selected.description || "Still-image shot flow is off.")
+        : `${selected.description || ""}${selected.count ? ` Cycles through ${selected.count} still-image compositions and only fills blank shot fields unless Replace All is used.` : ""}`;
+    };
+    const imageShotFill = button("Fill Missing", "primary");
+    const imageShotReplace = button("Replace All");
+    const imageShotRow = el("div", "vrgdg-wizard-button-row");
+    imageShotFill.onclick = async () => {
+      imageShotFill.disabled = true;
+      try {
+        await api.applySceneDefaults?.({
+          cameraFlow: "off",
+          imageShotFlow: wizardState.imageShotFlow || imageShotSelect.value || "intimate",
+          applyImageShotFlow: true,
+          overwriteImageShotFlow: false,
+        });
+        await saveWizardProgress("wizard image shot defaults");
+        render();
+      } finally {
+        imageShotFill.disabled = false;
+      }
+    };
+    imageShotReplace.onclick = async () => {
+      imageShotReplace.disabled = true;
+      try {
+        await api.applySceneDefaults?.({
+          cameraFlow: "off",
+          imageShotFlow: wizardState.imageShotFlow || imageShotSelect.value || "intimate",
+          applyImageShotFlow: true,
+          overwriteImageShotFlow: true,
+        });
+        await saveWizardProgress("wizard image shot defaults replace");
+        render();
+      } finally {
+        imageShotReplace.disabled = false;
+      }
+    };
+    imageShotRow.append(imageShotSelect, imageShotFill, imageShotReplace);
+    const imageAestheticSelect = select(imageAestheticOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.imageAesthetic ?? defaultsData.imageAesthetic ?? "");
+    const imageAestheticInfo = el("div", "vrgdg-wizard-copy", "");
+    const refreshImageAestheticInfo = () => {
+      const selected = imageAestheticOptions.find((item) => item.value === imageAestheticSelect.value) || imageAestheticOptions[0] || {};
+      imageAestheticInfo.textContent = `${selected.description || "Choose the visual style used when writing image prompts."} Only fills scenes without an Image aesthetic note unless Replace All is used.`;
+    };
+    const imageAestheticFill = button("Fill Missing", "primary");
+    const imageAestheticReplace = button("Replace All");
+    const imageAestheticRow = el("div", "vrgdg-wizard-button-row");
+    imageAestheticFill.onclick = async () => {
+      imageAestheticFill.disabled = true;
+      try {
+        await api.applySceneDefaults?.({
+          cameraFlow: "off",
+          imageAesthetic: wizardState.imageAesthetic ?? imageAestheticSelect.value ?? "",
+          applyImageAesthetic: true,
+          overwriteImageAesthetic: false,
+        });
+        await saveWizardProgress("wizard image aesthetic defaults");
+        render();
+      } finally {
+        imageAestheticFill.disabled = false;
+      }
+    };
+    imageAestheticReplace.onclick = async () => {
+      imageAestheticReplace.disabled = true;
+      try {
+        await api.applySceneDefaults?.({
+          cameraFlow: "off",
+          imageAesthetic: wizardState.imageAesthetic ?? imageAestheticSelect.value ?? "",
+          applyImageAesthetic: true,
+          overwriteImageAesthetic: true,
+        });
+        await saveWizardProgress("wizard image aesthetic defaults replace");
+        render();
+      } finally {
+        imageAestheticReplace.disabled = false;
+      }
+    };
+    imageAestheticRow.append(imageAestheticSelect, imageAestheticFill, imageAestheticReplace);
     const cameraSelect = select(cameraOptions.map((item) => ({ value: item.value, label: item.label })), wizardState.cameraFlow || defaultsData.cameraFlow || "balanced");
     const cameraInfo = el("div", "vrgdg-wizard-copy", "");
     const refreshCameraInfo = () => {
@@ -1800,6 +1895,16 @@ export function openMusicVideoWizard(api = {}) {
       }
     };
     facialRow.append(facialSelect, facialFill, facialReplace);
+    imageShotSelect.onchange = () => {
+      wizardState.imageShotFlow = imageShotSelect.value || "intimate";
+      queueWizardDraftSave();
+      refreshImageShotInfo();
+    };
+    imageAestheticSelect.onchange = () => {
+      wizardState.imageAesthetic = imageAestheticSelect.value || "";
+      queueWizardDraftSave();
+      refreshImageAestheticInfo();
+    };
     cameraSelect.onchange = () => {
       wizardState.cameraFlow = cameraSelect.value || "balanced";
       queueWizardDraftSave();
@@ -1821,7 +1926,13 @@ export function openMusicVideoWizard(api = {}) {
       refreshFacialInfo();
     };
     defaults.append(
-      el("div", "vrgdg-wizard-card-title", "Auto camera flow"),
+      el("div", "vrgdg-wizard-card-title", "Image shot / composition flow"),
+      imageShotRow,
+      imageShotInfo,
+      el("div", "vrgdg-wizard-card-title", "Image aesthetic"),
+      imageAestheticRow,
+      imageAestheticInfo,
+      el("div", "vrgdg-wizard-card-title", "Video camera flow"),
       cameraRow,
       cameraInfo,
       el("div", "vrgdg-wizard-card-title", "Global performance style"),
@@ -1832,6 +1943,8 @@ export function openMusicVideoWizard(api = {}) {
       facialCustom,
       facialInfo,
     );
+    refreshImageShotInfo();
+    refreshImageAestheticInfo();
     refreshCameraInfo();
     refreshPerformanceInfo();
     refreshFacialInfo();
