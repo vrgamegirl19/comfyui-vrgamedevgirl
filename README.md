@@ -1,194 +1,133 @@
-## License
+# 🎮 VRGameDevGirl’s LTX 2.3 Video, Image & Creative Workflow Nodes for ComfyUI
 
-This ComfyUI custom node is licensed under AGPL-3.0.
+A growing collection of custom ComfyUI nodes for **AI video creation, music videos, storyboarding, image generation, video enhancement, face repair, editing, LoRA training, and workflow automation**.
 
-You may not use this code in a closed-source paid app, private hosted service, SaaS product, or commercial wrapper unless you comply with the AGPL-3.0 license and provide the complete corresponding source code under the same license.
-# 🎮 VRGameDevGirl’s Video / Image & HUMO Workflow Nodes for ComfyUI
-
-Custom ComfyUI nodes for **music video workflows** and **high-quality video/image enhancement**.  
-Includes HUMO-based multi-scene workflows, audio splitting, video combining, and realtime-ready enhancement tools.
+The flagship tool is the **LTX 2.3 Video Builder**: a scene-by-scene production workspace that brings planning, prompting, media generation, timing, review, and final assembly together inside ComfyUI.
 
 ---
 
-## LTX 2.3 Video Builder Guide
+## 🎬 LTX 2.3 Video Builder
 
-New to the Builder? Start here: [LTX 2.3 Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md)
+Add the node named **`VRGDG Music Video Builder UI`** to open the Builder.
+
+Use it to:
+
+- 🎵 Build projects from songs, audio, SRT files, lyrics, or manually timed scenes.
+- 🧙 Start quickly with the guided Wizard, Storyboard Builder, and Reference Builder.
+- 🖼️ Plan and generate scene images with character and location references.
+- 🎞️ Create image-to-video, text-to-video, ID-LoRA, and First/Last Frame scenes.
+- 🔗 Build chained or independent First/Last Frame sequences for stronger continuity.
+- 🗣️ Review lyrics, map singers, plan lip-sync scenes, and mark instrumental or B-roll sections.
+- ✨ Repair faces, enhance clips, apply post-processing, and compare results.
+- 🎚️ Preview timing on the visual timeline, calibrate beat markers, and stitch the final video.
+- 💾 Save, branch, export, import, and continue portable Builder projects.
+- 🤖 Use built-in LLM, local LM Studio, API, and Browser AI options where supported.
+
+📖 **New here? Start with the full [LTX 2.3 Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md).**
 
 ---
 
-# 🎬 AI Music Video Workflow (ComfyUI)
+## 🌟 Useful Nodes & Tools
 
-Turn a **reference image** and an **audio track** into a fully **AI-generated music video**.  
-The workflow automatically splits lyrics, generates scene prompts, and syncs everything into a cinematic final video.  
+These are some of the most useful tools included in the pack. Many can be used on their own in a normal ComfyUI workflow.
 
-## 🚀 How it Works
-1. Upload a **reference image** (your main character).  
-2. Import your **audio file** (with lyric syncing).  
-3. Set a **folder name** for outputs.  
-4. Customize the **Prompt Creator** to define style, mood, and scenes.  
+### 🧠 Planning & Project Tools
 
-✨ Everything else — transcription, scene building, video chunks, and final rendering — runs automatically.  
-The result: a stylized, synced **AI-driven music video**.
+- **`VRGDG Storyboard Creator with Browser AI — Open This`** — Create project-aware start/end storyboard images with supported browser image tools.
+
+### ✨ Repair, Enhance & Finish
+
+- **Face Fix node set** — Detect and track a face, enhance guided anchors, process the crop through LTX, and composite the repaired face back into the source video. Start with the included [Face Fix workflow](Workflows/FaceFix/VRGDG_FaceFix_Workflow.json).
+- **Video Enhance node set** — Create guided enhancement anchors, process a full video through LTX, and restore the exact original resolution and frame count.
+- **Z-Image upscaler workflows** — Upscale and refine images with Z-Image using the included workflows for several source pipelines. Browse the [Z-Image Upscale workflows](Workflows/Z-ImageUpscale/).
+- **Image comparison tools** — Compare an original and processed image directly inside ComfyUI.
+- **Fast Film Grain, Color Match, and Sharpening nodes** — Add cinematic grain, match a reference palette, or restore edge detail efficiently across image batches.
+
+### 🎨 Dataset & LoRA Tools
+
+- **`VRGDG LoRA Dataset Creator UI`** — Build and review captioned datasets for styles, characters, and experimental edit pairs.
+- **LTX 2.3 and Z-Image LoRA training workflows** — Train standard video, audio, audio/video, and Speed LoRAs with the included [updated LoRA training workflows](Workflows/LTX-2_Workflows/Lora_Training/UpdatedWorkflows/).
+- **`VRGDG Musubi-Tuner Installer`** and **Krea 2 tools** — Set up supported training environments and use preset-based training, sampling, and comparison tools.
+- **Preview and grid plot nodes** — Compare checkpoints, prompts, strengths, and generated video folders.
+
+### 🔊 Audio, Prompt & Workflow Utilities
+
+- **`VRGDG VoxCPM2 Voice Clone / TTS`** — Generate speech from text, design a voice, continue spoken audio, or clone a voice from a reference clip. Start with the included [VoxCPM2 Voice Clone / TTS workflow](Workflows/VoxCPM2/VRGDG_VoxCPM_TTS.json).
+- Audio loading, splitting, timing, transcription, and silent-audio helpers.
+- Local and API-based LLM prompt tools for structured image and video prompting.
+- Image, text, switch, folder, workflow-runner, and batch-processing utilities.
+- LUT, color, grain, sharpening, resize, combine, and general video-processing nodes.
+
+> Some advanced tools need additional models or external components. The Builder guide explains the supported workflows, required custom nodes, model locations, and optional setup.
 
 ---
 
-## 🌟 Features
+## 🚀 Quick Start
 
-- 🎞️ **Fast Film Grain** (`FastFilmGrain`)  
-  Add controllable, grayscale or color grain for cinematic texture.  
-  ➕ *Now includes a `batch_size` setting to reduce out-of-memory (OOM) issues on long or high-res videos. If you have a strong GPU, try `batch_size = 8`. If you hit OOM, lower the value (e.g., to 4 or 2).*
-
-- 🎨 **Color Match to Reference** (`ColorMatchToReference`)  
-  Align image tones to a reference image using LAB color matching.  
-  ➕ *Also includes a `batch_size` setting to help manage VRAM usage. Start at 8 if your GPU allows — lower it if you get OOM errors.*
-
-- 🎯 **Fast Unsharp Sharpen** (`FastUnsharpSharpen`)  
-  Simple and efficient sharpening using unsharp masking.
-
-- 🌀 **Fast Laplacian Sharpen** (`FastLaplacianSharpen`)  
-  Edge-based sharpening via Laplacian kernel for crisp detail.
-
-- 📏 **Fast Sobel Sharpen** (`FastSobelSharpen`)  
-  Gradient-based edge enhancement using Sobel filters.
-
-- ⚡ Optimized for **image or video workflows** and **per-frame processing** in ComfyUI.
-
-- 💻 Designed to be efficient on modern GPUs.
+1. Install the node pack and restart ComfyUI.
+2. Hard refresh the ComfyUI browser page so the latest JavaScript UI files load.
+3. Add **`VRGDG Music Video Builder UI`**.
+4. Create a project and add audio, SRT timing, or scenes.
+5. Use the Wizard or Storyboard Builder to plan the project.
+6. Generate and approve scene images, render scene videos, then stitch the final video.
 
 ---
 
 ## 📦 Installation
 
-### 🧰 Using ComfyUI Manager (recommended)
-1. Open ComfyUI.
-2. Go to the **Manager** tab → **Install Custom Nodes**.
-3. Search: `vrgamedev` or use this Git URL:  
-   ```
-   https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
-   ```
+### 🧰 ComfyUI Manager — Recommended
+
+1. Open **Manager** → **Install Custom Nodes**.
+2. Search for `vrgamedev`, or install from:
+
+```text
+https://github.com/vrgamegirl19/comfyui-vrgamedevgirl
+```
+
+3. Restart ComfyUI and hard refresh the browser page.
 
 ### 🖐️ Manual Install
-1. Clone or download this repo to your `ComfyUI/custom_nodes` directory.
-2. Restart ComfyUI.
 
----
+Clone this repository into `ComfyUI/custom_nodes`:
 
-## ✨ Requirements
-
-A `requirements.txt` file is now needed.
-
-To install the required packages, run this from inside the `python_embeded` folder:
-
-```
-python.exe -m pip install -r ..\custom_nodes\comfyui-vrgamedevgirl\requirements.txt
-
+```bash
+git clone https://github.com/vrgamegirl19/comfyui-vrgamedevgirl.git
 ```
 
-`requirements.txt` (in the repo) includes:
+Then install the Python requirements using the Python environment that runs ComfyUI. For the Windows portable build, run this from `ComfyUI_windows_portable`:
 
+```bat
+python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\comfyui-vrgamedevgirl\requirements.txt
 ```
 
-kornia
-
-librosa
-
-imageio
-
-```
-
-## 🧠 Node Details
-
-### ✅ Fast Film Grain (`FastFilmGrain`)
-Adds customizable film grain to each frame.  
-Grain can be grayscale or saturated RGB, and sized to match your output resolution.
-
-**Inputs:**
-- `images`: Frame tensor input.
-- `grain_intensity`: Blend amount (0 to 1).
-- `saturation_mix`: 0 = grayscale grain, 1 = full RGB noise.
-
-🟢 *Video-safe and very fast.*
+Restart ComfyUI and hard refresh the browser page after installation.
 
 ---
 
-### 🎨 Color Match to Reference (`ColorMatchToReference`)
-Matches image color distribution to a reference image using LAB space normalization.
+## 💡 Good to Know
 
-**Inputs:**
-- `images`: Your video frames.
-- `reference_image`: A single image to match tone and color against.
-- `match_strength`: Blend between original and matched (0.0–1.0).
-
----
-
-### 🎯 Fast Unsharp Sharpen (`FastUnsharpSharpen`)
-Applies unsharp masking to enhance edges with a fast, low-cost blur pass.
-
-**Inputs:**
-- `images`: Input image tensor.
-- `strength`: Sharpening amount (0.0 to 2.0)
-
-🚀 Lightweight and ideal for subtle sharpening.
+- The **Video Builder guide** is the main source for setup, model paths, screenshots, and step-by-step help.
+- Start with a short project or a few scenes before committing to a long render.
+- Save often, and use **Branch Project** or **Export Shareable Project ZIP** before major experiments.
+- Optional training, Browser AI, face-repair, and enhancement tools may have their own setup requirements.
 
 ---
 
-### 🌀 Fast Laplacian Sharpen (`FastLaplacianSharpen`)
-Enhances edges by applying a Laplacian kernel to bring out high-frequency detail.
+## 🧑‍💻 Author & Community
 
-**Inputs:**
-- `images`: Input image tensor.
-- `strength`: Sharpening amount (0.0 to 2.0)
+Created by **VRGameDevGirl** ✨
 
-🧪 Gives a more "punchy" sharpen effect great for detail recovery.
-
----
-
-### 📏 Fast Sobel Sharpen (`FastSobelSharpen`)
-Uses Sobel filters to detect image gradients and amplify edge contrast.
-
-**Inputs:**
-- `images`: Input image tensor.
-- `strength`: Sharpening amount (0.0 to 2.0)
-
-🧠 Sharpens by boosting directional edge response — great for outlines and detail clarity.
-
----
-
-## 🛠️ Roadmap
-
-- [x] 🎞️ Fast Film Grain (`FastFilmGrain`)
-- [x] 🎨 Color Match To Reference (`ColorMatchToReference`)
-- [x] 📏 Fast Sobel Sharpen (`FastSobelSharpen`)
-- [x] 🌀 Fast Laplacian Sharpen (`FastLaplacianSharpen`)
-- [x] 🎯 Fast Unsharp Sharpen (`FastUnsharpSharpen`)
-- [ ] 🌫️ Local Contrast / Dehaze
-- [ ] 🎛️ LUT Loader or Approximate Match
-
----
-
-## 📁 Folder Structure
-
-```
-comfyui-vrgamedevgirl/
-│
-├── init.py
-├── nodes.py
-├── README.md
-├── LICENSE
-├── requirements.txt
-└── .gitignore
-```
-
----
-
-## 🧑‍💻 Author
-
-**VRGameDevGirl**  
-✨ Custom tools for cinematic AI workflows  
-💌 Questions or collabs? Reach out via GitHub
+- 💬 [Join the Discord community](https://discord.gg/FJ9VvCDXw3)
+- ☕ [Support VR Game Dev Girl](https://buymeacoffee.com/vrgamedevgirl)
+- 📺 [Videos created with these workflows](https://www.youtube.com/playlist?list=PLQ0zxAQhttlbkHBNHUgvzIOL610JW-_hZ)
+- 🎓 [Walkthroughs and update videos](https://www.youtube.com/playlist?list=PLegqSfZi4nfo) — Some features have been updated since these were recorded, so the current UI may look different.
 
 ---
 
 ## 📜 License
 
-This project is licensed under the MIT License.
+Licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+Commercial use is allowed only when the AGPL-3.0 terms are followed. Closed-source paid apps, hosted services, SaaS products, or commercial wrappers may not use this code without complying with the license and providing the complete corresponding source code under the same license.
+
+See [LICENSE](LICENSE) for the full terms.
