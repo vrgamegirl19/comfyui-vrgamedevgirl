@@ -31,6 +31,7 @@
         {
           "title": "Fixed",
           "items": [
+            "Prevented final render preparation from appending the facial-performance direction a second time after it was already included in the generated video prompt.",
             "Storyboard Video Prep now explicitly begins non-I2V prompts with the selected starting shot, including an extreme close-up for an eyes shot, and preserves that opening through the embedded Video Builder prompt path without changing ordinary I2V first-frame behavior.",
             "Prevented stale inspector values from overwriting a different scene and creating blank, truncated, or 0.1-second scenes.",
             "Improved unmatched reference-line timing so unaligned lyrics receive natural text-sized timing instead of stretching across large portions of the song.",

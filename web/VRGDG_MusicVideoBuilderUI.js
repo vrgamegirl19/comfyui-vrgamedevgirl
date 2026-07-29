@@ -9946,7 +9946,9 @@ function openBuilder(node) {
     const base = String(prompt || "")
       .replace(/^\s*No visible subject sings or lip-syncs in this shot;\s*this is an instrumental or no-vocal visual moment\.\s*/i, "")
       .trim();
-    const facialText = facialPerformanceNoteForSegment(segment);
+    const facialText = options.includeFacialPerformance === false
+      ? ""
+      : facialPerformanceNoteForSegment(segment);
     const appendFacial = (text) => {
       const raw = String(text || "").trim();
       const modeClean = isVisualOnly ? removeNegativeAndVocalWordingFromVisualPrompt(raw) : raw;
@@ -35277,7 +35279,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       applyVocalDirectiveToVideoPrompt(
         applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
         segment,
-        { suppressPrefix: true }
+        { suppressPrefix: true, includeFacialPerformance: false }
       ),
       segment,
       { ensureTransitionLast: true }
