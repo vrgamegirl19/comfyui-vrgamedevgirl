@@ -76,6 +76,9 @@ Rules:
 * For camera speed 9-10, include two or more coordinated camera actions in the same scene when readable; do not end with "then holds", "holds on", "settles into a hold", "static hold", or "steady hold" unless the user explicitly asks for a hold.
 * For character motion speed 9-10, make the subject perform a clear full-body action such as striding, turning, crossing the space, forceful gestures, dancing, running, fighting, climbing, or interacting with the set; avoid describing the subject as only poised, still, standing, subtle, quiet, or steady.
 * Use `shot_type` from the scene when available.
+* If `starting_shot.required` is true, the first sentence must explicitly state that the video begins with `starting_shot.selected_starting_shot`. Do not merely imply this framing or move it to the middle or end of the prompt.
+* For an `eyes shot`, explicitly say that the video begins with an extreme close-up of the subject's eyes.
+* Begin the selected `camera_motion` from the required starting-shot framing; it may widen, orbit, track, or otherwise move afterward.
 * Use `motion_video_summary` or `camera_motion` for camera movement.
 * If `camera_motion` is empty, use `motion_video_summary`.
 * Follow `camera_guidance` when present. If it says to avoid default inward moves, do not add zoom-in, push-in, dolly-in, crash-zoom, or close-up endings unless the scene explicitly requests that exact motion.
@@ -880,6 +883,89 @@ def _storyboard_video_prompt_writing_rules():
     ])
 
 
+def _storyboard_starting_shot_value(scene):
+    if not isinstance(scene, dict):
+        return ""
+    requirement = scene.get("starting_shot")
+    if not isinstance(requirement, dict) or requirement.get("required") is not True:
+        return ""
+    return _clean_scene_text(
+        requirement.get("selected_starting_shot")
+        or requirement.get("shot_type")
+        or scene.get("shot_type")
+        or "",
+        240,
+    )
+
+
+def _storyboard_starting_shot_subject(scene):
+    if not isinstance(scene, dict):
+        return "the subject"
+    visible_subjects = scene.get("visible_subjects")
+    if isinstance(visible_subjects, list):
+        for value in visible_subjects:
+            name = _clean_scene_text(value, 160)
+            if name:
+                return name
+    for key in ("subject_refs", "subjects"):
+        subjects = scene.get(key)
+        if not isinstance(subjects, list):
+            continue
+        for subject in subjects:
+            if isinstance(subject, dict):
+                name = _clean_scene_text(subject.get("name") or "", 160)
+            else:
+                name = _clean_scene_text(subject, 160)
+            if name:
+                return name
+    return "the subject"
+
+
+def _storyboard_starting_shot_sentence(scene):
+    shot = _storyboard_starting_shot_value(scene)
+    if not shot:
+        return ""
+    subject = _storyboard_starting_shot_subject(scene)
+    shot_key = re.sub(r"[\s_-]+", " ", shot.lower()).strip()
+    if shot_key == "eyes shot":
+        return f"The video begins with an extreme close-up of {subject}'s eyes."
+    if shot_key == "mouth shot":
+        return f"The video begins with an extreme close-up of {subject}'s mouth."
+    if shot_key == "hands shot":
+        return f"The video begins with a close-up of {subject}'s hands."
+    if shot_key == "feet shot":
+        return f"The video begins with a close-up of {subject}'s feet."
+    article = "an" if shot_key[:1] in "aeiou" else "a"
+    target = subject if subject != "the subject" else "the scene"
+    return f"The video begins with {article} {shot} of {target}."
+
+
+def _ensure_storyboard_starting_shot(prompt, scene):
+    text = _clean_scene_text(prompt or "", 12000)
+    sentence = _storyboard_starting_shot_sentence(scene)
+    if not text or not sentence:
+        return text
+    opening = text[:500]
+    has_opening_marker = re.search(
+        r"\b(?:the\s+video\s+)?(?:begins?|starts?|opens?)\s+with\b"
+        r"|\b(?:opening|first)\s+(?:shot|frame)\b",
+        opening,
+        flags=re.IGNORECASE,
+    )
+    shot_key = _storyboard_starting_shot_value(scene).lower()
+    if shot_key == "eyes shot":
+        has_required_framing = re.search(r"\beyes?\b", opening, flags=re.IGNORECASE)
+    else:
+        shot_words = [word for word in re.findall(r"[a-z0-9]+", shot_key) if word != "shot"]
+        has_required_framing = bool(shot_words) and all(
+            re.search(rf"\b{re.escape(word)}\b", opening, flags=re.IGNORECASE)
+            for word in shot_words
+        )
+    if has_opening_marker and has_required_framing:
+        return text
+    return f"{sentence} {text}".strip()
+
+
 def _storyboard_reference_opening(scene):
     if not isinstance(scene, dict) or scene.get("no_character_present"):
         subject_count = 0
@@ -1079,6 +1165,7 @@ def _build_storyboard_video_prompt(payload):
         )
         user_notes = "\n\n".join(
             part for part in [
+                f"Required starting shot:\n{json.dumps(selected_scene.get('starting_shot'), ensure_ascii=False)}" if _storyboard_starting_shot_value(selected_scene) else "",
                 f"Performance mode:\n{performance_mode}",
                 f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
@@ -1109,9 +1196,12 @@ def _build_storyboard_video_prompt(payload):
             "max_new_tokens": int(payload.get("max_new_tokens") or 1800),
         }
         result = _generate_builder_i2v_prompt(vision_payload)
-        result["prompt"] = _enforce_storyboard_high_motion_language(
-            _enforce_storyboard_video_facial_requirements(
-                _fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle),
+        result["prompt"] = _ensure_storyboard_starting_shot(
+            _enforce_storyboard_high_motion_language(
+                _enforce_storyboard_video_facial_requirements(
+                    _fix_single_subject_prompt_pronouns(result.get("prompt") or "", scene_bundle),
+                    selected_scene,
+                ),
                 selected_scene,
             ),
             selected_scene,
@@ -1134,9 +1224,12 @@ def _build_storyboard_video_prompt(payload):
         label="Storyboard Gemma4",
         preserve_paragraphs=True,
     )
-    prompt = _enforce_storyboard_high_motion_language(
-        _enforce_storyboard_video_facial_requirements(
-            _fix_single_subject_prompt_pronouns(prompt, scene_bundle),
+    prompt = _ensure_storyboard_starting_shot(
+        _enforce_storyboard_high_motion_language(
+            _enforce_storyboard_video_facial_requirements(
+                _fix_single_subject_prompt_pronouns(prompt, scene_bundle),
+                selected_scene,
+            ),
             selected_scene,
         ),
         selected_scene,

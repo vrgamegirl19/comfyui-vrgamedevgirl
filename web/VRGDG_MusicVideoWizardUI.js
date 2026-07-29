@@ -691,6 +691,25 @@ Every doubt gets less important
 When I do what I came to do`;
 }
 
+function stripWizardParenthesisCharacters(value) {
+  return String(value || "")
+    .replace(/[()（）]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function sanitizeWizardReferenceLyrics(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trim();
+      if (!line || /^\[[^\]]+\]$/.test(line)) return line;
+      return stripWizardParenthesisCharacters(line);
+    })
+    .join("\n");
+}
+
 export function openMusicVideoWizard(api = {}) {
   injectWizardStyles();
 
@@ -1501,7 +1520,7 @@ export function openMusicVideoWizard(api = {}) {
     const note = el("div", "vrgdg-wizard-info-note");
     note.append(
       el("div", "vrgdg-wizard-info-icon", "i"),
-      el("div", "", "This runs the existing timestamped lyric scene creator with wizard defaults: instrumental gaps on, [instrumental] text, 5 second minimum instrumental gap, and 0.3 second vocal tail padding."),
+      el("div", "", "This uses the same timestamped scene creator as Line Mapping → Create Scenes From Lines, with the Wizard supplying these settings."),
     );
     const lyrics = textarea(wizardState.lyrics, sampleLyrics());
     lyrics.spellcheck = false;
@@ -1524,11 +1543,13 @@ export function openMusicVideoWizard(api = {}) {
     const segmentationHelpHtml = {
       reference_lines: `
         <strong>What it does:</strong> treats each non-empty lyric line as its own target scene.<br>
+        <strong>Duration rule:</strong> the lyric line wins over minimum/maximum duration. A 1.5 second line remains one 1.5 second scene; lyric lines are not split or merged to satisfy duration limits.<br>
         <strong>Use when:</strong> you want tight control and fast scene changes synced to individual lyric lines.<br>
         <strong>Result:</strong> usually more scenes with shorter durations.
       `,
       reference_stanzas: `
         <strong>What it does:</strong> groups lyric blocks separated by blank lines into scenes.<br>
+        <strong>Duration rule:</strong> each pasted stanza stays intact even when it falls outside the minimum/maximum duration.<br>
         <strong>Use when:</strong> each verse, chorus, bridge, or instrumental block should stay together.<br>
         <strong>Result:</strong> fewer scenes with smoother, longer shots.
       `,
@@ -1576,7 +1597,11 @@ export function openMusicVideoWizard(api = {}) {
       gutter.scrollTop = lyrics.scrollTop;
     });
     editor.append(gutter, lyrics);
-    const lyricsHint = el("div", "vrgdg-wizard-copy", "Use [instrumental], [break], or [outro] for no-vocal sections.");
+    const lyricsHint = el(
+      "div",
+      "vrgdg-wizard-copy",
+      "Use [instrumental] or [instrumental break] on its own line to mark a no-vocal section. [intro], [outro], and [break] are treated only as section headers because those sections may contain lyrics. Parenthesis characters are removed from generated lyric text while the words inside them are kept."
+    );
     lyricsHint.style.marginTop = "8px";
     lyricsSection.append(lyricsHeading, lyricsCopy, editor, lyricsHint);
 
@@ -1594,8 +1619,8 @@ export function openMusicVideoWizard(api = {}) {
     grid.append(
       settingTile("Language", language, "Tells the transcription/alignment step what language to expect. Use english for English lyrics; use the spoken lyric language for non-English songs."),
       settingTile("Scene segmentation", segmentMode, segmentationHelp),
-      settingTile("Minimum scene seconds", minScene, "Scenes shorter than this are merged or stretched when possible. Raise it to avoid tiny unusable clips; lower it for quick cuts."),
-      settingTile("Maximum scene seconds", maxScene, "Scenes longer than this are split or capped when possible. Lower it for faster pacing; raise it for longer cinematic shots."),
+      settingTile("Minimum scene seconds", minScene, "Used by Whisper/beat timing and instrumental or approximate sections. In lyric-line and stanza modes, the pasted lyric unit overrides this value and may be shorter."),
+      settingTile("Maximum scene seconds", maxScene, "Used by Whisper/beat timing and instrumental or approximate sections. In lyric-line and stanza modes, the pasted lyric unit stays intact and is not split by this value."),
     );
     const run = button("Create Timeline Scenes From Lyrics", "primary");
     run.onclick = async () => {
@@ -1603,8 +1628,8 @@ export function openMusicVideoWizard(api = {}) {
       run.textContent = "Creating scenes...";
       run.classList.add("is-working");
       try {
-        await api.createScenesFromLyrics?.({
-          referenceLyrics: wizardState.lyrics || "",
+        const created = await api.createScenesFromLyrics?.({
+          referenceLyrics: wizardState.lyrics,
           language: wizardState.language || "english",
           segmentMode: wizardState.segmentMode || "reference_lines",
           includeInstrumentalGaps: true,
@@ -1612,6 +1637,7 @@ export function openMusicVideoWizard(api = {}) {
           minGapSeconds: 5.0,
           minSceneSeconds: Number(wizardState.minSceneSeconds || 1.0),
           maxSceneSeconds: Number(wizardState.maxSceneSeconds || 8.0),
+          wizardStripLyricParentheses: true,
           vocalTailPaddingSeconds: 0.3,
           beatUseSrtDurations: true,
           beatMinDuration: Number(wizardState.minSceneSeconds || 1.0),
@@ -1620,6 +1646,7 @@ export function openMusicVideoWizard(api = {}) {
           beatDurationPreset: "varied_no_repeat",
           beatEmptySegmentText: "Instrumental section.",
         });
+        if (created === false) return;
         done.add("lyrics");
         await saveWizardProgress("wizard lyrics and scenes");
         render();

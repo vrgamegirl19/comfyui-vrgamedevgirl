@@ -2181,7 +2181,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         clean = str(text or "").strip().lower()
         if not self._is_reference_marker_line(clean):
             return False
-        return bool(re.search(r"\b(instrumental|break|interlude|solo|no\s*vocal|no\s*lyrics|silence|b-?roll)\b", clean))
+        return bool(re.fullmatch(r"\[\s*instrumental(?:\s+break)?\s*\]", clean))
 
     def _reference_units(self, reference_lyrics, segment_mode, instrumental_text):
         mode = str(segment_mode or "whisper_chunks")
@@ -2211,6 +2211,8 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                 continue
 
             if self._is_reference_marker_line(line):
+                if mode == "reference_stanzas":
+                    flush_stanza()
                 continue
 
             clean = self._clean_lyric(line)
@@ -2314,6 +2316,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         max_scene_seconds=8.0,
         vocal_tail_padding_seconds=0.6,
         exact_reference_lines=False,
+        preserve_reference_units=False,
     ):
         word_items = self._word_items_from_segments(stable_segments)
         aligned_by_unit = {}
@@ -2332,6 +2335,88 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         max_scene = max(min_scene, float(max_scene_seconds))
         vocal_tail = max(0.0, float(vocal_tail_padding_seconds))
         label = self._clean_lyric(instrumental_text) or "[instrumental]"
+
+        def estimated_reference_duration(unit_text):
+            token_count = max(1, len(self._normalize_for_match(unit_text).split()))
+            observed_cadences = []
+            for current_word, next_word in zip(word_items, word_items[1:]):
+                cadence = float(next_word["start"]) - float(current_word["start"])
+                if 0.08 <= cadence <= 1.5:
+                    observed_cadences.append(cadence)
+            if observed_cadences:
+                observed_cadences.sort()
+                seconds_per_word = observed_cadences[len(observed_cadences) // 2]
+            else:
+                seconds_per_word = 0.4
+            return max(0.15, token_count * seconds_per_word + vocal_tail)
+
+        if exact_reference_lines:
+            # Exact mode still uses the same word alignment as reference-line
+            # mode. If a line fails to align, give it a natural text-derived
+            # estimate near the closest trusted timestamp instead of stretching
+            # it across the entire gap (or to the end of the song).
+            missing_runs = []
+            run = []
+            for unit_index, unit in enumerate(units):
+                if unit.get("type") == "vocal" and unit_index not in aligned_by_unit:
+                    run.append(unit_index)
+                    continue
+                if run:
+                    missing_runs.append(run)
+                    run = []
+            if run:
+                missing_runs.append(run)
+
+            for missing_indices in missing_runs:
+                first_index = missing_indices[0]
+                last_index = missing_indices[-1]
+                previous_anchor = None
+                for unit_index in range(first_index - 1, -1, -1):
+                    if units[unit_index].get("type") != "vocal":
+                        break
+                    if unit_index in aligned_by_unit:
+                        previous_anchor = aligned_by_unit[unit_index]
+                        break
+                next_anchor = None
+                for unit_index in range(last_index + 1, len(units)):
+                    if units[unit_index].get("type") != "vocal":
+                        break
+                    if unit_index in aligned_by_unit:
+                        next_anchor = aligned_by_unit[unit_index]
+                        break
+                left = float(previous_anchor["end"]) if previous_anchor is not None else 0.0
+                right = float(next_anchor["start"]) if next_anchor is not None else float(total_duration)
+                right = max(left, min(float(total_duration), right))
+                estimates = [
+                    estimated_reference_duration(units[unit_index].get("text", ""))
+                    for unit_index in missing_indices
+                ]
+                available = max(0.0, right - left)
+                desired = sum(estimates)
+                if desired <= available and previous_anchor is None and next_anchor is not None:
+                    cursor_time = right - desired
+                else:
+                    cursor_time = left
+                scale = min(1.0, available / desired) if desired > 0.0 else 0.0
+
+                for unit_index, estimate in zip(missing_indices, estimates):
+                    duration = estimate * scale
+                    segment_end = min(right, cursor_time + duration)
+                    if segment_end <= cursor_time + 0.001:
+                        break
+                    aligned_by_unit[unit_index] = {
+                        "type": "vocal",
+                        "start": round(cursor_time, 3),
+                        "end": round(segment_end, 3),
+                        "duration": round(max(0.0, segment_end - cursor_time), 3),
+                        "text": self._clean_lyric(units[unit_index].get("text", "")),
+                        "words": [],
+                        "timing_warning": (
+                            "Could not align this exact reference lyric line; "
+                            "text-derived timing was used near the closest detected lyric."
+                        ),
+                    }
+                    cursor_time = segment_end
 
         def split_instrumental_segment(segment):
             if exact_reference_lines:
@@ -2362,12 +2447,28 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
             return splits
 
         def split_vocal_segment(segment):
-            if exact_reference_lines:
-                return [segment]
             start = float(segment.get("start", 0.0))
             end = float(segment.get("end", start))
             duration = max(0.0, end - start)
             words = segment.get("words", []) or []
+            if preserve_reference_units:
+                exact_segment = dict(segment)
+                if words:
+                    sorted_words = sorted(
+                        words,
+                        key=lambda word: (
+                            float(word.get("start", start)),
+                            float(word.get("end", word.get("start", start))),
+                        ),
+                    )
+                    start = max(0.0, float(sorted_words[0].get("start", start)))
+                    raw_end = float(sorted_words[-1].get("end", sorted_words[-1].get("start", start)))
+                    end = min(float(total_duration), max(start + 0.001, raw_end + vocal_tail))
+                    exact_segment["words"] = sorted_words
+                exact_segment["start"] = round(start, 3)
+                exact_segment["end"] = round(end, 3)
+                exact_segment["duration"] = round(max(0.0, end - start), 3)
+                return [exact_segment]
             if not words:
                 if duration <= max_scene:
                     return [segment]
@@ -2504,13 +2605,23 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                             "timing_warning": "Inserted to close a timeline gap.",
                         }):
                             output.append(gap_piece)
-                    elif not exact_reference_lines:
+                    else:
                         previous["end"] = round(piece_start, 3)
                         previous["duration"] = round(max(0.0, piece_start - float(previous.get("start", 0.0))), 3)
-                elif previous_end - piece_start > 0.001 and not exact_reference_lines:
-                    piece = dict(piece)
-                    piece["start"] = round(previous_end, 3)
-                    piece["duration"] = round(max(0.0, float(piece.get("end", previous_end)) - previous_end), 3)
+                elif previous_end - piece_start > 0.001:
+                    if preserve_reference_units:
+                        # Tail padding may reach into the next detected lyric.
+                        # Preserve the next reference unit's actual word start
+                        # and trim the previous scene so units never overlap.
+                        previous["end"] = round(max(float(previous.get("start", 0.0)), piece_start), 3)
+                        previous["duration"] = round(
+                            max(0.0, float(previous["end"]) - float(previous.get("start", 0.0))),
+                            3,
+                        )
+                    else:
+                        piece = dict(piece)
+                        piece["start"] = round(previous_end, 3)
+                        piece["duration"] = round(max(0.0, float(piece.get("end", previous_end)) - previous_end), 3)
             elif piece_start > 0.001 and include_instrumental_gaps:
                 if piece_start >= min_gap:
                     for gap_piece in split_instrumental_segment({
@@ -2523,7 +2634,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                         "timing_warning": "Inserted before the first timed segment.",
                     }):
                         output.append(gap_piece)
-                elif not exact_reference_lines:
+                else:
                     piece = dict(piece)
                     piece["start"] = 0.0
                     piece["duration"] = round(max(0.0, float(piece.get("end", 0.0))), 3)
@@ -2551,9 +2662,13 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                         if next_seg is not None:
                             next_start = float(next_seg["start"])
                             break
-                    end = next_start if next_start is not None and next_start > prev_end else (
-                        float(total_duration) if exact_reference_lines
-                        else min(float(total_duration), prev_end + max(min_scene, min_gap, 1.0))
+                    end = next_start if next_start is not None and next_start > prev_end else min(
+                        float(total_duration),
+                        prev_end + (
+                            estimated_reference_duration(unit.get("text", ""))
+                            if exact_reference_lines
+                            else max(min_scene, min_gap, 1.0)
+                        ),
                     )
                     start = prev_end
                     if not exact_reference_lines and end - start > max_scene:
@@ -2578,18 +2693,19 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                         "words": [],
                         "timing_warning": "Could not align this reference lyric line; approximate timing was used.",
                     }
-                elif include_instrumental_gaps:
-                    prev_end = float(output[-1]["end"]) if output else 0.0
-                    start = float(segment.get("start", prev_end))
-                    if start - prev_end >= min_gap:
-                        append_timed_segment({
-                            "type": "instrumental",
-                            "start": round(prev_end, 3),
-                            "end": round(start, 3),
-                            "duration": round(max(0.0, start - prev_end), 3),
-                            "text": label,
-                            "words": [],
-                        })
+                else:
+                    if include_instrumental_gaps:
+                        prev_end = float(output[-1]["end"]) if output else 0.0
+                        start = float(segment.get("start", prev_end))
+                        if start - prev_end >= min_gap:
+                            append_timed_segment({
+                                "type": "instrumental",
+                                "start": round(prev_end, 3),
+                                "end": round(start, 3),
+                                "duration": round(max(0.0, start - prev_end), 3),
+                                "text": label,
+                                "words": [],
+                            })
                 append_timed_segment(segment)
                 continue
 
@@ -2765,6 +2881,11 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                     max_scene_seconds,
                     vocal_tail_padding_seconds,
                     exact_reference_lines=segment_mode == "exact_reference_lines",
+                    preserve_reference_units=segment_mode in {
+                        "reference_lines",
+                        "exact_reference_lines",
+                        "reference_stanzas",
+                    },
                 )
             else:
                 segments = stable_segments

@@ -3,6 +3,45 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-07-28-builder-lyric-timing",
+      "version": "2026.07.28",
+      "date": "2026-07-28",
+      "title": "Lyric timing, Storyboard prompts, and scene merging",
+      "commit": "0974a24aabd0b3022346cae922a54302403d2c3f",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added right-click actions to merge a scene with its left or right neighbor while combining lyrics, notes, singers, and scene mappings without shifting surrounding scene timing.",
+            "Added a confirmation warning before transcription when reference lyrics contain parenthesized text that will be treated as sung or spoken lyrics."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Wizard lyric scene creation now uses the same shared Create Scenes From Lines engine as Line Mapping.",
+            "Pasted lyric lines and stanzas remain intact even when their detected duration falls outside the minimum or maximum scene settings.",
+            "Exact reference-line mode keeps normal lyric alignment, instrumental-gap detection, vocal-tail padding, and boundary cleanup while ignoring only minimum and maximum duration limits.",
+            "Only [instrumental] and [instrumental break] force no-vocal sections; [intro], [outro], and [break] remain section headers because those sections may contain lyrics.",
+            "Wizard lyric output removes parenthesis characters after transcription while preserving the lyric words inside them."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Manual video prompts now render exactly as entered: typing, pasting, Prompt Options edits, reloads, and find/replace remain manual even after a later Gemma edit, while automatic trigger, vocal, facial-performance, and ID-LoRA prompt augmentation is limited to prompts originally created by Gemma.",
+            "Prevented final render preparation from appending the facial-performance direction a second time after it was already included in the generated video prompt.",
+            "Storyboard Video Prep now explicitly begins non-I2V prompts with the selected starting shot, including an extreme close-up for an eyes shot, and preserves that opening through the embedded Video Builder prompt path without changing ordinary I2V first-frame behavior.",
+            "Prevented stale inspector values from overwriting a different scene and creating blank, truncated, or 0.1-second scenes.",
+            "Improved unmatched reference-line timing so unaligned lyrics receive natural text-sized timing instead of stretching across large portions of the song.",
+            "Improved vocal-tail and shared-boundary cleanup to prevent lyric scenes from overlapping or being pushed away from their detected word starts."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-07-25-builder-navigation",
       "version": "2026.07.25",
       "date": "2026-07-25",
