@@ -1350,6 +1350,10 @@ function storyboardStillFacialDirection(value = "") {
     .trim();
 }
 
+function normalizeVideoPromptOrigin(value) {
+  return String(value || "").trim().toLowerCase() === "gemma" ? "gemma" : "manual";
+}
+
 function normalizeScene(scene = {}, index = 0) {
   const rawVideoType = String(scene.video_prompt_type || scene.video_type || scene.mode || "").trim();
   const videoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(rawVideoType) ? rawVideoType : "i2v";
@@ -1395,6 +1399,7 @@ function normalizeScene(scene = {}, index = 0) {
     status: scene.status || "draft",
     image_prompt: scene.image_prompt || scene.t2i_prompt || "",
     video_prompt: scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "",
+    video_prompt_origin: normalizeVideoPromptOrigin(scene.video_prompt_origin || scene.i2v_prompt_origin),
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
@@ -1476,6 +1481,7 @@ function scenesFromBuilderPayload(payload = {}) {
       include_microphone: Boolean(scene.include_microphone || scene.use_microphone || scene.microphone),
       image_prompt: scene.t2i_prompt || "",
     video_prompt: scene.i2v_prompt || scene.t2v_prompt || "",
+    video_prompt_origin: normalizeVideoPromptOrigin(scene.video_prompt_origin || scene.i2v_prompt_origin),
     image_path: scene.image_path || scene.approved_image_path || "",
     image_data: scene.image_data || scene.image_reference_data || "",
     notes: scene.notes || "",
@@ -3289,6 +3295,7 @@ function openStoryboardBuilder(payload = {}) {
       scene.motion_summary = "";
       scene.image_prompt = "";
       scene.video_prompt = "";
+      scene.video_prompt_origin = "manual";
       scene.notes = "";
       if (scene.status && scene.status !== "draft") scene.status = "draft";
       const after = [
@@ -3656,6 +3663,10 @@ function openStoryboardBuilder(payload = {}) {
     const shotPreset = makeSelect([{ value: "", label: "Choose a preset..." }, { value: "__custom__", label: "Custom / keep typed value" }], "__custom__");
     const imagePrompt = makeTextarea(scene.image_prompt, "Full text-to-image prompt...", 7);
     const videoPrompt = makeTextarea(scene.video_prompt, "Full video prompt...", 7);
+    let editorVideoPromptOrigin = normalizeVideoPromptOrigin(scene.video_prompt_origin);
+    videoPrompt.addEventListener("input", () => {
+      editorVideoPromptOrigin = "manual";
+    });
     const imagePath = makeInput(scene.image_path, "Image path");
     imagePath.type = "hidden";
     let sceneImageData = String(scene.image_data || scene.image_reference_data || "").trim();
@@ -4113,7 +4124,10 @@ function openStoryboardBuilder(payload = {}) {
       scene.trigger_phrase = triggerPhrase.value.trim();
       scene.trigger_position = triggerPosition.value === "end" ? "end" : "start";
       scene.image_prompt = imagePrompt.value.trim();
-      if (isVideoPrepMode) scene.video_prompt = videoPrompt.value.trim();
+      if (isVideoPrepMode) {
+        scene.video_prompt = videoPrompt.value.trim();
+        scene.video_prompt_origin = editorVideoPromptOrigin;
+      }
       if (isVideoPrepMode) {
         scene.image_path = imagePath.value.trim();
         scene.image_data = sceneImageData;
@@ -4136,6 +4150,7 @@ function openStoryboardBuilder(payload = {}) {
         progress.close(1200);
         imagePrompt.value = scene.image_prompt || "";
         videoPrompt.value = scene.video_prompt || "";
+        editorVideoPromptOrigin = normalizeVideoPromptOrigin(scene.video_prompt_origin);
       } catch (error) {
         progress.set(`Error:\n${String(error?.message || error)}`, 100);
       } finally {
@@ -4401,7 +4416,9 @@ function openStoryboardBuilder(payload = {}) {
     try {
       syncStoryLayerFromInputs();
       state.scenes.forEach((scene) => {
-        if (String(scene.video_prompt || "").trim()) scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
+        if (String(scene.video_prompt || "").trim() && normalizeVideoPromptOrigin(scene.video_prompt_origin) === "gemma") {
+          scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
+        }
       });
       const data = await postJson("/vrgdg/storyboard/save", {
         project_folder: state.projectFolder,
@@ -4426,7 +4443,9 @@ function openStoryboardBuilder(payload = {}) {
     try {
       state.scenes.forEach((scene) => {
         if (String(scene.image_prompt || "").trim()) scene.image_prompt = ensureStoryboardReferenceOpening(scene.image_prompt, scene, state.imageMode);
-        if (String(scene.video_prompt || "").trim()) scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
+        if (String(scene.video_prompt || "").trim() && normalizeVideoPromptOrigin(scene.video_prompt_origin) === "gemma") {
+          scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
+        }
       });
       const data = await postJson("/vrgdg/storyboard/export_prompts", {
         project_folder: state.projectFolder,
@@ -4743,6 +4762,7 @@ function openStoryboardBuilder(payload = {}) {
       const prompt = data?.already_finalized ? rawPrompt : applyStoryboardTriggerPhrases(rawPrompt, scene);
       if (!prompt) throw new Error(`${genericName} returned an empty Storyboard video prompt.`);
       scene.video_prompt = prompt;
+      scene.video_prompt_origin = "gemma";
       scene.status = "video_prompt_ready";
       if (!quiet) createToast(`${genericName} created video prompt for ${normalized.label || `Scene ${normalized.scene_number}`}.\nRunner: ${data.runner || runnerName}`);
       return prompt;

@@ -1711,6 +1711,10 @@ function audioUrl(path) {
     return id;
   }
 
+  function normalizeVideoPromptOrigin(value) {
+    return String(value || "").trim().toLowerCase() === "gemma" ? "gemma" : "manual";
+  }
+
   function newSegment(start = 0, end = 4) {
     return {
     id: createUniqueSegmentId(),
@@ -1738,6 +1742,7 @@ function audioUrl(path) {
     enhance_notes: "",
     enhance_prompt: "",
     i2v_prompt: "",
+    i2v_prompt_origin: "manual",
     ref_image_path: "",
     use_vision_reference: false,
     use_i2v_vision_reference: true,
@@ -7894,6 +7899,7 @@ function openBuilder(node) {
     segment.no_character_present = Boolean(segment.no_character_present || segment.no_subject || segment.no_visible_subject);
     if (segment.timeline_note == null) segment.timeline_note = "";
     if (segment.i2v_notes == null) segment.i2v_notes = "";
+    segment.i2v_prompt_origin = normalizeVideoPromptOrigin(segment.i2v_prompt_origin);
     if (!["global", "auto", "smooth", "morph"].includes(String(segment.flf_transition_type || ""))) segment.flf_transition_type = "global";
     if (segment.id == null || !String(segment.id).trim()) segment.id = createUniqueSegmentId();
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
@@ -14358,7 +14364,10 @@ function openBuilder(node) {
     if (nbPrompt.value !== editedT2IPrompt) nbPrompt.value = editedT2IPrompt;
     if (flowGptPrompt.value !== editedT2IPrompt) flowGptPrompt.value = editedT2IPrompt;
     if (zEnhancePromptPreview.value !== editedT2IPrompt) zEnhancePromptPreview.value = editedT2IPrompt;
-    segment.i2v_prompt = i2vPrompt.value || "";
+    const previousI2VPrompt = String(segment.i2v_prompt || "");
+    const nextI2VPrompt = i2vPrompt.value || "";
+    segment.i2v_prompt = nextI2VPrompt;
+    if (nextI2VPrompt !== previousI2VPrompt) segment.i2v_prompt_origin = "manual";
     editI2VPromptButton.style.display = String(segment.i2v_prompt || "").trim() ? "" : "none";
     editImagePromptButtons.forEach((button) => {
       button.style.display = String(editedT2IPrompt || "").trim() ? "" : "none";
@@ -17413,10 +17422,11 @@ function openBuilder(node) {
     return segment?.t2i_prompt || "";
   }
 
-  function setSegmentPromptForEdit(segment, kind, value) {
+  function setSegmentPromptForEdit(segment, kind, value, options = {}) {
     const text = String(value || "").trim();
     if (kind === "i2v") {
       segment.i2v_prompt = text;
+      segment.i2v_prompt_origin = normalizeVideoPromptOrigin(options.origin);
       return;
     }
     const mode = promptImageModeForEdit();
@@ -17503,6 +17513,9 @@ function openBuilder(node) {
         });
         if (!localMatches || replaced === original) continue;
         segment[target.key] = replaced.trim();
+        if (target.key === "i2v_prompt" || target.key === "t2v_prompt") {
+          segment.i2v_prompt_origin = "manual";
+        }
         matches += localMatches;
         fields += 1;
         changed = true;
@@ -17882,6 +17895,7 @@ function openBuilder(node) {
       for (const segment of allEditableSegments()) {
         if (kind === "i2v") {
           segment.i2v_prompt = "";
+          segment.i2v_prompt_origin = "manual";
         } else {
           segment.t2i_prompt = "";
           segment.flux_prompt = "";
@@ -29142,6 +29156,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ensureSegmentRuntimeFields(segment);
       segment.t2i_prompt = "";
       segment.i2v_prompt = "";
+      segment.i2v_prompt_origin = "manual";
       segment.enhance_prompt = "";
       segment.approved_image_path = "";
       segment.custom_image_path = "";
@@ -32510,6 +32525,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
       pushHistory();
       segment.i2v_prompt = await finalizeVideoPromptForSegment(segment, data.prompt, progress, 82, `${modeLabel} prompt enhancement`, { unloadAfter: true });
+      segment.i2v_prompt_origin = "gemma";
       i2vPrompt.value = segment.i2v_prompt;
       render();
       await autoSaveSessionQuiet(`Gemma ${modeLabel} complete`);
@@ -32554,6 +32570,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? finalizeVideoPromptDraftOnly(segment, data.prompt)
       : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: options.unloadAfter !== false });
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
+    segment.i2v_prompt_origin = "gemma";
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
     return data;
@@ -32570,6 +32587,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ? finalizeVideoPromptDraftOnly(segment, data.prompt)
       : await finalizeVideoPromptForSegment(segment, data.prompt, progress, Math.min(98, percent + 20), `${label}: enhancement pass`, { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false });
     if (!segment.i2v_prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty ${request.modeLabel} prompt.`);
+    segment.i2v_prompt_origin = "gemma";
     if (segment.id === state.activeId) i2vPrompt.value = segment.i2v_prompt;
     render();
     return data;
@@ -32610,6 +32628,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: a start image is required before creating its motion plan.`);
     }
     const previousVideoPrompt = String(segment.i2v_prompt || "");
+    const previousVideoPromptOrigin = normalizeVideoPromptOrigin(segment.i2v_prompt_origin);
     try {
       await generateI2VPromptForSegment(segment, progress, percent, label, {
         provisionalMotionPlan: true,
@@ -32625,6 +32644,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       return plan;
     } finally {
       segment.i2v_prompt = previousVideoPrompt;
+      segment.i2v_prompt_origin = previousVideoPromptOrigin;
       if (segment.id === state.activeId) i2vPrompt.value = previousVideoPrompt;
       syncRTVSceneImageAnchorPanel();
       render();
@@ -32677,6 +32697,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (redoPrompts) {
       allScenes.forEach((segment) => {
         segment.i2v_prompt = "";
+        segment.i2v_prompt_origin = "manual";
       });
     }
     const scenes = allScenes.filter((segment) => redoPrompts || !String(segment?.i2v_prompt || "").trim());
@@ -33327,6 +33348,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           character_motion_speed: Number(defaults.character_motion_speed ?? 4),
           image_prompt: imagePrompt,
           video_prompt: videoPrompt,
+          video_prompt_origin: normalizeVideoPromptOrigin(segment.i2v_prompt_origin),
           image_path: imageReference.path || selectedSegmentImagePath(segment),
           image_data: imageReference.data || "",
           notes: sceneNotes,
@@ -33548,7 +33570,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           applied += 1;
         }
         if (videoPrompt) {
-          setSegmentPromptForEdit(segment, "i2v", videoPrompt);
+          setSegmentPromptForEdit(segment, "i2v", videoPrompt, {
+            origin: scene.video_prompt_origin,
+          });
           applied += 1;
         }
         if (["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(videoType)) segment.video_prompt_type = videoType;
@@ -33816,7 +33840,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           segment.ernie_t2i_prompt = imagePrompt;
         }
         const videoPrompt = String(scene.video_prompt || scene.i2v_prompt || scene.t2v_prompt || "").trim();
-        if (videoPrompt) setSegmentPromptForEdit(segment, "i2v", videoPrompt);
+        if (videoPrompt) {
+          setSegmentPromptForEdit(segment, "i2v", videoPrompt, {
+            origin: scene.video_prompt_origin || scene.i2v_prompt_origin,
+          });
+        }
         const imagePath = String(scene.image_path || scene.approved_image_path || "").trim();
         const imageData = String(scene.image_data || scene.image_reference_data || "").trim();
         if (imageData) {
@@ -34109,6 +34137,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       unloadAfter: true,
       suppressVocalPrefix: Boolean(state.autoChainTransitionLoraPrompt),
     });
+    nextSegment.i2v_prompt_origin = "gemma";
     nextSegment.auto_chain_source_video_path = previousVideoPath;
     nextSegment.auto_chain_source_frame_path = framePath;
     nextSegment.auto_chain_style = state.autoChainStyle || "continuous";
@@ -35275,16 +35304,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } else {
       progress?.set(`${batchLabel}Preparing hidden ${modeLabel} inputs...`, pct(14));
     }
-    const videoPromptForRender = applyMappedTriggerPhrases(
-      applyVocalDirectiveToVideoPrompt(
-        applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
-        segment,
-        { suppressPrefix: true, includeFacialPerformance: false }
-      ),
-      segment,
-      { ensureTransitionLast: true }
-    );
-    const renderPromptForPayload = isIdLoraMode
+    const isGemmaPrompt = normalizeVideoPromptOrigin(segment.i2v_prompt_origin) === "gemma";
+    const videoPromptForRender = isGemmaPrompt
+      ? applyMappedTriggerPhrases(
+          applyVocalDirectiveToVideoPrompt(
+            applyTriggerPhrase(segment.i2v_prompt, videoTriggerPhraseForSegment(segment), { validateJunk: false }),
+            segment,
+            { suppressPrefix: true, includeFacialPerformance: false }
+          ),
+          segment,
+          { ensureTransitionLast: true }
+        )
+      : String(segment.i2v_prompt || "").trim();
+    const renderPromptForPayload = isIdLoraMode && isGemmaPrompt
       ? buildIdLoraPromptForScene(videoPromptForRender, segment)
       : videoPromptForRender;
     if (videoPromptForRender && videoPromptForRender !== segment.i2v_prompt) {
@@ -42564,10 +42596,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const prompt = applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
           if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
-            setSegmentPromptForEdit(segment, "i2v", prompt);
+            setSegmentPromptForEdit(segment, "i2v", prompt, { origin: "gemma" });
             segment.video_prompt_type = videoMode;
           }
           scene.video_prompt = prompt;
+          scene.video_prompt_origin = "gemma";
           created += 1;
           progress.set(`${label}\nSaved prompt into the Video Builder scene.`, Math.min(96, base + 6));
         }

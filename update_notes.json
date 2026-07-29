@@ -31,6 +31,7 @@
         {
           "title": "Fixed",
           "items": [
+            "Manual video prompts now render exactly as entered: typing, pasting, Prompt Options edits, reloads, and find/replace remain manual even after a later Gemma edit, while automatic trigger, vocal, facial-performance, and ID-LoRA prompt augmentation is limited to prompts originally created by Gemma.",
             "Prevented final render preparation from appending the facial-performance direction a second time after it was already included in the generated video prompt.",
             "Storyboard Video Prep now explicitly begins non-I2V prompts with the selected starting shot, including an extreme close-up for an eyes shot, and preserves that opening through the embedded Video Builder prompt path without changing ordinary I2V first-frame behavior.",
             "Prevented stale inspector values from overwriting a different scene and creating blank, truncated, or 0.1-second scenes.",
