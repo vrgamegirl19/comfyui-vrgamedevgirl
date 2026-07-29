@@ -6,7 +6,7 @@
       "id": "2026-07-28-builder-lyric-timing",
       "version": "2026.07.28",
       "date": "2026-07-28",
-      "title": "Lyric timing, transcription safeguards, and scene merging",
+      "title": "Lyric timing, Storyboard prompts, and scene merging",
       "commit": "0974a24aabd0b3022346cae922a54302403d2c3f",
       "restart_required": true,
       "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
@@ -31,6 +31,7 @@
         {
           "title": "Fixed",
           "items": [
+            "Storyboard Video Prep now explicitly begins non-I2V prompts with the selected starting shot, including an extreme close-up for an eyes shot, and preserves that opening through the embedded Video Builder prompt path without changing ordinary I2V first-frame behavior.",
             "Prevented stale inspector values from overwriting a different scene and creating blank, truncated, or 0.1-second scenes.",
             "Improved unmatched reference-line timing so unaligned lyrics receive natural text-sized timing instead of stretching across large portions of the song.",
             "Improved vocal-tail and shared-boundary cleanup to prevent lyric scenes from overlapping or being pushed away from their detected word starts."
