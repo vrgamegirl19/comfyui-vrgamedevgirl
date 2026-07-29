@@ -14,7 +14,10 @@ import {
   storyboardImageShotFlowEntry,
   storyboardPerformancePreset,
 } from "./VRGDG_StoryboardBuilderUI.js";
-import { openMusicVideoWizard } from "./VRGDG_MusicVideoWizardUI.js?v=20260701-i2v-mode";
+import {
+  openMusicVideoWizard,
+  sanitizeWizardReferenceLyrics,
+} from "./VRGDG_MusicVideoWizardUI.js?v=20260728-instrumental-markers";
 import { createMusicVideoBuilderLuts } from "./VRGDG_MusicVideoBuilderLUTs.js";
 import { createPostProcessComparePreview } from "./VRGDG_PostProcessComparePreview.js";
 import { createFaceFixTool } from "./VRGDG_FaceFixUI.js?v=20260716-1";
@@ -11509,6 +11512,7 @@ function openBuilder(node) {
 
   function syncInspector() {
     const segment = activeSegment();
+    startInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     const disabled = !segment;
     for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton]) {
       control.disabled = disabled;
@@ -14306,6 +14310,15 @@ function openBuilder(node) {
   function updateActiveFromInputs(options = {}) {
     const segment = activeSegment();
     if (!segment) return;
+    const inspectorSegmentId = String(startInput.dataset.vrgdgInspectorSegmentId || "");
+    if (inspectorSegmentId !== String(segment.id || "")) {
+      console.warn(
+        "[VRGDG Music Builder] Ignored stale inspector values for a different scene.",
+        { inspectorSegmentId, activeSegmentId: String(segment.id || "") },
+      );
+      syncInspector();
+      return;
+    }
     if (!options.skipHistory) pushHistory();
     segment.label = labelInput.value || "Scene";
     const isOverlay = segmentTrack(segment) === "overlay";
@@ -15819,6 +15832,142 @@ function openBuilder(node) {
     }
   }
 
+  function mergeUniqueSceneText(firstValue, secondValue, separator = "\n\n") {
+    const values = [firstValue, secondValue]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (!values.length) return "";
+    if (values.length === 1 || values[0] === values[1]) return values[0];
+    return values.join(separator);
+  }
+
+  function mergeUniqueStringArray(firstValue, secondValue) {
+    return Array.from(new Set(
+      [...(Array.isArray(firstValue) ? firstValue : []), ...(Array.isArray(secondValue) ? secondValue : [])]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ));
+  }
+
+  function migrateSceneMappingsAfterMerge(targetId, removedId) {
+    const builder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const subjectMap = builder.subject_scene_map && typeof builder.subject_scene_map === "object"
+      ? builder.subject_scene_map
+      : {};
+    const mergedSubjects = mergeUniqueStringArray(subjectMap[targetId], subjectMap[removedId]);
+    if (mergedSubjects.length) subjectMap[targetId] = mergedSubjects;
+    else delete subjectMap[targetId];
+    delete subjectMap[removedId];
+    builder.subject_scene_map = subjectMap;
+
+    ["scene_map", "scene_trigger_map", "ingredients_scene_map"].forEach((mapName) => {
+      const sceneMap = builder[mapName] && typeof builder[mapName] === "object"
+        ? builder[mapName]
+        : {};
+      const targetHasValue = Object.prototype.hasOwnProperty.call(sceneMap, targetId)
+        && sceneMap[targetId] !== null
+        && sceneMap[targetId] !== "";
+      if (!targetHasValue && Object.prototype.hasOwnProperty.call(sceneMap, removedId)) {
+        sceneMap[targetId] = sceneMap[removedId];
+      }
+      delete sceneMap[removedId];
+      builder[mapName] = sceneMap;
+    });
+
+    state.fluxReferenceBuilder = builder;
+
+    const idLoraBuilder = normalizeIdLoraReferenceBuilder(state.idLoraReferenceBuilder);
+    const targetEntry = idLoraBuilder.scene_map[targetId] || null;
+    const removedEntry = idLoraBuilder.scene_map[removedId] || null;
+    if (targetEntry || removedEntry) {
+      const targetScene = state.segments.find((scene) => String(scene.id) === targetId);
+      const dialogue = mergeUniqueSceneText(targetEntry?.dialogue, removedEntry?.dialogue, "\n");
+      idLoraBuilder.scene_map[targetId] = {
+        ...(removedEntry || {}),
+        ...(targetEntry || {}),
+        dialogue: dialogue || String(targetScene?.lyric_text || "").trim(),
+        manual_duration: Math.max(
+          0.25,
+          Number(targetScene?.end || 0) - Number(targetScene?.start || 0),
+        ),
+      };
+    }
+    delete idLoraBuilder.scene_map[removedId];
+    state.idLoraReferenceBuilder = normalizeIdLoraReferenceBuilder(idLoraBuilder);
+  }
+
+  function renumberGenericBaseSceneLabelsAfterMerge() {
+    sortSegments(state.segments);
+    state.segments.forEach((scene, index) => {
+      const current = String(scene.label || "").trim();
+      const numberedDescription = current.match(/^\d+\.\s*(.+)$/);
+      if (!current || /^scene(?:\s+\d+(?:\.\d+)?)?$/i.test(current) || numberedDescription) {
+        scene.label = numberedDescription
+          ? `${index + 1}. ${numberedDescription[1]}`
+          : `Scene ${index + 1}`;
+      }
+    });
+  }
+
+  async function mergeAdjacentBaseScene(selectedScene, direction) {
+    if (!selectedScene || segmentTrack(selectedScene) === "overlay") return;
+
+    const baseScenes = [...state.segments].sort(
+      (a, b) => Number(a.start || 0) - Number(b.start || 0),
+    );
+    const selectedIndex = baseScenes.findIndex((scene) => String(scene.id) === String(selectedScene.id));
+    const neighborIndex = direction === "left" ? selectedIndex - 1 : selectedIndex + 1;
+    if (selectedIndex < 0 || neighborIndex < 0 || neighborIndex >= baseScenes.length) {
+      toast(`There is no scene on the ${direction} to merge.`, true);
+      return;
+    }
+
+    const selected = baseScenes[selectedIndex];
+    const neighbor = baseScenes[neighborIndex];
+    const leftScene = direction === "left" ? neighbor : selected;
+    const rightScene = direction === "left" ? selected : neighbor;
+    if (hasLockedVideo(leftScene) || hasLockedVideo(rightScene)) {
+      toast("Remove the rendered video from both scenes before merging them.", true);
+      return;
+    }
+
+    pushHistory();
+    const leftLyric = String(leftScene.lyric_text || "").trim();
+    const rightLyric = String(rightScene.lyric_text || "").trim();
+    leftScene.start = Math.min(Number(leftScene.start || 0), Number(rightScene.start || 0));
+    leftScene.end = Math.max(
+      Number(leftScene.end || leftScene.start),
+      Number(rightScene.end || rightScene.start),
+    );
+    leftScene.timeline_note = mergeUniqueSceneText(leftScene.timeline_note, rightScene.timeline_note, "\n");
+    leftScene.notes = mergeUniqueSceneText(leftScene.notes, rightScene.notes);
+    leftScene.flux_notes = mergeUniqueSceneText(leftScene.flux_notes, rightScene.flux_notes);
+    leftScene.nb_notes = mergeUniqueSceneText(leftScene.nb_notes, rightScene.nb_notes);
+    leftScene.i2v_notes = mergeUniqueSceneText(leftScene.i2v_notes, rightScene.i2v_notes);
+    leftScene.story_beat = mergeUniqueSceneText(leftScene.story_beat, rightScene.story_beat);
+    leftScene.lyric_text = leftLyric || rightLyric
+      ? mergeTimestampedLyricText(leftLyric, rightLyric, "[instrumental]")
+      : "";
+    leftScene.lyric_singers = mergeUniqueStringArray(leftScene.lyric_singers, rightScene.lyric_singers);
+    leftScene.lyric_no_lip_sync = leftScene.lyric_text
+      ? isInstrumentalLyricText(leftScene.lyric_text)
+      : Boolean(leftScene.lyric_no_lip_sync && rightScene.lyric_no_lip_sync);
+
+    state.segments = state.segments.filter((scene) => String(scene.id) !== String(rightScene.id));
+    migrateSceneMappingsAfterMerge(String(leftScene.id), String(rightScene.id));
+    renumberGenericBaseSceneLabelsAfterMerge();
+
+    state.activeTrack = "base";
+    state.activeId = leftScene.id;
+    state.selectedSegmentIds = state.multiSelectMode ? [leftScene.id] : [];
+    syncInspector();
+    render();
+    await syncPromptJsonFromSegments("adjacent scenes merged");
+    await syncI2VMotionJsonFromSegments("adjacent scenes merged");
+    autoSaveSessionQuiet("adjacent scenes merged");
+    toast(`Merged into ${leftScene.label || "scene"}.`);
+  }
+
   function openSegmentContextMenu(event, segment) {
     event.preventDefault();
     event.stopPropagation();
@@ -15878,7 +16027,27 @@ function openBuilder(node) {
       addItem(`Trim Left at ${trimLabel}`, () => trimOverlayVideoAtPlayhead(segment, "left", trimTime), segment.overlay_locked !== false || !(playheadInsideScene || clickInsideScene));
       addItem(`Trim Right at ${trimLabel}`, () => trimOverlayVideoAtPlayhead(segment, "right", trimTime), segment.overlay_locked !== false || !(playheadInsideScene || clickInsideScene));
     }
-    if (!isOverlay) addItem("Copy as insert track", () => copyBaseSceneAsOverlay(segment));
+    if (!isOverlay) {
+      const baseScenes = [...state.segments].sort(
+        (a, b) => Number(a.start || 0) - Number(b.start || 0),
+      );
+      const sceneIndex = baseScenes.findIndex((scene) => String(scene.id) === String(segment.id));
+      const leftScene = sceneIndex > 0 ? baseScenes[sceneIndex - 1] : null;
+      const rightScene = sceneIndex >= 0 && sceneIndex < baseScenes.length - 1
+        ? baseScenes[sceneIndex + 1]
+        : null;
+      addItem(
+        "Merge with scene on left",
+        () => mergeAdjacentBaseScene(segment, "left").catch((error) => toast(String(error?.message || error), true)),
+        !leftScene || hasLockedVideo(segment) || hasLockedVideo(leftScene),
+      );
+      addItem(
+        "Merge with scene on right",
+        () => mergeAdjacentBaseScene(segment, "right").catch((error) => toast(String(error?.message || error), true)),
+        !rightScene || hasLockedVideo(segment) || hasLockedVideo(rightScene),
+      );
+      addItem("Copy as insert track", () => copyBaseSceneAsOverlay(segment));
+    }
     addItem("Close timeline gaps", closeTimelineGapsFromMenu);
     addItem("Scene options", () => openSceneOptions(segment));
     addItem("Delete scene", deleteSegment);
@@ -18275,6 +18444,21 @@ function openBuilder(node) {
     await syncLyricSubjectLocationNotesFromSegments(reason);
   }
 
+  function hasParenthesizedReferenceText(value) {
+    return /(?:\([^)\r\n]*\S[^)\r\n]*\)|（[^）\r\n]*\S[^）\r\n]*）)/.test(String(value || ""));
+  }
+
+  function confirmParenthesizedReferenceLyrics(value) {
+    if (!hasParenthesizedReferenceText(value)) return true;
+    return window.confirm(
+      "Parenthesized lyric check\n\n"
+      + "I found text inside parentheses in the reference lyrics.\n\n"
+      + "Text inside parentheses will be treated as lyrics. If it is not actually sung or spoken, it can cause transcription and timing problems.\n\n"
+      + "Please click Cancel, remove any parenthesized lines that are NOT lyrics, and then try again.\n\n"
+      + "Click OK only if all text inside parentheses is actual lyrics.",
+    );
+  }
+
   function showTranscribeLyricsModal() {
     return new Promise((resolve) => {
       const backdrop = document.createElement("div");
@@ -18317,11 +18501,17 @@ function openBuilder(node) {
       };
       close.onclick = () => finish(null);
       cancel.onclick = () => finish(null);
-      run.onclick = () => finish({
-        referenceLyrics: lyrics.value || "",
-        language: language.value || "english",
-        replaceAll: mode.value === "replace_all",
-      });
+      run.onclick = () => {
+        if (!confirmParenthesizedReferenceLyrics(lyrics.value)) {
+          lyrics.focus();
+          return;
+        }
+        finish({
+          referenceLyrics: lyrics.value || "",
+          language: language.value || "english",
+          replaceAll: mode.value === "replace_all",
+        });
+      };
       backdrop.addEventListener("pointerdown", (event) => {
         if (event.target === backdrop) finish(null);
       });
@@ -18334,18 +18524,18 @@ function openBuilder(node) {
         <div><strong style="color:#cffafe;">Language</strong><br>Whisper/stable-ts language hint. Use <code>english</code> for English songs. Use <code>auto</code> if you do not know the language, but a specific language is usually more stable.</div>
         <div><strong style="color:#cffafe;">Segment mode</strong><br>
           <code>whisper_chunks</code>: uses the natural chunks detected by stable-ts. Good when you do not have lyrics.<br>
-          <code>reference_lines</code>: each non-empty pasted lyric line becomes one scene. This gives the user direct control over scene chunks.<br>
-          <code>exact_reference_lines</code>: each non-empty pasted line becomes exactly one vocal scene with the exact pasted text. Vocal and instrumental scenes are not split or merged by duration settings; use the timeline scissors afterward when you want a manual split.<br>
-          <code>reference_stanzas</code>: blank-line-separated lyric blocks become scenes. Good for fewer, longer scenes.<br>
+          <code>reference_lines</code>: each non-empty pasted lyric line becomes one scene. The lyric line overrides minimum/maximum scene duration, so a short line stays short and a long line is not split.<br>
+          <code>exact_reference_lines</code>: uses the normal lyric transcription/alignment and timing cleanup, but each non-empty pasted line stays one vocal scene with the exact pasted text and scene minimum/maximum duration limits are not applied.<br>
+          <code>reference_stanzas</code>: blank-line-separated lyric blocks become scenes. Each stanza stays intact even when it falls outside minimum/maximum scene duration.<br>
           <code>beat_scenes</code>: creates beat-timed scenes with the same Prompt Creator Whisper/SRT timing workflow, then attaches the transcribed lyrics afterward.
         </div>
         <div><strong style="color:#cffafe;">Include instrumental gaps</strong><br>When enabled, the node inserts no-vocal scenes for detected timing gaps between vocal chunks. This is useful for intros, breaks, and outros.</div>
         <div><strong style="color:#cffafe;">Instrumental text</strong><br>The text used for no-vocal scenes, usually <code>[instrumental]</code>. Gemma/LTX treats this as a no-singing section.</div>
         <div><strong style="color:#cffafe;">Min gap seconds</strong><br>Only gaps at least this long become instrumental scenes. Example: <code>2.0</code> means tiny pauses are ignored, but a 10 second intro becomes a real scene.</div>
-        <div><strong style="color:#cffafe;">Min scene seconds</strong><br>The shortest scene the timestamp builder should create. This keeps very tiny lyric fragments from becoming unusable micro-scenes.</div>
-        <div><strong style="color:#cffafe;">Max scene seconds</strong><br>The longest scene the timestamp builder should create when lyric timing is approximate. If a lyric line gets stretched across a long intro, the extra time becomes an instrumental scene instead.</div>
+        <div><strong style="color:#cffafe;">Min scene seconds</strong><br>Used for Whisper chunks, beat timing, instrumental scenes, and approximate unmatched timing. A pasted lyric line or stanza may be shorter because its boundary takes priority.</div>
+        <div><strong style="color:#cffafe;">Max scene seconds</strong><br>Used for Whisper chunks, beat timing, instrumental scenes, and approximate unmatched timing. A pasted lyric line or stanza is not split just to satisfy this value.</div>
         <div><strong style="color:#cffafe;">Vocal tail padding</strong><br>Adds a small amount of time after the final detected word in a vocal chunk so sung/held last words do not feel cut off. It is clamped before the next vocal word.</div>
-        <div><strong style="color:#cffafe;">Manual instrumental sections</strong><br>In reference lyrics, use marker lines like <code>[instrumental]</code>, <code>[instrumental intro]</code>, <code>[break]</code>, <code>[outro]</code>, or <code>[b-roll]</code>. Blank lines are just spacing/stanza separators.</div>
+        <div><strong style="color:#cffafe;">Manual instrumental sections</strong><br>Only <code>[instrumental]</code> or <code>[instrumental break]</code> on its own line forces a no-vocal section. <code>[intro]</code>, <code>[outro]</code>, and <code>[break]</code> are section headers only because those sections may contain lyrics. Blank lines are just spacing/stanza separators.</div>
       </div>
     `;
   }
@@ -18403,7 +18593,7 @@ function openBuilder(node) {
       warning.style.cssText = "font-size:12px;line-height:1.45;border:1px solid #92400e;border-radius:7px;background:#451a03;color:#fed7aa;padding:9px;";
       warning.textContent = "This replaces the current base timeline scenes with timestamped lyric scenes. Existing generated images/videos are not deleted, but they may no longer line up with the new timing.";
       const lyrics = document.createElement("textarea");
-      lyrics.placeholder = "Optional reference lyrics/dialogue. Put each desired scene chunk on its own line. Use [instrumental] / [break] / [outro] for no-vocal sections.";
+      lyrics.placeholder = "Optional reference lyrics/dialogue. Put each desired scene chunk on its own line. Use [instrumental] or [instrumental break] for no-vocal sections.";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:230px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
       const segmentMode = makeSelect(["whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas", "beat_scenes"], "reference_lines");
@@ -18414,7 +18604,9 @@ function openBuilder(node) {
       segmentMode.options[4].textContent = "Beat mode";
       const exactModeNote = document.createElement("div");
       exactModeNote.style.cssText = "display:none;border:1px solid #0e7490;border-radius:7px;background:#083344;color:#cffafe;padding:10px;font-size:12px;line-height:1.5;";
-      exactModeNote.innerHTML = "<strong>Exact Reference Lyric Lines:</strong> every non-empty pasted lyric line becomes exactly one vocal scene using that exact text. Vocal lines are never split, merged, stretched, or constrained by scene minimum/maximum duration. Detected instrumental gaps can still be included, but each gap stays whole so you can split it manually later with the scissors button above the timeline. Min gap only decides whether a silence is large enough to become an instrumental scene; it never changes lyric timing.";
+      exactModeNote.innerHTML = "<strong>Exact Reference Lyric Lines:</strong> uses the normal lyric transcription/alignment, instrumental-gap detection, vocal-tail padding, and gap/overlap cleanup. Every non-empty pasted lyric line remains one vocal scene using that exact text. The only disabled rules are minimum and maximum scene duration, so a line is not stretched, split, or merged just to satisfy those two limits.";
+      const referenceDurationNote = document.createElement("div");
+      referenceDurationNote.style.cssText = "display:none;border:1px solid #0e7490;border-radius:7px;background:#083344;color:#cffafe;padding:10px;font-size:12px;line-height:1.5;";
       const includeGaps = makeCheckbox("Include instrumental gaps", true);
       const instrumentalText = makeInput("[instrumental]");
       const minGap = makeInput("2.0");
@@ -18475,8 +18667,14 @@ function openBuilder(node) {
         });
         minSceneField.style.display = isBeatMode || isExactMode ? "none" : "";
         maxSceneField.style.display = isBeatMode || isExactMode ? "none" : "";
-        vocalTailField.style.display = isBeatMode || isExactMode ? "none" : "";
+        vocalTailField.style.display = isBeatMode ? "none" : "";
         exactModeNote.style.display = isExactMode ? "block" : "none";
+        const isReferenceLineMode = segmentMode.value === "reference_lines";
+        const isReferenceStanzaMode = segmentMode.value === "reference_stanzas";
+        referenceDurationNote.style.display = isReferenceLineMode || isReferenceStanzaMode ? "block" : "none";
+        referenceDurationNote.innerHTML = isReferenceLineMode
+          ? "<strong>Lyric-line duration:</strong> each pasted line stays one scene. If “Playing in the rain” is only 1.5 seconds long, it remains a 1.5-second scene. Minimum and maximum duration still guide instrumental or approximate timing, but they never split or merge pasted lyric lines."
+          : "<strong>Stanza duration:</strong> each pasted stanza stays one scene even when it is shorter than the minimum or longer than the maximum. Duration limits still guide instrumental or approximate timing.";
         gapRow.style.display = isBeatMode ? "none" : "flex";
         beatSrtFields.forEach((field) => {
           field.style.display = usingBeatSrt ? "" : "none";
@@ -18494,7 +18692,7 @@ function openBuilder(node) {
       const cancel = makeButton("Cancel");
       const run = makeButton("Create Timeline Scenes", "primary");
       actions.append(cancel, run);
-      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), exactModeNote, grid, beatGrid, gapRow, actions);
+      box.append(header, warning, makeField("Reference lyrics/dialogue", lyrics), exactModeNote, referenceDurationNote, grid, beatGrid, gapRow, actions);
       backdrop.append(box);
       document.body.append(backdrop);
       const finish = (value) => {
@@ -18504,6 +18702,10 @@ function openBuilder(node) {
       close.onclick = () => finish(null);
       cancel.onclick = () => finish(null);
       run.onclick = async () => {
+        if (!confirmParenthesizedReferenceLyrics(lyrics.value)) {
+          lyrics.focus();
+          return;
+        }
         finish({
           referenceLyrics: lyrics.value || "",
           language: language.value || "english",
@@ -18829,10 +19031,13 @@ function openBuilder(node) {
 
   async function createScenesFromTimestampedLyrics(presetOptions = null) {
     const options = presetOptions || await showTimestampedTranscribeModal();
-    if (!options) return;
+    if (!options) return false;
+    if (presetOptions && !confirmParenthesizedReferenceLyrics(options.referenceLyrics || "")) {
+      return false;
+    }
     if (!String(audioInput.value || state.audioPath || "").trim()) {
       toast("Load an audio file first.", true);
-      return;
+      return false;
     }
     let progress = null;
     try {
@@ -18903,8 +19108,9 @@ function openBuilder(node) {
           45 * 60 * 1000,
         );
         const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
+        const timestampedSegments = createSegmentsFromTimestampedLyricsPayload(payload, options);
         created = normalizeTimestampedSceneDurations(
-          createSegmentsFromTimestampedLyricsPayload(payload, options),
+          timestampedSegments,
           options,
           payload,
         );
@@ -18917,6 +19123,12 @@ function openBuilder(node) {
       // scene, while Whisper mode does not define scenes from reference lines.
       if (["reference_lines", "exact_reference_lines"].includes(options.segmentMode)) {
         assertNoBundledReferenceLyrics(created.map((segment) => segment.lyric_text || ""), options.referenceLyrics || "");
+      }
+      if (options.wizardStripLyricParentheses) {
+        for (const segment of created) {
+          segment.lyric_text = sanitizeWizardReferenceLyrics(segment.lyric_text);
+          segment.lyric_no_lip_sync = isInstrumentalLyricText(segment.lyric_text);
+        }
       }
       applyLyricSectionsFromReferenceText(created, options.referenceLyrics || "");
       pushHistory();
@@ -18937,9 +19149,11 @@ function openBuilder(node) {
       progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lines.\nMode: ${modeLabel}\n${lyricPath ? `Saved line notes: ${lyricPath}` : "Line notes saved in session only."}`, 100);
       progress.close(1800);
       toast(`Created ${created.length} timestamped lyric scene${created.length === 1 ? "" : "s"}.`);
+      return true;
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
+      return false;
     }
   }
 
