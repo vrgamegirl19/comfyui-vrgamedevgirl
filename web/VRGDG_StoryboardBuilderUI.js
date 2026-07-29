@@ -1719,6 +1719,15 @@ function storyboardVideoPromptTypeLabel(type) {
   return key || "image to video";
 }
 
+function storyboardStartingShotInstruction(shotType) {
+  const shot = String(shotType || "").trim();
+  if (!shot) return "";
+  if (shot.toLowerCase() === "eyes shot") {
+    return "Begin the final video prompt with an explicit sentence stating that the video begins with an extreme close-up of the subject's eyes. The selected camera motion must begin from that opening framing.";
+  }
+  return `Begin the final video prompt with an explicit sentence stating that the video begins with a ${shot}. The selected camera motion must begin from that opening framing.`;
+}
+
 function storyboardScenesForGpt(state) {
   const imageMode = state.mode !== "image_to_video_prep";
   const idLoraMode = String(state.videoPromptType || state.video_prompt_type || "").trim() === "id_lora"
@@ -1733,6 +1742,7 @@ function storyboardScenesForGpt(state) {
     const sceneNumberIndex = Math.max(0, Number(normalized.scene_number || index + 1) - 1);
     const cameraFallback = storyboardCameraFlowEntry(state.cameraFlow || "balanced", sceneNumberIndex, previousCameraMotion);
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
+    const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(shotType);
     const cameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
@@ -1869,6 +1879,13 @@ function storyboardScenesForGpt(state) {
         description: String(normalized.setting || "").trim(),
       },
       shot_type: shotType,
+      starting_shot: requiresStartingShot
+        ? {
+            required: true,
+            selected_starting_shot: shotType,
+            instruction: storyboardStartingShotInstruction(shotType),
+          }
+        : null,
       camera_motion: imageMode ? "" : cameraMotion,
       still_camera_style: imageMode ? cameraMotion : "",
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
@@ -1934,7 +1951,7 @@ export function storyboardGptPayload(state, scenesOverride = null) {
         },
       }
       : {
-        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. Build the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 9-10, do not write 'then holds', 'holds on', or static hold endings; use multiple coordinated readable camera moves. At character speed 9-10, do not leave the subject merely poised or standing; include clear full-body action or set interaction.",
+        task_instruction: "Create detailed image-to-video prompts for Video Prep using a strict source hierarchy. The mapped location_ref is the required physical set for each scene: do not replace it with a location from story_layer, scene_story_beat, song_story_brief, user_story_arc, lyrics, or previous/next scene context. If story context mentions another place, translate only its emotion, tension, symbolism, or action into the mapped location_ref environment. The first_frame_visual_inventory field is only a first-frame inventory: visible subject identity, wardrobe, hair, makeup, props, setting, lighting, color palette, framing, and composition. Do not use first_frame_visual_inventory or any image prompt wording for body action, camera motion, performance energy, facial performance, lyric action, story action, or animation pacing. When starting_shot.required is true, the first sentence must explicitly state that the video begins with starting_shot.selected_starting_shot; do not merely imply that framing or use it later. For an eyes shot, explicitly say the video begins with an extreme close-up of the subject's eyes. The selected camera motion begins from that opening framing. Then build the rest of the video prompt in this order: 1) subject and vocal/performance sentence from vocal_status, performance_direction, and facial_performance_direction; 2) character movement sentence from character_motion, character_motion_guidance, character_motion_speed, and scene_story_beat; 3) camera movement sentence from camera_motion, camera_guidance, and camera_motion_speed_guidance; 4) environment/lighting sentence from first_frame_visual_inventory and location_ref; 5) final mood/style sentence from story_layer and image aesthetic only where visual. Each sentence has one job and must add new information. Do not repeat the same mood, trait, motion, authority/defiance language, setting adjective, or descriptive phrase across multiple sentences. If an idea appears in the face sentence, do not repeat it in the body, camera, environment, or atmosphere sentence; use a different concrete visual detail instead. Do not duplicate adjacent words such as 'tall, tall'. The motion priority is character_motion_guidance + camera_motion_speed_guidance + camera_guidance + performance_direction + vocal_status + scene_story_beat above story_layer, and all of those above first_frame_visual_inventory. At camera speed 9-10, do not write 'then holds', 'holds on', or static hold endings; use multiple coordinated readable camera moves. At character speed 9-10, do not leave the subject merely poised or standing; include clear full-body action or set interaction.",
       }),
     story_layer: normalizeStoryLayer(state.storyLayer),
     scenes: storyboardScenesForGpt(payloadState),

@@ -33577,11 +33577,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
       const storyLayer = selectedScene.story_layer || {};
       const vocalStatus = selectedScene.vocal_status || {};
+      const startingShot = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
+        ? selectedScene.starting_shot
+        : null;
       const add = (parts, title, value) => {
         const text = String(value || "").trim();
         if (text) parts.push(`${title}:\n${text}`);
       };
       const parts = [];
+      if (startingShot?.required) {
+        add(
+          parts,
+          "REQUIRED Storyboard opening shot",
+          startingShot.instruction || `The video must explicitly begin with a ${startingShot.selected_starting_shot || scene.shot_type}. Begin all camera motion from that framing.`,
+        );
+      }
       add(parts, "Storyboard scene story beat", storyLayer.scene_story_beat || scene.story_beat);
       add(parts, "Storyboard motion/video summary", selectedScene.motion_summary || scene.motion_summary || scene.video_notes);
       add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
@@ -33592,6 +33602,42 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       add(parts, "Storyboard lyric section", vocalStatus.lyric_section || scene.lyric_section);
       add(parts, "Storyboard first-frame visual inventory", selectedScene.first_frame_visual_inventory?.text || "");
       return parts.join("\n\n");
+    };
+    const ensureStoryboardRequiredStartingShot = (prompt, segment, scene = {}, storyboardPayload = {}) => {
+      const text = String(prompt || "").trim();
+      const selectedScene = Array.isArray(storyboardPayload?.scenes) && storyboardPayload.scenes.length ? storyboardPayload.scenes[0] : {};
+      const requirement = selectedScene.starting_shot && typeof selectedScene.starting_shot === "object"
+        ? selectedScene.starting_shot
+        : null;
+      const shot = String(requirement?.selected_starting_shot || "").trim();
+      if (!text || !requirement?.required || !shot) return text;
+      const visibleSubject = Array.isArray(selectedScene.visible_subjects)
+        ? String(selectedScene.visible_subjects.find((value) => String(value || "").trim()) || "").trim()
+        : "";
+      const subject = visibleSubject || String(scene.subjects || scene.subject || "").split(/[,;\n]+/)[0].trim() || "the subject";
+      const shotKey = shot.toLowerCase().replace(/[\s_-]+/g, " ").trim();
+      let sentence = "";
+      if (shotKey === "eyes shot") sentence = `The video begins with an extreme close-up of ${subject}'s eyes.`;
+      else if (shotKey === "mouth shot") sentence = `The video begins with an extreme close-up of ${subject}'s mouth.`;
+      else if (shotKey === "hands shot") sentence = `The video begins with a close-up of ${subject}'s hands.`;
+      else if (shotKey === "feet shot") sentence = `The video begins with a close-up of ${subject}'s feet.`;
+      else sentence = `The video begins with ${/^[aeiou]/i.test(shot) ? "an" : "a"} ${shot} of ${subject === "the subject" ? "the scene" : subject}.`;
+      const opening = text.slice(0, 500);
+      const hasOpeningMarker = /\b(?:the\s+video\s+)?(?:begins?|starts?|opens?)\s+with\b|\b(?:opening|first)\s+(?:shot|frame)\b/i.test(opening);
+      const shotWords = shotKey.split(/[^a-z0-9]+/).filter((word) => word && word !== "shot");
+      const hasRequiredFraming = shotKey === "eyes shot"
+        ? /\beyes?\b/i.test(opening)
+        : shotWords.length > 0 && shotWords.every((word) => new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(opening));
+      if (hasOpeningMarker && hasRequiredFraming) return text;
+      if (currentVideoMode() === "id_lora" && /\[VISUAL\]\s*:?/i.test(text)) {
+        return text.replace(/(\[VISUAL\]\s*:?\s*)/i, `$1${sentence} `);
+      }
+      const ensured = `${sentence} ${text}`.trim();
+      return applyMappedTriggerPhrases(
+        applyTriggerPhrase(ensured, videoTriggerPhraseForSegment(segment)),
+        segment,
+        { ensureTransitionLast: true },
+      );
     };
     const storyboardSceneCloneForI2V = (segment, scene = {}) => {
       const clone = {
@@ -33657,13 +33703,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
       options.progress?.set(`${options.progressLabel || scene.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)}: creating prompt through Video Builder I2V payload...\n${forceTextOnly ? "No scene image found, using text-only storyboard fallback.\n" : ""}${gemmaRunnerLine({ vision: request.useImageReference })}`, Math.min(92, Number(options.progressPercent || 35) + 18));
       const data = await postJson(request.endpoint, request.payload, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
-      const prompt = await finalizeVideoPromptForSegment(
+      const finalizedPrompt = await finalizeVideoPromptForSegment(
         workingSegment,
         data.prompt,
         options.progress || null,
         Math.min(98, Number(options.progressPercent || 35) + 35),
         `${options.progressLabel || "Storyboard Gemma"}: enhancement pass`,
         { unloadAfter: request.useImageReference ? true : options.unloadAfter !== false },
+      );
+      const prompt = ensureStoryboardRequiredStartingShot(
+        finalizedPrompt,
+        workingSegment,
+        scene,
+        options.storyboardPayload || {},
       );
       if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: Gemma returned an empty I2V prompt.`);
       return {
