@@ -30,6 +30,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_StartImageStoryboard",
     ".VRGDG_MusicVideoPromptCreatorNodes",
     ".VRGDG_ImageCompareNode",
+    ".VRGDG_VideoCompareNode",
     ".VRGDG_ImagePasteBack",
     ".VRGDG_StandaloneFaceFixNodes",
     ".VRGDG_VideoEnhanceNodes",
