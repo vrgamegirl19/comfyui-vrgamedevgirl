@@ -1403,6 +1403,27 @@ function makeEditorImageUrl(path) {
   return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
 }
 
+const EDITOR_THUMBNAIL_SESSION_VERSION = Date.now();
+let editorThumbnailRefreshCounter = 0;
+const editorThumbnailVersionByPath = new Map();
+
+function editorThumbnailPathKey(path) {
+  return String(path || "").trim().replace(/\//g, "\\").toLowerCase();
+}
+
+function refreshEditorThumbnailUrl(path) {
+  const key = editorThumbnailPathKey(path);
+  if (!key) return;
+  editorThumbnailRefreshCounter += 1;
+  editorThumbnailVersionByPath.set(key, `${Date.now()}_${editorThumbnailRefreshCounter}`);
+}
+
+function makeEditorThumbnailUrl(path) {
+  const key = editorThumbnailPathKey(path);
+  const version = editorThumbnailVersionByPath.get(key) || EDITOR_THUMBNAIL_SESSION_VERSION;
+  return `/vrgdg/video_editor/image?path=${encodeURIComponent(path)}&thumbv=${encodeURIComponent(version)}`;
+}
+
 function makeEditorVideoUrl(path) {
   return `/vrgdg/video_editor/video?path=${encodeURIComponent(path)}&rand=${Date.now()}`;
 }
@@ -2172,7 +2193,7 @@ function openBuilder(node) {
   stopWorkflowButton.style.borderColor = "#7f1d1d";
   stopWorkflowButton.style.color = "#fee2e2";
   const menuDropdown = document.createElement("div");
-  menuDropdown.style.cssText = "display:none;position:absolute;left:12px;top:52px;z-index:20;min-width:260px;border:1px solid #3f3f46;border-radius:8px;background:#18181b;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:8px;gap:6px;flex-direction:column;";
+  menuDropdown.style.cssText = "display:none;position:absolute;left:12px;top:52px;z-index:20;min-width:260px;max-height:min(760px,calc(100vh - 88px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;box-sizing:border-box;border:1px solid #3f3f46;border-radius:8px;background:#18181b;box-shadow:0 18px 60px rgba(0,0,0,.55);padding:8px;gap:6px;flex-direction:column;";
   const styleMenuItem = (button) => {
     button.style.width = "100%";
     button.style.textAlign = "left";
@@ -5118,6 +5139,7 @@ function openBuilder(node) {
   const state = {
     duration: 0,
     audioDuration: 0,
+    audioPath: String(audioInput.value || ""),
     peaks: [],
     beats: [],
     detectedTempoBpm: 0,
@@ -7344,6 +7366,7 @@ function openBuilder(node) {
     const customAudioPath = String(segment.custom_audio_path || "").trim();
     if (customAudioPath) return customAudioPath;
     if (usingRenderedSceneAudioMode()) return String(selectedSegmentVideoPath(segment) || "").trim();
+    if (usingSceneAudioMode()) return currentProjectAudioPath();
     return "";
   }
 
@@ -7354,7 +7377,9 @@ function openBuilder(node) {
 
   function timelineAudioSourceStartForSegment(segment) {
     if (!segment) return 0;
-    return String(segment.custom_audio_path || "").trim() ? audioSourceStart(segment) : 0;
+    return String(segment.custom_audio_path || "").trim()
+      ? audioSourceStart(segment)
+      : Math.max(0, Number(segment.start || 0));
   }
 
   function timelineAudioDurationForSegment(segment) {
@@ -7482,7 +7507,10 @@ function openBuilder(node) {
   function activateSegmentVideoPath(segment, videoPath, thumbnailPath = "") {
     if (!segment || !String(videoPath || "").trim()) return;
     segment.video_path = String(videoPath || "").trim();
-    if (String(thumbnailPath || "").trim()) segment.video_thumbnail_path = String(thumbnailPath || "").trim();
+    if (String(thumbnailPath || "").trim()) {
+      segment.video_thumbnail_path = String(thumbnailPath || "").trim();
+      refreshEditorThumbnailUrl(segment.video_thumbnail_path);
+    }
     normalizeSegmentVideoHistory(segment);
     const selectedIndex = segment.video_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(segment.video_path));
     if (selectedIndex >= 0) segment.video_history_index = selectedIndex;
@@ -7509,7 +7537,7 @@ function openBuilder(node) {
   }
 
   function playbackDuration() {
-    if (!usingSceneAudioMode() && !usingRenderedSceneAudioMode() && currentProjectAudioPath()) {
+    if (currentProjectAudioPath()) {
       const audioEnd = loadedGlobalAudioDuration();
       if (audioEnd > 0) return audioEnd;
     }
@@ -7695,12 +7723,30 @@ function openBuilder(node) {
   }
 
   function currentGlobalTime() {
-    if (!state.sceneSelectionUsesGlobalAudio && (usingSceneAudioMode() || usingRenderedSceneAudioMode() || (sceneAudio.src && !sceneAudio.paused))) return Number(state.sceneAudioGlobalTime || 0);
+    if (usingSceneAudioPlaybackMode() && (!state.sceneSelectionUsesGlobalAudio || (sceneAudio.src && !sceneAudio.paused))) {
+      return Number(state.sceneAudioGlobalTime || 0);
+    }
     return Number(audio.currentTime || 0);
   }
 
   function currentProjectAudioPath() {
     return String(audioInput.value || state.audioPath || "").trim();
+  }
+
+  function usingSceneAudioPlaybackMode() {
+    return !currentProjectAudioPath() && (usingSceneAudioMode() || usingRenderedSceneAudioMode());
+  }
+
+  function activateGlobalTimelineAudioPlayback(startTime = 0) {
+    const start = Math.max(0, Number(startTime || 0));
+    sceneAudio.pause();
+    sceneAudio.onloadedmetadata = null;
+    sceneAudio.removeAttribute("src");
+    sceneAudio.load();
+    state.sceneAudioSegmentId = "";
+    state.sceneAudioGlobalTime = start;
+    state.sceneSelectionUsesGlobalAudio = true;
+    seekAudioWhenReady(start);
   }
 
   function audioSourceDurationForScene(segment) {
@@ -8501,6 +8547,45 @@ function openBuilder(node) {
     else segment.use_i2v_vision_reference = Boolean(enabled);
   }
 
+  const HISTORY_BLOB_TOKEN_PREFIX = "__VRGDG_HISTORY_BLOB__:";
+  let nextHistoryBlobToken = 1;
+  const historyBlobByToken = new Map();
+  const historyTokenByBlob = new Map();
+
+  function historySnapshotReplacer(key, value) {
+    if (typeof value !== "string") return value;
+    const isMediaDataUrl = /^data:(?:image|video|audio)\//i.test(value);
+    const isLargeDataField = value.length >= 65536 && (key === "data" || /(?:_data|Data)$/.test(key));
+    if (!isMediaDataUrl && !isLargeDataField) return value;
+    let token = historyTokenByBlob.get(value);
+    if (!token) {
+      token = `${HISTORY_BLOB_TOKEN_PREFIX}${nextHistoryBlobToken++}`;
+      historyTokenByBlob.set(value, token);
+      historyBlobByToken.set(token, value);
+    }
+    return token;
+  }
+
+  function historySnapshotReviver(_key, value) {
+    if (typeof value !== "string" || !value.startsWith(HISTORY_BLOB_TOKEN_PREFIX)) return value;
+    return historyBlobByToken.get(value) ?? value;
+  }
+
+  function pruneHistoryBlobCache() {
+    const snapshots = [...state.undoStack, ...state.redoStack];
+    for (const [token, blob] of historyBlobByToken.entries()) {
+      if (snapshots.some((snapshot) => snapshot.includes(token))) continue;
+      historyBlobByToken.delete(token);
+      historyTokenByBlob.delete(blob);
+    }
+  }
+
+  function clearHistoryBlobCache() {
+    historyBlobByToken.clear();
+    historyTokenByBlob.clear();
+    nextHistoryBlobToken = 1;
+  }
+
   function historySnapshot() {
     return JSON.stringify({
       segments: state.segments,
@@ -8569,11 +8654,11 @@ function openBuilder(node) {
       autoImg2ImgStartStep: normalizeAutoImg2ImgStartStep(state.autoImg2ImgStartStep),
       autoImg2ImgCreativity: normalizeAutoImg2ImgCreativity(state.autoImg2ImgCreativity),
       promptToolsHintPrefs: state.promptToolsHintPrefs,
-    });
+    }, historySnapshotReplacer);
   }
 
   function restoreHistorySnapshot(snapshot) {
-    const data = JSON.parse(snapshot);
+    const data = JSON.parse(snapshot, historySnapshotReviver);
     state.isRestoringHistory = true;
     state.segments = data.segments || [];
     state.overlaySegments = data.overlaySegments || data.overlay_segments || [];
@@ -8677,6 +8762,7 @@ function openBuilder(node) {
     state.undoStack.push(snapshot);
     if (state.undoStack.length > 50) state.undoStack.shift();
     state.redoStack = [];
+    pruneHistoryBlobCache();
     updateHistoryButtons();
   }
 
@@ -8687,6 +8773,7 @@ function openBuilder(node) {
     state.redoStack.push(current);
     if (state.redoStack.length > 50) state.redoStack.shift();
     restoreHistorySnapshot(previous);
+    pruneHistoryBlobCache();
     syncPromptJsonFromSegments("undo");
     syncI2VMotionJsonFromSegments("undo");
   }
@@ -8698,6 +8785,7 @@ function openBuilder(node) {
     state.undoStack.push(current);
     if (state.undoStack.length > 50) state.undoStack.shift();
     restoreHistorySnapshot(next);
+    pruneHistoryBlobCache();
     syncPromptJsonFromSegments("redo");
     syncI2VMotionJsonFromSegments("redo");
   }
@@ -11219,13 +11307,13 @@ function openBuilder(node) {
   function mediaThumbnailHtml(segment, height = 56) {
     const imagePath = selectedSegmentImageThumbnailPath(segment);
     if (imagePath) {
-      return `<img src="${escapeHtml(makeEditorImageUrl(imagePath))}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
+      return `<img src="${escapeHtml(makeEditorThumbnailUrl(imagePath))}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
     }
     const videoPath = selectedSegmentVideoPath(segment);
     if (!videoPath) return "";
     const thumbnailPath = selectedSegmentVideoThumbnailPath(segment);
     if (thumbnailPath) {
-      return `<img src="${escapeHtml(makeEditorImageUrl(thumbnailPath))}" title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
+      return `<img src="${escapeHtml(makeEditorThumbnailUrl(thumbnailPath))}" title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;object-fit:cover;border-radius:4px;margin-top:6px;background:#050505;">`;
     }
     return `<div title="${escapeHtml(videoPath)}" style="width:100%;height:${height}px;box-sizing:border-box;border:1px solid #155e75;border-radius:4px;margin-top:6px;background:#020617;display:flex;align-items:center;justify-content:center;color:#67e8f9;font-size:11px;font-weight:900;letter-spacing:0;">VIDEO</div>`;
   }
@@ -11233,7 +11321,7 @@ function openBuilder(node) {
   function timelineImageSourceUrl(image = {}) {
     const source = image && typeof image === "object" ? image : {};
     if (source.data) return String(source.data);
-    if (source.path) return makeEditorImageUrl(source.path);
+    if (source.path) return makeEditorThumbnailUrl(source.path);
     return "";
   }
 
@@ -11291,7 +11379,7 @@ function openBuilder(node) {
     const visual = document.createElement("span");
     visual.title = videoPath;
     if (thumbnailPath) {
-      const thumbnailUrl = makeEditorImageUrl(thumbnailPath).replace(/"/g, "%22");
+      const thumbnailUrl = makeEditorThumbnailUrl(thumbnailPath).replace(/"/g, "%22");
       visual.style.cssText = `position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),url("${thumbnailUrl}") center / auto 100% repeat-x;pointer-events:none;z-index:0;`;
     } else {
       visual.textContent = "VIDEO";
@@ -11734,7 +11822,7 @@ function openBuilder(node) {
     const maxTime = playbackDuration();
     const time = Math.max(0, Math.min(maxTime, Number(value || 0)));
     state.sceneAudioGlobalTime = time;
-    if (!state.sceneSelectionUsesGlobalAudio && (usingSceneAudioMode() || usingRenderedSceneAudioMode())) {
+    if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       const segment = timelineAudioSegmentAtTime(time) || playbackSegmentAtTime(time) || state.segments[state.segments.length - 1] || null;
       if (segment) state.activeId = segment.id;
       const sourcePath = timelineAudioPathForSegment(segment);
@@ -14524,7 +14612,7 @@ function openBuilder(node) {
     const waveBottom = timelineCanvas.height - 10;
     const waveHeight = Math.max(24, waveBottom - waveTop);
     const mid = waveTop + waveHeight / 2;
-    const peaks = state.peaks.length && !usingSceneAudioMode() ? state.peaks : [0];
+    const peaks = currentProjectAudioPath() && state.peaks.length ? state.peaks : [0];
     const gain = WAVEFORM_MODES[state.waveformMode]?.gain || 1;
     for (let x = 0; x < width; x++) {
       const index = Math.floor((x / width) * peaks.length);
@@ -14907,7 +14995,7 @@ function openBuilder(node) {
         || (videoMode === "rtv" && rtvReferenceBehaviorForSegment(segment) === "first_last_frame")
       );
       const previewThumbPath = selectedSegmentImageThumbnailPath(segment);
-      const thumb = !showFirstLastFrameThumb && previewThumbPath ? makeEditorImageUrl(previewThumbPath) : "";
+      const thumb = !showFirstLastFrameThumb && previewThumbPath ? makeEditorThumbnailUrl(previewThumbPath) : "";
       const hasVideoPreview = Boolean(selectedSegmentVideoPath(segment));
       const inserted = !isOverlay && state.srtMode && segment.source !== "srt";
       const lockedByVideo = hasLockedVideo(segment);
@@ -28575,6 +28663,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio.dataset.path = data.audio_path || audioInput.value;
       audio.src = audioUrl(audio.dataset.path);
       audio.load();
+      activateGlobalTimelineAudioPlayback(0);
       globalScrub.max = String(Math.max(0, state.duration));
       setWidgetValue(node, "audio_path", data.audio_path || audioInput.value);
       if (!state.segments.length) {
@@ -28669,6 +28758,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audio.dataset.path = audioInput.value;
           audio.src = audioUrl(audioInput.value);
           audio.load();
+          activateGlobalTimelineAudioPlayback(0);
           setWidgetValue(node, "audio_path", audioInput.value);
           render();
           toast(`Loaded audio:\n${audioInput.value}`);
@@ -28722,6 +28812,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio.dataset.path = audioInput.value;
       audio.src = audioUrl(audioInput.value);
       audio.load();
+      activateGlobalTimelineAudioPlayback(0);
       globalScrub.max = String(Math.max(0, state.duration));
       setWidgetValue(node, "audio_path", audioInput.value);
       if (!state.segments.length) {
@@ -30089,6 +30180,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.videoModelMode = session.video_model_mode || state.videoModelMode || "i2v";
       state.i2vVideoSettings = cloneI2VVideoSettings(session.i2v_video_settings || state.i2vVideoSettings);
       state.promptToolsHintPrefs = session.prompt_tools_hint_prefs || state.promptToolsHintPrefs || {};
+      state.audioPath = String(session.audio_path || "");
       if (session.audio_path) {
         audioInput.value = session.audio_path;
         setWidgetValue(node, "audio_path", session.audio_path);
@@ -30111,9 +30203,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audio.dataset.path = audioInput.value;
           audio.src = audioUrl(audioInput.value);
           audio.load();
+          activateGlobalTimelineAudioPlayback(0);
         } catch (error) {
           toast(`Loaded session, but audio waveform failed:\n${String(error?.message || error)}`, true);
         }
+      } else {
+        audioInput.value = "";
+        setWidgetValue(node, "audio_path", "");
+        audio.dataset.path = "";
+        audio.removeAttribute("src");
+        audio.load();
       }
       try {
         await recoverSceneVideosFromProject({ projectFolder: state.projectFolder, renderAfter: false });
@@ -30239,6 +30338,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         segment.image_history_index = segment.image_history.length - 1;
       }
       if (data.saved_path) {
+        refreshEditorThumbnailUrl(data.saved_path);
         segment.image_assignment_cleared = false;
         segment.preview_mode = "image";
         promoteChainedFLFSceneImageToEndFrame(segment);
@@ -30253,6 +30353,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   function addSceneImageHistoryPath(segment, imagePath) {
     ensureSegmentRuntimeFields(segment);
     if (!segment || !imagePath) return;
+    refreshEditorThumbnailUrl(imagePath);
     const existingIndex = segment.image_history.findIndex((item) => mediaPathKey(item) === mediaPathKey(imagePath));
     if (existingIndex >= 0) {
       segment.image_history_index = existingIndex;
@@ -33459,11 +33560,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         return Array.from(byKey.values());
       };
-      if (incomingRefs.subjects.length && !(refs.subjects || []).length) {
+      if (incomingRefs.subjects.length) {
         refs.subjects = mergeReferenceList(refs.subjects, incomingRefs.subjects);
         refs.subject_count = refs.subjects.length;
       }
-      if (incomingRefs.locations.length && !(refs.locations || []).length && !refs.locations_cleared) {
+      if (incomingRefs.locations.length && !refs.locations_cleared) {
         refs.locations = mergeReferenceList(refs.locations, incomingRefs.locations);
       }
       if (!refs.subject_scene_map || typeof refs.subject_scene_map !== "object") refs.subject_scene_map = {};
@@ -35033,11 +35134,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
     if (!idLoraMode && !sceneAudioMode && !String(audioInput.value || "").trim()) missing.push("Audio file path is missing.");
-    if (!idLoraMode && sceneAudioMode) {
+    if (!idLoraMode && sceneAudioMode && !currentProjectAudioPath()) {
       const audioCheckScenes = sceneScope === "all" ? state.segments.map((segment, index) => ({ segment, index })) : batchTargetItems(sceneScope, { baseOnly: true });
       audioCheckScenes.forEach(({ segment, index }) => {
         if (!String(segment.custom_audio_path || "").trim()) {
-          missing.push(`${sceneDisplayName(segment, index)}: scene audio is missing.`);
+          missing.push(`${sceneDisplayName(segment, index)}: scene audio is missing and no global audio is available as a fallback.`);
         }
       });
     }
@@ -35168,22 +35269,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const data = await postJson("/vrgdg/music_builder/prepare_scene_audio_mix", {
       project_folder: projectInput.value,
       segments: state.segments,
+      global_audio_path: currentProjectAudioPath(),
       allow_missing_scene_audio: !!options.allowMissingSceneAudio,
     }, 180000);
-    if (data.audio_path) {
-      audioInput.value = data.audio_path;
-      setWidgetValue(node, "audio_path", data.audio_path);
-      audio.dataset.path = data.audio_path;
-      audio.src = audioUrl(data.audio_path);
-      audio.load();
-      state.duration = Math.max(state.duration || 0, Number(data.duration || 0));
-      state.audioDuration = Number(data.duration || 0);
-      enforceAudioTimelineEnd();
-      state.peaks = Array.isArray(data.peaks) ? data.peaks : state.peaks;
-      state.beats = Array.isArray(data.beats) ? data.beats : state.beats;
-      state.beatCalibration = null;
-      showBeatMarkersIfAvailable();
-    }
     if (data.srt_path) {
       state.srtPath = data.srt_path;
       srtInput.value = data.srt_path;
@@ -35536,8 +35624,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         source_start: Math.max(0, Number(segment.overlay_source_start || 0)),
         label: segment.label || `Insert ${index + 1}`,
       }));
+    const globalAudioPath = currentProjectAudioPath();
     const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
-    const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
+    const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
       path: String(segment.custom_audio_path || "").trim(),
@@ -35548,7 +35637,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     paths.forEach((path, index) => {
       if (!path) missing.push(`${sceneDisplayName(baseSegments[index], index)}: rendered scene video is missing.`);
       else if (!isLikelyVideoPath(path)) missing.push(`${sceneDisplayName(baseSegments[index], index)}: selected scene media is not a video:\n${path}`);
-      if (sceneAudioMode && !audioPaths[index]) missing.push(`${sceneDisplayName(baseSegments[index], index)}: scene audio is missing.`);
+      if (sceneAudioMode && !audioPaths[index]) {
+        missing.push(`${sceneDisplayName(baseSegments[index], index)}: scene audio is missing and no global audio is available as a fallback.`);
+      }
     });
     overlayItems.forEach((item) => {
       if (!isLikelyVideoPath(item.path)) missing.push(`${item.label || "Insert"}: selected insert media is not a video:\n${item.path}`);
@@ -35570,7 +35661,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     progress?.set(stitchAudioMessage, 94);
     const data = await postJson("/vrgdg/workflow_runner/stitch_scene_videos", {
       scene_paths: paths,
-      audio_path: embeddedSceneAudioMode ? "" : audioInput.value,
+      audio_path: embeddedSceneAudioMode ? "" : globalAudioPath,
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
       use_embedded_scene_audio: embeddedSceneAudioMode,
@@ -38503,6 +38594,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     state.duration = 0;
     state.audioDuration = 0;
+    state.audioPath = "";
     state.peaks = [];
     state.beats = [];
     state.beatCalibration = null;
@@ -38576,6 +38668,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     useVrgdgTextContext.input.checked = true;
     state.undoStack = [];
     state.redoStack = [];
+    clearHistoryBlobCache();
     syncZImageSettingsPanel();
     syncFluxKleinPanel();
     syncErnieImagePanel();
@@ -42895,8 +42988,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview]) {
-    control.addEventListener("input", updateActiveFromInputs);
-    control.addEventListener("change", updateActiveFromInputs);
+    control.addEventListener("focus", pushHistory);
+    control.addEventListener("input", () => updateActiveFromInputs({ skipHistory: true }));
+    control.addEventListener("change", () => updateActiveFromInputs({ skipHistory: true }));
   }
   freezeTimingControl.input.addEventListener("change", () => {
     pushHistory();
@@ -44106,7 +44200,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
       return;
     }
-    if (!state.sceneSelectionUsesGlobalAudio && (usingSceneAudioMode() || usingRenderedSceneAudioMode())) {
+    if (!state.sceneSelectionUsesGlobalAudio && usingSceneAudioPlaybackMode()) {
       audio.pause();
       playSceneAudioFrom(currentGlobalTime());
       updatePlayPauseButton();

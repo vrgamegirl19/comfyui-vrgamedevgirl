@@ -3,6 +3,41 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-07-30-video-compare-builder-reliability",
+      "version": "2026.07.30",
+      "date": "2026-07-30",
+      "title": "Video comparison, global audio, and Builder performance",
+      "commit": "91d025e0439e566ed3989604f3619471bf36f7e5",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added VRGDG Video Compare Slider with synchronized before-and-after playback, a draggable comparison divider, timeline scrubbing, looping, labels, and optional audio.",
+            "Added a visual Storyboard subject picker for assigning one or more existing Reference Builder subjects to a scene or uploading a new subject."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Increased Fast Unsharp Sharpen strength from a maximum of 2.0 to 10.0.",
+            "Improved Video Builder undo memory by deduplicating embedded media and recording inspector text edits once per edit session.",
+            "Added stable, versioned thumbnail URLs and immutable caching so scene thumbnails are not downloaded again on every render.",
+            "Storyboard imports now merge incoming subjects and locations with existing references instead of ignoring new references when mappings already exist."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Global audio now remains the preferred final soundtrack and fills scenes without custom audio during scene-audio preparation and stitching.",
+            "Loading or restoring global audio now correctly restores timeline playback and the visible waveform instead of remaining on silent scene audio.",
+            "The Video Builder menu now stays inside the viewport and scrolls so every menu action remains accessible."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-07-28-builder-lyric-timing",
       "version": "2026.07.28",
       "date": "2026-07-28",

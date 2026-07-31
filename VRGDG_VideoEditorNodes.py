@@ -775,7 +775,10 @@ def _ensure_video_editor_routes():
             return web.json_response({"ok": False, "error": "Image file was not found."}, status=404)
         if os.path.splitext(image_path)[1].lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
             return web.json_response({"ok": False, "error": "Unsupported image file type."}, status=400)
-        return web.FileResponse(image_path)
+        response = web.FileResponse(image_path)
+        if str(request.query.get("thumbv", "") or "").strip():
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     _VRGDG_VIDEO_EDITOR_ROUTES_REGISTERED = True
 

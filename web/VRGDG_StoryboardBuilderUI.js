@@ -3585,6 +3585,120 @@ function openStoryboardBuilder(payload = {}) {
     return ref;
   };
 
+  const openStoryboardSubjectPicker = (scene) => {
+    if (!scene) return;
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100050;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px;";
+    const panel = document.createElement("div");
+    panel.style.cssText = "width:min(980px,calc(100vw - 44px));max-height:calc(100vh - 48px);overflow:auto;border:1px solid #155e75;border-radius:10px;background:#0b1220;color:#f8fafc;padding:14px;display:flex;flex-direction:column;gap:12px;box-shadow:0 24px 80px rgba(0,0,0,.62);";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
+    const heading = document.createElement("div");
+    heading.textContent = `${scene.scene_number || 1}. ${scene.label || `Scene ${scene.scene_number || 1}`} — Characters Present`;
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Cancel");
+    header.append(heading, close);
+
+    const choices = document.createElement("div");
+    choices.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;";
+    const selected = new Set(
+      (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
+        .map((subject) => String(subject?.id || ""))
+        .filter(Boolean),
+    );
+    const availableSubjects = Array.isArray(state.referenceBuilder.subjects)
+      ? state.referenceBuilder.subjects
+      : [];
+
+    const renderChoices = () => {
+      choices.replaceChildren();
+      const clearSelection = document.createElement("button");
+      clearSelection.type = "button";
+      clearSelection.textContent = "Clear selection";
+      clearSelection.style.cssText = `min-height:132px;border:2px dashed ${selected.size ? "#475569" : "#22d3ee"};border-radius:8px;background:${selected.size ? "#111827" : "#083344"};color:#94a3b8;cursor:pointer;font-weight:900;`;
+      clearSelection.onclick = () => {
+        selected.clear();
+        renderChoices();
+      };
+      choices.append(clearSelection);
+
+      availableSubjects.forEach((subject) => {
+        const subjectId = String(subject.id || "");
+        if (!subjectId) return;
+        const active = selected.has(subjectId);
+        const card = document.createElement("button");
+        card.type = "button";
+        card.style.cssText = `min-height:132px;border:2px solid ${active ? "#22d3ee" : "#334155"};border-radius:8px;background:${active ? "#083344" : "#111827"};color:#f8fafc;padding:8px;display:flex;flex-direction:column;gap:7px;align-items:center;cursor:pointer;`;
+        const preview = document.createElement("div");
+        preview.style.cssText = "width:96px;height:72px;border:1px solid #155e75;border-radius:6px;background:#061620;overflow:hidden;display:flex;align-items:center;justify-content:center;flex:0 0 auto;";
+        const imageSource = storyboardReferenceImageSrc(subject.image || {});
+        if (imageSource) {
+          const image = document.createElement("img");
+          image.src = imageSource;
+          image.alt = subject.name || "Subject reference";
+          image.draggable = false;
+          image.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+          preview.append(image);
+        } else {
+          const empty = document.createElement("span");
+          empty.textContent = "No image";
+          empty.style.cssText = "font-size:11px;font-weight:900;color:#67e8f9;";
+          preview.append(empty);
+        }
+        const name = document.createElement("div");
+        name.textContent = subject.name || "Subject";
+        name.style.cssText = "font-size:12px;font-weight:900;text-align:center;line-height:1.25;";
+        card.append(preview, name);
+        card.onclick = () => {
+          if (selected.has(subjectId)) selected.delete(subjectId);
+          else selected.add(subjectId);
+          renderChoices();
+        };
+        choices.append(card);
+      });
+
+      if (!availableSubjects.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No subjects are in Reference Builder yet. Use Upload New Subject below to add the first one.";
+        empty.style.cssText = "grid-column:1/-1;border:1px dashed #334155;border-radius:8px;padding:18px;color:#94a3b8;text-align:center;font-size:12px;";
+        choices.append(empty);
+      }
+    };
+
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;";
+    const upload = makeButton("Upload New Subject");
+    const cancel = makeButton("Cancel");
+    const apply = makeButton("Apply Selection", "primary");
+    const dismiss = () => backdrop.remove();
+    close.onclick = dismiss;
+    cancel.onclick = dismiss;
+    upload.onclick = async () => {
+      dismiss();
+      await addStoryboardReferenceFromFile("subject", scene);
+    };
+    apply.onclick = () => {
+      const selectedSubjects = availableSubjects.filter((subject) => selected.has(String(subject.id || "")));
+      scene.subject_refs = selectedSubjects;
+      scene.subjects = storyboardSubjectNamesFromRefs(selectedSubjects);
+      if (selectedSubjects.length) scene.no_character_present = false;
+      syncReferenceMappingsToVideoCreator();
+      dismiss();
+      renderTable();
+      createToast(selectedSubjects.length
+        ? `${selectedSubjects.length} subject${selectedSubjects.length === 1 ? "" : "s"} mapped to ${scene.label || `Scene ${scene.scene_number}`}.`
+        : `Subject mapping cleared for ${scene.label || `Scene ${scene.scene_number}`}.`);
+    };
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) dismiss();
+    });
+    footer.append(upload, cancel, apply);
+    panel.append(header, choices, footer);
+    backdrop.append(panel);
+    document.body.append(backdrop);
+    renderChoices();
+  };
+
   const openSceneEditor = (scene) => {
     const isVideoPrepMode = state.mode === "image_to_video_prep";
     const isImagePrepMode = !isVideoPrepMode;
@@ -4224,7 +4338,7 @@ function openStoryboardBuilder(payload = {}) {
         </div>`;
       const status = `<span style="display:inline-flex;align-items:center;gap:6px;color:${meta.color};font-weight:900;"><span style="width:8px;height:8px;border-radius:999px;background:${meta.color};display:inline-block;"></span>${escapeHtml(meta.label)}</span>`;
       const miniRefButtonStyle = "margin-top:7px;border:1px dashed #155e75;border-radius:6px;background:#07111f;color:#a5f3fc;padding:5px 7px;font-size:11px;font-weight:900;cursor:pointer;";
-      const subjectCell = `<div>${subjectRefsHtml(scene)}</div><button data-action="load-subject-ref" title="Load a subject image for this scene" style="${miniRefButtonStyle}">+ Subject</button>`;
+      const subjectCell = `<div>${subjectRefsHtml(scene)}</div><button data-action="load-subject-ref" title="Choose subjects from Reference Builder or upload a new subject image" style="${miniRefButtonStyle}">+ Subject</button>`;
       const settingCell = `<div>${settingRefHtml(scene)}</div><button data-action="load-location-ref" title="Load a location image for this scene" style="${miniRefButtonStyle}">+ Location</button>`;
       const videoType = videoPromptTypeLabel(scene.video_prompt_type || "i2v");
       const shotCell = `<div style="display:flex;flex-direction:column;gap:4px;"><span style="align-self:flex-start;border:1px solid #155e75;border-radius:999px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;padding:2px 7px;">${escapeHtml(videoType)}</span><strong style="color:#f8fafc;">${escapeHtml(scene.shot_type || "-")}</strong></div>`;
@@ -4256,7 +4370,7 @@ function openStoryboardBuilder(payload = {}) {
         `;
       }
       tr.querySelector('[data-action="edit"]')?.addEventListener("click", () => openSceneEditor(scene));
-      tr.querySelector('[data-action="load-subject-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("subject", scene));
+      tr.querySelector('[data-action="load-subject-ref"]')?.addEventListener("click", () => openStoryboardSubjectPicker(scene));
       tr.querySelector('[data-action="load-location-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("location", scene));
       tr.querySelector('[data-action="gemma"]')?.addEventListener("click", async () => {
         const runnerName = promptRunnerName();

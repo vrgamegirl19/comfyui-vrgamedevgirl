@@ -8525,6 +8525,11 @@ def _prepare_scene_audio_mix(payload):
     if not isinstance(segments, list) or not segments:
         raise ValueError("No scenes were provided for scene audio mix.")
     allow_missing_scene_audio = bool(payload.get("allow_missing_scene_audio", False))
+    global_audio_path = os.path.abspath(
+        str(payload.get("global_audio_path", "") or "").strip().strip('"')
+    )
+    if not os.path.isfile(global_audio_path):
+        global_audio_path = ""
 
     ffmpeg_path = _find_ffmpeg_path()
     folder = _scene_audio_mix_folder(project_folder)
@@ -8542,10 +8547,21 @@ def _prepare_scene_audio_mix(payload):
             continue
         path = str(segment.get("custom_audio_path", "") or "").strip().strip('"')
         if not path:
+            start = max(0.0, float(segment.get("start", 0) or 0))
+            end = max(start + 0.05, float(segment.get("end", start + 4) or start + 4))
+            duration = max(0.05, end - start)
+            if global_audio_path:
+                timeline_items.append({
+                    "index": index,
+                    "path": global_audio_path,
+                    "start": start,
+                    "end": end,
+                    "duration": duration,
+                    "source_start": start,
+                    "silent": False,
+                })
+                continue
             if allow_missing_scene_audio:
-                start = max(0.0, float(segment.get("start", 0) or 0))
-                end = max(start + 0.05, float(segment.get("end", start + 4) or start + 4))
-                duration = max(0.05, end - start)
                 timeline_items.append({
                     "index": index,
                     "path": "",
