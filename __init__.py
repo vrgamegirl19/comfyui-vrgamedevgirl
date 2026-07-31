@@ -33,6 +33,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_VideoCompareNode",
     ".VRGDG_ImagePasteBack",
     ".VRGDG_StandaloneFaceFixNodes",
+    ".VRGDG_StandaloneVideoEnhancerNodes",
     ".VRGDG_VideoEnhanceNodes",
     ".vrgdg_ltx_msr_reference_builder",
     ".VRGDG_LTXICIngredientsGrid",
