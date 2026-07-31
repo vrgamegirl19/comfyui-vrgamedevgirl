@@ -3,6 +3,32 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-07-30-standalone-video-enhancer",
+      "version": "2026.07.30-enhancer",
+      "date": "2026-07-30",
+      "title": "Standalone video enhancer with 2K–4K output",
+      "commit": "4289439bbff337c838583c768aedc90104cb2857",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added VRGDG Standalone Video Enhancer, a clean interface outside Video Builder for uploading an existing video, previewing effects, rendering, and saving the finished result.",
+            "Added Original, 2K, 3K, and 4K output choices using high-quality Lanczos resizing while preserving aspect ratio and portrait or landscape orientation.",
+            "Added Fast Unsharp Sharpen controls up to strength 10 and Fast Film Grain controls with intensity, saturation mix, and deterministic seed settings."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Added current-frame and synchronized final-video before-and-after comparison with a draggable wipe slider and screen-filling expanded view.",
+            "Long videos render in memory-aware frame batches with checkpoint resume, cancellation, automatic GPU out-of-memory retry, and optional preservation of the original audio."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-07-30-video-compare-builder-reliability",
       "version": "2026.07.30",
       "date": "2026-07-30",
