@@ -79,8 +79,8 @@ Rules:
 * If `starting_shot.required` is true, the first sentence must explicitly state that the video begins with `starting_shot.selected_starting_shot`. Do not merely imply this framing or move it to the middle or end of the prompt.
 * For an `eyes shot`, explicitly say that the video begins with an extreme close-up of the subject's eyes.
 * Begin the selected `camera_motion` from the required starting-shot framing; it may widen, orbit, track, or otherwise move afterward.
-* Use `motion_video_summary` or `camera_motion` for camera movement.
-* If `camera_motion` is empty, use `motion_video_summary`.
+* If `motion_summary` is non-empty, it is the authoritative custom motion and camera direction. Ignore `camera_motion` rather than combining the two.
+* Use `camera_motion` only when `motion_summary` is empty.
 * Follow `camera_guidance` when present. If it says to avoid default inward moves, do not add zoom-in, push-in, dolly-in, crash-zoom, or close-up endings unless the scene explicitly requests that exact motion.
 * Follow `camera_motion_speed_guidance` or `camera_guidance.camera_motion_speed_guidance` when present. Low values mean static/slow camera; high values mean faster or compound camera action with no static hold ending.
 * Do not default to zoom-in, push-in, dolly-in, crash-zoom, or close-up endings. Use those inward camera moves only when `camera_motion`, `shot_type`, or the user notes explicitly ask for them.
@@ -1163,6 +1163,8 @@ def _build_storyboard_video_prompt(payload):
             or "",
             12000,
         )
+        motion_summary = _clean_scene_text(selected_scene.get("motion_summary") or "", 1200)
+        camera_motion = "" if motion_summary else _clean_scene_text(selected_scene.get("camera_motion") or "", 500)
         user_notes = "\n\n".join(
             part for part in [
                 f"Required starting shot:\n{json.dumps(selected_scene.get('starting_shot'), ensure_ascii=False)}" if _storyboard_starting_shot_value(selected_scene) else "",
@@ -1170,8 +1172,8 @@ def _build_storyboard_video_prompt(payload):
                 f"Scene lyrics:\n{_clean_scene_text(vocal_status.get('lyric_text') or '', 1000)}",
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
-                f"Motion/video summary:\n{_clean_scene_text(selected_scene.get('motion_summary') or '', 1200)}",
-                f"Camera motion:\n{_clean_scene_text(selected_scene.get('camera_motion') or '', 500)}",
+                f"Motion/video summary:\n{motion_summary}",
+                f"Camera motion:\n{camera_motion}",
                 f"Camera motion speed guidance:\n{_clean_scene_text(camera_speed_guidance, 1000)}",
                 f"Character motion guidance:\n{_clean_scene_text(selected_scene.get('character_motion_guidance') or '', 1000)}",
                 f"Performance direction:\n{_clean_scene_text(selected_scene.get('performance_direction') or selected_scene.get('performance_style') or '', 1000)}",

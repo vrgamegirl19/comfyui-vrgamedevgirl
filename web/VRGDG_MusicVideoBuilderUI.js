@@ -10166,9 +10166,10 @@ function openBuilder(node) {
     add(parts, "FLF storyboard continuous transformation", scene.flf_transformation || segment.flf_transformation);
     add(parts, "FLF storyboard end state", scene.flf_end_state || segment.flf_end_state);
     add(parts, "FLF storyboard carry-forward continuity", scene.flf_carry_forward || segment.flf_carry_forward);
-    add(parts, "Storyboard motion/video summary", scene.motion_summary || segment.i2v_notes || segment.video_notes);
+    const customMotionSummary = String(scene.motion_summary || segment.i2v_notes || segment.video_notes || "").trim();
+    add(parts, "Storyboard motion/video summary", customMotionSummary);
     add(parts, "Storyboard still shot direction", scene.shot_type || segment.shot_type);
-    add(parts, "Storyboard camera motion", scene.camera_motion || segment.camera_motion || segment.motion_preset);
+    if (!customMotionSummary) add(parts, "Storyboard camera motion", scene.camera_motion || segment.camera_motion || segment.motion_preset);
     add(parts, "Storyboard camera motion speed guidance", defaults.camera_guidance || builderMotionSpeedGuidance(defaults.camera_motion_speed, "camera"));
     add(parts, "Storyboard character motion guidance", segment.character_motion || defaults.character_guidance || builderMotionSpeedGuidance(defaults.character_motion_speed, "character"));
     const performanceStyle = String(segment.performance_style || defaults.performance_style || "").trim();
@@ -34081,8 +34082,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         );
       }
       add(parts, "Storyboard scene story beat", storyLayer.scene_story_beat || scene.story_beat);
-      add(parts, "Storyboard motion/video summary", selectedScene.motion_summary || scene.motion_summary || scene.video_notes);
-      add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
+      const customMotionSummary = String(selectedScene.motion_summary || scene.motion_summary || scene.video_notes || "").trim();
+      add(parts, "Storyboard motion/video summary", customMotionSummary);
+      if (!customMotionSummary) add(parts, "Storyboard camera motion", selectedScene.camera_motion || scene.camera_motion);
       add(parts, "Storyboard camera motion speed guidance", selectedScene.camera_motion_speed_guidance || selectedScene.camera_guidance?.camera_motion_speed_guidance);
       add(parts, "Storyboard character motion guidance", selectedScene.character_motion_guidance || scene.character_motion);
       add(parts, "Storyboard performance direction", selectedScene.performance_direction || scene.performance_style);

@@ -1750,6 +1750,8 @@ function storyboardScenesForGpt(state) {
     const shotType = normalized.shot_type || cameraFallback?.shot || "";
     const requiresStartingShot = !imageMode && normalized.video_prompt_type !== "i2v" && Boolean(shotType);
     const cameraMotion = normalized.camera_motion || (imageMode ? "" : cameraFallback?.camera) || "";
+    const motionSummary = String(normalized.motion_summary || "").trim();
+    const cameraMotionForPrompt = motionSummary ? "" : cameraMotion;
     if (!imageMode) previousCameraMotion = cameraMotion || previousCameraMotion;
     const lyricText = String(normalized.lyrics || "").trim();
     const performanceMode = normalizeStoryboardPerformanceMode(normalized.performance_mode || state.performanceMode || state.videoType || state.performance_mode);
@@ -1844,8 +1846,8 @@ function storyboardScenesForGpt(state) {
         lyric_story_strength: normalizeStoryLayer(state.storyLayer).lyric_story_strength,
         instruction: "Use the story brief and scene story beat as narrative guidance. Lyric story strength controls how literally to follow lyric_line: 0 ignores lyrics, 1-3 uses mood only, 4-6 balances lyrics with story, 7-8 strongly follows lyric meaning, and 9-10 uses concrete lyric objects/actions/emotions whenever possible. Do not turn the prompt into plot exposition.",
       },
-      motion_summary: imageMode ? "" : normalized.motion_summary,
-      still_image_notes: imageMode ? normalized.motion_summary : "",
+      motion_summary: imageMode ? "" : motionSummary,
+      still_image_notes: imageMode ? motionSummary : "",
       image_aesthetic: imageMode ? storyboardImageAestheticGuidance(state.imageAesthetic, { idLoraMode }) : "",
       image_aesthetic_instruction: imageMode
         ? "Translate the selected image aesthetic into concrete prompt details: pose, wardrobe styling, hair, makeup, accessories, lighting setup, lens/framing, composition, environment treatment, texture, weather/time if useful, and art direction. Do not merely name the preset or append it as a short tag."
@@ -1892,7 +1894,7 @@ function storyboardScenesForGpt(state) {
             instruction: storyboardStartingShotInstruction(shotType),
           }
         : null,
-      camera_motion: imageMode ? "" : cameraMotion,
+      camera_motion: imageMode ? "" : cameraMotionForPrompt,
       still_camera_style: imageMode ? cameraMotion : "",
       camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
       camera_motion_speed_guidance: imageMode ? "" : storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
@@ -1902,11 +1904,13 @@ function storyboardScenesForGpt(state) {
             instruction: "Use this as still photography composition, lens, lighting, or framing guidance only. Do not turn it into camera movement.",
           }
         : {
-            selected_camera_motion: cameraMotion,
+            selected_camera_motion: cameraMotionForPrompt,
             camera_motion_speed: storyboardSpeedValue(state.cameraMotionSpeed, 4),
             camera_motion_speed_guidance: storyboardSpeedGuidance(state.cameraMotionSpeed, "camera"),
             avoid_default_inward_moves: true,
-            instruction: "Use the selected camera motion as written. Do not add zoom-in, push-in, dolly-in, crash-zoom, or a close-up ending unless that exact inward motion is selected or requested in notes.",
+            instruction: motionSummary
+              ? "The custom motion_summary is authoritative. Do not add or reuse the scene-default camera motion preset."
+              : "Use the selected camera motion as written. Do not add zoom-in, push-in, dolly-in, crash-zoom, or a close-up ending unless that exact inward motion is selected or requested in notes.",
           },
       character_motion: imageMode ? "" : normalized.character_motion,
       character_motion_speed: storyboardSpeedValue(state.characterMotionSpeed, 4),
@@ -2604,7 +2608,7 @@ function openStoryboardBuilder(payload = {}) {
       : "Image Prep creates text-to-image prompts from subjects, locations, lyrics, story beats, shot direction, and the story layer.";
     gemmaAllButton.textContent = promptAllButtonText();
     gemmaAllButton.title = mode === "image_to_video_prep"
-      ? "Create video prompts for the visible scenes. If a scene has an image path, local vision uses it as guidance."
+      ? "Choose whether to create only missing video prompts or redo all visible scenes. If a scene has an image path, local vision uses it as guidance."
       : "Create text-to-image prompts for the visible scenes with the selected LLM runner.";
     gptButton.textContent = mode === "image_to_video_prep" ? "GPT Video All" : "GPT Image All";
     gptButton.title = mode === "image_to_video_prep"
@@ -3724,7 +3728,11 @@ function openStoryboardBuilder(payload = {}) {
       flfStartState.style.opacity = "0.78";
     }
     const summary = makeTextarea(scene.prompt_summary, "Image prompt summary...", 3);
-    const motion = makeTextarea(scene.motion_summary, isImagePrepMode ? "Still photography notes..." : "Motion/video summary...", 3);
+    const motion = makeTextarea(
+      scene.motion_summary,
+      isImagePrepMode ? "Still photography notes..." : "Custom motion, camera, action, or LLM direction...",
+      3,
+    );
     const cameraGroups = isImagePrepMode ? STILL_CAMERA_STYLE_GROUPS : CAMERA_MOTION_GROUPS;
     const cameraMotionOptions = cameraGroups.flatMap((group) => group.options || []);
     const cameraMotionValue = scene.camera_motion || cameraMotionOptions.find((item) => String(scene.motion_summary || "").toLowerCase().includes(item.toLowerCase())) || "";
@@ -3924,7 +3932,7 @@ function openStoryboardBuilder(payload = {}) {
     const facialPerformanceField = field("Facial performance", facialPerformance);
     const facialPerformanceCustomField = field("Custom facial performance", facialPerformanceCustom);
     const imagePathField = field("Starting image", startingImageControl);
-    const motionField = field("Motion / video summary", motion);
+    const motionField = field(isImagePrepMode ? "Still photography notes" : "Motion Notes / LLM Direction", motion);
     const t2iPromptField = field("T2I prompt", imagePrompt);
     if (isVideoPrepMode) {
       grid.append(field("Video prompt type", videoPromptType), field("Setting", setting), videoTypeHint, field("Subjects", subjects), performanceStyleField, facialPerformanceField, facialPerformanceCustomField, includeMicLabel, noCharacterLabel, shotPresetField, shotCustomField, cameraMotionField, characterMotionField, customCharacterMotionField, imagePathField, field("Scene trigger phrase", triggerPhrase), field("Trigger placement", triggerPosition));
@@ -4031,7 +4039,7 @@ function openStoryboardBuilder(payload = {}) {
 
     const advancedGrid = twoCol();
     if (isVideoPrepMode) {
-      advancedGrid.append(field("Prompt summary", summary), field("Motion / video prompt summary", motion), field("Character details", subjectDetails), field("Location details", locationDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
+      advancedGrid.append(field("Prompt summary", summary), motionField, field("Character details", subjectDetails), field("Location details", locationDetails), imagePathField, t2iPromptField, field("Video prompt", videoPrompt));
     } else {
       advancedGrid.append(t2iPromptField, field("Character details", subjectDetails), field("Location details", locationDetails), field("Still photography notes", motion));
     }
@@ -4085,10 +4093,10 @@ function openStoryboardBuilder(payload = {}) {
       motionField.firstChild.textContent = isImagePrepMode
         ? "Still photography notes"
         : type === "i2v"
-          ? "Motion / camera direction"
+          ? "Motion Notes / LLM Direction"
           : type === "rtv"
-            ? "Motion / camera direction with references"
-            : "Motion / camera direction";
+            ? "Motion Notes / LLM Direction (with references)"
+            : "Motion Notes / LLM Direction";
       t2iPromptField.style.display = isImagePrepMode || (type !== "t2v" && type !== "rtv") ? "flex" : "none";
       imagePathField.style.display = isVideoPrepMode && type !== "t2v" && type !== "rtv" ? "flex" : "none";
       videoPrompt.style.display = isVideoPrepMode ? "" : "none";
@@ -4307,36 +4315,52 @@ function openStoryboardBuilder(payload = {}) {
     const rows = currentRows();
     const mode = state.mode;
     const head = mode === "image_to_video_prep"
-      ? ["", "#", "Image", "Scene / Lyrics", "Motion / Video Prompt Summary", "Subjects", "Setting", "Shot Type", "Prompt Status", "Actions"]
+      ? ["", "#", "Image", "Scene / Lyrics", "Motion Notes", "Video Prompt", "Subjects", "Setting", "Shot Type", "Status", "Actions"]
       : ["#", "Reference", "Scene / Lyrics", "Prompt Summary", "Subjects", "Setting", "Shot Type", "Prompt Status", "Actions"];
     const table = document.createElement("table");
-    table.style.cssText = "width:100%;border-collapse:collapse;min-width:1250px;font-size:13px;";
+    table.style.cssText = mode === "image_to_video_prep"
+      ? "width:100%;border-collapse:collapse;table-layout:fixed;min-width:1567px;font-size:13px;"
+      : "width:100%;border-collapse:collapse;min-width:1250px;font-size:13px;";
+    if (mode === "image_to_video_prep") {
+      const colgroup = document.createElement("colgroup");
+      [36, 50, 166, 190, 205, 185, 205, 150, 120, 54, 206].forEach((width) => {
+        const col = document.createElement("col");
+        col.style.width = `${width}px`;
+        colgroup.appendChild(col);
+      });
+      table.appendChild(colgroup);
+    }
     const thead = document.createElement("thead");
-    thead.innerHTML = `<tr>${head.map((item) => `<th style="position:sticky;top:0;background:#111827;border-bottom:1px solid #334155;color:#cffafe;text-align:left;padding:13px;font-weight:900;">${escapeHtml(item)}</th>`).join("")}</tr>`;
+    thead.innerHTML = `<tr>${head.map((item) => `<th style="position:sticky;top:0;background:#111827;border-bottom:1px solid #334155;color:#cffafe;text-align:${item === "Status" ? "center" : "left"};padding:${mode === "image_to_video_prep" ? "11px 9px" : "13px"};font-weight:900;">${escapeHtml(item)}</th>`).join("")}</tr>`;
     const tbody = document.createElement("tbody");
     for (const scene of rows) {
-      const meta = statusMeta(scene);
       const tr = document.createElement("tr");
       tr.style.borderBottom = "1px solid #1e293b";
       tr.style.background = "#0b1220";
       const sceneImageSource = storyboardReferenceImageSrc({ path: scene.image_path, data: scene.image_data || scene.image_reference_data });
+      const imageWidth = mode === "image_to_video_prep" ? 148 : 170;
       const imageCell = sceneImageSource
-        ? `<div style="width:170px;height:78px;border-radius:6px;background:#0f172a url('${escapeHtml(sceneImageSource)}') center/cover no-repeat;"></div>`
-        : `<div style="width:170px;height:78px;border:1px dashed #334155;border-radius:6px;display:grid;place-items:center;color:#94a3b8;font-size:12px;text-align:center;background:#07111f;">No image in storyboard<br>Optional reference</div>`;
-      const sceneActionStyle = "border:1px solid #155e75;border-radius:6px;background:#0f172a;color:#a5f3fc;padding:8px 10px;font-weight:800;cursor:pointer;";
-      const sceneGptStyle = "border:1px solid #06b6d4;border-radius:6px;background:#0e7490;color:#f8fafc;padding:8px 10px;font-weight:900;cursor:pointer;";
-      const sceneGemmaStyle = "border:1px solid #22c55e;border-radius:6px;background:#166534;color:#f0fdf4;padding:8px 10px;font-weight:900;cursor:pointer;";
+        ? `<div style="width:${imageWidth}px;height:78px;border-radius:6px;background:#0f172a url('${escapeHtml(sceneImageSource)}') center/cover no-repeat;"></div>`
+        : `<div style="width:${imageWidth}px;height:78px;border:1px dashed #334155;border-radius:6px;display:grid;place-items:center;color:#94a3b8;font-size:12px;text-align:center;background:#07111f;">No image in storyboard<br>Optional reference</div>`;
+      const sceneActionStyle = mode === "image_to_video_prep"
+        ? "border:1px solid #155e75;border-radius:6px;background:#0f172a;color:#a5f3fc;width:76px;min-height:54px;padding:6px 7px;line-height:1.15;white-space:normal;font-weight:800;cursor:pointer;"
+        : "border:1px solid #155e75;border-radius:6px;background:#0f172a;color:#a5f3fc;padding:8px 10px;font-weight:800;cursor:pointer;";
+      const sceneGptStyle = "border:1px solid #06b6d4;border-radius:6px;background:#0e7490;color:#f8fafc;padding:7px 8px;font-weight:900;cursor:pointer;";
+      const sceneGemmaStyle = "border:1px solid #22c55e;border-radius:6px;background:#166534;color:#f0fdf4;padding:7px 8px;font-weight:900;cursor:pointer;";
       const runnerName = promptRunnerName();
       const gemmaTitle = mode === "image_to_video_prep"
         ? `Create this scene's video prompt with ${runnerName}. If the scene has an image, local vision uses it as guidance.`
         : `Create this scene's text-to-image prompt with ${runnerName}.`;
       const actionHtml = `
-        <div style="display:flex;align-items:center;gap:7px;white-space:nowrap;">
-          <button data-action="edit" style="${sceneActionStyle}">Open Scene Card</button>
+        <div style="display:${mode === "image_to_video_prep" ? "grid" : "flex"};grid-template-columns:${mode === "image_to_video_prep" ? "76px minmax(62px, 1fr) 44px" : "none"};align-items:stretch;gap:6px;white-space:nowrap;">
+          <button data-action="edit" style="${sceneActionStyle}">${mode === "image_to_video_prep" ? "Open Scene<br>Card" : "Open Scene Card"}</button>
           <button data-action="gemma" style="${sceneGemmaStyle}" title="${escapeHtml(gemmaTitle)}">${escapeHtml(runnerName)}</button>
           <button data-action="gpt" style="${sceneGptStyle}" title="Copy only this scene card as GPT JSON.">GPT</button>
         </div>`;
-      const status = `<span style="display:inline-flex;align-items:center;gap:6px;color:${meta.color};font-weight:900;"><span style="width:8px;height:8px;border-radius:999px;background:${meta.color};display:inline-block;"></span>${escapeHtml(meta.label)}</span>`;
+      const promptReady = Boolean(String(mode === "image_to_video_prep" ? scene.video_prompt : scene.image_prompt).trim());
+      const promptStatusLabel = promptReady ? "Prompt ready" : "Prompt missing";
+      const promptStatusColor = promptReady ? "#22c55e" : "#ef4444";
+      const status = `<span role="img" aria-label="${promptStatusLabel}" title="${promptStatusLabel}" style="display:flex;align-items:center;justify-content:center;width:100%;"><span style="width:12px;height:12px;border-radius:999px;background:${promptStatusColor};box-shadow:0 0 0 2px ${promptReady ? "rgba(34,197,94,.16)" : "rgba(239,68,68,.16)"};display:inline-block;"></span></span>`;
       const miniRefButtonStyle = "margin-top:7px;border:1px dashed #155e75;border-radius:6px;background:#07111f;color:#a5f3fc;padding:5px 7px;font-size:11px;font-weight:900;cursor:pointer;";
       const subjectCell = `<div>${subjectRefsHtml(scene)}</div><button data-action="load-subject-ref" title="Choose subjects from Reference Builder or upload a new subject image" style="${miniRefButtonStyle}">+ Subject</button>`;
       const settingCell = `<div>${settingRefHtml(scene)}</div><button data-action="load-location-ref" title="Load a location image for this scene" style="${miniRefButtonStyle}">+ Location</button>`;
@@ -4344,17 +4368,22 @@ function openStoryboardBuilder(payload = {}) {
       const shotCell = `<div style="display:flex;flex-direction:column;gap:4px;"><span style="align-self:flex-start;border:1px solid #155e75;border-radius:999px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;padding:2px 7px;">${escapeHtml(videoType)}</span><strong style="color:#f8fafc;">${escapeHtml(scene.shot_type || "-")}</strong></div>`;
       const storyPreview = `${scene.lyric_section ? `<div style="margin-top:5px;color:#67e8f9;font-size:11px;font-weight:900;">${escapeHtml(scene.lyric_section)}</div>` : ""}${scene.story_beat ? `<div style="margin-top:5px;color:#94a3b8;font-size:11px;">Beat: ${escapeHtml(truncate(scene.story_beat, 90))}</div>` : ""}`;
       if (mode === "image_to_video_prep") {
+        const motionNotes = `<textarea data-action="motion-notes" aria-label="Motion notes for ${escapeHtml(scene.label || `Scene ${scene.scene_number}`)}" placeholder="Custom motion or LLM direction..." style="display:block;width:100%;height:80px;box-sizing:border-box;resize:vertical;border:1px solid #334155;border-radius:6px;background:#07111f;color:#e2e8f0;padding:8px;font:inherit;line-height:1.35;outline:none;">${escapeHtml(scene.motion_summary || "")}</textarea>`;
+        const videoPrompt = scene.video_prompt
+          ? `<div title="${escapeHtml(scene.video_prompt)}" style="color:#d4d4d8;line-height:1.38;overflow-wrap:anywhere;">${escapeHtml(truncate(scene.video_prompt, 115))}</div>`
+          : `<span style="color:#64748b;font-style:italic;">No video prompt yet.</span>`;
         tr.innerHTML = `
-          <td style="padding:13px;"><input type="checkbox" data-action="select" ${state.selected.has(scene.id) ? "checked" : ""}></td>
-          <td style="padding:13px;font-weight:900;font-size:17px;">${String(scene.scene_number).padStart(2, "0")}</td>
-          <td style="padding:13px;">${imageCell}</td>
-          <td style="padding:13px;max-width:210px;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 95))}</span>${storyPreview}</td>
-          <td style="padding:13px;max-width:270px;color:#d4d4d8;">${escapeHtml(truncate(scene.motion_summary || scene.video_prompt, 150))}</td>
-          <td style="padding:13px;max-width:230px;">${subjectCell}</td>
-          <td style="padding:13px;color:#d4d4d8;max-width:210px;">${settingCell}</td>
-          <td style="padding:13px;">${shotCell}</td>
-          <td style="padding:13px;">${status}</td>
-          <td style="padding:13px;white-space:nowrap;">${actionHtml}</td>
+          <td style="padding:9px;text-align:center;"><input type="checkbox" data-action="select" ${state.selected.has(scene.id) ? "checked" : ""}></td>
+          <td style="padding:9px;font-weight:900;font-size:17px;">${String(scene.scene_number).padStart(2, "0")}</td>
+          <td style="padding:9px;">${imageCell}</td>
+          <td style="padding:9px;overflow:hidden;"><strong style="color:#f8fafc;">${escapeHtml(scene.label)}</strong><br><span style="color:#cbd5e1;">${escapeHtml(truncate(scene.lyrics, 70))}</span>${storyPreview}</td>
+          <td style="padding:9px;vertical-align:middle;">${motionNotes}</td>
+          <td style="padding:9px;vertical-align:middle;">${videoPrompt}</td>
+          <td style="padding:9px;overflow:hidden;">${subjectCell}</td>
+          <td style="padding:9px;color:#d4d4d8;overflow:hidden;">${settingCell}</td>
+          <td style="padding:9px;overflow:hidden;">${shotCell}</td>
+          <td style="padding:9px;text-align:center;">${status}</td>
+          <td style="padding:9px;white-space:nowrap;">${actionHtml}</td>
         `;
       } else {
         tr.innerHTML = `
@@ -4370,6 +4399,16 @@ function openStoryboardBuilder(payload = {}) {
         `;
       }
       tr.querySelector('[data-action="edit"]')?.addEventListener("click", () => openSceneEditor(scene));
+      const motionNotesInput = tr.querySelector('[data-action="motion-notes"]');
+      if (motionNotesInput) {
+        motionNotesInput.addEventListener("input", () => {
+          scene.motion_summary = motionNotesInput.value;
+        });
+        motionNotesInput.addEventListener("change", () => {
+          scene.motion_summary = motionNotesInput.value.trim();
+        });
+        motionNotesInput.addEventListener("keydown", (event) => event.stopPropagation());
+      }
       tr.querySelector('[data-action="load-subject-ref"]')?.addEventListener("click", () => openStoryboardSubjectPicker(scene));
       tr.querySelector('[data-action="load-location-ref"]')?.addEventListener("click", () => addStoryboardReferenceFromFile("location", scene));
       tr.querySelector('[data-action="gemma"]')?.addEventListener("click", async () => {
@@ -4894,14 +4933,91 @@ function openStoryboardBuilder(payload = {}) {
       : createSceneImagePromptWithGemma(scene, options);
   }
 
-  async function createAllPromptsWithGemma() {
-    const scenes = currentRows();
-    if (!scenes.length) {
+  const chooseVideoPromptGenerationScope = (scenes = []) => new Promise((resolve) => {
+    const missingCount = scenes.filter((scene) => !String(scene.video_prompt || "").trim()).length;
+    const completedCount = scenes.length - missingCount;
+    const runnerName = promptRunnerName();
+    const choiceBackdrop = document.createElement("div");
+    choiceBackdrop.style.cssText = "position:fixed;inset:0;z-index:100060;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px;box-sizing:border-box;";
+    const panel = document.createElement("div");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-labelledby", "vrgdg-video-all-choice-title");
+    panel.style.cssText = "width:min(650px,calc(100vw - 44px));border:1px solid #155e75;border-radius:11px;background:#0f172a;color:#e5e7eb;box-shadow:0 24px 90px rgba(0,0,0,.7);overflow:hidden;";
+    const header = document.createElement("div");
+    header.style.cssText = "padding:16px 18px;background:#083f4f;border-bottom:1px solid #155e75;";
+    const title = document.createElement("div");
+    title.id = "vrgdg-video-all-choice-title";
+    title.style.cssText = "font-size:18px;font-weight:900;color:#cffafe;";
+    title.textContent = `${runnerName} Video All`;
+    const subtitle = document.createElement("div");
+    subtitle.style.cssText = "margin-top:4px;color:#bae6fd;font-size:12px;line-height:1.4;";
+    subtitle.textContent = "Choose whether to preserve completed video prompts or regenerate every visible scene.";
+    header.append(title, subtitle);
+    const body = document.createElement("div");
+    body.style.cssText = "padding:18px;display:flex;flex-direction:column;gap:14px;";
+    const counts = document.createElement("div");
+    counts.style.cssText = "border:1px solid #334155;border-radius:8px;background:#07111f;padding:12px;color:#e2e8f0;font-weight:800;line-height:1.45;";
+    counts.textContent = `${missingCount} missing  •  ${completedCount} already complete  •  ${scenes.length} total visible scene${scenes.length === 1 ? "" : "s"}`;
+    const guidance = document.createElement("div");
+    guidance.style.cssText = "color:#cbd5e1;font-size:13px;line-height:1.5;";
+    guidance.textContent = "Only Missing keeps every existing video prompt unchanged and creates prompts only for blank scenes. Redo All replaces the generated video prompt for every visible scene.";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;";
+    const onlyMissing = makeButton(`Only Missing (${missingCount})`, "primary");
+    onlyMissing.style.minHeight = "46px";
+    onlyMissing.disabled = missingCount === 0;
+    onlyMissing.title = missingCount
+      ? "Keep completed prompts and create only the missing video prompts."
+      : "Every visible scene already has a video prompt.";
+    const redoAll = makeButton(`Redo All (${scenes.length})`);
+    redoAll.style.cssText += "min-height:46px;border-color:#d97706;background:#78350f;color:#fef3c7;";
+    redoAll.title = "Replace all existing video prompts for the visible scenes.";
+    const cancel = makeButton("Cancel");
+    cancel.style.cssText += "grid-column:1 / -1;min-height:40px;";
+    actions.append(onlyMissing, redoAll, cancel);
+    body.append(counts, guidance, actions);
+    panel.append(header, body);
+    choiceBackdrop.append(panel);
+    document.body.append(choiceBackdrop);
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(null);
+      }
+    };
+    const finish = (choice) => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      choiceBackdrop.remove();
+      resolve(choice);
+    };
+    onlyMissing.onclick = () => finish("missing");
+    redoAll.onclick = () => finish("all");
+    cancel.onclick = () => finish(null);
+    choiceBackdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === choiceBackdrop) finish(null);
+    });
+    document.addEventListener("keydown", onKeyDown, true);
+    requestAnimationFrame(() => (missingCount ? onlyMissing : redoAll).focus());
+  });
+
+  async function createAllPromptsWithGemma({ onlyMissing = false } = {}) {
+    const visibleScenes = currentRows();
+    if (!visibleScenes.length) {
       createToast("No storyboard scenes found.", true);
       return;
     }
     const videoMode = state.mode === "image_to_video_prep";
     const promptKind = videoMode ? "video" : "image";
+    const promptField = videoMode ? "video_prompt" : "image_prompt";
+    const scenes = onlyMissing
+      ? visibleScenes.filter((scene) => !String(scene[promptField] || "").trim())
+      : visibleScenes;
+    if (!scenes.length) {
+      createToast(`Every visible scene already has a ${promptKind} prompt.`);
+      return;
+    }
     gemmaAllButton.disabled = true;
     const previousText = gemmaAllButton.textContent;
     const runnerName = promptRunnerName();
@@ -4910,7 +5026,7 @@ function openStoryboardBuilder(payload = {}) {
     let created = 0;
     try {
       const keepLoaded = Boolean(keepGemmaLoadedInput.checked);
-      progress.set(`Starting Storyboard ${runnerName} All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScenes: ${scenes.length}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
+      progress.set(`Starting Storyboard ${runnerName} All...\nMode: ${videoMode ? "Video Prep" : "Image Prep"}\nScope: ${onlyMissing ? `only missing (${scenes.length} of ${visibleScenes.length})` : `redo all (${scenes.length})`}\nKeep local LLM loaded: ${keepLoaded ? "yes" : "no"}`, 5);
       for (let index = 0; index < scenes.length; index += 1) {
         gemmaAllButton.textContent = `${runnerName} ${index + 1}/${scenes.length}`;
         const unloadAfter = keepLoaded ? index === scenes.length - 1 : true;
@@ -4922,10 +5038,14 @@ function openStoryboardBuilder(payload = {}) {
       }
       progress.set("Saving storyboard prompts...", 96);
       await saveStoryboard();
-      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`, 100);
+      progress.set(`${runnerName} All complete.\nCreated ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${onlyMissing ? "; existing prompts were preserved" : ""}.`, 100);
       progress.close(1800);
-      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}.`);
+      createToast(`${genericName} created ${created} storyboard ${promptKind} prompt${created === 1 ? "" : "s"}${onlyMissing ? "; existing prompts were preserved" : ""}.`);
     } catch (error) {
+      if (created > 0) {
+        progress.set(`Saving ${created} completed prompt${created === 1 ? "" : "s"} before stopping...`, 96);
+        await saveStoryboard();
+      }
       progress.set(`${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, 100);
       createToast(`${runnerName} All stopped after ${created}/${scenes.length} scenes:\n${String(error?.message || error)}`, true);
     } finally {
@@ -4933,6 +5053,21 @@ function openStoryboardBuilder(payload = {}) {
       gemmaAllButton.textContent = previousText;
       renderTable();
     }
+  }
+
+  async function startAllPromptsWithGemma() {
+    const scenes = currentRows();
+    if (!scenes.length) {
+      createToast("No storyboard scenes found.", true);
+      return;
+    }
+    if (state.mode !== "image_to_video_prep") {
+      await createAllPromptsWithGemma();
+      return;
+    }
+    const scope = await chooseVideoPromptGenerationScope(scenes);
+    if (!scope) return;
+    await createAllPromptsWithGemma({ onlyMissing: scope === "missing" });
   }
 
   stepPrompts.onclick = () => setMode("storyboard_prompts");
@@ -5031,7 +5166,7 @@ function openStoryboardBuilder(payload = {}) {
   };
   gptButton.onclick = copyStoryboardForGpt;
   importImagePromptsButton.onclick = openImportImagePromptsFromGptModal;
-  gemmaAllButton.onclick = createAllPromptsWithGemma;
+  gemmaAllButton.onclick = startAllPromptsWithGemma;
   clearPromptsButton.onclick = clearAllStoryboardPrompts;
   clearStoryBeatsButton.onclick = clearAllStoryboardStoryBeats;
   storyLayerEnabledInput.addEventListener("change", () => syncStoryLayerFromInputs({ notify: true }));
