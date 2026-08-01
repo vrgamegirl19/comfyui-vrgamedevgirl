@@ -729,6 +729,132 @@ def _srt_path(project_folder):
     return os.path.join(project_folder, "builder_segments.srt")
 
 
+def _render_logs_folder(project_folder):
+    return os.path.join(project_folder, "render_logs")
+
+
+def _render_log_duration_text(milliseconds):
+    try:
+        total_seconds = max(0, int(round(float(milliseconds or 0) / 1000.0)))
+    except (TypeError, ValueError):
+        total_seconds = 0
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def _render_log_text(log):
+    log = log if isinstance(log, dict) else {}
+    summary = log.get("summary") if isinstance(log.get("summary"), dict) else {}
+    scenes = log.get("scenes") if isinstance(log.get("scenes"), list) else []
+    lines = [
+        "VRGDG Video Builder Render Log",
+        "=" * 32,
+        f"Session: {log.get('id', '')}",
+        f"Status: {str(log.get('status') or 'unknown').upper()}",
+        f"Project: {log.get('project_folder', '')}",
+        f"Mode: {log.get('mode_label') or log.get('scene_scope') or 'Render All'}",
+        f"Started: {log.get('started_at', '')}",
+        f"Finished: {log.get('ended_at', '')}",
+        "",
+        "Summary",
+        "-" * 32,
+        f"Total wall time: {_render_log_duration_text(summary.get('total_ms', log.get('total_ms', 0)))}",
+        f"Active scene rendering: {_render_log_duration_text(summary.get('render_ms', 0))}",
+        f"Between-render time: {_render_log_duration_text(summary.get('between_render_ms', 0))}",
+        f"Setup time: {_render_log_duration_text(summary.get('setup_ms', 0))}",
+        f"Final stitching: {_render_log_duration_text(summary.get('stitch_ms', 0))}",
+        f"Other overhead: {_render_log_duration_text(summary.get('overhead_ms', 0))}",
+        f"Scenes completed: {int(summary.get('completed_scenes', 0) or 0)}/{int(summary.get('target_scenes', len(scenes)) or 0)}",
+        f"Existing scenes skipped: {int(summary.get('skipped_existing_scenes', 0) or 0)}",
+        f"Average render per completed scene: {_render_log_duration_text(summary.get('average_render_ms', 0))}",
+    ]
+    if log.get("final_video_path"):
+        lines.append(f"Final video: {log.get('final_video_path')}")
+    if log.get("error"):
+        lines.extend(["", f"Error: {log.get('error')}"])
+    lines.extend(["", "Scene Details", "-" * 32])
+    if not scenes:
+        lines.append("No scene render timing has been recorded yet.")
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        label = scene.get("label") or f"Scene {scene.get('scene_number', '?')}"
+        lines.extend([
+            f"{label} [{str(scene.get('status') or 'pending').upper()}]",
+            f"  Total scene step: {_render_log_duration_text(scene.get('total_ms', 0))}",
+            f"  Preparation: {_render_log_duration_text(scene.get('preparation_ms', 0))}",
+            f"  Video render: {_render_log_duration_text(scene.get('render_ms', 0))}",
+            f"  Post-processing/cleanup: {_render_log_duration_text(scene.get('post_ms', 0))}",
+            f"  Time since previous render: {_render_log_duration_text(scene.get('gap_before_render_ms', 0))}",
+        ])
+        if scene.get("video_path"):
+            lines.append(f"  Video: {scene.get('video_path')}")
+        if scene.get("error"):
+            lines.append(f"  Error: {scene.get('error')}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _save_builder_render_log(payload):
+    project_folder_raw = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_folder_raw:
+        raise ValueError("Project folder is required before saving a render log.")
+    project_folder = os.path.abspath(project_folder_raw)
+    os.makedirs(project_folder, exist_ok=True)
+    log = payload.get("log") if isinstance(payload.get("log"), dict) else {}
+    if not log:
+        raise ValueError("Render log data is empty.")
+    log_id = re.sub(r"[^A-Za-z0-9._-]+", "_", str(log.get("id") or "").strip()).strip("._")
+    if not log_id:
+        log_id = f"render_{time.strftime('%Y%m%d_%H%M%S')}"
+    log = {**log, "id": log_id, "project_folder": project_folder}
+    logs_folder = _render_logs_folder(project_folder)
+    os.makedirs(logs_folder, exist_ok=True)
+    json_path = os.path.join(logs_folder, f"{log_id}.json")
+    text_path = os.path.join(logs_folder, f"{log_id}.txt")
+    log["report_json_path"] = json_path
+    log["report_text_path"] = text_path
+    json_temp = json_path + ".tmp"
+    text_temp = text_path + ".tmp"
+    with open(json_temp, "w", encoding="utf-8") as handle:
+        json.dump(log, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    with open(text_temp, "w", encoding="utf-8") as handle:
+        handle.write(_render_log_text(log))
+    os.replace(json_temp, json_path)
+    os.replace(text_temp, text_path)
+
+    session_path = _session_path(project_folder)
+    if os.path.isfile(session_path):
+        try:
+            with open(session_path, "r", encoding="utf-8-sig") as handle:
+                session = json.load(handle)
+            if not isinstance(session, dict):
+                session = {}
+        except Exception:
+            session = {}
+        logs = session.get("render_logs") if isinstance(session.get("render_logs"), list) else []
+        logs = [item for item in logs if isinstance(item, dict) and item.get("id") != log_id]
+        logs.append(log)
+        session["render_logs"] = logs[-20:]
+        session["active_render_log_id"] = log_id if log.get("status") == "running" else ""
+        session["updated"] = time.time()
+        session_temp = session_path + ".render-log.tmp"
+        with open(session_temp, "w", encoding="utf-8") as handle:
+            json.dump(session, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+        os.replace(session_temp, session_path)
+    return {
+        "log": log,
+        "report_json_path": json_path,
+        "report_text_path": text_path,
+    }
+
+
 def _images_folder(project_folder):
     return os.path.join(project_folder, "zimage_approved")
 
@@ -9131,6 +9257,15 @@ def _ensure_music_builder_routes():
         try:
             payload = await request.json()
             result = _save_builder_session(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/music_builder/save_render_log")
+    async def vrgdg_music_builder_save_render_log(request):
+        try:
+            payload = await request.json()
+            result = _save_builder_render_log(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})

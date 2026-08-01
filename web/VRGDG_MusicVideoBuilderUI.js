@@ -1016,6 +1016,40 @@ function showAddSegmentPositionModal(sceneLabel = "selected scene") {
   });
 }
 
+function showLongSegmentConfirm(duration) {
+  return new Promise((resolve) => {
+    const seconds = Math.max(0, Number(duration || 0));
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100007;background:rgba(0,0,0,.68);display:flex;align-items:center;justify-content:center;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(500px,calc(100vw - 40px));border:1px solid #92400e;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "Insert Long Segment?";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#fde68a;";
+    const body = document.createElement("div");
+    body.textContent = `Are you sure you want to insert this segment? It will be ${seconds.toFixed(2)} seconds long.`;
+    body.style.cssText = "font-size:13px;color:#d4d4d8;line-height:1.45;";
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const confirm = makeButton("Insert Segment", "primary");
+    const finish = (value) => {
+      backdrop.remove();
+      resolve(value);
+    };
+    cancel.onclick = () => finish(false);
+    confirm.onclick = () => finish(true);
+    backdrop.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") finish(false);
+    });
+    actions.append(cancel, confirm);
+    box.append(heading, body, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    cancel.focus();
+  });
+}
+
 function pickProjectSessionFile() {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
@@ -1866,6 +1900,7 @@ function normalizeNotificationSettings(settings = {}) {
 function openBuilder(node) {
   console.log(`[VRGDG Music Builder] UI version ${BUILDER_UI_VERSION}`);
   const overlay = document.createElement("div");
+  let builderKeydownHandler = null;
   overlay.dataset.vrgdgThemeRoot = "true";
   overlay.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;";
   const shell = document.createElement("div");
@@ -2149,6 +2184,7 @@ function openBuilder(node) {
   const closeButton = makeButton("Close");
   closeButton.onclick = () => {
     window.removeEventListener("vrgdg:builder-toast", toastNotificationHandler);
+    if (builderKeydownHandler) document.removeEventListener("keydown", builderKeydownHandler, true);
     restoreBrowserAiDownloadsQuietly().catch(() => null);
     overlay.remove();
   };
@@ -2165,6 +2201,8 @@ function openBuilder(node) {
   const builderAgentButton = makeButton("Agent");
   const clearMemoryButton = makeButton("Clear Memory");
   const renderAllButton = makeButton("Render All");
+  const renderLogButton = makeButton("Render Log");
+  renderLogButton.title = "View live and previous Render All timing reports.";
   const stitchPreviewButton = makeButton("Stitch Preview");
   const slideshowPreviewButton = makeButton("Image Slideshow Preview");
   const gemmaT2IAllButton = makeButton("LLM T2I All");
@@ -2200,7 +2238,7 @@ function openBuilder(node) {
     button.style.justifyContent = "flex-start";
   };
   menuDropdown.append(buyMeACoffeeButton);
-  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, whatsNewMenuButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
+  for (const button of [newProjectButton, loadSessionButton, loadLastProjectButton, saveProjectAsButton, branchProjectButton, exportProjectButton, importProjectButton, settingsButton, reviewGuideButton, whatsNewMenuButton, gemmaT2IAllButton, gemmaVideoAllButton, zImageAllButton, zEnhanceAllButton, renderAllButton, renderLogButton, stitchPreviewButton, slideshowPreviewButton, fullBuildButton, fullFLFBuildButton]) {
     styleMenuItem(button);
     menuDropdown.append(button);
   }
@@ -4620,11 +4658,11 @@ function openBuilder(node) {
   overlayTrackToggleButton.title = "Turn the advanced overlay timeline on or off.";
   overlayTrackHintButton.title = "How does the overlay timeline work?";
   addTimelineMarkerButton.title = "Add a free timeline note/song marker at the playhead or selected In/Out range.";
-  addSegmentButton.title = "Add segment";
+  addSegmentButton.title = "Add a segment (S). If the playhead is at least 0.5 seconds past the final base scene, the new segment fills the gap to the playhead and its end snaps to the nearest beat when Snap beats is on.";
   addOverlaySegmentButton.title = "Add a new clip to the overlay track at the playhead without changing the base timeline.";
   undoButton.title = "Undo";
   redoButton.title = "Redo";
-  playButton.title = "Play / Pause";
+  playButton.title = "Play / Pause (Space)";
   stopButton.title = "Stop";
   multiSelectButton.title = "Select multiple scenes, then batch-apply image/video settings or stitch a preview.";
   multiSelectHintButton.title = "What does Select Multi do?";
@@ -5251,11 +5289,314 @@ function openBuilder(node) {
     adjustLivePreviewPending: false,
     adjustLivePreviewStatus: "",
     builderAgentFloating: null,
+    renderLogs: [],
+    activeRenderLogId: "",
+    renderLogModalRefresh: null,
     undoStack: [],
     redoStack: [],
     isRestoringHistory: false,
     batchCancelled: false,
   };
+
+  function normalizeRenderLog(raw) {
+    const value = raw && typeof raw === "object" ? raw : {};
+    return {
+      ...value,
+      id: String(value.id || ""),
+      status: String(value.status || "unknown"),
+      scenes: Array.isArray(value.scenes)
+        ? value.scenes.filter((scene) => scene && typeof scene === "object").map((scene) => ({ ...scene }))
+        : [],
+      summary: value.summary && typeof value.summary === "object" ? { ...value.summary } : {},
+    };
+  }
+
+  function normalizeRenderLogs(items) {
+    const byId = new Map();
+    for (const raw of (Array.isArray(items) ? items : [])) {
+      const log = normalizeRenderLog(raw);
+      if (log.id) byId.set(log.id, log);
+    }
+    return [...byId.values()]
+      .sort((left, right) => String(left.started_at || "").localeCompare(String(right.started_at || "")))
+      .slice(-20);
+  }
+
+  function renderLogDuration(milliseconds) {
+    const totalSeconds = Math.max(0, Math.round(Number(milliseconds || 0) / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours) return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+    if (minutes) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+    return `${seconds}s`;
+  }
+
+  function updateRenderLogSummary(log, now = Date.now()) {
+    if (!log) return {};
+    const scenes = Array.isArray(log.scenes) ? log.scenes : [];
+    const startedMs = Date.parse(log.started_at || "") || now;
+    const endedMs = Date.parse(log.ended_at || "") || (log.status === "running" ? now : startedMs);
+    const totalMs = log.status === "running"
+      ? Math.max(0, now - startedMs)
+      : Math.max(0, Number(log.total_ms || endedMs - startedMs));
+    const completed = scenes.filter((scene) => scene.status === "complete");
+    const renderMs = completed.reduce((sum, scene) => sum + Math.max(0, Number(scene.render_ms || 0)), 0);
+    const betweenRenderMs = scenes.reduce((sum, scene) => sum + Math.max(0, Number(scene.gap_before_render_ms || 0)), 0);
+    const setupMs = Math.max(0, Number(log.setup_ms || 0));
+    const stitchMs = Math.max(0, Number(log.stitch_ms || 0));
+    const averageRenderMs = completed.length ? renderMs / completed.length : 0;
+    const completedTotalMs = completed.reduce((sum, scene) => sum + Math.max(0, Number(scene.total_ms || 0)), 0);
+    const averageSceneStepMs = completed.length ? completedTotalMs / completed.length : 0;
+    const targetScenes = Math.max(0, Number(log.target_scene_count || scenes.length || 0));
+    const remainingScenes = Math.max(0, targetScenes - completed.length);
+    const etaMs = log.status === "running" && completed.length
+      ? remainingScenes * averageSceneStepMs
+      : 0;
+    const longest = completed.reduce((best, scene) =>
+      Number(scene.render_ms || 0) > Number(best?.render_ms || 0) ? scene : best, null);
+    log.total_ms = totalMs;
+    log.summary = {
+      total_ms: totalMs,
+      render_ms: renderMs,
+      between_render_ms: betweenRenderMs,
+      setup_ms: setupMs,
+      stitch_ms: stitchMs,
+      overhead_ms: Math.max(0, totalMs - renderMs - stitchMs),
+      completed_scenes: completed.length,
+      failed_scenes: scenes.filter((scene) => scene.status === "failed").length,
+      target_scenes: targetScenes,
+      skipped_existing_scenes: Math.max(0, Number(log.skipped_existing_count || 0)),
+      average_render_ms: averageRenderMs,
+      average_scene_step_ms: averageSceneStepMs,
+      eta_ms: etaMs,
+      longest_scene_label: longest?.label || "",
+      longest_scene_ms: Math.max(0, Number(longest?.render_ms || 0)),
+    };
+    return log.summary;
+  }
+
+  function upsertRenderLog(log) {
+    if (!log?.id) return;
+    updateRenderLogSummary(log);
+    const logs = normalizeRenderLogs(state.renderLogs);
+    const index = logs.findIndex((item) => item.id === log.id);
+    if (index >= 0) logs[index] = log;
+    else logs.push(log);
+    state.renderLogs = logs.slice(-20);
+    state.activeRenderLogId = log.id;
+    state.renderLogModalRefresh?.();
+  }
+
+  async function persistRenderLog(log) {
+    if (!log?.id) return null;
+    upsertRenderLog(log);
+    const projectFolder = String(state.projectFolder || projectInput.value || "").trim();
+    if (!projectFolder) return null;
+    try {
+      const data = await postJson("/vrgdg/music_builder/save_render_log", {
+        project_folder: projectFolder,
+        log,
+      }, 60000);
+      if (data.log) Object.assign(log, data.log);
+      if (data.report_json_path) log.report_json_path = data.report_json_path;
+      if (data.report_text_path) log.report_text_path = data.report_text_path;
+      log.persistence_error = "";
+      upsertRenderLog(log);
+      return data;
+    } catch (error) {
+      log.persistence_error = String(error?.message || error);
+      console.warn("[VRGDG Music Builder] Could not persist render log:", error);
+      upsertRenderLog(log);
+      return null;
+    }
+  }
+
+  function renderLogAsText(log) {
+    const summary = updateRenderLogSummary(log);
+    const lines = [
+      "VRGDG Video Builder Render Log",
+      "================================",
+      `Session: ${log.id || ""}`,
+      `Status: ${String(log.status || "unknown").toUpperCase()}`,
+      `Project: ${log.project_folder || state.projectFolder || ""}`,
+      `Mode: ${log.mode_label || log.scene_scope || "Render All"}`,
+      `Started: ${log.started_at || ""}`,
+      `Finished: ${log.ended_at || ""}`,
+      "",
+      "Summary",
+      "--------------------------------",
+      `Total wall time: ${renderLogDuration(summary.total_ms)}`,
+      `Active scene rendering: ${renderLogDuration(summary.render_ms)}`,
+      `Between-render time: ${renderLogDuration(summary.between_render_ms)}`,
+      `Setup time: ${renderLogDuration(summary.setup_ms)}`,
+      `Final stitching: ${renderLogDuration(summary.stitch_ms)}`,
+      `Other overhead: ${renderLogDuration(summary.overhead_ms)}`,
+      `Scenes completed: ${summary.completed_scenes}/${summary.target_scenes}`,
+      `Existing scenes skipped: ${summary.skipped_existing_scenes}`,
+      `Average render per scene: ${renderLogDuration(summary.average_render_ms)}`,
+    ];
+    if (summary.longest_scene_label) {
+      lines.push(`Longest scene: ${summary.longest_scene_label} — ${renderLogDuration(summary.longest_scene_ms)}`);
+    }
+    if (log.final_video_path) lines.push(`Final video: ${log.final_video_path}`);
+    if (log.error) lines.push("", `Error: ${log.error}`);
+    lines.push("", "Scene Details", "--------------------------------");
+    for (const scene of (log.scenes || [])) {
+      lines.push(
+        `${scene.label || `Scene ${scene.scene_number || "?"}`} [${String(scene.status || "pending").toUpperCase()}]`,
+        `  Total scene step: ${renderLogDuration(scene.total_ms)}`,
+        `  Preparation: ${renderLogDuration(scene.preparation_ms)}`,
+        `  Video render: ${renderLogDuration(scene.render_ms)}`,
+        `  Post-processing/cleanup: ${renderLogDuration(scene.post_ms)}`,
+        `  Time since previous render: ${renderLogDuration(scene.gap_before_render_ms)}`,
+      );
+      if (scene.video_path) lines.push(`  Video: ${scene.video_path}`);
+      if (scene.error) lines.push(`  Error: ${scene.error}`);
+    }
+    return lines.join("\n");
+  }
+
+  function downloadRenderLog(log, kind = "json") {
+    if (!log) return;
+    updateRenderLogSummary(log);
+    const isJson = kind === "json";
+    const content = isJson ? `${JSON.stringify(log, null, 2)}\n` : `${renderLogAsText(log)}\n`;
+    const blob = new Blob([content], { type: isJson ? "application/json" : "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${log.id || "VRGDG_Render_Log"}.${isJson ? "json" : "txt"}`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function openRenderLogModal() {
+    document.querySelector(".vrgdg-render-log-modal")?.remove();
+    let selectedId = state.activeRenderLogId || state.renderLogs[state.renderLogs.length - 1]?.id || "";
+    const backdrop = document.createElement("div");
+    backdrop.className = "vrgdg-render-log-modal";
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1180px,calc(100vw - 36px));height:min(900px,calc(100vh - 36px));border:1px solid #155e75;border-radius:10px;background:#0b1220;color:#e2e8f0;box-shadow:0 28px 90px rgba(0,0,0,.72);display:flex;flex-direction:column;overflow:hidden;font-family:Arial,sans-serif;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid #334155;background:#0f172a;";
+    const title = document.createElement("div");
+    title.textContent = "Render Log";
+    title.style.cssText = "font-size:17px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Close");
+    header.append(title, close);
+    const toolbar = document.createElement("div");
+    toolbar.style.cssText = "display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto auto;gap:8px;padding:10px 14px;border-bottom:1px solid #334155;align-items:center;";
+    const history = document.createElement("select");
+    history.style.cssText = "width:100%;border:1px solid #475569;border-radius:6px;background:#020617;color:#f8fafc;padding:8px;";
+    const openSaved = makeButton("Open Saved Report");
+    const copy = makeButton("Copy Summary");
+    const downloadJson = makeButton("Download JSON");
+    const downloadText = makeButton("Download Text");
+    toolbar.append(history, openSaved, copy, downloadJson, downloadText);
+    const content = document.createElement("div");
+    content.style.cssText = "flex:1 1 auto;min-height:0;overflow:auto;padding:14px;";
+    box.append(header, toolbar, content);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const selectedLog = () => state.renderLogs.find((item) => item.id === selectedId) || state.renderLogs[state.renderLogs.length - 1] || null;
+    const refresh = () => {
+      const logs = normalizeRenderLogs(state.renderLogs).slice().reverse();
+      const previous = history.value || selectedId;
+      history.textContent = "";
+      for (const log of logs) {
+        const option = document.createElement("option");
+        option.value = log.id;
+        option.textContent = `${log.status === "running" ? "● LIVE — " : ""}${log.started_at ? new Date(log.started_at).toLocaleString() : log.id} — ${String(log.status || "").toUpperCase()}`;
+        history.append(option);
+      }
+      if (logs.some((log) => log.id === previous)) selectedId = previous;
+      else selectedId = logs[0]?.id || "";
+      history.value = selectedId;
+      const log = selectedLog();
+      if (!log) {
+        content.innerHTML = '<div style="border:1px dashed #475569;border-radius:8px;padding:30px;text-align:center;color:#94a3b8;">No Render All sessions have been recorded for this project yet.</div>';
+        openSaved.disabled = true;
+        copy.disabled = true;
+        downloadJson.disabled = true;
+        downloadText.disabled = true;
+        return;
+      }
+      const summary = updateRenderLogSummary(log);
+      openSaved.disabled = !log.report_text_path;
+      copy.disabled = false;
+      downloadJson.disabled = false;
+      downloadText.disabled = false;
+      const statusColor = log.status === "complete" ? "#86efac" : log.status === "running" ? "#67e8f9" : "#fca5a5";
+      const card = (label, value) => `<div style="border:1px solid #334155;border-radius:8px;background:#111827;padding:10px;"><div style="color:#64748b;font-size:10px;font-weight:900;text-transform:uppercase;">${escapeHtml(label)}</div><div style="margin-top:4px;color:#f8fafc;font-size:16px;font-weight:900;">${escapeHtml(value)}</div></div>`;
+      const rows = (log.scenes || []).map((scene) => `
+        <tr>
+          <td>${escapeHtml(scene.label || `Scene ${scene.scene_number || "?"}`)}</td>
+          <td style="color:${scene.status === "complete" ? "#86efac" : scene.status === "failed" ? "#fca5a5" : "#67e8f9"};font-weight:900;">${escapeHtml(String(scene.status || "pending").toUpperCase())}</td>
+          <td>${escapeHtml(renderLogDuration(scene.render_ms))}</td>
+          <td>${escapeHtml(renderLogDuration(scene.preparation_ms))}</td>
+          <td>${escapeHtml(renderLogDuration(scene.post_ms))}</td>
+          <td>${escapeHtml(renderLogDuration(scene.gap_before_render_ms))}</td>
+          <td>${escapeHtml(renderLogDuration(scene.total_ms))}</td>
+        </tr>`).join("");
+      content.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px;">
+          <div><div style="font-size:18px;font-weight:900;color:${statusColor};">${escapeHtml(String(log.status || "unknown").toUpperCase())}</div><div style="color:#94a3b8;font-size:11px;margin-top:4px;">${escapeHtml(log.mode_label || "Render All")} · Started ${escapeHtml(log.started_at ? new Date(log.started_at).toLocaleString() : "")}</div></div>
+          ${log.status === "running" && summary.eta_ms ? `<div style="border:1px solid #0e7490;border-radius:7px;background:#083344;padding:8px 10px;color:#a5f3fc;font-weight:900;">Estimated remaining: ${escapeHtml(renderLogDuration(summary.eta_ms))}</div>` : ""}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:9px;">
+          ${card("Total wall time", renderLogDuration(summary.total_ms))}
+          ${card("Active rendering", renderLogDuration(summary.render_ms))}
+          ${card("Between renders", renderLogDuration(summary.between_render_ms))}
+          ${card("Final stitching", renderLogDuration(summary.stitch_ms))}
+          ${card("Setup", renderLogDuration(summary.setup_ms))}
+          ${card("Other overhead", renderLogDuration(summary.overhead_ms))}
+          ${card("Scenes completed", `${summary.completed_scenes}/${summary.target_scenes}`)}
+          ${card("Average render", renderLogDuration(summary.average_render_ms))}
+        </div>
+        ${summary.longest_scene_label ? `<div style="margin-top:10px;color:#cbd5e1;font-size:11px;">Longest scene: <strong>${escapeHtml(summary.longest_scene_label)}</strong> — ${escapeHtml(renderLogDuration(summary.longest_scene_ms))}</div>` : ""}
+        ${log.error ? `<div style="margin-top:12px;border:1px solid #7f1d1d;border-radius:7px;background:#2a0b0b;color:#fecaca;padding:10px;white-space:pre-wrap;">${escapeHtml(log.error)}</div>` : ""}
+        <div style="margin-top:14px;border:1px solid #334155;border-radius:8px;overflow:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead style="position:sticky;top:0;background:#083344;color:#cffafe;"><tr><th>Scene</th><th>Status</th><th>Render</th><th>Prep</th><th>Post/Cleanup</th><th>Between</th><th>Total Step</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="7" style="padding:18px;text-align:center;color:#64748b;">Waiting for the first scene...</td></tr>'}</tbody>
+          </table>
+        </div>
+        <style>.vrgdg-render-log-modal th,.vrgdg-render-log-modal td{padding:8px 9px;border-bottom:1px solid #1e293b;text-align:left;white-space:nowrap}.vrgdg-render-log-modal tbody tr:hover{background:#111827}</style>
+        <div style="margin-top:12px;border:1px solid #334155;border-radius:7px;background:#020617;padding:9px;color:#94a3b8;font-size:10px;line-height:1.45;white-space:pre-wrap;">JSON: ${escapeHtml(log.report_json_path || "Not saved yet")}\nText: ${escapeHtml(log.report_text_path || "Not saved yet")}${log.persistence_error ? `\nSave warning: ${escapeHtml(log.persistence_error)}` : ""}</div>`;
+    };
+    const finish = () => {
+      clearInterval(timer);
+      if (state.renderLogModalRefresh === refresh) state.renderLogModalRefresh = null;
+      backdrop.remove();
+    };
+    state.renderLogModalRefresh = refresh;
+    const timer = setInterval(refresh, 1000);
+    history.onchange = () => { selectedId = history.value; refresh(); };
+    close.onclick = finish;
+    backdrop.onpointerdown = (event) => { if (event.target === backdrop) finish(); };
+    openSaved.onclick = async () => {
+      const log = selectedLog();
+      if (log?.report_text_path) await postJson("/vrgdg/music_builder/open_local_file", { path: log.report_text_path }, 30000);
+    };
+    copy.onclick = async () => {
+      const log = selectedLog();
+      if (!log) return;
+      try {
+        await navigator.clipboard.writeText(renderLogAsText(log));
+        toast("Render Log summary copied.");
+      } catch (error) {
+        toast(`Could not copy Render Log:\n${String(error?.message || error)}`, true);
+      }
+    };
+    downloadJson.onclick = () => downloadRenderLog(selectedLog(), "json");
+    downloadText.onclick = () => downloadRenderLog(selectedLog(), "text");
+    refresh();
+  }
 
   function resolvedFacialPerformanceText(segment = null) {
     if (segment?.no_character_present) return "";
@@ -7799,7 +8140,7 @@ function openBuilder(node) {
   function updatePlayPauseButton() {
     const playing = isTimelinePlaying();
     playButton.textContent = playing ? "Ⅱ" : "▶";
-    playButton.title = playing ? "Pause" : "Play";
+    playButton.title = playing ? "Pause (Space)" : "Play (Space)";
   }
 
   function updateGlobalAudioMuteButton() {
@@ -14589,6 +14930,20 @@ function openBuilder(node) {
       }
     }
     return bestDelta <= 0.14 ? best : value;
+  }
+
+  function snapAddedSegmentEndToNearestBeat(time, segmentStart) {
+    const value = Math.max(0, Number(time || 0));
+    if (!state.snapToBeats || !Array.isArray(state.beats) || !state.beats.length) return value;
+    const minimumEnd = Number(segmentStart || 0) + 0.05;
+    const audioEnd = loadedGlobalAudioDuration();
+    const beatTimes = state.beats
+      .map((beat) => Number(beat?.time ?? beat))
+      .filter((beat) => Number.isFinite(beat) && beat >= minimumEnd && (!(audioEnd > 0) || beat <= audioEnd + 0.0001));
+    if (!beatTimes.length) return value;
+    return beatTimes.reduce((closest, beat) => (
+      Math.abs(beat - value) < Math.abs(closest - value) ? beat : closest
+    ), beatTimes[0]);
   }
 
   function drawWaveform() {
@@ -29608,6 +29963,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       builder_story_reference_notes: state.builderStoryReferenceNotes || "",
       builder_story_layer: normalizeBuilderStoryLayer(state.builderStoryLayer),
       builder_storyboard_defaults: normalizeBuilderStoryboardDefaults(state.builderStoryboardDefaults),
+      render_logs: normalizeRenderLogs(state.renderLogs),
+      active_render_log_id: state.activeRenderLogId || "",
     };
   }
 
@@ -29806,6 +30163,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.builderStoryReferenceNotes = data.session.builder_story_reference_notes || state.builderStoryReferenceNotes || "";
         state.builderStoryLayer = normalizeBuilderStoryLayer(data.session.builder_story_layer || {});
         state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(data.session.builder_storyboard_defaults || data.session.builderStoryboardDefaults || {});
+        state.renderLogs = normalizeRenderLogs(data.session.render_logs || state.renderLogs);
+        state.activeRenderLogId = data.session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
         state.textGemmaRunner = data.session.text_gemma_runner || state.textGemmaRunner || "builtin";
         state.gemmaContextLimit = normalizeGemmaContextLimit(data.session.gemma_context_limit ?? data.session.n_ctx ?? state.gemmaContextLimit);
         state.gemmaGpuLayers = normalizeGemmaGpuLayers(data.session.gemma_gpu_layers ?? data.session.n_gpu_layers ?? state.gemmaGpuLayers);
@@ -30125,6 +30484,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.builderStoryReferenceNotes = session.builder_story_reference_notes || "";
       state.builderStoryLayer = normalizeBuilderStoryLayer(session.builder_story_layer || {});
       state.builderStoryboardDefaults = normalizeBuilderStoryboardDefaults(session.builder_storyboard_defaults || session.builderStoryboardDefaults || {});
+      state.renderLogs = normalizeRenderLogs(session.render_logs);
+      state.activeRenderLogId = session.active_render_log_id || state.renderLogs[state.renderLogs.length - 1]?.id || "";
       state.textGemmaRunner = session.text_gemma_runner || state.textGemmaRunner || "builtin";
       state.gemmaContextLimit = normalizeGemmaContextLimit(session.gemma_context_limit ?? session.n_ctx ?? state.gemmaContextLimit);
       state.gemmaGpuLayers = normalizeGemmaGpuLayers(session.gemma_gpu_layers ?? session.n_gpu_layers ?? state.gemmaGpuLayers);
@@ -36017,6 +36378,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
     const sceneScope = normalizeBatchScope(options.sceneScope);
     const skipFinalStitch = Boolean(options.skipFinalStitch || sceneScope === "selected");
+    let renderLog = null;
+    let currentSceneLog = null;
+    let previousRenderEndedMs = 0;
     if (!forceVideos) {
       try {
         await recoverSceneVideosFromProject({
@@ -36036,12 +36400,44 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       toast("Render All needs a few things fixed first.", true);
       return;
     }
+    const logStartedMs = Date.now();
+    const logStarted = new Date(logStartedMs);
+    const logStamp = logStarted.toISOString().replace(/\D/g, "").slice(0, 14);
+    const modeLabel = sceneScope === "selected"
+      ? "Render Selected Scenes"
+      : sceneScope === "from_selected"
+        ? "Render From Selected Scene"
+        : "Render All";
+    renderLog = {
+      schema_version: 1,
+      id: `render_${logStamp}_${Math.random().toString(16).slice(2, 8)}`,
+      status: "running",
+      mode_label: modeLabel,
+      scene_scope: sceneScope,
+      project_folder: String(state.projectFolder || projectInput.value || ""),
+      video_mode: currentVideoMode(),
+      force_videos: forceVideos,
+      randomize_video_seed: randomizeVideoSeed,
+      skip_final_stitch: skipFinalStitch,
+      started_at: logStarted.toISOString(),
+      ended_at: "",
+      setup_started_at: logStarted.toISOString(),
+      setup_ms: 0,
+      stitch_ms: 0,
+      target_scene_count: 0,
+      skipped_existing_count: 0,
+      scenes: [],
+      final_video_path: "",
+      error: "",
+    };
+    upsertRenderLog(renderLog);
     try {
       state.batchCancelled = false;
       renderAllButton.disabled = true;
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
+      await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
       const preparedAudio = skipFinalStitch
@@ -36049,6 +36445,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
       const scenes = batchTargetItems(sceneScope)
         .filter(({ segment }) => forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
+      const requestedSceneCount = batchTargetItems(sceneScope).length;
+      renderLog.target_scene_count = scenes.length;
+      renderLog.skipped_existing_count = Math.max(0, requestedSceneCount - scenes.length);
       if (!scenes.length) {
         progress.set(skipFinalStitch ? "Selected scenes already have video. Nothing to render." : "All scenes already have video. Stitching existing scene videos...", 80);
       }
@@ -36072,10 +36471,33 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         if (promptTargets.length) await autoSaveSessionQuiet("FLF provisional prompt batch complete");
       }
+      renderLog.setup_ms = Math.max(0, Date.now() - logStartedMs);
+      renderLog.setup_ended_at = new Date().toISOString();
+      await persistRenderLog(renderLog);
       for (let index = 0; index < scenes.length; index += 1) {
         assertBatchNotStopped();
         const { segment, index: sceneIndex } = scenes[index];
         const sceneLabel = sceneDisplayName(segment, sceneIndex);
+        const sceneStartedMs = Date.now();
+        currentSceneLog = {
+          scene_id: String(segment.id || ""),
+          scene_number: sceneSlotNumber(segment),
+          timeline_index: sceneIndex,
+          label: sceneLabel,
+          status: "running",
+          phase: "preparation",
+          started_at: new Date(sceneStartedMs).toISOString(),
+          ended_at: "",
+          preparation_ms: 0,
+          render_ms: 0,
+          post_ms: 0,
+          gap_before_render_ms: 0,
+          total_ms: 0,
+          video_path: "",
+          error: "",
+        };
+        renderLog.scenes.push(currentSceneLog);
+        upsertRenderLog(renderLog);
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
         if (randomizeVideoSeed) setVideoSeedRandom(segment);
@@ -36126,8 +36548,19 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             await autoSaveSessionQuiet(`Img2Img continuity image scene ${sceneIndex + 1}`);
           }
         }
-        progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...`, base);
-        await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+        const sceneRenderStartedMs = Date.now();
+        currentSceneLog.phase = "render";
+        currentSceneLog.preparation_ms = Math.max(0, sceneRenderStartedMs - sceneStartedMs);
+        currentSceneLog.render_started_at = new Date(sceneRenderStartedMs).toISOString();
+        currentSceneLog.gap_before_render_ms = previousRenderEndedMs
+          ? Math.max(0, sceneRenderStartedMs - previousRenderEndedMs)
+          : 0;
+        const liveSummary = updateRenderLogSummary(renderLog);
+        const timingLine = liveSummary.completed_scenes
+          ? `\nElapsed: ${renderLogDuration(liveSummary.total_ms)} · Estimated remaining: ${renderLogDuration(liveSummary.eta_ms)}`
+          : `\nElapsed: ${renderLogDuration(liveSummary.total_ms)}`;
+        progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...${timingLine}`, base);
+        const renderedVideoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
           progressBase: base,
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
@@ -36136,6 +36569,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
           srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
         });
+        const sceneRenderEndedMs = Date.now();
+        previousRenderEndedMs = sceneRenderEndedMs;
+        currentSceneLog.phase = "post";
+        currentSceneLog.render_ended_at = new Date(sceneRenderEndedMs).toISOString();
+        currentSceneLog.render_ms = Math.max(0, sceneRenderEndedMs - sceneRenderStartedMs);
+        currentSceneLog.video_path = String(renderedVideoPath || selectedSegmentVideoPath(segment) || "");
         if (currentVideoMode() === "flf" && scenes[index + 1]?.segment && flfChainingEnabled(scenes[index + 1].segment) && flfRenderChainStartSource(scenes[index + 1].segment) === "rendered_frame") {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
@@ -36162,22 +36601,77 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         }
         assertBatchNotStopped();
         await runClearMemoryWorkflowQuiet(progress, sceneLabel, Math.min(98, base + span));
+        const sceneEndedMs = Date.now();
+        currentSceneLog.phase = "complete";
+        currentSceneLog.status = "complete";
+        currentSceneLog.ended_at = new Date(sceneEndedMs).toISOString();
+        currentSceneLog.post_ms = Math.max(0, sceneEndedMs - sceneRenderEndedMs);
+        currentSceneLog.total_ms = Math.max(0, sceneEndedMs - sceneStartedMs);
+        await persistRenderLog(renderLog);
+        currentSceneLog = null;
       }
       assertBatchNotStopped();
       if (skipFinalStitch) {
+        const completedAt = Date.now();
+        renderLog.status = "complete";
+        renderLog.ended_at = new Date(completedAt).toISOString();
+        renderLog.total_ms = Math.max(0, completedAt - logStartedMs);
+        await persistRenderLog(renderLog);
         await autoSaveSessionQuiet("render selected scenes complete");
-        progress.set(`Render Selected complete.\n\nRendered/checked ${scenes.length} selected scene${scenes.length === 1 ? "" : "s"}.\nNo final stitch was run.`, 100);
+        const summary = updateRenderLogSummary(renderLog);
+        progress.set(`Render Selected complete.\n\nRendered/checked ${scenes.length} selected scene${scenes.length === 1 ? "" : "s"}.\nNo final stitch was run.\n\nTotal time: ${renderLogDuration(summary.total_ms)}\nActive rendering: ${renderLogDuration(summary.render_ms)}\nRender Log:\n${renderLog.report_text_path || "saved in the project session"}`, 100);
         progress.close(4500);
         toast("Render Selected complete. No final stitch was run.");
         return;
       }
+      const stitchStartedMs = Date.now();
+      renderLog.stitch_started_at = new Date(stitchStartedMs).toISOString();
+      await persistRenderLog(renderLog);
       const stitched = await stitchRenderedScenes(progress);
+      const stitchEndedMs = Date.now();
+      renderLog.stitch_ended_at = new Date(stitchEndedMs).toISOString();
+      renderLog.stitch_ms = Math.max(0, stitchEndedMs - stitchStartedMs);
+      renderLog.final_video_path = String(stitched.final_video_path || "");
+      renderLog.status = "complete";
+      renderLog.ended_at = new Date(stitchEndedMs).toISOString();
+      renderLog.total_ms = Math.max(0, stitchEndedMs - logStartedMs);
+      await persistRenderLog(renderLog);
       await autoSaveSessionQuiet("render all final stitch complete");
-      progress.set(`Render All complete.\n\nFinal video:\n${stitched.final_video_path}\n\nScene clips:\n${stitched.video_folder}`, 100);
+      const summary = updateRenderLogSummary(renderLog);
+      progress.set(`Render All complete.\n\nFinal video:\n${stitched.final_video_path}\n\nScene clips:\n${stitched.video_folder}\n\nTotal time: ${renderLogDuration(summary.total_ms)}\nActive scene rendering: ${renderLogDuration(summary.render_ms)}\nFinal stitching: ${renderLogDuration(summary.stitch_ms)}\nRender Log:\n${renderLog.report_text_path || "saved in the project session"}`, 100);
       progress.close(6500);
       toast(`Render All complete:\n${stitched.final_video_path}`);
       showFinalVideoReadyModal(stitched.final_video_path);
     } catch (error) {
+      const failedAt = Date.now();
+      const message = String(error?.message || error);
+      if (currentSceneLog && currentSceneLog.status === "running") {
+        if (currentSceneLog.phase === "preparation") {
+          currentSceneLog.preparation_ms = Math.max(0, failedAt - (Date.parse(currentSceneLog.started_at) || failedAt));
+        } else if (currentSceneLog.phase === "render") {
+          currentSceneLog.render_ms = Math.max(0, failedAt - (Date.parse(currentSceneLog.render_started_at) || failedAt));
+        } else if (currentSceneLog.phase === "post") {
+          currentSceneLog.post_ms = Math.max(0, failedAt - (Date.parse(currentSceneLog.render_ended_at) || failedAt));
+        }
+        currentSceneLog.status = state.batchCancelled ? "canceled" : "failed";
+        currentSceneLog.ended_at = new Date(failedAt).toISOString();
+        currentSceneLog.total_ms = Math.max(0, failedAt - (Date.parse(currentSceneLog.started_at) || failedAt));
+        currentSceneLog.error = message;
+      }
+      if (renderLog) {
+        if (!renderLog.setup_ended_at) {
+          renderLog.setup_ms = Math.max(0, failedAt - logStartedMs);
+          renderLog.setup_ended_at = new Date(failedAt).toISOString();
+        }
+        if (renderLog.stitch_started_at && !renderLog.stitch_ms) {
+          renderLog.stitch_ms = Math.max(0, failedAt - (Date.parse(renderLog.stitch_started_at) || failedAt));
+        }
+        renderLog.status = state.batchCancelled || /\b(?:cancel|stopp?ed|interrupt)/i.test(message) ? "canceled" : "failed";
+        renderLog.ended_at = new Date(failedAt).toISOString();
+        renderLog.total_ms = Math.max(0, failedAt - logStartedMs);
+        renderLog.error = message;
+        await persistRenderLog(renderLog);
+      }
       progress.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
       if (options.throwOnError) throw error;
@@ -37921,6 +38415,30 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function addSegment() {
+    const lastSegmentEnd = state.segments.reduce(
+      (latest, segment) => Math.max(latest, Number(segment.end || 0)),
+      0,
+    );
+    const playheadTime = Math.max(0, Number(currentGlobalTime() || 0));
+    const playheadAppendDuration = playheadTime - lastSegmentEnd;
+    if (state.segments.length && playheadAppendDuration >= 0.5) {
+      const segmentEnd = snapAddedSegmentEndToNearestBeat(playheadTime, lastSegmentEnd);
+      const segmentDuration = segmentEnd - lastSegmentEnd;
+      if (segmentDuration > 10 && !await showLongSegmentConfirm(segmentDuration)) return;
+      pushHistory();
+      const segment = newSegment(lastSegmentEnd, segmentEnd);
+      segment.source = state.srtMode ? "inserted" : "manual";
+      state.segments.push(segment);
+      state.duration = Math.max(Number(state.duration || 0), segmentEnd);
+      enforceAudioTimelineEnd();
+      sortSegments(state.segments);
+      setActiveSegment(segment);
+      await syncPromptJsonFromSegments("segment added at playhead");
+      await syncI2VMotionJsonFromSegments("segment added at playhead");
+      autoSaveSessionQuiet("segment added at playhead");
+      return;
+    }
+
     const active = activeSegment();
     let duration = 4;
     let insertIndex = state.segments.length;
@@ -38619,6 +39137,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.builderStorySourcePreview = "";
     state.builderStoryReferenceImages = [];
     state.builderStoryReferenceNotes = "";
+    state.renderLogs = [];
+    state.activeRenderLogId = "";
     state.useVrgdgTextContext = true;
     state.projectFolder = cleanProjectFolder;
     state.sessionPath = sessionPath || "";
@@ -43710,6 +44230,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     loadAudio();
   };
   settingsButton.onclick = openSettingsModal;
+  renderLogButton.onclick = openRenderLogModal;
   reviewGuideButton.onclick = () => {
     menuDropdown.style.display = "none";
     window.open(
@@ -44406,11 +44927,16 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       updateAudioScrubbers();
     }
   });
-  overlay.addEventListener("keydown", (event) => {
+  builderKeydownHandler = (event) => {
+    if (!overlay.isConnected) return;
+    const target = event.target;
+    const targetIsBuilder = target === document || target === document.body || target === document.documentElement || overlay.contains(target);
+    if (!targetIsBuilder) return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     const isTyping = tag === "input" || tag === "textarea" || tag === "select" || event.target?.isContentEditable;
     if (isTyping) return;
     const shortcutKey = event.key.toLowerCase();
+    const isPlainShortcut = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
     const snapSide = event.ctrlKey && !event.shiftKey && !event.altKey
       ? shortcutKey === "s"
         ? "start"
@@ -44418,7 +44944,15 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? "end"
           : ""
       : "";
-    if (snapSide) {
+    if (isPlainShortcut && (event.code === "Space" || event.key === " ")) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) playButton.click();
+    } else if (isPlainShortcut && shortcutKey === "s") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) addSegmentButton.click();
+    } else if (snapSide) {
       event.preventDefault();
       event.stopPropagation();
       if (event.repeat) return;
@@ -44432,16 +44966,25 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       });
     } else if (event.ctrlKey && !event.shiftKey && shortcutKey === "z") {
       event.preventDefault();
+      event.stopPropagation();
       undo();
     } else if ((event.ctrlKey && shortcutKey === "y") || (event.ctrlKey && event.shiftKey && shortcutKey === "z")) {
       event.preventDefault();
+      event.stopPropagation();
       redo();
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "ArrowRight") {
-      if (moveActiveSceneSelection(1)) event.preventDefault();
+      if (moveActiveSceneSelection(1)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     } else if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key === "ArrowLeft") {
-      if (moveActiveSceneSelection(-1)) event.preventDefault();
+      if (moveActiveSceneSelection(-1)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
     }
-  });
+  };
+  document.addEventListener("keydown", builderKeydownHandler, true);
   overlay.tabIndex = -1;
   setTimeout(() => overlay.focus(), 0);
 
