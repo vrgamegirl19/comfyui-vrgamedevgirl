@@ -3,6 +3,40 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-07-31-builder-timeline-storyboard-prompts",
+      "version": "2026.07.31-builder",
+      "date": "2026-07-31",
+      "title": "Timeline controls and smarter Storyboard prompts",
+      "commit": "ffd79be3512273e864d8a00f316c86bdb5af3d60",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added persistent Render All logs with live timing, per-scene phase details, ETA summaries, final-stitch timing, and saved JSON and text reports.",
+            "Added an inline Motion Notes column to Storyboard Video Prep using the same notes stored in each Scene Card and sent to prompt generation.",
+            "Gemma Video All now opens an in-app choice to create only missing prompts or redo every visible scene, with exact missing and completed counts."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Add Segment now uses the scrubber as the new endpoint when it is at least 0.5 seconds beyond the last clip, snaps that endpoint to the nearest beat when beat snapping is enabled, and confirms unusually long segments.",
+            "Added Space for play or pause and S for Add Segment, and made the Storyboard prompt status and scene actions more compact.",
+            "Missing-only Storyboard prompt generation preserves completed prompts and saves successful partial progress if a later scene fails."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed Left and Right Arrow scene navigation so it continues working after scene-list re-renders while remaining inactive during text entry and dialogs.",
+            "Custom Storyboard Motion Notes now override the scene-default camera-motion preset in Gemma requests, preventing conflicting directions such as a push-in combined with track left."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-07-30-standalone-video-enhancer",
       "version": "2026.07.30-enhancer",
       "date": "2026-07-30",
