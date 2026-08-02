@@ -2116,7 +2116,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                 "model_name": ("STRING", {"default": "large-v3"}),
                 "language": language_input,
                 "segment_mode": (
-                    ["whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas"],
+                    ["whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas", "reference_scene_words"],
                     {"default": "whisper_chunks"}
                 ),
                 "include_instrumental_gaps": ("BOOLEAN", {"default": True}),
@@ -2245,6 +2245,188 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         items.sort(key=lambda item: (item["start"], item["end"]))
         return items
 
+    def _reference_scene_word_segments(self, units, stable_segments, total_duration):
+        """Put exact reference tokens on acoustic Whisper word timings.
+
+        Forced reference alignment can stretch the first or last word of a line
+        across silence. Existing-scene transcription needs acoustic word timing
+        instead, while still retaining every supplied reference word.
+        """
+        def token_parts(text):
+            return re.findall(r"[\w]+(?:['’][\w]+)*", str(text or ""), flags=re.UNICODE)
+
+        def token_norm(text):
+            return "".join(character for character in str(text or "").casefold() if character.isalnum())
+
+        reference_tokens = []
+        for unit_index, unit in enumerate(units):
+            if unit.get("type") != "vocal":
+                continue
+            for text in token_parts(unit.get("text", "")):
+                norm = token_norm(text)
+                if norm:
+                    reference_tokens.append({"unit_index": unit_index, "text": text, "norm": norm})
+
+        acoustic_words = []
+        for segment in stable_segments:
+            for word in segment.get("words", []) or []:
+                text = str(word.get("text", "") or "").strip()
+                norm = token_norm(text)
+                start = float(word.get("start", 0.0) or 0.0)
+                end = float(word.get("end", start) or start)
+                if text and norm and math.isfinite(start) and math.isfinite(end):
+                    acoustic_words.append({
+                        "text": text,
+                        "norm": norm,
+                        "start": max(0.0, start),
+                        "end": max(start, end),
+                    })
+        acoustic_words.sort(key=lambda item: (item["start"], item["end"]))
+        if not reference_tokens:
+            return {}
+
+        reference_norms = [item["norm"] for item in reference_tokens]
+        acoustic_norms = [item["norm"] for item in acoustic_words]
+        matched_word_indices = {}
+        if acoustic_norms:
+            matcher = difflib.SequenceMatcher(None, reference_norms, acoustic_norms, autojunk=False)
+            for block in matcher.get_matching_blocks():
+                for offset in range(block.size):
+                    matched_word_indices[block.a + offset] = block.b + offset
+
+            # Correct common Whisper spelling errors without sacrificing order.
+            used_acoustic = set(matched_word_indices.values())
+            for reference_index, reference_token in enumerate(reference_tokens):
+                if reference_index in matched_word_indices:
+                    continue
+                previous_matches = [
+                    (ref_index, word_index)
+                    for ref_index, word_index in matched_word_indices.items()
+                    if ref_index < reference_index
+                ]
+                next_matches = [
+                    (ref_index, word_index)
+                    for ref_index, word_index in matched_word_indices.items()
+                    if ref_index > reference_index
+                ]
+                lower = max((word_index for _, word_index in previous_matches), default=-1) + 1
+                upper = min((word_index for _, word_index in next_matches), default=len(acoustic_words))
+                best_index = None
+                best_score = 0.0
+                for word_index in range(lower, upper):
+                    if word_index in used_acoustic:
+                        continue
+                    score = difflib.SequenceMatcher(
+                        None,
+                        reference_token["norm"],
+                        acoustic_words[word_index]["norm"],
+                    ).ratio()
+                    if score > best_score:
+                        best_score = score
+                        best_index = word_index
+                if best_index is not None and best_score >= 0.68:
+                    matched_word_indices[reference_index] = best_index
+                    used_acoustic.add(best_index)
+
+        timed_words = [None] * len(reference_tokens)
+        for reference_index, acoustic_index in matched_word_indices.items():
+            acoustic = acoustic_words[acoustic_index]
+            timed_words[reference_index] = {
+                "start": float(acoustic["start"]),
+                "end": float(acoustic["end"]),
+                "text": reference_tokens[reference_index]["text"],
+            }
+
+        # Interpolate only tokens Whisper failed to recognize. Matched tokens
+        # always retain their acoustic timestamps, so silence cannot stretch a
+        # word backward into an earlier scene.
+        index = 0
+        while index < len(timed_words):
+            if timed_words[index] is not None:
+                index += 1
+                continue
+            run_start = index
+            while index < len(timed_words) and timed_words[index] is None:
+                index += 1
+            run_end = index
+            previous_word = timed_words[run_start - 1] if run_start > 0 else None
+            next_word = timed_words[run_end] if run_end < len(timed_words) else None
+            count = run_end - run_start
+            run_unit_indices = {
+                reference_tokens[reference_index]["unit_index"]
+                for reference_index in range(run_start, run_end)
+            }
+            previous_same_unit = (
+                previous_word is not None
+                and reference_tokens[run_start - 1]["unit_index"] in run_unit_indices
+            )
+            next_same_unit = (
+                next_word is not None
+                and reference_tokens[run_end]["unit_index"] in run_unit_indices
+            )
+            compact_span = max(0.3, count * 0.35)
+            if previous_word and next_word:
+                available_left = float(previous_word["end"])
+                available_right = max(available_left, float(next_word["start"]))
+                if next_same_unit and not previous_same_unit:
+                    # These are missing words at the start of a new lyric line.
+                    # Keep them beside the next recognized word instead of
+                    # stretching them backward across inter-line silence.
+                    right = available_right
+                    left = max(available_left, right - compact_span)
+                elif previous_same_unit and not next_same_unit:
+                    # Likewise, keep missing final words beside the preceding
+                    # recognized words rather than stretching into the pause
+                    # before the following lyric line.
+                    left = available_left
+                    right = min(available_right, left + compact_span)
+                else:
+                    left = available_left
+                    right = available_right
+            elif previous_word:
+                left = float(previous_word["end"])
+                right = min(float(total_duration), left + compact_span)
+            elif next_word:
+                right = float(next_word["start"])
+                left = max(0.0, right - compact_span)
+            else:
+                left = 0.0
+                right = min(float(total_duration), compact_span)
+            step = max(0.02, (right - left) / max(1, count))
+            for offset, reference_index in enumerate(range(run_start, run_end)):
+                word_start = min(float(total_duration), left + (offset * step))
+                word_end = min(float(total_duration), max(word_start + 0.02, left + ((offset + 1) * step)))
+                timed_words[reference_index] = {
+                    "start": word_start,
+                    "end": word_end,
+                    "text": reference_tokens[reference_index]["text"],
+                }
+
+        grouped = {}
+        for reference_index, word in enumerate(timed_words):
+            unit_index = reference_tokens[reference_index]["unit_index"]
+            grouped.setdefault(unit_index, []).append({
+                "start": round(float(word["start"]), 3),
+                "end": round(float(word["end"]), 3),
+                "text": word["text"],
+            })
+
+        aligned = {}
+        for unit_index, words in grouped.items():
+            words.sort(key=lambda item: (item["start"], item["end"]))
+            start = float(words[0]["start"])
+            end = max(start, float(words[-1]["end"]))
+            aligned[unit_index] = {
+                "type": "vocal",
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "duration": round(max(0.0, end - start), 3),
+                "text": self._clean_lyric(units[unit_index].get("text", "")),
+                "words": words,
+                "timing_source": "acoustic_transcription",
+            }
+        return aligned
+
     def _align_reference_unit(self, unit_text, word_items, cursor):
         tokens = self._normalize_for_match(unit_text).split()
         if not tokens or not word_items:
@@ -2317,13 +2499,16 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
         vocal_tail_padding_seconds=0.6,
         exact_reference_lines=False,
         preserve_reference_units=False,
+        prealigned_reference_segments=None,
     ):
         word_items = self._word_items_from_segments(stable_segments)
-        aligned_by_unit = {}
+        aligned_by_unit = dict(prealigned_reference_segments or {})
         cursor = 0
 
         for idx, unit in enumerate(units):
             if unit.get("type") != "vocal":
+                continue
+            if idx in aligned_by_unit:
                 continue
             segment, cursor = self._align_reference_unit(unit.get("text", ""), word_items, cursor)
             if segment is not None:
@@ -2837,7 +3022,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
             reference_lines = self._split_reference_lyrics(reference_lyrics) if str(reference_lyrics or "").strip() else []
             cleaned_reference_lyrics = "\n".join(reference_lines)
             segment_mode = str(segment_mode or "whisper_chunks")
-            if segment_mode not in {"whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas"}:
+            if segment_mode not in {"whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas", "reference_scene_words"}:
                 segment_mode = "whisper_chunks"
             reference_units = self._reference_units(reference_lyrics, segment_mode, instrumental_text) if segment_mode != "whisper_chunks" else []
             alignable_reference_text = "\n".join(
@@ -2846,7 +3031,8 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
 
             result = None
             mode = "transcribe"
-            if alignable_reference_text:
+            use_acoustic_reference_timing = segment_mode == "reference_scene_words"
+            if alignable_reference_text and not use_acoustic_reference_timing:
                 print("[TimestampedLyrics] Running stable-ts reference alignment...")
                 try:
                     result = model.align(
@@ -2860,16 +3046,23 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                     print(f"[TimestampedLyrics] Reference alignment failed, falling back to transcription: {align_err}")
 
             if result is None:
-                print("[TimestampedLyrics] Running stable-ts transcription...")
+                print("[TimestampedLyrics] Running stable-ts acoustic transcription...")
                 result = model.transcribe(
                     tmp_wav_path,
                     language=lang,
                     word_timestamps=True,
                     verbose=False,
                 )
+                if use_acoustic_reference_timing:
+                    mode = "transcribe_reference_words"
 
             stable_segments = self._segments_from_stable_result(result)
             if reference_units:
+                prealigned_reference_segments = (
+                    self._reference_scene_word_segments(reference_units, stable_segments, total_duration)
+                    if use_acoustic_reference_timing
+                    else None
+                )
                 segments = self._segments_from_reference_units(
                     reference_units,
                     stable_segments,
@@ -2885,7 +3078,9 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
                         "reference_lines",
                         "exact_reference_lines",
                         "reference_stanzas",
+                        "reference_scene_words",
                     },
+                    prealigned_reference_segments=prealigned_reference_segments,
                 )
             else:
                 segments = stable_segments
