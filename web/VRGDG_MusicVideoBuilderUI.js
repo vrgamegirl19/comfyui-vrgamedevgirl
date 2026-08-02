@@ -26408,7 +26408,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       { value: "mapping", label: "Mapping", content: mappingPanel },
       { value: "locations", label: "Locations", content: locationPanel },
     ]);
-    content.append(ingredientsTabs);
+    content.append(ingredientsTabs.wrapper);
 
     const footer = document.createElement("div");
     footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px;";
