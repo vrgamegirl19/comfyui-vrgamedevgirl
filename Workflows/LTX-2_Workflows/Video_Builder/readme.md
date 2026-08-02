@@ -2672,7 +2672,7 @@ Project folders may contain:
 | `rendered_scene_videos` | Generated scene videos |
 | `prompts` | Prompt and lyric segment files |
 
-## Video Quick-Start Walkthrough
+## Video Quick-Start Walkthrough for Reference to video (MSR LoRa) more coming soon.
 
 This eight-part walkthrough follows a new project from placing the Builder node through Storyboard planning and final rendering. Click a title to open its MP4 tutorial.
 
