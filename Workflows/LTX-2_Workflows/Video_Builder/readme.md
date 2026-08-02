@@ -53,7 +53,7 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 - [Standalone Video Enhancer and Video Compare](#standalone-video-enhancer-and-video-compare)
 - [Additional Nodes and Utilities](#additional-nodes-and-utilities)
 - [Saving Projects](#saving-projects)
-- [Video Quick-Start Walkthrough](#video-quick-start-walkthrough)
+- [Reference-to-Video (MSR LoRA) Quick-Start Walkthrough](#reference-to-video-msr-lora-video-quick-start-walkthrough)
 - [Recommended Beginner Workflow](#recommended-beginner-workflow)
 - [Common Problems](#common-problems)
 
@@ -2672,22 +2672,22 @@ Project folders may contain:
 | `rendered_scene_videos` | Generated scene videos |
 | `prompts` | Prompt and lyric segment files |
 
-## Reference to video (MSR LoRA) Video Quick-Start Walkthrough
+## Reference-to-Video (MSR LoRA) Video Quick-Start Walkthrough
 
-This eight-part walkthrough follows a new project from placing the Builder node through Storyboard planning and final rendering. Click a title to open its MP4 tutorial.
+This eight-part walkthrough follows a new project from placing the Builder node through Storyboard planning and final rendering. GitHub does not preview repository MP4s in its normal file viewer, so each title below uses the raw file URL to open or download the actual video.
 
 | Step | Video | What it covers |
 | --- | --- | --- |
-| 1 | [Place the node on the canvas](images/shorts/guide/step1-place-node-on-canvas.mp4) | Add and open the Video Builder node |
-| 2 | [Create a new project](images/shorts/guide/step2-create-new-project.mp4) | Start and name a Builder project |
-| 3 | [Load the audio file](images/shorts/guide/step3-load-audio-file.mp4) | Add the project soundtrack and initialize timeline audio |
-| 4 | [Choose an image model](images/shorts/guide/step4-image-models.mp4) | Review the available image-generation modes and settings |
-| 5 | [Choose a video mode](images/shorts/guide/step5-video-modes.mp4) | Review I2V, T2V, reference, Ingredients, ID-LoRA, and FLF choices |
-| 6 | [Transcribe the audio](images/shorts/guide/step6-transcribe-audio.mp4) | Create or fill scene Line Notes from the audio and reference text |
-| 7 | [Reference Builder, Line Mapping, and line review](images/shorts/guide/step7-reference-builder-line-mapping-and-review.mp4) | Set up references, map performers, and review line timing |
-| 8 | [Storyboard Builder and Render All](images/shorts/guide/step8-storyboard-builder-and-render-all.mp4) | Plan the storyboard, generate prompts, and render the project |
+| 1 | [Open/download: Place the node on the canvas](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step1-place-node-on-canvas.mp4) | Add and open the Video Builder node |
+| 2 | [Open/download: Create a new project](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step2-create-new-project.mp4) | Start and name a Builder project |
+| 3 | [Open/download: Load the audio file](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step3-load-audio-file.mp4) | Add the project soundtrack and initialize timeline audio |
+| 4 | [Open/download: Choose an image model](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step4-image-models.mp4) | Review the available image-generation modes and settings |
+| 5 | [Open/download: Choose a video mode](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step5-video-modes.mp4) | Review I2V, T2V, reference, Ingredients, ID-LoRA, and FLF choices |
+| 6 | [Open/download: Transcribe the audio](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step6-transcribe-audio.mp4) | Create or fill scene Line Notes from the audio and reference text |
+| 7 | [Open/download: Reference Builder, Line Mapping, and line review](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step7-reference-builder-line-mapping-and-review.mp4) | Set up references, map performers, and review line timing |
+| 8 | [Open/download: Storyboard Builder and Render All](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step8-storyboard-builder-and-render-all.mp4) | Plan the storyboard, generate prompts, and render the project |
 
-These copies are optimized for GitHub playback. The original full-resolution recordings can remain in the local `images/shorts` folder for future editing.
+These copies are optimized for web viewing and download. The original full-resolution recordings can remain in the local `images/shorts` folder for future editing.
 
 ## Recommended Beginner Workflow
 
