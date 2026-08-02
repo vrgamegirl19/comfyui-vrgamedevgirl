@@ -3,6 +3,37 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-08-02-builder-multi-select-ingredients",
+      "version": "2026.08.02-builder",
+      "date": "2026-08-02",
+      "title": "Faster scene selection and Ingredients panel fix",
+      "commit": "04efd428181d9cd975f393e9d250a1d5e8e59983",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Select Multi now opens a chooser for selecting clips directly on the timeline or entering base scene numbers as a list.",
+            "Scene lists accept commas, spaces, new lines, ranges such as 4-8, pasted lists, and all, odd, or even shortcuts.",
+            "Entered scene lists can replace the current selection, add scenes to it, or remove scenes from it."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "Multi-select now shows live scene-list validation, clearer instructions, and preserves an existing selection when the mode is reopened."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Fixed the Ingredients Reference Builder tab container so the Sheets, Mapping, and Locations panels mount and display correctly."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-07-31-builder-timeline-storyboard-prompts",
       "version": "2026.07.31-builder",
       "date": "2026-07-31",

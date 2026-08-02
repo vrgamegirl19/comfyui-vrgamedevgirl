@@ -11455,10 +11455,198 @@ function openBuilder(node) {
     state.multiSelectMode = Boolean(enabled);
     if (!state.multiSelectMode) {
       state.selectedSegmentIds = [];
-    } else if (state.activeId && !state.selectedSegmentIds.includes(state.activeId)) {
+    } else if (state.activeId && !state.selectedSegmentIds.length) {
       state.selectedSegmentIds = [state.activeId];
     }
     render();
+  }
+
+  function parseMultiSelectSceneList(value) {
+    const sceneCount = state.segments.length;
+    let normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) throw new Error("Enter at least one scene number, range, or shortcut.");
+    normalized = normalized
+      .replace(/\b(?:scenes?|clips?)\b/gi, " ")
+      .replace(/(^|\n)\s*[-*•]\s*/g, "$1")
+      .replace(/(\d+)\s*(?:\.\.|-|–|—|\bto\b|\bthrough\b)\s*(\d+)/gi, "$1-$2")
+      .replace(/\b(?:and)\b|&/gi, " ")
+      .replace(/(\d+)\.(?=\s|,|;|$)/g, "$1")
+      .replace(/[#\[\]{}()'\":|]/g, " ");
+    const tokens = normalized.split(/[\s,;]+/).filter(Boolean);
+    const sceneNumbers = new Set();
+    const invalid = [];
+    const addNumber = (number) => {
+      if (!Number.isInteger(number) || number < 1 || number > sceneCount) {
+        invalid.push(String(number));
+        return;
+      }
+      sceneNumbers.add(number);
+    };
+    for (const token of tokens) {
+      if (token === "all") {
+        for (let number = 1; number <= sceneCount; number += 1) sceneNumbers.add(number);
+        continue;
+      }
+      if (token === "odd" || token === "even") {
+        const parity = token === "odd" ? 1 : 0;
+        for (let number = 1; number <= sceneCount; number += 1) {
+          if (number % 2 === parity) sceneNumbers.add(number);
+        }
+        continue;
+      }
+      if (token === "none" || token === "clear") continue;
+      const range = token.match(/^(\d+)-(\d+)$/);
+      if (range) {
+        const first = Number(range[1]);
+        const last = Number(range[2]);
+        if (first < 1 || first > sceneCount || last < 1 || last > sceneCount) {
+          invalid.push(token);
+          continue;
+        }
+        const step = first <= last ? 1 : -1;
+        for (let number = first; ; number += step) {
+          sceneNumbers.add(number);
+          if (number === last) break;
+        }
+        continue;
+      }
+      if (/^\d+$/.test(token)) {
+        addNumber(Number(token));
+        continue;
+      }
+      invalid.push(token);
+    }
+    if (invalid.length) {
+      const rangeText = sceneCount ? `Scene numbers must be between 1 and ${sceneCount}.` : "There are no base scenes yet.";
+      throw new Error(`Could not read: ${invalid.join(", ")}. ${rangeText}`);
+    }
+    return Array.from(sceneNumbers).sort((a, b) => a - b);
+  }
+
+  function openMultiSelectChooser() {
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(680px,calc(100vw - 40px));max-height:calc(100vh - 40px);overflow:auto;border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
+    const heading = document.createElement("div");
+    heading.textContent = "How do you want to select clips?";
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const currentCount = selectedSegmentsForBatch().length;
+    const summary = document.createElement("div");
+    summary.textContent = currentCount
+      ? `${currentCount} clip${currentCount === 1 ? " is" : "s are"} currently selected.`
+      : "No clips are currently selected.";
+    summary.style.cssText = "font-size:12px;color:#cbd5e1;";
+
+    const clickCard = document.createElement("div");
+    clickCard.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:11px;display:flex;align-items:center;justify-content:space-between;gap:12px;";
+    const clickCopy = document.createElement("div");
+    clickCopy.innerHTML = `<strong style="color:#e0f2fe;">Click timeline clips</strong><br><span style="font-size:12px;color:#94a3b8;">Turn multi-select on, then click any base scene or insert to add or remove it.</span>`;
+    const clickSelect = makeButton("Start Clicking", "primary");
+    clickSelect.style.flex = "0 0 auto";
+    clickCard.append(clickCopy, clickSelect);
+
+    const listCard = document.createElement("div");
+    listCard.style.cssText = "border:1px solid #334155;border-radius:7px;background:#0f172a;padding:11px;display:flex;flex-direction:column;gap:9px;";
+    const listHeading = document.createElement("div");
+    listHeading.innerHTML = `<strong style="color:#e0f2fe;">Enter base scene numbers</strong><br><span style="font-size:12px;color:#94a3b8;">Use commas, spaces, new lines, ranges, or a normal pasted list. Examples: <code>1, 3, 7</code>, <code>4-8</code>, <code>2 to 6</code>, <code>[1, 5, 9]</code>, <code>all</code>, <code>odd</code>, or <code>even</code>.</span>`;
+    const input = document.createElement("textarea");
+    const selectedBaseNumbers = state.segments
+      .map((segment, index) => isSegmentMultiSelected(segment) ? index + 1 : 0)
+      .filter(Boolean);
+    input.value = selectedBaseNumbers.join(", ");
+    input.placeholder = "1, 3, 5-8\n12\n15";
+    input.style.cssText = "width:100%;box-sizing:border-box;min-height:112px;resize:vertical;border:1px solid #374151;border-radius:7px;background:#09090b;color:#f8fafc;padding:10px;font-size:13px;line-height:1.45;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;";
+    const quickRow = document.createElement("div");
+    quickRow.style.cssText = "display:flex;flex-wrap:wrap;gap:7px;";
+    for (const [label, value] of [["All", "all"], ["Odd", "odd"], ["Even", "even"], ["Clear", "none"]]) {
+      const button = makeButton(label);
+      button.onclick = () => {
+        input.value = value;
+        input.dispatchEvent(new Event("input"));
+        input.focus();
+      };
+      quickRow.append(button);
+    }
+    const actionSelect = makeSelect(["replace", "add", "remove"], "replace");
+    actionSelect.options[0].textContent = "Replace current selection";
+    actionSelect.options[1].textContent = "Add to current selection";
+    actionSelect.options[2].textContent = "Remove from current selection";
+    const status = document.createElement("div");
+    status.style.cssText = "min-height:18px;font-size:12px;color:#a5f3fc;";
+    const updateStatus = () => {
+      try {
+        const numbers = parseMultiSelectSceneList(input.value);
+        status.textContent = `${numbers.length} base scene${numbers.length === 1 ? "" : "s"} found${numbers.length ? `: ${numbers.join(", ")}` : "."}`;
+        status.style.color = "#a5f3fc";
+      } catch (error) {
+        status.textContent = String(error?.message || error);
+        status.style.color = "#fca5a5";
+      }
+    };
+    input.addEventListener("input", updateStatus);
+    listCard.append(listHeading, input, quickRow, makeField("How to apply this list", actionSelect), status);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;";
+    const cancel = makeButton("Cancel");
+    const turnOff = makeButton("Exit Multi-select");
+    turnOff.style.display = state.multiSelectMode ? "" : "none";
+    const apply = makeButton("Apply Scene List", "primary");
+    actions.append(cancel, turnOff, apply);
+    box.append(heading, summary, clickCard, listCard, actions);
+    backdrop.append(box);
+    document.body.append(backdrop);
+
+    const close = () => backdrop.remove();
+    cancel.onclick = close;
+    clickSelect.onclick = () => {
+      setMultiSelectMode(true);
+      close();
+      toast("Multi-select is on. Click timeline clips to add or remove them.");
+    };
+    turnOff.onclick = () => {
+      setMultiSelectMode(false);
+      close();
+      toast("Multi-select is off.");
+    };
+    apply.onclick = () => {
+      try {
+        const numbers = parseMultiSelectSceneList(input.value);
+        const listedIds = new Set(numbers.map((number) => state.segments[number - 1]?.id).filter(Boolean));
+        const nextIds = new Set(Array.isArray(state.selectedSegmentIds) ? state.selectedSegmentIds : []);
+        if (actionSelect.value === "replace") nextIds.clear();
+        for (const id of listedIds) {
+          if (actionSelect.value === "remove") nextIds.delete(id);
+          else nextIds.add(id);
+        }
+        state.selectedSegmentIds = Array.from(nextIds);
+        state.multiSelectMode = true;
+        if (state.selectedSegmentIds.length && !nextIds.has(state.activeId)) {
+          state.activeId = state.selectedSegmentIds[0];
+          state.activeTrack = "base";
+          syncInspector();
+        }
+        render();
+        close();
+        const count = selectedSegmentsForBatch().length;
+        toast(`${count} clip${count === 1 ? "" : "s"} selected. Multi-select is on.`);
+      } catch (error) {
+        status.textContent = String(error?.message || error);
+        status.style.color = "#fca5a5";
+        input.focus();
+      }
+    };
+    input.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") apply.click();
+      if (event.key === "Escape") close();
+    });
+    backdrop.addEventListener("pointerdown", (event) => {
+      if (event.target === backdrop) close();
+    });
+    updateStatus();
+    input.focus();
+    input.select();
   }
 
   function segmentAtTime(time) {
@@ -26220,7 +26408,7 @@ Chrome vault corridor: A sealed industrial passage...</pre>
       { value: "mapping", label: "Mapping", content: mappingPanel },
       { value: "locations", label: "Locations", content: locationPanel },
     ]);
-    content.append(ingredientsTabs);
+    content.append(ingredientsTabs.wrapper);
 
     const footer = document.createElement("div");
     footer.style.cssText = "display:flex;justify-content:flex-end;gap:8px;";
@@ -36353,13 +36541,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const body = document.createElement("div");
     body.style.cssText = "display:flex;flex-direction:column;gap:10px;font-size:12px;line-height:1.45;color:#d4d4d8;";
     const batch = document.createElement("div");
-    batch.innerHTML = `<strong style="color:#e0f2fe;">Batch scene settings</strong><br>Turn Select Multi on, click the scenes you want, then change image or video model settings. Those settings are saved only to the selected scenes as custom scene settings.`;
+    batch.innerHTML = `<strong style="color:#e0f2fe;">Choose scenes your way</strong><br>Click Select Multi, then either select clips directly on the timeline or enter base scene numbers as a list. Lists accept commas, spaces, new lines, ranges such as <code>4-8</code>, and shortcuts such as <code>all</code>, <code>odd</code>, and <code>even</code>.`;
     const selectedBatch = document.createElement("div");
     selectedBatch.innerHTML = `<strong style="color:#e0f2fe;">Batch render selected scenes</strong><br>When two or more scenes are selected, Image All, LLM All, Render All, and Build Full Video offer a selected-scenes option. Use it to generate prompts, images, or videos for only those selected scenes. Selected Render/Build does not stitch a final video.`;
     const preview = document.createElement("div");
     preview.innerHTML = `<strong style="color:#e0f2fe;">Stitch Preview</strong><br>Use the Stitch Preview menu option to make a quick complete video from selected scenes or from a start/end scene range. Inserts are included automatically, and no Gemma, image generation, or video rendering is run.`;
     const note = document.createElement("div");
-    note.textContent = "Selected scenes turn red. Turn Select Multi off when you want normal single-scene editing again.";
+    note.textContent = "Selected scenes turn red. Open Select Multi again to change the list, keep clicking, or exit multi-select and return to normal single-scene editing.";
     note.style.cssText = "border:1px solid #334155;border-radius:6px;background:#0f172a;padding:9px;color:#cbd5e1;";
     body.append(batch, selectedBatch, preview, note);
     const ok = makeButton("Got it", "primary");
@@ -44740,12 +44928,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     seekAudioWhenReady(startTime);
     audio.play().then(updatePlayPauseButton).catch((error) => toast(String(error?.message || error), true));
   };
-  multiSelectButton.onclick = () => {
-    setMultiSelectMode(!state.multiSelectMode);
-    toast(state.multiSelectMode
-      ? "Multi-select is on. Click scenes to add/remove them. Image and video model/settings changes will apply to selected scenes."
-      : "Multi-select is off.");
-  };
+  multiSelectButton.onclick = openMultiSelectChooser;
   multiSelectHintButton.onclick = showMultiSelectHint;
   stopButton.onclick = () => {
     pauseAllAudio();
