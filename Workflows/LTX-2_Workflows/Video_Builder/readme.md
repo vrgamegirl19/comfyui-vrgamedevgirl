@@ -2678,14 +2678,14 @@ This eight-part walkthrough follows a new project from placing the Builder node 
 
 | Step | Video | What it covers |
 | --- | --- | --- |
-| 1 | [Place the node on the canvas](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step1-place-node-on-canvas.mp4) | Add and open the Video Builder node |
-| 2 | [Create a new project](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step2-create-new-project.mp4) | Start and name a Builder project |
-| 3 | [Load the audio file](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step3-load-audio-file.mp4) | Add the project soundtrack and initialize timeline audio |
-| 4 | [Choose an image model](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step4-image-models.mp4) | Review the available image-generation modes and settings |
-| 5 | [Choose a video mode](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step5-video-modes.mp4) | Review I2V, T2V, reference, Ingredients, ID-LoRA, and FLF choices |
-| 6 | [Transcribe the audio](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step6-transcribe-audio.mp4) | Create or fill scene Line Notes from the audio and reference text |
-| 7 | [Reference Builder, Line Mapping, and line review](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step7-reference-builder-line-mapping-and-review.mp4) | Set up references, map performers, and review line timing |
-| 8 | [Storyboard Builder and Render All](https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/images/shorts/guide/step8-storyboard-builder-and-render-all.mp4) | Plan the storyboard, generate prompts, and render the project |
+| 1 | [Place the node on the canvas](images/shorts/guide/step1-place-node-on-canvas.mp4) | Add and open the Video Builder node |
+| 2 | [Create a new project](images/shorts/guide/step2-create-new-project.mp4) | Start and name a Builder project |
+| 3 | [Load the audio file](images/shorts/guide/step3-load-audio-file.mp4) | Add the project soundtrack and initialize timeline audio |
+| 4 | [Choose an image model](images/shorts/guide/step4-image-models.mp4) | Review the available image-generation modes and settings |
+| 5 | [Choose a video mode](images/shorts/guide/step5-video-modes.mp4) | Review I2V, T2V, reference, Ingredients, ID-LoRA, and FLF choices |
+| 6 | [Transcribe the audio](images/shorts/guide/step6-transcribe-audio.mp4) | Create or fill scene Line Notes from the audio and reference text |
+| 7 | [Reference Builder, Line Mapping, and line review](images/shorts/guide/step7-reference-builder-line-mapping-and-review.mp4) | Set up references, map performers, and review line timing |
+| 8 | [Storyboard Builder and Render All](images/shorts/guide/step8-storyboard-builder-and-render-all.mp4) | Plan the storyboard, generate prompts, and render the project |
 
 These copies are optimized for GitHub playback. The original full-resolution recordings can remain in the local `images/shorts` folder for future editing.
 
