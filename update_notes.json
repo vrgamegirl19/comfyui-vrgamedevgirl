@@ -3,11 +3,11 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
-      "id": "2026-08-02-reference-lyric-scene-transcription",
-      "version": "2026.08.02-lyrics",
+      "id": "2026-08-02-reference-lyrics-story-arc",
+      "version": "2026.08.02-builder-fixes",
       "date": "2026-08-02",
-      "title": "Reference-preserving lyric transcription for timeline scenes",
-      "commit": "e0542a5bc348d99c17d75a50d091f0ec51667ba6",
+      "title": "Reference lyric transcription and Story Arc reliability",
+      "commit": "c302d9c5f62b76db4f71452e228606ad42788853",
       "restart_required": true,
       "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
       "sections": [
@@ -23,7 +23,8 @@
           "items": [
             "Prevented Transcribe Existing Scenes from silently omitting reference lyric lines or inserting pipe delimiters between lyrics.",
             "Improved sustained boundary-word placement so audible final words follow their detected vocal tail into the correct scene instead of leaving that scene marked instrumental.",
-            "Prevented unrecognized first or last words from being stretched across several seconds of inter-line silence and assigned to the wrong scene."
+            "Prevented unrecognized first or last words from being stretched across several seconds of inter-line silence and assigned to the wrong scene.",
+            "Story Arc Gemma now removes only invented trailing sections after every required lyric heading is already present, while continuing to reject missing, renamed, reordered, or interleaved headings."
           ]
         }
       ]
