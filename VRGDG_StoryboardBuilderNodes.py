@@ -1389,6 +1389,15 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
     if required_labels:
         returned = [label.casefold() for label, _body in blocks]
         required = [label.casefold() for label in required_labels]
+        if len(blocks) > len(required_labels) and returned[:len(required)] == required:
+            # Gemma occasionally preserves every required lyric heading, then
+            # appends invented sections such as an extra Instrumental or Outro.
+            # The required prefix is already a complete valid story arc, so
+            # discard only those trailing additions instead of failing the
+            # entire generation. Missing, renamed, reordered, or interleaved
+            # headings still fail the strict comparison below.
+            blocks = blocks[:len(required_labels)]
+            returned = returned[:len(required)]
         if returned != required:
             mismatch_index = next(
                 (index for index, (expected, actual) in enumerate(zip(required, returned)) if expected != actual),
