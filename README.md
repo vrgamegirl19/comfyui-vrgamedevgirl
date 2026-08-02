@@ -25,6 +25,8 @@ Use it to:
 
 📖 **New here? Start with the full [LTX 2.3 Video Builder Guide](Workflows/LTX-2_Workflows/Video_Builder/readme.md).**
 
+✨ **Or chat with a GPT and ask any question about the video builder. [HERE](https://chatgpt.com/g/g-6a6b4799d0e48191acf5a97fb2132ba9-ltx-2-3-music-video-builder-guide)** 
+
 ---
 
 ## 🌟 Useful Nodes & Tools
