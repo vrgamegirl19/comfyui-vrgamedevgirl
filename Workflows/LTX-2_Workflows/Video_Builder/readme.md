@@ -10,6 +10,7 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 
 - [What the LTX 2.3 Video Builder Does](#what-the-ltx-23-video-builder-does)
 - [Current Feature Overview](#current-feature-overview)
+- [Recent Builder Updates](#recent-builder-updates)
 - [Installing From Main](#installing-from-main)
 - [Update Status and Self-Updater](#update-status-and-self-updater)
 - [Opening the Builder](#opening-the-builder)
@@ -45,6 +46,7 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 - [Settings And Audio Notifications](#settings-and-audio-notifications)
 - [Required Custom Nodes](#required-custom-nodes)
 - [Models and Downloads](#models-and-downloads)
+- [Standalone Video Enhancer and Video Compare](#standalone-video-enhancer-and-video-compare)
 - [Additional Nodes and Utilities](#additional-nodes-and-utilities)
 - [Saving Projects](#saving-projects)
 - [Recommended Beginner Workflow](#recommended-beginner-workflow)
@@ -85,11 +87,28 @@ The current LTX 2.3 Video Builder feature set includes:
 | `ID-LoRA I2V` | Adds identity-LoRA video generation, character/voice reference mapping, required-LoRA controls, and quiet timeline trim mode |
 | Portable projects | Adds `Branch Project`, `Export Shareable Project ZIP`, and `Import Project ZIP` with project-path rebasing on import |
 | Safer timeline editing | Adds playhead scene splitting, close-gaps, delete-all-images, audio-length clamping, exact lyric-line timing, and clearer global audio scrubbing |
+| Reference-preserving lyric timing | Uses pasted reference lyrics as the exact text source for existing scenes, keeps every lyric line in order, and uses acoustic timing plus vocal tails to place words at scene boundaries |
+| Beat-mode transcription | Creates beat-aligned scene blocks first, then automatically runs the same reference-preserving `Transcribe Existing Scenes` process with `Replace All` |
 | Beat calibration and edge snapping | Adds detected-marker warping, even-grid and auto-BPM calibration, read-only CapCut beat import, per-edge snap controls, shortcuts, and bulk Scene 3+ start snapping |
+| Scene-list multi-select | Selects scenes by clicking timeline clips or by entering lists, ranges, pasted scene numbers, `all`, `odd`, or `even`, then replaces, adds, or removes them from the active selection |
 | Faster media preparation | Adds numbered-folder timeline image import, `Enhance All`, FLF start/end-pair folder import, and more reliable scene/media recovery |
 | Image slideshow preview | Builds a timing-accurate image-and-audio preview before expensive scene video rendering |
-| Stronger story planning | Preserves character descriptions, handles repeated song sections, supports repeating location blocks, clears story beats without clearing other fields, and improves responsive Storyboard layout |
-| New standalone utilities | Adds Face Fix and Video Enhance node sets, advanced LTX CFG/guide scheduling and looping, feathered crop paste-back, a LoRA Dataset Creator, and expanded Krea 2 training/install tools |
+| Render All logs | Shows live per-scene phases, elapsed time, ETA estimates, stitch timing, and persistent JSON/text reports for full render runs |
+| Stronger story planning | Preserves character descriptions, handles repeated song sections, rejects real lyric-heading changes, removes only invented trailing Story Arc sections, supports repeating location blocks, and improves responsive Storyboard layout |
+| New standalone utilities | Adds the Standalone Video Enhancer, Video Compare Slider, Face Fix and Video Enhance node sets, advanced LTX CFG/guide scheduling and looping, feathered crop paste-back, a LoRA Dataset Creator, and expanded Krea 2 training/install tools |
+
+## Recent Builder Updates
+
+These are the newest user-facing changes covered throughout this guide:
+
+| Update | What changed |
+| --- | --- |
+| Reference lyrics and Story Arc reliability | `Transcribe Existing Scenes` now requires reference lyrics, preserves their exact line order, corrects held or missed boundary words, and no longer inserts pipe delimiters. Beat mode automatically transcribes its finished beat scenes. Story Arc keeps a complete valid heading structure when Gemma only appends invented trailing sections. |
+| Faster scene selection and Ingredients panels | `Select Multi` now supports direct timeline clicks and typed scene lists with ranges and shortcuts. The Ingredients Reference Builder correctly mounts its Sheets, Mapping, and Locations panels. |
+| Timeline and Storyboard prompt controls | `+ Segment` can end at the scrubber, Space toggles playback, `S` adds a segment, Left/Right navigate scenes, Storyboard Video Prep exposes Motion Notes inline, and all-scenes Gemma runs can fill only missing prompts or redo every visible scene. |
+| Render visibility and resume safety | `Render All` has a persistent live log and saved reports. Missing-only Storyboard batches preserve completed prompts and save successful partial progress if a later scene fails. |
+| Standalone finishing utilities | The Standalone Video Enhancer adds Original/2K/3K/4K output, sharpening, grain, resumable batches, and before/after comparison. The Video Compare Slider provides synchronized draggable video comparison. |
+| Lyric, prompt, and scene safety | Adjacent scenes can be merged without shifting the remaining timeline, exact pasted lyric units remain intact, manual prompts remain manual, Storyboard starting-shot instructions are enforced, global audio remains the final soundtrack, and undo/thumbnail handling uses less memory. |
 
 ## Installing From Main
 
@@ -167,6 +186,8 @@ The Builder shows a version-status banner above the workspace. It checks the ins
 You can dismiss the current banner state. If a newer commit becomes available, the new status can appear again.
 
 Use `Menu` -> `Update to Latest` to run the built-in updater. It fetches `origin/main`, switches to local `main`, and runs a fast-forward-only pull from `origin/main`. If `requirements.txt` changed between the installed and updated commits, the updater installs it with the same Python executable running ComfyUI; otherwise dependency installation is skipped. It does not run `git reset` or `git clean`, does not delete created files, and stops if local edits would conflict.
+
+Use `Menu` -> `What's New` or the update-status details action to review the release entries that apply to your installation. Use `Menu` -> `Review Guide` to reopen this public guide. The older Prompt Creator remains available as `Prompt Creator (Legacy)` and displays a warning before leaving the current Builder workflow.
 
 After every completed update, fully stop and restart ComfyUI, then hard refresh the browser so the updated Python, JavaScript, and any newly installed dependencies load.
 
@@ -329,6 +350,7 @@ Common scene actions:
 | Add a new scene | Timeline `+ Segment` |
 | Add an insert/overlay | Timeline `+ Insert` |
 | Delete selected scene | Timeline `x` button |
+| Merge adjacent scenes | Right-click a base scene and choose `Merge with left` or `Merge with right` |
 | Edit scene name | Right panel `Scene` tab, `Scene label` |
 | Edit timing | Right panel `Scene` tab, `Start` and `End` |
 | Prevent timing changes from SRT import | `Freeze SRT timing` |
@@ -361,11 +383,11 @@ Timeline controls:
 | `Snap Scene Edge` | Move the selected scene start or end to the closest beat while moving only a directly connected neighbor's shared boundary |
 | Scissors (`✂`) | Split the selected base scene at the playhead without moving later scene timing |
 | `+ Timeline Note` | Add a timeline marker or note |
-| `+ Segment` | Add a normal scene |
+| `+ Segment` | Add a normal scene; when the scrubber is at least 0.5 seconds beyond the final base scene, it becomes the new segment endpoint |
 | `+ Insert` | Add an insert/overlay segment without changing the base timeline |
 | Undo / Redo | Revert or restore timeline edits |
 | Play / Stop | Preview audio/timeline playback |
-| `Select Multi` | Select multiple scenes for batch settings or preview stitching |
+| `Select Multi` | Open the scene-selection chooser, then select clips directly or enter a scene-number list |
 | Waveform size | Choose small, medium, or large waveform |
 | `Snap beats` | Snap edits to detected beats |
 | Zoom `-` / `+` | Zoom the timeline view |
@@ -376,6 +398,26 @@ Timeline controls:
 The Builder treats loaded global audio as the hard timeline boundary. Scenes and overlays beyond the audio end are removed, clips crossing the end are trimmed, new scenes cannot extend past it, and the timeline shows both timeline and audio duration. The scrubber is labeled `Global audio scrub` so it is clear that it follows the soundtrack rather than the selected video.
 
 When using the scissors button, move the playhead inside the selected scene and away from either edge. Vocal text remains on the left half; instrumental text is retained on both halves. Clear selected video/history before splitting a scene that already has rendered video.
+
+Right-click a base scene to merge it with its left or right neighbor. The merge keeps the outer start/end times, combines lyrics, notes, singers, and scene mappings, and does not shift the scenes that follow it.
+
+`Select Multi` supports two selection styles:
+
+- Turn multi-select on and click any base scene or insert to toggle it.
+- Enter base-scene numbers separated by commas, spaces, or new lines. Ranges such as `4-8`, pasted lists, and the shortcuts `all`, `odd`, and `even` are accepted.
+- Choose whether the entered list replaces the current selection, adds to it, or removes from it.
+- Selected clips turn red. Reopen `Select Multi` to revise the list or exit multi-select and return to normal single-scene editing.
+
+Timeline keyboard shortcuts work when the cursor is not inside a text field or dialog:
+
+| Shortcut | Action |
+| --- | --- |
+| `Space` | Play or pause the timeline |
+| `S` | Add a segment |
+| `Left Arrow` / `Right Arrow` | Select the previous or next scene |
+| `Ctrl+S` / `Ctrl+E` | Snap the selected scene start or end to the nearest beat |
+
+When `S` or `+ Segment` uses the scrubber as the final endpoint, beat snapping is honored when enabled and the Builder asks for confirmation before creating an unusually long scene.
 
 ### Beat Calibration and Scene Snapping
 
@@ -1184,6 +1226,8 @@ To use per-scene audio:
 
 Do not mix global music and scene audio accidentally. Pick the source style that matches the project, and use silent-audio duration when intentionally building without an audio file.
 
+When a project has global audio, that track remains the preferred final soundtrack during scene-audio preparation and stitching. Scenes without custom audio are filled from the matching global-audio range. Loading or restoring global audio also restores timeline playback and the visible waveform.
+
 ![Audio Tab](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Audio%20Tab%20Timeline%20Audio.png)
 
 ## Lyric Mapping
@@ -1231,7 +1275,9 @@ The first Lyric Mapping screen has two starting options.
 
 Use `Transcribe Existing Scenes` when your timeline already has scene blocks.
 
-This keeps the current scene timing and sends the global audio plus the builder SRT timing to the transcription workflow. The result is written into each scene's `Lyrics / vocal line` field.
+This keeps the current scene timing and sends the global audio, the existing scene windows, and the required reference lyrics to the transcription workflow. Reference lyrics are the authoritative text source: every supplied lyric line must be returned in the same order, while acoustic word timing decides which existing scene receives each word. If that coverage check fails, the current timeline is left unchanged instead of silently dropping lyrics.
+
+Use `Replace All` when rerunning transcription after correcting the reference lyrics or timing. The output uses normal spaces—never pipe delimiters—and only writes `[instrumental]` when no reference lyric belongs in that scene. Held final words can follow their detected vocal tail across a cut, while an unrecognized first or last word stays beside recognized words from the same lyric line instead of stretching across silence.
 
 Use this when:
 
@@ -1241,7 +1287,7 @@ Use this when:
 | You manually created scenes | You want lyrics attached to those existing timings |
 | You adjusted timing by hand | You do not want the transcriber to replace the whole timeline |
 
-After it finishes, open `Review Lyrics + Map Singers` to fix any timing or lyric mistakes.
+After it finishes, open `Review Lyrics + Map Singers` to listen through the boundary scenes and make any final timing correction.
 
 ### Option 2: Create Scenes From Lyrics
 
@@ -1260,7 +1306,7 @@ The Create Scenes window includes these controls:
 
 | Control | What it does |
 | --- | --- |
-| `Reference lyrics` | Optional, but recommended. Paste the real lyrics so transcription and alignment are more accurate |
+| `Reference lyrics` | Paste the real lyrics. They are required for existing-scene transcription and Beat mode and strongly recommended for every lyric-driven mode |
 | `Language` | The language Whisper should use, such as `english` |
 | `Segment mode` | Controls how reference lyrics become timeline scenes |
 | `Include instrumental gaps` | Adds no-vocal scenes for long gaps between vocal sections |
@@ -1278,9 +1324,10 @@ Important notes:
 
 - Option 2 replaces the current base timeline scenes with the generated lyric scenes.
 - Existing generated media is not deleted, but it may no longer line up after timing changes.
-- Reference lyrics do not need to be perfect, but cleaner lyrics usually produce cleaner timing.
+- Lyric notes use the supplied reference words, so correct the reference lyrics before running transcription.
 - Blank lines in pasted lyrics are treated as spacing, not instrumental sections.
-- To request a no-vocal section in the lyrics, use marker lines like `[instrumental]`, `[break]`, `[intro]`, `[outro]`, or `[b-roll]`.
+- Only `[instrumental]` and `[instrumental break]` explicitly force a no-vocal section. `[intro]`, `[outro]`, and `[break]` are song-structure headers because those sections may still contain lyrics.
+- Parenthesized words are treated as sung or spoken lyric text. The Builder warns before transcription, preserves the words, and removes only the parenthesis characters from the final lyric output.
 
 ### Segment Mode
 
@@ -1292,12 +1339,14 @@ Important notes:
 | Reference chunks / grouped lines | Larger lyric chunks can become longer scenes |
 | Exact reference lyric lines | Every non-empty pasted lyric line becomes exactly one vocal scene with that exact text and without min/max duration rewriting |
 | One scene per stanza | Keeps each pasted stanza together as one scene target |
-| Beat mode | Builds timing from the beat-oriented Prompt Creator duration settings |
+| Beat mode | Creates beat-aligned segments first, then automatically runs the same reference-preserving `Transcribe Existing Scenes` process with `Replace All` |
 | Whisper chunks | Uses Whisper's detected chunks more directly |
 
 For most music-video projects, start with one scene per lyric line. It is easier to review and fix.
 
 Use `Exact reference lyric lines` when the pasted lyric lines are already the units you want. Vocal lines are not split, merged, stretched, or constrained by the scene-duration fields. Instrumental gaps can still be included as complete gaps and split manually later with the timeline scissors.
+
+Beat mode is a two-stage operation handled by one button: it creates the beat scene blocks, saves those blocks as the current timeline, and then fills them through `Transcribe Existing Scenes`. You do not need to run transcription a second time afterward. The Wizard uses the same shared scene-creation and lyric-mapping engines as Line Mapping, so the same reference-preservation rules apply there.
 
 ### Include Instrumental Gaps
 
@@ -1755,8 +1804,15 @@ The collapsible `Story Layer` keeps the overall idea, lyric strength, user story
 The current Storyboard Builder includes several planning and safety improvements:
 
 - repeated verse/chorus/bridge sections remain distinct when the story arc is created or updated
+- Story Arc requires the detected lyric headings in their original order; if Gemma returns every required heading and only appends invented trailing sections, those extras are removed automatically, while missing, renamed, reordered, or interleaved headings still stop the result
 - saved character descriptions follow the mapped characters into FLF endpoint planning
+- the visual subject picker assigns one or more existing Reference Builder subjects to a scene or uploads a new subject without leaving the Storyboard
+- Storyboard imports merge incoming subjects and locations with saved project references instead of discarding new mappings
 - bulk scene assignment can rotate locations or `Repeat each location for X scenes`
+- Video Prep shows Motion Notes inline; custom Motion Notes override the scene-default camera-motion preset when Gemma builds the prompt, preventing conflicting camera instructions
+- starting-shot choices are enforced at the beginning of non-I2V prompts, including an explicit extreme close-up for an eyes shot
+- the all-scenes Gemma action can fill only missing prompts or redo every visible scene and shows the exact missing/completed counts before it starts
+- missing-only prompt batches preserve completed prompts and save successful partial progress if a later scene fails
 - `Clear All Story Beats` clears only the per-scene story-beat field, preserving lyrics, prompts, references, images, locations, and shot settings
 - scene cards and controls reflow more cleanly on smaller or resized Storyboard windows
 
@@ -1771,8 +1827,8 @@ Recommended Storyboard Builder workflow:
 7. Click `Create Missing Scene Beats` to preserve existing beats, or `Replace All Scene Beats` only when intentionally rebuilding them.
 8. Choose the shot/still aesthetic in Image Prep, or camera flow, motion speed, performance style, character speed, and facial performance in Video Prep.
 9. Use `Fill Missing` to protect manual scene choices. Use `Replace All` only when the selected preset should overwrite every scene.
-10. Open individual scene cards to correct the lyric section, story beat, references, shot/camera direction, motion, performance, or notes.
-11. Click the all-scenes Gemma button to generate prompts, then inspect several scene cards for identity, location, singing, and motion accuracy.
+10. Open individual scene cards to correct the lyric section, story beat, subjects, location, starting shot, camera direction, Motion Notes, performance, or facial direction.
+11. Click the all-scenes Gemma button, choose `Create missing only` to protect finished prompts or `Redo every visible scene` for a deliberate rewrite, then inspect several scene cards for identity, location, singing, starting-shot, and motion accuracy.
 12. Click `Save Storyboard`. Use `Export Prompt Files` when another tool needs the generated files.
 
 Image Prep scene defaults control still-shot flow, image aesthetic, world style, consistency, performance, and facial direction:
@@ -1932,6 +1988,8 @@ If the current image mode is `Flux/Klein` or `Nano B`, the image prompt buttons 
 
 Use caution with the clear buttons. They remove prompt text from the project stage they describe.
 
+Prompts typed or pasted manually—including Prompt Options edits, reloads, and find/replace results—remain manual when rendered. Automatic trigger phrases, vocal/facial-performance directions, and ID-LoRA augmentation are applied only to prompts originally created by Gemma. This prevents a later Gemma edit or final render preparation from silently rewriting a manual prompt or appending facial direction twice.
+
 ### Editing Prompt Files
 
 The editor accepts several formats:
@@ -2070,7 +2128,7 @@ The `Menu` contains batch tools that can work across many scenes.
 | `Build Full FLF Video` | Runs the First/Last Frame endpoint, image-chain, prompt, render, final-frame extraction, and stitch stages |
 | `Stop` | Stops the current workflow run |
 
-In `Reference to Video` mode, `LLM Video All` can use the Storyboard prompt writer when launched through the Wizard. In `Ingredients to Video` mode, make sure Ingredients sheets are mapped before running the batch prompt step.
+In `Reference to Video` mode, `LLM Video All` can use the Storyboard prompt writer when launched through the Wizard. In `Ingredients to Video` mode, make sure Ingredients sheets are mapped before running the batch prompt step. `Gemma Video All` asks whether to create only missing prompts or redo every visible scene and shows the completed/missing counts before the batch begins.
 
 When prompted, choose the safest option first:
 
@@ -2096,6 +2154,8 @@ Some rebuild choices let you keep the current seeds or randomize them. Keep seed
 In `First Last Frame` mode, `Image All` also offers the dedicated chained and independent endpoint workflows described earlier. Those choices prepare images and FLF prompts but still do not render scene videos.
 
 `Render All` is video/stitch focused. It does not regenerate image prompts or images unless the selected build option says so.
+
+During `Render All`, the persistent render log shows the current scene, phase, elapsed time, per-scene timing, estimated time remaining, and final-stitch timing. When the run finishes or stops, the Builder saves JSON and text reports with the project so you can review completed scenes, failures, and timing after the progress window closes.
 
 ![Build Full Video Options](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Build%20Full%20Video%20Options.png)
 
@@ -2446,12 +2506,39 @@ ComfyUI/
 
 ![Download Models Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/2026-06-01%2016_02_27-.png)
 
+## Standalone Video Enhancer and Video Compare
+
+Add `VRGDG Standalone Video Enhancer` to open a clean enhancement workspace for an existing finished video without opening Video Builder.
+
+| Enhancer control | What it does |
+| --- | --- |
+| Output size | Keeps the original size or creates 2K, 3K, or 4K output with high-quality Lanczos scaling while preserving portrait/landscape aspect ratio |
+| Fast Unsharp Sharpen | Adds fast sharpening with strength up to 10; test a short range before using high values |
+| Fast Film Grain | Controls grain intensity, saturation mix, and deterministic seed |
+| Current-frame comparison | Shows the active frame before and after processing with a draggable wipe |
+| Final-video comparison | Synchronizes the source and enhanced videos behind the same draggable divider and supports an expanded, screen-filling view |
+| Memory-aware rendering | Processes long videos in resumable frame batches with checkpoints, cancellation, and an automatic smaller-batch retry after GPU out-of-memory errors |
+| Preserve audio | Copies the original soundtrack into the finished enhanced video when enabled |
+
+Recommended enhancer workflow:
+
+1. Add the node and click `Open Standalone Video Enhancer`.
+2. Load the source video and choose Original, 2K, 3K, or 4K.
+3. Start with low sharpening and grain values and compare a representative frame.
+4. Render a short test before processing a long video.
+5. Use the final-video wipe comparison to check faces, edges, motion, and grain.
+6. Resume from the saved checkpoint after an interruption instead of restarting a completed batch.
+
+Add `VRGDG Video Compare Slider` when you only need to compare two existing videos. It provides synchronized playback, shared scrubbing, looping, optional audio, editable labels, a draggable before/after divider, and an expanded comparison view.
+
 ## Additional Nodes and Utilities
 
 The repository also includes standalone nodes and UIs that can be used outside the Video Builder. These do not appear as Builder panels; add them to a normal ComfyUI workflow.
 
 | Node or utility | What it adds | Quick start |
 | --- | --- | --- |
+| `VRGDG Standalone Video Enhancer` | Standalone Original/2K/3K/4K enhancement with sharpening, grain, resumable rendering, audio preservation, and frame/video wipe comparison | Add the node, open the enhancer, load a source video, test conservative settings on a short range, then render and compare the final result |
+| `VRGDG Video Compare Slider` | Synchronized before/after video playback with scrubbing, looping, labels, optional audio, and a draggable divider | Add the node, load both videos, synchronize them, then drag the divider or expand the viewer for inspection |
 | `VRGDG Storyboard Creator with Browser AI — Open This` | The project-aware start/end storyboard workspace described above | Add the node, click `Open Storyboard Creator`, load a saved Builder project, and follow the Start Image Storyboard workflow above |
 | `VRGDG LoRA Dataset Creator UI` | Builds image/caption datasets for art styles, consistent characters, or experimental LTX 2.3 IC edit pairs | Add/open the UI, choose the dataset type/output folder, configure the concept and generator, test one item, then run the batch; review images and captions before training |
 | `Face Fix - ...` node set | Detects/tracks a face, prepares Z-Image anchors and an LTX crop video, validates both branches, and composites repaired frames back into the source | Start from the supplied Face Fix workflow, load the source video, set the face/range/detection options, run prepare and anchors, process the crop through LTX, validate, then composite it back |
@@ -2582,10 +2669,15 @@ Use this for new projects.
 | Timing changed after import | Enable `Freeze SRT timing` on scenes you do not want changed |
 | Image-to-video prompt looks wrong | Turn `Use image reference for I2V prompt?` on/off depending on whether the image should guide Gemma |
 | Characters sing during instrumental sections | Mark the scene `Instrumental` or `B-roll / no lip-sync`, then save lyric mapping |
+| Existing-scene transcription misses or shifts lyrics | Confirm the complete reference lyrics are pasted, use `Replace All`, restart ComfyUI after updating, and listen through boundary scenes in lyric review |
+| Beat mode created scenes but lyrics are blank | Beat mode now transcribes its finished scenes automatically; confirm reference lyrics were supplied and review the transcription error/progress window |
 | Wrong singer performs a duet line | Open `Review Lyrics + Map Singers`, check both singers, then save |
 | Lyric notes do not show on the timeline | Use `Show Lyric Notes`, then save the lyric review |
 | Location dropdowns are empty | Add locations in Reference Builder and save it |
 | Reference Builder auto map fails | Extract/add locations first, then auto map; reduce overly long location lists if needed |
+| Ingredients tabs are blank | Update to the newest Builder, restart ComfyUI, and hard refresh the browser so the repaired Sheets, Mapping, and Locations panels load |
+| Story Arc reports a changed lyric structure | Update and rerun. Trailing invented headings are removed automatically; a remaining error means Gemma actually missed, renamed, reordered, or inserted a heading inside the required structure |
+| Render All progress disappeared | Reopen the persistent render log and inspect the saved JSON/text report in the project for completed phases, failures, and stitch timing |
 | Prompt Creator data does not populate notes | Use `Send To Video Creator` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
 | LM Studio is selected but not used | Vision Gemma still uses built-in GGUF; only text-only passes use LM Studio |
 | Browser AI cannot control the browser | Run Install/Check Browser Setup, sign in with `Open Selected Login`, or use the manual export/import path |
