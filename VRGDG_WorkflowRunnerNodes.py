@@ -2454,7 +2454,7 @@ def _patch_timestamped_transcribe_api_prompt(prompt, payload):
     _set_api_input(prompt, extractor_id, "reference_lyrics", str(payload.get("reference_lyrics", "") or ""))
     _set_api_input(prompt, extractor_id, "language", str(payload.get("language", "") or "english"))
     segment_mode = str(payload.get("segment_mode", "") or "reference_lines").strip()
-    if segment_mode not in {"whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas"}:
+    if segment_mode not in {"whisper_chunks", "reference_lines", "exact_reference_lines", "reference_stanzas", "reference_scene_words"}:
         segment_mode = "reference_lines"
     _set_api_input(prompt, extractor_id, "segment_mode", segment_mode)
     _set_api_input(prompt, extractor_id, "include_instrumental_gaps", _bool_payload(payload, "include_instrumental_gaps", True))

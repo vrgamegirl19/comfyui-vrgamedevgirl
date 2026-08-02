@@ -18623,18 +18623,15 @@ function openBuilder(node) {
     };
   }
 
-  function createSegmentsFromBeatSrtAndWhisper(srtText = "", whisperText = "", options = {}) {
+  function createSegmentsFromBeatSrt(srtText = "") {
     const cues = parseSrtCueSegments(srtText);
-    const lyrics = parseLyricSegmentOutput(whisperText);
-    const instrumentalText = String(options.instrumentalText || options.beatEmptySegmentText || "[instrumental]").trim() || "[instrumental]";
     const created = [];
     cues.forEach((cue, index) => {
       const segment = newSegment(cue.start, cue.end);
       segment.label = `SCENE ${index + 1}`;
       segment.source = "beat_timestamped_lyrics";
-      const lyricText = cleanTimestampedLyricText(lyrics[index] || cue.text || "") || instrumentalText;
-      segment.lyric_text = lyricText;
-      segment.lyric_no_lip_sync = isInstrumentalLyricText(lyricText);
+      segment.lyric_text = "";
+      segment.lyric_no_lip_sync = false;
       segment.timeline_note = "";
       created.push(segment);
     });
@@ -19120,13 +19117,13 @@ function openBuilder(node) {
       const close = makeButton("Close");
       header.append(title, close);
       const note = document.createElement("div");
-      note.textContent = "Full lyrics or dialogue are optional, but strongly recommended. They help Whisper/stable-ts fix typos and align the exact words per scene.";
+      note.textContent = "Full reference lyrics or dialogue are required. Their exact line order is preserved while stable-ts determines where each line belongs in the existing scenes.";
       note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
       const lyrics = document.createElement("textarea");
-      lyrics.placeholder = "Optional full lyrics...";
+      lyrics.placeholder = "Required full reference lyrics or dialogue...";
       lyrics.style.cssText = "width:100%;box-sizing:border-box;min-height:210px;resize:vertical;border:1px solid #334155;border-radius:7px;background:#020617;color:#f8fafc;padding:10px;font-size:12px;line-height:1.45;font-family:monospace;";
       const language = makeInput("english");
-      const mode = makeSelect(["fill_missing", "replace_all"], "fill_missing");
+      const mode = makeSelect(["fill_missing", "replace_all"], "replace_all");
       mode.options[0].textContent = "Fill missing only";
       mode.options[1].textContent = "Replace all line notes";
       const grid = document.createElement("div");
@@ -19397,6 +19394,148 @@ function openBuilder(node) {
       }
     }
     throw new Error("Timestamped transcription finished, but no timestamped lyrics JSON was found.");
+  }
+
+  function referenceVocalLines(referenceLyrics = "") {
+    return String(referenceLyrics || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line) => String(line || "").trim())
+      .filter((line) => line && !/^\[[^\]]+\]$/.test(line))
+      .map((line) => cleanTimestampedLyricText(line))
+      .filter(Boolean);
+  }
+
+  function mapTimestampedReferenceLyricsToExistingScenes(payload, scenes = [], referenceLyrics = "", instrumentalText = "[instrumental]") {
+    const referenceLines = referenceVocalLines(referenceLyrics);
+    if (!referenceLines.length) {
+      throw new Error("Reference lyrics are required to transcribe existing scenes without dropping lines.");
+    }
+
+    const vocalSegments = (Array.isArray(payload?.segments) ? payload.segments : [])
+      .filter((segment) => String(segment?.type || "").toLowerCase() === "vocal")
+      .map((segment) => ({
+        start: Number(segment?.start),
+        end: Number(segment?.end),
+        text: cleanTimestampedLyricText(segment?.text || ""),
+        words: (Array.isArray(segment?.words) ? segment.words : [])
+          .map((word) => ({
+            start: Number(word?.start),
+            end: Number(word?.end ?? word?.start),
+            text: String(word?.text || "").trim(),
+          }))
+          .filter((word) => word.text && Number.isFinite(word.start))
+          .sort((a, b) => a.start - b.start || a.end - b.end),
+      }));
+    if (vocalSegments.length !== referenceLines.length) {
+      throw new Error(
+        `Reference-preserving transcription returned ${vocalSegments.length} vocal line${vocalSegments.length === 1 ? "" : "s"}, `
+        + `but ${referenceLines.length} reference lyric line${referenceLines.length === 1 ? " was" : "s were"} supplied. The existing timeline was left unchanged.`
+      );
+    }
+    for (let index = 0; index < referenceLines.length; index += 1) {
+      const expected = normalizedLyricMatchText(referenceLines[index]);
+      const received = normalizedLyricMatchText(vocalSegments[index]?.text || "");
+      if (!expected || expected !== received) {
+        throw new Error(
+          `Reference-preserving transcription changed or reordered lyric line ${index + 1}. The existing timeline was left unchanged.`
+        );
+      }
+    }
+
+    const orderedScenes = (Array.isArray(scenes) ? scenes : [])
+      .filter(Boolean)
+      .map((segment, originalIndex) => ({
+        segment,
+        originalIndex,
+        start: Number(segment?.start),
+        end: Number(segment?.end),
+      }))
+      .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end) && end > start)
+      .sort((a, b) => a.start - b.start || a.end - b.end || a.originalIndex - b.originalIndex);
+    if (!orderedScenes.length) throw new Error("There are no valid existing scene windows to transcribe.");
+
+    const assignments = orderedScenes.map(() => []);
+    const assignedLineIndices = orderedScenes.map(() => new Set());
+    const sceneIndexForTime = (time) => {
+      const exactIndex = orderedScenes.findIndex((scene, index) => (
+        time >= scene.start - 0.001
+        && (time < scene.end - 0.001 || (index === orderedScenes.length - 1 && time <= scene.end + 0.001))
+      ));
+      if (exactIndex >= 0) return exactIndex;
+      let closestIndex = 0;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      orderedScenes.forEach((scene, index) => {
+        const distance = time < scene.start ? scene.start - time : Math.max(0, time - scene.end);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      });
+      return closestIndex;
+    };
+
+    vocalSegments.forEach((line, lineIndex) => {
+      const expected = normalizedLyricMatchText(referenceLines[lineIndex]);
+      const timedWordText = normalizedLyricMatchText(line.words.map((word) => word.text).join(" "));
+      if (line.words.length && timedWordText === expected) {
+        line.words.forEach((word, wordIndex) => {
+          // Put each word in the scene containing most of that word. Using the
+          // word midpoint prevents a word that merely begins just before a cut
+          // from being shown entirely in the previous scene.
+          const wordTime = Number.isFinite(word.end) && word.end > word.start
+            ? (word.start + word.end) / 2
+            : word.start;
+          let sceneIndex = sceneIndexForTime(wordTime);
+
+          // Whisper often truncates the timestamp of a sustained final sung
+          // word just before a cut even though the detected vocal tail extends
+          // into the next scene. Honor that tail when it crosses an adjacent
+          // boundary so words such as "here" (9.96s with a 10.56s vocal tail)
+          // are not put in the prior scene and the audible scene marked empty.
+          const isFinalWord = wordIndex === line.words.length - 1;
+          const nextScene = orderedScenes[sceneIndex + 1];
+          const nextBoundary = Number(nextScene?.start);
+          const lineEnd = Number(line.end);
+          const wordEnd = Number(word.end);
+          if (
+            isFinalWord
+            && nextScene
+            && Number.isFinite(nextBoundary)
+            && Number.isFinite(lineEnd)
+            && Number.isFinite(wordEnd)
+            && wordEnd <= nextBoundary + 0.001
+            && nextBoundary - wordEnd <= 0.25
+            && lineEnd > nextBoundary + 0.001
+          ) {
+            sceneIndex += 1;
+          }
+          assignments[sceneIndex].push(word.text);
+          assignedLineIndices[sceneIndex].add(lineIndex);
+        });
+        return;
+      }
+
+      // Rare unaligned lines have no trustworthy word timestamps. Keep their
+      // exact reference text and place them by the best available line start
+      // instead of dropping them.
+      const fallbackTime = Number.isFinite(line.start) ? line.start : orderedScenes[0].start;
+      const sceneIndex = sceneIndexForTime(fallbackTime);
+      assignments[sceneIndex].push(referenceLines[lineIndex]);
+      assignedLineIndices[sceneIndex].add(lineIndex);
+    });
+
+    const mappedLineIndices = Array.from(new Set(assignedLineIndices.flatMap((indices) => Array.from(indices)))).sort((a, b) => a - b);
+    if (mappedLineIndices.length !== referenceLines.length || mappedLineIndices.some((lineIndex, index) => lineIndex !== index)) {
+      throw new Error("Reference lyric coverage validation failed. The existing timeline was left unchanged.");
+    }
+
+    const emptyText = String(instrumentalText || "[instrumental]").trim() || "[instrumental]";
+    return orderedScenes.map((entry, index) => ({
+      segment: entry.segment,
+      lyricText: assignments[index].length ? assignments[index].join(" ") : emptyText,
+      referenceLineCount: assignedLineIndices[index].size,
+    }));
   }
 
   function mergeTimestampedLyricText(a, b, instrumentalText = "[instrumental]") {
@@ -19693,7 +19832,11 @@ function openBuilder(node) {
       let created = [];
       let modeLabel = options.segmentMode || "reference_lines";
       let sourceDuration = 0;
+      let beatTranscriptionResult = null;
       if (options.segmentMode === "beat_scenes") {
+        if (!String(options.referenceLyrics || "").trim()) {
+          throw new Error("Reference lyrics are required for Beat Mode so the created scenes can be transcribed without dropping lyric lines.");
+        }
         progress.set("Building Prompt Creator beat/SRT workflow...", 8);
         const built = await postJson("/vrgdg/music_prompt_creator/build_whisper_prompt", {
           project_folder: activeProjectFolderForSave() || projectInput.value || state.projectFolder || "",
@@ -19723,8 +19866,7 @@ function openBuilder(node) {
         );
         const text = extractPromptCreatorWhisperSrtText(textValues);
         if (!text.srt) throw new Error("Beat mode finished, but no SRT timing text was found.");
-        if (!text.whisper) throw new Error("Beat mode finished, but no transcribed lyric segments were found.");
-        created = createSegmentsFromBeatSrtAndWhisper(text.srt, text.whisper, options);
+        created = createSegmentsFromBeatSrt(text.srt);
         sourceDuration = Math.max(0, ...created.map((segment) => Number(segment.end || 0)));
         modeLabel = "Beat mode";
       } else {
@@ -19789,12 +19931,29 @@ function openBuilder(node) {
       syncLyricNoteControls();
       syncInspector();
       render();
-      const lyricPath = projectLyricNotesPath();
-      if (lyricPath) await syncLyricAndSubjectNoteFiles("timestamped lyric scene creation");
-      if (activeProjectFolderForSave()) {
-        await saveSession({ quiet: true, throwOnError: true });
+      let lyricPath = projectLyricNotesPath();
+      if (options.segmentMode === "beat_scenes") {
+        progress.set(`Created ${created.length} beat-aligned scenes. Now transcribing those existing scenes...`, 62);
+        beatTranscriptionResult = await transcribeExistingScenesWithOptions({
+          referenceLyrics: options.referenceLyrics || "",
+          language: options.language || "english",
+          replaceAll: true,
+          instrumentalText: options.beatEmptySegmentText || options.instrumentalText || "Instrumental section.",
+        }, {
+          progress,
+          recordHistory: false,
+        });
+        lyricPath = beatTranscriptionResult.lyricPath || lyricPath;
+      } else {
+        if (lyricPath) await syncLyricAndSubjectNoteFiles("timestamped lyric scene creation");
+        if (activeProjectFolderForSave()) {
+          await saveSession({ quiet: true, throwOnError: true });
+        }
       }
-      progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lines.\nMode: ${modeLabel}\n${lyricPath ? `Saved line notes: ${lyricPath}` : "Line notes saved in session only."}`, 100);
+      const beatCoverage = beatTranscriptionResult
+        ? `\nPreserved all ${beatTranscriptionResult.referenceLineCount} reference lyric lines by automatically transcribing the finished beat scenes.`
+        : "";
+      progress.set(`Created ${created.length} timeline scene${created.length === 1 ? "" : "s"} from timestamped lines.\nMode: ${modeLabel}${beatCoverage}\n${lyricPath ? `Saved line notes: ${lyricPath}` : "Line notes saved in session only."}`, 100);
       progress.close(1800);
       toast(`Created ${created.length} timestamped lyric scene${created.length === 1 ? "" : "s"}.`);
       return true;
@@ -19805,77 +19964,95 @@ function openBuilder(node) {
     }
   }
 
+  async function transcribeExistingScenesWithOptions(options = {}, runtime = {}) {
+    const progress = runtime.progress || null;
+    const audioPath = String(audioInput.value || state.audioPath || "").trim();
+    const referenceLyrics = String(options.referenceLyrics || "").trim();
+    const segments = Array.isArray(state.segments) ? state.segments : [];
+    if (!audioPath) throw new Error("Load an audio file first.");
+    if (!segments.length) throw new Error("Create or import timeline scenes first.");
+    if (!referenceLyrics) {
+      throw new Error("Reference lyrics are required for Transcribe Existing Scenes so lyric lines cannot be silently omitted.");
+    }
+
+    if (runtime.saveTimelineFirst !== false) {
+      progress?.set("Saving current scene boundaries...", 5);
+      await autoSaveSessionQuiet("timeline lyric transcription");
+    }
+    progress?.set("Aligning every reference lyric line...", 12);
+    const instrumentalText = String(options.instrumentalText || "[instrumental]").trim() || "[instrumental]";
+    const built = await postJson("/vrgdg/workflow_runner/build_timestamped_transcribe_prompt", {
+      audio_path: audioPath,
+      reference_lyrics: referenceLyrics,
+      language: options.language || "english",
+      segment_mode: "reference_scene_words",
+      include_instrumental_gaps: true,
+      instrumental_text: instrumentalText,
+      min_gap_seconds: 1.0,
+      min_scene_seconds: 1.0,
+      max_scene_seconds: 8.0,
+      vocal_tail_padding_seconds: 0.6,
+      model_name: "large-v3",
+    }, 60000);
+    progress?.set("Queueing reference-preserving transcription workflow...", 18);
+    const queued = await queueWorkflowPrompt(built.prompt, {
+      onStatus: (message) => progress?.set(message, 18),
+      idleTimeoutMs: 10 * 60 * 1000,
+    });
+    const promptId = queued.prompt_id;
+    if (!promptId) throw new Error("ComfyUI queued the transcription workflow but did not return a prompt_id.");
+    const textValues = await waitForText(
+      promptId,
+      (message) => progress?.set(`${message}\nPrompt ID: ${promptId}`, 55),
+      () => false,
+      45 * 60 * 1000,
+    );
+    const payload = parseTimestampedLyricsOutput(textValues.join("\n"));
+    const sceneMappings = mapTimestampedReferenceLyricsToExistingScenes(
+      payload,
+      segments,
+      referenceLyrics,
+      instrumentalText,
+    );
+
+    if (runtime.recordHistory !== false) pushHistory();
+    let applied = 0;
+    for (const mapping of sceneMappings) {
+      if (!options.replaceAll && String(mapping.segment.lyric_text || "").trim()) continue;
+      mapping.segment.lyric_text = mapping.lyricText;
+      mapping.segment.lyric_no_lip_sync = isInstrumentalLyricText(mapping.lyricText);
+      applied += 1;
+    }
+    const sectioned = applyLyricSectionsFromReferenceText(segments, referenceLyrics);
+    const mapped = applyLyricMapperToSegments({ overwriteSingers: true });
+    state.showTimelineLyricNotes = true;
+    syncLyricNoteControls();
+    const lyricPath = projectLyricNotesPath();
+    if (lyricPath) await syncLyricAndSubjectNoteFiles("timeline lyric transcription");
+    syncInspector();
+    render();
+    if (activeProjectFolderForSave()) {
+      await saveSession({ quiet: true, throwOnError: true });
+    }
+    return {
+      applied,
+      sectioned,
+      mapped,
+      lyricPath,
+      referenceLineCount: referenceVocalLines(referenceLyrics).length,
+    };
+  }
+
   async function transcribeLyricsForTimeline() {
     const options = await showTranscribeLyricsModal();
     if (!options) return;
-    if (!String(audioInput.value || state.audioPath || "").trim()) {
-      toast("Load an audio file first.", true);
-      return;
-    }
-    if (!allEditableSegments().length) {
-      toast("Create or import timeline scenes first.", true);
-      return;
-    }
     let progress = null;
     try {
       progress = createProgressWindow("Transcribing Timeline Lines");
-      progress.set("Saving current builder SRT...", 5);
-      await autoSaveSessionQuiet("timeline lyric transcription");
-      const srtPath = state.srtPath || srtInput.value || "";
-      if (!srtPath) throw new Error("Current builder SRT was not saved. Save the project/timeline first.");
-      progress.set("Building hidden scene-window transcription workflow...", 12);
-      const built = await postJson("/vrgdg/workflow_runner/build_transcribe_prompt", {
-        audio_path: audioInput.value || state.audioPath || "",
-        srt_path: srtPath,
-        reference_lyrics: options.referenceLyrics || "",
-        language: options.language || "english",
-        strict_reference_text: true,
-        fill_aggressiveness: 1,
-        preserve_nonvocal_segments: true,
-        alignment_min_words: 1,
-        model_name: "large-v3",
-      }, 60000);
-      progress.set("Queueing transcription workflow...", 18);
-      const queued = await queueWorkflowPrompt(built.prompt, {
-        onStatus: (message) => progress.set(message, 18),
-        idleTimeoutMs: 10 * 60 * 1000,
-      });
-      const promptId = queued.prompt_id;
-      if (!promptId) throw new Error("ComfyUI queued the transcription workflow but did not return a prompt_id.");
-      const textValues = await waitForText(
-        promptId,
-        (message) => progress.set(`${message}\nPrompt ID: ${promptId}`, 55),
-        () => false,
-        45 * 60 * 1000,
-      );
-      const rawText = textValues.join("\n");
-      const lyricValues = parseLyricSegmentOutput(rawText);
-      if (!lyricValues.length) {
-        throw new Error("Scene-window transcription finished, but no lyricSegment lines were found.");
-      }
-      assertNoBundledReferenceLyrics(lyricValues, options.referenceLyrics || "");
-      pushHistory();
-      const segments = allEditableSegments();
-      let applied = 0;
-      for (let index = 0; index < segments.length; index += 1) {
-        if (!options.replaceAll && String(segments[index].lyric_text || "").trim()) continue;
-        const value = cleanTimestampedLyricText(lyricValues[index]) || "[instrumental]";
-        segments[index].lyric_text = value;
-        segments[index].lyric_no_lip_sync = isInstrumentalLyricText(value);
-        applied += 1;
-      }
-      const sectioned = applyLyricSectionsFromReferenceText(segments, options.referenceLyrics || "");
-      const mapped = applyLyricMapperToSegments({ overwriteSingers: true });
-      state.showTimelineLyricNotes = true;
-      syncLyricNoteControls();
-      const lyricPath = projectLyricNotesPath();
-      if (lyricPath) await syncLyricAndSubjectNoteFiles("timeline lyric transcription");
-      syncInspector();
-      render();
-      await saveSession({ quiet: true, throwOnError: true });
-      progress.set(`Transcribed timeline lines from existing scene windows.\nApplied ${applied} scene line note${applied === 1 ? "" : "s"}.\nDetected sections on ${sectioned} scene${sectioned === 1 ? "" : "s"}.\nMapped performers on ${mapped} scene${mapped === 1 ? "" : "s"}.\nSaved: ${lyricPath || "session only"}`, 100);
+      const result = await transcribeExistingScenesWithOptions(options, { progress });
+      progress.set(`Transcribed existing scene windows with all ${result.referenceLineCount} reference lyric lines preserved.\nApplied ${result.applied} scene line note${result.applied === 1 ? "" : "s"}.\nDetected sections on ${result.sectioned} scene${result.sectioned === 1 ? "" : "s"}.\nMapped performers on ${result.mapped} scene${result.mapped === 1 ? "" : "s"}.\nSaved: ${result.lyricPath || "session only"}`, 100);
       progress.close(1800);
-      toast(`Transcribed ${applied} scene line${applied === 1 ? "" : "s"} from existing scene windows; detected ${sectioned} section${sectioned === 1 ? "" : "s"}; mapped ${mapped} scene${mapped === 1 ? "" : "s"}.`);
+      toast(`Transcribed ${result.applied} existing scene${result.applied === 1 ? "" : "s"}; preserved all ${result.referenceLineCount} reference lyric lines.`);
     } catch (error) {
       progress?.set(`Error:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
