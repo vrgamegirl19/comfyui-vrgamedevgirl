@@ -39,6 +39,7 @@ _VRGDG_SUBMODULES = (
     ".VRGDG_LTXICIngredientsGrid",
     ".VRGDG_LTXFirstLastGuide",
     ".VRGDG_LTXLoopingSampler",
+    ".VRGDG_MiniMaxH3AudioDrive",
     ".CustomLTXNodes",
     ".VRGDG_FlowBrowserNodes",
     ".VRGDG_BrowserImageRoutes",
