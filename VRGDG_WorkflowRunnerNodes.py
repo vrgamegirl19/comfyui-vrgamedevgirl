@@ -1,5 +1,6 @@
 import copy
 import base64
+import hashlib
 import importlib
 import json
 import os
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 
 import folder_paths
 from aiohttp import web
@@ -21,6 +23,7 @@ from .VRGDG_ModelPathSettings import (
     register_custom_model_root,
     save_custom_model_root,
 )
+from .VRGDG_MiniMaxH3Timing import calculate_minimax_h3_timing
 
 
 _VRGDG_WORKFLOW_RUNNER_ROUTES_REGISTERED = False
@@ -33,6 +36,18 @@ _MIN_LTX_INGREDIENTS_FRAMES = 121
 _DEFAULT_I2V_PASS1_SIGMAS = "1., 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 _DEFAULT_I2V_PASS2_SIGMAS = "0.909375, 0.725, 0.421875, 0.0"
 _DEFAULT_INGREDIENTS_SAMPLER = "euler_ancestral_cfg_pp"
+_MINIMAX_H3_ASPECT_RATIOS = {
+    "1:1 (Square)",
+    "2:3 (Portrait Photo)",
+    "3:2 (Photo)",
+    "3:4 (Portrait Standard)",
+    "4:3 (Standard)",
+    "9:16 (Portrait Widescreen)",
+    "16:9 (Widescreen)",
+    "21:9 (Ultrawide)",
+}
+_MINIMAX_H3_MAX_REFERENCE_IMAGES = 9
+_MINIMAX_H3_MAX_REFERENCE_VIDEOS = 3
 _I2V_UNET_ALIASES = {
     "LTX-2.3-22B-distilled-11-Q6_K.gguf": "LTX-2.3-22B-distilled-1.1-Q6_K.gguf",
 }
@@ -181,6 +196,15 @@ def _flf_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         "Workflows", "UsedForUIDoNotTouch", "LTX2.3_FLF_API.json",
+    )
+
+
+def _minimax_h3_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "minimax_audio_driven_builder_api.json",
     )
 
 
@@ -480,6 +504,192 @@ def _bool_payload(payload, key, default=False):
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _first_payload_value(payload, *keys, default=None):
+    for key in keys:
+        if key in payload and payload.get(key) is not None:
+            return payload.get(key)
+    return default
+
+
+def _minimax_h3_collection(value, collection_keys=()):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        for key in collection_keys:
+            if isinstance(value.get(key), list):
+                return value[key]
+        return list(value.values())
+    text = str(value or "").strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        parsed = None
+    if parsed is not None and parsed is not value:
+        return _minimax_h3_collection(parsed, collection_keys)
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
+def _minimax_h3_media_path(value):
+    if isinstance(value, dict):
+        value = value.get("path") or value.get("file") or value.get("image") or value.get("video")
+    return str(value or "").strip().strip('"').strip("'")
+
+
+def _minimax_h3_image_paths(payload):
+    raw = _first_payload_value(payload, "image_paths", "reference_images", "images", default=[])
+    paths = [
+        path
+        for path in (
+            _minimax_h3_media_path(item)
+            for item in _minimax_h3_collection(raw, ("image_paths", "images"))
+        )
+        if path
+    ]
+    if len(paths) > _MINIMAX_H3_MAX_REFERENCE_IMAGES:
+        raise ValueError(
+            f"MiniMax H3 supports at most {_MINIMAX_H3_MAX_REFERENCE_IMAGES} reference images; "
+            f"received {len(paths)}."
+        )
+    return paths
+
+
+def _minimax_h3_video_references(payload):
+    raw = _first_payload_value(payload, "video_references", "reference_videos", "videos", default=[])
+    references = []
+    for item in _minimax_h3_collection(raw, ("video_references", "videos")):
+        if isinstance(item, dict):
+            path = _minimax_h3_media_path(item)
+            try:
+                start_seconds = max(0.0, float(_first_payload_value(
+                    item, "start_seconds", "start", "seek_seconds", default=0
+                ) or 0))
+                duration = max(0.0, float(_first_payload_value(
+                    item, "duration", "duration_seconds", default=0
+                ) or 0))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("MiniMax H3 video reference timing must be numeric.") from exc
+            use_audio_value = _first_payload_value(
+                item, "use_audio", "include_audio", "reference_audio", default=False
+            )
+            use_audio = (
+                str(use_audio_value).strip().lower() in {"1", "true", "yes", "on"}
+                if isinstance(use_audio_value, str)
+                else bool(use_audio_value)
+            )
+        else:
+            path = _minimax_h3_media_path(item)
+            start_seconds = 0.0
+            duration = 0.0
+            use_audio = False
+        if path:
+            references.append({
+                "path": path,
+                "start_seconds": start_seconds,
+                "duration": duration,
+                "use_audio": use_audio,
+            })
+    if len(references) > _MINIMAX_H3_MAX_REFERENCE_VIDEOS:
+        raise ValueError(
+            f"MiniMax H3 supports at most {_MINIMAX_H3_MAX_REFERENCE_VIDEOS} reference videos; "
+            f"received {len(references)}."
+        )
+    return references
+
+
+def _probe_media_duration_seconds(path):
+    ffprobe_path = _ffprobe_path_for(_find_ffmpeg_path())
+    cmd = [
+        ffprobe_path,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "FFprobe could not read the audio duration.").strip())
+    try:
+        duration = float((result.stdout or "").strip().splitlines()[0])
+    except (IndexError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"FFprobe did not return a valid duration for: {path}") from exc
+    if duration <= 0:
+        raise ValueError(f"Source audio has no usable duration: {path}")
+    return duration
+
+
+def _trim_minimax_h3_audio_context(source_path, project_folder, scene_number, timing):
+    target_dir = os.path.join(project_folder, "minimax_h3_scene_audio")
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, f"scene_audio_{scene_number:04d}.wav")
+    ffmpeg_path = _find_ffmpeg_path()
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-ss",
+        f"{timing.audio_trim_start_seconds:.9f}",
+        "-i",
+        source_path,
+        "-t",
+        f"{timing.audio_trim_duration_seconds:.9f}",
+        "-vn",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-c:a",
+        "pcm_s16le",
+        target_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if result.returncode != 0 or not os.path.isfile(target_path):
+        raise RuntimeError((result.stderr or result.stdout or "FFmpeg failed to trim MiniMax H3 scene audio.").strip())
+    try:
+        with wave.open(target_path, "rb") as handle:
+            actual_duration = handle.getnframes() / float(handle.getframerate())
+    except Exception as exc:
+        raise RuntimeError(f"Could not verify the trimmed MiniMax H3 audio: {target_path}") from exc
+    if actual_duration + 0.02 < timing.audio_trim_duration_seconds:
+        raise ValueError(
+            "The trimmed MiniMax H3 audio ended before the required scene context. "
+            f"Needed {timing.audio_trim_duration_seconds:.3f}s; received {actual_duration:.3f}s."
+        )
+    return {
+        "audio_path": target_path,
+        "start": timing.audio_trim_start_seconds,
+        "duration": actual_duration,
+        "requested_duration": timing.audio_trim_duration_seconds,
+        "format": "pcm_s16le_wav",
+    }
+
+
+def _minimax_h3_output_location(project_folder, scene_number):
+    project_name = re.sub(
+        r"[^A-Za-z0-9_-]+",
+        "_",
+        os.path.basename(os.path.normpath(project_folder)),
+    ).strip("_") or "project"
+    project_key = hashlib.sha1(os.path.normcase(project_folder).encode("utf-8")).hexdigest()[:8]
+    relative_dir = os.path.join(
+        "VRGDG_MiniMaxH3",
+        f"{project_name}_{project_key}",
+        f"scene_{scene_number:04d}",
+    )
+    output_folder = os.path.join(folder_paths.get_output_directory(), relative_dir)
+    os.makedirs(output_folder, exist_ok=True)
+    filename_prefix = os.path.join(
+        relative_dir,
+        f"MiniMaxH3_scene_{scene_number:04d}",
+    ).replace("\\", "/")
+    return output_folder, filename_prefix
 
 
 def _clean_lora_name(value):
@@ -2193,6 +2403,226 @@ def _build_ernie_image_api_prompt(payload):
     }
 
 
+_MINIMAX_H3_SAGE_ATTENTION_MODES = {
+    "disabled",
+    "auto",
+    "sageattn_qk_int8_pv_fp16_cuda",
+    "sageattn_qk_int8_pv_fp16_triton",
+    "sageattn_qk_int8_pv_fp8_cuda",
+    "sageattn_qk_int8_pv_fp8_cuda++",
+    "sageattn3",
+    "sageattn3_per_block_mean",
+}
+
+
+def _patch_minimax_h3_advanced_settings(prompt, payload):
+    sampler_id = _api_node_id_by_class(prompt, "KSamplerSelect", fallback="123")
+    scheduler_id = _api_node_id_by_class(prompt, "BasicScheduler", fallback="124")
+    loader_id = _api_node_id_by_class(prompt, "DiffusionModelLoaderKJ", fallback="141")
+    easy_cache_id = _optional_api_node_id_by_class(prompt, "EasyCache", fallback_ids=("174",))
+
+    sampler_name = str(payload.get("sampler_name") or "res_multistep").strip() or "res_multistep"
+    scheduler = str(payload.get("scheduler") or "simple").strip() or "simple"
+    steps = _int_payload(payload, "steps", 20, 1, 1000)
+    denoise = _float_payload(payload, "denoise", 1.0, 0.0, 1.0)
+    easy_cache_bypass = _bool_payload(payload, "easy_cache_bypass", False)
+    easy_cache_reuse_threshold = _float_payload(payload, "easy_cache_reuse_threshold", 0.3, 0.0, 1.0)
+    easy_cache_start_percent = _float_payload(payload, "easy_cache_start_percent", 0.2, 0.0, 1.0)
+    easy_cache_end_percent = _float_payload(payload, "easy_cache_end_percent", 0.9, 0.0, 1.0)
+    easy_cache_verbose = _bool_payload(payload, "easy_cache_verbose", False)
+    sage_attention = str(payload.get("sage_attention") or "auto").strip()
+    if sage_attention not in _MINIMAX_H3_SAGE_ATTENTION_MODES:
+        sage_attention = "auto"
+    enable_fp16_accumulation = _bool_payload(payload, "enable_fp16_accumulation", True)
+
+    _set_api_input(prompt, sampler_id, "sampler_name", sampler_name)
+    _set_api_input(prompt, scheduler_id, "scheduler", scheduler)
+    _set_api_input(prompt, scheduler_id, "steps", steps)
+    _set_api_input(prompt, scheduler_id, "denoise", denoise)
+    _set_api_input(prompt, loader_id, "sage_attention", sage_attention)
+    _set_api_input(prompt, loader_id, "enable_fp16_accumulation", enable_fp16_accumulation)
+
+    if easy_cache_id:
+        _set_api_input(prompt, easy_cache_id, "reuse_threshold", easy_cache_reuse_threshold)
+        _set_api_input(prompt, easy_cache_id, "start_percent", easy_cache_start_percent)
+        _set_api_input(prompt, easy_cache_id, "end_percent", easy_cache_end_percent)
+        _set_api_input(prompt, easy_cache_id, "verbose", easy_cache_verbose)
+        if easy_cache_bypass:
+            _replace_api_input_refs(prompt, (easy_cache_id, 0), (loader_id, 0))
+            prompt.pop(easy_cache_id, None)
+
+    return {
+        "sampler_name": sampler_name,
+        "scheduler": scheduler,
+        "steps": steps,
+        "denoise": denoise,
+        "easy_cache_bypass": easy_cache_bypass,
+        "easy_cache_reuse_threshold": easy_cache_reuse_threshold,
+        "easy_cache_start_percent": easy_cache_start_percent,
+        "easy_cache_end_percent": easy_cache_end_percent,
+        "easy_cache_verbose": easy_cache_verbose,
+        "sage_attention": sage_attention,
+        "enable_fp16_accumulation": enable_fp16_accumulation,
+    }
+
+
+def _build_minimax_h3_api_prompt(payload):
+    workflow_path, prompt = _load_api_template(_minimax_h3_api_template_path())
+    prompt = copy.deepcopy(prompt)
+
+    video_prompt = str(_first_payload_value(
+        payload, "prompt", "video_prompt", "i2v_prompt", "t2v_prompt", default=""
+    ) or "").strip()
+    if not video_prompt:
+        raise ValueError("MiniMax H3 video prompt is empty.")
+
+    audio_text = str(_first_payload_value(
+        payload, "audio_path", "source_audio_path", default=""
+    ) or "").strip().strip('"')
+    if not audio_text:
+        raise ValueError("MiniMax H3 source audio path is empty.")
+    audio_path = os.path.abspath(audio_text)
+    if not os.path.isfile(audio_path):
+        raise FileNotFoundError(f"MiniMax H3 source audio was not found: {audio_path}")
+
+    project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
+    if not project_text:
+        raise ValueError("Project folder is empty.")
+    project_folder = os.path.abspath(project_text)
+    if not os.path.isdir(project_folder):
+        raise FileNotFoundError(f"Project folder was not found: {project_folder}")
+    scene_number = _int_payload(payload, "scene_number", 1, 1, 999999)
+
+    timeline_start = _first_payload_value(
+        payload, "timeline_start_seconds", "scene_start_seconds", "start", default=0
+    )
+    timeline_end = _first_payload_value(
+        payload, "timeline_end_seconds", "scene_end_seconds", "end", default=None
+    )
+    if timeline_end is None:
+        scene_duration = _first_payload_value(
+            payload, "scene_duration_seconds", "scene_duration", "duration", default=None
+        )
+        if scene_duration is None:
+            raise ValueError("MiniMax H3 needs timeline_end_seconds or scene_duration_seconds.")
+        try:
+            timeline_end = float(timeline_start) + float(scene_duration)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("MiniMax H3 timeline timing must be numeric.") from exc
+
+    source_duration = _first_payload_value(
+        payload, "source_duration_seconds", "audio_duration_seconds", default=None
+    )
+    if source_duration is None:
+        source_duration = _probe_media_duration_seconds(audio_path)
+    source_start = _first_payload_value(
+        payload, "source_start_seconds", "audio_start_seconds", default=None
+    )
+    warmup_frames = _first_payload_value(
+        payload, "warmup_frames", "pre_frames", default=0
+    )
+    cooldown_frames = _first_payload_value(
+        payload, "cooldown_frames", "tail_loss_frames", default=0
+    )
+    timing = calculate_minimax_h3_timing(
+        timeline_start,
+        timeline_end,
+        warmup_frames,
+        cooldown_frames,
+        source_start_seconds=source_start,
+        source_duration_seconds=source_duration,
+    )
+    prepared_audio = _trim_minimax_h3_audio_context(
+        audio_path,
+        project_folder,
+        scene_number,
+        timing,
+    )
+
+    image_paths = _minimax_h3_image_paths(payload)
+    video_references = _minimax_h3_video_references(payload)
+    aspect_ratio = str(payload.get("aspect_ratio") or "16:9 (Widescreen)").strip()
+    if aspect_ratio not in _MINIMAX_H3_ASPECT_RATIOS:
+        raise ValueError(f"Unsupported MiniMax H3 aspect ratio: {aspect_ratio}")
+    megapixels = _float_payload(payload, "megapixels", 0.9, 0.1, 16.0)
+    diffusion_model_name = str(
+        payload.get("diffusion_model_name") or "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+    ).strip()
+    clip_name = str(
+        payload.get("clip_name") or "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+    ).strip()
+    video_vae_name = str(
+        payload.get("video_vae_name") or "minimax_h3_video_vae_fp16.safetensors"
+    ).strip()
+    audio_vae_name = str(
+        payload.get("audio_vae_name") or "minimax_h3_audio_vae_fp32.safetensors"
+    ).strip()
+    if diffusion_model_name.lower().endswith(".gguf"):
+        raise ValueError("MiniMax H3 GGUF loading is not enabled yet. Choose a non-GGUF diffusion model.")
+    _require_model_choice(("diffusion_models", "unet"), diffusion_model_name, "MiniMax H3 diffusion model")
+    _require_model_choice(("text_encoders", "clip"), clip_name, "MiniMax H3 text encoder")
+    _require_model_choice("vae", video_vae_name, "MiniMax H3 video VAE")
+    _require_model_choice("vae", audio_vae_name, "MiniMax H3 audio VAE")
+
+    seed_value = payload.get("seed", 69)
+    try:
+        seed = int(seed_value)
+    except (TypeError, ValueError):
+        seed = 69
+    if seed < 0:
+        seed = random.randrange(0, 0xFFFFFFFFFFFFFFFF + 1)
+    seed = min(seed, 0xFFFFFFFFFFFFFFFF)
+
+    output_folder, filename_prefix = _minimax_h3_output_location(project_folder, scene_number)
+    _set_api_input(prompt, "132", "value", timing.workflow_duration_input_seconds)
+    _set_api_input(prompt, "138", "value", video_prompt)
+    _set_api_input(prompt, "129", "noise_seed", seed)
+    _set_api_input(prompt, "115", "aspect_ratio", aspect_ratio)
+    _set_api_input(prompt, "115", "megapixels", megapixels)
+    _set_api_input(prompt, "115", "multiple", 32)
+    _set_api_input(prompt, "141", "model_name", diffusion_model_name)
+    _set_api_input(prompt, "128", "clip_name", clip_name)
+    _set_api_input(prompt, "119", "vae_name", video_vae_name)
+    _set_api_input(prompt, "120", "vae_name", audio_vae_name)
+    _set_api_input(prompt, "171", "audio_file", prepared_audio["audio_path"])
+    _set_api_input(prompt, "171", "seek_seconds", 0)
+    _set_api_input(prompt, "171", "duration", 0)
+    _set_api_input(prompt, "180", "image_paths", json.dumps(image_paths, ensure_ascii=False))
+    _set_api_input(prompt, "180", "video_references", json.dumps(video_references, ensure_ascii=False))
+    _set_api_input(prompt, "142", "frame_rate", 24)
+    _set_api_input(prompt, "142", "filename_prefix", filename_prefix)
+    # Keep every aligned H3 frame. VHS trim_to_audio muxes with -shortest while
+    # stream-copying H.264, which can discard final video packets before our
+    # exact scene trimmer receives them.
+    _set_api_input(prompt, "142", "trim_to_audio", False)
+    advanced_settings = _patch_minimax_h3_advanced_settings(prompt, payload)
+
+    return {
+        "workflow_path": workflow_path,
+        "output_folder": output_folder,
+        "prompt": prompt,
+        "used_seed": seed,
+        "timing": timing.to_dict(),
+        "prepared_audio": prepared_audio,
+        "post_render_trim": {
+            "start": timing.final_trim_start_seconds,
+            "duration": timing.final_trim_duration_seconds,
+        },
+        "reference_inputs": {
+            "image_count": len(image_paths),
+            "video_count": len(video_references),
+            "video_audio_count": sum(1 for item in video_references if item.get("use_audio")),
+        },
+        "model_settings": {
+            "diffusion_model_name": diffusion_model_name,
+            "clip_name": clip_name,
+            "video_vae_name": video_vae_name,
+            "audio_vae_name": audio_vae_name,
+        },
+        "advanced_settings": advanced_settings,
+    }
+
+
 def _build_i2v_api_prompt(payload):
     api_template = _i2v_api_template_path()
     if os.path.isfile(api_template) and not payload.get("workflow_path"):
@@ -2882,10 +3312,11 @@ def _trim_scene_video(payload):
     duration = max(0.05, float(payload.get("duration", 0) or 0))
     label = re.sub(r"[^A-Za-z0-9_-]+", "_", str(payload.get("label", "trim") or "trim").strip().lower()).strip("_") or "trim"
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}.mp4")
+    audio_suffix = "-audio" if _bool_payload(payload, "mark_as_audio_video", False) else ""
+    target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}{audio_suffix}.mp4")
     index = 2
     while os.path.exists(target_path):
-        target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}_{index:02d}.mp4")
+        target_path = os.path.join(target_dir, f"video_{scene_number:04d}-{label}_{stamp}_{index:02d}{audio_suffix}.mp4")
         index += 1
 
     ffmpeg_path = _find_ffmpeg_path()
@@ -3636,6 +4067,18 @@ def _ensure_workflow_runner_routes():
             return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
         try:
             result = _build_t2v_api_prompt(payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=400)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/workflow_runner/build_minimax_h3_prompt")
+    async def vrgdg_workflow_runner_build_minimax_h3_prompt(request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return web.json_response({"ok": False, "error": "Invalid JSON body."}, status=400)
+        try:
+            result = _build_minimax_h3_api_prompt(payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=400)
         return web.json_response({"ok": True, **result})
