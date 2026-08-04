@@ -20,13 +20,15 @@
             "Added ordered Reference Builder images, optional exact scene-image start frames, and reference-video inputs for MiniMax character, location, continuation, motion, camera, transformation, and visual-editing workflows.",
             "Added MiniMax-specific LLM instructions and Storyboard prompting with exact scene timing, ordered Image and Video assignments, Audio 1 usage, lyric text, and lip-sync guidance.",
             "Added exact MiniMax frame planning and custom-audio preparation so rendered scenes cover the selected timeline range and are trimmed back to its exact duration.",
+            "Added MiniMax Render All support for rendering missing clips or creating new versions from Storyboard prompts, using each scene's effective global or locked mode and settings before stitching the completed project.",
             "Added a Builder Settings checkbox for automatic RAM/VRAM cleanup. When disabled, embedded cleanup nodes and automatic post-task cache clearing are bypassed while the manual Clear Memory button remains available."
           ]
         },
         {
           "title": "Fixed",
           "items": [
-            "Storyboard All, Reference Builder, LLM prompting, validation, and rendering now consistently use each scene's effective global or locked MiniMax mode instead of letting untouched scenes silently fall back to Text to Video."
+            "Storyboard All, Reference Builder, LLM prompting, validation, and rendering now consistently use each scene's effective global or locked MiniMax mode instead of letting untouched scenes silently fall back to Text to Video.",
+            "Render All now routes MiniMax projects through the MiniMax hidden workflow instead of the LTX renderer and ignores stale LTX-only mode, post-processing, canvas, and embedded-audio behavior."
           ]
         },
         {

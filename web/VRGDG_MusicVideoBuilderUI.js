@@ -13521,6 +13521,19 @@ function openBuilder(node) {
     return settings.seed;
   }
 
+  function setMiniMaxH3SeedRandom(segment = activeSegment()) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    settings.seed = randomSeedValue();
+    if (segment?.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = cloneMiniMaxH3Settings(settings);
+      segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+    } else {
+      state.miniMaxH3Settings = cloneMiniMaxH3Settings(settings);
+    }
+    if (!segment || segment.id === activeSegment()?.id) syncMiniMaxH3Panel();
+    return settings.seed;
+  }
+
   function renderFluxIngredientList(segment = activeSegment()) {
     const ingredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
     renderFluxIngredientRows(fluxIngredientList, ingredients, "No scene-specific image ingredients loaded for this scene.", (index) => {
@@ -31625,6 +31638,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function saveSessionForSceneVideo() {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") saveMiniMaxH3SettingsFromPanel();
     const projectFolder = activeProjectFolderForSave();
     if (!projectFolder) throw new Error("Create or load a project before rendering scene videos.");
     await persistIngredientsSheetImages(projectFolder);
@@ -36124,6 +36138,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return missing;
   }
 
+  function validateMiniMaxSceneReadyForVideo(segment, sceneIndex) {
+    const name = sceneDisplayName(segment, sceneIndex);
+    const missing = [];
+    const mode = miniMaxH3ModeForSegment(segment);
+    if (!String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "").trim()) {
+      missing.push(`${name}: MiniMax ${miniMaxH3ModeLabel(mode)} prompt is missing.`);
+    }
+    if (!Number.isFinite(Number(segment?.start)) || !Number.isFinite(Number(segment?.end)) || Number(segment.end) <= Number(segment.start)) {
+      missing.push(`${name}: timeline start and end times are invalid.`);
+    }
+    if (mode === "image_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push(`${name}: MiniMax Image to Video needs a selected scene image.`);
+    }
+    if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push(`${name}: MiniMax Reference to Video is set to use the scene image as its start frame, but no scene image is saved.`);
+    }
+    if (mode === "reference_to_video" && !miniMaxOrderedImageReferenceItemsForSegment(segment, mode).length) {
+      missing.push(`${name}: MiniMax Reference to Video needs a start frame or at least one ordered Reference Builder image.`);
+    }
+    if (mode === "video_to_video" && !(segment?.minimax_h3_video_references || []).some((item) => String(item?.path || "").trim())) {
+      missing.push(`${name}: MiniMax Video to Video needs at least one reference-video path.`);
+    }
+    return missing;
+  }
+
   async function validateSrtTimingForSceneVideo({ segment, sceneIndex, srtPath, promptNumber, expectedDuration }) {
     const promptIndex = Math.max(0, Number(promptNumber || 1) - 1);
     const uiDuration = Number(expectedDuration ?? timelineSegmentDuration(segment));
@@ -37177,6 +37216,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const scenesToRender = allScenes
       .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
       .filter(({ segment }) => options.forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    if (miniMaxProject) {
+      if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+      scenesToRender.forEach(({ segment, index }) => {
+        if (!String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: MiniMax H3 needs project audio or custom scene audio.`);
+        }
+        missing.push(...validateMiniMaxSceneReadyForVideo(segment, index));
+      });
+      return missing;
+    }
     const idLoraMode = currentVideoMode() === "id_lora";
     const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
@@ -37227,7 +37277,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function ensureAudioOrOfferSilentTimeline(options = {}) {
-    if (currentVideoMode() === "id_lora") return true;
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3" && currentVideoMode() === "id_lora") return true;
     if (currentProjectAudioPath()) return true;
     const scenes = audioFallbackTargetScenes(options);
     if (!scenes.length) return true;
@@ -37890,18 +37940,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
 
   async function stitchRenderedScenes(progress, options = {}) {
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const overlaySegments = state.overlayTrack.enabled
       ? (Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments)
           .filter((segment) => overlayClipIsEnabled(segment, state.overlayTrack))
       : [];
     const timelineOffset = Number(options.timelineOffset || 0);
-    await ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options);
-    await ensureSceneAdjustsAppliedBeforeStitch(baseSegments, progress, options);
-    await ensureSceneFilmGrainAppliedBeforeStitch(baseSegments, progress, options);
-    if (overlaySegments.length) {
-      await ensureSceneLutsAppliedBeforeStitch(overlaySegments, progress, options);
-      await ensureSceneAdjustsAppliedBeforeStitch(overlaySegments, progress, options);
-      await ensureSceneFilmGrainAppliedBeforeStitch(overlaySegments, progress, options);
+    if (!miniMaxProject) {
+      await ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options);
+      await ensureSceneAdjustsAppliedBeforeStitch(baseSegments, progress, options);
+      await ensureSceneFilmGrainAppliedBeforeStitch(baseSegments, progress, options);
+      if (overlaySegments.length) {
+        await ensureSceneLutsAppliedBeforeStitch(overlaySegments, progress, options);
+        await ensureSceneAdjustsAppliedBeforeStitch(overlaySegments, progress, options);
+        await ensureSceneFilmGrainAppliedBeforeStitch(overlaySegments, progress, options);
+      }
     }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
     const overlayItems = overlaySegments
@@ -37914,7 +37967,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         label: segment.label || `Insert ${index + 1}`,
       }));
     const globalAudioPath = currentProjectAudioPath();
-    const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
+    const embeddedSceneAudioMode = (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
@@ -37936,10 +37989,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (missing.length) throw new Error(missing.join("\n"));
     const stitchSettings = state.i2vVideoSettings || {};
     const stitchVideoMode = currentVideoMode();
-    const stitchWidth = stitchVideoMode === "ingredients"
+    const stitchWidth = miniMaxProject ? 0 : stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH)
       : Number(stitchSettings.width || 1920);
-    const stitchHeight = stitchVideoMode === "ingredients"
+    const stitchHeight = miniMaxProject ? 0 : stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT)
       : Number(stitchSettings.height || 1080);
     const stitchAudioMessage = embeddedSceneAudioMode
@@ -38083,29 +38136,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const sceneIndex = info.index;
     if (sceneIndex < 0) return;
 
-    const missing = [];
+    const missing = validateMiniMaxSceneReadyForVideo(segment, sceneIndex);
     if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
     if (!String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
       missing.push("Load global audio or add custom audio for this scene.");
-    }
-    if (!String(segment.minimax_h3_prompt || segment.i2v_prompt || "").trim()) {
-      missing.push("Enter a MiniMax H3 prompt in the scene video prompt box.");
-    }
-    if (!Number.isFinite(Number(segment.start)) || !Number.isFinite(Number(segment.end)) || Number(segment.end) <= Number(segment.start)) {
-      missing.push("The scene needs valid timeline start and end times.");
-    }
-    const mode = miniMaxH3ModeForSegment(segment);
-    if (mode === "image_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
-      missing.push("Image to Video needs a selected scene image.");
-    }
-    if (mode === "reference_to_video" && segment.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
-      missing.push("Reference to Video is set to use the scene image as its start frame, but this scene has no saved image.");
-    }
-    if (mode === "reference_to_video" && !miniMaxOrderedImageReferenceItemsForSegment(segment, mode).length) {
-      missing.push("Reference to Video needs a start frame or at least one ordered Reference Builder image.");
-    }
-    if (mode === "video_to_video" && !(segment.minimax_h3_video_references || []).some((item) => String(item?.path || "").trim())) {
-      missing.push("Video to Video needs at least one reference-video path.");
     }
     if (missing.length) {
       toast(missing.join("\n"), true);
@@ -38387,6 +38421,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function renderAllScenes(options = {}) {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    if (miniMaxProject) saveMiniMaxH3SettingsFromPanel();
     const forceVideos = Boolean(options.forceVideos);
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
     const sceneScope = normalizeBatchScope(options.sceneScope);
@@ -38428,7 +38464,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       scene_scope: sceneScope,
       project_folder: String(state.projectFolder || projectInput.value || ""),
-      video_mode: currentVideoMode(),
+      video_engine: miniMaxProject ? "minimax_h3" : "ltx",
+      video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : currentVideoMode(),
       force_videos: forceVideos,
       randomize_video_seed: randomizeVideoSeed,
       skip_final_stitch: skipFinalStitch,
@@ -38449,11 +38486,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = true;
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
+      setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
-      const preparedAudio = skipFinalStitch
+      const preparedAudio = miniMaxProject || skipFinalStitch
         ? { audioPath: "", srtPath: "" }
         : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
       const scenes = batchTargetItems(sceneScope)
@@ -38464,7 +38502,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!scenes.length) {
         progress.set(skipFinalStitch ? "Selected scenes already have video. Nothing to render." : "All scenes already have video. Stitching existing scene videos...", 80);
       }
-      if (currentVideoMode() === "flf" && scenes.length && flfPreGeneratePromptsEnabled()) {
+      if (!miniMaxProject && currentVideoMode() === "flf" && scenes.length && flfPreGeneratePromptsEnabled()) {
         const promptTargets = scenes.filter(({ segment }) =>
           !String(segment.i2v_prompt || "").trim()
           && firstLastFramePromptReferences(segment).length >= 2
@@ -38497,6 +38535,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
           label: sceneLabel,
+          video_mode: miniMaxProject ? miniMaxH3ModeForSegment(segment) : currentVideoMode(),
           status: "running",
           phase: "preparation",
           started_at: new Date(sceneStartedMs).toISOString(),
@@ -38513,18 +38552,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         upsertRenderLog(renderLog);
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
-        if (randomizeVideoSeed) setVideoSeedRandom(segment);
-        if (currentVideoMode() === "flf" && index === 0 && flfRenderChainStartSource(segment) === "rendered_frame") {
+        if (randomizeVideoSeed) {
+          if (miniMaxProject) setMiniMaxH3SeedRandom(segment);
+          else setVideoSeedRandom(segment);
+        }
+        if (!miniMaxProject && currentVideoMode() === "flf" && index === 0 && flfRenderChainStartSource(segment) === "rendered_frame") {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             await prepareFLFRenderedFrameNextScene(previousSegment, segment, progress, Math.min(98, base + 1), `FLF Render Chain resume into ${sceneLabel}`);
           }
         }
-        if (currentVideoMode() === "flf" && !String(segment.i2v_prompt || "").trim()) {
+        if (!miniMaxProject && currentVideoMode() === "flf" && !String(segment.i2v_prompt || "").trim()) {
           progress.set(`Creating First Last Frame prompt for ${sceneLabel}...`, Math.min(98, base + 1));
           await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 2), `Render All ${index + 1}/${scenes.length}: Gemma FLF`, { unloadAfter: true, forceVision: true });
         }
-        if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && index === 0) {
+        if (!miniMaxProject && i2vAutoChainEnabled() && currentVideoMode() === "i2v" && index === 0) {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.12)));
@@ -38537,7 +38579,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             );
           }
         }
-        if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+        if (!miniMaxProject && img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             const imageMode = state.imageModelMode || "zimage";
@@ -38573,22 +38615,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? `\nElapsed: ${renderLogDuration(liveSummary.total_ms)} · Estimated remaining: ${renderLogDuration(liveSummary.eta_ms)}`
           : `\nElapsed: ${renderLogDuration(liveSummary.total_ms)}`;
         progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...${timingLine}`, base);
-        const renderedVideoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+        const sharedRenderOptions = {
           progressBase: base,
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
           existingVideoAction: forceVideos ? "backup" : "overwrite",
-          audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
-          srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
-        });
+        };
+        const renderedVideoPath = miniMaxProject
+          ? await renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, sharedRenderOptions)
+          : await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+            ...sharedRenderOptions,
+            audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
+            srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
+          });
         const sceneRenderEndedMs = Date.now();
         previousRenderEndedMs = sceneRenderEndedMs;
         currentSceneLog.phase = "post";
         currentSceneLog.render_ended_at = new Date(sceneRenderEndedMs).toISOString();
         currentSceneLog.render_ms = Math.max(0, sceneRenderEndedMs - sceneRenderStartedMs);
         currentSceneLog.video_path = String(renderedVideoPath || selectedSegmentVideoPath(segment) || "");
-        if (currentVideoMode() === "flf" && scenes[index + 1]?.segment && flfChainingEnabled(scenes[index + 1].segment) && flfRenderChainStartSource(scenes[index + 1].segment) === "rendered_frame") {
+        if (!miniMaxProject && currentVideoMode() === "flf" && scenes[index + 1]?.segment && flfChainingEnabled(scenes[index + 1].segment) && flfRenderChainStartSource(scenes[index + 1].segment) === "rendered_frame") {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
           const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
@@ -38600,7 +38647,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             `FLF rendered-frame chain ${index + 1}->${index + 2}`,
           );
         }
-        if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
+        if (!miniMaxProject && i2vAutoChainEnabled() && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
           const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
@@ -38692,6 +38739,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = false;
       renderAllButton.textContent = "Render All";
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
+      setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
       state.batchCancelled = false;
       syncInspector();
@@ -44390,14 +44438,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function confirmAndRunRenderAll() {
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const videoMode = currentVideoMode();
-    const videoLabel = videoModeDisplayLabel(videoMode, true);
+    const videoLabel = miniMaxProject ? "MiniMax H3" : videoModeDisplayLabel(videoMode, true);
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
       title: "Run Render All?",
       intro: [
         "Render All only works on the video/render stage.",
-        videoMode === "t2v"
+        miniMaxProject
+          ? "It uses each scene's existing MiniMax prompt and effective project-global or locked MiniMax mode, models, and video settings."
+          : videoMode === "t2v"
           ? "It uses existing T2V prompts and does not require scene images."
           : videoMode === "ingredients"
             ? "It uses the current selected ingredients reference images and existing Ingredients prompts."
