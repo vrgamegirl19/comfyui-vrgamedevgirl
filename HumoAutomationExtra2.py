@@ -9,6 +9,7 @@ import numpy as np
 import os
 import tempfile
 import difflib
+import wave
 from folder_paths import get_output_directory
 from transformers import (
     WhisperProcessor,
@@ -82,6 +83,27 @@ def _whisper_generate_with_dtype_fallback(model, input_features, fallback_device
             fallback_device,
         )
         return model.generate(aligned_features, **kwargs)
+
+
+def _save_waveform_as_pcm16_wav(file_path, waveform, sample_rate):
+    """Write a temporary WAV without Torchaudio/TorchCodec dependencies."""
+    audio = torch.as_tensor(waveform).detach().cpu().float()
+    if audio.ndim == 3:
+        audio = audio[0]
+    if audio.ndim == 1:
+        audio = audio.unsqueeze(0)
+    if audio.ndim != 2:
+        raise ValueError(f"Expected audio shaped [C,T], got {tuple(audio.shape)}")
+
+    audio = torch.nan_to_num(audio, nan=0.0, posinf=1.0, neginf=-1.0).clamp(-1.0, 1.0)
+    pcm = (audio * 32767.0).round().to(torch.int16)
+    interleaved = pcm.transpose(0, 1).contiguous().numpy().tobytes()
+
+    with wave.open(file_path, "wb") as wav_file:
+        wav_file.setnchannels(int(audio.shape[0]))
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(int(sample_rate))
+        wav_file.writeframes(interleaved)
 
 
 class VRGDG_ManualLyricsExtractor:
@@ -1873,7 +1895,7 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
             tmp_wav_path = tmp.name
 
         try:
-            torchaudio.save(tmp_wav_path, mono.unsqueeze(0), sample_rate)
+            _save_waveform_as_pcm16_wav(tmp_wav_path, mono.unsqueeze(0), sample_rate)
 
             use_reference = bool(reference_lyrics and reference_lyrics.strip())
             reference_lines = self._split_reference_lyrics(reference_lyrics) if use_reference else []
@@ -3018,7 +3040,7 @@ class VRGDG_TimestampedLyricsExtractor(VRGDG_ManualLyricsExtractor_SRT_Advanced)
             tmp_wav_path = tmp.name
 
         try:
-            torchaudio.save(tmp_wav_path, mono.unsqueeze(0), sample_rate)
+            _save_waveform_as_pcm16_wav(tmp_wav_path, mono.unsqueeze(0), sample_rate)
             reference_lines = self._split_reference_lyrics(reference_lyrics) if str(reference_lyrics or "").strip() else []
             cleaned_reference_lyrics = "\n".join(reference_lines)
             segment_mode = str(segment_mode or "whisper_chunks")
