@@ -46,6 +46,55 @@ import {
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
+let builderAutomaticMemoryCleanupEnabled = false;
+const EMBEDDED_MEMORY_CLEANUP_NODE_TYPES = new Set([
+  "ramcleanup",
+  "vramcleanup",
+  "vrgdg_unloadgemmamodels",
+]);
+
+function setBuilderAutomaticMemoryCleanupEnabled(value) {
+  builderAutomaticMemoryCleanupEnabled = Boolean(value);
+  return builderAutomaticMemoryCleanupEnabled;
+}
+
+function withoutEmbeddedMemoryCleanupNodes(prompt) {
+  if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) {
+    return { prompt, removed: [] };
+  }
+  const cloned = Object.fromEntries(Object.entries(prompt).map(([nodeId, node]) => [
+    nodeId,
+    node && typeof node === "object"
+      ? { ...node, inputs: node.inputs && typeof node.inputs === "object" ? { ...node.inputs } : node.inputs }
+      : node,
+  ]));
+  const cleanupIds = new Set(Object.entries(cloned)
+    .filter(([, node]) => EMBEDDED_MEMORY_CLEANUP_NODE_TYPES.has(String(node?.class_type || "").trim().toLowerCase()))
+    .map(([nodeId]) => String(nodeId)));
+  if (!cleanupIds.size) return { prompt: cloned, removed: [] };
+
+  const resolvePassthrough = (value, visited = new Set()) => {
+    if (!Array.isArray(value) || value.length < 2) return value;
+    const sourceId = String(value[0]);
+    if (!cleanupIds.has(sourceId)) return value;
+    if (visited.has(sourceId)) return null;
+    visited.add(sourceId);
+    const passthrough = cloned[sourceId]?.inputs?.anything;
+    return Array.isArray(passthrough) ? resolvePassthrough(passthrough, visited) : null;
+  };
+
+  Object.entries(cloned).forEach(([nodeId, node]) => {
+    if (cleanupIds.has(String(nodeId)) || !node?.inputs || typeof node.inputs !== "object") return;
+    Object.entries(node.inputs).forEach(([inputName, value]) => {
+      if (!Array.isArray(value) || value.length < 2 || !cleanupIds.has(String(value[0]))) return;
+      const passthrough = resolvePassthrough(value);
+      if (passthrough) node.inputs[inputName] = passthrough;
+      else delete node.inputs[inputName];
+    });
+  });
+  cleanupIds.forEach((nodeId) => delete cloned[nodeId]);
+  return { prompt: cloned, removed: [...cleanupIds] };
+}
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
@@ -1813,11 +1862,20 @@ async function queueWorkflowPrompt(prompt, options = {}) {
     timeoutMs: options.idleTimeoutMs,
     shouldCancel: options.shouldCancel,
   });
+  let queuedPrompt = prompt;
+  if (!options.allowMemoryCleanup && !builderAutomaticMemoryCleanupEnabled) {
+    const sanitized = withoutEmbeddedMemoryCleanupNodes(prompt);
+    queuedPrompt = sanitized.prompt;
+    if (sanitized.removed.length) {
+      options.onStatus?.(`Bypassed ${sanitized.removed.length} embedded RAM/VRAM cleanup node(s) because automatic memory cleanup is disabled.`);
+      console.info(`[VRGDG Music Builder] Bypassed embedded memory cleanup nodes: ${sanitized.removed.join(", ")}`);
+    }
+  }
   const clientId = api.clientId || app?.clientId || crypto.randomUUID();
   const response = await api.fetchApi("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, client_id: clientId }),
+    body: JSON.stringify({ prompt: queuedPrompt, client_id: clientId }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {
@@ -5559,6 +5617,7 @@ function openBuilder(node) {
     sessionPath: "",
     srtPath: "",
     autoSaveEnabled: true,
+    automaticMemoryCleanup: false,
     isScrubbing: false,
     isClipScrubbing: false,
     sceneAudioMode: false,
@@ -9467,6 +9526,7 @@ function openBuilder(node) {
       llmApiProvider: state.llmApiProvider,
       llmApiModel: state.llmApiModel,
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
+      automaticMemoryCleanup: Boolean(state.automaticMemoryCleanup),
       waveformMode: state.waveformMode,
       snapToBeats: state.snapToBeats,
       beats: state.beats,
@@ -9548,6 +9608,7 @@ function openBuilder(node) {
     state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
+    state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
     state.showTimelineSceneNotes = data.showTimelineSceneNotes ?? state.showTimelineSceneNotes ?? false;
@@ -30477,6 +30538,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       makeField("Video engine for this project", projectVideoEngineSelect),
       projectVideoEngineNote,
     ], true);
+    const automaticMemoryCleanupControl = makeCheckbox(
+      "Run automatic RAM/VRAM cleanup",
+      Boolean(state.automaticMemoryCleanup),
+    );
+    const automaticMemoryCleanupNote = document.createElement("div");
+    automaticMemoryCleanupNote.textContent = "Off is recommended when ComfyUI DynamicVRAM is enabled. When off, the Builder bypasses embedded RAMCleanup/VRAMCleanup nodes in hidden workflows and will not directly clear Comfy/Gemma caches between tasks, retries, errors, or stops. The manual Clear Memory button still works.";
+    automaticMemoryCleanupNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+    const memoryManagementPanel = makeSettingsSection("Memory Management", [
+      automaticMemoryCleanupControl.wrapper,
+      automaticMemoryCleanupNote,
+    ], false);
     const notificationSettings = normalizeNotificationSettings(state.notificationSettings);
     const notificationMode = makeSelect(["off", "errors", "batch", "complete", "all"], notificationSettings.mode);
     const successSound = makeSelect(["chime", "bell", "double_beep", "soft"], notificationSettings.success_sound);
@@ -30698,6 +30770,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     notificationVolume.addEventListener("input", saveNotificationSettings);
     successCustomFile.addEventListener("change", () => readCustomSound(successCustomFile.files?.[0], "success"));
     errorCustomFile.addEventListener("change", () => readCustomSound(errorCustomFile.files?.[0], "error"));
+    automaticMemoryCleanupControl.input.addEventListener("change", async () => {
+      state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(automaticMemoryCleanupControl.input.checked);
+      await autoSaveSessionQuiet("automatic memory cleanup setting");
+      toast(state.automaticMemoryCleanup
+        ? "Automatic RAM/VRAM cleanup enabled."
+        : "Automatic RAM/VRAM cleanup disabled. DynamicVRAM will manage memory pressure.");
+    });
     projectVideoEngineSelect.addEventListener("change", async () => {
       state.projectVideoEngine = normalizeProjectVideoEngine(projectVideoEngineSelect.value);
       syncProjectVideoEngineUI();
@@ -30722,7 +30801,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, projectVideoEnginePanel, themePanel, autoChainPanel, notificationPanel);
+    box.append(header, pathGrid, actions, note, projectVideoEnginePanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -30985,6 +31064,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function runClearMemoryWorkflowQuiet(progress, label, percent = 95) {
+    if (!state.automaticMemoryCleanup) {
+      const output = `Automatic RAM/VRAM cleanup skipped after ${label} (disabled in Builder Settings).`;
+      progress?.set(output, percent);
+      return output;
+    }
     const output = await runFullMemoryCleanup(progress, label, percent);
     progress?.set(output, percent);
     return output;
@@ -30994,6 +31078,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     progress?.set(`Running RAM/VRAM cleanup workflow after ${label}...`, percent);
     const built = await postJson("/vrgdg/workflow_runner/build_clear_memory_prompt", {}, 120000);
     const queued = await queueWorkflowPrompt(built.prompt, {
+      allowMemoryCleanup: true,
       onStatus: (status) => progress?.set(`${status}\n\nWaiting to run RAM/VRAM cleanup workflow...`, percent),
     });
     const promptId = queued?.prompt_id;
@@ -31125,6 +31210,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
+      automatic_memory_cleanup: Boolean(state.automaticMemoryCleanup),
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
@@ -31294,11 +31380,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await cancelComfyExecutionAndWaitIdle((status) => {
         progress.set(`${status}`, 45);
       }, { shouldCancel: () => false });
-      progress.set("Clearing memory after stop...", 45);
-      await runClearMemoryWorkflowQuiet(progress, "stop request", 85);
-      progress.set("Stop requested and memory cleanup finished.", 100);
+      progress.set(state.automaticMemoryCleanup ? "Clearing memory after stop..." : "Automatic memory cleanup is disabled; stopping without clearing models or caches...", 45);
+      const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, "stop request", 85);
+      progress.set(state.automaticMemoryCleanup ? "Stop requested and memory cleanup finished." : `Stop requested.\n${cleanupOutput}`, 100);
       progress.close(3000);
-      toast("Stop requested. Memory cleanup ran.");
+      toast(state.automaticMemoryCleanup ? "Stop requested. Memory cleanup ran." : "Stop requested. Automatic memory cleanup was skipped.");
     } catch (error) {
       progress?.set(`Error while stopping:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -31383,6 +31469,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
         state.notificationSettings = normalizeNotificationSettings(data.session.notification_settings || state.notificationSettings);
+        state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.session.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
         state.showTimelineSceneNotes = data.session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
@@ -31707,6 +31794,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
       state.notificationSettings = normalizeNotificationSettings(session.notification_settings || state.notificationSettings);
+      state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(session.automatic_memory_cleanup ?? false);
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
       state.showTimelineSceneNotes = session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
