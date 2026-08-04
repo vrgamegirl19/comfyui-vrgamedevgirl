@@ -14,6 +14,11 @@ except Exception:
     torchaudio = None
 
 try:
+    from comfy_extras.nodes_audio import load as comfy_load_audio
+except Exception:
+    comfy_load_audio = None
+
+try:
     from demucs import pretrained
     from demucs.apply import apply_model
 except Exception:
@@ -108,14 +113,33 @@ class VRGDG_GetStems:
         if waveform is not None:
             return waveform, sample_rate
 
-        if torchaudio is None:
-            raise ImportError("torchaudio is required to load audio_file_path.")
-
         resolved = self._resolve_audio_path(audio_file_path)
         if not resolved:
             raise ValueError("Provide a valid AUDIO input or audio_file_path.")
 
-        wav, sr = torchaudio.load(resolved)
+        comfy_error = None
+        if comfy_load_audio is not None:
+            try:
+                wav, sr = comfy_load_audio(resolved)
+                if wav.ndim == 1:
+                    wav = wav.unsqueeze(0)
+                if wav.ndim != 2:
+                    raise ValueError(
+                        f"ComfyUI audio loader returned unexpected shape {tuple(wav.shape)}"
+                    )
+                return wav.unsqueeze(0).float(), int(sr)
+            except Exception as exc:
+                comfy_error = exc
+
+        if torchaudio is None:
+            detail = f" ComfyUI audio loader error: {comfy_error}" if comfy_error else ""
+            raise ImportError(f"No compatible audio-file loader is available.{detail}")
+
+        try:
+            wav, sr = torchaudio.load(resolved)
+        except Exception as exc:
+            detail = f" ComfyUI audio loader error: {comfy_error}" if comfy_error else ""
+            raise RuntimeError(f"Unable to decode audio file: {resolved}.{detail}") from exc
         return wav.unsqueeze(0).float(), int(sr)
 
     @classmethod
