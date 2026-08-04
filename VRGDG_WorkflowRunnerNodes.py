@@ -3556,12 +3556,16 @@ def _stitch_scene_videos(payload):
     raw_overlay_items = payload.get("overlay_items", [])
     if not isinstance(raw_overlay_items, list):
         raw_overlay_items = []
+    raw_scene_timing_items = payload.get("scene_timing_items", [])
+    if not isinstance(raw_scene_timing_items, list):
+        raw_scene_timing_items = []
     audio_path = os.path.abspath(str(payload.get("audio_path", "") or "").strip().strip('"'))
     preview_audio_start = max(0.0, float(payload.get("audio_start", 0) or 0))
     preview_audio_duration = max(0.0, float(payload.get("audio_duration", 0) or 0))
     target_width = _int_payload(payload, "width", 0, 0, 8192)
     target_height = _int_payload(payload, "height", 0, 0, 8192)
     use_embedded_scene_audio = bool(payload.get("use_embedded_scene_audio"))
+    timeline_fps = _int_payload(payload, "timeline_fps", 0, 0, 120)
 
     scene_paths = []
     for index, raw_path in enumerate(raw_paths, start=1):
@@ -3604,9 +3608,65 @@ def _stitch_scene_videos(payload):
         raise FileNotFoundError(f"Audio file was not found: {audio_path}")
 
     ffmpeg_path = _find_ffmpeg_path()
+    timeline_sync_paths = []
+    timeline_sync_frame_count = 0
+    concat_scene_paths = scene_paths
+    if raw_scene_timing_items:
+        if timeline_fps <= 0:
+            raise ValueError("Timeline FPS is required when scene timing items are provided.")
+        if len(raw_scene_timing_items) != len(scene_paths):
+            raise ValueError("Scene timing item count does not match scene video count.")
+
+        concat_scene_paths = []
+        for index, (path, item) in enumerate(zip(scene_paths, raw_scene_timing_items), start=1):
+            if not isinstance(item, dict):
+                raise ValueError(f"Scene {index} timing item is invalid.")
+            start = max(0.0, float(item.get("start", 0) or 0))
+            end = max(start, float(item.get("end", start) or start))
+            start_frame = int(start * timeline_fps + 0.5)
+            end_frame = int(end * timeline_fps + 0.5)
+            target_frames = max(1, end_frame - start_frame)
+            timeline_sync_frame_count += target_frames
+            sync_path = os.path.join(target_dir, f"_temp_timeline_scene_{index:04d}.mp4")
+            sync_filter = (
+                f"fps={timeline_fps},"
+                "tpad=stop_mode=clone:stop_duration=1,"
+                f"trim=start_frame=0:end_frame={target_frames},"
+                "setpts=PTS-STARTPTS"
+            )
+            sync_cmd = [
+                ffmpeg_path,
+                "-y",
+                "-i",
+                path,
+                "-map",
+                "0:v:0",
+                "-an",
+                "-vf",
+                sync_filter,
+                "-frames:v",
+                str(target_frames),
+                "-r",
+                str(timeline_fps),
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-preset",
+                "veryfast",
+                sync_path,
+            ]
+            sync_result = subprocess.run(sync_cmd, capture_output=True, text=True, errors="replace")
+            if sync_result.returncode != 0 or not os.path.isfile(sync_path):
+                raise RuntimeError(
+                    (sync_result.stderr or sync_result.stdout or f"FFmpeg failed to align scene {index} to the timeline.").strip()
+                )
+            timeline_sync_paths.append(sync_path)
+            concat_scene_paths.append(sync_path)
+
     concat_file = os.path.join(target_dir, "concat_list.txt")
     with open(concat_file, "w", encoding="utf-8") as handle:
-        for path in scene_paths:
+        for path in concat_scene_paths:
             handle.write(f"file '{_concat_file_path(path)}'\n")
 
     temp_video = os.path.join(target_dir, "_temp_video_no_audio.mp4")
@@ -3789,9 +3849,10 @@ def _stitch_scene_videos(payload):
         "copy",
         "-c:a",
         "aac",
-        "-shortest",
-        final_output,
     ]
+    if not timeline_sync_paths:
+        mux_cmd.append("-shortest")
+    mux_cmd.append(final_output)
     try:
         subprocess.run(mux_cmd, capture_output=True, text=True, errors="replace", check=True)
     finally:
@@ -3831,6 +3892,12 @@ def _stitch_scene_videos(payload):
                     os.remove(part_path)
             except Exception:
                 pass
+        for sync_path in timeline_sync_paths:
+            try:
+                if os.path.exists(sync_path):
+                    os.remove(sync_path)
+            except Exception:
+                pass
     removed_scratch_folders = _cleanup_video_scratch_folders(project_folder, keep_folders=[target_dir])
 
     return {
@@ -3842,6 +3909,9 @@ def _stitch_scene_videos(payload):
         "used_scene_audio": bool(scene_audio_paths),
         "used_embedded_scene_audio": bool(use_embedded_scene_audio and scene_audio_paths),
         "normalized_canvas": normalized_canvas,
+        "timeline_frame_sync": bool(timeline_sync_paths),
+        "timeline_fps": timeline_fps if timeline_sync_paths else 0,
+        "timeline_frame_count": timeline_sync_frame_count,
         "output_width": target_width,
         "output_height": target_height,
         "removed_scratch_folders": removed_scratch_folders,

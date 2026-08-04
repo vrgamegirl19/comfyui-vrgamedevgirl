@@ -37957,6 +37957,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       }
     }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
+    const sceneTimingItems = miniMaxProject ? baseSegments.map((segment) => ({
+      start: Math.max(0, Number(segment.start || 0) - timelineOffset),
+      end: Math.max(0, Number(segment.end || 0) - timelineOffset),
+    })) : [];
     const overlayItems = overlaySegments
       .filter((segment) => String(selectedSegmentVideoPath(segment) || "").trim())
       .map((segment, index) => ({
@@ -38006,6 +38010,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       audio_path: embeddedSceneAudioMode ? "" : globalAudioPath,
       scene_audio_paths: audioPaths,
       scene_audio_items: audioItems,
+      scene_timing_items: sceneTimingItems,
+      timeline_fps: miniMaxProject ? 24 : 0,
       use_embedded_scene_audio: embeddedSceneAudioMode,
       overlay_items: overlayItems,
       project_folder: projectInput.value,
