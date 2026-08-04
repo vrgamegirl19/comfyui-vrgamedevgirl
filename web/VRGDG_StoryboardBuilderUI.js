@@ -1329,6 +1329,17 @@ function normalizeStoryboardPerformanceMode(value = "") {
   return "singing";
 }
 
+function normalizeStoryboardProjectVideoEngine(value = "") {
+  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
+}
+
+function normalizeStoryboardMiniMaxH3Mode(value = "") {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ["text_to_video", "image_to_video", "reference_to_video", "video_to_video"].includes(clean)
+    ? clean
+    : "text_to_video";
+}
+
 function storyboardStillFacialDirection(value = "") {
   return String(value || "")
     .replace(/\bsubtle natural eye movement\b/gi, "clear eye direction")
@@ -1389,6 +1400,11 @@ function normalizeScene(scene = {}, index = 0) {
     trigger_phrase: String(scene.trigger_phrase || scene.trigger || scene.Trigger || ""),
     trigger_position: String(scene.trigger_position || scene.triggerPosition || scene.trigger_placement || "start") === "end" ? "end" : "start",
     video_prompt_type: videoPromptType,
+    project_video_engine: normalizeStoryboardProjectVideoEngine(scene.project_video_engine || scene.projectVideoEngine),
+    minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode || scene.minimaxH3Mode),
+    timeline_start: Number(scene.timeline_start ?? scene.start ?? 0),
+    timeline_end: Number(scene.timeline_end ?? scene.end ?? 0),
+    exact_duration: Math.max(0, Number(scene.exact_duration ?? scene.duration ?? 0)),
     shot_type: scene.shot_type || "",
     camera_motion: scene.camera_motion || scene.motion_preset || "",
     character_motion: scene.character_motion || scene.character_motion_preset || scene.subject_motion || "",
@@ -1471,6 +1487,11 @@ function scenesFromBuilderPayload(payload = {}) {
     subject_refs: scene.subject_refs || [],
     setting: scene.location || scene.location_ref?.description || scene.location_ref?.name || "",
     location_ref: scene.location_ref || null,
+    project_video_engine: scene.project_video_engine || scene.projectVideoEngine || payload.project_video_engine || payload.projectVideoEngine || "",
+    minimax_h3_mode: scene.minimax_h3_mode || scene.minimaxH3Mode || "",
+    timeline_start: scene.timeline_start ?? scene.start ?? 0,
+    timeline_end: scene.timeline_end ?? scene.end ?? 0,
+    exact_duration: scene.exact_duration ?? scene.duration ?? 0,
     video_prompt_type: scene.video_prompt_type || scene.video_type || "",
       shot_type: scene.shot_type || "",
       camera_motion: scene.camera_motion || scene.motion_preset || "",
@@ -1670,6 +1691,7 @@ function mergeStoryLayers(primary = {}, fallback = {}) {
 function slimStoryboardForRequest(state) {
   return {
     mode: state.mode,
+    project_video_engine: normalizeStoryboardProjectVideoEngine(state.projectVideoEngine),
     performance_mode: normalizeStoryboardPerformanceMode(state.performanceMode || state.performance_mode),
     camera_flow: state.cameraFlow || "balanced",
     image_shot_flow: state.imageShotFlow || "intimate",
@@ -1716,6 +1738,10 @@ function storyboardReferenceForGpt(ref, options = {}) {
 
 function storyboardVideoPromptTypeLabel(type) {
   const key = String(type || "").toLowerCase();
+  if (key === "text_to_video") return "MiniMax H3 text to video";
+  if (key === "image_to_video") return "MiniMax H3 image to video";
+  if (key === "reference_to_video") return "MiniMax H3 reference to video";
+  if (key === "video_to_video") return "MiniMax H3 video to video";
   if (key === "id_lora") return "ID-LoRA image to video";
   if (key === "ingredients") return "ingredients to video";
   if (key === "t2v") return "text to video";
@@ -1798,6 +1824,11 @@ function storyboardScenesForGpt(state) {
       scene_number: normalized.scene_number,
       label: normalized.label,
       prompt_type: imageMode ? "text to image" : storyboardVideoPromptTypeLabel(normalized.video_prompt_type),
+      project_video_engine: normalizeStoryboardProjectVideoEngine(normalized.project_video_engine || state.projectVideoEngine),
+      minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(normalized.minimax_h3_mode),
+      exact_duration: Number(normalized.exact_duration || 0),
+      timeline_start: Number(normalized.timeline_start || 0),
+      timeline_end: Number(normalized.timeline_end || 0),
       performance_mode: performanceMode,
       lyric_line_to_sing: shouldLipSync && performanceMode === "singing" ? lyricText : "",
       line_to_say: shouldLipSync && performanceMode === "speaking" ? lyricText : "",
@@ -1991,6 +2022,7 @@ async function copyTextToClipboard(text) {
 
 function openStoryboardBuilder(payload = {}) {
   const projectFolder = String(payload.projectFolder || payload.project_folder || "").trim();
+  const projectVideoEngine = normalizeStoryboardProjectVideoEngine(payload.projectVideoEngine || payload.project_video_engine);
   const payloadVideoPromptType = ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(String(payload.videoPromptType || payload.video_prompt_type || "").trim())
     ? String(payload.videoPromptType || payload.video_prompt_type || "").trim()
     : "";
@@ -1998,6 +2030,7 @@ function openStoryboardBuilder(payload = {}) {
   const payloadPerformanceMode = normalizeStoryboardPerformanceMode(payload.performanceMode || payload.performance_mode || payload.videoType || payload.video_type);
   const state = {
     projectFolder,
+    projectVideoEngine,
     lineMappingLyrics: String(payload.lineMappingLyrics || payload.line_mapping_lyrics || payload.lyricMapper?.source_text || payload.lyric_mapper?.source_text || ""),
     mode: "storyboard_prompts",
     scenes: scenesFromBuilderPayload(payload).map((scene) => ({
@@ -3361,6 +3394,10 @@ function openStoryboardBuilder(payload = {}) {
   }
 
   const videoPromptTypeLabel = (type) => {
+    if (type === "text_to_video") return "H3 T2V";
+    if (type === "image_to_video") return "H3 I2V";
+    if (type === "reference_to_video") return "H3 Reference";
+    if (type === "video_to_video") return "H3 V2V";
     if (type === "id_lora") return "ID-LoRA I2V";
     if (type === "t2v") return "T2V";
     if (type === "rtv") return "RTV";
@@ -3427,6 +3464,10 @@ function openStoryboardBuilder(payload = {}) {
   };
 
   const videoPromptTypeHint = (type) => {
+    if (type === "text_to_video") return "MiniMax H3 Text to Video uses scene text and <Audio 1> without picture or video references.";
+    if (type === "image_to_video") return "MiniMax H3 Image to Video uses the scene image as <Picture 1> and the authoritative opening frame.";
+    if (type === "reference_to_video") return "MiniMax H3 Reference to Video uses this scene's ordered Reference Builder pictures and their exact <Picture N> tags.";
+    if (type === "video_to_video") return "MiniMax H3 Video to Video uses the reference-video paths and purposes configured for this scene in Video Builder.";
     if (type === "id_lora") {
       return "ID-LoRA uses a scene image plus per-scene dialogue and a character voice sample from the ID-LoRA Ref Builder.";
     }
@@ -3757,13 +3798,19 @@ function openStoryboardBuilder(payload = {}) {
     noCharacterInput.type = "checkbox";
     noCharacterInput.checked = Boolean(scene.no_character_present);
     noCharacterLabel.append(noCharacterInput, document.createTextNode("No character present"));
-    const videoPromptType = makeSelect([
+    const miniMaxProject = state.projectVideoEngine === "minimax_h3";
+    const videoPromptType = makeSelect(miniMaxProject ? [
+      { value: "text_to_video", label: "MiniMax H3 — Text to Video" },
+      { value: "image_to_video", label: "MiniMax H3 — Image to Video" },
+      { value: "reference_to_video", label: "MiniMax H3 — Reference to Video" },
+      { value: "video_to_video", label: "MiniMax H3 — Video to Video" },
+    ] : [
       { value: "i2v", label: "Image to Video" },
       { value: "id_lora", label: "ID-LoRA I2V" },
       { value: "t2v", label: "Text to Video" },
       { value: "rtv", label: "Reference to Video" },
       { value: "ingredients", label: "Ingredients to Video" },
-    ], scene.video_prompt_type || "i2v");
+    ], miniMaxProject ? normalizeStoryboardMiniMaxH3Mode(scene.minimax_h3_mode) : (scene.video_prompt_type || "i2v"));
     const subjects = makeInput((scene.subjects || []).join(", "), "Subjects, comma separated");
     const subjectDetails = makeTextarea(
       (Array.isArray(scene.subject_refs) ? scene.subject_refs : [])
@@ -4073,11 +4120,14 @@ function openStoryboardBuilder(payload = {}) {
     closeEditor.onclick = () => editorBackdrop.remove();
     const refreshShotPresetForVideoType = () => {
       const type = videoPromptType.value || "i2v";
-      const options = isImagePrepMode ? IMAGE_SHOT_TYPES : (type === "i2v" ? VIDEO_SHOT_TYPES : Array.from(new Set([...IMAGE_SHOT_TYPES, ...VIDEO_SHOT_TYPES])));
+      const imageToVideoType = type === "i2v" || type === "image_to_video";
+      const textToVideoType = type === "t2v" || type === "text_to_video";
+      const referenceToVideoType = type === "rtv" || type === "reference_to_video";
+      const options = isImagePrepMode ? IMAGE_SHOT_TYPES : (imageToVideoType ? VIDEO_SHOT_TYPES : Array.from(new Set([...IMAGE_SHOT_TYPES, ...VIDEO_SHOT_TYPES])));
       const current = shot.value || scene.shot_type || "";
       shotPreset.replaceChildren();
       for (const option of [
-        { value: "", label: isImagePrepMode ? "Choose shot / composition preset..." : (type === "i2v" ? "Choose camera/motion preset..." : "Choose starting shot preset...") },
+        { value: "", label: isImagePrepMode ? "Choose shot / composition preset..." : (imageToVideoType ? "Choose camera/motion preset..." : "Choose starting shot preset...") },
         ...options.map((item) => ({ value: item, label: item })),
         { value: "__custom__", label: "Custom / keep typed value" },
       ]) {
@@ -4087,23 +4137,25 @@ function openStoryboardBuilder(payload = {}) {
         shotPreset.append(item);
       }
       shotPreset.value = options.includes(current) ? current : "__custom__";
-      shotPresetField.firstChild.textContent = isImagePrepMode ? "Shot / composition preset" : (type === "i2v" ? "Camera / motion preset" : "Starting shot preset");
-      shotCustomField.firstChild.textContent = isImagePrepMode ? "Custom shot / composition" : (type === "i2v" ? "Custom camera / motion" : "Custom starting shot");
+      shotPresetField.firstChild.textContent = isImagePrepMode ? "Shot / composition preset" : (imageToVideoType ? "Camera / motion preset" : "Starting shot preset");
+      shotCustomField.firstChild.textContent = isImagePrepMode ? "Custom shot / composition" : (imageToVideoType ? "Custom camera / motion" : "Custom starting shot");
       videoTypeHint.textContent = videoPromptTypeHint(type);
       motionField.firstChild.textContent = isImagePrepMode
         ? "Still photography notes"
-        : type === "i2v"
+        : imageToVideoType
           ? "Motion Notes / LLM Direction"
-          : type === "rtv"
+          : referenceToVideoType
             ? "Motion Notes / LLM Direction (with references)"
             : "Motion Notes / LLM Direction";
-      t2iPromptField.style.display = isImagePrepMode || (type !== "t2v" && type !== "rtv") ? "flex" : "none";
-      imagePathField.style.display = isVideoPrepMode && type !== "t2v" && type !== "rtv" ? "flex" : "none";
+      t2iPromptField.style.display = isImagePrepMode || (!textToVideoType && !referenceToVideoType) ? "flex" : "none";
+      imagePathField.style.display = isVideoPrepMode && !textToVideoType && !referenceToVideoType ? "flex" : "none";
       videoPrompt.style.display = isVideoPrepMode ? "" : "none";
-      videoPrompt.placeholder = type === "t2v"
+      videoPrompt.placeholder = textToVideoType
         ? "Full text-to-video prompt..."
-        : type === "rtv"
+        : referenceToVideoType
           ? "Full reference-to-video prompt..."
+          : type === "video_to_video"
+            ? "Full video-to-video prompt..."
           : "Full image-to-video prompt...";
     };
     refreshShotPresetForVideoType();
@@ -4191,7 +4243,12 @@ function openStoryboardBuilder(payload = {}) {
       propagateFlfEndStateToNextScene(scene);
       scene.prompt_summary = isVideoPrepMode ? summary.value.trim() : "";
       scene.motion_summary = motion.value.trim();
-      scene.video_prompt_type = isVideoPrepMode ? (videoPromptType.value || "i2v") : "i2v";
+      if (isVideoPrepMode && miniMaxProject) {
+        scene.minimax_h3_mode = normalizeStoryboardMiniMaxH3Mode(videoPromptType.value);
+        scene.project_video_engine = "minimax_h3";
+      } else {
+        scene.video_prompt_type = isVideoPrepMode ? (videoPromptType.value || "i2v") : "i2v";
+      }
       scene.no_character_present = Boolean(noCharacterInput.checked);
       scene.subjects = scene.no_character_present ? [] : subjects.value.split(/[,;\n]+/).map((item) => item.trim()).filter(Boolean);
       scene.setting = setting.value.trim();
@@ -4364,7 +4421,7 @@ function openStoryboardBuilder(payload = {}) {
       const miniRefButtonStyle = "margin-top:7px;border:1px dashed #155e75;border-radius:6px;background:#07111f;color:#a5f3fc;padding:5px 7px;font-size:11px;font-weight:900;cursor:pointer;";
       const subjectCell = `<div>${subjectRefsHtml(scene)}</div><button data-action="load-subject-ref" title="Choose subjects from Reference Builder or upload a new subject image" style="${miniRefButtonStyle}">+ Subject</button>`;
       const settingCell = `<div>${settingRefHtml(scene)}</div><button data-action="load-location-ref" title="Load a location image for this scene" style="${miniRefButtonStyle}">+ Location</button>`;
-      const videoType = videoPromptTypeLabel(scene.video_prompt_type || "i2v");
+      const videoType = videoPromptTypeLabel(state.projectVideoEngine === "minimax_h3" ? scene.minimax_h3_mode : (scene.video_prompt_type || "i2v"));
       const shotCell = `<div style="display:flex;flex-direction:column;gap:4px;"><span style="align-self:flex-start;border:1px solid #155e75;border-radius:999px;background:#0f172a;color:#a5f3fc;font-size:11px;font-weight:900;padding:2px 7px;">${escapeHtml(videoType)}</span><strong style="color:#f8fafc;">${escapeHtml(scene.shot_type || "-")}</strong></div>`;
       const storyPreview = `${scene.lyric_section ? `<div style="margin-top:5px;color:#67e8f9;font-size:11px;font-weight:900;">${escapeHtml(scene.lyric_section)}</div>` : ""}${scene.story_beat ? `<div style="margin-top:5px;color:#94a3b8;font-size:11px;">Beat: ${escapeHtml(truncate(scene.story_beat, 90))}</div>` : ""}`;
       if (mode === "image_to_video_prep") {
@@ -4448,6 +4505,7 @@ function openStoryboardBuilder(payload = {}) {
       const incomingScenes = state.scenes.map((scene) => normalizeScene(scene));
       const data = await postJson("/vrgdg/storyboard/load", { project_folder: state.projectFolder });
       const saved = data.storyboard || {};
+      state.projectVideoEngine = normalizeStoryboardProjectVideoEngine(saved.project_video_engine || saved.projectVideoEngine || state.projectVideoEngine);
       const savedReferences = normalizeReferenceBuilderCatalog(saved.reference_builder || saved.referenceBuilder || {});
       const currentHasSubjects = Array.isArray(state.referenceBuilder?.subjects) && state.referenceBuilder.subjects.length > 0;
       const currentHasLocations = Array.isArray(state.referenceBuilder?.locations) && state.referenceBuilder.locations.length > 0;
@@ -4483,6 +4541,11 @@ function openStoryboardBuilder(payload = {}) {
             scene_number: fresh.scene_number || normalized.scene_number,
             label: fresh.label || normalized.label,
             video_prompt_type: payloadVideoPromptType || fresh.video_prompt_type || normalized.video_prompt_type,
+            project_video_engine: state.projectVideoEngine,
+            minimax_h3_mode: normalizeStoryboardMiniMaxH3Mode(fresh.minimax_h3_mode || normalized.minimax_h3_mode),
+            timeline_start: Number(fresh.timeline_start ?? normalized.timeline_start ?? 0),
+            timeline_end: Number(fresh.timeline_end ?? normalized.timeline_end ?? 0),
+            exact_duration: Math.max(0, Number(fresh.exact_duration ?? normalized.exact_duration ?? 0)),
             lyrics: fresh.lyrics || normalized.lyrics,
             lyric_section: fresh.lyric_section || normalized.lyric_section,
             story_beat: fresh.story_beat || normalized.story_beat,
@@ -4569,7 +4632,7 @@ function openStoryboardBuilder(payload = {}) {
     try {
       syncStoryLayerFromInputs();
       state.scenes.forEach((scene) => {
-        if (String(scene.video_prompt || "").trim() && normalizeVideoPromptOrigin(scene.video_prompt_origin) === "gemma") {
+        if (state.projectVideoEngine !== "minimax_h3" && String(scene.video_prompt || "").trim() && normalizeVideoPromptOrigin(scene.video_prompt_origin) === "gemma") {
           scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
         }
       });
@@ -4596,7 +4659,7 @@ function openStoryboardBuilder(payload = {}) {
     try {
       state.scenes.forEach((scene) => {
         if (String(scene.image_prompt || "").trim()) scene.image_prompt = ensureStoryboardReferenceOpening(scene.image_prompt, scene, state.imageMode);
-        if (String(scene.video_prompt || "").trim() && normalizeVideoPromptOrigin(scene.video_prompt_origin) === "gemma") {
+        if (state.projectVideoEngine !== "minimax_h3" && String(scene.video_prompt || "").trim() && normalizeVideoPromptOrigin(scene.video_prompt_origin) === "gemma") {
           scene.video_prompt = enforceStoryboardVideoFacialRequirements(scene.video_prompt, scene);
         }
       });
@@ -4901,6 +4964,9 @@ function openStoryboardBuilder(payload = {}) {
     try {
       progress?.set(`${progressLabel || normalized.label || `Scene ${normalized.scene_number}`}: sending scene card to ${runnerName}...\nThis can take a minute depending on runner/model speed.`, progressPercent);
       const callbackPayload = storyboardGptPayload(state, [scene]);
+      if (state.projectVideoEngine === "minimax_h3" && !state.onCreateVideoPrompt) {
+        throw new Error("Open Storyboard Builder from the Video Builder so MiniMax can use the scene's H3 mode, ordered references, exact timing, and LLM instructions.");
+      }
       const data = state.onCreateVideoPrompt
         ? await state.onCreateVideoPrompt(scene, {
           unloadAfter,

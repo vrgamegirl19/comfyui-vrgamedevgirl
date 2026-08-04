@@ -35,6 +35,12 @@ from .VRGDG_LUTVideoTools import register_lut_routes
 from .VRGDG_FaceFix import register_face_fix_routes
 from .VRGDG_GemmaPromptSanitizer import extract_prompt_text_from_gemma_output
 from .VRGDG_StoryboardBuilderNodes import _STORYBOARD_T2I_GEMMA_INSTRUCTIONS
+from .VRGDG_MiniMaxH3PromptInstructions import (
+    MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
+    MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
+    MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
+    MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
+)
 
 
 _VRGDG_MUSIC_BUILDER_ROUTES_REGISTERED = False
@@ -875,6 +881,10 @@ _BUILDER_INSTRUCTION_DEFAULTS = {
     "ingredients": _T2V_INSTRUCTIONS,
     "i2v": _I2V_INSTRUCTIONS,
     "krea2_t2i": _STANDARD_IMAGE_T2I_INSTRUCTIONS,
+    "minimax_h3_image_to_video": MINIMAX_H3_IMAGE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_reference_to_video": MINIMAX_H3_REFERENCE_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_text_to_video": MINIMAX_H3_TEXT_TO_VIDEO_INSTRUCTIONS,
+    "minimax_h3_video_to_video": MINIMAX_H3_VIDEO_TO_VIDEO_INSTRUCTIONS,
     "nano_b_t2i": _NANO_B_T2I_INSTRUCTIONS,
     "rtv": _T2V_INSTRUCTIONS,
     "t2v": _T2V_INSTRUCTIONS,
@@ -889,6 +899,10 @@ _BUILDER_INSTRUCTION_LABELS = {
     "ingredients": "Ingredients to Video",
     "i2v": "Image to Video",
     "krea2_t2i": "Krea 2 Text to Image",
+    "minimax_h3_image_to_video": "MiniMax H3 Image to Video",
+    "minimax_h3_reference_to_video": "MiniMax H3 Reference to Video",
+    "minimax_h3_text_to_video": "MiniMax H3 Text to Video",
+    "minimax_h3_video_to_video": "MiniMax H3 Video to Video",
     "nano_b_t2i": "Nano B Text to Image",
     "rtv": "Reference to Video",
     "t2v": "Text to Video",
@@ -3511,6 +3525,150 @@ def _clean_lm_studio_plain_text(text):
     return cleaned
 
 
+def _format_minimax_h3_prompt(text, payload=None, instruction_key=""):
+    """Keep H3 prompts readable and make exact custom-audio lip sync explicit."""
+    payload = payload if isinstance(payload, dict) else {}
+    cleaned = _clean_lm_studio_plain_text(text).replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = re.sub(r"<\s*Picture\s+(\d+)\s*>", r"Image \1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<\s*Video\s+(\d+)\s*>", r"Video \1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"<\s*Audio\s+1\s*>", "Audio 1", cleaned, flags=re.IGNORECASE)
+
+    timestamp_pattern = r"\[\s*\d+(?:\.\d+)?s?\s*[-\u2013\u2014]\s*\d+(?:\.\d+)?s?\s*\]"
+    section_pattern = rf"(?:Image\s+\d+|Video\s+\d+|Audio\s+1|Audio|Continuity)\s*:|{timestamp_pattern}"
+    cleaned = re.sub(rf"[ \t]*(?={section_pattern})", "\n\n", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(rf"({timestamp_pattern})[ \t]*", r"\1\n", cleaned)
+    cleaned = re.sub(r"\n[ \t]+", "\n", cleaned)
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+
+    lyric_text = re.sub(r"\s+", " ", str(payload.get("lyric_text") or "")).strip().strip('"\'\u201c\u201d\u2018\u2019')
+    performance_mode = str(payload.get("performance_mode") or "singing").strip().lower().replace("-", "_").replace(" ", "_")
+    no_visible_character = bool(payload.get("no_character_present"))
+    no_lip_sync = no_visible_character or performance_mode in {"no_lip_sync", "nolipsync", "no_lipsync", "visual_only", "instrumental"}
+    singers_raw = payload.get("singers") or []
+    if isinstance(singers_raw, str):
+        singer_names = [item.strip() for item in re.split(r"[,;\n]+", singers_raw) if item.strip()]
+    elif isinstance(singers_raw, list):
+        singer_names = [str(item or "").strip() for item in singers_raw if str(item or "").strip()]
+    else:
+        singer_names = []
+    performer = " and ".join(singer_names[:2]) if singer_names else "the visible performer"
+
+    def insert_before_first_timeline(block):
+        nonlocal cleaned
+        match = re.search(timestamp_pattern, cleaned)
+        if match:
+            cleaned = f"{cleaned[:match.start()].rstrip()}\n\n{block}\n\n{cleaned[match.start():].lstrip()}"
+        else:
+            cleaned = f"{cleaned.rstrip()}\n\n{block}"
+
+    if instruction_key == "minimax_h3_image_to_video" and not re.search(r"(?im)^Image\s+1\s*:", cleaned):
+        image_assignment = (
+            "Image 1: use as the exact start frame, character appearance and clothing reference, "
+            "environment reference, lighting reference, and composition reference."
+        )
+        first_audio = re.search(r"(?im)^Audio\s+1\s*:", cleaned)
+        if first_audio:
+            cleaned = f"{cleaned[:first_audio.start()].rstrip()}\n\n{image_assignment}\n\n{cleaned[first_audio.start():].lstrip()}"
+        else:
+            insert_before_first_timeline(image_assignment)
+
+    if not re.search(r"(?im)^Audio\s+1\s*:", cleaned):
+        if lyric_text and not no_lip_sync:
+            action = "says" if performance_mode == "speaking" else "is singing"
+            vocal_kind = "spoken" if performance_mode == "speaking" else "sung"
+            audio_assignment = (
+                f"Audio 1: use as the exact vocal, timing, and lip-sync reference. {performer} {action} the exact line "
+                f"“{lyric_text}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely "
+                f"to that {vocal_kind} line in Audio 1. Do not replace, alter, extend, or add vocals."
+            )
+        elif no_lip_sync:
+            audio_assignment = (
+                "Audio 1: use unchanged as the exact timing reference. This scene is visual-only; do not show singing, "
+                "speaking, or mouth synchronization."
+            )
+        else:
+            audio_assignment = (
+                "Audio 1: use unchanged as the exact performance, movement, and timing reference. "
+                "Do not invent lyrics, dialogue, replacement music, or replacement vocals."
+            )
+        insert_before_first_timeline(audio_assignment)
+
+    if lyric_text and not no_lip_sync:
+        lines = cleaned.split("\n")
+        exact_line_lower = lyric_text.casefold()
+        for index, line in enumerate(lines):
+            if re.match(r"^Audio\s+1\s*:", line, flags=re.IGNORECASE):
+                if exact_line_lower not in line.casefold() or "lip" not in line.casefold():
+                    action = "spoken" if performance_mode == "speaking" else "sung"
+                    lines[index] = (
+                        f"{line.rstrip()} Preserve the exact {action} line “{lyric_text}” and synchronize lips, mouth shapes, "
+                        "jaw movement, facial muscles, and breathing precisely to Audio 1."
+                    )
+                break
+        cleaned = "\n".join(lines)
+
+        vocal_verb = "says" if performance_mode == "speaking" else "visibly sings"
+        sync_kind = "spoken dialogue" if performance_mode == "speaking" else "sung lyric"
+        timeline_block_pattern = re.compile(
+            rf"({timestamp_pattern}\n)(.*?)(?=\n\n(?:{timestamp_pattern}|Audio\s*:|Continuity\s*:)|$)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        def ensure_vocal_in_timeline(match):
+            header = match.group(1)
+            body = match.group(2).strip()
+            body_lower = body.casefold()
+            visibly_performed = (
+                lyric_text.casefold() in body_lower
+                and bool(re.search(r"\b(?:sing|sings|singing|sung|lip[ -]?sync|say|says|speaking|spoken)\b", body_lower))
+            )
+            if visibly_performed:
+                return f"{header}{body}"
+            required_action = (
+                f"Throughout this interval, {performer} {vocal_verb} “{lyric_text}” with precise lip, mouth-shape, jaw, "
+                f"facial-muscle, and breathing synchronization to the {sync_kind} in Audio 1."
+            )
+            return f"{header}{body.rstrip()} {required_action}".strip()
+
+        cleaned = timeline_block_pattern.sub(ensure_vocal_in_timeline, cleaned)
+
+    if not re.search(r"(?im)^Audio\s*:", cleaned):
+        if lyric_text and not no_lip_sync:
+            audio_summary = (
+                f"Audio: Use Audio 1 unchanged as the primary audio track. Preserve its exact voice, timing, phrasing, tone, "
+                f"and duration, and keep the lip sync exact to “{lyric_text}”. Do not add replacement music, dialogue, or vocal layers."
+            )
+        else:
+            audio_summary = (
+                "Audio: Use Audio 1 unchanged as the primary audio track and preserve its exact timing and duration. "
+                "Do not add replacement music, dialogue, or vocal layers."
+            )
+        cleaned = f"{cleaned.rstrip()}\n\n{audio_summary}"
+    elif lyric_text and not no_lip_sync:
+        lines = cleaned.split("\n")
+        for index, line in enumerate(lines):
+            if re.match(r"^Audio\s*:", line, flags=re.IGNORECASE):
+                if lyric_text.casefold() not in line.casefold() or "lip" not in line.casefold():
+                    lines[index] = (
+                        f"{line.rstrip()} Use Audio 1 unchanged as the primary audio track, preserve its exact voice, timing, "
+                        f"phrasing, tone, and duration, and keep the lip sync exact to “{lyric_text}”. "
+                        "Do not add replacement music, dialogue, or vocal layers."
+                    )
+                break
+        cleaned = "\n".join(lines)
+
+    if not re.search(r"(?im)^Continuity\s*:", cleaned):
+        continuity = (
+            "Continuity: Preserve the same visible character identity, appearance, clothing, environment, lighting, and spatial "
+            "relationships throughout. Do not introduce new characters, objects, text, logos, captions, or scene changes unless explicitly requested."
+        )
+        cleaned = f"{cleaned.rstrip()}\n\n{continuity}"
+
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned
+
+
 def _run_builder_text_llm(payload, instruction_text, temperature=0.6, top_p=0.95, max_new_tokens=1200, label="Gemma", preserve_paragraphs=False):
     if _llm_runner_from_payload(payload) == "lm_studio":
         text = _run_lm_studio_text(
@@ -5306,6 +5464,8 @@ def _generate_builder_t2v_prompt(payload):
     subject_context = str(payload.get("subject_context", "") or "").strip()
     location_context = str(payload.get("location_context", "") or "").strip()
     no_character_present = bool(payload.get("no_character_present") or payload.get("no_subject") or payload.get("no_visible_subject"))
+    instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
+    is_minimax_h3_prompt = instruction_key.startswith("minimax_h3_")
     text_runner = _llm_runner_from_payload(payload)
     if not model_file and text_runner not in {"lm_studio", "llm_api"}:
         raise ValueError("Choose a T2V Gemma model first.")
@@ -5320,7 +5480,8 @@ def _generate_builder_t2v_prompt(payload):
         except Exception:
             image_references = [{"path": line.strip()} for line in image_references.splitlines() if line.strip()]
     if isinstance(image_references, list):
-        for index, item in enumerate(image_references[:4], start=1):
+        reference_limit = 9 if is_minimax_h3_prompt else 4
+        for index, item in enumerate(image_references[:reference_limit], start=1):
             if isinstance(item, str):
                 item = {"path": item}
             if not isinstance(item, dict):
@@ -5403,9 +5564,14 @@ def _generate_builder_t2v_prompt(payload):
         else:
             raise ValueError("Create or paste scene notes, mapped references, motion notes, or a T2I/concept prompt first.")
 
-    instruction_key = _safe_builder_instruction_key(payload.get("builder_instruction_key") or payload.get("instruction_key") or "t2v")
     t2v_instructions = _effective_builder_instruction(payload, instruction_key, _T2V_INSTRUCTIONS)
-    prompt_label = "ID-LoRA I2V" if instruction_key == "id_lora" else "Reference to Video" if instruction_key == "rtv" else "T2V"
+    prompt_label = (
+        _BUILDER_INSTRUCTION_LABELS.get(instruction_key, "MiniMax H3")
+        if is_minimax_h3_prompt
+        else "ID-LoRA I2V" if instruction_key == "id_lora"
+        else "Reference to Video" if instruction_key == "rtv"
+        else "T2V"
+    )
     if has_image_reference and first_last_frame_mode:
         # Generic I2V instructions describe a single first-frame reference and
         # can conflict with FLF endpoint framing (for example, demanding that a
@@ -5472,6 +5638,14 @@ def _generate_builder_t2v_prompt(payload):
                 "- Ignore lyrics, story arc, mapped descriptions, detailed endpoint prose, other scene notes, and camera presets when deciding visible action or camera travel.\n"
                 "- The application adds any required exact vocal line and facial-performance direction after this visual prompt is returned.\n\n"
             )
+    elif has_image_reference and is_minimax_h3_prompt:
+        image_guidance = (
+            "MiniMax H3 ordered visual-reference guidance:\n"
+            "- The attached pictures are in the exact <Picture 1>, <Picture 2>, and subsequent order stated in the scene context.\n"
+            "- Inspect every attached picture and use it only for the purpose assigned to its matching tag.\n"
+            "- Keep the exact <Picture N> tags in the final MiniMax prompt wherever the mode instructions require them.\n"
+            "- Do not merge a storyboard grid into a collage output; interpret its panels as ordered visual guidance.\n\n"
+        )
     elif has_image_reference and instruction_key == "id_lora":
         image_guidance = (
             "Use the provided image as the primary visual truth for the [VISUAL] section. "
@@ -5587,15 +5761,22 @@ def _generate_builder_t2v_prompt(payload):
                 top_p=top_p,
                 max_new_tokens=max_new_tokens,
                 label=f"{prompt_label} Gemma",
+                preserve_paragraphs=is_minimax_h3_prompt,
             )
-        text = _clean_gemma_prompt_text(text)
+        text = _clean_lm_studio_plain_text(text) if is_minimax_h3_prompt else _clean_gemma_prompt_text(text)
+        if is_minimax_h3_prompt:
+            text = _format_minimax_h3_prompt(text, payload, instruction_key)
         if first_last_frame_mode:
             text = re.sub(r"(?i)\b(?:cinematic\s+)?(?:aspect\s+ratio\s*[:=]?\s*)?(?:16\s*:\s*9|9\s*:\s*16|21\s*:\s*9|4\s*:\s*3|3\s*:\s*4|1\s*:\s*1)(?:\s+(?:aspect\s+ratio|widescreen|portrait|landscape))?\b[,]?\s*", "", text)
             text = re.sub(r"(?i)\b(?:widescreen|portrait|landscape)\s+aspect\s+ratio\b[,]?\s*", "", text)
             text = re.sub(r"(?i)\b(?:fades?|dissolves?|crossfades?|blends?)\s+(?:smoothly\s+|seamlessly\s+|gradually\s+)?into\b", "progressively transforms into", text)
             text = re.sub(r"(?i),?\s*(?:while\s+)?maintaining (?:her|his|their|the subject(?:'s)?) visibility throughout(?: the transformation)?", "", text)
             text = re.sub(r"\s{2,}", " ", text).strip(" ,")
-        text = _repair_and_validate_builder_gemma_prompt(payload, text, prompt_label)
+        if is_minimax_h3_prompt:
+            if not text:
+                raise ValueError(f"{prompt_label} LLM returned an empty prompt.")
+        else:
+            text = _repair_and_validate_builder_gemma_prompt(payload, text, prompt_label)
         if first_last_frame_mode:
             text = re.sub(r"(?i)(?:\s*[,.;:-]?\s*)\bzhuanchang\b", "", text).strip(" ,.;:-")
             if transition_lora_active:

@@ -46,6 +46,55 @@ import {
 const NODE_NAME = "VRGDG_MusicVideoBuilderUI";
 const BUILDER_UI_VERSION = "welcome-startup-2026-05-20";
 const HIDDEN_WIDGETS = new Set(["audio_path", "project_folder", "session_path", "srt_path"]);
+let builderAutomaticMemoryCleanupEnabled = false;
+const EMBEDDED_MEMORY_CLEANUP_NODE_TYPES = new Set([
+  "ramcleanup",
+  "vramcleanup",
+  "vrgdg_unloadgemmamodels",
+]);
+
+function setBuilderAutomaticMemoryCleanupEnabled(value) {
+  builderAutomaticMemoryCleanupEnabled = Boolean(value);
+  return builderAutomaticMemoryCleanupEnabled;
+}
+
+function withoutEmbeddedMemoryCleanupNodes(prompt) {
+  if (!prompt || typeof prompt !== "object" || Array.isArray(prompt)) {
+    return { prompt, removed: [] };
+  }
+  const cloned = Object.fromEntries(Object.entries(prompt).map(([nodeId, node]) => [
+    nodeId,
+    node && typeof node === "object"
+      ? { ...node, inputs: node.inputs && typeof node.inputs === "object" ? { ...node.inputs } : node.inputs }
+      : node,
+  ]));
+  const cleanupIds = new Set(Object.entries(cloned)
+    .filter(([, node]) => EMBEDDED_MEMORY_CLEANUP_NODE_TYPES.has(String(node?.class_type || "").trim().toLowerCase()))
+    .map(([nodeId]) => String(nodeId)));
+  if (!cleanupIds.size) return { prompt: cloned, removed: [] };
+
+  const resolvePassthrough = (value, visited = new Set()) => {
+    if (!Array.isArray(value) || value.length < 2) return value;
+    const sourceId = String(value[0]);
+    if (!cleanupIds.has(sourceId)) return value;
+    if (visited.has(sourceId)) return null;
+    visited.add(sourceId);
+    const passthrough = cloned[sourceId]?.inputs?.anything;
+    return Array.isArray(passthrough) ? resolvePassthrough(passthrough, visited) : null;
+  };
+
+  Object.entries(cloned).forEach(([nodeId, node]) => {
+    if (cleanupIds.has(String(nodeId)) || !node?.inputs || typeof node.inputs !== "object") return;
+    Object.entries(node.inputs).forEach(([inputName, value]) => {
+      if (!Array.isArray(value) || value.length < 2 || !cleanupIds.has(String(value[0]))) return;
+      const passthrough = resolvePassthrough(value);
+      if (passthrough) node.inputs[inputName] = passthrough;
+      else delete node.inputs[inputName];
+    });
+  });
+  cleanupIds.forEach((nodeId) => delete cloned[nodeId]);
+  return { prompt: cloned, removed: [...cleanupIds] };
+}
 const DEFAULT_I2V_UNET = "LTX-2.3-22B-distilled-1.1-Q6_K.gguf";
 const DEFAULT_I2V_DIFFUSION_MODEL = "LTX_8bit\\ltx-2.3-22b-dev_transformer_only_int8_convrot.safetensors";
 const BAD_I2V_UNET_ALIASES = new Set(["LTX-2.3-22B-distilled-11-Q6_K.gguf"]);
@@ -89,6 +138,110 @@ const FLUX_GEMMA_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_NON_VISION_GEMMA_MODEL = "supergemma4-26b-uncensored-fast-v2-Q4_K_M.gguf";
 const NB_IMAGE_MODELS = ["gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview"];
 const DEFAULT_NB_IMAGE_MODEL = "gemini-3-pro-image-preview";
+const MINIMAX_H3_MODE_OPTIONS = [
+  { value: "text_to_video", label: "Text to Video" },
+  { value: "image_to_video", label: "Image to Video" },
+  { value: "reference_to_video", label: "Reference to Video" },
+  { value: "video_to_video", label: "Video to Video" },
+];
+const MINIMAX_H3_INSTRUCTION_KEYS = {
+  text_to_video: "minimax_h3_text_to_video",
+  image_to_video: "minimax_h3_image_to_video",
+  reference_to_video: "minimax_h3_reference_to_video",
+  video_to_video: "minimax_h3_video_to_video",
+};
+const MINIMAX_H3_VIDEO_REFERENCE_PURPOSES = [
+  { value: "continuation", label: "Continuation / Extension" },
+  { value: "movement", label: "Movement Guide" },
+  { value: "camera", label: "Camera Guide" },
+  { value: "edit_rhythm", label: "Edit / Rhythm Guide" },
+  { value: "transformation", label: "Transformation Source" },
+  { value: "visual_style", label: "Visual Style Guide" },
+];
+const DEFAULT_MINIMAX_H3_SETTINGS = {
+  video_mode: "text_to_video",
+  diffusion_model_name: "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+  clip_name: "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+  video_vae_name: "minimax_h3_video_vae_fp16.safetensors",
+  audio_vae_name: "minimax_h3_audio_vae_fp32.safetensors",
+  aspect_ratio: "16:9 (Widescreen)",
+  megapixels: 0.9,
+  seed: 69,
+  warmup_frames: 0,
+  cooldown_frames: 0,
+  sampler_name: "res_multistep",
+  scheduler: "simple",
+  steps: 20,
+  denoise: 1,
+  easy_cache_bypass: false,
+  easy_cache_reuse_threshold: 0.3,
+  easy_cache_start_percent: 0.2,
+  easy_cache_end_percent: 0.9,
+  easy_cache_verbose: false,
+  sage_attention: "auto",
+  enable_fp16_accumulation: true,
+};
+
+const MINIMAX_H3_SAGE_ATTENTION_OPTIONS = [
+  { value: "disabled", label: "Disabled" },
+  { value: "auto", label: "Auto" },
+  { value: "sageattn_qk_int8_pv_fp16_cuda", label: "SageAttention 2 — FP16 CUDA" },
+  { value: "sageattn_qk_int8_pv_fp16_triton", label: "SageAttention 2 — FP16 Triton" },
+  { value: "sageattn_qk_int8_pv_fp8_cuda", label: "SageAttention 2 — FP8 CUDA" },
+  { value: "sageattn_qk_int8_pv_fp8_cuda++", label: "SageAttention 2 — FP8 CUDA++" },
+  { value: "sageattn3", label: "SageAttention 3" },
+  { value: "sageattn3_per_block_mean", label: "SageAttention 3 — Per-block mean" },
+];
+
+function normalizeMiniMaxH3Mode(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return MINIMAX_H3_MODE_OPTIONS.some((item) => item.value === clean) ? clean : "text_to_video";
+}
+
+function miniMaxH3ModeLabel(value) {
+  const mode = normalizeMiniMaxH3Mode(value);
+  return MINIMAX_H3_MODE_OPTIONS.find((item) => item.value === mode)?.label || "Text to Video";
+}
+
+function miniMaxH3InstructionKey(value) {
+  return MINIMAX_H3_INSTRUCTION_KEYS[normalizeMiniMaxH3Mode(value)] || MINIMAX_H3_INSTRUCTION_KEYS.text_to_video;
+}
+
+function normalizeMiniMaxH3VideoPurpose(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return MINIMAX_H3_VIDEO_REFERENCE_PURPOSES.some((item) => item.value === clean) ? clean : "continuation";
+}
+
+function cloneMiniMaxH3Settings(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    ...DEFAULT_MINIMAX_H3_SETTINGS,
+    ...source,
+    video_mode: normalizeMiniMaxH3Mode(source.video_mode || source.mode || DEFAULT_MINIMAX_H3_SETTINGS.video_mode),
+    diffusion_model_name: String(source.diffusion_model_name || DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name),
+    clip_name: String(source.clip_name || DEFAULT_MINIMAX_H3_SETTINGS.clip_name),
+    video_vae_name: String(source.video_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name),
+    audio_vae_name: String(source.audio_vae_name || DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name),
+    aspect_ratio: String(source.aspect_ratio || DEFAULT_MINIMAX_H3_SETTINGS.aspect_ratio),
+    megapixels: Math.max(0.1, Number(source.megapixels ?? DEFAULT_MINIMAX_H3_SETTINGS.megapixels)),
+    seed: Number.isFinite(Number(source.seed)) ? Number(source.seed) : DEFAULT_MINIMAX_H3_SETTINGS.seed,
+    warmup_frames: Math.max(0, Math.trunc(Number(source.warmup_frames || 0))),
+    cooldown_frames: Math.max(0, Math.trunc(Number(source.cooldown_frames || 0))),
+    sampler_name: String(source.sampler_name || DEFAULT_MINIMAX_H3_SETTINGS.sampler_name),
+    scheduler: String(source.scheduler || DEFAULT_MINIMAX_H3_SETTINGS.scheduler),
+    steps: Math.max(1, Math.min(1000, Math.trunc(Number(source.steps ?? DEFAULT_MINIMAX_H3_SETTINGS.steps) || DEFAULT_MINIMAX_H3_SETTINGS.steps))),
+    denoise: Math.max(0, Math.min(1, Number(source.denoise ?? DEFAULT_MINIMAX_H3_SETTINGS.denoise))),
+    easy_cache_bypass: Boolean(source.easy_cache_bypass ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass),
+    easy_cache_reuse_threshold: Math.max(0, Math.min(1, Number(source.easy_cache_reuse_threshold ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_reuse_threshold))),
+    easy_cache_start_percent: Math.max(0, Math.min(1, Number(source.easy_cache_start_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_start_percent))),
+    easy_cache_end_percent: Math.max(0, Math.min(1, Number(source.easy_cache_end_percent ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_end_percent))),
+    easy_cache_verbose: Boolean(source.easy_cache_verbose ?? DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_verbose),
+    sage_attention: MINIMAX_H3_SAGE_ATTENTION_OPTIONS.some((item) => item.value === source.sage_attention)
+      ? source.sage_attention
+      : DEFAULT_MINIMAX_H3_SETTINGS.sage_attention,
+    enable_fp16_accumulation: Boolean(source.enable_fp16_accumulation ?? DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation),
+  };
+}
 const LTX_MODEL_DOWNLOADS = [
   { label: "LTX GGUF", url: "https://huggingface.co/Abiray/LTX-2.3-22B-DISTILLED-1.1-GGUF/tree/main" },
   { label: "Video VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
@@ -460,6 +613,10 @@ function normalizeVideoType(value) {
   if (["speaking", "short_film", "dialogue", "dialog"].includes(text)) return "speaking";
   if (["no_lip_sync", "nolipsync", "no_lipsync", "no_sync", "silent", "visual_only"].includes(text)) return "no_lip_sync";
   return "singing";
+}
+
+function normalizeProjectVideoEngine(value) {
+  return String(value || "").trim().toLowerCase() === "minimax_h3" ? "minimax_h3" : "ltx";
 }
 
 function makeVideoTypeSelect(value = "singing") {
@@ -1707,11 +1864,20 @@ async function queueWorkflowPrompt(prompt, options = {}) {
     timeoutMs: options.idleTimeoutMs,
     shouldCancel: options.shouldCancel,
   });
+  let queuedPrompt = prompt;
+  if (!options.allowMemoryCleanup && !builderAutomaticMemoryCleanupEnabled) {
+    const sanitized = withoutEmbeddedMemoryCleanupNodes(prompt);
+    queuedPrompt = sanitized.prompt;
+    if (sanitized.removed.length) {
+      options.onStatus?.(`Bypassed ${sanitized.removed.length} embedded RAM/VRAM cleanup node(s) because automatic memory cleanup is disabled.`);
+      console.info(`[VRGDG Music Builder] Bypassed embedded memory cleanup nodes: ${sanitized.removed.join(", ")}`);
+    }
+  }
   const clientId = api.clientId || app?.clientId || crypto.randomUUID();
   const response = await api.fetchApi("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, client_id: clientId }),
+    body: JSON.stringify({ prompt: queuedPrompt, client_id: clientId }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.error) {
@@ -1798,6 +1964,14 @@ function audioUrl(path) {
     enhance_prompt: "",
     i2v_prompt: "",
     i2v_prompt_origin: "manual",
+    minimax_h3_mode: "text_to_video",
+    use_scene_minimax_h3_settings: false,
+    minimax_h3_settings: null,
+    minimax_h3_prompt: "",
+    minimax_h3_prompt_origin: "manual",
+    minimax_h3_reference_keys: null,
+    minimax_h3_use_scene_image_as_start_frame: false,
+    minimax_h3_video_references: [],
     ref_image_path: "",
     use_vision_reference: false,
     use_i2v_vision_reference: true,
@@ -1898,6 +2072,7 @@ function normalizeNotificationSettings(settings = {}) {
 }
 
 function openBuilder(node) {
+  setBuilderAutomaticMemoryCleanupEnabled(false);
   console.log(`[VRGDG Music Builder] UI version ${BUILDER_UI_VERSION}`);
   const overlay = document.createElement("div");
   let builderKeydownHandler = null;
@@ -3967,6 +4142,14 @@ function openBuilder(node) {
   const createSceneVideoButton = makeButton("Create Scene Video", "primary");
   const createSceneVideoButtons = [createSceneVideoButton];
   const gemmaThenCreateVideoButtons = [];
+  const miniMaxSceneVideoButton = makeButton("Create MiniMax H3 Scene Video", "primary");
+  miniMaxSceneVideoButton.title = "Render this scene with the MiniMax H3 hidden workflow and preserve the exact timeline duration.";
+  const miniMaxSceneVideoButtons = [miniMaxSceneVideoButton];
+  const miniMaxReferencesButton = makeButton("Choose MiniMax References (0/9)");
+  miniMaxReferencesButton.title = "Choose and order up to nine images from the existing Reference Builder for this scene.";
+  const miniMaxVideoReferencesButton = makeButton("Choose MiniMax Edit References (0/9)");
+  miniMaxVideoReferencesButton.title = "Choose character, location, background, prop, or style images to use alongside the Video to Video source.";
+  const miniMaxReferenceButtons = [miniMaxReferencesButton, miniMaxVideoReferencesButton];
   function wrapCreateSceneVideoActions(button) {
     const quickButton = makeButton("✨▶", "primary");
     quickButton.title = "Run Gemma for the current video mode, then immediately create the scene video without stopping for prompt review.";
@@ -4512,6 +4695,239 @@ function openBuilder(node) {
     idLoraIdentityGrid,
   ]);
   idLoraVoiceSettingsSection.style.display = "none";
+
+  const miniMaxEnginePanel = document.createElement("div");
+  miniMaxEnginePanel.style.cssText = "display:none;flex-direction:column;gap:10px;";
+  const miniMaxBanner = document.createElement("div");
+  miniMaxBanner.innerHTML = `<div style="font-size:14px;font-weight:900;color:#cffafe;">MiniMax H3 Project</div><div style="font-size:11px;color:#a5f3fc;margin-top:3px;">Mode, models, and video settings apply to the whole project unless the active scene is locked to custom settings.</div>`;
+  miniMaxBanner.style.cssText = "border:1px solid #0891b2;border-radius:7px;background:#083344;padding:10px;line-height:1.35;";
+  const miniMaxModeChooser = document.createElement("div");
+  miniMaxModeChooser.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;";
+  const miniMaxModeButtons = MINIMAX_H3_MODE_OPTIONS.map((item) => {
+    const button = makeButton(item.label);
+    button.dataset.minimaxH3Mode = item.value;
+    miniMaxModeChooser.append(button);
+    return button;
+  });
+  const miniMaxDiffusionModelPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name);
+  const miniMaxClipPicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.clip_name);
+  const miniMaxVideoVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name);
+  const miniMaxAudioVaePicker = makeSearchableLoraPicker(DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name);
+  const miniMaxNoGgufNote = document.createElement("div");
+  miniMaxNoGgufNote.textContent = "MiniMax H3 currently uses the standard diffusion-model loader. GGUF is not enabled yet.";
+  miniMaxNoGgufNote.style.cssText = "font-size:11px;color:#fcd34d;line-height:1.4;";
+  const miniMaxAspectRatio = makeSelect([
+    "16:9 (Widescreen)",
+    "9:16 (Portrait Widescreen)",
+    "1:1 (Square)",
+    "2:3 (Portrait Photo)",
+    "3:2 (Photo)",
+    "4:3 (Standard)",
+    "3:4 (Portrait Standard)",
+    "21:9 (Ultrawide)",
+  ], DEFAULT_MINIMAX_H3_SETTINGS.aspect_ratio);
+  const miniMaxMegapixels = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.megapixels), "number");
+  miniMaxMegapixels.min = "0.1";
+  miniMaxMegapixels.max = "16";
+  miniMaxMegapixels.step = "0.1";
+  const miniMaxSeed = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.seed), "number");
+  miniMaxSeed.step = "1";
+  const miniMaxWarmupFrames = makeInput("0", "number");
+  miniMaxWarmupFrames.min = "0";
+  miniMaxWarmupFrames.step = "1";
+  const miniMaxCooldownFrames = makeInput("0", "number");
+  miniMaxCooldownFrames.min = "0";
+  miniMaxCooldownFrames.step = "1";
+  const miniMaxRenderSettingsGrid = document.createElement("div");
+  miniMaxRenderSettingsGrid.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;";
+  miniMaxRenderSettingsGrid.append(
+    makeField("Aspect ratio", miniMaxAspectRatio),
+    makeField("Megapixels", miniMaxMegapixels),
+    makeField("Seed", miniMaxSeed),
+    makeField("Warmup frames", miniMaxWarmupFrames),
+    makeField("Cooldown frames", miniMaxCooldownFrames),
+  );
+  const miniMaxSamplerName = makeSelect([
+    "res_multistep",
+    "euler",
+    "euler_ancestral",
+    "heun",
+    "dpmpp_2m",
+    "dpmpp_2m_sde",
+    "dpmpp_3m_sde",
+    "uni_pc",
+    "deis",
+  ], DEFAULT_MINIMAX_H3_SETTINGS.sampler_name);
+  const miniMaxScheduler = makeSelect([
+    "simple",
+    "normal",
+    "karras",
+    "exponential",
+    "sgm_uniform",
+    "ddim_uniform",
+    "beta",
+    "linear_quadratic",
+    "kl_optimal",
+  ], DEFAULT_MINIMAX_H3_SETTINGS.scheduler);
+  const miniMaxSteps = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.steps), "number");
+  miniMaxSteps.min = "1";
+  miniMaxSteps.max = "1000";
+  miniMaxSteps.step = "1";
+  const miniMaxDenoise = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.denoise), "number");
+  miniMaxDenoise.min = "0";
+  miniMaxDenoise.max = "1";
+  miniMaxDenoise.step = "0.01";
+  const miniMaxEasyCacheBypass = makeCheckbox("Bypass EasyCache", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_bypass);
+  const miniMaxEasyCacheReuseThreshold = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_reuse_threshold), "number");
+  miniMaxEasyCacheReuseThreshold.min = "0";
+  miniMaxEasyCacheReuseThreshold.max = "1";
+  miniMaxEasyCacheReuseThreshold.step = "0.01";
+  const miniMaxEasyCacheStartPercent = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_start_percent), "number");
+  miniMaxEasyCacheStartPercent.min = "0";
+  miniMaxEasyCacheStartPercent.max = "1";
+  miniMaxEasyCacheStartPercent.step = "0.01";
+  const miniMaxEasyCacheEndPercent = makeInput(String(DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_end_percent), "number");
+  miniMaxEasyCacheEndPercent.min = "0";
+  miniMaxEasyCacheEndPercent.max = "1";
+  miniMaxEasyCacheEndPercent.step = "0.01";
+  const miniMaxEasyCacheVerbose = makeCheckbox("Verbose EasyCache logging", DEFAULT_MINIMAX_H3_SETTINGS.easy_cache_verbose);
+  const miniMaxSageAttention = makeSelect(MINIMAX_H3_SAGE_ATTENTION_OPTIONS, DEFAULT_MINIMAX_H3_SETTINGS.sage_attention);
+  const miniMaxFp16Accumulation = makeCheckbox("Enable fp16 accumulation", DEFAULT_MINIMAX_H3_SETTINGS.enable_fp16_accumulation);
+  const miniMaxEasyCacheNote = document.createElement("div");
+  miniMaxEasyCacheNote.textContent = "Bypass sends the diffusion model directly to the scheduler and removes EasyCache from the queued workflow copy.";
+  miniMaxEasyCacheNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxAdvancedSettings = makeSettingsSection("Advanced Settings", [
+    makeSettingsSection("Sampler", [
+      makeField("Sampler", miniMaxSamplerName),
+      makeField("Scheduler", miniMaxScheduler),
+      makeField("Steps", miniMaxSteps),
+      makeField("Denoise", miniMaxDenoise),
+    ]),
+    makeSettingsSection("EasyCache", [
+      miniMaxEasyCacheBypass.wrapper,
+      miniMaxEasyCacheNote,
+      makeField("Reuse threshold", miniMaxEasyCacheReuseThreshold),
+      makeField("Start percent", miniMaxEasyCacheStartPercent),
+      makeField("End percent", miniMaxEasyCacheEndPercent),
+      miniMaxEasyCacheVerbose.wrapper,
+    ]),
+    makeSettingsSection("Model Loader", [
+      makeField("Sage Attention", miniMaxSageAttention),
+      miniMaxFp16Accumulation.wrapper,
+    ]),
+  ], false);
+  const miniMaxTextModePanel = makeSettingsPanel([]);
+  const miniMaxTextModeNote = document.createElement("div");
+  miniMaxTextModeNote.textContent = "Text to Video sends no image or video references. The scene prompt and custom/project audio drive the shot.";
+  miniMaxTextModeNote.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;";
+  miniMaxTextModePanel.append(miniMaxTextModeNote);
+  const miniMaxImageModePanel = makeSettingsPanel([]);
+  const miniMaxImageModeSource = document.createElement("div");
+  miniMaxImageModeSource.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;overflow-wrap:anywhere;";
+  miniMaxImageModePanel.append(miniMaxImageModeSource);
+  const miniMaxReferenceModePanel = makeSettingsPanel([]);
+  const miniMaxReferenceModeNote = document.createElement("div");
+  miniMaxReferenceModeNote.textContent = "Uses ordered character, location, ingredients-sheet, or storyboard-grid images. Add and map the library from the existing Reference Builder button at the top of the Builder.";
+  miniMaxReferenceModeNote.style.cssText = miniMaxTextModeNote.style.cssText;
+  const miniMaxUseSceneImageAsStartFrame = makeCheckbox("Use scene image as exact start frame", false);
+  miniMaxUseSceneImageAsStartFrame.wrapper.title = "Prepends this scene's selected timeline image as Image 1. Character, location, and storyboard references follow in their saved order.";
+  const miniMaxStartFrameReferenceNote = document.createElement("div");
+  miniMaxStartFrameReferenceNote.textContent = "When enabled, Image 1 locks the exact opening composition. Character and location references begin at Image 2 and preserve identity or environment details that are not visible in the start frame.";
+  miniMaxStartFrameReferenceNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  miniMaxReferenceModePanel.append(miniMaxReferenceModeNote, miniMaxUseSceneImageAsStartFrame.wrapper, miniMaxStartFrameReferenceNote, miniMaxReferencesButton);
+  const miniMaxVideoModePanel = makeSettingsPanel([]);
+  const miniMaxVideoModeNote = document.createElement("div");
+  miniMaxVideoModeNote.textContent = "Add up to three source/reference videos. You can also choose ordered Reference Builder images to replace or preserve people, backgrounds, locations, props, or visual style during the edit.";
+  miniMaxVideoModeNote.style.cssText = miniMaxTextModeNote.style.cssText;
+  const miniMaxVideoReferenceRows = [];
+  for (let index = 0; index < 3; index += 1) {
+    const path = makeInput("");
+    path.placeholder = `Reference video ${index + 1} full path...`;
+    const start = makeInput("0", "number");
+    start.min = "0";
+    start.step = "0.01";
+    const duration = makeInput("0", "number");
+    duration.min = "0";
+    duration.step = "0.01";
+    const purpose = makeSelect(MINIMAX_H3_VIDEO_REFERENCE_PURPOSES, index === 0 ? "continuation" : "movement");
+    const useAudio = makeCheckbox("Use video audio", false);
+    const timing = document.createElement("div");
+    timing.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:7px;";
+    timing.append(makeField("Start seconds", start), makeField("Duration (0 = auto)", duration));
+    const row = makeSettingsSection(`Reference Video ${index + 1}`, [
+      makeField("Video path", path),
+      makeField("Reference purpose", purpose),
+      timing,
+      useAudio.wrapper,
+    ], index === 0);
+    miniMaxVideoReferenceRows.push({ path, start, duration, purpose, useAudio });
+    miniMaxVideoModePanel.append(row);
+  }
+  const miniMaxUseCurrentSceneVideoButton = makeButton("Use Current Scene Video as Reference 1");
+  miniMaxVideoModePanel.prepend(miniMaxVideoModeNote, miniMaxVideoReferencesButton, miniMaxUseCurrentSceneVideoButton);
+  const miniMaxModePanels = {
+    text_to_video: miniMaxTextModePanel,
+    image_to_video: miniMaxImageModePanel,
+    reference_to_video: miniMaxReferenceModePanel,
+    video_to_video: miniMaxVideoModePanel,
+  };
+  const miniMaxPrompt = document.createElement("textarea");
+  miniMaxPrompt.placeholder = "MiniMax H3 scene prompt...";
+  miniMaxPrompt.style.cssText = "min-height:190px;resize:vertical;border:1px solid #3f3f46;border-radius:6px;background:#18181b;color:#fafafa;padding:9px;font-size:12px;line-height:1.4;";
+  ["keydown", "keypress", "keyup"].forEach((eventName) => miniMaxPrompt.addEventListener(eventName, (event) => event.stopPropagation()));
+  const miniMaxPromptActions = document.createElement("div");
+  miniMaxPromptActions.style.cssText = "display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:8px;";
+  const miniMaxCreatePromptButton = makeButton("Create MiniMax H3 Prompt", "primary");
+  const miniMaxEditInstructionsButton = makeButton("Edit Text to Video Instructions");
+  miniMaxPromptActions.append(miniMaxCreatePromptButton, miniMaxEditInstructionsButton);
+  const miniMaxPromptRunnerNote = document.createElement("div");
+  miniMaxPromptRunnerNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const miniMaxAudioNote = document.createElement("div");
+  miniMaxAudioNote.textContent = "The current hidden workflow requires custom scene audio or project audio. Built-in MiniMax audio will be added with a separate workflow later.";
+  miniMaxAudioNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+  const useSceneMiniMaxH3Settings = makeCheckbox("Lock MiniMax mode, models, and video settings for this scene", false);
+  const useSceneMiniMaxH3SettingsNote = document.createElement("div");
+  useSceneMiniMaxH3SettingsNote.textContent = "Off: this scene follows the project's current MiniMax mode, models, render settings, and advanced settings. On: the current values are copied to and locked for this scene only.";
+  useSceneMiniMaxH3SettingsNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;margin-top:-4px;";
+  const miniMaxSettingsScopeNote = document.createElement("div");
+  miniMaxSettingsScopeNote.style.cssText = "font-size:11px;font-weight:800;color:#67e8f9;line-height:1.4;";
+  const miniMaxSubTabs = makeSubTabs([
+    {
+      label: "Models",
+      value: "models",
+      content: makeSettingsPanel([
+        miniMaxNoGgufNote,
+        makeField("Diffusion model", miniMaxDiffusionModelPicker.wrapper),
+        makeField("Text encoder / CLIP", miniMaxClipPicker.wrapper),
+        makeField("Video VAE", miniMaxVideoVaePicker.wrapper),
+        makeField("Audio VAE", miniMaxAudioVaePicker.wrapper),
+      ]),
+    },
+    {
+      label: "Video Settings",
+      value: "input",
+      content: makeSettingsPanel([
+        useSceneMiniMaxH3Settings.wrapper,
+        useSceneMiniMaxH3SettingsNote,
+        miniMaxSettingsScopeNote,
+        ...Object.values(miniMaxModePanels),
+        makeSettingsSection("Render Settings", [miniMaxRenderSettingsGrid]),
+        miniMaxAdvancedSettings,
+        miniMaxAudioNote,
+      ]),
+    },
+    {
+      label: "Prompt",
+      value: "prompt",
+      content: makeSettingsPanel([
+        miniMaxPromptRunnerNote,
+        miniMaxPromptActions,
+        makeField("MiniMax H3 prompt", miniMaxPrompt),
+      ]),
+    },
+  ]);
+  miniMaxEnginePanel.append(miniMaxBanner, miniMaxModeChooser, miniMaxSubTabs.wrapper, miniMaxSceneVideoButton);
+
   const videoSubTabs = makeSubTabs([
     {
       label: "Models",
@@ -4594,7 +5010,10 @@ function openBuilder(node) {
       ]),
     },
   ]);
-  videoPanel.append(videoModeChooser, importCustomVideoPanel, videoSubTabs.wrapper);
+  const ltxVideoPanel = document.createElement("div");
+  ltxVideoPanel.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+  ltxVideoPanel.append(videoModeChooser, importCustomVideoPanel, videoSubTabs.wrapper);
+  videoPanel.append(ltxVideoPanel, miniMaxEnginePanel);
   audioPanel.append(
     makeSettingsSection("Scene Audio", [
       audioSummary,
@@ -5211,6 +5630,7 @@ function openBuilder(node) {
     sessionPath: "",
     srtPath: "",
     autoSaveEnabled: true,
+    automaticMemoryCleanup: false,
     isScrubbing: false,
     isClipScrubbing: false,
     sceneAudioMode: false,
@@ -5249,6 +5669,8 @@ function openBuilder(node) {
     customModelsRoot: "",
     notificationSettings: defaultNotificationSettings(),
     videoType: "singing",
+    projectVideoEngine: "ltx",
+    miniMaxH3Settings: cloneMiniMaxH3Settings(),
     imageModelMode: "zimage",
     zimageSettings: defaultZImageSettings(),
     referenceKrea2Settings: { ...DEFAULT_KREA2_REFERENCE_SETTINGS },
@@ -5297,6 +5719,201 @@ function openBuilder(node) {
     isRestoringHistory: false,
     batchCancelled: false,
   };
+
+  function syncProjectVideoEngineUI() {
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    ltxVideoPanel.style.display = miniMaxProject ? "none" : "flex";
+    miniMaxEnginePanel.style.display = miniMaxProject ? "flex" : "none";
+    syncMiniMaxH3Panel();
+  }
+
+  function miniMaxH3SettingsForSegment(segment = activeSegment()) {
+    const globalSettings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+    if (!segment?.use_scene_minimax_h3_settings) return globalSettings;
+    const sceneSettings = segment.minimax_h3_settings && typeof segment.minimax_h3_settings === "object"
+      ? segment.minimax_h3_settings
+      : {};
+    const settings = cloneMiniMaxH3Settings({
+      ...globalSettings,
+      ...sceneSettings,
+      video_mode: sceneSettings.video_mode || segment.minimax_h3_mode || globalSettings.video_mode,
+    });
+    segment.minimax_h3_settings = settings;
+    segment.minimax_h3_mode = settings.video_mode;
+    return settings;
+  }
+
+  function miniMaxH3ModeForSegment(segment = activeSegment()) {
+    return miniMaxH3SettingsForSegment(segment).video_mode;
+  }
+
+  function setMiniMaxH3ModeForSegment(segment, value) {
+    const mode = normalizeMiniMaxH3Mode(value);
+    if (segment?.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = cloneMiniMaxH3Settings({
+        ...miniMaxH3SettingsForSegment(segment),
+        video_mode: mode,
+      });
+      segment.minimax_h3_mode = mode;
+    } else {
+      state.miniMaxH3Settings = cloneMiniMaxH3Settings({
+        ...state.miniMaxH3Settings,
+        video_mode: mode,
+      });
+      if (segment) segment.minimax_h3_mode = mode;
+    }
+    return mode;
+  }
+
+  function syncMiniMaxReferenceButtons() {
+    const segment = activeSegment();
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    if (!miniMaxProject) {
+      for (const button of miniMaxReferenceButtons) {
+        button.textContent = button === miniMaxVideoReferencesButton
+          ? "Choose MiniMax Edit References (0/9)"
+          : "Choose MiniMax References (0/9)";
+        button.disabled = true;
+      }
+      return;
+    }
+    const libraryCount = segment && typeof miniMaxReferenceKeysForSegment === "function"
+      ? miniMaxReferenceKeysForSegment(segment).length
+      : 0;
+    const effectiveMode = miniMaxH3ModeForSegment(segment);
+    const orderedCount = segment && typeof miniMaxOrderedImageReferenceItemsForSegment === "function"
+      ? miniMaxOrderedImageReferenceItemsForSegment(segment, effectiveMode).length
+      : libraryCount;
+    const hasStartFrame = Boolean(
+      segment?.minimax_h3_use_scene_image_as_start_frame
+      && effectiveMode === "reference_to_video"
+      && (segmentImageSource(segment)?.path || segmentImageSource(segment)?.data)
+    );
+    for (const button of miniMaxReferenceButtons) {
+      button.textContent = button === miniMaxVideoReferencesButton
+        ? `Choose MiniMax Edit References (${orderedCount}/9)`
+        : hasStartFrame
+          ? `Choose MiniMax References (${orderedCount}/9 — start + ${Math.max(0, orderedCount - 1)})`
+          : `Choose MiniMax References (${libraryCount}/9)`;
+      button.disabled = !segment;
+    }
+  }
+
+  function saveMiniMaxH3SettingsFromPanel() {
+    const segment = activeSegment();
+    const currentSettings = miniMaxH3SettingsForSegment(segment);
+    const settings = cloneMiniMaxH3Settings({
+      video_mode: currentSettings.video_mode,
+      diffusion_model_name: miniMaxDiffusionModelPicker.input.value,
+      clip_name: miniMaxClipPicker.input.value,
+      video_vae_name: miniMaxVideoVaePicker.input.value,
+      audio_vae_name: miniMaxAudioVaePicker.input.value,
+      aspect_ratio: miniMaxAspectRatio.value,
+      megapixels: miniMaxMegapixels.value,
+      seed: miniMaxSeed.value,
+      warmup_frames: miniMaxWarmupFrames.value,
+      cooldown_frames: miniMaxCooldownFrames.value,
+      sampler_name: miniMaxSamplerName.value,
+      scheduler: miniMaxScheduler.value,
+      steps: miniMaxSteps.value,
+      denoise: miniMaxDenoise.value,
+      easy_cache_bypass: miniMaxEasyCacheBypass.input.checked,
+      easy_cache_reuse_threshold: miniMaxEasyCacheReuseThreshold.value,
+      easy_cache_start_percent: miniMaxEasyCacheStartPercent.value,
+      easy_cache_end_percent: miniMaxEasyCacheEndPercent.value,
+      easy_cache_verbose: miniMaxEasyCacheVerbose.input.checked,
+      sage_attention: miniMaxSageAttention.value,
+      enable_fp16_accumulation: miniMaxFp16Accumulation.input.checked,
+    });
+    if (segment?.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = settings;
+      segment.minimax_h3_mode = settings.video_mode;
+    } else {
+      state.miniMaxH3Settings = settings;
+      if (segment) segment.minimax_h3_mode = settings.video_mode;
+    }
+    return settings;
+  }
+
+  function saveMiniMaxSceneInputsFromPanel() {
+    const segment = activeSegment();
+    if (!segment) return;
+    segment.minimax_h3_prompt = miniMaxPrompt.value || "";
+    segment.minimax_h3_use_scene_image_as_start_frame = Boolean(miniMaxUseSceneImageAsStartFrame.input.checked);
+    segment.minimax_h3_video_references = miniMaxVideoReferenceRows
+      .map((row) => ({
+        path: String(row.path.value || "").trim(),
+        start_seconds: Math.max(0, Number(row.start.value || 0)),
+        duration: Math.max(0, Number(row.duration.value || 0)),
+        purpose: normalizeMiniMaxH3VideoPurpose(row.purpose.value),
+        use_audio: Boolean(row.useAudio.input.checked),
+      }))
+      .filter((item) => item.path)
+      .slice(0, 3);
+  }
+
+  function syncMiniMaxH3Panel() {
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const segment = activeSegment();
+    state.miniMaxH3Settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+    const settings = miniMaxH3SettingsForSegment(segment);
+    miniMaxDiffusionModelPicker.input.value = settings.diffusion_model_name;
+    miniMaxClipPicker.input.value = settings.clip_name;
+    miniMaxVideoVaePicker.input.value = settings.video_vae_name;
+    miniMaxAudioVaePicker.input.value = settings.audio_vae_name;
+    miniMaxAspectRatio.value = settings.aspect_ratio;
+    miniMaxMegapixels.value = String(settings.megapixels);
+    miniMaxSeed.value = String(settings.seed);
+    miniMaxWarmupFrames.value = String(settings.warmup_frames);
+    miniMaxCooldownFrames.value = String(settings.cooldown_frames);
+    miniMaxSamplerName.value = settings.sampler_name;
+    miniMaxScheduler.value = settings.scheduler;
+    miniMaxSteps.value = String(settings.steps);
+    miniMaxDenoise.value = String(settings.denoise);
+    miniMaxEasyCacheBypass.input.checked = settings.easy_cache_bypass;
+    miniMaxEasyCacheReuseThreshold.value = String(settings.easy_cache_reuse_threshold);
+    miniMaxEasyCacheStartPercent.value = String(settings.easy_cache_start_percent);
+    miniMaxEasyCacheEndPercent.value = String(settings.easy_cache_end_percent);
+    miniMaxEasyCacheVerbose.input.checked = settings.easy_cache_verbose;
+    miniMaxSageAttention.value = settings.sage_attention;
+    miniMaxFp16Accumulation.input.checked = settings.enable_fp16_accumulation;
+    useSceneMiniMaxH3Settings.input.checked = Boolean(segment?.use_scene_minimax_h3_settings);
+    useSceneMiniMaxH3Settings.input.disabled = !segment;
+    miniMaxSettingsScopeNote.textContent = segment?.use_scene_minimax_h3_settings
+      ? "Scene lock is ON — this scene uses its own MiniMax mode, models, and video settings."
+      : "Scene lock is OFF — this scene follows the project-global MiniMax mode, models, and video settings.";
+    const mode = settings.video_mode;
+    const modeLabel = miniMaxH3ModeLabel(mode);
+    for (const button of miniMaxModeButtons) {
+      const active = button.dataset.minimaxH3Mode === mode;
+      button.style.background = active ? "#06b6d4" : "#27272a";
+      button.style.borderColor = active ? "#0891b2" : "#3f3f46";
+      button.style.color = active ? "#082f49" : "#f4f4f5";
+    }
+    for (const [panelMode, panel] of Object.entries(miniMaxModePanels)) {
+      panel.style.display = panelMode === mode ? "flex" : "none";
+    }
+    miniMaxPrompt.value = String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "");
+    miniMaxCreatePromptButton.textContent = `Create MiniMax ${modeLabel} Prompt`;
+    miniMaxEditInstructionsButton.textContent = `Edit ${modeLabel} Instructions`;
+    miniMaxPromptRunnerNote.textContent = `Uses the existing ${gemmaRunnerLabel()} selection from LLM Runner. The result is saved only as this scene's MiniMax H3 prompt.`;
+    miniMaxUseSceneImageAsStartFrame.input.checked = Boolean(segment?.minimax_h3_use_scene_image_as_start_frame);
+    const imagePath = String(segment ? selectedSegmentImagePath(segment) || "" : "").trim();
+    miniMaxImageModeSource.textContent = imagePath
+      ? `Scene image input:\n${imagePath}`
+      : "This scene has no selected timeline image. Add or generate an image before using Image to Video.";
+    const videoReferences = Array.isArray(segment?.minimax_h3_video_references) ? segment.minimax_h3_video_references : [];
+    miniMaxVideoReferenceRows.forEach((row, index) => {
+      const item = videoReferences[index] || {};
+      row.path.value = item.path || "";
+      row.start.value = String(Math.max(0, Number(item.start_seconds || 0)));
+      row.duration.value = String(Math.max(0, Number(item.duration || 0)));
+      row.purpose.value = normalizeMiniMaxH3VideoPurpose(item.purpose || (index === 0 ? "continuation" : "movement"));
+      row.useAudio.input.checked = Boolean(item.use_audio);
+    });
+    miniMaxSceneVideoButton.disabled = !miniMaxProject || !segment;
+    syncMiniMaxReferenceButtons();
+  }
 
   function normalizeRenderLog(raw) {
     const value = raw && typeof raw === "object" ? raw : {};
@@ -8287,6 +8904,36 @@ function openBuilder(node) {
     if (segment.timeline_note == null) segment.timeline_note = "";
     if (segment.i2v_notes == null) segment.i2v_notes = "";
     segment.i2v_prompt_origin = normalizeVideoPromptOrigin(segment.i2v_prompt_origin);
+    segment.minimax_h3_mode = normalizeMiniMaxH3Mode(segment.minimax_h3_mode);
+    segment.use_scene_minimax_h3_settings = Boolean(segment.use_scene_minimax_h3_settings);
+    if (segment.minimax_h3_settings != null && typeof segment.minimax_h3_settings !== "object") {
+      segment.minimax_h3_settings = null;
+    }
+    if (segment.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = cloneMiniMaxH3Settings({
+        ...cloneMiniMaxH3Settings(state.miniMaxH3Settings),
+        ...(segment.minimax_h3_settings || {}),
+        video_mode: segment.minimax_h3_settings?.video_mode || segment.minimax_h3_mode,
+      });
+      segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+    }
+    if (segment.minimax_h3_prompt == null) segment.minimax_h3_prompt = "";
+    segment.minimax_h3_prompt_origin = normalizeVideoPromptOrigin(segment.minimax_h3_prompt_origin);
+    if (segment.minimax_h3_reference_keys != null) {
+      segment.minimax_h3_reference_keys = Array.isArray(segment.minimax_h3_reference_keys)
+        ? segment.minimax_h3_reference_keys.map((key) => String(key || "").trim()).filter(Boolean).slice(0, 9)
+        : null;
+    }
+    segment.minimax_h3_use_scene_image_as_start_frame = Boolean(segment.minimax_h3_use_scene_image_as_start_frame);
+    segment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
+      .slice(0, 3)
+      .map((item) => ({
+        path: String(item?.path || "").trim(),
+        start_seconds: Math.max(0, Number(item?.start_seconds || 0)),
+        duration: Math.max(0, Number(item?.duration || 0)),
+        purpose: normalizeMiniMaxH3VideoPurpose(item?.purpose),
+        use_audio: Boolean(item?.use_audio),
+      }));
     if (!["global", "auto", "smooth", "morph"].includes(String(segment.flf_transition_type || ""))) segment.flf_transition_type = "global";
     if (segment.id == null || !String(segment.id).trim()) segment.id = createUniqueSegmentId();
     if (!Array.isArray(segment.image_history)) segment.image_history = [];
@@ -8959,6 +9606,7 @@ function openBuilder(node) {
       llmApiProvider: state.llmApiProvider,
       llmApiModel: state.llmApiModel,
       notificationSettings: normalizeNotificationSettings(state.notificationSettings),
+      automaticMemoryCleanup: Boolean(state.automaticMemoryCleanup),
       waveformMode: state.waveformMode,
       snapToBeats: state.snapToBeats,
       beats: state.beats,
@@ -9040,6 +9688,7 @@ function openBuilder(node) {
     state.llmApiProvider = data.llmApiProvider || data.llm_api_provider || state.llmApiProvider || "openai";
     state.llmApiModel = data.llmApiModel || data.llm_api_model || state.llmApiModel || "";
     state.notificationSettings = normalizeNotificationSettings(data.notificationSettings || data.notification_settings || state.notificationSettings);
+    state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.automaticMemoryCleanup ?? data.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
     state.waveformMode = data.waveformMode || state.waveformMode || "medium";
     state.snapToBeats = data.snapToBeats ?? state.snapToBeats ?? true;
     state.showTimelineSceneNotes = data.showTimelineSceneNotes ?? state.showTimelineSceneNotes ?? false;
@@ -12140,12 +12789,12 @@ function openBuilder(node) {
     const segment = activeSegment();
     startInput.dataset.vrgdgInspectorSegmentId = String(segment?.id || "");
     const disabled = !segment;
-    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton]) {
+    for (const control of [labelInput, startInput, endInput, notesInput, ernieNotesInput, krea2TwoPassNotesInput, nbNotes, lyricTextInput, lyricSingersInput, i2vNotesInput, t2iPrompt, ernieT2IPrompt, krea2TwoPassT2IPrompt, nbPrompt, i2vPrompt, zEnhanceGemmaNotes, zEnhancePromptPreview, previewButton, ernieCreateButton, previewNBButton, deleteSegmentButton, createSceneVideoButton, miniMaxSceneVideoButtons[0]]) {
       control.disabled = disabled;
     }
     loadCustomImageButton.disabled = disabled;
     openSceneAudioOptionsButton.disabled = disabled;
-    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
+    for (const control of [t2iTextGemmaModelSelect, gemmaModelSelect, mmprojSelect, ernieTextGemmaModelSelect, ernieGemmaModelSelect, ernieMmprojSelect, zEnhanceGemmaModelSelect, zEnhanceMmprojSelect, i2vTextGemmaModelSelect, i2vGemmaModelSelect, i2vMmprojSelect, nbApiKey, nbModelSelect, nbGemmaModelSelect, nbMmprojSelect, fluxUseTextOnlyGemmaPrompt.input, fluxUseDirectorNotes.input, nbUseTextOnlyGemmaPrompt.input, nbUseDirectorNotes.input, useVisionReference.input, ernieUseVisionReference.input, krea2TwoPassUseVisionReference.input, useI2VVisionReference.input, useT2VVisionReference.input, useSceneZImageSettings.input, useSceneErnieImageSettings.input, useSceneFluxKleinSettings.input, useSceneNBImageSettings.input, useSceneI2VVideoSettings.input, useSceneMiniMaxH3Settings.input, rtvReferenceBehaviorSelect, createSceneEndFrameButton, clearSceneEndFrameButton, i2vUseGgufModel.input, refImageInput, createT2IButton, editZImageT2IInstructionsButton, ernieCreateT2IButton, editErnieT2IInstructionsButton, krea2TwoPassCreateT2IButton, editKrea2T2IInstructionsButton, createNBPromptButton, editNanoBT2IInstructionsButton, flowGptCreatePromptButton, editFlowGptT2IInstructionsButton, createFluxPromptButton, editFluxKleinT2IInstructionsButton, createI2VButton, editI2VPromptButton, editIdLoraInstructionsButton, zEnhanceGemmaButton, ...editImagePromptButtons]) {
       control.disabled = disabled;
     }
     const lockedByVideo = hasLockedVideo(segment);
@@ -12264,6 +12913,7 @@ function openBuilder(node) {
     syncKrea2TwoPassPanel();
     syncZEnhanceSettingsPanel();
     syncVideoModePanel();
+    syncMiniMaxH3Panel();
     syncPreview(segment);
     updateAudioScrubbers();
   }
@@ -12871,6 +13521,19 @@ function openBuilder(node) {
     return settings.seed;
   }
 
+  function setMiniMaxH3SeedRandom(segment = activeSegment()) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    settings.seed = randomSeedValue();
+    if (segment?.use_scene_minimax_h3_settings) {
+      segment.minimax_h3_settings = cloneMiniMaxH3Settings(settings);
+      segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+    } else {
+      state.miniMaxH3Settings = cloneMiniMaxH3Settings(settings);
+    }
+    if (!segment || segment.id === activeSegment()?.id) syncMiniMaxH3Panel();
+    return settings.seed;
+  }
+
   function renderFluxIngredientList(segment = activeSegment()) {
     const ingredients = Array.isArray(segment?.flux_image_ingredients) ? segment.flux_image_ingredients : [];
     renderFluxIngredientRows(fluxIngredientList, ingredients, "No scene-specific image ingredients loaded for this scene.", (index) => {
@@ -13239,6 +13902,280 @@ function openBuilder(node) {
       image: normalizedRefs.subject?.image || normalizedRefs.subjects?.[0]?.image || {},
     };
     return referenceBuilderSubjectHasImage(subject) || String(subject.name || subject.description || "").trim() ? [subject] : [];
+  }
+
+  function miniMaxReferenceBuilderCatalog(refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const catalog = [];
+    const add = (kind, item, fallbackLabel) => {
+      const id = String(item?.id || "").trim();
+      const image = item?.image && typeof item.image === "object" ? item.image : {};
+      if (!id || (!String(image.path || "").trim() && !String(image.data || "").trim())) return;
+      catalog.push({
+        key: `${kind}:${id}`,
+        kind,
+        label: String(item?.name || fallbackLabel || "Reference").trim() || "Reference",
+        description: String(item?.description || "").trim(),
+        image,
+      });
+    };
+    for (const subject of normalizedRefs.subjects || []) add("subject", subject, "Character reference");
+    for (const location of normalizedRefs.locations || []) add("location", location, "Location reference");
+    for (const sheet of normalizedRefs.ingredients_sheets || []) add("ingredients", sheet, "Ingredients sheet");
+    return catalog;
+  }
+
+  function miniMaxMappedReferenceKeysForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    if (!segment) return [];
+    const normalizedRefs = normalizeFluxReferenceBuilder(refs);
+    const catalogKeys = new Set(miniMaxReferenceBuilderCatalog(normalizedRefs).map((item) => item.key));
+    const keys = [];
+    const add = (key) => {
+      const clean = String(key || "").trim();
+      if (clean && catalogKeys.has(clean) && !keys.includes(clean) && keys.length < 9) keys.push(clean);
+    };
+    if (!segment.no_character_present) {
+      for (const subject of referenceBuilderSubjectItemsForSegment(normalizedRefs, segment)) {
+        add(`subject:${String(subject?.id || "").trim()}`);
+      }
+    }
+    const locationId = String(sceneReferenceMapValue(normalizedRefs.scene_map, segment) || "").trim();
+    if (locationId) add(`location:${locationId}`);
+    const sheetId = String(normalizedRefs.ingredients_scene_map?.[segment.id] || "").trim();
+    if (sheetId) add(`ingredients:${sheetId}`);
+    return keys;
+  }
+
+  function miniMaxReferenceKeysForSegment(segment, refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder)) {
+    if (!segment) return [];
+    const catalogKeys = new Set(miniMaxReferenceBuilderCatalog(refs).map((item) => item.key));
+    const source = Array.isArray(segment.minimax_h3_reference_keys)
+      ? segment.minimax_h3_reference_keys
+      : miniMaxMappedReferenceKeysForSegment(segment, refs);
+    const seen = new Set();
+    return source
+      .map((key) => String(key || "").trim())
+      .filter((key) => key && catalogKeys.has(key) && !seen.has(key) && seen.add(key))
+      .slice(0, 9);
+  }
+
+  function miniMaxReferenceBuilderImagePathsForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    return miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
+      .map((item) => String(item?.image?.path || "").trim())
+      .filter(Boolean)
+      .slice(0, 9);
+  }
+
+  function miniMaxPromptReferenceItemsForSegment(segment) {
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const byKey = new Map(miniMaxReferenceBuilderCatalog(refs).map((item) => [item.key, item]));
+    return miniMaxReferenceKeysForSegment(segment, refs)
+      .map((key) => byKey.get(key))
+      .filter(Boolean)
+      .slice(0, 9);
+  }
+
+  function miniMaxOrderedImageReferenceItemsForSegment(segment, mode = miniMaxH3ModeForSegment(segment)) {
+    const normalizedMode = normalizeMiniMaxH3Mode(mode);
+    const ordered = [];
+    if (normalizedMode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame) {
+      const startFrame = segmentImageSource(segment);
+      if (startFrame?.path || startFrame?.data) {
+        ordered.push({
+          key: "scene:start_frame",
+          kind: "start_frame",
+          label: "Scene start frame",
+          description: "Exact opening frame, composition, pose, camera angle, environment, and lighting anchor.",
+          image: {
+            path: String(startFrame.path || "").trim(),
+            data: String(startFrame.data || "").trim(),
+            name: String(startFrame.name || "start_frame.png"),
+          },
+        });
+      }
+    }
+    ordered.push(...miniMaxPromptReferenceItemsForSegment(segment));
+    const seen = new Set();
+    return ordered.filter((item) => {
+      const path = String(item?.image?.path || "").trim();
+      const data = String(item?.image?.data || "").trim();
+      const fingerprint = path ? `path:${mediaPathKey(path)}` : data ? `data:${data}` : "";
+      if (!fingerprint || seen.has(fingerprint)) return false;
+      seen.add(fingerprint);
+      return true;
+    }).slice(0, 9);
+  }
+
+  function miniMaxReferencePurposeText(item) {
+    if (item?.kind === "start_frame") return "exact start frame, opening composition, pose, camera angle, environment, and lighting anchor";
+    if (item?.kind === "subject") return "character identity, face, hair, clothing, and body-proportion reference";
+    if (item?.kind === "location") return "environment, location, architecture, layout, and atmosphere reference";
+    if (item?.kind === "ingredients") {
+      const searchable = `${item?.label || ""} ${item?.description || ""}`.toLowerCase();
+      return /storyboard|story board|grid|panel/.test(searchable)
+        ? "storyboard-grid reference whose panels are ordered visual beats"
+        : "ordered ingredients, props, identity, or visual-detail reference";
+    }
+    return "visual reference";
+  }
+
+  function openMiniMaxReferenceSelector() {
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3") {
+      toast("Set this project's Video Engine to MiniMax H3 before choosing MiniMax references.", true);
+      return;
+    }
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const refs = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
+    const catalog = miniMaxReferenceBuilderCatalog(refs);
+    const startFrameReserved = miniMaxH3ModeForSegment(segment) === "reference_to_video"
+      && Boolean(segment.minimax_h3_use_scene_image_as_start_frame)
+      && Boolean(segmentImageSource(segment)?.path || segmentImageSource(segment)?.data);
+    const maxLibraryReferences = startFrameReserved ? 8 : 9;
+    let selectedKeys = miniMaxReferenceKeysForSegment(segment, refs).slice(0, maxLibraryReferences);
+    let useAutomaticMappings = !Array.isArray(segment.minimax_h3_reference_keys);
+
+    const backdrop = document.createElement("div");
+    backdrop.style.cssText = "position:fixed;inset:0;z-index:100020;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px;box-sizing:border-box;";
+    const box = document.createElement("div");
+    box.style.cssText = "width:min(1100px,calc(100vw - 44px));max-height:calc(100vh - 48px);overflow:hidden;border:1px solid #155e75;border-radius:8px;background:#0b1220;color:#f8fafc;display:flex;flex-direction:column;";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 15px;border-bottom:1px solid #155e75;background:#083344;";
+    const heading = document.createElement("div");
+    heading.textContent = `${sceneDisplayName(segment, segmentIndexInfo(segment).index)} — MiniMax H3 References`;
+    heading.style.cssText = "font-size:16px;font-weight:900;color:#cffafe;";
+    const close = makeButton("Cancel");
+    header.append(heading, close);
+    const note = document.createElement("div");
+    note.textContent = startFrameReserved
+      ? "The scene image is reserved as Image 1 and the exact start frame. Choose up to eight additional Reference Builder images; they become Image 2 through Image 9 in the exact order shown."
+      : "Choose up to nine existing Reference Builder images. The numbered order below is the exact order sent into MiniMax H3. Scene character/location mappings are used automatically until you save a custom selection.";
+    note.style.cssText = "font-size:12px;color:#cbd5e1;line-height:1.45;padding:11px 15px;border-bottom:1px solid #1e293b;";
+    const body = document.createElement("div");
+    body.style.cssText = "display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:12px;padding:12px;overflow:auto;min-height:260px;";
+    const availablePanel = document.createElement("div");
+    const selectedPanel = document.createElement("div");
+    for (const panel of [availablePanel, selectedPanel]) panel.style.cssText = "border:1px solid #334155;border-radius:7px;background:#111827;padding:10px;display:flex;flex-direction:column;gap:9px;min-width:0;";
+    const availableTitle = document.createElement("div");
+    availableTitle.textContent = "Reference Builder Images";
+    availableTitle.style.cssText = "font-size:13px;font-weight:900;color:#a5f3fc;";
+    const selectedTitle = document.createElement("div");
+    selectedTitle.style.cssText = availableTitle.style.cssText;
+    const availableList = document.createElement("div");
+    availableList.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:8px;";
+    const selectedList = document.createElement("div");
+    selectedList.style.cssText = "display:flex;flex-direction:column;gap:7px;";
+    availablePanel.append(availableTitle, availableList);
+    selectedPanel.append(selectedTitle, selectedList);
+    body.append(availablePanel, selectedPanel);
+
+    const referenceThumb = (item) => {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "height:92px;border:1px solid #334155;border-radius:6px;background:#020617;overflow:hidden;display:flex;align-items:center;justify-content:center;";
+      const img = document.createElement("img");
+      img.alt = item.label || "Reference";
+      img.src = String(item.image?.data || "").trim() || makeEditorImageUrl(item.image?.path || "");
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      wrap.append(img);
+      return wrap;
+    };
+    const kindLabel = (kind) => ({ subject: "Character", location: "Location", ingredients: "Ingredients" }[kind] || "Reference");
+    const renderLists = () => {
+      selectedKeys = selectedKeys.filter((key, index, list) => catalog.some((item) => item.key === key) && list.indexOf(key) === index).slice(0, maxLibraryReferences);
+      selectedTitle.textContent = `Selected Order (${selectedKeys.length}/${maxLibraryReferences})${startFrameReserved ? " — follows Image 1 start frame" : ""}${useAutomaticMappings ? " — Automatic Scene Mappings" : ""}`;
+      availableList.replaceChildren();
+      selectedList.replaceChildren();
+      if (!catalog.length) {
+        const empty = document.createElement("div");
+        empty.textContent = "No saved character, location, or ingredients-sheet images are available. Open Reference Builder and add images first.";
+        empty.style.cssText = "grid-column:1/-1;border:1px dashed #475569;border-radius:6px;color:#94a3b8;padding:18px;line-height:1.45;";
+        availableList.append(empty);
+      }
+      for (const item of catalog) {
+        const chosen = selectedKeys.includes(item.key);
+        const card = document.createElement("div");
+        card.style.cssText = `border:2px solid ${chosen ? "#0891b2" : "#334155"};border-radius:7px;background:${chosen ? "#083344" : "#0f172a"};padding:7px;display:flex;flex-direction:column;gap:6px;min-width:0;`;
+        card.append(referenceThumb(item));
+        const label = document.createElement("div");
+        label.textContent = item.label;
+        label.title = item.description || item.label;
+        label.style.cssText = "font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        const type = document.createElement("div");
+        type.textContent = kindLabel(item.kind);
+        type.style.cssText = "font-size:10px;color:#94a3b8;text-transform:uppercase;";
+        const add = makeButton(chosen ? "Selected" : "Add");
+        add.disabled = chosen || selectedKeys.length >= maxLibraryReferences;
+        add.onclick = () => { useAutomaticMappings = false; selectedKeys.push(item.key); renderLists(); };
+        card.append(label, type, add);
+        availableList.append(card);
+      }
+      selectedKeys.forEach((key, index) => {
+        const item = catalog.find((entry) => entry.key === key);
+        if (!item) return;
+        const row = document.createElement("div");
+        row.style.cssText = "display:grid;grid-template-columns:34px 52px minmax(0,1fr) auto;gap:7px;align-items:center;border:1px solid #334155;border-radius:6px;background:#0f172a;padding:6px;";
+        const number = document.createElement("div");
+        number.textContent = String(index + 1 + (startFrameReserved ? 1 : 0));
+        number.style.cssText = "font-size:18px;font-weight:900;text-align:center;color:#67e8f9;";
+        const thumb = referenceThumb(item);
+        thumb.style.height = "46px";
+        const label = document.createElement("div");
+        label.innerHTML = `<div style="font-size:11px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.label)}</div><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;margin-top:3px;">${escapeHtml(kindLabel(item.kind))}</div>`;
+        const controls = document.createElement("div");
+        controls.style.cssText = "display:flex;gap:4px;";
+        const up = makeButton("↑");
+        const down = makeButton("↓");
+        const remove = makeButton("×");
+        up.disabled = index === 0;
+        down.disabled = index === selectedKeys.length - 1;
+        up.onclick = () => { useAutomaticMappings = false; [selectedKeys[index - 1], selectedKeys[index]] = [selectedKeys[index], selectedKeys[index - 1]]; renderLists(); };
+        down.onclick = () => { useAutomaticMappings = false; [selectedKeys[index + 1], selectedKeys[index]] = [selectedKeys[index], selectedKeys[index + 1]]; renderLists(); };
+        remove.onclick = () => { useAutomaticMappings = false; selectedKeys.splice(index, 1); renderLists(); };
+        controls.append(up, down, remove);
+        row.append(number, thumb, label, controls);
+        selectedList.append(row);
+      });
+      if (!selectedKeys.length) {
+        const empty = document.createElement("div");
+        empty.textContent = startFrameReserved
+          ? "The scene start frame remains Image 1. No additional character, location, or storyboard references are selected."
+          : "No Reference Builder images selected.";
+        empty.style.cssText = "border:1px dashed #475569;border-radius:6px;color:#94a3b8;padding:14px;line-height:1.4;";
+        selectedList.append(empty);
+      }
+    };
+
+    const footer = document.createElement("div");
+    footer.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:11px 15px;border-top:1px solid #1e293b;";
+    const utility = document.createElement("div");
+    utility.style.cssText = "display:flex;gap:7px;flex-wrap:wrap;";
+    const mappedDefaults = makeButton("Use Scene Mappings");
+    const clearSelection = makeButton("Clear Selection");
+    const openBuilder = makeButton("Open Reference Builder");
+    mappedDefaults.onclick = () => { useAutomaticMappings = true; selectedKeys = miniMaxMappedReferenceKeysForSegment(segment, refs); renderLists(); };
+    clearSelection.onclick = () => { useAutomaticMappings = false; selectedKeys = []; renderLists(); };
+    openBuilder.onclick = () => { backdrop.remove(); openReferenceBuilderTargetChooser(); };
+    utility.append(mappedDefaults, clearSelection, openBuilder);
+    const save = makeButton("Save MiniMax Reference Order", "primary");
+    save.onclick = async () => {
+      pushHistory();
+      segment.minimax_h3_reference_keys = useAutomaticMappings ? null : selectedKeys.slice(0, maxLibraryReferences);
+      backdrop.remove();
+      syncMiniMaxReferenceButtons();
+      await autoSaveSessionQuiet("MiniMax H3 scene references");
+      const savedCount = miniMaxReferenceKeysForSegment(segment).slice(0, maxLibraryReferences).length;
+      const totalCount = savedCount + (startFrameReserved ? 1 : 0);
+      toast(useAutomaticMappings
+        ? `MiniMax H3 will automatically follow this scene's Reference Builder mappings (${totalCount}/9 images${startFrameReserved ? ", including the start frame" : ""}).`
+        : `Saved ${totalCount} ordered MiniMax H3 image${totalCount === 1 ? "" : "s"}${startFrameReserved ? " including Image 1 as the exact start frame" : ""}.`);
+    };
+    footer.append(utility, save);
+    box.append(header, note, body, footer);
+    backdrop.append(box);
+    document.body.append(backdrop);
+    close.onclick = () => backdrop.remove();
+    backdrop.addEventListener("pointerdown", (event) => { if (event.target === backdrop) backdrop.remove(); });
+    renderLists();
   }
 
   function rtvReferencesForSegment(segment = activeSegment()) {
@@ -22079,8 +23016,20 @@ function openBuilder(node) {
   function openFluxReferenceBuilderModal(options = {}) {
     const wizardLocationMode = Boolean(options?.wizardMode || options?.wizard_location_mode);
     const referenceImagesEnabled = options?.textOnlyMode !== true;
-    const allowExtraSubjectReferences = referenceImagesEnabled && currentVideoMode() === "rtv";
-    const referenceBuilderTargetLabel = !referenceImagesEnabled ? "Gemma scene text mapping" : currentVideoMode() === "rtv" ? "LTX Reference to Video" : currentVideoMode() === "ingredients" ? "LTX Ingredients to Video" : "Gemma scene text mapping";
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    const miniMaxTargetMode = normalizeMiniMaxH3Mode(options?.miniMaxTargetMode || miniMaxH3ModeForSegment(activeSegment()));
+    const allowExtraSubjectReferences = referenceImagesEnabled && (currentVideoMode() === "rtv" || (miniMaxProject && ["reference_to_video", "video_to_video"].includes(miniMaxTargetMode)));
+    const referenceBuilderTargetLabel = !referenceImagesEnabled
+      ? "Gemma scene text mapping"
+      : miniMaxProject && miniMaxTargetMode === "video_to_video"
+        ? "MiniMax Video to Video"
+        : miniMaxProject && miniMaxTargetMode === "reference_to_video"
+          ? "MiniMax Reference to Video"
+          : currentVideoMode() === "rtv"
+            ? "LTX Reference to Video"
+            : currentVideoMode() === "ingredients"
+              ? "LTX Ingredients to Video"
+              : "Gemma scene text mapping";
     state.fluxReferenceBuilder = normalizeFluxReferenceBuilder(state.fluxReferenceBuilder);
     const refs = state.fluxReferenceBuilder;
     const backdrop = document.createElement("div");
@@ -22090,7 +23039,14 @@ function openBuilder(node) {
     const header = document.createElement("div");
     header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;";
     const heading = document.createElement("div");
-    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceImagesEnabled ? "Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active." : "Map character and location descriptions to scenes for Gemma prompt writing. This text-only mode does not send reference images."}</div>`;
+    const referenceBuilderDescription = !referenceImagesEnabled
+      ? "Map character and location descriptions to scenes for LLM prompt writing. This text-only mode does not send reference images."
+      : miniMaxProject && miniMaxTargetMode === "video_to_video"
+        ? "Build and map character, background, location, prop, and style images that MiniMax can use alongside the source video for replacements and edits."
+        : miniMaxProject && miniMaxTargetMode === "reference_to_video"
+          ? "Build and map ordered character, location, prop, style, and storyboard images for MiniMax Reference to Video."
+          : "Map character and location descriptions to scenes for Gemma prompt writing. Flux/Nano can also use attached images when those image modes are active.";
+    heading.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Scene Reference Builder</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${referenceBuilderDescription}</div>`;
     const close = makeButton("Close");
     header.append(heading, close);
 
@@ -28764,12 +29720,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   function openReferenceBuilderTargetChooser() {
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const backdrop = document.createElement("div");
     backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;";
     const box = document.createElement("div");
     box.style.cssText = "width:min(520px,calc(100vw - 32px));border:1px solid #155e75;border-radius:8px;background:#111827;color:#f8fafc;box-shadow:0 20px 70px rgba(0,0,0,.55);padding:16px;display:flex;flex-direction:column;gap:12px;";
     const title = document.createElement("div");
-    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder Target</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">Choose text scene mapping or an image-reference video workflow.</div>`;
+    title.innerHTML = `<div style="font-size:16px;font-weight:900;color:#cffafe;">Reference Builder Target</div><div style="font-size:12px;color:#94a3b8;margin-top:3px;">${miniMaxProject ? "Choose how these references will be used by MiniMax H3." : "Choose text scene mapping or an image-reference LTX workflow."}</div>`;
     const choices = document.createElement("div");
     choices.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
     const choiceCard = (button, description) => {
@@ -28783,21 +29740,41 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     const textMappingButton = makeButton("I2V / T2V Text Mapping", "primary");
     const imageRefsButton = makeButton("Flux / Nano Image References", "primary");
-    const ltxRefsButton = makeButton("LTX Reference to Video", "primary");
+    const ltxRefsButton = makeButton(miniMaxProject ? "Reference to Video" : "LTX Reference to Video", "primary");
+    const videoToVideoRefsButton = makeButton("Video to Video", "primary");
     const ingredientsRefsButton = makeButton("Ingredients to Video", "primary");
     const idLoraRefsButton = makeButton("ID-LoRA Ref Builder", "primary");
     const close = makeButton("Cancel", "neutral");
     choices.append(
-      choiceCard(textMappingButton, "Text-only character/location mapping for Gemma image planning, I2V prompt writing, and T2V prompt writing. No reference images are sent."),
+      choiceCard(textMappingButton, "Text-only character/location mapping for LLM image planning, Image to Video prompt writing, and Text to Video prompt writing. No reference images are sent."),
       choiceCard(imageRefsButton, "Image reference setup for Flux/Klein and Nano B image generation. Use when those image modes should receive character/location images."),
-      choiceCard(ltxRefsButton, "LTX Reference-to-Video setup for the MSR LoRA workflow. Uses reference images for the video render."),
-      choiceCard(ingredientsRefsButton, "Ingredients-to-Video setup for the Ingredients LoRA workflow. Maps ingredients sheets/images to scenes."),
-      choiceCard(idLoraRefsButton, "Characters, voice samples, locations, dialogue, and auto duration for ID-LoRA I2V short film scenes."),
+      choiceCard(ltxRefsButton, miniMaxProject
+        ? "Build and map ordered character, location, prop, style, or storyboard images for MiniMax Reference to Video."
+        : "LTX Reference-to-Video setup for the MSR LoRA workflow. Uses reference images for the video render."),
     );
+    if (miniMaxProject) {
+      choices.append(choiceCard(
+        videoToVideoRefsButton,
+        "Use a source video together with character, background, location, prop, or style images for MiniMax video editing, including person and background replacement.",
+      ));
+    } else {
+      choices.append(
+        choiceCard(ingredientsRefsButton, "Ingredients-to-Video setup for the Ingredients LoRA workflow. Maps ingredients sheets/images to scenes."),
+        choiceCard(idLoraRefsButton, "Characters, voice samples, locations, dialogue, and auto duration for ID-LoRA I2V short film scenes."),
+      );
+    }
     box.append(title, choices, close);
     backdrop.append(box);
     const openAndClose = (target) => {
       backdrop.remove();
+      if (miniMaxProject && ["reference_to_video", "video_to_video"].includes(target)) {
+        const segment = activeSegment();
+        if (segment) setMiniMaxH3ModeForSegment(segment, target);
+        syncMiniMaxH3Panel();
+        renderSegments();
+        openFluxReferenceBuilderModal({ miniMaxTargetMode: target });
+        return;
+      }
       if (target === "rtv") {
         state.videoModelMode = "rtv";
         syncVideoModePanel();
@@ -28809,7 +29786,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       openFluxReferenceBuilderModal({ textOnlyMode: true });
     };
     imageRefsButton.onclick = () => openAndClose("image");
-    ltxRefsButton.onclick = () => openAndClose("rtv");
+    ltxRefsButton.onclick = () => openAndClose(miniMaxProject ? "reference_to_video" : "rtv");
+    videoToVideoRefsButton.onclick = () => openAndClose("video_to_video");
     ingredientsRefsButton.onclick = () => {
       backdrop.remove();
       state.videoModelMode = "ingredients";
@@ -29642,6 +30620,28 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const themePanel = makeSettingsSection("Builder UI Theme", [
       themeControlMount,
     ], false);
+    const projectVideoEngineSelect = makeSelect([
+      { value: "ltx", label: "LTX (current Builder)" },
+      { value: "minimax_h3", label: "MiniMax H3" },
+    ], normalizeProjectVideoEngine(state.projectVideoEngine));
+    const projectVideoEngineNote = document.createElement("div");
+    projectVideoEngineNote.textContent = "This choice belongs to the whole project. LTX projects keep the existing scene renderer unchanged. MiniMax H3 projects use the separate MiniMax scene action and exact-timeline adapter.";
+    projectVideoEngineNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+    const projectVideoEnginePanel = makeSettingsSection("Project Video Engine", [
+      makeField("Video engine for this project", projectVideoEngineSelect),
+      projectVideoEngineNote,
+    ], true);
+    const automaticMemoryCleanupControl = makeCheckbox(
+      "Run automatic RAM/VRAM cleanup",
+      Boolean(state.automaticMemoryCleanup),
+    );
+    const automaticMemoryCleanupNote = document.createElement("div");
+    automaticMemoryCleanupNote.textContent = "Off is recommended when ComfyUI DynamicVRAM is enabled. When off, the Builder bypasses embedded RAMCleanup/VRAMCleanup nodes in hidden workflows and will not directly clear Comfy/Gemma caches between tasks, retries, errors, or stops. The manual Clear Memory button still works.";
+    automaticMemoryCleanupNote.style.cssText = "font-size:11px;color:#a1a1aa;line-height:1.4;";
+    const memoryManagementPanel = makeSettingsSection("Memory Management", [
+      automaticMemoryCleanupControl.wrapper,
+      automaticMemoryCleanupNote,
+    ], false);
     const notificationSettings = normalizeNotificationSettings(state.notificationSettings);
     const notificationMode = makeSelect(["off", "errors", "batch", "complete", "all"], notificationSettings.mode);
     const successSound = makeSelect(["chime", "bell", "double_beep", "soft"], notificationSettings.success_sound);
@@ -29863,6 +30863,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     notificationVolume.addEventListener("input", saveNotificationSettings);
     successCustomFile.addEventListener("change", () => readCustomSound(successCustomFile.files?.[0], "success"));
     errorCustomFile.addEventListener("change", () => readCustomSound(errorCustomFile.files?.[0], "error"));
+    automaticMemoryCleanupControl.input.addEventListener("change", async () => {
+      state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(automaticMemoryCleanupControl.input.checked);
+      await autoSaveSessionQuiet("automatic memory cleanup setting");
+      toast(state.automaticMemoryCleanup
+        ? "Automatic RAM/VRAM cleanup enabled."
+        : "Automatic RAM/VRAM cleanup disabled. DynamicVRAM will manage memory pressure.");
+    });
+    projectVideoEngineSelect.addEventListener("change", async () => {
+      state.projectVideoEngine = normalizeProjectVideoEngine(projectVideoEngineSelect.value);
+      syncProjectVideoEngineUI();
+      await autoSaveSessionQuiet("project video engine");
+      toast(state.projectVideoEngine === "minimax_h3"
+        ? "This project now uses the separate MiniMax H3 scene renderer."
+        : "This project now uses the existing LTX scene renderer.");
+    });
     clearSuccessSound.onclick = async () => {
       state.notificationSettings.success_custom_audio = "";
       state.notificationSettings.success_custom_name = "";
@@ -29879,7 +30894,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     testErrorSound.onclick = () => playBuilderNotification("error", true);
     syncCustomAudioLabels();
     syncContinuityModeVisibility();
-    box.append(header, pathGrid, actions, note, themePanel, autoChainPanel, notificationPanel);
+    box.append(header, pathGrid, actions, note, projectVideoEnginePanel, themePanel, memoryManagementPanel, autoChainPanel, notificationPanel);
     backdrop.append(box);
     document.body.append(backdrop);
     modalClose.onclick = () => backdrop.remove();
@@ -30142,6 +31157,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function runClearMemoryWorkflowQuiet(progress, label, percent = 95) {
+    if (!state.automaticMemoryCleanup) {
+      const output = `Automatic RAM/VRAM cleanup skipped after ${label} (disabled in Builder Settings).`;
+      progress?.set(output, percent);
+      return output;
+    }
     const output = await runFullMemoryCleanup(progress, label, percent);
     progress?.set(output, percent);
     return output;
@@ -30151,6 +31171,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     progress?.set(`Running RAM/VRAM cleanup workflow after ${label}...`, percent);
     const built = await postJson("/vrgdg/workflow_runner/build_clear_memory_prompt", {}, 120000);
     const queued = await queueWorkflowPrompt(built.prompt, {
+      allowMemoryCleanup: true,
       onStatus: (status) => progress?.set(`${status}\n\nWaiting to run RAM/VRAM cleanup workflow...`, percent),
     });
     const promptId = queued?.prompt_id;
@@ -30282,6 +31303,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       llm_api_provider: state.llmApiProvider || "openai",
       llm_api_model: state.llmApiModel || "",
       notification_settings: normalizeNotificationSettings(state.notificationSettings),
+      automatic_memory_cleanup: Boolean(state.automaticMemoryCleanup),
       waveform_mode: state.waveformMode,
       snap_to_beats: state.snapToBeats,
       show_beat_markers: state.showBeatMarkers,
@@ -30303,6 +31325,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       timeline_zoom: state.timelineZoom,
       auto_save_enabled: state.autoSaveEnabled,
       video_type: normalizeVideoType(state.videoType),
+      video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
+      minimax_h3_settings: cloneMiniMaxH3Settings(state.miniMaxH3Settings),
       image_model_mode: state.imageModelMode,
       zimage_settings: state.zimageSettings,
       reference_krea2_settings: cloneKrea2ReferenceSettings(state.referenceKrea2Settings),
@@ -30449,11 +31473,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       await cancelComfyExecutionAndWaitIdle((status) => {
         progress.set(`${status}`, 45);
       }, { shouldCancel: () => false });
-      progress.set("Clearing memory after stop...", 45);
-      await runClearMemoryWorkflowQuiet(progress, "stop request", 85);
-      progress.set("Stop requested and memory cleanup finished.", 100);
+      progress.set(state.automaticMemoryCleanup ? "Clearing memory after stop..." : "Automatic memory cleanup is disabled; stopping without clearing models or caches...", 45);
+      const cleanupOutput = await runClearMemoryWorkflowQuiet(progress, "stop request", 85);
+      progress.set(state.automaticMemoryCleanup ? "Stop requested and memory cleanup finished." : `Stop requested.\n${cleanupOutput}`, 100);
       progress.close(3000);
-      toast("Stop requested. Memory cleanup ran.");
+      toast(state.automaticMemoryCleanup ? "Stop requested. Memory cleanup ran." : "Stop requested. Automatic memory cleanup was skipped.");
     } catch (error) {
       progress?.set(`Error while stopping:\n${String(error?.message || error)}`, 100);
       toast(String(error?.message || error), true);
@@ -30538,6 +31562,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.lmStudioModel = data.session.lm_studio_model || state.lmStudioModel || "";
         state.lmStudioApiKey = data.session.lm_studio_api_key || state.lmStudioApiKey || "";
         state.notificationSettings = normalizeNotificationSettings(data.session.notification_settings || state.notificationSettings);
+        state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(data.session.automatic_memory_cleanup ?? state.automaticMemoryCleanup ?? false);
         state.waveformMode = data.session.waveform_mode || state.waveformMode;
         state.snapToBeats = data.session.snap_to_beats ?? state.snapToBeats;
         state.showTimelineSceneNotes = data.session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
@@ -30558,6 +31583,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         state.timelineZoom = data.session.timeline_zoom || state.timelineZoom;
         state.autoSaveEnabled = data.session.auto_save_enabled ?? state.autoSaveEnabled;
         state.videoType = normalizeVideoType(data.session.video_type || data.session.videoType || state.videoType);
+        state.projectVideoEngine = normalizeProjectVideoEngine(data.session.video_engine ?? state.projectVideoEngine);
+        state.miniMaxH3Settings = cloneMiniMaxH3Settings(data.session.minimax_h3_settings || state.miniMaxH3Settings);
         state.imageModelMode = data.session.image_model_mode || data.session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
         state.pxPerSecond = state.timelineZoom;
         waveformModeSelect.value = state.waveformMode;
@@ -30567,6 +31594,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         syncLyricNoteControls();
         autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
         syncVideoTypeControl();
+        syncProjectVideoEngineUI();
         syncLeftPanelTabs();
         applyLayoutSizes();
         state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(data.session.zimage_settings || state.zimageSettings), state.projectFolder);
@@ -30610,6 +31638,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function saveSessionForSceneVideo() {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") saveMiniMaxH3SettingsFromPanel();
     const projectFolder = activeProjectFolderForSave();
     if (!projectFolder) throw new Error("Create or load a project before rendering scene videos.");
     await persistIngredientsSheetImages(projectFolder);
@@ -30859,6 +31888,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.lmStudioModel = session.lm_studio_model || state.lmStudioModel || "";
       state.lmStudioApiKey = session.lm_studio_api_key || state.lmStudioApiKey || "";
       state.notificationSettings = normalizeNotificationSettings(session.notification_settings || state.notificationSettings);
+      state.automaticMemoryCleanup = setBuilderAutomaticMemoryCleanupEnabled(session.automatic_memory_cleanup ?? false);
       state.waveformMode = session.waveform_mode || state.waveformMode || "medium";
       state.snapToBeats = session.snap_to_beats ?? state.snapToBeats ?? true;
       state.showTimelineSceneNotes = session.show_timeline_scene_notes ?? state.showTimelineSceneNotes ?? false;
@@ -30881,6 +31911,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       state.timelineZoom = session.timeline_zoom || state.timelineZoom || 45;
       state.autoSaveEnabled = session.auto_save_enabled ?? state.autoSaveEnabled ?? true;
       state.videoType = normalizeVideoType(session.video_type || session.videoType || state.videoType);
+      state.projectVideoEngine = normalizeProjectVideoEngine(session.video_engine);
+      state.miniMaxH3Settings = cloneMiniMaxH3Settings(session.minimax_h3_settings || {});
       state.imageModelMode = session.image_model_mode || session.flux_klein_settings?.image_model_mode || state.imageModelMode || "zimage";
       state.pxPerSecond = state.timelineZoom;
       waveformModeSelect.value = state.waveformMode;
@@ -30890,6 +31922,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       syncLyricNoteControls();
       autoSaveControl.input.checked = Boolean(state.autoSaveEnabled);
       syncVideoTypeControl();
+      syncProjectVideoEngineUI();
       syncLeftPanelTabs();
       applyLayoutSizes();
       state.zimageSettings = scrubGlobalImageToImageSourceForProject(cloneZImageSettings(session.zimage_settings || state.zimageSettings), state.projectFolder);
@@ -33273,6 +34306,223 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     }
   }
 
+  function miniMaxH3PromptContextForSegment(segment, mode) {
+    const settings = miniMaxH3SettingsForSegment(segment);
+    const duration = Math.max(0, Number(segment?.end || 0) - Number(segment?.start || 0));
+    const exactDuration = String(Number(duration.toFixed(3)));
+    const aspectRatio = String(settings.aspect_ratio || "16:9").match(/\d+\s*:\s*\d+/)?.[0]?.replace(/\s+/g, "") || "16:9";
+    const lyricText = isInstrumentalLyricText(segment?.lyric_text) ? "" : flattenLyricForPrompt(segment?.lyric_text);
+    const performanceMode = segmentUsesNoLipSyncPerformance(segment)
+      ? "no_lip_sync"
+      : normalizeVideoType(segment?.performance_mode || state.videoType);
+    const singerNames = (Array.isArray(segment?.lyric_singers)
+      ? segment.lyric_singers
+      : String(segment?.lyric_singers || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const performerLabel = singerNames.length
+      ? singerNames.join(singerNames.length === 2 ? " and " : ", ")
+      : "the visible performer";
+    const parts = [
+      "MiniMax H3 Builder scene context:",
+      `Mode: ${miniMaxH3ModeLabel(mode)}`,
+      `Exact duration: ${exactDuration} seconds`,
+      `Timeline range: ${Number(segment?.start || 0).toFixed(3)}s to ${Number(segment?.end || 0).toFixed(3)}s`,
+      `Aspect ratio: ${aspectRatio}`,
+      "Visual style: follow the supplied scene/theme context; default to photorealistic when no style is specified.",
+    ];
+    if (segment?.no_character_present) {
+      parts.push(
+        "Vocal performance: NO VISIBLE CHARACTER / NO LIP SYNC.",
+        "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for timing. Do not invent a visible singer or speaker.",
+      );
+    } else if (performanceMode === "no_lip_sync") {
+      parts.push(
+        "Vocal performance: VISUAL ONLY / NO LIP SYNC.",
+        "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for timing, but do not show singing, speaking, or mouth synchronization.",
+      );
+    } else if (lyricText && performanceMode === "speaking") {
+      parts.push(
+        "Vocal performance: SPEAKING WITH EXACT DIALOGUE LIP SYNC.",
+        `Exact dialogue line: “${lyricText}”`,
+        `Audio 1 assignment: use as the exact voice, timing, and lip-sync reference. ${performerLabel} says the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that spoken line in Audio 1. Do not replace, alter, extend, or add words.`,
+      );
+    } else if (lyricText) {
+      parts.push(
+        "Vocal performance: SINGING WITH EXACT LYRIC LIP SYNC.",
+        `Exact lyric line to sing: “${lyricText}”`,
+        `Audio 1 assignment: use as the exact vocal, timing, and lip-sync reference. ${performerLabel} is singing the exact line “${lyricText}”. Synchronize lips, mouth shapes, jaw movement, facial muscles, and breathing precisely to that sung line in Audio 1. Every active vocal timestamp must visibly describe the singing and exact lip sync. Do not replace, alter, extend, or add vocals.`,
+      );
+    } else {
+      parts.push(
+        "Vocal performance: no exact lyric or dialogue is assigned to this scene.",
+        "Audio 1 assignment: use the exact supplied custom/project audio segment unchanged for performance, movement, and camera timing. Do not invent lyrics, dialogue, or replacement audio.",
+      );
+    }
+    const add = (label, value) => {
+      const text = String(value || "").trim();
+      if (text) parts.push(`${label}:\n${text}`);
+    };
+    add("Scene idea / image prompt", sceneVideoConceptPromptText(segment));
+    add("Scene notes", segment?.notes || segment?.director_note);
+    add("Director timeline note", segment?.timeline_note);
+    add("Motion and camera request", segment?.i2v_notes);
+    add("Scene story beat", segment?.story_beat);
+    add("Exact supplied lyric or dialogue", lyricText);
+    add("Lyric section", segment?.lyric_section);
+    add("Visible character context", segment?.no_character_present ? "No main character is visible in this scene." : segmentMappedSubjectText(segment));
+    add("Location context", segmentMappedLocationText(segment));
+
+    if (mode === "image_to_video") {
+      parts.push("Ordered image assignment:\nImage 1: exact start frame and authoritative opening composition, character identity, clothing, location, lighting, and visual-state anchor.");
+    }
+    if (mode === "reference_to_video" || mode === "video_to_video") {
+      const items = miniMaxOrderedImageReferenceItemsForSegment(segment, mode);
+      const assignments = items.map((item, index) => {
+        const detail = [item.label, item.description].map((value) => String(value || "").trim()).filter(Boolean).join(" — ");
+        return `Image ${index + 1}: ${miniMaxReferencePurposeText(item)}${detail ? `. ${detail}` : ""}`;
+      });
+      if (assignments.length) parts.push(`${mode === "video_to_video" ? "Ordered supporting edit-image assignments" : "Ordered image assignments"} (exact connected order):\n${assignments.join("\n")}`);
+    }
+    if (mode === "video_to_video") {
+      const assignments = (Array.isArray(segment?.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
+        .filter((item) => String(item?.path || "").trim())
+        .slice(0, 3)
+        .map((item, index) => {
+          const purpose = normalizeMiniMaxH3VideoPurpose(item.purpose);
+          const purposeLabel = MINIMAX_H3_VIDEO_REFERENCE_PURPOSES.find((option) => option.value === purpose)?.label || "Continuation / Extension";
+          const timing = Number(item.start_seconds || 0) > 0 || Number(item.duration || 0) > 0
+            ? ` Use from ${Math.max(0, Number(item.start_seconds || 0))}s${Number(item.duration || 0) > 0 ? ` for ${Math.max(0, Number(item.duration || 0))}s` : " onward"}.`
+            : "";
+          const audio = item.use_audio ? " Its embedded audio is also supplied as a paired reference." : " Do not use its embedded audio.";
+          return `Video ${index + 1}: ${purposeLabel}.${timing}${audio}`;
+        });
+      if (assignments.length) parts.push(`Ordered video assignments (exact connected order):\n${assignments.join("\n")}`);
+    }
+    return parts.join("\n\n");
+  }
+
+  function miniMaxH3PromptVisionImages(segment, mode) {
+    if (mode === "image_to_video") {
+      const source = segmentImageSource(segment);
+      const path = String(source?.path || selectedSegmentImagePath(segment) || "").trim();
+      const data = String(source?.data || "").trim();
+      return path || data ? [{ path, data }] : [];
+    }
+    if (mode === "reference_to_video" || mode === "video_to_video") {
+      return miniMaxOrderedImageReferenceItemsForSegment(segment, mode)
+        .map((item) => ({
+          path: String(item?.image?.path || "").trim(),
+          data: String(item?.image?.data || "").trim(),
+        }))
+        .filter((item) => item.path || item.data)
+        .slice(0, 9);
+    }
+    return [];
+  }
+
+  async function createMiniMaxH3PromptWithLLM() {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    saveMiniMaxSceneInputsFromPanel();
+    const mode = miniMaxH3ModeForSegment(segment);
+    const modeLabel = miniMaxH3ModeLabel(mode);
+    const duration = Number(segment.end || 0) - Number(segment.start || 0);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      toast("This scene needs valid start and end times before creating its MiniMax prompt.", true);
+      return;
+    }
+    const projectFolder = activeProjectFolderForSave();
+    if (!projectFolder) {
+      toast("Create or load a Builder project before creating MiniMax prompts.", true);
+      return;
+    }
+    const visionImages = miniMaxH3PromptVisionImages(segment, mode);
+    if (mode === "image_to_video" && !visionImages.length) {
+      toast("Image to Video needs a selected scene image before the LLM can create its MiniMax prompt.", true);
+      return;
+    }
+    if (mode === "reference_to_video" && !visionImages.length) {
+      toast("Reference to Video needs at least one ordered Reference Builder image.", true);
+      return;
+    }
+    const videoReferences = (Array.isArray(segment.minimax_h3_video_references) ? segment.minimax_h3_video_references : [])
+      .filter((item) => String(item?.path || "").trim());
+    if (mode === "video_to_video" && !videoReferences.length) {
+      toast("Video to Video needs at least one reference video path.", true);
+      return;
+    }
+    if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+      toast("MiniMax image/reference prompting needs a vision-capable API model selected in LLM Runner.", true);
+      return;
+    }
+    const context = miniMaxH3PromptContextForSegment(segment, mode);
+    const promptLyricText = isInstrumentalLyricText(segment.lyric_text) ? "" : flattenLyricForPrompt(segment.lyric_text);
+    const promptSingerNames = (Array.isArray(segment.lyric_singers)
+      ? segment.lyric_singers
+      : String(segment.lyric_singers || "").split(/[,;\n]+/))
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    if (mode === "text_to_video" && !sceneVideoConceptPromptText(segment) && !String(segment.i2v_notes || segment.story_beat || segment.lyric_text || "").trim()) {
+      toast("Add a scene idea, notes, story beat, lyrics, or motion direction before creating a Text to Video prompt.", true);
+      return;
+    }
+
+    let progress = null;
+    try {
+      miniMaxCreatePromptButton.disabled = true;
+      miniMaxCreatePromptButton.textContent = "Creating...";
+      progress = createProgressWindow(`Creating MiniMax ${modeLabel} prompt`);
+      progress.set(`Autosaving this scene before LLM prompting...`, 8);
+      await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt`);
+      progress.set(`Running ${visionImages.length ? "vision-assisted" : "text-only"} MiniMax prompt direction...\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`, 42);
+      const data = await postJson("/vrgdg/music_builder/generate_t2v", {
+        ...textGemmaRunnerPayload(),
+        project_folder: projectFolder,
+        scene_id: segment.id || "",
+        builder_instruction_key: miniMaxH3InstructionKey(mode),
+        model_file: visionImages.length ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
+        repair_model_file: i2vTextGemmaModelSelect.value,
+        mmproj_file: visionImages.length ? i2vMmprojSelect.value : "",
+        t2i_prompt: context,
+        user_notes: "Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.",
+        subject_context: segment.no_character_present ? "" : segmentMappedSubjectText(segment),
+        location_context: segmentMappedLocationText(segment),
+        no_character_present: Boolean(segment.no_character_present),
+        image_references: visionImages,
+        performance_mode: effectiveVideoPerformanceModeForSegment(segment),
+        lyric_text: promptLyricText,
+        singers: promptSingerNames,
+        theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+        story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+        subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+        unload_after: true,
+        temperature: 0.45,
+        top_p: 0.92,
+        max_new_tokens: 4000,
+      }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+      const prompt = String(data.prompt || "").trim();
+      if (!prompt) throw new Error(`The LLM returned an empty MiniMax ${modeLabel} prompt.`);
+      pushHistory();
+      segment.minimax_h3_prompt = prompt;
+      segment.minimax_h3_prompt_origin = "gemma";
+      miniMaxPrompt.value = prompt;
+      render();
+      await autoSaveSessionQuiet(`MiniMax ${modeLabel} prompt complete`);
+      progress.set(`MiniMax ${modeLabel} prompt ready.`, 100);
+      progress.close(900);
+      toast(`Created the MiniMax ${modeLabel} prompt with ${gemmaRunnerLabel({ vision: Boolean(visionImages.length) })}.`);
+    } catch (error) {
+      const debugPath = error?.gemmaDebugPath || await saveGemmaJunkDebug(error, { label: `MiniMax ${modeLabel} prompt`, segment });
+      progress?.set(`Error:\n${String(error?.message || error)}${debugPath ? `\n\nRaw LLM output saved to:\n${debugPath}` : ""}`, 100);
+      toast(String(error?.message || error), true);
+    } finally {
+      miniMaxCreatePromptButton.disabled = false;
+      syncMiniMaxH3Panel();
+    }
+  }
+
   async function createI2VPromptWithGemma() {
     const segment = requireActiveSegment();
     if (!segment) return;
@@ -34132,7 +35382,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         const videoNotes = String(segment.video_notes || segment.i2v_notes || "").trim();
         const sceneNotes = String(segment.notes || segment.director_note || "").trim();
         const imagePrompt = storyboardPromptForSegment(segment);
-        const videoPrompt = String(segment.i2v_prompt || segment.t2v_prompt || "").trim();
+        const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+        const videoPrompt = String(miniMaxProject
+          ? (segment.minimax_h3_prompt || "")
+          : (segment.i2v_prompt || segment.t2v_prompt || "")).trim();
         const imageReference = getI2VImageReference(segment);
         const referenceData = storyboardReferenceDataForSegment(segment);
         const promptSummary = storyboardSummaryForSegment(segment, imagePrompt, videoPrompt, referenceData);
@@ -34163,6 +35416,11 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           facial_performance: String(segment.facial_performance || "").trim(),
           facial_performance_custom: String(segment.facial_performance_custom || "").trim(),
           performance_style: String(segment.performance_style || defaults.performance_style || "").trim(),
+          project_video_engine: normalizeProjectVideoEngine(state.projectVideoEngine),
+          minimax_h3_mode: miniMaxH3ModeForSegment(segment),
+          timeline_start: Number(segment.start || 0),
+          timeline_end: Number(segment.end || 0),
+          exact_duration: Number(timelineSegmentDuration(segment).toFixed(3)),
           video_prompt_type: ["i2v", "id_lora", "t2v", "rtv", "ingredients", "flf"].includes(String(segment.video_prompt_type || "").trim())
             ? String(segment.video_prompt_type || "").trim()
             : currentVideoMode(),
@@ -34176,7 +35434,9 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           character_motion_speed: Number(defaults.character_motion_speed ?? 4),
           image_prompt: imagePrompt,
           video_prompt: videoPrompt,
-          video_prompt_origin: normalizeVideoPromptOrigin(segment.i2v_prompt_origin),
+          video_prompt_origin: miniMaxProject
+            ? normalizeVideoPromptOrigin(segment.minimax_h3_prompt_origin)
+            : normalizeVideoPromptOrigin(segment.i2v_prompt_origin),
           image_path: imageReference.path || selectedSegmentImagePath(segment),
           image_data: imageReference.data || "",
           notes: sceneNotes,
@@ -34191,6 +35451,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const promptMode = options.promptMode || "image";
     return {
       projectFolder: activeProjectFolderForSave(),
+      projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
       mode: promptMode === "video" ? "image_to_video_prep" : "storyboard_prompts",
       performanceMode: normalizeVideoType(state.videoType),
       videoType: normalizeVideoType(state.videoType),
@@ -34398,9 +35659,14 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           applied += 1;
         }
         if (videoPrompt) {
-          setSegmentPromptForEdit(segment, "i2v", videoPrompt, {
-            origin: scene.video_prompt_origin,
-          });
+          if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+            segment.minimax_h3_prompt = videoPrompt;
+            segment.minimax_h3_prompt_origin = normalizeVideoPromptOrigin(scene.video_prompt_origin);
+          } else {
+            setSegmentPromptForEdit(segment, "i2v", videoPrompt, {
+              origin: scene.video_prompt_origin,
+            });
+          }
           applied += 1;
         }
         if (["i2v", "id_lora", "t2v", "rtv", "ingredients"].includes(videoType)) segment.video_prompt_type = videoType;
@@ -34515,6 +35781,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           : String(segment.mapped_subjects || segment.subject || ""),
         facial_performance: String(scene.facial_performance ?? scene.facialPerformance ?? segment.facial_performance ?? "").trim(),
         facial_performance_custom: String(scene.facial_performance_custom ?? scene.facialPerformanceCustom ?? segment.facial_performance_custom ?? "").trim(),
+        performance_mode: String(scene.performance_mode || scene.performanceMode || segment.performance_mode || "").trim(),
         prompt_summary: String(scene.prompt_summary || scene.summary || segment.prompt_summary || segment.summary || "").trim(),
         summary: String(scene.prompt_summary || scene.summary || segment.prompt_summary || segment.summary || "").trim(),
       };
@@ -34548,6 +35815,71 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!segment) throw new Error(`Scene ${scene.scene_number || ""}: matching Video Builder scene was not found.`);
       const workingSegment = storyboardSceneCloneForI2V(segment, scene);
       const extraUserNotes = storyboardVideoExtraNotes(scene, options.storyboardPayload || {});
+      if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3") {
+        workingSegment.i2v_notes = [String(workingSegment.i2v_notes || "").trim(), extraUserNotes]
+          .filter(Boolean)
+          .join("\n\n");
+        const mode = miniMaxH3ModeForSegment(segment);
+        const modeLabel = miniMaxH3ModeLabel(mode);
+        workingSegment.minimax_h3_mode = mode;
+        workingSegment.minimax_h3_reference_keys = Array.isArray(segment.minimax_h3_reference_keys)
+          ? [...segment.minimax_h3_reference_keys]
+          : null;
+        workingSegment.minimax_h3_video_references = (Array.isArray(segment.minimax_h3_video_references)
+          ? segment.minimax_h3_video_references
+          : []).map((item) => ({ ...item }));
+        const visionImages = miniMaxH3PromptVisionImages(workingSegment, mode);
+        if (mode === "image_to_video" && !visionImages.length) {
+          throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Image to Video needs a selected scene image.`);
+        }
+        if (mode === "reference_to_video" && !visionImages.length) {
+          throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Reference to Video needs ordered Reference Builder images.`);
+        }
+        if (mode === "video_to_video" && !workingSegment.minimax_h3_video_references.some((item) => String(item?.path || "").trim())) {
+          throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: MiniMax Video to Video needs a reference video.`);
+        }
+        if (visionImages.length && state.textGemmaRunner === "llm_api" && !llmApiVisionModelSelected()) {
+          throw new Error("MiniMax image/reference prompting needs a vision-capable API model selected in LLM Runner.");
+        }
+        options.progress?.set(
+          `${options.progressLabel || scene.label || sceneDisplayName(segment, segmentIndexInfo(segment).index)}: creating MiniMax ${modeLabel} prompt with the scene's H3 instructions...\n${gemmaRunnerLine({ vision: Boolean(visionImages.length) })}`,
+          Math.min(92, Number(options.progressPercent || 35) + 18),
+        );
+        const data = await postJson("/vrgdg/music_builder/generate_t2v", {
+          ...textGemmaRunnerPayload(),
+          project_folder: activeProjectFolderForSave(),
+          scene_id: segment.id || "",
+          builder_instruction_key: miniMaxH3InstructionKey(mode),
+          model_file: visionImages.length ? i2vGemmaModelSelect.value : i2vTextGemmaModelSelect.value,
+          repair_model_file: i2vTextGemmaModelSelect.value,
+          mmproj_file: visionImages.length ? i2vMmprojSelect.value : "",
+          t2i_prompt: miniMaxH3PromptContextForSegment(workingSegment, mode),
+          user_notes: "Follow the MiniMax H3 mode contract and the exact ordered media assignments in the scene context.",
+          subject_context: workingSegment.no_character_present ? "" : segmentMappedSubjectText(workingSegment),
+          location_context: segmentMappedLocationText(workingSegment),
+          no_character_present: Boolean(workingSegment.no_character_present),
+          image_references: visionImages,
+          performance_mode: effectiveVideoPerformanceModeForSegment(workingSegment),
+          lyric_text: isInstrumentalLyricText(workingSegment.lyric_text) ? "" : flattenLyricForPrompt(workingSegment.lyric_text),
+          singers: Array.isArray(workingSegment.lyric_singers) ? workingSegment.lyric_singers : [],
+          theme_style_path: state.useVrgdgTextContext ? state.themeStylePath || "" : "",
+          story_idea_path: state.useVrgdgTextContext ? state.storyIdeaPath || "" : "",
+          subject_scene_path: state.useVrgdgTextContext ? state.subjectScenePath || "" : "",
+          unload_after: options.unloadAfter !== false,
+          temperature: 0.45,
+          top_p: 0.92,
+          max_new_tokens: 4000,
+        }, GEMMA_VIDEO_PROMPT_TIMEOUT_MS);
+        const prompt = String(data.prompt || "").trim();
+        if (!prompt) throw new Error(`${sceneDisplayName(segment, segmentIndexInfo(segment).index)}: LLM returned an empty MiniMax ${modeLabel} prompt.`);
+        return {
+          ...data,
+          prompt,
+          already_finalized: true,
+          minimax_h3_mode: mode,
+          used_minimax_h3_instructions: true,
+        };
+      }
       const storyboardImageReference = getI2VImageReference(workingSegment);
       const forceTextOnly = currentVideoMode() === "i2v" && !storyboardImageReference.path && !storyboardImageReference.data;
       const request = buildI2VPromptRequestForSegment(workingSegment, {
@@ -34723,6 +36055,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     };
     window.VRGDGStoryboardBuilder.open({
       projectFolder: projectInput.value || state.projectFolder || "",
+      projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
       lineMappingLyrics: String(state.lyricMapper?.source_text || ""),
       imageMode: state.imageModelMode || "zimage",
       imageModeLabel: imageModeDisplayLabel(state.imageModelMode || "zimage"),
@@ -34802,6 +36135,31 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!lastFrame?.path && !lastFrame?.data) missing.push(`${name}: First Last Frame needs its own end image or assigned scene image.`);
     }
     if (!String(segment?.i2v_prompt || "").trim()) missing.push(`${name}: ${promptLabel} prompt is missing.`);
+    return missing;
+  }
+
+  function validateMiniMaxSceneReadyForVideo(segment, sceneIndex) {
+    const name = sceneDisplayName(segment, sceneIndex);
+    const missing = [];
+    const mode = miniMaxH3ModeForSegment(segment);
+    if (!String(segment?.minimax_h3_prompt || segment?.i2v_prompt || "").trim()) {
+      missing.push(`${name}: MiniMax ${miniMaxH3ModeLabel(mode)} prompt is missing.`);
+    }
+    if (!Number.isFinite(Number(segment?.start)) || !Number.isFinite(Number(segment?.end)) || Number(segment.end) <= Number(segment.start)) {
+      missing.push(`${name}: timeline start and end times are invalid.`);
+    }
+    if (mode === "image_to_video" && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push(`${name}: MiniMax Image to Video needs a selected scene image.`);
+    }
+    if (mode === "reference_to_video" && segment?.minimax_h3_use_scene_image_as_start_frame && !String(selectedSegmentImagePath(segment) || "").trim()) {
+      missing.push(`${name}: MiniMax Reference to Video is set to use the scene image as its start frame, but no scene image is saved.`);
+    }
+    if (mode === "reference_to_video" && !miniMaxOrderedImageReferenceItemsForSegment(segment, mode).length) {
+      missing.push(`${name}: MiniMax Reference to Video needs a start frame or at least one ordered Reference Builder image.`);
+    }
+    if (mode === "video_to_video" && !(segment?.minimax_h3_video_references || []).some((item) => String(item?.path || "").trim())) {
+      missing.push(`${name}: MiniMax Video to Video needs at least one reference-video path.`);
+    }
     return missing;
   }
 
@@ -35858,6 +37216,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const scenesToRender = allScenes
       .map((segment) => ({ segment, index: segmentIndexInfo(segment).index }))
       .filter(({ segment }) => options.forceVideos || !String(selectedSegmentVideoPath(segment) || "").trim());
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    if (miniMaxProject) {
+      if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+      scenesToRender.forEach(({ segment, index }) => {
+        if (!String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+          missing.push(`${sceneDisplayName(segment, index)}: MiniMax H3 needs project audio or custom scene audio.`);
+        }
+        missing.push(...validateMiniMaxSceneReadyForVideo(segment, index));
+      });
+      return missing;
+    }
     const idLoraMode = currentVideoMode() === "id_lora";
     const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && usingSceneAudioMode();
@@ -35908,7 +37277,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function ensureAudioOrOfferSilentTimeline(options = {}) {
-    if (currentVideoMode() === "id_lora") return true;
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3" && currentVideoMode() === "id_lora") return true;
     if (currentProjectAudioPath()) return true;
     const scenes = audioFallbackTargetScenes(options);
     if (!scenes.length) return true;
@@ -36327,20 +37696,265 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     return segment.video_path;
   }
 
+  async function renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, options = {}) {
+    const progressBase = Number(options.progressBase ?? 0);
+    const progressSpan = Number(options.progressSpan ?? 100);
+    const batchLabel = options.batchLabel ? `${options.batchLabel}\n` : "";
+    const pct = (value) => Math.min(100, progressBase + (progressSpan * value / 100));
+    const slotNumber = sceneSlotNumber(segment);
+    const projectFolder = String(projectInput.value || "").trim();
+    const timelineStart = Number(segment?.start);
+    const timelineEnd = Number(segment?.end);
+    const sceneDuration = timelineEnd - timelineStart;
+    const miniMaxSettings = miniMaxH3SettingsForSegment(segment);
+    const mode = normalizeMiniMaxH3Mode(options.mode ?? miniMaxSettings.video_mode);
+    if (!projectFolder) throw new Error("Save or select a project folder before rendering MiniMax H3.");
+    if (!Number.isFinite(timelineStart) || !Number.isFinite(timelineEnd) || sceneDuration <= 0) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} has invalid timeline boundaries.`);
+    }
+
+    const prompt = String(
+      options.prompt
+      ?? (segment?.minimax_h3_prompt || segment?.i2v_prompt || "")
+    ).trim();
+    if (!prompt) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a MiniMax H3 prompt.`);
+
+    const sourceAudioPath = String(
+      options.audioPath
+      ?? (segment?.custom_audio_path || currentProjectAudioPath() || audioInput.value || "")
+    ).trim();
+    if (!sourceAudioPath) throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs source audio for MiniMax H3.`);
+    const sourceStartSeconds = Number(
+      options.sourceStartSeconds
+      ?? (segment?.custom_audio_path ? audioSourceStart(segment) : timelineStart)
+    );
+    const sourceDurationSeconds = Number(
+      options.sourceDurationSeconds
+      ?? audioSourceDurationForScene(segment)
+      ?? 0
+    );
+
+    if (["reference_to_video", "video_to_video"].includes(mode) && miniMaxReferenceKeysForSegment(segment).length) {
+      progress?.set(`${batchLabel}Preparing MiniMax H3 Reference Builder images...`, pct(4));
+      await persistIngredientsSheetImages(projectFolder);
+    }
+
+    const normalizePathList = (value) => (Array.isArray(value) ? value : [])
+      .map((item) => String(item?.path || item?.file || item || "").trim())
+      .filter(Boolean);
+    const usesReferenceBuilderImages = ["reference_to_video", "video_to_video"].includes(mode);
+    const referenceBuilderImagePaths = usesReferenceBuilderImages && options.imagePaths === undefined
+      ? miniMaxReferenceBuilderImagePathsForSegment(segment)
+      : [];
+    const configuredImagePaths = normalizePathList(
+      options.imagePaths !== undefined
+        ? options.imagePaths
+        : (segment?.minimax_h3_image_paths ?? segment?.minimax_image_paths ?? [])
+    );
+    const seenImagePaths = new Set();
+    let imagePaths = usesReferenceBuilderImages ? [...referenceBuilderImagePaths, ...configuredImagePaths]
+      .filter((path) => {
+        const key = mediaPathKey(path);
+        if (!key || seenImagePaths.has(key)) return false;
+        seenImagePaths.add(key);
+        return true;
+      })
+      .slice(0, 9) : [];
+    if (mode === "image_to_video") {
+      const selectedImage = String(selectedSegmentImagePath(segment) || "").trim();
+      if (selectedImage) imagePaths = [selectedImage];
+    }
+    const rawVideoReferences = options.videoReferences
+      ?? segment?.minimax_h3_video_references
+      ?? segment?.minimax_video_references
+      ?? [];
+    const videoReferences = mode === "video_to_video" && Array.isArray(rawVideoReferences) ? rawVideoReferences : [];
+    if (mode === "image_to_video" && !imagePaths.length) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs a selected scene image for MiniMax Image to Video.`);
+    }
+    if (mode === "reference_to_video" && !imagePaths.length) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one ordered Reference Builder image.`);
+    }
+    if (mode === "video_to_video" && !videoReferences.some((item) => String(item?.path || "").trim())) {
+      throw new Error(`${sceneDisplayName(segment, sceneIndex)} needs at least one reference video path.`);
+    }
+    const warmupFrames = Math.max(0, Math.trunc(Number(
+      options.warmupFrames
+      ?? miniMaxSettings.warmup_frames
+    ) || 0));
+    const cooldownFrames = Math.max(0, Math.trunc(Number(
+      options.cooldownFrames
+      ?? miniMaxSettings.cooldown_frames
+    ) || 0));
+
+    state.activeId = segment.id;
+    segment.video_status = "running";
+    renderList();
+    progress?.set(`${batchLabel}Preparing exact MiniMax H3 scene timing and audio...`, pct(8));
+
+    try {
+      const payload = {
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        audio_path: sourceAudioPath,
+        prompt,
+        timeline_start_seconds: timelineStart,
+        timeline_end_seconds: timelineEnd,
+        source_start_seconds: Number.isFinite(sourceStartSeconds) ? Math.max(0, sourceStartSeconds) : timelineStart,
+        pre_frames: warmupFrames,
+        tail_loss_frames: cooldownFrames,
+        seed: Number(options.seed ?? miniMaxSettings.seed),
+        aspect_ratio: String(options.aspectRatio ?? miniMaxSettings.aspect_ratio),
+        megapixels: Number(options.megapixels ?? miniMaxSettings.megapixels),
+        diffusion_model_name: miniMaxSettings.diffusion_model_name,
+        clip_name: miniMaxSettings.clip_name,
+        video_vae_name: miniMaxSettings.video_vae_name,
+        audio_vae_name: miniMaxSettings.audio_vae_name,
+        sampler_name: miniMaxSettings.sampler_name,
+        scheduler: miniMaxSettings.scheduler,
+        steps: miniMaxSettings.steps,
+        denoise: miniMaxSettings.denoise,
+        easy_cache_bypass: miniMaxSettings.easy_cache_bypass,
+        easy_cache_reuse_threshold: miniMaxSettings.easy_cache_reuse_threshold,
+        easy_cache_start_percent: miniMaxSettings.easy_cache_start_percent,
+        easy_cache_end_percent: miniMaxSettings.easy_cache_end_percent,
+        easy_cache_verbose: miniMaxSettings.easy_cache_verbose,
+        sage_attention: miniMaxSettings.sage_attention,
+        enable_fp16_accumulation: miniMaxSettings.enable_fp16_accumulation,
+        image_paths: imagePaths,
+        video_references: videoReferences,
+      };
+      if (Number.isFinite(sourceDurationSeconds) && sourceDurationSeconds > 0) {
+        payload.source_duration_seconds = sourceDurationSeconds;
+      }
+
+      const built = await postJson(
+        "/vrgdg/workflow_runner/build_minimax_h3_prompt",
+        payload,
+        180000,
+      );
+      const timing = built?.timing || {};
+      const postTrim = built?.post_render_trim || {};
+      const finalDuration = Number(postTrim.duration);
+      if (!Number.isFinite(finalDuration) || Math.abs(finalDuration - sceneDuration) > 0.001) {
+        throw new Error(
+          `MiniMax H3 timing verification failed for ${sceneDisplayName(segment, sceneIndex)}. `
+          + `Timeline: ${sceneDuration.toFixed(6)}s; adapter: ${Number.isFinite(finalDuration) ? finalDuration.toFixed(6) : "missing"}s.`
+        );
+      }
+
+      progress?.set(
+        `${batchLabel}Queueing MiniMax H3...\n`
+        + `Timeline: ${sceneDuration.toFixed(3)}s\n`
+        + `H3 render: ${Number(timing.h3_frame_count || 0)} frames`,
+        pct(30),
+      );
+      const queued = await queueWorkflowPrompt(built.prompt);
+      const promptId = queued?.prompt_id;
+      if (!promptId) throw new Error("ComfyUI queued MiniMax H3 but did not return a prompt_id.");
+      const videos = await waitForVideos(
+        promptId,
+        (message) => progress?.set(`${batchLabel}${message}\nPrompt ID: ${promptId}`, pct(62)),
+        () => state.batchCancelled,
+        null,
+        {
+          timeoutMessage: () => sceneVideoTimeoutMessage({
+            promptId,
+            sceneLabel: sceneDisplayName(segment, sceneIndex),
+            modeLabel: "MiniMax H3",
+            outputFolder: built.output_folder || "",
+            projectFolder,
+            finalFolder: collectedSceneVideoFolder(),
+          }),
+        },
+      );
+      const video = videos[videos.length - 1] || null;
+      const alignedVideoPath = resolveComfyVideoPath(video);
+      if (!alignedVideoPath) {
+        throw new Error("MiniMax H3 finished, but no aligned video path was found in history.");
+      }
+
+      progress?.set(`${batchLabel}Trimming MiniMax H3 to the exact timeline boundaries...`, pct(82));
+      const trimmed = await postJson("/vrgdg/workflow_runner/trim_scene_video", {
+        source_path: alignedVideoPath,
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        start: Number(postTrim.start || 0),
+        duration: finalDuration,
+        label: "minimax_exact",
+        mark_as_audio_video: true,
+      }, 240000);
+      const exactVideoPath = String(trimmed.video_path || "").trim();
+      if (!exactVideoPath) throw new Error("MiniMax H3 exact trimming did not return a video path.");
+
+      progress?.set(`${batchLabel}Collecting exact MiniMax H3 scene video...`, pct(92));
+      const collected = await postJson("/vrgdg/workflow_runner/collect_scene_video", {
+        source_path: exactVideoPath,
+        project_folder: projectFolder,
+        scene_number: slotNumber,
+        existing_action: options.existingVideoAction || "overwrite",
+      }, 120000);
+
+      pushHistory();
+      if (collected.backup_path) {
+        if (!Array.isArray(segment.video_backup_paths)) segment.video_backup_paths = [];
+        if (!segment.video_backup_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_path))) {
+          segment.video_backup_paths.push(collected.backup_path);
+        }
+      }
+      if (collected.backup_thumbnail_path) {
+        if (!Array.isArray(segment.video_backup_thumbnail_paths)) segment.video_backup_thumbnail_paths = [];
+        if (!segment.video_backup_thumbnail_paths.some((item) => mediaPathKey(item) === mediaPathKey(collected.backup_thumbnail_path))) {
+          segment.video_backup_thumbnail_paths.push(collected.backup_thumbnail_path);
+        }
+      }
+      segment.video_output = video;
+      segment.video_source_path = alignedVideoPath;
+      segment.minimax_h3_timing = timing;
+      activateSegmentVideoPath(
+        segment,
+        collected.video_path || exactVideoPath,
+        collected.thumbnail_path || trimmed.thumbnail_path || "",
+      );
+      segment.video_cache_bust = Date.now();
+      segment.video_folder = collected.video_folder || collectedSceneVideoFolder();
+      segment.preview_mode = "video";
+      segment.video_status = "done";
+      syncPreview(segment);
+      render();
+      if (options.autoSaveAfter !== false) {
+        await autoSaveSessionQuiet(options.autoSaveReason || "MiniMax H3 scene video complete");
+      }
+      progress?.set(
+        `${batchLabel}MiniMax H3 scene ready.\n${segment.video_path}\n`
+        + `Exact duration: ${finalDuration.toFixed(3)}s`,
+        pct(100),
+      );
+      return segment.video_path;
+    } catch (error) {
+      segment.video_status = "error";
+      renderList();
+      throw error;
+    }
+  }
+
   async function stitchRenderedScenes(progress, options = {}) {
     const baseSegments = Array.isArray(options.segments) && options.segments.length ? options.segments : state.segments;
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const overlaySegments = state.overlayTrack.enabled
       ? (Array.isArray(options.overlaySegments) ? options.overlaySegments : state.overlaySegments)
           .filter((segment) => overlayClipIsEnabled(segment, state.overlayTrack))
       : [];
     const timelineOffset = Number(options.timelineOffset || 0);
-    await ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options);
-    await ensureSceneAdjustsAppliedBeforeStitch(baseSegments, progress, options);
-    await ensureSceneFilmGrainAppliedBeforeStitch(baseSegments, progress, options);
-    if (overlaySegments.length) {
-      await ensureSceneLutsAppliedBeforeStitch(overlaySegments, progress, options);
-      await ensureSceneAdjustsAppliedBeforeStitch(overlaySegments, progress, options);
-      await ensureSceneFilmGrainAppliedBeforeStitch(overlaySegments, progress, options);
+    if (!miniMaxProject) {
+      await ensureSceneLutsAppliedBeforeStitch(baseSegments, progress, options);
+      await ensureSceneAdjustsAppliedBeforeStitch(baseSegments, progress, options);
+      await ensureSceneFilmGrainAppliedBeforeStitch(baseSegments, progress, options);
+      if (overlaySegments.length) {
+        await ensureSceneLutsAppliedBeforeStitch(overlaySegments, progress, options);
+        await ensureSceneAdjustsAppliedBeforeStitch(overlaySegments, progress, options);
+        await ensureSceneFilmGrainAppliedBeforeStitch(overlaySegments, progress, options);
+      }
     }
     const paths = baseSegments.map((segment) => String(selectedSegmentVideoPath(segment) || "").trim());
     const overlayItems = overlaySegments
@@ -36353,7 +37967,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         label: segment.label || `Insert ${index + 1}`,
       }));
     const globalAudioPath = currentProjectAudioPath();
-    const embeddedSceneAudioMode = currentVideoMode() === "id_lora" || !!options.useEmbeddedSceneAudio;
+    const embeddedSceneAudioMode = (!miniMaxProject && currentVideoMode() === "id_lora") || !!options.useEmbeddedSceneAudio;
     const sceneAudioMode = !embeddedSceneAudioMode && !globalAudioPath && usingSceneAudioMode();
     const audioPaths = sceneAudioMode ? baseSegments.map((segment) => String(segment.custom_audio_path || "").trim()) : [];
     const audioItems = sceneAudioMode ? baseSegments.map((segment) => ({
@@ -36375,10 +37989,10 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     if (missing.length) throw new Error(missing.join("\n"));
     const stitchSettings = state.i2vVideoSettings || {};
     const stitchVideoMode = currentVideoMode();
-    const stitchWidth = stitchVideoMode === "ingredients"
+    const stitchWidth = miniMaxProject ? 0 : stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_width || DEFAULT_LTX_INGREDIENTS_WIDTH)
       : Number(stitchSettings.width || 1920);
-    const stitchHeight = stitchVideoMode === "ingredients"
+    const stitchHeight = miniMaxProject ? 0 : stitchVideoMode === "ingredients"
       ? Number(stitchSettings.ingredients_height || DEFAULT_LTX_INGREDIENTS_HEIGHT)
       : Number(stitchSettings.height || 1080);
     const stitchAudioMessage = embeddedSceneAudioMode
@@ -36505,6 +38119,72 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     } finally {
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
+    }
+  }
+
+  async function createMiniMaxSceneVideo() {
+    if (normalizeProjectVideoEngine(state.projectVideoEngine) !== "minimax_h3") {
+      toast("Set this project's Video Engine to MiniMax H3 in Builder Settings first.", true);
+      return;
+    }
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    updateActiveFromInputs();
+    saveMiniMaxH3SettingsFromPanel();
+    saveMiniMaxSceneInputsFromPanel();
+    const info = segmentIndexInfo(segment);
+    const sceneIndex = info.index;
+    if (sceneIndex < 0) return;
+
+    const missing = validateMiniMaxSceneReadyForVideo(segment, sceneIndex);
+    if (!String(projectInput.value || state.projectFolder || "").trim()) missing.push("Project folder is missing.");
+    if (!String(segment.custom_audio_path || currentProjectAudioPath() || audioInput.value || "").trim()) {
+      missing.push("Load global audio or add custom audio for this scene.");
+    }
+    if (missing.length) {
+      toast(missing.join("\n"), true);
+      return;
+    }
+
+    let existingVideoAction = "overwrite";
+    if (String(segment.video_path || "").trim()) {
+      existingVideoAction = await askExistingSceneVideoAction(segment, sceneIndex);
+      if (existingVideoAction === "cancel") return;
+    }
+    let renderTarget = segment;
+    let renderIndex = sceneIndex;
+    if (existingVideoAction === "overlay" && segmentTrack(segment) !== "overlay") {
+      renderTarget = cloneSceneAsOverlay(
+        segment,
+        () => `seg_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        nextOverlaySlotNumber(),
+      );
+      pushHistory();
+      state.overlaySegments.push(renderTarget);
+      sortSegments(state.overlaySegments);
+      setActiveSegment(renderTarget);
+      renderIndex = segmentIndexInfo(renderTarget).index;
+      existingVideoAction = "overwrite";
+    }
+
+    let progress = null;
+    try {
+      state.batchCancelled = false;
+      setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true, text: "Creating MiniMax H3..." });
+      progress = createProgressWindow("Creating MiniMax H3 scene video");
+      const videoPath = await renderMiniMaxSceneVideoWithProgress(renderTarget, renderIndex, progress, {
+        existingVideoAction,
+      });
+      progress.close(900);
+      toast(`MiniMax H3 scene video ready:\n${videoPath}`);
+    } catch (error) {
+      const stopped = /stopped by user/i.test(String(error?.message || error));
+      renderTarget.video_status = stopped ? "none" : "error";
+      progress?.set(stopped ? "MiniMax H3 scene video creation stopped by user." : `Error:\n${String(error?.message || error)}`, 100);
+      toast(stopped ? "MiniMax H3 scene video creation stopped." : String(error?.message || error), !stopped);
+      renderList();
+    } finally {
+      setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
     }
   }
 
@@ -36741,6 +38421,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   async function renderAllScenes(options = {}) {
     updateActiveFromInputs();
     saveI2VVideoSettingsFromPanel();
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
+    if (miniMaxProject) saveMiniMaxH3SettingsFromPanel();
     const forceVideos = Boolean(options.forceVideos);
     const randomizeVideoSeed = Boolean(options.randomizeVideoSeed);
     const sceneScope = normalizeBatchScope(options.sceneScope);
@@ -36782,7 +38464,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       mode_label: modeLabel,
       scene_scope: sceneScope,
       project_folder: String(state.projectFolder || projectInput.value || ""),
-      video_mode: currentVideoMode(),
+      video_engine: miniMaxProject ? "minimax_h3" : "ltx",
+      video_mode: miniMaxProject ? state.miniMaxH3Settings.video_mode : currentVideoMode(),
       force_videos: forceVideos,
       randomize_video_seed: randomizeVideoSeed,
       skip_final_stitch: skipFinalStitch,
@@ -36803,11 +38486,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = true;
       renderAllButton.textContent = "Rendering...";
       setButtonGroupState(createSceneVideoButtons, { disabled: true });
+      setButtonGroupState(miniMaxSceneVideoButtons, { disabled: true });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: true });
       await persistRenderLog(renderLog);
       progress.set(`Autosaving session/SRT before ${sceneScope === "selected" ? "Render Selected" : sceneScope === "from_selected" ? "Render From Selected" : "Render All"}...`, 3);
       await saveSessionForSceneVideo();
-      const preparedAudio = skipFinalStitch
+      const preparedAudio = miniMaxProject || skipFinalStitch
         ? { audioPath: "", srtPath: "" }
         : await prepareSceneAudioMix(progress, "Preparing combined scene-audio track for LTX");
       const scenes = batchTargetItems(sceneScope)
@@ -36818,7 +38502,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       if (!scenes.length) {
         progress.set(skipFinalStitch ? "Selected scenes already have video. Nothing to render." : "All scenes already have video. Stitching existing scene videos...", 80);
       }
-      if (currentVideoMode() === "flf" && scenes.length && flfPreGeneratePromptsEnabled()) {
+      if (!miniMaxProject && currentVideoMode() === "flf" && scenes.length && flfPreGeneratePromptsEnabled()) {
         const promptTargets = scenes.filter(({ segment }) =>
           !String(segment.i2v_prompt || "").trim()
           && firstLastFramePromptReferences(segment).length >= 2
@@ -36851,6 +38535,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           scene_number: sceneSlotNumber(segment),
           timeline_index: sceneIndex,
           label: sceneLabel,
+          video_mode: miniMaxProject ? miniMaxH3ModeForSegment(segment) : currentVideoMode(),
           status: "running",
           phase: "preparation",
           started_at: new Date(sceneStartedMs).toISOString(),
@@ -36867,18 +38552,21 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         upsertRenderLog(renderLog);
         const base = Math.floor((index / scenes.length) * 100);
         const span = Math.max(1, Math.floor(80 / scenes.length));
-        if (randomizeVideoSeed) setVideoSeedRandom(segment);
-        if (currentVideoMode() === "flf" && index === 0 && flfRenderChainStartSource(segment) === "rendered_frame") {
+        if (randomizeVideoSeed) {
+          if (miniMaxProject) setMiniMaxH3SeedRandom(segment);
+          else setVideoSeedRandom(segment);
+        }
+        if (!miniMaxProject && currentVideoMode() === "flf" && index === 0 && flfRenderChainStartSource(segment) === "rendered_frame") {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             await prepareFLFRenderedFrameNextScene(previousSegment, segment, progress, Math.min(98, base + 1), `FLF Render Chain resume into ${sceneLabel}`);
           }
         }
-        if (currentVideoMode() === "flf" && !String(segment.i2v_prompt || "").trim()) {
+        if (!miniMaxProject && currentVideoMode() === "flf" && !String(segment.i2v_prompt || "").trim()) {
           progress.set(`Creating First Last Frame prompt for ${sceneLabel}...`, Math.min(98, base + 1));
           await generateI2VPromptForSegment(segment, progress, Math.min(98, base + 2), `Render All ${index + 1}/${scenes.length}: Gemma FLF`, { unloadAfter: true, forceVision: true });
         }
-        if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && index === 0) {
+        if (!miniMaxProject && i2vAutoChainEnabled() && currentVideoMode() === "i2v" && index === 0) {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.12)));
@@ -36891,7 +38579,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             );
           }
         }
-        if (img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
+        if (!miniMaxProject && img2imgContinuityEnabled() && currentVideoMode() === "i2v") {
           const previousSegment = previousAutoChainSourceSegment(segment);
           if (previousSegment && String(selectedSegmentVideoPath(previousSegment) || "").trim()) {
             const imageMode = state.imageModelMode || "zimage";
@@ -36927,22 +38615,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           ? `\nElapsed: ${renderLogDuration(liveSummary.total_ms)} · Estimated remaining: ${renderLogDuration(liveSummary.eta_ms)}`
           : `\nElapsed: ${renderLogDuration(liveSummary.total_ms)}`;
         progress.set(`Rendering ${sceneLabel} (${index + 1} of ${scenes.length}; ${forceVideos ? "creating a new video version" : "existing videos skipped"})...${timingLine}`, base);
-        const renderedVideoPath = await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+        const sharedRenderOptions = {
           progressBase: base,
           progressSpan: span,
           batchLabel: `Render All ${index + 1}/${scenes.length}: ${segment.label || `Scene ${sceneIndex + 1}`}`,
           autoSaveAfter: false,
           existingVideoAction: forceVideos ? "backup" : "overwrite",
-          audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
-          srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
-        });
+        };
+        const renderedVideoPath = miniMaxProject
+          ? await renderMiniMaxSceneVideoWithProgress(segment, sceneIndex, progress, sharedRenderOptions)
+          : await renderSceneVideoWithProgress(segment, sceneIndex, progress, {
+            ...sharedRenderOptions,
+            audioPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.audioPath,
+            srtPathOverride: skipFinalStitch || segmentTrack(segment) === "overlay" ? "" : preparedAudio.srtPath,
+          });
         const sceneRenderEndedMs = Date.now();
         previousRenderEndedMs = sceneRenderEndedMs;
         currentSceneLog.phase = "post";
         currentSceneLog.render_ended_at = new Date(sceneRenderEndedMs).toISOString();
         currentSceneLog.render_ms = Math.max(0, sceneRenderEndedMs - sceneRenderStartedMs);
         currentSceneLog.video_path = String(renderedVideoPath || selectedSegmentVideoPath(segment) || "");
-        if (currentVideoMode() === "flf" && scenes[index + 1]?.segment && flfChainingEnabled(scenes[index + 1].segment) && flfRenderChainStartSource(scenes[index + 1].segment) === "rendered_frame") {
+        if (!miniMaxProject && currentVideoMode() === "flf" && scenes[index + 1]?.segment && flfChainingEnabled(scenes[index + 1].segment) && flfRenderChainStartSource(scenes[index + 1].segment) === "rendered_frame") {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
           const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
@@ -36954,7 +38647,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
             `FLF rendered-frame chain ${index + 1}->${index + 2}`,
           );
         }
-        if (i2vAutoChainEnabled() && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
+        if (!miniMaxProject && i2vAutoChainEnabled() && currentVideoMode() === "i2v" && scenes[index + 1]?.segment) {
           assertBatchNotStopped();
           const nextSegment = scenes[index + 1].segment;
           const chainBase = Math.min(98, base + Math.max(1, Math.floor(span * 0.72)));
@@ -37046,6 +38739,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       renderAllButton.disabled = false;
       renderAllButton.textContent = "Render All";
       setButtonGroupState(createSceneVideoButtons, { disabled: false, text: "Create Scene Video" });
+      setButtonGroupState(miniMaxSceneVideoButtons, { disabled: false, text: "Create MiniMax H3 Scene Video" });
       setButtonGroupState(gemmaThenCreateVideoButtons, { disabled: false });
       state.batchCancelled = false;
       syncInspector();
@@ -39530,6 +41224,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     state.idLoraReferenceBuilder = defaultIdLoraReferenceBuilder();
     state.zEnhanceSettings = defaultZEnhanceSettings();
     state.videoType = "singing";
+    state.projectVideoEngine = "ltx";
+    state.miniMaxH3Settings = cloneMiniMaxH3Settings();
     state.videoModelMode = "i2v";
     state.i2vVideoSettings = defaultI2VVideoSettings();
     state.promptToolsHintPrefs = {};
@@ -39562,6 +41258,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     syncKrea2TwoPassPanel();
     syncZEnhanceSettingsPanel();
     syncVideoTypeControl();
+    syncProjectVideoEngineUI();
     syncI2VVideoSettingsPanel();
     syncVideoModePanel();
     syncInspector();
@@ -42475,7 +44172,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const videoKeys = ["video_path", "video_folder", "video_thumbnail_path", "video_history", "video_thumbnail_history", "video_backup_paths", "video_backup_thumbnail_paths", "video_history_index", "video_output", "video_original_path", "video_original_thumbnail_path"];
     const noteKeys = ["timeline_note", "notes", "i2v_notes", "flux_notes", "nb_notes", "enhance_notes"];
     const promptKeys = ["t2i_prompt", "flux_prompt", "nb_prompt", "enhance_prompt", "i2v_prompt", "flow_gpt_prompt"];
-    const mappingKeys = ["subject_ids", "location_id", "reference_subject_ids", "reference_location_id", "flux_image_ingredients", "nb_image_ingredients"];
+    const mappingKeys = ["subject_ids", "location_id", "reference_subject_ids", "reference_location_id", "flux_image_ingredients", "nb_image_ingredients", "minimax_h3_reference_keys"];
     const cleanSegment = (raw) => {
       const segment = typeof structuredClone === "function" ? structuredClone(raw) : JSON.parse(JSON.stringify(raw));
       if (!keep.lyrics) segment.lyric_text = "";
@@ -42741,14 +44438,17 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   }
 
   async function confirmAndRunRenderAll() {
+    const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
     const videoMode = currentVideoMode();
-    const videoLabel = videoModeDisplayLabel(videoMode, true);
+    const videoLabel = miniMaxProject ? "MiniMax H3" : videoModeDisplayLabel(videoMode, true);
     const scopeChoices = batchScopeChoices();
     const action = await chooseBatchModeAction({
       title: "Run Render All?",
       intro: [
         "Render All only works on the video/render stage.",
-        videoMode === "t2v"
+        miniMaxProject
+          ? "It uses each scene's existing MiniMax prompt and effective project-global or locked MiniMax mode, models, and video settings."
+          : videoMode === "t2v"
           ? "It uses existing T2V prompts and does not require scene images."
           : videoMode === "ingredients"
             ? "It uses the current selected ingredients reference images and existing Ingredients prompts."
@@ -43529,6 +45229,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     const runWizardStoryboardGemmaAll = async () => {
       updateActiveFromInputs();
       saveI2VVideoSettingsFromPanel();
+      const miniMaxProject = normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3";
       const videoMode = currentVideoMode();
       const segments = allEditableSegments()
         .slice()
@@ -43554,7 +45255,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       };
       const runnerName = promptRunnerActionName();
       const runnerGenericName = runnerName === "Gemma" ? "Gemma" : "LLM";
-      const progress = createProgressWindow(`Storyboard ${runnerName} All (${videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
+      const progress = createProgressWindow(`Storyboard ${runnerName} All (${miniMaxProject ? "MiniMax H3 project/locked modes" : videoModeDisplayLabel(videoMode, true)})`, { zIndex: 100012 });
       let created = 0;
       try {
         progress.set(`Starting Storyboard ${runnerName} All...\nScenes: ${scenes.length}\nUsing the same prompt writer as Storyboard Builder.`, 5);
@@ -43564,20 +45265,35 @@ Chrome vault corridor = Sealed industrial passage...</pre>
           const base = 8 + Math.round((index / Math.max(1, scenes.length)) * 84);
           const label = `Storyboard ${runnerName} All ${index + 1}/${scenes.length}: ${scene.label || `Scene ${scene.scene_number || index + 1}`}`;
           progress.set(`${label}\nCreating storyboard video prompt...`, base);
-          const data = await postJson("/vrgdg/storyboard/gemma_video_prompt", {
-            ...(storyboardState.gemmaSettings || {}),
-            unload_after: index === scenes.length - 1,
-            storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
-            max_new_tokens: 1400,
-            temperature: 0.35,
-            top_p: 0.90,
-          }, 240000);
-          const finalizedPrompt = segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
-          const prompt = applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
+          const data = miniMaxProject
+            ? await createStoryboardVideoPromptViaBuilder(scene, {
+              unloadAfter: index === scenes.length - 1,
+              storyboardPayload: storyboardGptPayload(storyboardState, [scene]),
+              progress,
+              progressPercent: base,
+              progressLabel: label,
+            })
+            : await postJson("/vrgdg/storyboard/gemma_video_prompt", {
+              ...(storyboardState.gemmaSettings || {}),
+              unload_after: index === scenes.length - 1,
+              storyboard_payload: storyboardGptPayload(storyboardState, [scene]),
+              max_new_tokens: 1400,
+              temperature: 0.35,
+              top_p: 0.90,
+            }, 240000);
+          const finalizedPrompt = miniMaxProject
+            ? String(data.prompt || "").trim()
+            : segment ? finalizeVideoPromptDraftOnly(segment, data.prompt) : String(data.prompt || "").trim();
+          const prompt = miniMaxProject ? finalizedPrompt : applyWizardStoryboardTriggerPhrases(finalizedPrompt, scene);
           if (!prompt) throw new Error(`${scene.label || `Scene ${index + 1}`}: ${runnerGenericName} returned an empty Storyboard video prompt.`);
           if (segment) {
-            setSegmentPromptForEdit(segment, "i2v", prompt, { origin: "gemma" });
-            segment.video_prompt_type = videoMode;
+            if (miniMaxProject) {
+              segment.minimax_h3_prompt = prompt;
+              segment.minimax_h3_prompt_origin = "gemma";
+            } else {
+              setSegmentPromptForEdit(segment, "i2v", prompt, { origin: "gemma" });
+              segment.video_prompt_type = videoMode;
+            }
           }
           scene.video_prompt = prompt;
           scene.video_prompt_origin = "gemma";
@@ -43608,6 +45324,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       ]));
       return {
         projectFolder: String(projectInput.value || state.projectFolder || "").trim(),
+        projectVideoEngine: normalizeProjectVideoEngine(state.projectVideoEngine),
         audioPath: String(audioInput.value || state.audioPath || "").trim(),
         wizardFolder: String(projectInput.value || state.projectFolder || "").trim() ? `${String(projectInput.value || state.projectFolder || "").trim()}\\wizard` : "",
         sceneCount: allEditableSegments().length,
@@ -43864,7 +45581,7 @@ Chrome vault corridor = Sealed industrial passage...</pre>
         await flowGptImageAllScenes({ imageRunMode: "resume_missing" });
       },
       runGemmaVideoAll: async () => {
-        if (["i2v", "rtv"].includes(currentVideoMode())) await runWizardStoryboardGemmaAll();
+        if (normalizeProjectVideoEngine(state.projectVideoEngine) === "minimax_h3" || ["i2v", "rtv"].includes(currentVideoMode())) await runWizardStoryboardGemmaAll();
         else await confirmAndRunGemmaVideoAll();
       },
       buildFullVideo: async () => {
@@ -44355,6 +46072,27 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   useSceneI2VVideoSettings.input.addEventListener("change", () => {
     setSceneI2VVideoSettingsEnabled(Boolean(useSceneI2VVideoSettings.input.checked));
   });
+  async function setSceneMiniMaxH3SettingsEnabled(enabled) {
+    const segment = activeSegment();
+    if (!segment) return;
+    pushHistory();
+    saveMiniMaxH3SettingsFromPanel();
+    const useSceneSettings = Boolean(enabled);
+    segment.use_scene_minimax_h3_settings = useSceneSettings;
+    if (useSceneSettings) {
+      segment.minimax_h3_settings = cloneMiniMaxH3Settings(state.miniMaxH3Settings);
+      segment.minimax_h3_mode = segment.minimax_h3_settings.video_mode;
+    }
+    syncMiniMaxH3Panel();
+    renderList();
+    await autoSaveSessionQuiet(useSceneSettings ? "MiniMax H3 scene settings locked" : "MiniMax H3 scene settings returned to global");
+    toast(useSceneSettings
+      ? "This scene now has its own locked MiniMax mode, models, and video settings."
+      : "This scene is following the project-global MiniMax mode, models, and video settings again.");
+  }
+  useSceneMiniMaxH3Settings.input.addEventListener("change", () => {
+    setSceneMiniMaxH3SettingsEnabled(Boolean(useSceneMiniMaxH3Settings.input.checked)).catch((error) => toast(String(error?.message || error), true));
+  });
   rtvReferenceBehaviorSelect.addEventListener("change", () => {
     pushHistory();
     applyRTVReferenceBehaviorToAll(rtvReferenceBehaviorSelect.value);
@@ -44735,6 +46473,12 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   editRTVInstructionsButton.onclick = () => openBuilderInstructionEditor("rtv");
   editIngredientsInstructionsButton.onclick = () => openBuilderInstructionEditor("ingredients");
   editT2VInstructionsButton.onclick = () => openBuilderInstructionEditor("t2v");
+  miniMaxCreatePromptButton.onclick = createMiniMaxH3PromptWithLLM;
+  miniMaxEditInstructionsButton.onclick = () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    openBuilderInstructionEditor(miniMaxH3InstructionKey(miniMaxH3ModeForSegment(segment)));
+  };
   sendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", t2iPrompt.value);
   ernieSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", ernieT2IPrompt.value);
   krea2TwoPassSendT2IPromptToEnhanceButton.onclick = () => sendPromptToEnhance("T2I", krea2TwoPassT2IPrompt.value);
@@ -44747,6 +46491,8 @@ Chrome vault corridor = Sealed industrial passage...</pre>
   flowGptCreatePromptButton.onclick = createFlowGptPromptWithGemma;
   editFlowGptT2IInstructionsButton.onclick = () => openBuilderInstructionEditor("flow_gpt_t2i");
   for (const button of createSceneVideoButtons) button.onclick = createSceneVideo;
+  for (const button of miniMaxSceneVideoButtons) button.onclick = createMiniMaxSceneVideo;
+  for (const button of miniMaxReferenceButtons) button.onclick = openMiniMaxReferenceSelector;
   for (const button of gemmaThenCreateVideoButtons) button.onclick = runGemmaThenCreateSceneVideo;
   loadCustomImageButton.onclick = loadCustomImage;
   importImageFolderButton.onclick = () => {
@@ -45585,6 +47331,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
       const current = BAD_I2V_UNET_ALIASES.has(picker.input.value) ? "" : picker.input.value;
       picker.input.value = chooseModelValue(values, current, preferredList);
     };
+    const setMiniMaxOptions = (picker, options, fallback) => {
+      const values = Array.from(new Set((options || []).filter((item) => String(item || "").trim())));
+      picker.options = values;
+      const current = String(picker.input.value || fallback || "").trim();
+      const exactOrSameBase = values.find((item) => item === current || basenameOnly(item) === basenameOnly(current));
+      picker.input.value = exactOrSameBase || current || fallback;
+    };
     setOptions(i2vUnetPicker, data.video_gguf_unets || data.unets, DEFAULT_I2V_UNET);
     setOptions(i2vDiffusionModelPicker, data.video_diffusion_models || data.unets, DEFAULT_I2V_DIFFUSION_MODEL);
     setOptions(i2vVaePicker, data.vae, "LTX23_video_vae_bf16.safetensors");
@@ -45592,6 +47345,13 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     setOptions(i2vClip2Picker, data.clip, "ltx-2.3_text_projection_bf16.safetensors");
     setOptions(i2vUpscalePicker, data.upscale_models, "ltx-2.3-spatial-upscaler-x2-1.1.safetensors");
     setOptions(i2vAudioVaePicker, data.vae, "LTX23_audio_vae_bf16.safetensors");
+    const miniMaxDiffusionChoices = (data.video_diffusion_models || data.unets || [])
+      .filter((item) => !/\.gguf$/i.test(String(item || "").trim()));
+    setMiniMaxOptions(miniMaxDiffusionModelPicker, miniMaxDiffusionChoices, DEFAULT_MINIMAX_H3_SETTINGS.diffusion_model_name);
+    setMiniMaxOptions(miniMaxClipPicker, data.clip, DEFAULT_MINIMAX_H3_SETTINGS.clip_name);
+    setMiniMaxOptions(miniMaxVideoVaePicker, data.vae, DEFAULT_MINIMAX_H3_SETTINGS.video_vae_name);
+    setMiniMaxOptions(miniMaxAudioVaePicker, data.vae, DEFAULT_MINIMAX_H3_SETTINGS.audio_vae_name);
+    saveMiniMaxH3SettingsFromPanel();
     setOptions(fluxUnetPicker, data.unets, ["flux\\flux-2-klein-4b-fp8.safetensors", "flux-2-klein-4b-fp8.safetensors"]);
     setOptions(fluxClipPicker, data.clip, ["qwen_3_4b.safetensors", "flux\\qwen_3_4b.safetensors"]);
     setOptions(fluxVaePicker, data.vae, ["flux\\flux2-vae.safetensors", "flux2-vae.safetensors"]);
@@ -45711,6 +47471,81 @@ Chrome vault corridor = Sealed industrial passage...</pre>
     wireSearchablePicker(picker, saveI2VVideoSettingsFromPanel);
     picker.input.addEventListener("change", saveI2VVideoSettingsFromPanel);
   }
+  const persistMiniMaxSettings = () => {
+    saveMiniMaxH3SettingsFromPanel();
+    autoSaveSessionQuiet("MiniMax H3 project settings").catch(() => null);
+  };
+  for (const picker of [miniMaxDiffusionModelPicker, miniMaxClipPicker, miniMaxVideoVaePicker, miniMaxAudioVaePicker]) {
+    wireSearchablePicker(picker, saveMiniMaxH3SettingsFromPanel);
+    picker.input.addEventListener("change", persistMiniMaxSettings);
+  }
+  for (const control of [
+    miniMaxAspectRatio,
+    miniMaxMegapixels,
+    miniMaxSeed,
+    miniMaxWarmupFrames,
+    miniMaxCooldownFrames,
+    miniMaxSamplerName,
+    miniMaxScheduler,
+    miniMaxSteps,
+    miniMaxDenoise,
+    miniMaxEasyCacheBypass.input,
+    miniMaxEasyCacheReuseThreshold,
+    miniMaxEasyCacheStartPercent,
+    miniMaxEasyCacheEndPercent,
+    miniMaxEasyCacheVerbose.input,
+    miniMaxSageAttention,
+    miniMaxFp16Accumulation.input,
+  ]) {
+    control.addEventListener("input", saveMiniMaxH3SettingsFromPanel);
+    control.addEventListener("change", persistMiniMaxSettings);
+  }
+  for (const button of miniMaxModeButtons) {
+    button.onclick = async () => {
+      const segment = requireActiveSegment();
+      if (!segment) return;
+      pushHistory();
+      setMiniMaxH3ModeForSegment(segment, button.dataset.minimaxH3Mode);
+      syncMiniMaxH3Panel();
+      await autoSaveSessionQuiet(segment.use_scene_minimax_h3_settings ? "MiniMax H3 locked scene mode" : "MiniMax H3 project mode");
+    };
+  }
+  miniMaxPrompt.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
+  miniMaxPrompt.addEventListener("change", () => autoSaveSessionQuiet("MiniMax H3 scene prompt").catch(() => null));
+  miniMaxUseSceneImageAsStartFrame.input.addEventListener("change", async () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    pushHistory();
+    saveMiniMaxSceneInputsFromPanel();
+    syncMiniMaxReferenceButtons();
+    await autoSaveSessionQuiet("MiniMax H3 start frame reference");
+    toast(miniMaxUseSceneImageAsStartFrame.input.checked
+      ? "The scene image will be sent as Image 1 and the exact MiniMax start frame."
+      : "The scene image will no longer be forced as the MiniMax start frame.");
+  });
+  for (const row of miniMaxVideoReferenceRows) {
+    for (const control of [row.path, row.start, row.duration, row.purpose, row.useAudio.input]) {
+      control.addEventListener("input", saveMiniMaxSceneInputsFromPanel);
+      control.addEventListener("change", () => {
+        saveMiniMaxSceneInputsFromPanel();
+        autoSaveSessionQuiet("MiniMax H3 video references").catch(() => null);
+      });
+    }
+  }
+  miniMaxUseCurrentSceneVideoButton.onclick = async () => {
+    const segment = requireActiveSegment();
+    if (!segment) return;
+    const path = String(selectedSegmentVideoPath(segment) || "").trim();
+    if (!path) {
+      toast("This scene does not have a selected video to use as a MiniMax reference.", true);
+      return;
+    }
+    pushHistory();
+    miniMaxVideoReferenceRows[0].path.value = path;
+    saveMiniMaxSceneInputsFromPanel();
+    syncMiniMaxH3Panel();
+    await autoSaveSessionQuiet("MiniMax H3 current scene video reference");
+  };
   makePanelResize(leftResizeHandle, "left");
   makePanelResize(rightResizeHandle, "right");
   makePanelResize(timelineResizeHandle, "timeline");

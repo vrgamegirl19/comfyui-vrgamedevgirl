@@ -1,0 +1,364 @@
+{
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.9,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector (Size)"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Video VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load Audio VAE"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "174",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "172",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "174",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": 177702610855563
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "BUILDER INPUT - Seed"
+    }
+  },
+  "131": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "H3 Duration To Valid Frame Count"
+    }
+  },
+  "132": {
+    "inputs": {
+      "value": 5
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "BUILDER INPUT - Duration"
+    }
+  },
+  "136": {
+    "inputs": {
+      "prompt": [
+        "138",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "131",
+        1
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "171",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "180",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "180",
+        1
+      ],
+      "ref_images.ref_image_2": [
+        "180",
+        2
+      ],
+      "ref_images.ref_image_3": [
+        "180",
+        3
+      ],
+      "ref_images.ref_image_4": [
+        "180",
+        4
+      ],
+      "ref_images.ref_image_5": [
+        "180",
+        5
+      ],
+      "ref_images.ref_image_6": [
+        "180",
+        6
+      ],
+      "ref_images.ref_image_7": [
+        "180",
+        7
+      ],
+      "ref_images.ref_image_8": [
+        "180",
+        8
+      ],
+      "ref_videos.ref_video_0": [
+        "180",
+        9
+      ],
+      "ref_videos.ref_video_1": [
+        "180",
+        10
+      ],
+      "ref_videos.ref_video_2": [
+        "180",
+        11
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "180",
+        12
+      ],
+      "ref_video_audios.ref_video_audio_1": [
+        "180",
+        13
+      ],
+      "ref_video_audios.ref_video_audio_2": [
+        "180",
+        14
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "Use the ordered MiniMax H3 reference inputs and follow <Audio 1> exactly."
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "BUILDER INPUT - Prompt"
+    }
+  },
+  "141": {
+    "inputs": {
+      "model_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default",
+      "compute_dtype": "default",
+      "patch_cublaslinear": false,
+      "sage_attention": "auto",
+      "enable_fp16_accumulation": true
+    },
+    "class_type": "DiffusionModelLoaderKJ",
+    "_meta": {
+      "title": "Diffusion Model Loader KJ"
+    }
+  },
+  "142": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "MiniMaxH3_Builder",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "122",
+        0
+      ],
+      "audio": [
+        "172",
+        1
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "BUILDER OUTPUT - Video Combine"
+    }
+  },
+  "171": {
+    "inputs": {
+      "audio_file": "Z:\\TOSHARE\\ComfyUI_windows_portable\\ComfyUI\\input\\Circle of Flames 88888.mp3",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudio",
+    "_meta": {
+      "title": "BUILDER INPUT - Custom Source Audio Path"
+    }
+  },
+  "172": {
+    "inputs": {
+      "av_latent": [
+        "136",
+        1
+      ],
+      "source_audio": [
+        "171",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "VRGDG_MiniMaxH3AudioDrive",
+    "_meta": {
+      "title": "LOCK SOURCE AUDIO - GENERATE VIDEO ONLY"
+    }
+  },
+  "174": {
+    "inputs": {
+      "reuse_threshold": 0.3,
+      "start_percent": 0.2,
+      "end_percent": 0.9,
+      "verbose": false,
+      "model": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "EasyCache",
+    "_meta": {
+      "title": "EasyCache"
+    }
+  },
+  "180": {
+    "inputs": {
+      "image_paths": "[]",
+      "video_references": "[]"
+    },
+    "class_type": "VRGDG_MiniMaxH3ReferenceMediaFromPaths",
+    "_meta": {
+      "title": "BUILDER INPUTS - Ordered H3 Reference Images And Videos"
+    }
+  }
+}

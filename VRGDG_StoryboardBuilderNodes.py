@@ -514,7 +514,19 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     video_prompt_type = _clean_scene_text(scene.get("video_prompt_type") or scene.get("video_type") or scene.get("mode") or "", 40)
     if video_prompt_type not in {"i2v", "id_lora", "t2v", "rtv", "ingredients"}:
         video_prompt_type = "i2v"
-    if video_prompt:
+    project_video_engine = "minimax_h3" if str(scene.get("project_video_engine") or scene.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx"
+    minimax_h3_mode = str(scene.get("minimax_h3_mode") or scene.get("minimaxH3Mode") or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if minimax_h3_mode not in {"text_to_video", "image_to_video", "reference_to_video", "video_to_video"}:
+        minimax_h3_mode = "text_to_video"
+    try:
+        timeline_start = float(scene.get("timeline_start", scene.get("start", 0)) or 0)
+        timeline_end = float(scene.get("timeline_end", scene.get("end", 0)) or 0)
+        exact_duration = max(0.0, float(scene.get("exact_duration", scene.get("duration", 0)) or 0))
+    except (TypeError, ValueError):
+        timeline_start = 0.0
+        timeline_end = 0.0
+        exact_duration = 0.0
+    if video_prompt and project_video_engine != "minimax_h3":
         video_prompt = _enforce_storyboard_video_facial_requirements(video_prompt, {
             **scene,
             "subjects": subjects,
@@ -549,6 +561,12 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "trigger_phrase": _clean_scene_text(scene.get("trigger_phrase") or scene.get("trigger") or scene.get("Trigger") or "", 1200),
         "trigger_position": "end" if trigger_position == "end" else "start",
         "video_prompt_type": video_prompt_type,
+        "project_video_engine": project_video_engine,
+        "minimax_h3_mode": minimax_h3_mode,
+        "timeline_start": timeline_start,
+        "timeline_end": timeline_end,
+        "exact_duration": exact_duration,
+        "video_prompt_origin": "gemma" if str(scene.get("video_prompt_origin") or scene.get("i2v_prompt_origin") or "").strip().lower() == "gemma" else "manual",
         "status": status,
         "image_prompt": image_prompt,
         "video_prompt": video_prompt,
@@ -571,6 +589,7 @@ def _default_storyboard(payload):
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": os.path.abspath(str(payload.get("project_folder", "") or "")),
+        "project_video_engine": "minimax_h3" if str(payload.get("project_video_engine") or payload.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
         "mode": "image_to_video_prep" if any(scene.get("image_path") or scene.get("image_data") for scene in normalized) else "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(payload.get("performance_mode") or payload.get("performanceMode") or payload.get("video_type") or payload.get("videoType")),
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
@@ -620,6 +639,7 @@ def _save_storyboard(payload):
         "created_at": storyboard.get("created_at") or datetime.now().isoformat(timespec="seconds"),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
         "project_folder": project_folder,
+        "project_video_engine": "minimax_h3" if str(storyboard.get("project_video_engine") or storyboard.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
         "mode": storyboard.get("mode") or "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(storyboard.get("performance_mode") or storyboard.get("performanceMode") or storyboard.get("video_type") or storyboard.get("videoType")),
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
@@ -684,12 +704,14 @@ def _export_storyboard_prompts(payload):
         "version": 1,
         "exported_at": datetime.now().isoformat(timespec="seconds"),
         "type": "storyboard_video_prompts",
+        "project_video_engine": saved.get("project_video_engine") or "ltx",
         "performance_mode": saved.get("performance_mode") or "singing",
         "scene_count": len(scenes),
         "scenes": [
             {
                 **_prompt_json_entry(scene, index, "video_prompt"),
                 "video_prompt_type": _clean_scene_text(scene.get("video_prompt_type") or "", 80),
+                "minimax_h3_mode": _clean_scene_text(scene.get("minimax_h3_mode") or "", 80),
                 "performance_mode": _normalize_performance_mode(scene.get("performance_mode") or saved.get("performance_mode")),
             }
             for index, scene in enumerate(scenes, start=1)

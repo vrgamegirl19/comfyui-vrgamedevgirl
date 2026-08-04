@@ -3,6 +3,44 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-08-03-minimax-h3-builder-testing",
+      "version": "2026.08.03-minimax-h3-test",
+      "date": "2026-08-03",
+      "title": "MiniMax H3 Video Builder testing support",
+      "commit": "5b328027c5f8e7e946b8449b236ad2c9362eafd5",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added MiniMax H3 as a project video engine while keeping existing and newly loaded LTX projects on the unchanged LTX path by default.",
+            "Added project-global Text to Video, Image to Video, Reference to Video, and Video to Video modes with dedicated MiniMax model, resolution, timing, sampler, EasyCache, Sage Attention, and FP16 settings.",
+            "Added a per-scene lock in MiniMax Video Settings that copies and preserves the current mode, models, render settings, and advanced settings for that scene while unlocked scenes continue following the project-global values.",
+            "Added ordered Reference Builder images, optional exact scene-image start frames, and reference-video inputs for MiniMax character, location, continuation, motion, camera, transformation, and visual-editing workflows.",
+            "Added MiniMax-specific LLM instructions and Storyboard prompting with exact scene timing, ordered Image and Video assignments, Audio 1 usage, lyric text, and lip-sync guidance.",
+            "Added exact MiniMax frame planning and custom-audio preparation so rendered scenes cover the selected timeline range and are trimmed back to its exact duration.",
+            "Added MiniMax Render All support for rendering missing clips or creating new versions from Storyboard prompts, using each scene's effective global or locked mode and settings before stitching the completed project.",
+            "Added a Builder Settings checkbox for automatic RAM/VRAM cleanup. When disabled, embedded cleanup nodes and automatic post-task cache clearing are bypassed while the manual Clear Memory button remains available."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Storyboard All, Reference Builder, LLM prompting, validation, and rendering now consistently use each scene's effective global or locked MiniMax mode instead of letting untouched scenes silently fall back to Text to Video.",
+            "Render All now routes MiniMax projects through the MiniMax hidden workflow instead of the LTX renderer and ignores stale LTX-only mode, post-processing, canvas, and embedded-audio behavior."
+          ]
+        },
+        {
+          "title": "Testing Notes",
+          "items": [
+            "This first MiniMax H3 Builder workflow requires project audio or custom scene audio and currently uses non-GGUF diffusion models.",
+            "Built-in MiniMax audio, GGUF loading, and MiniMax post-processing workflows are not part of this initial testing build."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-02-reference-lyrics-story-arc",
       "version": "2026.08.02-builder-fixes",
       "date": "2026-08-02",
