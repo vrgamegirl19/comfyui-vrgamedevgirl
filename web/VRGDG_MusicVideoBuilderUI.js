@@ -21304,9 +21304,23 @@ function openBuilder(node) {
     for (const rawLine of String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
       const line = rawLine.trim();
       if (!line) continue;
-      const header = line.match(/^\[([^\]]{2,80})\]$/);
-      if (header) {
-        currentSection = header[1].trim();
+      const tags = Array.from(line.matchAll(/\[([^\]]{1,80})\]/g));
+      const tagPrefix = tags.length && tags[0].index === 0
+        ? line.match(/^(?:\s*\[[^\]]{1,80}\])+\s*/)?.[0] || ""
+        : "";
+      const structural = tags
+        .map((match) => String(match[1] || "").replace(/\s+/g, " ").trim())
+        .find((label) => /^(?:intro|verse|pre[\s-]?chorus|chorus|post[\s-]?chorus|bridge|outro|refrain|hook|breakdown|drop|interlude|instrumental(?:\s+break)?|solo|break|spoken(?:\s+word)?|rap)(?:\s+(?:\d+|[ivxlcdm]+))?$/i.test(label));
+      const terminal = tags.some((match) => /^(?:end|end of song)$/i.test(String(match[1] || "").trim()));
+      if (structural && tagPrefix) {
+        currentSection = structural;
+        const lyricRemainder = line.slice(tagPrefix.length).trim();
+        const key = normalizeLyricSectionLookupText(lyricRemainder);
+        if (key && !map.has(key)) map.set(key, currentSection);
+        continue;
+      }
+      if (terminal && tagPrefix && !line.slice(tagPrefix.length).trim()) {
+        currentSection = "";
         continue;
       }
       const key = normalizeLyricSectionLookupText(line);

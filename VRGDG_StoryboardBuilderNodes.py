@@ -1645,20 +1645,65 @@ def _build_story_layer_brief(payload):
     }
 
 
-def _parse_story_arc_lyric_sections(lyrics):
-    """Return ordered (display label, body) pairs from exact bracketed lyric headers."""
+def _parse_story_arc_lyric_sections(lyrics, collapse_adjacent=True):
+    """Return ordered (display label, body) pairs from bracketed lyric headers."""
+    structural_pattern = re.compile(
+        r"^(?:intro|verse|pre[\s-]?chorus|chorus|post[\s-]?chorus|bridge|outro|"
+        r"refrain|hook|breakdown|drop|interlude|instrumental(?:\s+break)?|solo|break|"
+        r"spoken(?:\s+word)?|rap)(?:\s+(?:\d+|[ivxlcdm]+))?$",
+        re.IGNORECASE,
+    )
+    annotation_pattern = re.compile(
+        r"^(?:whispered|spoken|sung|dark atmosphere|building energy|high energy|"
+        r"emotional climax|explosive|quiet arrangement|falling tension|rising tension|"
+        r"silence|soft|loud|gentle|intense|energetic|calm|dramatic|atmospheric)$",
+        re.IGNORECASE,
+    )
+
+    def parse_header_line(raw_line):
+        """Return (section label, lyric remainder, terminal marker)."""
+        stripped = str(raw_line or "").strip()
+        if not stripped.startswith("["):
+            return "", raw_line, False
+        labels = []
+        position = 0
+        while position < len(stripped):
+            match = re.match(r"\s*\[([^\]\n]{1,80})\]", stripped[position:])
+            if not match:
+                break
+            labels.append(re.sub(r"\s+", " ", match.group(1)).strip())
+            position += match.end()
+        if not labels:
+            return "", raw_line, False
+        remainder = stripped[position:].strip()
+        terminal = any(label.casefold() in {"end", "end of song"} for label in labels)
+        structural = next((label for label in labels if structural_pattern.fullmatch(label)), "")
+        if not structural:
+            first = labels[0]
+            if not annotation_pattern.fullmatch(first) and first.casefold() not in {"end", "end of song"}:
+                # Preserve custom section names such as [Part A], while avoiding
+                # common performance/mood annotations used beside real headers.
+                structural = first
+        return structural, remainder, terminal and not structural
+
     sections = []
     current_label = ""
     current_lines = []
     for raw_line in str(lyrics or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-        header = re.match(r"^\s*\[([^\]\n]{1,80})\]\s*$", raw_line)
-        if header:
+        header_label, remainder, terminal = parse_header_line(raw_line)
+        if header_label:
             if current_label:
                 sections.append((current_label, "\n".join(current_lines).strip()))
-            current_label = re.sub(r"\s+", " ", header.group(1)).strip()
+            current_label = header_label
+            current_lines = [remainder] if remainder else []
+        elif terminal:
+            if current_label:
+                sections.append((current_label, "\n".join(current_lines).strip()))
+            current_label = ""
             current_lines = []
         elif current_label:
-            current_lines.append(raw_line)
+            # Lines containing annotation-only tags may still carry lyric text.
+            current_lines.append(remainder if remainder != raw_line else raw_line)
     if current_label:
         sections.append((current_label, "\n".join(current_lines).strip()))
     if not sections:
@@ -1669,7 +1714,7 @@ def _parse_story_arc_lyric_sections(lyrics):
     # later recurrences (for example, a chorus after Verse 2) as separate blocks.
     collapsed = []
     for label, body in sections:
-        if collapsed and collapsed[-1][0].casefold() == label.casefold():
+        if collapse_adjacent and collapsed and collapsed[-1][0].casefold() == label.casefold():
             previous_label, previous_body = collapsed[-1]
             merged_body = "\n".join(part for part in (previous_body, body) if part).strip()
             collapsed[-1] = (previous_label, merged_body)
@@ -1721,6 +1766,9 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
     blocks = []
     for index, match in enumerate(matches):
         label = re.sub(r"\s+", " ", match.group(1)).strip()
+        bracketed = re.fullmatch(r"\[([^\]\n]{1,80})\]", label)
+        if bracketed:
+            label = re.sub(r"\s+", " ", bracketed.group(1)).strip()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
         blocks.append((label, raw[match.end():end].strip()))
     if required_labels:
@@ -1762,6 +1810,12 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
         blocks = folded_blocks
         returned = [label.casefold() for label, _body in blocks]
         required = [label.casefold() for label in required_labels]
+        # Some local Gemma models add "1" to the first occurrence of a
+        # heading even though only repeated occurrences are numbered.
+        returned = [
+            required[index] if index < len(required) and actual == f"{required[index]} 1" else actual
+            for index, actual in enumerate(returned)
+        ]
         if len(blocks) > len(required_labels) and returned[:len(required)] == required:
             # Gemma occasionally preserves every required lyric heading, then
             # appends invented sections such as an extra Instrumental or Outro.
@@ -1793,6 +1847,10 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
                 + " ".join(details)
                 + " Please rerun Story Arc."
             )
+        blocks = [
+            (required_labels[index], body)
+            for index, (_label, body) in enumerate(blocks)
+        ]
     return "\n\n".join(
         f"{label}:\n{_cap_story_arc_words(body, maximum_words)}"
         for label, body in blocks
@@ -1827,9 +1885,14 @@ def _build_story_layer_arc(payload):
                     prompt_creator_lyrics = _clean_scene_text(handle.read(), 40000)
             except OSError:
                 prompt_creator_lyrics = ""
-    lyrics = prompt_creator_lyrics or line_mapping_lyrics or timeline_lyrics
-    lyrics_source = "Prompt Creator reference lyrics" if prompt_creator_lyrics else ("Line Mapping reference lyrics" if line_mapping_lyrics else "timeline scene lyrics")
-    lyric_sections = _parse_story_arc_lyric_sections(lyrics)
+    # The lyrics currently open in Line Mapping are the live user input and must
+    # win over a potentially stale project_context/full_lyrics.txt file.
+    lyrics = line_mapping_lyrics or prompt_creator_lyrics or timeline_lyrics
+    lyrics_source = "Line Mapping reference lyrics" if line_mapping_lyrics else ("Prompt Creator reference lyrics" if prompt_creator_lyrics else "timeline scene lyrics")
+    lyric_sections = _parse_story_arc_lyric_sections(
+        lyrics,
+        collapse_adjacent=not bool(line_mapping_lyrics or prompt_creator_lyrics),
+    )
     required_section_labels = [item[0] for item in lyric_sections]
     section_word_limit = _story_arc_section_word_limit(len(required_section_labels))
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or storyboard.get("story_layer") or {})
@@ -1968,6 +2031,7 @@ def _build_story_layer_arc(payload):
         "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
         "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
         "* Never force a standard pop-song template over explicit lyric section headers.\n"
+        "* When a lyric header line contains several bracketed tags, only the required section heading listed above is structural. Tags such as [Whispered], [High Energy], [Dark Atmosphere], and [Explosive] are performance or mood notes, not output headings. [End] is only an end marker.\n"
         "* Values such as [instrumental], [music only], or [no vocals] inside the Scene lyric map are timing/content markers, not additional song-section headings. Cover their visuals inside the nearest listed required section and never output those markers as separate headings.\n"
         "* If only lyrics are provided, build the arc from the lyrics.\n"
         "* If no lyrics are provided, build the arc from the theme or story idea.\n"
