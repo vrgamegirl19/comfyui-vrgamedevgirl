@@ -6,8 +6,8 @@
       "id": "2026-08-05-minimax-h3-model-downloads",
       "version": "2026.08.05-minimax-h3-model-downloads",
       "date": "2026-08-05",
-      "title": "MiniMax H3 model downloads",
-      "commit": "b971be55a46f23f0e96f57098cd53a707196b092",
+      "title": "MiniMax H3 downloads and Story Arc reliability",
+      "commit": "2c0dfab471929c7536b1d29659e0e4821cc629fb",
       "restart_required": true,
       "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
       "sections": [
@@ -16,6 +16,12 @@
           "items": [
             "Reorganized Download Models into LTX + Image Models, LLM Models, and MiniMax H3 tabs while preserving every existing model link.",
             "Added verified links and folder guidance for the MiniMax H3 diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Create User Story Arc now recognizes compound lyric headers such as [Intro] [Whispered] [Dark Atmosphere], ignores adjacent performance and mood tags plus [End], preserves consecutive real sections, and accepts harmless bracketed or first-occurrence-numbered Gemma headings."
           ]
         }
       ]
