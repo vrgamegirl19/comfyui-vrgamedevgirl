@@ -3,6 +3,24 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-08-05-minimax-h3-model-downloads",
+      "version": "2026.08.05-minimax-h3-model-downloads",
+      "date": "2026-08-05",
+      "title": "MiniMax H3 model downloads",
+      "commit": "b971be55a46f23f0e96f57098cd53a707196b092",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Reorganized Download Models into LTX + Image Models, LLM Models, and MiniMax H3 tabs while preserving every existing model link.",
+            "Added verified links and folder guidance for the MiniMax H3 diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-05-minimax-h3-short-film-builder",
       "version": "2026.08.05-minimax-h3",
       "date": "2026-08-05",
