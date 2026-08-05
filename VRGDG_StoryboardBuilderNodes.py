@@ -73,10 +73,12 @@ Rules:
 * Do not copy still-image pose language, stillness language, gentle/poised/static wording, or photography-only wording from `text_to_image_prompt` into the video motion plan.
 * User motion fields, `character_motion_guidance`, `camera_motion_speed_guidance`, `camera_guidance`, `performance_direction`, and scene story beat control animation, body action, camera movement, and performance energy.
 * If motion speed guidance is high, it overrides calm, poised, subtle, static, steady, restrained, quiet, or hold wording from the image prompt or first frame.
-* For camera speed 9-10, include two or more coordinated camera actions in the same scene when readable; do not end with "then holds", "holds on", "settles into a hold", "static hold", or "steady hold" unless the user explicitly asks for a hold.
-* For character motion speed 9-10, make the subject perform a clear full-body action such as striding, turning, crossing the space, forceful gestures, dancing, running, fighting, climbing, or interacting with the set; avoid describing the subject as only poised, still, standing, subtle, quiet, or steady.
+* For camera speed 7-8, use energetic, visibly active camera movement; do not use slow, gentle, subtle, restrained, locked-off, static, or hold camera wording. For camera speed 9-10, include two or more coordinated camera actions in the same scene when readable.
+* For character motion speed 4 or higher, include at least one clear physical body action, gesture, step, or interaction with the set. Facial expression, blinking, breathing, and mouth movement alone do not count. For speed 9-10, prefer clear full-body action such as striding, crossing the space, forceful gestures, dancing, running, fighting, climbing, or interacting with the set.
 * Use `shot_type` from the scene when available.
+* Follow `camera_flow_guidance` when present. Treat its framing limits as hard constraints for the entire shot, including every camera move and the ending composition.
 * If `starting_shot.required` is true, the first sentence must explicitly state that the video begins with `starting_shot.selected_starting_shot`. Do not merely imply this framing or move it to the middle or end of the prompt.
+* The selected starting shot describes the literal first generated frame. Do not begin with a wide, distant, establishing, or full-body lead-in and then move into the selected framing.
 * For an `eyes shot`, explicitly say that the video begins with an extreme close-up of the subject's eyes.
 * Begin the selected `camera_motion` from the required starting-shot framing; it may widen, orbit, track, or otherwise move afterward.
 * If `motion_summary` is non-empty, it is the authoritative custom motion and camera direction. Ignore `camera_motion` rather than combining the two.
@@ -87,11 +89,16 @@ Rules:
 * If `camera_motion` names a non-inward move such as pull back, track backward, side-follow, pan, tilt, crane, reveal, orbit, handheld follow, rack focus, or drift, preserve that motion and do not add a zoom-in or push-in afterward.
 * Vary camera behavior between scenes. Avoid repeating the same inward camera language across multiple prompts.
 * If `global_consistency_phrase` is present, include it in the final video prompt. Preserve its wording as much as possible, but lightly adapt grammar if needed so it fits the scene naturally.
+* If `video_style_verbiage` is present, copy that exact text word-for-word into the final prompt. Do not paraphrase, shorten, rename, or omit it. Treat it only as the governing visual-appearance contract for lighting, color, texture, materials, production design, grading, and image finish. It must not select, replace, or modify camera motion, character motion, shot timing, editing, or transitions.
+* If `temporal_world_effect_verbiage` is present, copy that exact text word-for-word into the final prompt before the first timestamp. Do not place it inside a timestamp or after Continuity. Do not paraphrase, shorten, or omit it. It is a hard temporal-layer contract: every protected mapped/reference character, their face, performance, voice, dialogue/singing timing, and lip sync remain natural and stable while only the explicitly unprotected background/world elements receive the temporal effect. Anonymous extras may be added only when the contract allows them, and must fit `location_ref` without replacing or duplicating a mapped character.
+* A temporal/world contract must be enacted, not merely copied. Every timestamp block must contain the contract's required number of concrete visible background/world actions. At intensity 7 or higher, subtle flicker, ambience, particles, or vague time-passage language alone is invalid. Use visibly accelerated, frozen, reversed, looping, delayed, season-changing, light-changing, crowd, traffic, weather, reflection, shadow, or location activity appropriate to the selected effect and mapped location.
+* When a temporal/world contract permits anonymous extras, wording such as `no people` in `location_ref` describes the source reference image only and is not an output prohibition. In Continuity, prohibit only additional named, principal, mapped, or referenced characters; explicitly preserve the contract's permission for anonymous unreferenced background extras.
 * Use `performance_style` and `performance_direction` to choose body language, gesture intensity, and camera energy. In singing mode, rap/hip-hop may describe rapping with rhythmic energy, hand gestures, head nods, and confident body language instead of soft singing. In speaking mode, remove music-video wording and use grounded short-film acting language.
 * Follow `character_motion_guidance` when present. Low values mean still/subtle body language; high values mean energetic or fast physical action when it fits the scene.
 * Use `facial_performance` and `facial_performance_direction` as the main source for facial emotion, eyes, brows, cheeks, jaw, gaze, mouth behavior, and blinking.
 * If `story_layer` exists, use `song_story_brief`, `user_story_arc`, `lyric_section`, and `scene_story_beat` as narrative guidance for emotion, symbolic action, continuity, and visual motivation. Do not quote the story layer or explain it; weave it into the scene naturally.
 * If `performance_mode` is `singing` and the scene is singing, use the exact lyric line from `vocal_status.lyric_text`.
+* For Input Audio singing, quote the exact lyric only once in the Audio 1 assignment. Do not paste the full lyric or the complete lip-sync boilerplate into every timestamp. Timestamp blocks must say that the assigned singer begins, continues, or completes the currently audible portion of the assigned lyric without quoting it again, restarting it, or extending it into silence.
 * If `performance_mode` is `speaking` and the scene has a line, use the exact line from `vocal_status.lyric_text` only inside "as she says \"...\"", "as he says \"...\"", or "as [subject label] says \"...\"".
 * In speaking mode, do not use alternate verbs for the dialogue line or any wording that could be interpreted as a physical handoff action. Use "says" only.
 * In speaking mode, do not mention music, singing, rapping, vocals, lyrics, song, beat, performing vocals, or lip-syncing to music.
@@ -320,10 +327,20 @@ def _normalize_reference_image(value):
 def _normalize_reference_item(value, fallback_name="Reference", fallback_id="ref"):
     item = value if isinstance(value, dict) else {}
     trigger_position = str(item.get("trigger_position") or item.get("triggerPosition") or item.get("trigger_placement") or "start").strip().lower()
+    raw_voice = item.get("minimax_voice") or item.get("miniMaxVoice") or {}
+    if not isinstance(raw_voice, dict):
+        raw_voice = {}
+    minimax_voice = {
+        "preset_id": _clean_scene_text(raw_voice.get("preset_id") or raw_voice.get("presetId") or raw_voice.get("preset") or "none", 120),
+        "gender": _clean_scene_text(raw_voice.get("gender") or "", 40),
+        "preset_name": _clean_scene_text(raw_voice.get("preset_name") or raw_voice.get("presetName") or raw_voice.get("name") or "", 240),
+        "description": _clean_scene_text(raw_voice.get("description") or raw_voice.get("voice_description") or raw_voice.get("voiceDescription") or "", 2000),
+    }
     return {
         "id": _clean_scene_text(item.get("id") or fallback_id, 160),
         "name": _clean_scene_text(item.get("name") or fallback_name, 240),
         "description": _clean_scene_text(item.get("description") or "", 4000),
+        "minimax_voice": minimax_voice,
         "trigger_phrase": _clean_scene_text(item.get("trigger_phrase") or item.get("trigger") or item.get("Trigger") or "", 1200),
         "trigger_position": "end" if trigger_position == "end" else "start",
         "image": _normalize_reference_image(item.get("image") if isinstance(item.get("image"), dict) else {}),
@@ -339,6 +356,22 @@ def _normalize_reference_items(value):
             continue
         refs.append(_normalize_reference_item(item, f"Subject {index + 1}", f"subject_{index + 1}"))
     return refs
+
+
+def _normalize_speaker_assignments(value):
+    if not isinstance(value, list):
+        return []
+    assignments = []
+    for index, item in enumerate(value[:40]):
+        if not isinstance(item, dict):
+            continue
+        assignments.append({
+            "id": _clean_scene_text(item.get("id") or item.get("cue_id") or f"speaker_cue_{index + 1}", 160),
+            "speaker_id": _clean_scene_text(item.get("speaker_id") or item.get("speakerId") or item.get("subject_id") or "", 160),
+            "speaker_name": _clean_scene_text(item.get("speaker_name") or item.get("speakerName") or item.get("speaker") or item.get("character") or "", 240),
+            "text": _clean_scene_text(item.get("text") or item.get("dialogue") or item.get("line") or item.get("lyric") or "", 2000),
+        })
+    return assignments
 
 
 def _normalize_reference_catalog(value):
@@ -499,6 +532,9 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     prompt_summary = _clean_scene_text(scene.get("prompt_summary") or scene.get("summary") or image_prompt[:260], 1000)
     subjects = _normalize_tags(scene.get("subjects") or scene.get("singers") or scene.get("mapped_subjects"))
     subject_refs = _normalize_reference_items(scene.get("subject_refs"))
+    speaker_assignments = _normalize_speaker_assignments(
+        scene.get("speaker_assignments") or scene.get("minimax_speaker_assignments") or scene.get("dialogue_cues")
+    )
     setting = _clean_scene_text(scene.get("setting") or scene.get("location") or "", 500)
     location_ref = _normalize_reference_item(scene.get("location_ref"), setting or "Location", "location") if isinstance(scene.get("location_ref"), dict) else None
     shot_type = _clean_scene_text(scene.get("shot_type") or scene.get("shot") or "", 200)
@@ -518,6 +554,8 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
     minimax_h3_mode = str(scene.get("minimax_h3_mode") or scene.get("minimaxH3Mode") or "").strip().lower().replace("-", "_").replace(" ", "_")
     if minimax_h3_mode not in {"text_to_video", "image_to_video", "reference_to_video", "video_to_video"}:
         minimax_h3_mode = "text_to_video"
+    raw_minimax_audio_mode = str(scene.get("minimax_h3_audio_mode") or scene.get("minimaxH3AudioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
+    minimax_h3_audio_mode = "built_in_audio" if raw_minimax_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
     try:
         timeline_start = float(scene.get("timeline_start", scene.get("start", 0)) or 0)
         timeline_end = float(scene.get("timeline_end", scene.get("end", 0)) or 0)
@@ -547,6 +585,7 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "motion_summary": motion_summary,
         "subjects": subjects,
         "subject_refs": subject_refs,
+        "speaker_assignments": speaker_assignments,
         "setting": setting,
         "location_ref": location_ref,
         "shot_type": shot_type,
@@ -563,6 +602,11 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "video_prompt_type": video_prompt_type,
         "project_video_engine": project_video_engine,
         "minimax_h3_mode": minimax_h3_mode,
+        "minimax_h3_audio_mode": minimax_h3_audio_mode,
+        "video_style": _clean_scene_text(scene.get("video_style") or scene.get("videoStyle") or "", 160),
+        "video_style_custom": _clean_scene_text(scene.get("video_style_custom") or scene.get("videoStyleCustom") or "", 3000),
+        "temporal_world_effect_override": _clean_scene_text(scene.get("temporal_world_effect_override") or scene.get("temporalWorldEffectOverride") or "global", 120),
+        "temporal_world_effect_custom": _clean_scene_text(scene.get("temporal_world_effect_custom") or scene.get("temporalWorldEffectCustom") or "", 3000),
         "timeline_start": timeline_start,
         "timeline_end": timeline_end,
         "exact_duration": exact_duration,
@@ -574,9 +618,123 @@ def _normalize_storyboard_scene(scene, fallback_number=1):
         "image_data": image_data,
         "image_name": image_name,
         "notes": _clean_scene_text(scene.get("notes") or "", 4000),
+        "audio_direction": _clean_scene_text(scene.get("audio_direction") or scene.get("audioDirection") or "", 4000),
+        "continuity": _clean_scene_text(scene.get("continuity") or scene.get("continuity_direction") or scene.get("continuityDirection") or "", 4000),
         "id_lora_character_id": _clean_scene_text(scene.get("id_lora_character_id") or scene.get("character_id") or scene.get("subject_id") or "", 180),
         "id_lora_location_id": _clean_scene_text(scene.get("id_lora_location_id") or scene.get("location_id") or "", 180),
     }
+
+
+def _normalize_script_import(value):
+    source = value if isinstance(value, dict) else {}
+    raw_cues = source.get("cues") if isinstance(source.get("cues"), list) else []
+    cues = []
+    for index, item in enumerate(raw_cues[:1000], start=1):
+        if not isinstance(item, dict):
+            continue
+        speaker_alias = _clean_scene_text(item.get("speaker_alias") or item.get("speaker") or item.get("speaker_name") or "", 240)
+        text = _clean_scene_text(item.get("text") or item.get("dialogue") or item.get("line") or "", 4000)
+        if not speaker_alias or not text:
+            continue
+        cues.append({
+            "index": int(item.get("index") or index),
+            "line_number": int(item.get("line_number") or 0),
+            "scene_index": int(item.get("scene_index") or 0),
+            "scene_label": _clean_scene_text(item.get("scene_label") or "", 240),
+            "speaker": speaker_alias,
+            "speaker_alias": speaker_alias,
+            "speaker_id": _clean_scene_text(item.get("speaker_id") or item.get("reference_subject_id") or "", 180),
+            "speaker_name": _clean_scene_text(item.get("speaker_name") or item.get("reference_subject_name") or speaker_alias, 240),
+            "reference_subject_id": _clean_scene_text(item.get("reference_subject_id") or item.get("speaker_id") or "", 180),
+            "reference_subject_name": _clean_scene_text(item.get("reference_subject_name") or item.get("speaker_name") or "", 240),
+            "speaker_match_method": _clean_scene_text(item.get("speaker_match_method") or "manual", 40),
+            "text": text,
+            "word_count": int(item.get("word_count") or len(text.split())),
+        })
+    raw_matches = source.get("speaker_matches") if isinstance(source.get("speaker_matches"), list) else []
+    speaker_matches = []
+    for item in raw_matches[:180]:
+        if not isinstance(item, dict):
+            continue
+        alias = _clean_scene_text(item.get("speaker_alias") or item.get("speaker") or "", 240)
+        if not alias:
+            continue
+        speaker_matches.append({
+            "speaker_alias": alias,
+            "reference_subject_id": _clean_scene_text(item.get("reference_subject_id") or item.get("speaker_id") or "", 180),
+            "reference_subject_name": _clean_scene_text(item.get("reference_subject_name") or item.get("speaker_name") or "", 240),
+            "match_method": _clean_scene_text(item.get("match_method") or "manual", 40),
+        })
+    try:
+        maximum_scene_seconds = float(source.get("maximum_scene_seconds") or source.get("max_scene_seconds") or 8)
+    except Exception:
+        maximum_scene_seconds = 8.0
+    maximum_scene_seconds = max(3.0, min(15.0, maximum_scene_seconds))
+    plan_source = source.get("scene_plan") if isinstance(source.get("scene_plan"), dict) else {}
+    raw_scenes = plan_source.get("scenes") if isinstance(plan_source.get("scenes"), list) else []
+    planned_scenes = []
+    for scene_index, scene in enumerate(raw_scenes[:240], start=1):
+        if not isinstance(scene, dict):
+            continue
+        raw_assignments = scene.get("speaker_assignments") if isinstance(scene.get("speaker_assignments"), list) else []
+        assignments = []
+        for cue_index, cue in enumerate(raw_assignments[:80], start=1):
+            if not isinstance(cue, dict):
+                continue
+            dialogue = _clean_scene_text(cue.get("text") or cue.get("dialogue") or "", 4000)
+            if not dialogue:
+                continue
+            assignments.append({
+                "speaker_id": _clean_scene_text(cue.get("speaker_id") or cue.get("reference_subject_id") or "", 180),
+                "speaker_name": _clean_scene_text(cue.get("speaker_name") or cue.get("speaker_alias") or "Speaker", 240),
+                "speaker_alias": _clean_scene_text(cue.get("speaker_alias") or cue.get("speaker_name") or "Speaker", 240),
+                "text": dialogue,
+                "source_cue_index": int(cue.get("source_cue_index") or 0),
+                "part_index": int(cue.get("part_index") or 1),
+                "part_count": int(cue.get("part_count") or 1),
+                "planned_start_seconds": float(cue.get("planned_start_seconds") or 0),
+                "planned_end_seconds": float(cue.get("planned_end_seconds") or 0),
+                "estimated_spoken_seconds": float(cue.get("estimated_spoken_seconds") or 0),
+            })
+        if not assignments:
+            continue
+        planned_scenes.append({
+            "index": int(scene.get("index") or scene_index),
+            "label": _clean_scene_text(scene.get("label") or f"Script Segment {scene_index}", 240),
+            "source_scene_index": int(scene.get("source_scene_index") or 0),
+            "source_scene_label": _clean_scene_text(scene.get("source_scene_label") or "", 240),
+            "continuation_of_previous": bool(scene.get("continuation_of_previous")),
+            "duration_seconds": float(scene.get("duration_seconds") or 0),
+            "timeline_start_seconds": float(scene.get("timeline_start_seconds") or 0),
+            "timeline_end_seconds": float(scene.get("timeline_end_seconds") or 0),
+            "participant_ids": [_clean_scene_text(item, 180) for item in (scene.get("participant_ids") or []) if _clean_scene_text(item, 180)],
+            "participant_names": [_clean_scene_text(item, 240) for item in (scene.get("participant_names") or []) if _clean_scene_text(item, 240)],
+            "speaker_assignments": assignments,
+        })
+    enabled = bool(source.get("enabled", True)) and bool(cues)
+    return {
+        "enabled": enabled,
+        "authoritative": bool(source.get("authoritative", True)),
+        "format": _clean_scene_text(source.get("format") or "text", 40),
+        "raw_text": _clean_scene_text(source.get("raw_text") or source.get("rawText") or "", 100000),
+        "imported_at": _clean_scene_text(source.get("imported_at") or source.get("importedAt") or "", 80),
+        "maximum_scene_seconds": maximum_scene_seconds,
+        "cues": cues,
+        "speaker_matches": speaker_matches,
+        "unmatched_speakers": [_clean_scene_text(item, 240) for item in (source.get("unmatched_speakers") or []) if _clean_scene_text(item, 240)],
+        "scene_plan": {
+            "maximum_scene_seconds": maximum_scene_seconds,
+            "scene_count": len(planned_scenes),
+            "estimated_total_seconds": float(plan_source.get("estimated_total_seconds") or 0),
+            "split_cue_count": int(plan_source.get("split_cue_count") or 0),
+            "scenes": planned_scenes,
+        },
+    }
+
+
+def _normalize_short_film_planning_mode(value):
+    clean = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return "fully_custom" if clean in {"fully_custom", "custom"} else "guided_film"
 
 
 def _default_storyboard(payload):
@@ -592,9 +750,19 @@ def _default_storyboard(payload):
         "project_video_engine": "minimax_h3" if str(payload.get("project_video_engine") or payload.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
         "mode": "image_to_video_prep" if any(scene.get("image_path") or scene.get("image_data") for scene in normalized) else "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(payload.get("performance_mode") or payload.get("performanceMode") or payload.get("video_type") or payload.get("videoType")),
+        "short_film_planning_mode": _normalize_short_film_planning_mode(payload.get("short_film_planning_mode") or payload.get("shortFilmPlanningMode")),
         "camera_flow": _clean_scene_text(payload.get("camera_flow") or "balanced", 80),
         "image_shot_flow": _clean_scene_text(payload.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(payload.get("image_aesthetic") or "", 120),
+        "video_style": _clean_scene_text(payload.get("video_style") or payload.get("videoStyle") or "", 160),
+        "video_style_custom": _clean_scene_text(payload.get("video_style_custom") or payload.get("videoStyleCustom") or "", 3000),
+        "temporal_world_effect": _clean_scene_text(payload.get("temporal_world_effect") or payload.get("temporalWorldEffect") or "", 160),
+        "temporal_world_effect_custom": _clean_scene_text(payload.get("temporal_world_effect_custom") or payload.get("temporalWorldEffectCustom") or "", 3000),
+        "temporal_allow_background_extras": (payload.get("temporal_allow_background_extras") if "temporal_allow_background_extras" in payload else payload.get("temporalAllowBackgroundExtras", True)) is not False,
+        "temporal_background_intensity": _speed_value(payload.get("temporal_background_intensity") if "temporal_background_intensity" in payload else payload.get("temporalBackgroundIntensity", 8)),
+        "temporal_environment_time_passage": (payload.get("temporal_environment_time_passage") if "temporal_environment_time_passage" in payload else payload.get("temporalEnvironmentTimePassage", True)) is not False,
+        "temporal_protected_characters": _clean_scene_text(payload.get("temporal_protected_characters") or payload.get("temporalProtectedCharacters") or "all_referenced", 80),
+        "temporal_protected_custom": _clean_scene_text(payload.get("temporal_protected_custom") or payload.get("temporalProtectedCustom") or "", 1000),
         "global_consistency_phrase": _clean_scene_text(payload.get("global_consistency_phrase") or "", 1200),
         "camera_motion_speed": _speed_value(payload.get("camera_motion_speed") or payload.get("cameraMotionSpeed")),
         "character_motion_speed": _speed_value(payload.get("character_motion_speed") or payload.get("characterMotionSpeed")),
@@ -602,6 +770,7 @@ def _default_storyboard(payload):
         "facial_performance_default": _clean_scene_text(payload.get("facial_performance_default") or payload.get("facial_performance") or "", 120),
         "facial_performance_custom_default": _clean_scene_text(payload.get("facial_performance_custom_default") or payload.get("facial_performance_custom") or "", 1200),
         "story_layer": _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {}),
+        "script_import": _normalize_script_import(payload.get("script_import") or payload.get("scriptImport") or {}),
         "reference_builder": _normalize_reference_catalog(payload.get("reference_builder") or payload.get("referenceBuilder") or {}),
         "scenes": normalized,
     }
@@ -618,6 +787,8 @@ def _load_storyboard(payload):
             scenes = []
         data["scenes"] = [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)]
         data["story_layer"] = _normalize_story_layer(data.get("story_layer") or data.get("storyLayer") or {})
+        data["script_import"] = _normalize_script_import(data.get("script_import") or data.get("scriptImport") or {})
+        data["short_film_planning_mode"] = _normalize_short_film_planning_mode(data.get("short_film_planning_mode") or data.get("shortFilmPlanningMode"))
         data["reference_builder"] = _normalize_reference_catalog(data.get("reference_builder") or data.get("referenceBuilder") or {})
         data["path"] = path
         return data
@@ -642,9 +813,19 @@ def _save_storyboard(payload):
         "project_video_engine": "minimax_h3" if str(storyboard.get("project_video_engine") or storyboard.get("projectVideoEngine") or "").strip().lower() == "minimax_h3" else "ltx",
         "mode": storyboard.get("mode") or "storyboard_prompts",
         "performance_mode": _normalize_performance_mode(storyboard.get("performance_mode") or storyboard.get("performanceMode") or storyboard.get("video_type") or storyboard.get("videoType")),
+        "short_film_planning_mode": _normalize_short_film_planning_mode(storyboard.get("short_film_planning_mode") or storyboard.get("shortFilmPlanningMode")),
         "camera_flow": _clean_scene_text(storyboard.get("camera_flow") or "balanced", 80),
         "image_shot_flow": _clean_scene_text(storyboard.get("image_shot_flow") or "intimate", 80),
         "image_aesthetic": _clean_scene_text(storyboard.get("image_aesthetic") or "", 120),
+        "video_style": _clean_scene_text(storyboard.get("video_style") or storyboard.get("videoStyle") or "", 160),
+        "video_style_custom": _clean_scene_text(storyboard.get("video_style_custom") or storyboard.get("videoStyleCustom") or "", 3000),
+        "temporal_world_effect": _clean_scene_text(storyboard.get("temporal_world_effect") or storyboard.get("temporalWorldEffect") or "", 160),
+        "temporal_world_effect_custom": _clean_scene_text(storyboard.get("temporal_world_effect_custom") or storyboard.get("temporalWorldEffectCustom") or "", 3000),
+        "temporal_allow_background_extras": (storyboard.get("temporal_allow_background_extras") if "temporal_allow_background_extras" in storyboard else storyboard.get("temporalAllowBackgroundExtras", True)) is not False,
+        "temporal_background_intensity": _speed_value(storyboard.get("temporal_background_intensity") if "temporal_background_intensity" in storyboard else storyboard.get("temporalBackgroundIntensity", 8)),
+        "temporal_environment_time_passage": (storyboard.get("temporal_environment_time_passage") if "temporal_environment_time_passage" in storyboard else storyboard.get("temporalEnvironmentTimePassage", True)) is not False,
+        "temporal_protected_characters": _clean_scene_text(storyboard.get("temporal_protected_characters") or storyboard.get("temporalProtectedCharacters") or "all_referenced", 80),
+        "temporal_protected_custom": _clean_scene_text(storyboard.get("temporal_protected_custom") or storyboard.get("temporalProtectedCustom") or "", 1000),
         "global_consistency_phrase": _clean_scene_text(storyboard.get("global_consistency_phrase") or "", 1200),
         "camera_motion_speed": _speed_value(storyboard.get("camera_motion_speed") or storyboard.get("cameraMotionSpeed")),
         "character_motion_speed": _speed_value(storyboard.get("character_motion_speed") or storyboard.get("characterMotionSpeed")),
@@ -652,6 +833,7 @@ def _save_storyboard(payload):
         "facial_performance_default": _clean_scene_text(storyboard.get("facial_performance_default") or storyboard.get("facial_performance") or "", 120),
         "facial_performance_custom_default": _clean_scene_text(storyboard.get("facial_performance_custom_default") or storyboard.get("facial_performance_custom") or "", 1200),
         "story_layer": _normalize_story_layer(storyboard.get("story_layer") or storyboard.get("storyLayer") or {}),
+        "script_import": _normalize_script_import(storyboard.get("script_import") or storyboard.get("scriptImport") or {}),
         "reference_builder": _normalize_reference_catalog(storyboard.get("reference_builder") or storyboard.get("referenceBuilder") or {}),
         "scenes": [_normalize_storyboard_scene(scene, index + 1) for index, scene in enumerate(scenes)],
     }
@@ -712,6 +894,8 @@ def _export_storyboard_prompts(payload):
                 **_prompt_json_entry(scene, index, "video_prompt"),
                 "video_prompt_type": _clean_scene_text(scene.get("video_prompt_type") or "", 80),
                 "minimax_h3_mode": _clean_scene_text(scene.get("minimax_h3_mode") or "", 80),
+                "video_style": _clean_scene_text(scene.get("video_style") or "", 160),
+                "video_style_custom": _clean_scene_text(scene.get("video_style_custom") or "", 3000),
                 "performance_mode": _normalize_performance_mode(scene.get("performance_mode") or saved.get("performance_mode")),
             }
             for index, scene in enumerate(scenes, start=1)
@@ -855,13 +1039,44 @@ def _storyboard_speed_value(value, fallback=4):
     return max(0, min(10, number))
 
 
+def _camera_motion_for_storyboard_speed(value, speed_value):
+    motion = _clean_scene_text(value or "", 500)
+    speed = _storyboard_speed_value(speed_value, 4)
+    if not motion or speed < 7:
+        return motion
+    replacements = [
+        (r"\bslow cinematic drift\b", "energetic cinematic tracking drift"),
+        (r"\bslow orbit\b", "energetic orbit"),
+        (r"\bslow (left|right) orbit\b", r"energetic \1 orbit"),
+        (r"\bslow zoom out\b", "brisk pull-back reveal"),
+        (r"\bslow (left|right|side|lateral) drift\b", r"brisk \1 tracking drift"),
+        (r"\bslow (pan|tilt|track|tracking|pull[ -]?back|drift)\b", r"brisk \1"),
+        (r"\bgentle lateral drift\b", "energetic lateral tracking"),
+        (r"\bgentle pan reveal\b", "brisk pan reveal"),
+        (r"\bgentle (pan|tilt|orbit|drift|camera movement)\b", r"brisk \1"),
+        (r"\bsubtle handheld movement\b", "active handheld tracking"),
+        (r"\bsubtle handheld camera\b", "active handheld camera"),
+        (r"\bsubtle handheld follow\b", "energetic handheld follow"),
+        (r"\bsubtle rack focus\b", "quick rack focus"),
+        (r"\bsubtle energetic orbit\b", "energetic orbit"),
+        (r"\bsubtle settling pause\b", "active reframing beat"),
+        (r"\bsubtle orbit movement\b", "energetic orbit movement"),
+        (r"\b(?:quiet handheld hold|locked-off reaction hold|locked-off shot)\b", "active handheld reaction tracking"),
+        (r"\brestrained pan\b", "brisk pan"),
+    ]
+    for pattern, replacement in replacements:
+        motion = re.sub(pattern, replacement, motion, flags=re.IGNORECASE)
+    return _clean_scene_text(re.sub(r"\s{2,}", " ", motion).strip(), 500)
+
+
 def _enforce_storyboard_high_motion_language(prompt, scene):
     text = _clean_scene_text(prompt or "", 12000)
     if not text or not isinstance(scene, dict):
         return text
     camera_speed = _storyboard_speed_value(scene.get("camera_motion_speed") or scene.get("cameraMotionSpeed"), 4)
     character_speed = _storyboard_speed_value(scene.get("character_motion_speed") or scene.get("characterMotionSpeed"), 4)
-    if camera_speed >= 9:
+    if camera_speed >= 7:
+        text = _camera_motion_for_storyboard_speed(text, camera_speed)
         replacements = [
             (r"\bthen\s+holds?\s+on\b", "then continues moving across"),
             (r"\bthen\s+holds?\b", "then continues moving"),
@@ -872,10 +1087,10 @@ def _enforce_storyboard_high_motion_language(prompt, scene):
         ]
         for pattern, replacement in replacements:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-        camera_terms = re.findall(r"\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|push|dolly|handheld|reveal)\b", text, flags=re.IGNORECASE)
-        if len(camera_terms) < 2:
-            text = f"{text.rstrip().rstrip('.')}, with the camera chaining multiple readable moves instead of stopping on a hold."
-    if character_speed >= 9:
+        camera_terms = re.findall(r"\b(?:tracking|orbit|whip pan|pan|tilt|crane|pullback|pull-back|push|dolly|handheld|reveal)\b", text, flags=re.IGNORECASE)
+        if not camera_terms:
+            text = f"{text.rstrip().rstrip('.')}, with energetic camera tracking that keeps moving instead of settling into a static hold."
+    if character_speed >= 4:
         replacements = [
             (r"\bmoves?\s+with\s+a\s+quiet,\s*poised\s+authority\b", "moves with forceful, physically active authority"),
             (r"\bmoves?\s+with\s+quiet,\s*poised\s+authority\b", "moves with forceful, physically active authority"),
@@ -888,8 +1103,8 @@ def _enforce_storyboard_high_motion_language(prompt, scene):
         ]
         for pattern, replacement in replacements:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-        if not re.search(r"\b(?:strides?|runs?|sprints?|dances?|turns?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushing|sweeping|gestures?)\b", text, flags=re.IGNORECASE):
-            text = f"{text.rstrip().rstrip('.')}, while the subject performs clear full-body movement through the set."
+        if not re.search(r"\b(?:walks?|steps?|strides?|runs?|sprints?|dances?|crosses?|lunges?|reaches?|pushes?|pulls?|climbs?|fights?|brushes?|sweeps?|gestures?|interacts?|grabs?|lifts?|paces?)\b", text, flags=re.IGNORECASE):
+            text = f"{text.rstrip().rstrip('.')}, while the subject performs a clear physical action with the body, hands, or surrounding set instead of relying on facial movement alone."
     return _clean_scene_text(re.sub(r"\s{2,}", " ", text).strip(), 12000)
 
 
@@ -1195,7 +1410,11 @@ def _build_storyboard_video_prompt(payload):
                 f"Lyric section:\n{_clean_scene_text(vocal_status.get('lyric_section') or story_layer.get('lyric_section') or '', 200)}",
                 f"Scene story beat:\n{_clean_scene_text(story_layer.get('scene_story_beat') or '', 1200)}",
                 f"Motion/video summary:\n{motion_summary}",
+                f"Required MiniMax video style:\n{_clean_scene_text(selected_scene.get('video_style') or '', 200)}",
+                f"MANDATORY exact MiniMax video style verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('video_style_verbiage') or '', 3000)}",
+                f"MANDATORY exact temporal / world effect verbiage — copy word-for-word into the final prompt:\n{_clean_scene_text(selected_scene.get('temporal_world_effect_verbiage') or '', 5000)}",
                 f"Camera motion:\n{camera_motion}",
+                f"Required camera-flow framing:\n{_clean_scene_text(selected_scene.get('camera_flow_guidance') or '', 1600)}",
                 f"Camera motion speed guidance:\n{_clean_scene_text(camera_speed_guidance, 1000)}",
                 f"Character motion guidance:\n{_clean_scene_text(selected_scene.get('character_motion_guidance') or '', 1000)}",
                 f"Performance direction:\n{_clean_scene_text(selected_scene.get('performance_direction') or selected_scene.get('performance_style') or '', 1000)}",
@@ -1268,9 +1487,105 @@ def _build_storyboard_video_prompt(payload):
     }
 
 
+def _authoritative_script_from_payload(payload):
+    source = payload.get("script_import") or payload.get("scriptImport")
+    if not source and isinstance(payload.get("storyboard"), dict):
+        source = payload["storyboard"].get("script_import") or payload["storyboard"].get("scriptImport")
+    normalized = _normalize_script_import(source or {})
+    return normalized if normalized.get("enabled") and normalized.get("cues") else None
+
+
+def _authoritative_script_text(script_import):
+    raw_text = _clean_scene_text((script_import or {}).get("raw_text") or "", 100000)
+    if raw_text:
+        return raw_text
+    return "\n".join(
+        f'{cue.get("speaker_alias") or cue.get("speaker_name") or "Speaker"}: {cue.get("text") or ""}'
+        for cue in (script_import or {}).get("cues") or []
+        if cue.get("text")
+    )
+
+
+def _build_short_film_script_story_text(payload, script_import, purpose="premise"):
+    story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    subjects, locations = _storyboard_dialogue_reference_catalog(payload)
+    script_text = _authoritative_script_text(script_import)
+    planned_scenes = (script_import.get("scene_plan") or {}).get("scenes") or []
+    compact_plan = []
+    for scene in planned_scenes[:240]:
+        compact_plan.append({
+            "segment": scene.get("index"),
+            "duration_seconds": scene.get("duration_seconds"),
+            "continuation_of_previous": bool(scene.get("continuation_of_previous")),
+            "dialogue": [
+                {
+                    "speaker_id": cue.get("speaker_id", ""),
+                    "speaker": cue.get("speaker_name") or cue.get("speaker_alias") or "Speaker",
+                    "exact_text": cue.get("text", ""),
+                }
+                for cue in scene.get("speaker_assignments") or []
+            ],
+        })
+    if purpose == "brief":
+        task = (
+            "Create a compact short-film production brief that Guided Film Automation can use to design visual scenes around the authoritative script. "
+            "Use these headings exactly: Story premise:, Character dynamics:, Visual progression:, Continuity rules:, Scene-direction guidance:. "
+            "Keep the complete response under 450 words."
+        )
+        max_tokens = 1000
+        label = "Storyboard Authoritative Script Film Brief"
+    else:
+        task = (
+            "Create one cohesive short-film premise and visual narrative arc from the authoritative script. Explain the dramatic situation, character goals, emotional progression, "
+            "and how the film can develop visually across the supplied timed segments. Output plain prose under 500 words with no screenplay rewrite and no dialogue list."
+        )
+        max_tokens = 1100
+        label = "Storyboard Authoritative Script Film Premise"
+    instruction = (
+        "You are a short-film development director working from a locked screenplay.\n\n"
+        f"{task}\n\n"
+        "NON-NEGOTIABLE SCRIPT CONTRACT:\n"
+        "- The supplied dialogue is authoritative and immutable. Never rewrite, paraphrase, shorten, extend, reorder, merge, or invent spoken words.\n"
+        "- Do not add narration, voice-over, replacement dialogue, or extra speakers.\n"
+        "- Develop only the visual story around the locked dialogue: actions, reactions, motivations, blocking, locations, props, shots, camera language, atmosphere, and continuity.\n"
+        "- Use Reference Builder character names and descriptions as identity authority.\n"
+        "- Use only supplied Reference Builder locations when locations are available.\n\n"
+        f"Optional user story idea:\n{story_layer.get('overall_story_idea') or '[none]'}\n\n"
+        f"Reference Builder characters:\n{json.dumps(subjects, ensure_ascii=False, indent=2) if subjects else '[none]'}\n\n"
+        f"Reference Builder locations:\n{json.dumps(locations, ensure_ascii=False, indent=2) if locations else '[none]'}\n\n"
+        f"Authoritative exact script:\n{script_text}\n\n"
+        f"Authoritative timed segment plan:\n{json.dumps(compact_plan, ensure_ascii=False, indent=2)}"
+    )
+    from .VRGDG_MusicVideoBuilderNodes import _run_builder_text_llm
+
+    text, run_info = _run_builder_text_llm(
+        payload,
+        instruction,
+        temperature=float(payload.get("temperature") or 0.35),
+        top_p=float(payload.get("top_p") or 0.90),
+        max_new_tokens=int(payload.get("max_new_tokens") or max_tokens),
+        label=label,
+        preserve_paragraphs=True,
+    )
+    text = _clean_scene_text(text, 10000)
+    if not text:
+        raise ValueError("The LLM returned an empty short-film story result.")
+    return text, run_info
+
+
 def _build_story_layer_brief(payload):
     lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 16000)
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    authoritative_script = _authoritative_script_from_payload(payload)
+    if authoritative_script:
+        text, run_info = _build_short_film_script_story_text(payload, authoritative_script, "brief")
+        return {
+            "story_brief": text,
+            "runner": run_info.get("runner", "builtin"),
+            "used_model": run_info.get("used_model", ""),
+            "unloaded": run_info.get("unloaded", True),
+            "authoritative_script_used": True,
+        }
     scenes = payload.get("scenes")
     if not isinstance(scenes, list):
         scenes = []
@@ -1409,6 +1724,42 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
         blocks.append((label, raw[match.end():end].strip()))
     if required_labels:
+        required_keys = {label.casefold() for label in required_labels}
+        nonstructural_scene_markers = {
+            "instrumental", "instrumental section", "instrumental break",
+            "break", "interlude", "solo", "music only", "no vocals",
+            "no vocal", "silence", "b roll", "b-roll",
+        }
+        # The timeline uses values such as [instrumental] as scene-content
+        # markers. Gemma can mistakenly promote one into a ninth story heading
+        # even when it also returned every required lyric heading in order. Fold
+        # that prose into the nearest real section instead of rejecting an
+        # otherwise valid arc. Unknown invented headings still fail below.
+        folded_blocks = []
+        pending_prefix = []
+        for label, body in blocks:
+            key = label.casefold()
+            if key not in required_keys and key in nonstructural_scene_markers:
+                if folded_blocks:
+                    previous_label, previous_body = folded_blocks[-1]
+                    folded_blocks[-1] = (
+                        previous_label,
+                        "\n".join(part for part in (previous_body, body) if part).strip(),
+                    )
+                elif body:
+                    pending_prefix.append(body)
+                continue
+            if pending_prefix:
+                body = "\n".join([*pending_prefix, body] if body else pending_prefix).strip()
+                pending_prefix = []
+            folded_blocks.append((label, body))
+        if pending_prefix and folded_blocks:
+            last_label, last_body = folded_blocks[-1]
+            folded_blocks[-1] = (
+                last_label,
+                "\n".join(part for part in (last_body, *pending_prefix) if part).strip(),
+            )
+        blocks = folded_blocks
         returned = [label.casefold() for label, _body in blocks]
         required = [label.casefold() for label in required_labels]
         if len(blocks) > len(required_labels) and returned[:len(required)] == required:
@@ -1450,6 +1801,18 @@ def _normalize_story_arc_output(text, required_labels, maximum_words=100):
 
 
 def _build_story_layer_arc(payload):
+    authoritative_script = _authoritative_script_from_payload(payload)
+    if authoritative_script:
+        text, run_info = _build_short_film_script_story_text(payload, authoritative_script, "premise")
+        return {
+            "story_arc": text,
+            "lyrics_source": "Authoritative Script Mapper import",
+            "story_arc_seed": _clean_scene_text(payload.get("story_arc_seed") or payload.get("storyArcSeed") or payload.get("seed") or "", 80),
+            "runner": run_info.get("runner", "builtin"),
+            "used_model": run_info.get("used_model", ""),
+            "unloaded": run_info.get("unloaded", True),
+            "authoritative_script_used": True,
+        }
     storyboard = payload.get("storyboard") if isinstance(payload.get("storyboard"), dict) else {}
     timeline_lyrics = _clean_scene_text(payload.get("lyrics") or payload.get("lyrics_text") or "", 40000)
     line_mapping_lyrics = _clean_scene_text(payload.get("line_mapping_lyrics") or payload.get("lineMappingLyrics") or "", 40000)
@@ -1605,6 +1968,7 @@ def _build_story_layer_arc(payload):
         "* Do not invent warehouses, loading docks, corridors, steel stairs, metal doors, concrete halls, or other industrial spaces unless those are explicitly present in the provided Location descriptions.\n"
         "* To create variety, change subject actions, camera energy, props, lighting, mood, blocking, and use of the mapped locations instead of inventing unrelated places.\n"
         "* Never force a standard pop-song template over explicit lyric section headers.\n"
+        "* Values such as [instrumental], [music only], or [no vocals] inside the Scene lyric map are timing/content markers, not additional song-section headings. Cover their visuals inside the nearest listed required section and never output those markers as separate headings.\n"
         "* If only lyrics are provided, build the arc from the lyrics.\n"
         "* If no lyrics are provided, build the arc from the theme or story idea.\n"
         "* Do not ask follow-up questions unless absolutely necessary.\n"
@@ -2043,17 +2407,268 @@ def _normalize_generated_dialogue_scenes(raw_scenes, subjects, locations):
     return scenes
 
 
+_MINIMAX_DIALOGUE_NON_INWARD_CAMERA_SEQUENCE = (
+    "quiet handheld hold",
+    "subtle lateral drift",
+    "slow orbit left",
+    "gentle pull-back",
+    "restrained pan right",
+    "rack focus between the speakers",
+    "slow orbit right",
+    "locked-off reaction hold",
+)
+
+
+def _minimax_camera_motion_family(value):
+    text = _clean_scene_text(value or "", 500).lower()
+    if re.search(r"\b(push(?:es)?[ -]?in|doll(?:y|ies)[ -]?in|zoom(?:s)?[ -]?in|track(?:s|ing)?[ -]?(?:in|forward)|drift(?:s|ing)?[ -]?(?:closer|forward))\b", text):
+        return "inward"
+    if re.search(r"\b(pull(?:s)?[ -]?(?:back|out)|doll(?:y|ies)[ -]?out|zoom(?:s)?[ -]?out|track(?:s|ing)?[ -]?backward)\b", text):
+        return "outward"
+    if re.search(r"\b(orbit|arc|circle|rotate|rotation)\b", text):
+        return "orbit"
+    if re.search(r"\b(pan|lateral|side|truck)\b", text):
+        return "lateral"
+    if re.search(r"\b(rack focus|focus pull)\b", text):
+        return "focus"
+    if re.search(r"\b(hold|locked|static)\b", text):
+        return "hold"
+    return "other" if text else ""
+
+
+def _rebalance_generated_minimax_camera_motion(scenes, camera_flow="balanced", camera_motion_speed=4):
+    """Prevent an LLM-planned dialogue sequence from collapsing into repeated push-ins.
+
+    This only runs while new guided MiniMax scene cards are being created. Later manual
+    edits remain authoritative. Inward moves are allowed as an accent, but no more than
+    once in a rolling six-scene window.
+    """
+    if not isinstance(scenes, list) or str(camera_flow or "").strip().lower() == "off":
+        return scenes
+    try:
+        speed = max(0, min(10, int(round(float(camera_motion_speed)))))
+    except Exception:
+        speed = 4
+    recent_families = []
+    for index, scene in enumerate(scenes):
+        if not isinstance(scene, dict):
+            continue
+        motion = _camera_motion_for_storyboard_speed(scene.get("camera_motion") or "", speed)
+        if motion:
+            scene["camera_motion"] = motion
+        family = _minimax_camera_motion_family(motion)
+        if speed <= 0:
+            replacement = "locked-off camera"
+        else:
+            replacement = _MINIMAX_DIALOGUE_NON_INWARD_CAMERA_SEQUENCE[index % len(_MINIMAX_DIALOGUE_NON_INWARD_CAMERA_SEQUENCE)]
+        if not motion or (family == "inward" and "inward" in recent_families[-5:]):
+            scene["camera_motion"] = replacement
+            family = _minimax_camera_motion_family(replacement)
+        recent_families.append(family)
+    return scenes
+
+
+def _normalize_generated_minimax_dialogue_scenes(
+    raw_scenes,
+    subjects,
+    locations,
+    minimax_h3_mode="text_to_video",
+    camera_flow="balanced",
+    camera_motion_speed=4,
+):
+    if not isinstance(raw_scenes, list):
+        raise ValueError("MiniMax dialogue plan did not include a scenes array.")
+    subject_by_id = {str(item.get("id") or ""): item for item in subjects if str(item.get("id") or "")}
+    location_by_id = {str(item.get("id") or ""): item for item in locations if str(item.get("id") or "")}
+    mode = str(minimax_h3_mode or "text_to_video").strip().lower().replace("-", "_").replace(" ", "_")
+    if mode not in {"text_to_video", "image_to_video", "reference_to_video", "video_to_video"}:
+        mode = "text_to_video"
+    scenes = []
+    for index, item in enumerate(raw_scenes[:80], start=1):
+        if not isinstance(item, dict):
+            continue
+        raw_cues = item.get("dialogue_cues") if isinstance(item.get("dialogue_cues"), list) else []
+        if not raw_cues:
+            raw_cues = [{
+                "character_id": item.get("character_id") or item.get("subject_id") or item.get("speaker_id") or "",
+                "speaker": item.get("character_name") or item.get("speaker") or "",
+                "dialogue": item.get("dialogue") or item.get("line") or item.get("lyrics") or "",
+            }]
+        speaker_assignments = []
+        subject_refs = []
+        seen_subject_ids = set()
+        for cue_index, cue in enumerate(raw_cues[:40], start=1):
+            if not isinstance(cue, dict):
+                continue
+            subject_id = _clean_scene_text(cue.get("character_id") or cue.get("subject_id") or cue.get("speaker_id") or "", 180)
+            if subject_id and subject_by_id and subject_id not in subject_by_id:
+                subject_id = ""
+            subject = subject_by_id.get(subject_id) if subject_id else None
+            speaker_name = _clean_scene_text(cue.get("speaker") or cue.get("character_name") or (subject or {}).get("name") or "", 160)
+            dialogue = _clean_scene_text(cue.get("dialogue") or cue.get("line") or cue.get("text") or "", 1200)
+            if not dialogue:
+                continue
+            speaker_assignments.append({
+                "id": f"minimax_dialogue_{index}_{cue_index}",
+                "speaker_id": subject_id,
+                "speaker_name": speaker_name or "Speaker",
+                "text": dialogue,
+            })
+            if subject and subject_id not in seen_subject_ids:
+                subject_refs.append({
+                    "id": subject.get("id", ""),
+                    "name": subject.get("name", ""),
+                    "description": subject.get("description", ""),
+                    "reference_type": subject.get("reference_type", "character"),
+                    "image": {**(subject.get("image") or {})},
+                })
+                seen_subject_ids.add(subject_id)
+        for participant_id in item.get("participant_ids") or []:
+            participant_id = _clean_scene_text(participant_id, 180)
+            participant = subject_by_id.get(participant_id) if participant_id else None
+            if not participant or participant_id in seen_subject_ids:
+                continue
+            subject_refs.append({
+                "id": participant.get("id", ""),
+                "name": participant.get("name", ""),
+                "description": participant.get("description", ""),
+                "reference_type": participant.get("reference_type", "character"),
+                "image": {**(participant.get("image") or {})},
+            })
+            seen_subject_ids.add(participant_id)
+        location_id = _clean_scene_text(item.get("location_id") or "", 180)
+        if location_id and location_by_id and location_id not in location_by_id:
+            location_id = ""
+        location = location_by_id.get(location_id) if location_id else None
+        location_ref = ({
+            "id": location.get("id", ""),
+            "name": location.get("name", ""),
+            "description": location.get("description", ""),
+            "image": {**(location.get("image") or {})},
+        } if location else None)
+        dialogue_lines = [f'{cue["speaker_name"]}: "{cue["text"]}"' for cue in speaker_assignments]
+        label = _clean_scene_text(item.get("label") or item.get("title") or f"Scene {index}", 160)
+        scene = _normalize_storyboard_scene({
+            "id": _clean_scene_text(item.get("id") or f"minimax_story_scene_{index}", 160),
+            "scene_number": index,
+            "label": label or f"Scene {index}",
+            "lyrics": "\n".join(dialogue_lines),
+            "lyric_singers": [cue["speaker_name"] for cue in speaker_assignments],
+            "speaker_assignments": speaker_assignments,
+            "story_beat": _clean_scene_text(item.get("story_beat") or item.get("beat") or "", 1800),
+            "prompt_summary": _clean_scene_text(item.get("visual_direction") or item.get("summary") or "", 1800),
+            "motion_summary": _clean_scene_text(item.get("motion_summary") or item.get("video_notes") or "", 1400),
+            "subjects": [subject.get("name", "") for subject in subject_refs],
+            "subject_refs": subject_refs,
+            "setting": _clean_scene_text(item.get("setting") or item.get("location_name") or (location_ref or {}).get("name", ""), 1000),
+            "location_ref": location_ref,
+            "video_prompt_type": "i2v",
+            "project_video_engine": "minimax_h3",
+            "minimax_h3_mode": mode,
+            "minimax_h3_audio_mode": "built_in_audio",
+            "performance_mode": "speaking",
+            "timeline_start": item.get("timeline_start", 0),
+            "timeline_end": item.get("timeline_end", 0),
+            "exact_duration": item.get("exact_duration") or item.get("duration") or 0,
+            "shot_type": _clean_scene_text(item.get("shot_type") or "", 160),
+            "camera_motion": _clean_scene_text(item.get("camera_motion") or "", 500),
+            "character_motion": _clean_scene_text(item.get("character_motion") or item.get("action") or "", 500),
+            "facial_performance": _clean_scene_text(item.get("facial_performance") or item.get("emotion") or "", 240),
+            "facial_performance_custom": _clean_scene_text(item.get("facial_performance_custom") or item.get("delivery") or "", 800),
+            "image_prompt": _id_lora_structured_image_prompt(item, subject_refs[0] if subject_refs else None, location_ref),
+            "audio_direction": _clean_scene_text(item.get("audio_direction") or "", 4000),
+            "continuity": _clean_scene_text(item.get("continuity") or "", 4000),
+            "notes": _clean_scene_text(item.get("notes") or "", 4000),
+        }, index)
+        scenes.append(scene)
+    if not scenes:
+        raise ValueError("The LLM returned no usable MiniMax dialogue scenes.")
+    return _rebalance_generated_minimax_camera_motion(scenes, camera_flow, camera_motion_speed)
+
+
+def _apply_authoritative_script_plan(raw_scenes, script_import):
+    generated = raw_scenes if isinstance(raw_scenes, list) else []
+    planned_scenes = ((script_import or {}).get("scene_plan") or {}).get("scenes") or []
+    locked_scenes = []
+    previous_location_id = ""
+    for index, planned in enumerate(planned_scenes):
+        generated_scene = dict(generated[index]) if index < len(generated) and isinstance(generated[index], dict) else {}
+        exact_cues = []
+        for cue in planned.get("speaker_assignments") or []:
+            exact_cues.append({
+                "character_id": cue.get("speaker_id") or "",
+                "speaker_id": cue.get("speaker_id") or "",
+                "speaker": cue.get("speaker_name") or cue.get("speaker_alias") or "Speaker",
+                "dialogue": cue.get("text") or "",
+            })
+        generated_scene["label"] = generated_scene.get("label") or planned.get("label") or f"Script Segment {index + 1}"
+        generated_scene["dialogue_cues"] = exact_cues
+        generated_scene["participant_ids"] = list(planned.get("participant_ids") or [])
+        generated_scene["participant_names"] = list(planned.get("participant_names") or [])
+        current_location_id = _clean_scene_text(generated_scene.get("location_id") or "", 180)
+        if planned.get("continuation_of_previous") and previous_location_id:
+            generated_scene["location_id"] = previous_location_id
+        elif not planned.get("continuation_of_previous"):
+            previous_location_id = current_location_id
+        elif current_location_id:
+            previous_location_id = current_location_id
+        generated_scene["exact_duration"] = float(planned.get("duration_seconds") or 0)
+        generated_scene["duration"] = float(planned.get("duration_seconds") or 0)
+        generated_scene["timeline_start"] = float(planned.get("timeline_start_seconds") or 0)
+        generated_scene["timeline_end"] = float(planned.get("timeline_end_seconds") or 0)
+        generated_scene["notes"] = _clean_scene_text(
+            "\n".join(filter(None, [
+                generated_scene.get("notes") or "",
+                f"Authoritative Script Mapper segment {index + 1}. Exact dialogue and order are locked.",
+                "Continuation of the previous script segment." if planned.get("continuation_of_previous") else "",
+            ])),
+            4000,
+        )
+        locked_scenes.append(generated_scene)
+    return locked_scenes
+
+
 def _build_id_lora_dialogue_scenes(payload):
+    planner_profile = str(payload.get("_dialogue_planner_profile") or "id_lora").strip().lower()
+    is_minimax = planner_profile == "minimax_short_film"
+    authoritative_script = _authoritative_script_from_payload(payload) if is_minimax else None
     story_layer = _normalize_story_layer(payload.get("story_layer") or payload.get("storyLayer") or {})
+    storyboard_settings = payload.get("storyboard") if isinstance(payload.get("storyboard"), dict) else {}
+    camera_flow = _clean_scene_text(
+        payload.get("camera_flow") or payload.get("cameraFlow") or storyboard_settings.get("camera_flow") or "balanced",
+        120,
+    )
+    try:
+        camera_motion_speed = max(0, min(10, int(round(float(
+            payload.get("camera_motion_speed")
+            or payload.get("cameraMotionSpeed")
+            or storyboard_settings.get("camera_motion_speed")
+            or 4
+        )))))
+    except Exception:
+        camera_motion_speed = 4
+    try:
+        character_motion_speed = max(0, min(10, int(round(float(
+            payload.get("character_motion_speed")
+            or payload.get("characterMotionSpeed")
+            or storyboard_settings.get("character_motion_speed")
+            or 4
+        )))))
+    except Exception:
+        character_motion_speed = 4
     story_source = _clean_scene_text(
-        payload.get("story_source") or payload.get("storySource") or story_layer.get("user_story_arc") or story_layer.get("song_story_brief") or "",
-        12000,
+        _authoritative_script_text(authoritative_script) if authoritative_script else payload.get("story_source") or payload.get("storySource") or story_layer.get("user_story_arc") or story_layer.get("song_story_brief") or "",
+        100000 if authoritative_script else 12000,
     )
     try:
         scene_count = int(float(payload.get("scene_count") or payload.get("sceneCount") or 6))
     except Exception:
         scene_count = 6
-    scene_count = max(1, min(24, scene_count))
+    if authoritative_script:
+        scene_count = len((authoritative_script.get("scene_plan") or {}).get("scenes") or []) or scene_count
+        scene_count = max(1, min(80, scene_count))
+    else:
+        scene_count = max(1, min(24, scene_count))
     subjects, locations = _storyboard_dialogue_reference_catalog(payload)
     existing_scenes = payload.get("scenes") if isinstance(payload.get("scenes"), list) else []
     compact_existing = []
@@ -2067,23 +2682,59 @@ def _build_id_lora_dialogue_scenes(payload):
             "dialogue": normalized.get("lyrics", ""),
             "story_beat": normalized.get("story_beat", ""),
         })
-    instruction = (
-        "You are a short-film dialogue scene planner for an ID-LoRA image-to-video workflow.\n\n"
-        "Create a preview storyboard plan. The user will review it before anything is applied to the Video Builder timeline.\n\n"
-        "Important behavior:\n"
-        "- If USER STORY / SCRIPT has text, use it as the source. It may be a premise, outline, or pasted script.\n"
-        "- If USER STORY / SCRIPT is empty, invent an original short-film premise from the available characters and locations.\n"
+    planner_identity = (
+        "You are the dedicated MiniMax H3 short-film scene planner. Create model-ready scene cards for a dialogue-driven MiniMax project."
+        if is_minimax else
+        "You are a short-film dialogue scene planner for an ID-LoRA image-to-video workflow."
+    )
+    dialogue_rule = (
+        "- A scene may contain one or more ordered dialogue_cues. Use exact character ids from AVAILABLE CHARACTERS. Keep every cue short enough to fit naturally in one generated clip.\n"
+        "- When two or more characters speak in one scene, preserve their exact turn order in dialogue_cues and give each character only their own words.\n"
+        if is_minimax else
         "- Create exact spoken dialogue lines. Keep each line short enough for a single generated clip.\n"
         "- Prefer one speaking character per scene. Use only character ids from AVAILABLE CHARACTERS when possible.\n"
+    )
+    authoritative_rule = (
+        "AUTHORITATIVE SCRIPT CONTRACT:\n"
+        "- The SCRIPT MAPPER SEGMENT PLAN below is immutable. Return exactly one scene per supplied segment, in the same order.\n"
+        "- Copy every dialogue cue word-for-word with its exact character_id and speaker. Never rewrite, paraphrase, correct, shorten, extend, merge, reorder, or invent dialogue.\n"
+        "- Do not add narration, voice-over, new speakers, or extra spoken words.\n"
+        "- Your creative job is only the surrounding visual direction: story beat, actions, reactions, blocking, location choice, shot, camera, facial delivery, ambience, and continuity.\n"
+        "- Continuation segments must preserve the prior segment's character identity, wardrobe, location, props, spatial positions, and screen direction unless the locked script plan starts a new source scene.\n\n"
+        if authoritative_script else ""
+    )
+    output_dialogue_shape = (
+        '      "dialogue_cues": [{"character_id": "exact character id", "speaker": "character name", "dialogue": "exact spoken words"}],\n'
+        if is_minimax else
+        '      "character_id": "exact id from available characters or empty",\n'
+        '      "dialogue": "exact spoken line",\n'
+    )
+    instruction = (
+        f"{planner_identity}\n\n"
+        "Create a preview storyboard plan. The user will review it before anything is applied to the Video Builder timeline.\n\n"
+        "Important behavior:\n"
+        f"{authoritative_rule}"
+        "- If USER STORY / SCRIPT has text, use it as the source. It may be a premise, outline, or pasted script.\n"
+        "- If USER STORY / SCRIPT is empty, invent an original short-film premise from the available characters and locations.\n"
+        f"{dialogue_rule}"
         "- Use only location ids from AVAILABLE LOCATIONS when possible.\n"
         "- Each scene needs a story beat, visual direction for image prep, a full text-to-image prompt, and optional camera/facial direction.\n"
+        f"- Follow the project camera plan: camera flow is {camera_flow!r} and camera motion speed is {camera_motion_speed}/10. "
+        "Use controlled cinematic camera variation across the sequence. Do not default every scene to static or locked-off framing when camera speed is above 0. "
+        "At camera speed 7-8, every camera_motion value must use energetic, visibly active wording and must not say slow, gentle, subtle, restrained, locked-off, static, or hold. At speed 9-10, prefer two coordinated readable camera actions. "
+        "An inward move (push-in, dolly-in, zoom-in, track forward, or drift closer) is a rare accent: use at most one inward move in any six neighboring scenes. "
+        "Never assign inward moves to alternating scenes. Prefer lateral drift, restrained pan, orbit, pull-back, rack focus, handheld hold, and intentional locked coverage. "
+        "The requested shot_type is the literal first-frame scale: never begin wider or farther away and move inward to reach it. "
+        "Reserve a static camera for an intentional dramatic beat and keep neighboring camera-motion families visibly different.\n"
+        f"- Character motion speed is {character_motion_speed}/10. At speed 4 or higher, every scene needs at least one clear physical body action, gesture, step, or interaction with the set; facial expression, blinking, breathing, and mouth movement alone do not count. Keep dialogue lip sync practical.\n"
+        "- camera_motion must contain the actual concise camera direction. motion_summary is optional and must only contain additional custom motion direction that is not already stated in camera_motion; otherwise leave motion_summary empty.\n"
         "- The image_prompt must follow the existing NanoBanana/Krea-style still-image prompt structure, not a short keyword list.\n"
         "- For image_prompt, write one polished paragraph, about 65-115 words, practical for text-to-image generation.\n"
         "- For image_prompt, include concrete subject identity, wardrobe, hair, makeup or facial detail when known, pose/body language, shot/framing, lens feel, lighting setup, environment, materials, atmosphere, color palette, texture, and cinematic finish.\n"
         "- For image_prompt, create a still frame only. Do not describe animation, camera movement, future action, lip sync, audio, captions, text overlays, or printed dialogue.\n"
         "- For image_prompt, prefer intimate cinematic compositions when no shot is specified: close-up, medium close-up, profile, upper body, shallow depth of field, foreground framing, bokeh, rim light, atmospheric lighting.\n"
         "- For image_prompt, if character or location reference images are available, start naturally with 'Using the provided character reference...' or 'Using the provided character reference and location reference...' and preserve the important identity/setting details without copying the exact pose, crop, or camera angle.\n"
-        "- Do not mention ID-LoRA, LoRA, nodes, workflow files, voice cloning, prompts, or metadata in dialogue.\n"
+        f"- Do not mention {'MiniMax H3, models' if is_minimax else 'ID-LoRA, LoRA'}, nodes, workflow files, voice cloning, prompts, or metadata in dialogue.\n"
         "- Do not write markdown, explanations, or code fences.\n\n"
         "Return only valid JSON with this exact shape:\n"
         "{\n"
@@ -2092,22 +2743,26 @@ def _build_id_lora_dialogue_scenes(payload):
         '  "scenes": [\n'
         "    {\n"
         '      "label": "Scene 1 title",\n'
-        '      "character_id": "exact id from available characters or empty",\n'
+        f"{output_dialogue_shape}"
         '      "location_id": "exact id from available locations or empty",\n'
-        '      "dialogue": "exact spoken line",\n'
         '      "story_beat": "one concise story beat",\n'
         '      "visual_direction": "short first-frame visual direction for image prep",\n'
         '      "image_prompt": "full NanoBanana/Krea-style still image prompt paragraph for creating the scene image",\n'
         '      "shot_type": "optional shot/framing",\n'
         '      "camera_motion": "optional camera movement",\n'
+        '      "character_motion": "visible character blocking or action",\n'
         '      "facial_performance": "optional facial/emotional direction",\n'
-        '      "delivery": "optional voice/performance delivery note"\n'
+        '      "delivery": "optional voice/performance delivery note",\n'
+        '      "audio_direction": "ambience, sound effects, silence, breathing, and other non-dialogue audio direction",\n'
+        '      "continuity": "identity, wardrobe, props, location, screen direction, and spatial continuity requirements"\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
         f"Requested scene count: {scene_count}\n\n"
         f"USER STORY / SCRIPT:\n{story_source or '[blank - invent an original short-film premise]'}\n\n"
+        f"SCRIPT MAPPER SEGMENT PLAN (authoritative when present):\n{json.dumps((authoritative_script or {}).get('scene_plan') or {}, ensure_ascii=False, indent=2) if authoritative_script else '[none]'}\n\n"
         f"Story layer:\n{json.dumps(story_layer, ensure_ascii=False, indent=2)}\n\n"
+        f"Project motion settings:\n{json.dumps({'camera_flow': camera_flow, 'camera_motion_speed': camera_motion_speed, 'character_motion_speed': character_motion_speed}, ensure_ascii=False, indent=2)}\n\n"
         f"Available characters:\n{json.dumps(subjects, ensure_ascii=False, indent=2) if subjects else '[none provided]'}\n\n"
         f"Available locations:\n{json.dumps(locations, ensure_ascii=False, indent=2) if locations else '[none provided]'}\n\n"
         f"Existing starter scenes:\n{json.dumps(compact_existing, ensure_ascii=False, indent=2) if compact_existing else '[none]'}"
@@ -2120,14 +2775,14 @@ def _build_id_lora_dialogue_scenes(payload):
         temperature=float(payload.get("temperature") or 0.55),
         top_p=float(payload.get("top_p") or 0.92),
         max_new_tokens=int(payload.get("max_new_tokens") or max(1400, scene_count * 280)),
-        label="ID-LoRA Dialogue Scenes Gemma",
+        label="MiniMax Short Film Dialogue Scenes LLM" if is_minimax else "ID-LoRA Dialogue Scenes Gemma",
         preserve_paragraphs=True,
     )
     try:
         data = _extract_json_object_from_text(text)
     except Exception as parse_error:
         repair_instruction = (
-            "Repair this malformed JSON for an ID-LoRA dialogue scene plan.\n"
+            f"Repair this malformed JSON for a {'MiniMax short-film' if is_minimax else 'ID-LoRA'} dialogue scene plan.\n"
             "Return only valid JSON. Do not add prose, markdown, code fences, comments, or trailing commas.\n"
             "Every property name must be enclosed in double quotes. Every string value must be enclosed in double quotes.\n"
             "Keep the same title, premise, and scenes when possible.\n\n"
@@ -2139,7 +2794,7 @@ def _build_id_lora_dialogue_scenes(payload):
             temperature=0.1,
             top_p=0.8,
             max_new_tokens=int(payload.get("max_new_tokens") or max(2200, scene_count * 520)),
-            label="ID-LoRA Dialogue Scenes JSON Repair",
+            label="MiniMax Short Film Dialogue JSON Repair" if is_minimax else "ID-LoRA Dialogue Scenes JSON Repair",
             preserve_paragraphs=True,
         )
         try:
@@ -2147,7 +2802,19 @@ def _build_id_lora_dialogue_scenes(payload):
             run_info = {**run_info, "json_repaired": True, "repair_runner": repair_info.get("runner", "")}
         except Exception:
             raise ValueError(f"Gemma returned malformed dialogue-plan JSON and repair failed. Original parse error: {parse_error}")
-    scenes = _normalize_generated_dialogue_scenes(data.get("scenes"), subjects, locations)
+    generated_scene_rows = _apply_authoritative_script_plan(data.get("scenes"), authoritative_script) if authoritative_script else data.get("scenes")
+    scenes = (
+        _normalize_generated_minimax_dialogue_scenes(
+            generated_scene_rows,
+            subjects,
+            locations,
+            payload.get("minimax_h3_mode"),
+            camera_flow,
+            camera_motion_speed,
+        )
+        if is_minimax else
+        _normalize_generated_dialogue_scenes(data.get("scenes"), subjects, locations)
+    )
     return {
         "title": _clean_scene_text(data.get("title") or "", 200),
         "premise": _clean_scene_text(data.get("premise") or story_source or "", 4000),
@@ -2156,7 +2823,16 @@ def _build_id_lora_dialogue_scenes(payload):
         "runner": run_info.get("runner", "builtin"),
         "used_model": run_info.get("used_model", ""),
         "unloaded": run_info.get("unloaded", True),
+        "authoritative_script_used": bool(authoritative_script),
     }
+
+
+def _build_minimax_dialogue_scenes(payload):
+    request_payload = dict(payload or {})
+    request_payload["_dialogue_planner_profile"] = "minimax_short_film"
+    request_payload["performance_mode"] = "speaking"
+    request_payload["short_film_planning_mode"] = "guided_film"
+    return _build_id_lora_dialogue_scenes(request_payload)
 
 
 def _ensure_storyboard_routes():
@@ -2253,6 +2929,15 @@ def _ensure_storyboard_routes():
         try:
             payload = await request.json()
             result = await asyncio.to_thread(_build_id_lora_dialogue_scenes, payload)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": str(exc)}, status=500)
+        return web.json_response({"ok": True, **result})
+
+    @server_instance.routes.post("/vrgdg/storyboard/minimax_dialogue_scenes")
+    async def vrgdg_storyboard_minimax_dialogue_scenes(request):
+        try:
+            payload = await request.json()
+            result = await asyncio.to_thread(_build_minimax_dialogue_scenes, payload)
         except Exception as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=500)
         return web.json_response({"ok": True, **result})

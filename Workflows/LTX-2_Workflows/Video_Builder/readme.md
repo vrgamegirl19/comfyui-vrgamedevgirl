@@ -1,14 +1,14 @@
-# LTX 2.3 Video Builder Guide
+# Video Builder Guide — LTX 2.3 and MiniMax H3
 
 This guide is for someone opening the Video Builder for the first time. It explains what each main area does, the usual workflow, and where to look when something is missing.
 
-If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game Dev Girl here: [buymeacoffee.com/vrgamedevgirl](https://buymeacoffee.com/vrgamedevgirl).
+If this guide or the Video Builder helps you, you can support VR Game Dev Girl here: [buymeacoffee.com/vrgamedevgirl](https://buymeacoffee.com/vrgamedevgirl).
 
 ![Full Video Builder Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Full%20LTX%202.3%20Video%20Builder%20window.png)
 
 ## Table of Contents
 
-- [What the LTX 2.3 Video Builder Does](#what-the-ltx-23-video-builder-does)
+- [What the Video Builder Does](#what-the-video-builder-does)
 - [Current Feature Overview](#current-feature-overview)
 - [Recent Builder Updates](#recent-builder-updates)
 - [Installing From Main](#installing-from-main)
@@ -27,6 +27,7 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 - [Image Tab](#image-tab)
 - [Browser AI Image Mode](#browser-ai-image-mode)
 - [Video Tab](#video-tab)
+- [MiniMax H3 Video Engine](#minimax-h3-video-engine)
 - [ID-LoRA Image-to-Video](#id-lora-image-to-video)
 - [First Last Frame Video](#first-last-frame-video)
 - [Audio Tab](#audio-tab)
@@ -50,16 +51,14 @@ If this guide or the LTX 2.3 Video Builder helps you, you can support VR Game De
 - [Settings And Audio Notifications](#settings-and-audio-notifications)
 - [Required Custom Nodes](#required-custom-nodes)
 - [Models and Downloads](#models-and-downloads)
-- [Standalone Video Enhancer and Video Compare](#standalone-video-enhancer-and-video-compare)
-- [Additional Nodes and Utilities](#additional-nodes-and-utilities)
 - [Saving Projects](#saving-projects)
 - [Reference-to-Video (MSR LoRA) Quick-Start Walkthrough](#reference-to-video-msr-lora-video-quick-start-walkthrough)
 - [Recommended Beginner Workflow](#recommended-beginner-workflow)
 - [Common Problems](#common-problems)
 
-## What the LTX 2.3 Video Builder Does
+## What the Video Builder Does
 
-The LTX 2.3 Video Builder is a scene-by-scene video creation UI inside ComfyUI. It helps you build a project from audio, SRT timing, lyric timing, scene notes, prompts, images, video clips, and final stitching.
+The Video Builder is a scene-by-scene video creation UI inside ComfyUI. A project can use the established LTX 2.3 engine or the separate MiniMax H3 engine. It helps you build from audio, SRT timing, lyric or dialogue timing, scene notes, prompts, images, video clips, and final stitching.
 
 The basic idea is:
 
@@ -73,15 +72,20 @@ The basic idea is:
 8. Render scene videos.
 9. Stitch the final video.
 
-The current Builder includes the guided Wizard, Storyboard Builder, reference-video modes, per-scene overrides, flexible LLM runners, post-process tools, First/Last Frame workflows, Browser AI storyboarding, integrated face repair, portable project transfer, safer timeline tools, update checking, and standalone media/training utilities.
+The current Builder includes the guided Wizard, Storyboard Builder, reference-video modes, per-scene overrides, flexible LLM runners, post-process tools, First/Last Frame workflows, Browser AI storyboarding, integrated face repair, portable project transfer, safer timeline tools, update checking, and dedicated MiniMax H3 music-video and short-film paths.
 
 ## Current Feature Overview
 
-The current LTX 2.3 Video Builder feature set includes:
+The current Video Builder feature set includes:
 
 | Feature | What it adds |
 | --- | --- |
 | Status banner and updater | Checks the installed commit against production `main`, reports whether it is current, conditionally installs changed Python requirements, and offers a safe fast-forward update |
+| Project video engines | Keeps LTX 2.3 as the default for existing and new projects while adding a separate MiniMax H3 renderer selected in Builder Settings |
+| MiniMax H3 scene modes | Adds Text-to-Video, Image-to-Video, Reference-to-Video, and Video-to-Video with global settings or locked per-scene overrides |
+| MiniMax exact timing and audio | Renders on H3's required 24 FPS/frame grid, supplies the exact project or scene audio when selected, then trims every result back to the authoritative timeline range |
+| MiniMax references and continuity | Sends up to nine ordered images and three ordered videos, supports exact-start and spatial continuity, and preserves the purpose/order of every reference |
+| MiniMax short-film authoring | Adds built-in generated audio, Reference Builder voice presets, per-scene speaker cues, Guided Film Automation, and an exact-dialogue Script Mapper |
 | Chained First/Last Frame | Builds one opening image plus a destination image for each scene; each destination can become the next scene's start |
 | Independent First/Last Frame pairs | Gives every scene its own start and end image using four resumable passes: starts, motion plans, ends, and final two-image video prompts |
 | `Build Full FLF Video` | Runs missing endpoint planning, the FLF image chain, per-scene prompts/renders, final-frame extraction, and stitching as one pipeline |
@@ -103,7 +107,7 @@ The current LTX 2.3 Video Builder feature set includes:
 | Stronger story planning | Preserves character descriptions, handles repeated song sections, rejects real lyric-heading changes, removes only invented trailing Story Arc sections, supports repeating location blocks, and improves responsive Storyboard layout |
 | Speaking and silent projects | Adds project-wide speaking/no-lip-sync behavior, ID-LoRA dialogue planning and auto durations, per-scene silence, and silent timeline audio |
 | Scene Adjust finishing | Adds color, lightness, sharpness, clarity, vignette, and fade controls with still-frame preview, per-scene render, apply-all, and reusable presets |
-| New standalone utilities | Adds the Standalone Video Enhancer, Video Compare Slider, Face Fix and Video Enhance node sets, advanced LTX CFG/guide scheduling and looping, feathered crop paste-back, a LoRA Dataset Creator, and expanded Krea 2 training/install tools |
+| Flexible project storage and memory management | Lets new projects use a custom parent folder and lets DynamicVRAM users disable automatic Builder cleanup while keeping manual `Clear Memory` available |
 
 ## Recent Builder Updates
 
@@ -111,16 +115,20 @@ These are the newest user-facing changes covered throughout this guide:
 
 | Update | What changed |
 | --- | --- |
+| MiniMax H3 Builder integration | Projects can select MiniMax H3 and use its four scene modes, dedicated prompts and renderer, ordered image/video references, exact timeline trim, input-audio or built-in-audio paths, and H3-aware `Render All`/stitching. |
+| MiniMax H3 B-roll safety | Scenes marked B-roll/no-lip-sync now suppress lyric, singer, speaker, and native-voice inputs during prompt generation, remove singing directions from H3 timestamp blocks, and reapply a visual-only safety contract when rendering an existing prompt. |
+| MiniMax short films | Storyboard Builder can plan Guided Film scene cards, import and validate `speaker: dialogue` scripts, map every speaker to a Reference Builder character, preserve exact dialogue, and create the real timeline only after review. |
+| Project storage and memory control | Settings can choose a default folder for newly created projects and can enable or disable automatic RAM/VRAM cleanup. Existing projects and temporary ComfyUI outputs are not moved. |
+| International lyric alignment and longer waits | Lyric matching now preserves Unicode words such as Cyrillic instead of stripping them, and an individual scene render may wait up to two hours before the Builder reports a timeout. |
 | Reference lyrics and Story Arc reliability | `Transcribe Existing Scenes` now requires reference lyrics, preserves their exact line order, corrects held or missed boundary words, and no longer inserts pipe delimiters. Beat mode automatically transcribes its finished beat scenes. Story Arc keeps a complete valid heading structure when Gemma only appends invented trailing sections. |
 | Faster scene selection and Ingredients panels | `Select Multi` now supports direct timeline clicks and typed scene lists with ranges and shortcuts. The Ingredients Reference Builder correctly mounts its Sheets, Mapping, and Locations panels. |
 | Timeline and Storyboard prompt controls | `+ Segment` can end at the scrubber, Space toggles playback, `S` adds a segment, Left/Right navigate scenes, Storyboard Video Prep exposes Motion Notes inline, and all-scenes Gemma runs can fill only missing prompts or redo every visible scene. |
 | Render visibility and resume safety | `Render All` has a persistent live log and saved reports. Missing-only Storyboard batches preserve completed prompts and save successful partial progress if a later scene fails. |
-| Standalone finishing utilities | The Standalone Video Enhancer adds Original/2K/3K/4K output, sharpening, grain, resumable batches, and before/after comparison. The Video Compare Slider provides synchronized draggable video comparison. |
 | Lyric, prompt, and scene safety | Adjacent scenes can be merged without shifting the remaining timeline, exact pasted lyric units remain intact, manual prompts remain manual, Storyboard starting-shot instructions are enforced, global audio remains the final soundtrack, and undo/thumbnail handling uses less memory. |
 
 ## Installing From Main
 
-The LTX 2.3 Video Builder is the production release on the repository's default `main` branch.
+The Video Builder is released from the repository's default `main` branch.
 
 ### New Install With ComfyUI Manager
 
@@ -276,7 +284,9 @@ Important project options:
 | `Import Project ZIP` | You want to extract, rebase, load, and continue a portable project |
 | `Delete Project` | You want to permanently remove a complete project folder from the project picker; this cannot be undone |
 
-Projects are saved under the ComfyUI output folder. A builder project contains the session JSON, SRT, generated images, scene videos, prompt files, reference images, and copied audio assets.
+By default, projects are saved under the ComfyUI output folder. To keep projects elsewhere, open `Menu` -> `Settings` -> `Project Storage`, choose an absolute parent folder, and click `Save Projects Root`. The preference applies to `New Project`, `Save Project As`, and `Branch Project`; it does not move existing projects or ComfyUI temporary render output. A full project path entered while creating one project overrides the preference for that project.
+
+The project picker lists projects from the configured parent folder as well as the normal output area. For safety, the Builder does not delete projects outside the ComfyUI output folder; remove those manually only after checking the exact path. A builder project contains the session JSON, SRT, generated images, scene videos, prompt files, reference images, and copied audio assets.
 
 ![Menu Dropdown](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Menu%20Dropdown.png)
 
@@ -905,7 +915,7 @@ To make a scene override:
 
 ## Video Tab
 
-The `Video` tab creates the selected scene video. At the top, choose between:
+The `Video` tab creates the selected scene video. The controls depend on the project engine selected in Settings. In an LTX project, choose between:
 
 | Mode | What it does |
 | --- | --- |
@@ -917,7 +927,7 @@ The `Video` tab creates the selected scene video. At the top, choose between:
 | `First Last Frame` | Guides LTX from a scene start image to a scene end image, either as a continuous chain or independent start/end pairs |
 | `Import Custom Video` | Reserved for a future direct-import panel; use scene video restore/history tools for now |
 
-The Video tab has three subtabs:
+The LTX Video tab has three subtabs:
 
 | Subtab | What it controls |
 | --- | --- |
@@ -1049,6 +1059,118 @@ To create an Ingredients-to-Video scene:
 6. Add scene motion notes and click `Gemma Ingredients Video`.
 7. Check that the correct sheet is shown for the scene, then click `Create Scene Video`.
 8. If a batch uses the wrong sheet, fix the scene mapping before running `LLM Video All` or `Render All` again.
+
+## MiniMax H3 Video Engine
+
+MiniMax H3 is a separate project video engine inside Video Builder. Open `Menu` -> `Settings` -> `Project Video Engine` and choose `MiniMax H3`. This changes the Video tab, prompt preparation, scene renderer, batch renderer, timing adapter, and final stitch for the whole project. It does not convert or rewrite an LTX project automatically; existing projects and projects without an engine value continue to use LTX.
+
+Start a new project or use `Save Project As`/`Branch Project` before changing engines when you want to preserve an established LTX version.
+
+### MiniMax Scene Modes
+
+The MiniMax Video tab provides four modes:
+
+| Mode | Inputs and typical use |
+| --- | --- |
+| `Text to Video` | Prompt plus the selected audio path; no image or video reference is required |
+| `Image to Video` | Uses the selected scene image as the visual starting input |
+| `Reference to Video` | Uses ordered Reference Builder images and can optionally make the selected scene image the exact first frame |
+| `Video to Video` | Uses up to three ordered source videos, their trim ranges and purposes, plus optional ordered edit images |
+
+Mode, models, resolution, audio mode, timing handles, sampler, EasyCache, SageAttention, and FP16 accumulation are project-wide by default. Enable the scene's custom MiniMax settings lock when one scene needs a different mode or render setup. The lock copies the current effective settings into that scene; while it is off, later global changes continue to flow into the scene.
+
+### Models and Render Settings
+
+MiniMax H3 currently uses the standard diffusion model loader. GGUF diffusion models are filtered out and are not supported by this Builder path. The default model names are:
+
+```text
+models/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors
+models/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+models/vae/minimax_h3_video_vae_fp16.safetensors
+models/vae/minimax_h3_audio_vae_fp32.safetensors
+```
+
+The main video settings choose aspect ratio, megapixels, seed, warm-up frames, and cool-down frames. The collapsed advanced area contains sampler, scheduler, steps, denoise, EasyCache controls, SageAttention, and FP16 accumulation. Begin with the workflow defaults and test a single scene before changing advanced controls.
+
+MiniMax timing rules are different from LTX:
+
+- H3 renders at a fixed `24 FPS`.
+- Frame counts are rounded up to H3's required `17n+5` grid.
+- The Builder renders enough context to cover the scene, then trims the result back to the exact timeline start/end duration.
+- Warm-up and cool-down frames provide context; they do not lengthen the finished scene.
+- One H3 scene is limited to about 15 seconds. Split longer dialogue or music ranges into smaller scenes.
+
+### MiniMax Audio Modes
+
+| Audio mode | Behavior |
+| --- | --- |
+| `Input Audio (exact supplied audio)` | Uses custom scene audio when present, otherwise the matching project-audio range. The source waveform is kept unchanged for timing and lip sync. |
+| `Built-in MiniMax Audio` | Lets MiniMax create scene audio from the prompt. This enables native character voice presets and Short Film speaker assignments. |
+
+Use Input Audio for a finished song, narration, or dialogue recording that must remain exact. The Builder trims/pads the source into H3's audio latent for generation and uses the original audio in the finished timeline; it does not ask H3 to rewrite the words.
+
+Use Built-in MiniMax Audio for a short film where H3 should create the voices and sound. In `Reference Builder`, each mapped character can receive a MiniMax built-in voice preset or a custom preset name and description. In a Short Film scene, use `Speaker Assignment` to order exact dialogue cues. Speaker Assignment is intentionally disabled for Input Audio because changing the typed words would no longer match the supplied recording.
+
+For built-in-audio scenes, use the quiet timeline trim mode to set clean boundaries without automatic preview playback. Review the embedded sound of every scene before the final stitch.
+
+### Ordered Image References
+
+Reference-to-Video can use up to nine image inputs. Open the scene's MiniMax reference chooser from the Video tab and order the Reference Builder images exactly as H3 should receive them. Until you save a custom choice, the scene automatically follows its mapped character and location references.
+
+Important rules:
+
+- `Use scene image as exact start frame` reserves Image 1 for the selected scene image.
+- Previous-scene continuity can reserve one additional image slot, leaving fewer library-reference slots.
+- `Previous final frame — spatial reference` supplies the previous render as another visual reference.
+- `Previous final frame — exact start frame` makes the previous render's last frame the new scene's exact start.
+- A scene image exact start and previous-frame exact start cannot both own the same exact-start position.
+
+The numbered order is significant. Save the scene after rearranging references, then inspect the summary count before rendering.
+
+### Video-to-Video References
+
+Video-to-Video accepts up to three ordered source videos. Each row stores:
+
+| Field | What it controls |
+| --- | --- |
+| Video path | Source clip sent to H3 |
+| Start and duration | Portion of the source clip to use |
+| Purpose | `Continuation / Extension`, `Movement Guide`, `Camera Guide`, `Edit / Rhythm Guide`, `Transformation Source`, or `Visual Style Guide` |
+| Use audio | Whether that reference video's audio is available to the workflow |
+
+`Use Current Scene Video as Reference 1` quickly assigns the selected scene's current video. Reference Builder edit images may be sent alongside the videos in their saved order. Check source trim ranges and purposes carefully; the adapter preserves them rather than flattening every video into the same kind of reference.
+
+### MiniMax Prompting
+
+MiniMax prompts are stored separately from LTX video prompts, so generating or editing an H3 prompt does not overwrite an LTX prompt for the same scene. Click `Create MiniMax H3 Prompt` to use the runner selected in `LLM Runner`. Each H3 mode has its own editable instruction set.
+
+The prompt writer receives the exact scene duration, timeline/audio contract, lyric or dialogue line, mapped performers, ordered image/video references, and the current H3 mode. Review that the prompt:
+
+- describes action that fits within the exact scene time
+- names references in their displayed order
+- uses `<Audio 1>` when the supplied audio drives the performance
+- preserves the exact lyric/dialogue instead of paraphrasing it
+- includes saved voice descriptions only for Built-in Audio speakers
+
+Click `Create MiniMax H3 Scene Video` to render one scene. The Builder uses the dedicated H3 workflow and adds the exact-trimmed result to that scene's video history.
+
+### MiniMax Short Film and Script Mapper
+
+For generated dialogue, set the top-bar `Video Type` to `Speaking (short film)`, select `Built-in MiniMax Audio`, create and save characters/voices in Reference Builder, then open Storyboard Builder. The Short Film Story Layer offers:
+
+| Authoring path | What it does |
+| --- | --- |
+| `Guided Film Automation` | Uses the selected LLM to develop editable scene cards from a premise, outline, saved characters/locations, or an authoritative imported script |
+| `Fully Custom` | Leaves scene-card authoring and speaker cues under manual control |
+| `Import Script / Script Mapper` | Parses `.txt` or `.json`, validates every `speaker: dialogue` cue, maps speakers to saved characters, estimates timing, and splits long cues into H3-safe scenes |
+
+Script Mapper activation does not change the Video Builder timeline. In Guided Film, first activate and review the exact script, then develop the storyboard scenes. The LLM may add visual actions, reactions, shots, camera direction, location, ambience, and continuity, but it may not rewrite, reorder, merge, or omit the authoritative dialogue. After reviewing the cards and speaker assignments, click `Create Timeline Segments` to replace/create the real Builder scenes.
+
+### Rendering and Stitching MiniMax Projects
+
+`Render All` detects the project engine and routes MiniMax scenes through the H3 workflow. It respects each scene's effective global or locked mode, validates required prompts/references/audio, renders only the requested missing/new versions, trims every clip to its exact timeline duration, and stitches the H3 results.
+
+The current MiniMax path does not apply LTX-only canvas, mode, embedded-audio, or Post Process workflow settings. Use H3's own resolution and audio controls. Test one representative scene before a batch, especially after changing models, EasyCache, reference order, audio mode, or continuity.
 
 ## ID-LoRA Image-to-Video
 
@@ -1414,6 +1536,8 @@ For most music-video projects, start with one scene per lyric line. It is easier
 
 Use `Exact reference lyric lines` when the pasted lyric lines are already the units you want. Vocal lines are not split, merged, stretched, or constrained by the scene-duration fields. Instrumental gaps can still be included as complete gaps and split manually later with the timeline scissors.
 
+Lyric matching is Unicode-aware. Cyrillic and other non-Latin words are retained during stable-ts alignment instead of being reduced to empty lines. If an older project created incorrect two-second scenes from `0:00`, update/restart the Builder and run the reference-lyric transcription again with `Replace All`.
+
 Beat mode is a two-stage operation handled by one button: it creates the beat scene blocks, saves those blocks as the current timeline, and then fills them through `Transcribe Existing Scenes`. You do not need to run transcription a second time afterward. The Wizard uses the same shared scene-creation and lyric-mapping engines as Line Mapping, so the same reference-preservation rules apply there.
 
 ### Include Instrumental Gaps
@@ -1689,9 +1813,9 @@ This is why reviewing lyrics before running Gemma can improve lip-sync, reduce w
 
 ## Reference Builder
 
-The `Reference Builder` button opens the `Reference Image Builder`. This is for projects where scenes need consistent characters, locations, or visual references across many generated images.
+The `Reference Builder` button opens the `Reference Image Builder`. This is for projects where scenes need consistent characters, locations, or visual references across many generated images or videos.
 
-Reference Builder can feed references into `Flux/Klein` or `Nano B`, depending on the current image mode. It also supports the video-side reference flows for `Reference to Video` and `Ingredients to Video`.
+Reference Builder can feed references into `Flux/Klein` or `Nano B`, depending on the current image mode. It also supports the LTX video-side reference flows and the ordered image/video/voice data used by MiniMax H3.
 
 Use it when:
 
@@ -1702,6 +1826,9 @@ Use it when:
 | Connect scenes to specific location images | `Scene Mapping` |
 | Drive LTX/MSR Reference-to-Video | `MSR References` and subject mapping |
 | Drive LTX Ingredients-to-Video | `Ingredients Sheets` and scene mapping |
+| Drive MiniMax Reference-to-Video | Ordered character/location/extra image references, with an optional exact scene start image |
+| Drive MiniMax Video-to-Video | Up to three ordered video sources plus ordered visual-edit images |
+| Give MiniMax short-film characters consistent voices | A built-in voice preset or custom preset name/description on each character |
 | Include manually loaded image references too | `Also include manually loaded reference images` |
 
 Main areas:
@@ -1733,6 +1860,7 @@ When Reference Builder opens, choose the setup that matches the current generati
 | `LTX Reference to Video` | MSR/reference-image mapping for the LTX Reference-to-Video workflow |
 | `Ingredients to Video` | Complete Ingredients sheets and per-scene sheet mapping |
 | `ID-LoRA Ref Builder` | Character identity images, voices, locations, dialogue, and automatic or manual scene durations |
+| `MiniMax H3 References` | Ordered character, location, extra-image, video-edit, and voice data appropriate to the active H3 mode |
 
 Basic Reference Builder workflow:
 
@@ -1745,6 +1873,8 @@ Basic Reference Builder workflow:
 7. Generate images normally from the `Image` tab.
 
 For `Reference to Video`, focus on subject/MSR references and singer/subject mapping. For `Ingredients to Video`, open the Ingredients Reference Builder, upload sheet images, describe them if needed, and map sheets to scenes before running video prompts.
+
+For a MiniMax H3 project, Reference Builder hides LTX-only choices and follows the active H3 mode. Reference-to-Video uses ordered mapped images; Video-to-Video adds ordered edit images and the Video tab's source-video rows. The active scene's MiniMax chooser can override the automatic mapped-image order without changing other scenes. In Short Film + Built-in Audio, character cards also show `MiniMax built-in voice`; the saved preset name and description are copied exactly into prompts where that character speaks.
 
 ### Character References
 
@@ -1883,6 +2013,8 @@ Use it when you want stronger control over:
 
 Storyboard Builder works especially well with saved lyric mapping and Reference Builder data. For Reference-to-Video projects, it can enforce clearer facial/lip-sync behavior and add reference-aware trigger phrasing before writing video prompts back into the Video Builder scenes.
 
+For MiniMax H3 projects, Storyboard Builder shows the four H3 modes, writes the separate H3 prompt field, includes exact scene timing and ordered image/video/audio references, and preserves H3-specific settings when cards are saved back to Video Builder. It does not run the normal LTX prompt rewrites on H3 scenes.
+
 The collapsible `Story Layer` keeps the overall idea, lyric strength, user story arc, song story brief, lyric sections, and scene-beat creation controls together.
 
 ![Storyboard Builder Story Layer](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/storyboardbuilder/storylayer.png)
@@ -1902,6 +2034,8 @@ The current Storyboard Builder includes several planning and safety improvements
 - `Clear All Story Beats` clears only the per-scene story-beat field, preserving lyrics, prompts, references, images, locations, and shot settings
 - scene cards and controls reflow more cleanly on smaller or resized Storyboard windows
 - ID-LoRA projects can generate, review, and apply a speaking short-film dialogue plan from saved characters, locations, and an optional premise/script
+- MiniMax Short Film + Built-in Audio projects can use Guided Film Automation or Fully Custom authoring, assign ordered speaker cues, and create timeline segments only after the storyboard is reviewed
+- MiniMax Script Mapper can import `.txt`/`.json` dialogue, require every speaker to match a saved Reference Builder character, preserve exact cue order/text, and split the plan into H3-safe scene durations
 
 Recommended Storyboard Builder workflow:
 
@@ -1996,8 +2130,6 @@ Basic workflow:
 The tool detects and tracks one primary face, prepares safe 512×512 anchors, enhances those anchors with the current Z-Enhance setup, uses LTX 2.3 for temporal consistency, then feathers and color-matches the repaired face frames back into the original scene video. The repaired video is added to that scene's video history and selected automatically.
 
 Smaller anchor intervals are slower but improve consistency. The first and final frames are always included. `Repair distance` prevents already-large/close faces from being unnecessarily replaced, and the custom threshold lets you choose the face-width percentage where the repair fades out.
-
-The repository also includes standalone Face Fix nodes under `VRGameDevGirl/Face Fix` for users who want to assemble the same prepare, anchor, LTX, and composite stages in a normal ComfyUI workflow.
 
 ## Builder Agent
 
@@ -2209,7 +2341,7 @@ The `Menu` contains batch tools that can work across many scenes.
 | Button | What it does |
 | --- | --- |
 | `LLM T2I All` | Creates image prompts for multiple scenes |
-| `LLM Video All` | Creates I2V, T2V, Reference-to-Video, or Ingredients-to-Video prompts for multiple scenes |
+| `LLM Video All` | Creates the active LTX-mode prompts or separate MiniMax H3 prompts for multiple scenes |
 | `Image All` | Creates missing image prompts if needed, then creates missing images |
 | `Enhance All` | Enhances every scene that already has an image using its saved prompt and active Enhance settings |
 | `Render All` | Renders missing scene videos and can stitch when possible |
@@ -2248,6 +2380,8 @@ In `First Last Frame` mode, `Image All` also offers the dedicated chained and in
 
 During `Render All`, the persistent render log shows the current scene, phase, elapsed time, per-scene timing, estimated time remaining, and final-stitch timing. When the run finishes or stops, the Builder saves JSON and text reports with the project so you can review completed scenes, failures, and timing after the progress window closes.
 
+In a MiniMax H3 project, `LLM Video All` creates the separate H3 prompts for the effective mode of each scene. `Render All` uses the dedicated H3 workflow, honors global settings or a scene's locked override, applies exact timeline trim, and stitches the selected H3 clips. It does not route those scenes through LTX post-processing or LTX canvas/audio options.
+
 ![Build Full Video Options](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Build%20Full%20Video%20Options.png)
 
 When the finished video is stitched, the builder shows a `Final Video Ready` popup. Use `Open Video` to preview it.
@@ -2270,6 +2404,8 @@ Safe batch workflow:
 The left panel has three tabs: `Scenes`, `Tools`, and `Post Process`.
 
 Use `Post Process` after images or videos exist and you want to style, compare, or finish them.
+
+The automatic MiniMax H3 render/stitch path currently skips LTX Post Process workflow settings. The controls in this section describe the established LTX/scene-finishing path; do not assume an H3 `Render All` will apply them.
 
 Post Process tools:
 
@@ -2429,13 +2565,30 @@ Common settings:
 
 | Setting | What it does |
 | --- | --- |
+| Project Video Engine | Chooses `LTX (current Builder)` or the separate `MiniMax H3` path for the whole project |
+| Default folder for new projects | Optional absolute parent folder used by New Project, Save Project As, and Branch Project |
 | Custom model root | Optional alternate models folder root |
+| Run automatic RAM/VRAM cleanup | Controls embedded cleanup nodes and automatic cache clearing between Builder jobs |
 | Audio notifications | Plays a sound when selected events finish or fail |
 | Notification volume | Controls notification sound volume |
 | Notify on error | Plays an error sound when a run fails |
 | Notify on finished item | Plays a sound after scene/image/video tasks finish |
 | Notify on full run complete | Plays a sound when a batch/full build finishes |
 | Custom success/error sound | Lets you choose your own audio file for notifications |
+
+### Project Video Engine
+
+Choose the engine before creating prompts and videos. `LTX (current Builder)` keeps the existing LTX modes and renderer. `MiniMax H3` shows the separate four-mode H3 panel, exact-timeline adapter, and H3 scene action. The value is saved with the project; older sessions without it load as LTX.
+
+### Project Storage
+
+`Default folder for new projects` is optional. Use `Choose Folder`, or enter a full absolute folder path such as:
+
+```text
+D:\VRGDG Projects
+```
+
+Click `Save Projects Root` to use it for future `New Project`, `Save Project As`, and `Branch Project` operations. `Use ComfyUI Output` clears the preference. The Builder never moves an existing project or redirects ComfyUI's temporary render output when this changes. An explicit full path entered for a new project still wins for that one project. For safety, projects outside ComfyUI output are read/load capable but cannot be deleted from the Builder project picker.
 
 ### Custom Model Root
 
@@ -2461,6 +2614,12 @@ models
 
 The model pickers look inside the configured root and its known subfolders. If a model is not visible after changing this setting, save settings and refresh/restart the UI.
 
+### Memory Management
+
+`Run automatic RAM/VRAM cleanup` controls whether the Builder executes embedded `RAMCleanup`/`VRAMCleanup` nodes and directly clears Comfy/Gemma caches between tasks, retries, errors, and stops. It is off by default and off is recommended when ComfyUI DynamicVRAM is enabled. The manual `Clear Memory` top-bar action remains available in either state.
+
+If memory usage grows during a long build, first check whether DynamicVRAM is active. Avoid enabling two competing cleanup strategies without testing a short scene; explicit cleanup can add reload time between renders.
+
 ### Audio Notifications
 
 Audio notifications are optional. They are useful for long overnight runs.
@@ -2478,10 +2637,13 @@ To save settings:
 
 1. Open `Menu` -> `Settings`.
 2. Change only the options you need.
-3. For a custom model root, enter the folder that contains the normal ComfyUI model subfolders.
-4. For notifications, enable the desired events, set a low test volume, and optionally choose success/error audio files.
-5. Save/close Settings.
-6. Refresh or restart ComfyUI when model paths changed; click once inside the browser before testing notification sounds.
+3. Choose the project engine before starting engine-specific prompt/render work.
+4. For custom project storage, choose an absolute parent folder and click `Save Projects Root`.
+5. For a custom model root, enter the folder that contains the normal ComfyUI model subfolders.
+6. Set automatic memory cleanup according to your DynamicVRAM setup.
+7. For notifications, enable the desired events, set a low test volume, and optionally choose success/error audio files.
+8. Save/close Settings.
+9. Refresh or restart ComfyUI when model paths changed; click once inside the browser before testing notification sounds.
 
 ![Settings window with custom model root and audio notifications](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/Settings%20window%20with%20custom%20model%20root%20and%20audio%20notifications.png)
 
@@ -2493,7 +2655,7 @@ Short snippet:
 
 The Builder UI comes from this repo, but the hidden workflows it launches also use several external custom-node packs. Install these before running full image/video builds.
 
-This list was checked against the hidden workflow templates used by the Builder and Prompt Creator, including the ZImage, Krea 2, Ernie, Flux/Klein, Nano B, Enhance, I2V, T2V, Reference-to-Video, Ingredients, ID-LoRA, FLF, Face Fix, cleanup, transcription, and Prompt Creator workflows.
+This list was checked against the hidden workflow templates used by the Builder and Prompt Creator, including the ZImage, Krea 2, Ernie, Flux/Klein, Nano B, Enhance, LTX I2V/T2V/reference modes, MiniMax H3 input-audio/built-in-audio modes, Ingredients, ID-LoRA, FLF, Face Fix, cleanup, transcription, and Prompt Creator workflows.
 
 Use ComfyUI Manager when possible: open `Manager` -> `Install Custom Nodes`, search the name, install it, then restart ComfyUI. If a workflow still opens with red missing nodes, use ComfyUI Manager's missing-node installer on that workflow.
 
@@ -2519,6 +2681,7 @@ Mode-specific notes:
 | Builder feature | Extra dependency notes |
 | --- | --- |
 | `Image to Video` / `Text to Video` | Requires the LTXVideo, VideoHelperSuite, GGUF, and KJNodes packs above |
+| `MiniMax H3` | Requires a current ComfyUI build with `MiniMaxH3ReferenceToVideo`, KJNodes for the standard diffusion loader, VideoHelperSuite for reference video/audio loading and combining, and this repo's H3 timing/audio/reference nodes. Built-in audio also uses the installed LTX audio VAE decode node. GGUF is not supported on this path. |
 | `First Last Frame` | Requires the same LTX stack plus the bundled `LTX2.3_FLF_API.json` hidden workflow and both start/end images |
 | `ID-LoRA I2V` | Requires LTXVideo plus the required ID-LoRA/model shown in the Video tab |
 | `Reference to Video` | Requires LTXVideo plus the MSR LoRA/model files shown in `Download Models` |
@@ -2598,57 +2761,20 @@ ComfyUI/
     latent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors
 ```
 
+MiniMax H3:
+
+```text
+ComfyUI/
+  models/
+    diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors
+    text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+    vae/minimax_h3_video_vae_fp16.safetensors
+    vae/minimax_h3_audio_vae_fp32.safetensors
+```
+
+MiniMax H3 model names and folder locations are listed here because they are required by the Builder even when the current `Download Models` window does not provide an H3 download group. The MiniMax diffusion picker intentionally lists non-GGUF files only. If the H3 model or `MiniMaxH3ReferenceToVideo` node is missing after placing the files, update ComfyUI, restart it completely, and hard refresh the browser.
+
 ![Download Models Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/2026-06-01%2016_02_27-.png)
-
-## Standalone Video Enhancer and Video Compare
-
-Add `VRGDG Standalone Video Enhancer` to open a clean enhancement workspace for an existing finished video without opening Video Builder.
-
-| Enhancer control | What it does |
-| --- | --- |
-| Output size | Keeps the original size or creates 2K, 3K, or 4K output with high-quality Lanczos scaling while preserving portrait/landscape aspect ratio |
-| Fast Unsharp Sharpen | Adds fast sharpening with strength up to 10; test a short range before using high values |
-| Fast Film Grain | Controls grain intensity, saturation mix, and deterministic seed |
-| Current-frame comparison | Shows the active frame before and after processing with a draggable wipe |
-| Final-video comparison | Synchronizes the source and enhanced videos behind the same draggable divider and supports an expanded, screen-filling view |
-| Memory-aware rendering | Processes long videos in resumable frame batches with checkpoints, cancellation, and an automatic smaller-batch retry after GPU out-of-memory errors |
-| Preserve audio | Copies the original soundtrack into the finished enhanced video when enabled |
-
-Recommended enhancer workflow:
-
-1. Add the node and click `Open Standalone Video Enhancer`.
-2. Load the source video and choose Original, 2K, 3K, or 4K.
-3. Start with low sharpening and grain values and compare a representative frame.
-4. Render a short test before processing a long video.
-5. Use the final-video wipe comparison to check faces, edges, motion, and grain.
-6. Resume from the saved checkpoint after an interruption instead of restarting a completed batch.
-
-Add `VRGDG Video Compare Slider` when you only need to compare two existing videos. It provides synchronized playback, shared scrubbing, looping, optional audio, editable labels, a draggable before/after divider, and an expanded comparison view.
-
-## Additional Nodes and Utilities
-
-The repository also includes standalone nodes and UIs that can be used outside the Video Builder. These do not appear as Builder panels; add them to a normal ComfyUI workflow.
-
-| Node or utility | What it adds | Quick start |
-| --- | --- | --- |
-| `VRGDG Standalone Video Enhancer` | Standalone Original/2K/3K/4K enhancement with sharpening, grain, resumable rendering, audio preservation, and frame/video wipe comparison | Add the node, open the enhancer, load a source video, test conservative settings on a short range, then render and compare the final result |
-| `VRGDG Video Compare Slider` | Synchronized before/after video playback with scrubbing, looping, labels, optional audio, and a draggable divider | Add the node, load both videos, synchronize them, then drag the divider or expand the viewer for inspection |
-| `VRGDG Storyboard Creator with Browser AI — Open This` | The project-aware start/end storyboard workspace described above | Add the node, click `Open Storyboard Creator`, load a saved Builder project, and follow the Start Image Storyboard workflow above |
-| `VRGDG LoRA Dataset Creator UI` | Builds image/caption datasets for art styles, consistent characters, or experimental LTX 2.3 IC edit pairs | Add/open the UI, choose the dataset type/output folder, configure the concept and generator, test one item, then run the batch; review images and captions before training |
-| `Face Fix - ...` node set | Detects/tracks a face, prepares Z-Image anchors and an LTX crop video, validates both branches, and composites repaired frames back into the source | Start from the supplied Face Fix workflow, load the source video, set the face/range/detection options, run prepare and anchors, process the crop through LTX, validate, then composite it back |
-| `Video Enhance - ...` node set | Creates full-frame enhancement anchors, feeds them through Meta Batch and LTX, then restores the exact original resolution/frame count | Start from the supplied Enhance workflow, load the video, create anchors, run the LTX/Meta Batch path, restore the original dimensions/frame count, and adjust source blend if the result is too strong |
-| `VRGDG Modern Face Crop (DNN)` | OpenCV DNN/YuNet face crop with confidence filtering and long-range tiled scanning | Connect an image, choose detector/confidence/minimum-face settings, run it, and pass both the crop and returned crop metadata to a compatible paste-back node |
-| `VRGDG Image Paste Back (Feathered)` | Pastes a processed crop back through compatible crop metadata with edge padding and feathering | Connect the original image, processed crop, and matching crop metadata; tune padding/feathering, then compare the composite with the original |
-| `VRGDG LTXV Looping Sampler Advanced` | Adds per-temporal-tile image, latent, and overlap-conditioning schedules | Replace the official looping sampler in an advanced LTX workflow, reconnect the same model/conditioning/latent inputs, set temporal-tile and overlap schedules, and test a short clip before a long render |
-| `VRGDG LTX First / Last Temporal Guide` and `Endpoint Guide` | Builds temporal first/last-frame guidance and explicit endpoint guidance | Connect the start/end images or latents and the target frame count, set the guide frame positions/strengths, then feed the returned guides into the matching LTX conditioning/sampler path |
-| `VRGDG LTX IC Ingredients Grid` | Composes up to 24 images into LTX IC-LoRA reference-sheet layouts | Connect the required ingredient images, choose grid/strip/story/aspect-aware layout, run the node, and use the resulting sheet as the IC/Ingredients reference image |
-| `VRGDG Optional Multi LoRA Two Pass Strengths` | Applies optional model-only LoRAs with independent first/second-pass strengths | Connect the base model, select each optional LoRA, set pass 1 and pass 2 strengths, and connect the two model outputs to their matching workflow passes |
-| LTX CFG/Sigma nodes | Adds scheduled CFG, APG/STG/variance-rescale guidance, and sigma-aware guide release | Insert the chosen guidance node in the matching LTX guidance path, start with workflow defaults, then change one schedule/scale at a time while testing a short fixed-seed clip |
-| `VRGDG Krea 2 Musubi Installer` | Installs a native Krea 2-ready Musubi-Tuner and model assets | Add/open the installer, choose an install folder, run dependency installation, optionally download models, and restart ComfyUI after it completes |
-| `VRGDG Krea 2 LoRA Studio` | Provides preset-based Krea 2 chunk training, sampling, and comparison grids | Open the Studio, select the dataset/output/model, choose a preset, run a small sample/chunk first, then start training and compare checkpoint samples |
-| `VRGDG Krea 2 AI Toolkit Installer` | Installs an isolated AI Toolkit environment for experimental paired Krea 2 Edit LoRA training | Choose an isolated install folder, run installation, restart ComfyUI, then point the paired-training workflow at that environment and a validated source/target dataset |
-
-These utilities are optional for the basic Video Builder path. Install their model/tool dependencies only if you plan to use those specific nodes.
 
 ## Saving Projects
 
@@ -2657,6 +2783,8 @@ Use `Quick Save` often. Keep `Auto save` on unless you have a reason to turn it 
 Use `Save Project As` before major experiments. This creates a separate copy so you can test new prompts, models, or remake settings without damaging the original project.
 
 Use `Branch Project...` when you want the experiment recorded as a project branch, or `Export Shareable Project ZIP` when the project must be moved or shared. Project ZIP import rebases saved media paths to the extracted destination before loading the session.
+
+By default, new/copy/branch folders are created under ComfyUI output. `Menu` -> `Settings` -> `Project Storage` can set a different absolute parent folder for future projects. This preference never relocates the currently loaded project. External project folders cannot be deleted through the Builder UI.
 
 Project folders may contain:
 
@@ -2751,6 +2879,30 @@ Use this when each scene needs a planned visual destination or continuous handof
 6. Use `Render All` after the endpoints are approved, or `Build Full FLF Video` to finish missing FLF dependencies and stitch automatically.
 7. Prefer resume choices until you intentionally want to replace completed work.
 
+### MiniMax H3 Music Video Workflow
+
+Use this when a finished song or spoken track must drive H3 with exact timeline timing.
+
+1. Create or branch a project, then choose `Menu` -> `Settings` -> `Project Video Engine` -> `MiniMax H3`.
+2. Load project audio and create/review timeline scenes. Keep each scene at or below about 15 seconds.
+3. Choose `Input Audio (exact supplied audio)` in the MiniMax Video Settings.
+4. Add and map Reference Builder characters/locations when using Reference-to-Video, or add source videos when using Video-to-Video.
+5. Choose the H3 mode and settings globally. Lock only the scenes that need different settings.
+6. Create/review the separate MiniMax prompt for a representative scene, then click `Create MiniMax H3 Scene Video`.
+7. Confirm lip sync, reference order, exact start/end duration, and original audio before using `LLM Video All` and `Render All`.
+
+### MiniMax H3 Short Film Workflow
+
+Use this when MiniMax should generate the dialogue voices and scene sound.
+
+1. Select MiniMax H3, set `Video Type` to `Speaking (short film)`, and choose `Built-in MiniMax Audio`.
+2. In Reference Builder, create the film characters, choose each character's built-in/custom voice, add locations, and save.
+3. Open Storyboard Builder and choose `Guided Film Automation` or `Fully Custom`.
+4. For an existing script, open `Import Script / Script Mapper`, validate every cue, map every speaker, and activate the exact script.
+5. Develop the storyboard, review visual actions and ordered speaker assignments, then click `Create Timeline Segments`.
+6. Create and test one H3 prompt/video, then run the missing-only prompt and render batches.
+7. Review every scene's generated audio and trim before final stitching.
+
 ### Recommended Video Builder Workflow
 
 Use this for new projects.
@@ -2767,6 +2919,16 @@ Use this for new projects.
 | No scene is editable | Select a scene from the left list or timeline |
 | The Image/Video/Audio tabs are disabled | No scene is selected |
 | Model dropdowns are empty | Install models, then restart ComfyUI |
+| MiniMax H3 is not shown in the Video tab | Open `Menu` -> `Settings`, set the whole project's Video Engine to `MiniMax H3`, save, and reselect the scene |
+| MiniMax diffusion model is missing from the picker | H3 uses non-GGUF diffusion models only. Place the `.safetensors` model in `models/diffusion_models`, restart ComfyUI, and hard refresh |
+| MiniMax reports a scene is too long | Split the scene so each H3 range is about 15 seconds or shorter; H3 is fixed at 24 FPS and a maximum 362-frame render |
+| MiniMax references are missing or in the wrong order | Save Reference Builder, reopen the scene's H3 reference chooser, and check the numbered image/video order plus any slot reserved for exact-start continuity |
+| MiniMax exact start is unavailable | A scene image exact start and previous-final-frame exact start cannot both be active; choose one exact-start source |
+| MiniMax Input Audio cannot edit speaker cues | This is intentional because typed changes would not match the supplied waveform. Choose Built-in MiniMax Audio for generated dialogue |
+| MiniMax Script Mapper will not activate | Use `speaker: dialogue` or supported JSON, fix every parse error, and map every speaker to a saved Reference Builder character |
+| MiniMax Render All uses the wrong mode | Check whether the scene has custom MiniMax settings locked. Unlock it to follow the current global mode, or update the locked scene settings |
+| A character still sings in a MiniMax B-roll scene | Confirm `B-roll / no lip-sync` is saved in Line Mapping, then regenerate the prompt or render again. The renderer now reapplies the visual-only contract even to an older saved prompt; Input Audio vocals remain audible only as off-screen soundtrack. |
+| MiniMax final clip timing is wrong | Confirm the timeline scene itself has valid start/end times and stays inside the source audio; H3 renders extra aligned frames but the Builder should trim back to the exact scene duration |
 | Gemma prompt buttons fail | Make sure the correct Gemma model and mmproj are selected |
 | NanoBanana fails | Add the API key in the Nano B `Models` tab |
 | Render All skips scenes | Scenes with selected videos may already be complete |
@@ -2784,6 +2946,7 @@ Use this for new projects.
 | Image-to-video prompt looks wrong | Turn `Use image reference for I2V prompt?` on/off depending on whether the image should guide Gemma |
 | Characters sing during instrumental sections | Mark the scene `Instrumental` or `B-roll / no lip-sync`, then save lyric mapping |
 | Existing-scene transcription misses or shifts lyrics | Confirm the complete reference lyrics are pasted, use `Replace All`, restart ComfyUI after updating, and listen through boundary scenes in lyric review |
+| Cyrillic lyrics create empty two-second scenes from 0:00 | Update/restart the Builder, then rerun reference-lyric transcription with `Replace All`; lyric normalization now preserves Unicode letters |
 | Beat mode created scenes but lyrics are blank | Beat mode now transcribes its finished scenes automatically; confirm reference lyrics were supplied and review the transcription error/progress window |
 | Wrong singer performs a duet line | Open `Review Lines + Map Performers`, check both singers, then save |
 | A dialogue prompt talks about singing | Set the top-bar `Video Type` to `Speaking (short film)`, map the correct speaker, and regenerate the prompt |
@@ -2793,12 +2956,14 @@ Use this for new projects.
 | Ingredients tabs are blank | Update to the newest Builder, restart ComfyUI, and hard refresh the browser so the repaired Sheets, Mapping, and Locations panels load |
 | Story Arc reports a changed lyric structure | Update and rerun. Trailing invented headings are removed automatically; a remaining error means Gemma actually missed, renamed, reordered, or inserted a heading inside the required structure |
 | Render All progress disappeared | Reopen the persistent render log and inspect the saved JSON/text report in the project for completed phases, failures, and stitch timing |
+| A scene render reports the wait limit | The Builder now waits up to two hours. Check whether the ComfyUI queue is still running; if it finished, use scene-video recovery/history, and inspect the terminal plus temporary output before retrying |
 | Prompt Creator data does not populate notes | Use `Send To Video Creator` or `Import Data From Prompt Creator`, then reload/import prompt files if needed |
 | LM Studio is selected but not used | Vision Gemma still uses built-in GGUF; only text-only passes use LM Studio |
 | Browser AI cannot control the browser | Run Install/Check Browser Setup, sign in with `Open Selected Login`, or use the manual export/import path |
 | Face Fix finds no face | Choose a clearer description frame, lower minimum face pixels, adjust confidence/rotation assist, or pick a repair-distance preset that includes the face size |
 | Updater stops | Local edits or a non-fast-forward branch can block the safe updater; save/back up your work and use the manual Git commands to inspect the conflict |
 | Project ZIP import fails | Keep ComfyUI running, confirm the archive came from `Export Shareable Project ZIP`, and check the terminal for extraction/path validation errors |
+| A project outside ComfyUI output cannot be deleted in the picker | This safety restriction is intentional. Verify the full external path and remove it manually outside the Builder if desired |
 | Audio notification does not play | Click inside the browser once and check notification settings |
 | Model path is wrong on Linux | Use forward slashes and make sure the model picker shows the exact model name |
 

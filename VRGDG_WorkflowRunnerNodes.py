@@ -208,6 +208,15 @@ def _minimax_h3_api_template_path():
     )
 
 
+def _minimax_h3_built_in_audio_api_template_path():
+    return os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "Workflows",
+        "UsedForUIDoNotTouch",
+        "minimax_built_in_audio_builder_api.json",
+    )
+
+
 def _clear_memory_api_template_path():
     return os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -2467,7 +2476,10 @@ def _patch_minimax_h3_advanced_settings(prompt, payload):
 
 
 def _build_minimax_h3_api_prompt(payload):
-    workflow_path, prompt = _load_api_template(_minimax_h3_api_template_path())
+    raw_audio_mode = str(payload.get("audio_mode") or payload.get("audioMode") or "input_audio").strip().lower().replace("-", "_").replace(" ", "_")
+    audio_mode = "built_in_audio" if raw_audio_mode in {"built_in_audio", "native_audio", "generated_audio"} else "input_audio"
+    workflow_template = _minimax_h3_built_in_audio_api_template_path() if audio_mode == "built_in_audio" else _minimax_h3_api_template_path()
+    workflow_path, prompt = _load_api_template(workflow_template)
     prompt = copy.deepcopy(prompt)
 
     video_prompt = str(_first_payload_value(
@@ -2476,14 +2488,16 @@ def _build_minimax_h3_api_prompt(payload):
     if not video_prompt:
         raise ValueError("MiniMax H3 video prompt is empty.")
 
-    audio_text = str(_first_payload_value(
-        payload, "audio_path", "source_audio_path", default=""
-    ) or "").strip().strip('"')
-    if not audio_text:
-        raise ValueError("MiniMax H3 source audio path is empty.")
-    audio_path = os.path.abspath(audio_text)
-    if not os.path.isfile(audio_path):
-        raise FileNotFoundError(f"MiniMax H3 source audio was not found: {audio_path}")
+    audio_path = ""
+    if audio_mode == "input_audio":
+        audio_text = str(_first_payload_value(
+            payload, "audio_path", "source_audio_path", default=""
+        ) or "").strip().strip('"')
+        if not audio_text:
+            raise ValueError("MiniMax H3 source audio path is empty.")
+        audio_path = os.path.abspath(audio_text)
+        if not os.path.isfile(audio_path):
+            raise FileNotFoundError(f"MiniMax H3 source audio was not found: {audio_path}")
 
     project_text = str(payload.get("project_folder", "") or "").strip().strip('"')
     if not project_text:
@@ -2513,7 +2527,7 @@ def _build_minimax_h3_api_prompt(payload):
     source_duration = _first_payload_value(
         payload, "source_duration_seconds", "audio_duration_seconds", default=None
     )
-    if source_duration is None:
+    if source_duration is None and audio_mode == "input_audio":
         source_duration = _probe_media_duration_seconds(audio_path)
     source_start = _first_payload_value(
         payload, "source_start_seconds", "audio_start_seconds", default=None
@@ -2532,12 +2546,14 @@ def _build_minimax_h3_api_prompt(payload):
         source_start_seconds=source_start,
         source_duration_seconds=source_duration,
     )
-    prepared_audio = _trim_minimax_h3_audio_context(
-        audio_path,
-        project_folder,
-        scene_number,
-        timing,
-    )
+    prepared_audio = None
+    if audio_mode == "input_audio":
+        prepared_audio = _trim_minimax_h3_audio_context(
+            audio_path,
+            project_folder,
+            scene_number,
+            timing,
+        )
 
     image_paths = _minimax_h3_image_paths(payload)
     video_references = _minimax_h3_video_references(payload)
@@ -2584,9 +2600,10 @@ def _build_minimax_h3_api_prompt(payload):
     _set_api_input(prompt, "128", "clip_name", clip_name)
     _set_api_input(prompt, "119", "vae_name", video_vae_name)
     _set_api_input(prompt, "120", "vae_name", audio_vae_name)
-    _set_api_input(prompt, "171", "audio_file", prepared_audio["audio_path"])
-    _set_api_input(prompt, "171", "seek_seconds", 0)
-    _set_api_input(prompt, "171", "duration", 0)
+    if audio_mode == "input_audio":
+        _set_api_input(prompt, "171", "audio_file", prepared_audio["audio_path"])
+        _set_api_input(prompt, "171", "seek_seconds", 0)
+        _set_api_input(prompt, "171", "duration", 0)
     _set_api_input(prompt, "180", "image_paths", json.dumps(image_paths, ensure_ascii=False))
     _set_api_input(prompt, "180", "video_references", json.dumps(video_references, ensure_ascii=False))
     _set_api_input(prompt, "142", "frame_rate", 24)
@@ -2602,6 +2619,7 @@ def _build_minimax_h3_api_prompt(payload):
         "output_folder": output_folder,
         "prompt": prompt,
         "used_seed": seed,
+        "audio_mode": audio_mode,
         "timing": timing.to_dict(),
         "prepared_audio": prepared_audio,
         "post_render_trim": {

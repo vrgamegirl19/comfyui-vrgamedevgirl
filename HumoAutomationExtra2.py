@@ -1529,7 +1529,10 @@ class VRGDG_ManualLyricsExtractor_SRT_Advanced:
 
     def _normalize_for_match(self, text: str) -> str:
         text = text.lower()
-        text = re.sub(r"[^a-z0-9\s]", " ", text)
+        # Python's Unicode-aware \w preserves letters and numbers from scripts
+        # such as Cyrillic while punctuation is discarded for lyric matching.
+        text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
+        text = text.replace("_", " ")
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
