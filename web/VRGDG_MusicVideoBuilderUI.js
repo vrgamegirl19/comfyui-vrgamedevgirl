@@ -360,6 +360,12 @@ const LTX_MODEL_DOWNLOADS = [
   { label: "Latent Upscaler", url: "https://huggingface.co/prince-canuma/LTX-2.3-distilled/resolve/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors" },
   { label: "Audio VAE", url: "https://huggingface.co/Kijai/LTX2.3_comfy/tree/main/vae" },
 ];
+const MINIMAX_H3_MODEL_DOWNLOADS = [
+  { label: "Diffusion model", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors" },
+  { label: "Qwen3-VL text encoder", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors" },
+  { label: "Video VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_fp16.safetensors" },
+  { label: "Audio VAE", url: "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_audio_vae_fp32.safetensors" },
+];
 const ZIMAGE_MODEL_DOWNLOADS = [
   { label: "Z-Image Turbo", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/diffusion_models/z_image_turbo_bf16.safetensors" },
   { label: "Qwen CLIP", url: "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/text_encoders/qwen_3_4b.safetensors" },
@@ -470,6 +476,15 @@ models/
     LTX2.3_audio_vae_bf16.safetensors
   latent_upscale_models/
     ltx-2.3-spatial-upscaler-x2-1.1.safetensors`,
+  "MiniMax H3": `ComfyUI/
+models/
+  diffusion_models/
+    minimax_h3_ref2va_pruned_int8_convrot.safetensors
+  text_encoders/
+    qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors
+  vae/
+    minimax_h3_video_vae_fp16.safetensors
+    minimax_h3_audio_vae_fp32.safetensors`,
 };
 
 const builderResponsiveStyle = document.createElement("style");
@@ -1135,14 +1150,33 @@ function showFinalVideoReadyModal(videoPath) {
 }
 
 function showModelDownloadModal() {
-  const groups = [
-    { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
-    { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
-    { title: "Krea2", note: "Krea2 text-to-image model used by the Reference Builder Krea2 + ZImage enhancer option.", downloads: KREA2_MODEL_DOWNLOADS },
-    { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
-    { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
-    { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },
-    { title: "LTX 2.3", note: "High-quality image and video generation model.", downloads: LTX_MODEL_DOWNLOADS },
+  const tabs = [
+    {
+      id: "ltx",
+      label: "LTX + Image Models",
+      groups: [
+        { title: "LTX 2.3", note: "High-quality image and video generation model.", downloads: LTX_MODEL_DOWNLOADS },
+        { title: "ZImage", note: "Core ZImage Turbo diffusion model, Qwen text encoder, and VAE.", downloads: ZIMAGE_MODEL_DOWNLOADS },
+        { title: "Krea2", note: "Krea2 text-to-image model used by the Reference Builder Krea2 + ZImage enhancer option.", downloads: KREA2_MODEL_DOWNLOADS },
+        { title: "Flux/Klein 9B", note: "9B is higher quality. 4B is smaller and lighter.", downloads: FLUX_KLEIN_9B_MODEL_DOWNLOADS },
+        { title: "Flux/Klein 4B", note: "4B is smaller and lighter.", downloads: FLUX_KLEIN_4B_MODEL_DOWNLOADS },
+        { title: "Ernie Image", note: "Ernie diffusion model, Ministral text encoder, and VAE.", downloads: ERNIE_MODEL_DOWNLOADS },
+      ],
+    },
+    {
+      id: "llm",
+      label: "LLM Models",
+      groups: [
+        { title: "LLM / Vision", note: "Use SuperGemma for text prompting. Use Gemma Vision GGUF plus mmproj for image-reference prompting.", downloads: LLM_MODEL_DOWNLOADS },
+      ],
+    },
+    {
+      id: "minimax",
+      label: "MiniMax H3",
+      groups: [
+        { title: "MiniMax H3", note: "Required diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE for MiniMax H3 rendering.", downloads: MINIMAX_H3_MODEL_DOWNLOADS },
+      ],
+    },
   ];
   const backdrop = document.createElement("div");
   backdrop.style.cssText = "position:fixed;inset:0;z-index:100006;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box;";
@@ -1158,60 +1192,100 @@ function showModelDownloadModal() {
   close.style.fontSize = "18px";
   header.append(title, close);
   const body = document.createElement("div");
+  body.id = "vrgdg-model-downloads-panel";
+  body.setAttribute("role", "tabpanel");
   body.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;padding:18px 20px 20px;";
-  for (const group of groups) {
-    const card = document.createElement("div");
-    card.style.cssText = "display:flex;flex-direction:column;gap:14px;border:1px solid #334155;border-radius:10px;background:#111827;padding:18px;";
-    const titleRow = document.createElement("div");
-    titleRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
-    const groupTitle = document.createElement("div");
-    groupTitle.textContent = group.title;
-    groupTitle.style.cssText = "font-size:22px;font-weight:900;color:#f8fafc;";
-    const folderButton = makeMiniButton("Folders");
-    folderButton.style.fontSize = "13px";
-    folderButton.style.padding = "8px 10px";
-    folderButton.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const pre = document.createElement("pre");
-      pre.textContent = MODEL_FOLDER_HINTS[group.title] || "No folder location listed yet.";
-      pre.style.cssText = "white-space:pre-wrap;margin:0;padding:12px;border:1px solid #334155;border-radius:8px;background:#020617;color:#bae6fd;font-size:12px;line-height:1.45;overflow:auto;";
-      showInfoModal({
-        title: `${group.title} Folder Locations`,
-        lines: [
-          "Place the files here, then restart ComfyUI if the dropdowns do not refresh.",
-          pre,
-        ],
-      });
-    });
-    titleRow.append(groupTitle, folderButton);
-    const note = document.createElement("div");
-    note.textContent = group.note;
-    note.style.cssText = "font-size:17px;line-height:1.35;color:#c7d2fe;";
-    const buttons = document.createElement("div");
-    buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;";
-    for (const item of group.downloads) {
-      const button = makeMiniButton(item.label);
-      button.style.borderColor = "#2563eb";
-      button.style.background = "#1d4ed8";
-      button.style.color = "#eff6ff";
-      button.style.fontWeight = "900";
-      button.style.fontSize = "16px";
-      button.style.padding = "12px 16px";
-      button.style.borderRadius = "7px";
-      button.addEventListener("click", (event) => {
+  const tabBar = document.createElement("div");
+  tabBar.setAttribute("role", "tablist");
+  tabBar.setAttribute("aria-label", "Model download categories");
+  tabBar.style.cssText = "position:sticky;top:78px;z-index:1;display:flex;flex-wrap:wrap;gap:10px;padding:14px 20px;border-bottom:1px solid #334155;background:#0b1220;";
+  const tabButtons = new Map();
+
+  const renderGroups = (groups) => {
+    body.replaceChildren();
+    for (const group of groups) {
+      const card = document.createElement("div");
+      card.style.cssText = "display:flex;flex-direction:column;gap:14px;border:1px solid #334155;border-radius:10px;background:#111827;padding:18px;";
+      const titleRow = document.createElement("div");
+      titleRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;";
+      const groupTitle = document.createElement("div");
+      groupTitle.textContent = group.title;
+      groupTitle.style.cssText = "font-size:22px;font-weight:900;color:#f8fafc;";
+      const folderButton = makeMiniButton("Folders");
+      folderButton.style.fontSize = "13px";
+      folderButton.style.padding = "8px 10px";
+      folderButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        window.open(item.url, "_blank", "noopener,noreferrer");
+        const pre = document.createElement("pre");
+        pre.textContent = MODEL_FOLDER_HINTS[group.title] || "No folder location listed yet.";
+        pre.style.cssText = "white-space:pre-wrap;margin:0;padding:12px;border:1px solid #334155;border-radius:8px;background:#020617;color:#bae6fd;font-size:12px;line-height:1.45;overflow:auto;";
+        showInfoModal({
+          title: `${group.title} Folder Locations`,
+          lines: [
+            "Place the files here, then restart ComfyUI if the dropdowns do not refresh.",
+            pre,
+          ],
+        });
       });
-      buttons.append(button);
+      titleRow.append(groupTitle, folderButton);
+      const note = document.createElement("div");
+      note.textContent = group.note;
+      note.style.cssText = "font-size:17px;line-height:1.35;color:#c7d2fe;";
+      const buttons = document.createElement("div");
+      buttons.style.cssText = "display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;";
+      for (const item of group.downloads) {
+        const button = makeMiniButton(item.label);
+        button.style.borderColor = "#2563eb";
+        button.style.background = "#1d4ed8";
+        button.style.color = "#eff6ff";
+        button.style.fontWeight = "900";
+        button.style.fontSize = "16px";
+        button.style.padding = "12px 16px";
+        button.style.borderRadius = "7px";
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          window.open(item.url, "_blank", "noopener,noreferrer");
+        });
+        buttons.append(button);
+      }
+      card.append(titleRow, note, buttons);
+      body.append(card);
     }
-    card.append(titleRow, note, buttons);
-    body.append(card);
+  };
+
+  const activateTab = (tabId) => {
+    const selected = tabs.find((tab) => tab.id === tabId) || tabs[0];
+    for (const [id, button] of tabButtons) {
+      const active = id === selected.id;
+      button.setAttribute("aria-selected", active ? "true" : "false");
+      button.tabIndex = active ? 0 : -1;
+      button.style.background = active ? "#0e7490" : "#1e293b";
+      button.style.borderColor = active ? "#22d3ee" : "#475569";
+      button.style.color = active ? "#ecfeff" : "#cbd5e1";
+    }
+    renderGroups(selected.groups);
+  };
+
+  for (const tab of tabs) {
+    const button = makeMiniButton(tab.label);
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-controls", body.id);
+    button.style.cssText += ";font-size:15px;font-weight:900;padding:10px 16px;border-radius:7px;";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      activateTab(tab.id);
+    });
+    tabButtons.set(tab.id, button);
+    tabBar.append(button);
   }
-  box.append(header, body);
+
+  box.append(header, tabBar, body);
   backdrop.append(box);
   document.body.append(backdrop);
+  activateTab("ltx");
   close.onclick = () => backdrop.remove();
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop) backdrop.remove();

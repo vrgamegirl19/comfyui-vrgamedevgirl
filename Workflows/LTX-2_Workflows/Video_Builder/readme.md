@@ -2701,7 +2701,7 @@ Quick missing-node checklist:
 
 ## Models and Downloads
 
-Use `Download Models` in the top bar if you need model links and folder locations.
+Use `Download Models` in the top bar if you need model links and folder locations. The window is organized into `LTX + Image Models`, `LLM Models`, and `MiniMax H3` tabs so each engine's required files stay together.
 
 The model download window includes groups for:
 
@@ -2713,6 +2713,7 @@ The model download window includes groups for:
 | `Flux/Klein 4B` | Smaller/lighter Flux/Klein generation |
 | `Ernie Image` | Ernie image generation |
 | `LTX 2.3` | Video generation |
+| `MiniMax H3` | MiniMax H3 diffusion model, Qwen3-VL text encoder, video VAE, and audio VAE |
 
 After placing models in the correct ComfyUI model folders, restart ComfyUI if dropdowns do not refresh.
 
@@ -2772,7 +2773,7 @@ ComfyUI/
     vae/minimax_h3_audio_vae_fp32.safetensors
 ```
 
-MiniMax H3 model names and folder locations are listed here because they are required by the Builder even when the current `Download Models` window does not provide an H3 download group. The MiniMax diffusion picker intentionally lists non-GGUF files only. If the H3 model or `MiniMaxH3ReferenceToVideo` node is missing after placing the files, update ComfyUI, restart it completely, and hard refresh the browser.
+The `MiniMax H3` tab in `Download Models` links each of these four required files and its `Folders` button shows the same directory structure. The MiniMax diffusion picker intentionally lists non-GGUF files only. If the H3 model or `MiniMaxH3ReferenceToVideo` node is missing after placing the files, update ComfyUI, restart it completely, and hard refresh the browser.
 
 ![Download Models Window](https://raw.githubusercontent.com/vrgamegirl19/comfyui-vrgamedevgirl/refs/heads/main/Workflows/LTX-2_Workflows/Video_Builder/images/2026-06-01%2016_02_27-.png)
 
