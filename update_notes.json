@@ -3,6 +3,52 @@
   "product": "LTX 2.3 Video Builder",
   "releases": [
     {
+      "id": "2026-08-05-minimax-h3-short-film-builder",
+      "version": "2026.08.05-minimax-h3",
+      "date": "2026-08-05",
+      "title": "MiniMax H3 built-in audio and short-film authoring",
+      "commit": "e0055190d989a2fb70522b7101086880d61ce8f3",
+      "restart_required": true,
+      "guide_url": "https://github.com/vrgamegirl19/comfyui-vrgamedevgirl/blob/main/Workflows/LTX-2_Workflows/Video_Builder/readme.md",
+      "sections": [
+        {
+          "title": "New",
+          "items": [
+            "Added Built-in MiniMax Audio as an alternative to exact supplied Input Audio, with a dedicated hidden workflow that generates and preserves native scene audio through rendering and final stitching.",
+            "Added ordered per-scene speaker cues plus American, British, Australian, and custom voice descriptions saved with Reference Builder characters.",
+            "Added Guided Film Automation, Fully Custom short-film scene cards, and a Script Mapper that validates speaker: dialogue text or JSON, maps speakers to saved characters, preserves exact cue order and wording, previews timing, and creates the real timeline only after review.",
+            "Added previous-scene spatial-reference and exact-start-frame continuity modes while preserving MiniMax's nine-image reference limit.",
+            "Added MiniMax video-aesthetic controls and protected-character temporal/world effects for Storyboard planning.",
+            "Added an optional custom projects root for newly created projects without moving existing projects or ComfyUI temporary render output."
+          ]
+        },
+        {
+          "title": "Improved",
+          "items": [
+            "MiniMax prompts now keep Input Audio and Built-in Audio contracts separate, preserve exact speaker order, avoid repeating full dialogue or lyrics in every timestamp, and relax visible mouths after the audible vocal ends.",
+            "MiniMax render progress can display the exact prompt, lyric or dialogue, mode, and ordered reference images being sent for the current scene.",
+            "The per-scene render wait limit was increased from 40 minutes to two hours.",
+            "Multi-view character sheets are now treated as one subject instead of creating duplicate people from alternate views."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "MiniMax H3 scenes marked B-roll or no-lip-sync now suppress singer, lyric, speaker, and native-voice inputs, remove conflicting vocal actions from timestamp blocks, and receive a final visual-only safety contract again at render time.",
+            "Cyrillic and other Unicode letters are preserved during reference-lyric timestamp matching instead of being stripped by ASCII-only normalization.",
+            "Added a session-save safeguard that prevents an ordinary stale save from accidentally clearing many populated lyric lines at once."
+          ]
+        },
+        {
+          "title": "Compatibility Notes",
+          "items": [
+            "Existing and newly created projects continue to use LTX 2.3 unless MiniMax H3 is explicitly selected in Builder Settings.",
+            "MiniMax Input Audio remains the exact supplied soundtrack path; Built-in MiniMax Audio must be selected when generated voices, dialogue, ambience, or sound effects are required."
+          ]
+        }
+      ]
+    },
+    {
       "id": "2026-08-03-minimax-h3-builder-testing",
       "version": "2026.08.03-minimax-h3-test",
       "date": "2026-08-03",
